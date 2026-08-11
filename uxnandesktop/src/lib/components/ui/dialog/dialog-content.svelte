@@ -8,6 +8,7 @@
 	import { Button } from "$lib/components/ui/button/index.js";
 	import { i18n } from "$lib/i18n";
 	import { Icon } from "$lib/components/ui/icon";
+	import { dialog, iconButton } from "$lib/design";
 	import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
 	let {
@@ -17,12 +18,14 @@
 		children,
 		showCloseButton = true,
 		size = "medium",
+		composition = "default",
 		...restProps
 	}: WithoutChildrenOrChild<DialogPrimitive.ContentProps> & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof DialogPortal>>;
 		children: Snippet;
 		showCloseButton?: boolean;
-		size?: "small" | "medium" | "large" | "workspace";
+		size?: "small" | "medium" | "form" | "palette" | "large" | "workspace";
+		composition?: "default" | "sectioned";
 	} = $props();
 </script>
 
@@ -33,8 +36,9 @@
 		data-slot="dialog-content"
 		data-size={size}
 		class={cn(
-			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-w-[calc(100%-2rem)] gap-4 rounded-xl px-5 py-0 text-sm shadow-[0_16px_48px_rgb(0_0_0/0.18)] ring-1 duration-100 dark:shadow-[0_16px_48px_rgb(0_0_0/0.45)] fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
-			size === "small" ? "sm:max-w-sm" : size === "large" ? "sm:max-w-2xl" : size === "workspace" ? "sm:max-w-4xl" : "sm:max-w-lg",
+			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-w-[calc(100%-2rem)] rounded-xl text-sm shadow-[0_16px_48px_rgb(0_0_0/0.18)] ring-1 duration-100 dark:shadow-[0_16px_48px_rgb(0_0_0/0.45)] fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
+			composition === "sectioned" ? dialog.sectioned : dialog.content,
+			size === "small" ? dialog.smallWidth : size === "form" ? dialog.formWidth : size === "palette" ? dialog.paletteWidth : size === "large" ? dialog.largeWidth : size === "workspace" ? dialog.workspaceWidth : dialog.mediumWidth,
 			className
 		)}
 		{...restProps}
@@ -43,7 +47,7 @@
 		{#if showCloseButton}
 			<DialogPrimitive.Close data-slot="dialog-close">
 				{#snippet child({ props })}
-					<Button variant="ghost" class="absolute top-2 right-2" size="icon-sm" {...props}>
+					<Button variant="ghost" class={cn(iconButton.sm, "absolute top-2 right-2")} size="icon-sm" {...props}>
 						<Icon icon={XIcon}  />
 						<span class="sr-only">{i18n.t("common.close")}</span>
 					</Button>

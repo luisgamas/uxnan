@@ -623,7 +623,7 @@
               </Button>
             {/snippet}
           </DropdownMenu.Trigger>
-          <DropdownMenu.Content align="end" class="min-w-48">
+          <DropdownMenu.Content width="simple" align="end">
             <!-- New file/folder land in the selected folder (or a selected file's
                  parent), else the worktree root — see `toolbarTargetDir`. -->
             <DropdownMenu.Item
@@ -964,7 +964,7 @@
               ></div>
             {/snippet}
           </ContextMenu.Trigger>
-          <ContextMenu.Content>
+          <ContextMenu.Content width="simple">
             <ContextMenu.Item class={text.menu} onclick={() => startCreate("file", root)}>
               <Icon icon={FilePlusIcon} />
               {i18n.t("fileTree.newFile")}

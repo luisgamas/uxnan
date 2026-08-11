@@ -402,7 +402,7 @@
               />
             {/if}
             <Select.Root type="single" bind:value={onFailure}>
-              <Select.Trigger class="h-8 w-44 text-[13px]">
+              <Select.Trigger size="compact" class="w-44 text-[13px]">
                 {onFailure === "retry"
                   ? i18n.t("orchestration.onFailureRetry")
                   : i18n.t("orchestration.onFailureStop")}

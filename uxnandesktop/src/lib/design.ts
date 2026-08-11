@@ -64,25 +64,43 @@ export const control = {
 
 /** Shared overlay row and container recipes. */
 export const overlay = {
-  item: "min-h-8 px-2 py-1.5 text-[13px]",
+  /** Menu rows use the shared 36px target across ContextMenu, DropdownMenu,
+   *  Select and Command. Keep this in one token so callers do not invent
+   *  equivalent local heights. */
+  item: "min-h-9 px-2 py-2 text-[13px]",
   label: "min-h-8 px-2 py-1.5 text-[11px]",
-  popover: "rounded-lg p-3",
+  popover: "rounded-lg",
+  popoverPadding: "p-3",
+  popoverNoPadding: "p-0",
+  menuSurface: "rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10",
+  menuViewport: "uxnan-scroll max-h-[24rem] overflow-x-hidden overflow-y-auto",
+  menuSubViewport: "uxnan-scroll max-h-[20rem] overflow-y-auto",
+  menuCompactViewport: "uxnan-scroll max-h-72 overflow-y-auto",
+  menuSeparator: "-mx-1 my-1 h-px bg-border/70",
   infoWidth: "w-72 max-w-[calc(100vw-1rem)]",
   formWidth: "w-80 max-w-[calc(100vw-1rem)]",
   commandWidth: "w-80 max-w-[calc(100vw-1rem)]",
   statusWidth: "w-96 max-w-[calc(100vw-1rem)]",
+  /** Menu width roles keep labels and submenu affordances readable. */
+  menuSimple: "min-w-44 max-w-[min(20rem,calc(100vw-1rem))]",
+  menuStandard: "min-w-52 max-w-[min(20rem,calc(100vw-1rem))]",
+  menuWide: "min-w-56 max-w-[min(20rem,calc(100vw-1rem))]",
+  dataRow: "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4",
 } as const;
 
 /** Dialog section rhythm and width roles. */
 export const dialog = {
-	content: "px-5 py-0",
-	header: "py-4",
-	body: "py-4",
-  footer: "p-3",
+  content: "gap-4 px-5 py-0",
+  sectioned: "gap-0 p-0",
+  header: "py-4",
+  body: "py-4",
+  footer: "rounded-b-xl border-t bg-muted/50 p-3",
   smallWidth: "sm:max-w-sm",
   mediumWidth: "sm:max-w-lg",
-  largeWidth: "sm:max-w-2xl",
-  workspaceWidth: "sm:max-w-4xl",
+  formWidth: "sm:max-w-[560px]",
+  paletteWidth: "sm:max-w-xl",
+  largeWidth: "sm:max-w-[600px]",
+  workspaceWidth: "sm:max-w-[900px]",
 } as const;
 
 /** Text roles. Informational text stays muted and un-bold on purpose — only

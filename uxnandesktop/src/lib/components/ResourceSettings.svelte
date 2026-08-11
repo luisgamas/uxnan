@@ -177,7 +177,7 @@
 </SettingsSection>
 
 <Dialog.Root bind:open={exportOpen}>
-  <Dialog.Content class="sm:max-w-[480px]">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("resources.exportTitle")}</Dialog.Title>
       <Dialog.Description>{i18n.t("resources.exportFieldsIntro")}</Dialog.Description>

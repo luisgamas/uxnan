@@ -66,7 +66,7 @@
 </script>
 
 <Dialog.Root bind:open={projects.paletteOpen}>
-  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-xl">
+  <Dialog.Content size="palette" composition="sectioned" class="overflow-hidden">
     <Dialog.Title class="sr-only">{i18n.t("palette.title")}</Dialog.Title>
     <Dialog.Description class="sr-only">{i18n.t("palette.placeholder")}</Dialog.Description>
 

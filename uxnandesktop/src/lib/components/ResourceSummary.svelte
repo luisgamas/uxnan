@@ -16,7 +16,7 @@
   } from "$lib/resources/display";
   import { formatAge, formatBytes, formatCpu } from "$lib/resources/format";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { overlay, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { Icon } from "$lib/components/ui/icon";
   import ActivityIcon from "@hugeicons/core-free-icons/Activity01Icon";
@@ -75,7 +75,7 @@
   {:else if summary}
     <!-- Uxnan total: instant, with average/peak context underneath. -->
     {#if total}
-      <div class="flex items-baseline justify-between gap-2">
+      <div class={overlay.dataRow}>
         <span class={cn("font-medium text-foreground", text.body)}>
           {i18n.t("resources.totalLabel")}
         </span>
@@ -83,7 +83,7 @@
           {formatCpu(total.cpuPercent)} · {formatBytes(total.residentBytes)}
         </span>
       </div>
-      <div class="flex items-center justify-between gap-2">
+      <div class={overlay.dataRow}>
         <span class={text.meta}>
           {i18n.plural(total.processes, "resources.processesOne", "resources.processesOther")}
         </span>
@@ -112,7 +112,7 @@
         {#each groups as group (group.kind + (group.id ?? ""))}
           {@const rowState = groupState(group)}
           <div
-            class={cn("flex items-baseline justify-between gap-2", group.ended && "opacity-60")}
+            class={cn(overlay.dataRow, group.ended && "opacity-60")}
             data-testid="resource-group"
             data-state={rowState}
           >

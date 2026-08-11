@@ -60,7 +60,7 @@
     <Icon icon={AppWindowIcon} />
     {i18n.t("openWith.label")}
   </menu.SubTrigger>
-  <menu.SubContent class="uxnan-scroll max-h-80 min-w-52 overflow-y-auto">
+  <menu.SubContent width="standard">
     {#if native}
       <menu.Item class={text.menu} onclick={() => void openWith.openNative(path)}>
         <Icon icon={FileTextIcon} />

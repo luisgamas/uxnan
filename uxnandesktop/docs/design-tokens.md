@@ -83,10 +83,11 @@ arbitrary markup globally.
 
 ## Overlay and dialog roles
 
-Menus, selects, and command items use a minimum 32px row, 8px horizontal
+Menus, selects, and command items use a minimum 36px row, 8px horizontal
 padding, and readable 13px text. Popovers use 12px default padding; composed
-command/list bodies may intentionally own their internal sections and use
-`p-0`. Width is chosen by information structure and is viewport-clamped:
+command/list bodies may intentionally own their internal sections and use the
+semantic `padding="none"` prop. Width is chosen by information structure and is
+viewport-clamped:
 
 | Role | Width | Use |
 |---|---:|---|
@@ -95,11 +96,33 @@ command/list bodies may intentionally own their internal sections and use
 | Command popover | about 320px (`overlay.commandWidth`) | command palette/list body |
 | Data-rich status popover | 352–384px (`overlay.statusWidth`) | multi-column status details |
 
-Dialogs use named `small`, `medium`, `large`, and `workspace` width roles. Their
+Dropdown and context menus use the semantic `simple`, `standard`, and `wide` width roles;
+call sites should select the role rather than repeat `min-w-*` classes. Data-rich
+label/value surfaces use `overlay.dataRow` (`minmax(0,1fr) auto`, a deliberate
+column gap, and stable non-wrapping values) so long labels do not squeeze
+numeric status values. Width follows information structure, not padding alone.
+
+Context-menu content defaults to `standard` (about 208px). Short menus with
+only a few brief actions may opt into `simple`; long labels, nested actions, and
+data-rich groups should use `wide`. Submenus declare a role as well so they do
+not regress to a narrower local width.
+
+`MenuSurface` is the shared programmatic surface for terminal pane/tab menus. It
+retains explicit pointer coordinates because xterm panes and tab chips are
+dynamic, overlapping targets: Bits UI's `ContextMenu.Trigger` must own the
+native `contextmenu` event and computes its virtual point internally, so it
+cannot faithfully accept the already-captured pane/tab target without changing
+tab activation and pointer-coordinate behavior. The shared surface therefore
+uses the same menu tokens and overlay registration contract, and supplies
+roving Arrow/Home/End focus, Escape/Tab close, outside-pointer dismissal, and
+viewport-clamped width roles. This is an interaction primitive, not a styling-
+only wrapper.
+
+Dialogs use named `small`, `medium`, `form`, `palette`, `large`, and `workspace` width roles. `form` preserves the existing 560px form dialogs, `palette` preserves the 576px worktree palette, and `large` is a 600px data-rich surface. Their
 content shell has 20px horizontal padding and no forced vertical padding. Use
 `Dialog.Header` and `Dialog.Body` for the named 16px (`py-4`) header/body rhythm;
 `Dialog.Footer` owns its 12px (`p-3`) section padding. Existing composed dialogs
-may opt into `p-0` on `Dialog.Content` without fighting a negative margin. The
+may opt into `padding="none"` on `Dialog.Content` without fighting a negative margin. The
 close target is a 32px icon button. Footer sections stay composable inside the
 content padding (no negative-margin hacks). Outside-pointer dismissal must preserve
 the pointer sequence for the newly targeted underlying control; keyboard close

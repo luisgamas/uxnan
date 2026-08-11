@@ -327,7 +327,7 @@
   <div class="flex items-center gap-2">
     <span class={cn("shrink-0", text.meta)}>{i18n.t("providers.refreshInterval")}</span>
     <Select.Root type="single" value={intervalValue} onValueChange={setInterval}>
-      <Select.Trigger class="h-8 flex-1 text-xs">{intervalLabel}</Select.Trigger>
+      <Select.Trigger size="compact" class="flex-1 text-xs">{intervalLabel}</Select.Trigger>
       <Select.Content>
         {#each intervalOptions as opt (opt.value)}
           <Select.Item value={opt.value} label={i18n.t(opt.key)}>{i18n.t(opt.key)}</Select.Item>

@@ -270,7 +270,7 @@
           </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" class="min-w-52">
+      <DropdownMenu.Content width="standard" align="end">
         <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.view")}</DropdownMenu.Label>
         <DropdownMenu.RadioGroup
           value={projects.groupBy}
@@ -316,7 +316,7 @@
           </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content align="end" class="min-w-48">
+      <DropdownMenu.Content width="simple" align="end">
         <DropdownMenu.Item class={text.menu} onclick={() => app.openTerminal()}>
           <Icon icon={TerminalIcon} class={icon.button} />
           {i18n.t("terminal.newDefault")}

@@ -312,7 +312,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[600px]">
+  <Dialog.Content size="large">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("launcher.dialogTitle", { name: repo.name })}</Dialog.Title>
       <Dialog.Description>{i18n.t("launcher.dialogDesc")}</Dialog.Description>

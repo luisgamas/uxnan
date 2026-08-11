@@ -33,7 +33,8 @@
 		<Dialog.Description>{description}</Dialog.Description>
 	</Dialog.Header>
 	<Dialog.Content
-		class={cn("rounded-xl! top-1/3 translate-y-0 max-w-[calc(100vw-1rem)] overflow-hidden p-0", className)}
+		composition="sectioned"
+		class={cn("rounded-xl! top-1/3 translate-y-0 max-w-[calc(100vw-1rem)] overflow-hidden", className)}
 		{showCloseButton}
 		{portalProps}
 	>

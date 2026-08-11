@@ -4,6 +4,7 @@
 	import { Dialog as DialogPrimitive } from "bits-ui";
 	import { Button } from "$lib/components/ui/button/index.js";
 	import { i18n } from "$lib/i18n";
+	import { dialog } from "$lib/design";
 
 	let {
 		ref = $bindable(null),
@@ -19,7 +20,7 @@
 <div
 	bind:this={ref}
 	data-slot="dialog-footer"
-	class={cn("bg-muted/50 rounded-b-xl border-t p-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+	class={cn(dialog.footer, "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
 	{...restProps}
 >
 	{@render children?.()}

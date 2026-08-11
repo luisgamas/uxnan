@@ -15,9 +15,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- Migrated dialogs, command popovers, menus, selects and status surfaces to the
+  shared overlay density contract. Dialogs consume named width roles, menus use
+  semantic width variants, and Backend/Usage status popovers use the data-rich
+  width and label/value grid. Outside and Escape close paths preserve Bits UI
+  focus behavior without blurring the active terminal or restoring stale
+  navigation chrome.
+
+- Consolidated overlay geometry in the shared design tokens, including menu
+  surfaces/rows, context-menu rendering, hover-card width roles, and composed
+  dialog widths. Terminal context menus now use the reusable menu surface while
+  retaining their existing pointer, keyboard, and command behavior.
+
+- Context and programmatic menus now expose shared `simple`, `standard`, and
+  `wide` width roles with explicit call-site assignments and 36px rows. The
+  terminal menu's shared primitive now handles measured viewport clamping,
+  keyboard roving focus, Escape/Tab dismissal, outside-pointer dismissal, and
+  documented keyboard focus return while preserving existing actions.
+
 - Established the desktop density contract across shared UI primitives: standard
   controls are 36px, compact controls 32px, dense chrome 28px, overlay rows are
-  at least 32px, and popover/dialog widths are named, viewport-clamped roles.
+  36px, and popover/dialog widths are named, viewport-clamped roles.
   This aligns primitive sizing and spacing without migrating product screens.
 
 - **Projects can now be cloned and added from the Add project dialog.** Its single

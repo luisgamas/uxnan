@@ -582,7 +582,7 @@
         <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><Icon icon={MoreVerticalIcon} class={icon.button} /></Button>
       {/snippet}
     </DropdownMenu.Trigger>
-    <DropdownMenu.Content align="end" class="min-w-44">
+    <DropdownMenu.Content width="simple" align="end">
       {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><Icon icon={PencilIcon} class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
       <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><Icon icon={CopyIcon} class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
       <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><Icon icon={DownloadIcon} class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
@@ -602,7 +602,7 @@
         <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><Icon icon={MoreVerticalIcon} class={icon.button} /></Button>
       {/snippet}
     </DropdownMenu.Trigger>
-    <DropdownMenu.Content align="end" class="min-w-44">
+    <DropdownMenu.Content width="simple" align="end">
       <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><Icon icon={PencilIcon} class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
       <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><Icon icon={CopyIcon} class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
       <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><Icon icon={DownloadIcon} class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
@@ -691,7 +691,7 @@
 {/if}
 
 <Dialog.Root bind:open={pasteOpen}>
-  <Dialog.Content class="sm:max-w-[520px]">
+  <Dialog.Content size="large">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("appearance.pasteTitle")}</Dialog.Title>
       <Dialog.Description>{i18n.t("appearance.pasteDesc")}</Dialog.Description>

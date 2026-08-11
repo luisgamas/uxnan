@@ -293,7 +293,9 @@
 <Dialog.Root bind:open={editorOpen}>
   <Dialog.Content
     showCloseButton={false}
-    class="flex max-h-[85vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+    size="medium"
+    composition="sectioned"
+    class="flex max-h-[85vh] w-full flex-col gap-0 overflow-hidden"
   >
     <div class="flex shrink-0 items-center border-b border-border/60 px-5 py-3.5">
       <Dialog.Title class={text.title}>

@@ -71,7 +71,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[500px]">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("projectSettings.title")}</Dialog.Title>
       <Dialog.Description>{i18n.t("projectSettings.desc")}</Dialog.Description>

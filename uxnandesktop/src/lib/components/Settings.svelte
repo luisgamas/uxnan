@@ -1506,7 +1506,7 @@
                         </button>
                       {/snippet}
                     </HoverCard.Trigger>
-                    <HoverCard.Content class="w-80">
+                        <HoverCard.Content width="form">
                       <p class={cn("mb-2 font-medium text-foreground", text.body)}>{i18n.t("updates.installPolicyHelpTitle")}</p>
                       <dl class="space-y-2">
                         {#each [["updates.policyAsk", "updates.policyAskHelp"], ["updates.policyWhenIdle", "updates.policyWhenIdleHelp"], ["updates.policyManual", "updates.policyManualHelp"]] as [nameKey, helpKey] (nameKey)}
@@ -1794,7 +1794,7 @@
                       </Button>
                     {/snippet}
                   </DropdownMenu.Trigger>
-                  <DropdownMenu.Content align="end" class="min-w-52">
+                  <DropdownMenu.Content width="standard" align="end">
                     {#each TERMINAL_TEMPLATES as group (group.os)}
                       <DropdownMenu.Group>
                         <DropdownMenu.GroupHeading class={text.menuLabel}>

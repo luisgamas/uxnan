@@ -11,7 +11,7 @@
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import FreshnessHint from "./FreshnessHint.svelte";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { iconButton, overlay, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { usageProvider } from "$lib/usageCatalog";
   import { formatCredit } from "$lib/usageFormat";
@@ -22,6 +22,10 @@
   import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import {
+    shouldPreventStatusPopoverAutoFocus,
+    type StatusPopoverCloseReason,
+  } from "./status-popover-focus";
 
   // Providers pinned to the status bar, in configured order.
   const pinned = $derived(
@@ -62,8 +66,11 @@
 
   // Controlled so navigating to settings can close it explicitly.
   let open = $state(false);
+  let triggerRef = $state<HTMLButtonElement | null>(null);
+  let contentRef = $state<HTMLElement | null>(null);
   let statusTooltipOpen = $state(false);
   let refreshTooltipOpen = $state(false);
+  let closeReason = $state<StatusPopoverCloseReason>("programmatic");
 
   function closeTooltips(): void {
     statusTooltipOpen = false;
@@ -71,17 +78,42 @@
   }
 
   function onOpenChange(next: boolean) {
-    if (next) void usage.ensureFresh();
+    if (next) {
+      closeReason = "programmatic";
+      closeTooltips();
+      void usage.ensureFresh();
+    }
+  }
+
+  function onInteractOutside(event?: PointerEvent): void {
+    closeReason = "outside";
+    open = false;
+    const target = event?.target;
+    if (target instanceof HTMLElement) queueMicrotask(() => target.focus());
+  }
+
+  // Bits UI owns the normal dismissible layer. This window fallback keeps the
+  // pointer-to-terminal handoff deterministic when the host WebView targets a
+  // native surface outside the DOM tree.
+  function onWindowPointerDown(event: PointerEvent): void {
+    if (!open || !contentRef || !triggerRef) return;
+    const target = event.target;
+    if (target instanceof Node && !contentRef.contains(target) && !triggerRef.contains(target)) {
+      onInteractOutside(event);
+    }
   }
 </script>
+
+<svelte:window onpointerdown={onWindowPointerDown} />
 
 {#if enabled}
   <Popover.Root bind:open {onOpenChange}>
     <TooltipSimple bind:open={statusTooltipOpen} title={i18n.t("providers.statusBarTooltip")}>
       {#snippet children(tp)}
         <Popover.Trigger
+          bind:ref={triggerRef}
           {...tp}
-          class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          class={cn("flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground", iconButton.action)}
           aria-label={i18n.t("providers.statusBarTooltip")}
         >
           <Icon icon={GaugeIcon} class={cn("size-3.5", iconTint)} />
@@ -89,14 +121,22 @@
       {/snippet}
     </TooltipSimple>
     <Popover.Content
+      bind:ref={contentRef}
       align="end"
       side="top"
-      class="w-72 p-0"
-      onOpenAutoFocus={(event) => event.preventDefault()}
+      width="status"
+      padding="none"
+      onInteractOutside={onInteractOutside}
+      onEscapeKeydown={() => (closeReason = "escape")}
       onCloseAutoFocus={(event) => {
-        event.preventDefault();
         closeTooltips();
-        (document.activeElement as HTMLElement | null)?.blur();
+        if (shouldPreventStatusPopoverAutoFocus(closeReason)) {
+          event.preventDefault();
+        } else {
+          // The trigger is wrapped by TooltipSimple; keep Bits' default restoration
+          // and repair the nested-scope fallback if it lands on document.body.
+          queueMicrotask(() => triggerRef?.focus());
+        }
       }}
     >
       <div class="flex items-start justify-between gap-2 border-b border-border/60 px-3 py-2">
@@ -134,11 +174,13 @@
           {@const snap = usage.byProvider[config.provider]}
           {@const windows = shownWindows(config, snap)}
           <div class="flex flex-col gap-1.5 py-2.5">
-            <div class="flex items-center gap-1.5">
-              <AgentLogo logo={meta?.logo ?? config.provider} class="size-3.5" />
-              <span class={cn("truncate text-foreground", text.body)}>{meta?.name ?? config.provider}</span>
+            <div class={overlay.dataRow}>
+              <span class="flex min-w-0 items-center gap-1.5">
+                <AgentLogo logo={meta?.logo ?? config.provider} class="size-3.5 shrink-0" />
+                <span class={cn("min-w-0 truncate text-foreground", text.body)}>{meta?.name ?? config.provider}</span>
+              </span>
               {#if config.statusBar.showPlan && snap?.account?.plan}
-                <span class="ml-auto truncate text-[11px] text-muted-foreground">{snap.account.plan}</span>
+                <span class="min-w-0 max-w-[40%] truncate whitespace-nowrap text-right text-[11px] text-muted-foreground">{snap.account.plan}</span>
               {/if}
             </div>
             {#if windows.length > 0}
@@ -171,6 +213,7 @@
         type="button"
         class="flex w-full items-center gap-1.5 border-t border-border/60 px-3 py-2 text-muted-foreground hover:text-foreground {text.meta}"
         onclick={() => {
+          closeReason = "navigation";
           open = false;
           app.openSettings("providers");
         }}

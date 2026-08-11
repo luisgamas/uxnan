@@ -83,7 +83,7 @@
 </script>
 
 <Dialog.Root bind:open onOpenChange={(o) => { if (!o) oncancel(); }}>
-  <Dialog.Content class="flex max-h-[85vh] flex-col gap-3 sm:max-w-[560px]">
+  <Dialog.Content size="large" class="flex max-h-[85vh] flex-col">
     <Dialog.Header>
       <Dialog.Title>{title}</Dialog.Title>
     </Dialog.Header>

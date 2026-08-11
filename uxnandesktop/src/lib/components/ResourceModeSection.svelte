@@ -387,7 +387,7 @@
                         v as WorkspaceAutoSleepLevel,
                       )}
                   >
-                    <Select.Trigger class="h-8 w-36 text-xs" disabled={!policy.autoSleepEnabled}>
+                    <Select.Trigger size="compact" class="w-36 text-xs" disabled={!policy.autoSleepEnabled}>
                       {autoSleepLevelLabel}
                     </Select.Trigger>
                     <Select.Content>

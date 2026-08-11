@@ -203,7 +203,7 @@
         onchange();
       }}
     >
-      <Select.Trigger class="h-8 flex-1 text-xs">{shellLabel}</Select.Trigger>
+      <Select.Trigger size="compact" class="flex-1 text-xs">{shellLabel}</Select.Trigger>
       <Select.Content>
         <Select.Item value={DEFAULT} label={i18n.t("agentEditor.defaultShell")}>
           {i18n.t("agentEditor.defaultShell")}

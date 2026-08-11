@@ -12,3 +12,4 @@
 		<button aria-label="second" {...props}>Second</button>
 	{/snippet}
 </TooltipSimple>
+<button aria-label="outside">Outside</button>

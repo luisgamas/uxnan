@@ -61,7 +61,7 @@
       </button>
     {/snippet}
   </DropdownMenu.Trigger>
-  <DropdownMenu.Content align="end" class="min-w-56">
+  <DropdownMenu.Content width="wide" align="end">
     {#if isEmpty}
       <div class={cn("px-2 py-1.5", text.meta)}>{i18n.t("commands.empty")}</div>
       <DropdownMenu.Separator />

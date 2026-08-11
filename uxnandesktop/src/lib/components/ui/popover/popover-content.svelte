@@ -4,6 +4,7 @@
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 	import type { ComponentProps } from "svelte";
 	import { registerOverlay } from "$lib/overlayLayer.js";
+	import { overlay } from "$lib/design";
 
 	let {
 		ref = $bindable(null),
@@ -11,10 +12,12 @@
 		sideOffset = 4,
 		align = "center",
 		width = "form",
+		padding = "default",
 		portalProps,
 		...restProps
 	}: PopoverPrimitive.ContentProps & {
 		width?: "info" | "form" | "command" | "status";
+		padding?: "default" | "none";
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof PopoverPortal>>;
 	} = $props();
 
@@ -31,8 +34,9 @@
 		{sideOffset}
 		{align}
 		class={cn(
-			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 flex flex-col gap-2.5 rounded-lg p-3 text-sm shadow-md ring-1 duration-100 data-[side=inline-start]:slide-in-from-right-2 data-[side=inline-end]:slide-in-from-left-2 z-50 origin-(--transform-origin) outline-hidden",
-			width === "info" ? "w-72 max-w-[calc(100vw-1rem)]" : width === "status" ? "w-96 max-w-[calc(100vw-1rem)]" : width === "command" ? "w-80 max-w-[calc(100vw-1rem)]" : "w-80 max-w-[calc(100vw-1rem)]",
+			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 flex flex-col gap-2.5 text-sm shadow-md ring-1 duration-100 data-[side=inline-start]:slide-in-from-right-2 data-[side=inline-end]:slide-in-from-left-2 z-50 origin-(--transform-origin) outline-hidden",
+			cn(overlay.popover, padding === "none" ? overlay.popoverNoPadding : overlay.popoverPadding),
+			width === "info" ? overlay.infoWidth : width === "status" ? overlay.statusWidth : overlay.commandWidth,
 			className
 		)}
 		{...restProps}

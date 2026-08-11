@@ -164,7 +164,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-[600px]" onkeydown={browserKey}>
+  <Dialog.Content size="large" composition="sectioned" class="overflow-hidden" onkeydown={browserKey}>
     <div class="flex flex-col gap-1 border-b border-border/60 px-5 pb-4 pt-5 pr-11">
       <Dialog.Title class="text-[15px] font-semibold leading-none">{i18n.t("picker.title")}</Dialog.Title>
       <Dialog.Description class={text.meta}>{i18n.t("picker.desc")}</Dialog.Description>

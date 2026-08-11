@@ -1355,7 +1355,7 @@
     >
       <Icon icon={ciGlyph} class="size-4" />
     </Popover.Trigger>
-    <Popover.Content align="end" side="bottom" class="w-[24rem] max-w-[calc(100vw-3rem)] overflow-hidden p-0">
+    <Popover.Content width="status" padding="none" align="end" side="bottom" class="overflow-hidden">
       <div class={cn("flex items-center gap-2 border-b border-border/50 px-3.5 py-2.5", text.section)}>
         <Icon icon={ciGlyph} class={cn("size-4", ciToneClass(summary.state))} />{checksHeadline(summary)}
       </div>

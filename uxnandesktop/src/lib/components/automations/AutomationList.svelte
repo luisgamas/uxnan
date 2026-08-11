@@ -211,7 +211,7 @@
                     </Button>
                   {/snippet}
                 </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end" class="w-52">
+                <DropdownMenu.Content width="standard" align="end">
                   <DropdownMenu.Item class={text.menu} onclick={() => (editing = a)}>
                     <Icon icon={PencilIcon} class={icon.button} />
                     {i18n.t("common.edit")}

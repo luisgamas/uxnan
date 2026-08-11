@@ -50,7 +50,7 @@ describe("primitive density contract", () => {
 		mount(DialogFixture);
 		const content = document.body.querySelector('[data-slot="dialog-content"]');
 		expect(content?.getAttribute("data-size")).toBe("large");
-		expect(content?.className).toContain("sm:max-w-2xl");
+		expect(content?.className).toContain("sm:max-w-[600px]");
 		expect(content?.className).toContain("max-w-[calc(100%-2rem)]");
 		expect(document.body.querySelector('[data-slot="dialog-header"]')?.className).toContain("py-4");
 		expect(document.body.querySelector('[data-slot="dialog-body"]')?.className).toContain("py-4");
@@ -77,6 +77,16 @@ describe("primitive density contract", () => {
 		await until(
 			() => document.body.querySelectorAll('[data-tooltip-content][data-state="instant-open"]').length === 0,
 			{ label: "tooltip trigger-click dismissal" },
+		);
+	});
+
+	it("dismisses a tooltip when an unrelated control receives a pointer click", async () => {
+		const { screen: result, user } = mountWithProviders(TooltipFixture);
+		await user.hover(result.getByRole("button", { name: "first" }));
+		await user.click(result.getByRole("button", { name: "outside" }));
+		await until(
+			() => document.body.querySelectorAll('[data-tooltip-content][data-state="instant-open"]').length === 0,
+			{ label: "tooltip unrelated-control dismissal" },
 		);
 	});
 

@@ -330,7 +330,7 @@
             </Button>
           {/snippet}
         </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="min-w-52">
+        <DropdownMenu.Content width="standard" align="end">
           <DropdownMenu.Item class={text.menu} onclick={() => projects.toggleProjectPin(repo.id)}>
             {#if projects.isProjectPinned(repo.id)}
               <Icon icon={PinOffIcon} class={icon.button} />
@@ -369,7 +369,7 @@
               <Icon icon={SettingsIcon} class={icon.button} />
               {i18n.t("ctx.configure")}
             </DropdownMenu.SubTrigger>
-            <DropdownMenu.SubContent>
+            <DropdownMenu.SubContent width="standard">
               <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
                 <Icon icon={BotIcon} class={icon.button} />
                 {i18n.t("agent.configure")}
@@ -389,7 +389,7 @@
                 <Icon icon={GitPullRequestIcon} class={icon.button} />
                 {i18n.t("github.title")}
               </DropdownMenu.SubTrigger>
-              <DropdownMenu.SubContent>
+              <DropdownMenu.SubContent width="standard">
                 <DropdownMenu.Item class={text.menu} onclick={() => openGithub("pulls")}>
                   <Icon icon={GitPullRequestIcon} class={icon.button} />
                   {i18n.t("github.nav.pulls")}

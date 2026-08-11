@@ -41,7 +41,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[460px]">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("sidebarProfile.editTitle")}</Dialog.Title>
       <Dialog.Description>{i18n.t("sidebarProfile.editDesc")}</Dialog.Description>

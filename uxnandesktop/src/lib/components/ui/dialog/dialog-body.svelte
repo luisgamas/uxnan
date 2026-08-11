@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { HTMLAttributes } from "svelte/elements";
 	import { cn, type WithElementRef } from "$lib/utils.js";
+	import { dialog } from "$lib/design";
 
 	let {
 		ref = $bindable(null),
@@ -13,7 +14,7 @@
 <div
 	bind:this={ref}
 	data-slot="dialog-body"
-	class={cn("py-4", className)}
+	class={cn(dialog.body, className)}
 	{...restProps}
 >
 	{@render children?.()}

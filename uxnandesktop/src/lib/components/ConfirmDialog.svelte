@@ -57,7 +57,8 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content
-    class="flex min-w-0 flex-col gap-4 sm:max-w-[440px]"
+    size="small"
+    class="flex min-w-0 flex-col"
     showCloseButton={false}
   >
     <div class="flex min-w-0 gap-3">

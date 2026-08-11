@@ -157,7 +157,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[520px]">
+  <Dialog.Content size="large">
     <Dialog.Header>
       <Dialog.Title>{title}</Dialog.Title>
       <Dialog.Description>{i18n.t("iconPicker.desc")}</Dialog.Description>

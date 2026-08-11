@@ -22,7 +22,7 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
-  import { divider, icon, iconButton, tab, text } from "$lib/design";
+  import { divider, icon, iconButton, overlay, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -40,6 +40,7 @@
   import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import LauncherMenu from "./LauncherMenu.svelte";
+  import MenuSurface from "$lib/components/ui/menu-surface.svelte";
   import TabRenameDialog from "./TabRenameDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
 
@@ -196,12 +197,22 @@
         /** Raw chord for the trailing keycap hint (e.g. "Ctrl+C", "Mod+W"). */
         chord?: string;
       };
-  let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  let menu = $state<{
+    x: number;
+    y: number;
+    items: MenuItem[];
+    focusReturn: HTMLElement | null;
+  } | null>(null);
 
   function openMenu(e: MouseEvent, items: MenuItem[]) {
     e.preventDefault();
     e.stopPropagation();
-    menu = { x: e.clientX, y: e.clientY, items };
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      focusReturn: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    };
   }
 
   function splitItems(groupId: string): MenuItem[] {
@@ -666,7 +677,7 @@
                           ? () => (projects.newWorktreeOpen = true)
                           : undefined}
                         align="start"
-                        triggerClass="ml-0.5 size-6"
+                        triggerClass={cn("ml-0.5", iconButton.xs)}
                         title={i18n.t("launcher.openHere")}
                       />
                     {:else}
@@ -946,20 +957,23 @@
      match the app's other menus (ring + soft popover, rounded rows); items with a
      keyboard equivalent show it as a trailing keycap hint. -->
 {#if menu}
-  <div
-    class="fixed z-50 min-w-44 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
-    style="left:{menu.x}px; top:{menu.y}px"
-    role="menu"
-    tabindex="-1"
-    onpointerdown={(e) => e.stopPropagation()}
+  {@const currentMenu = menu}
+  <MenuSurface
+    x={currentMenu.x}
+    y={currentMenu.y}
+    width="standard"
+    focusReturn={currentMenu.focusReturn}
+    onClose={() => (menu = null)}
   >
-    {#each menu.items as item, i (i)}
+    {#snippet children()}
+    {#each currentMenu.items as item, i (i)}
       {#if "separator" in item}
-        <div class="-mx-1 my-1 h-px bg-border"></div>
+        <div class={overlay.menuSeparator}></div>
       {:else}
         <button
           class={cn(
-            "flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm disabled:pointer-events-none disabled:opacity-50",
+            "flex w-full items-center gap-2 rounded-md text-left disabled:pointer-events-none disabled:opacity-50",
+            overlay.item,
             item.danger
               ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
               : "hover:bg-accent hover:text-accent-foreground",
@@ -978,7 +992,8 @@
         </button>
       {/if}
     {/each}
-  </div>
+    {/snippet}
+  </MenuSurface>
 {/if}
 
 <!-- Tab rename (label for terminals/diffs, on-disk rename for files). Mounted

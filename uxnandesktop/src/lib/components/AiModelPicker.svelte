@@ -81,7 +81,7 @@
       </Button>
     {/snippet}
   </Popover.Trigger>
-  <Popover.Content class="w-80 p-0" align="start">
+  <Popover.Content width="command" padding="none" align="start">
     <Command.Root value={value || DEFAULT}>
       <Command.Input placeholder={i18n.t("settings.aiCommitModelSearch")} />
       <!-- `uxnan-scroll` = the app's thin scrollbar (the registry's `no-scrollbar`

@@ -351,7 +351,7 @@
 />
 
 <Dialog.Root bind:open={importOpen}>
-  <Dialog.Content class="sm:max-w-[560px]">
+  <Dialog.Content size="large">
     <Dialog.Title class="text-[15px] font-semibold">{i18n.t("pets.importTitle")}</Dialog.Title>
     <Dialog.Description class="text-[13px] text-muted-foreground">
       {i18n.t("pets.importDesc")}

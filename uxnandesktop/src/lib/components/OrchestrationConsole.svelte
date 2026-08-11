@@ -21,7 +21,9 @@
 </script>
 
 <Dialog.Root bind:open={app.orchestrationOpen}>
-  <Dialog.Content class="flex max-h-[88vh] w-[94vw] flex-col overflow-hidden sm:max-w-[900px]">
+  <!-- Workspace content needs a viewport-relative canvas for its split run and
+       log panes; the named workspace role supplies the desktop clamp. -->
+  <Dialog.Content size="workspace" class="flex max-h-[88vh] flex-col overflow-hidden">
     <Dialog.Header>
       <Dialog.Title class="flex items-center gap-2">
         {i18n.t("orchestration.title")}

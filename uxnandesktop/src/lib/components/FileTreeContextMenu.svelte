@@ -69,7 +69,7 @@
   }
 </script>
 
-<ContextMenu.Content>
+<ContextMenu.Content width="wide">
   <ContextMenu.Item class={text.menu} onclick={onNewFile}>
     <Icon icon={FilePlusIcon} />
     {i18n.t("fileTree.newFile")}

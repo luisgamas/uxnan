@@ -459,7 +459,7 @@
         </div>
             {/snippet}
           </HoverCard.Trigger>
-          <HoverCard.Content side="right" align="start" class="w-80">
+          <HoverCard.Content side="right" align="start" width="form">
             {@render worktreeDetails()}
           </HoverCard.Content>
         </HoverCard.Root>

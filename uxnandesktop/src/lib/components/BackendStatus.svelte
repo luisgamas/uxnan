@@ -14,7 +14,7 @@
   import { github } from "$lib/state/github.svelte";
   import { resources } from "$lib/state/resources.svelte";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { iconButton, overlay, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Icon } from "$lib/components/ui/icon";
@@ -23,6 +23,10 @@
   import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import {
+    shouldPreventStatusPopoverAutoFocus,
+    type StatusPopoverCloseReason,
+  } from "./status-popover-focus";
 
   const backend = $derived(
     app.backend === "ready"
@@ -67,7 +71,10 @@
 
   // Controlled so the settings row can close the popover explicitly.
   let open = $state(false);
+  let triggerRef = $state<HTMLButtonElement | null>(null);
+  let contentRef = $state<HTMLElement | null>(null);
   let triggerTooltipOpen = $state(false);
+  let closeReason = $state<StatusPopoverCloseReason>("programmatic");
 
   // The resource section renders only while the feature is on; its sampling
   // lease follows the popover's lifecycle (open = sample, closed = parked).
@@ -77,6 +84,10 @@
    *  popover never shows a figure up to one poll interval old) and to take /
    *  release the resource-sampling lease. */
   function onOpenChange(next: boolean): void {
+    if (next) {
+      closeReason = "programmatic";
+      triggerTooltipOpen = false;
+    }
     if (showResources) {
       if (next) void resources.open();
       else void resources.close();
@@ -85,14 +96,35 @@
     void github.refreshRateLimit();
     if (showUnread) void github.refreshNotifications();
   }
+
+  function onInteractOutside(event?: PointerEvent): void {
+    closeReason = "outside";
+    open = false;
+    const target = event?.target;
+    if (target instanceof HTMLElement) queueMicrotask(() => target.focus());
+  }
+
+  // Bits UI owns the normal dismissible layer. This window fallback keeps the
+  // pointer-to-terminal handoff deterministic when the host WebView targets a
+  // native surface outside the DOM tree.
+  function onWindowPointerDown(event: PointerEvent): void {
+    if (!open || !contentRef || !triggerRef) return;
+    const target = event.target;
+    if (target instanceof Node && !contentRef.contains(target) && !triggerRef.contains(target)) {
+      onInteractOutside(event);
+    }
+  }
 </script>
+
+<svelte:window onpointerdown={onWindowPointerDown} />
 
 <Popover.Root bind:open {onOpenChange}>
   <TooltipSimple bind:open={triggerTooltipOpen} title={triggerLabel}>
     {#snippet children(tp)}
       <Popover.Trigger
+        bind:ref={triggerRef}
         {...tp}
-        class="relative flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        class={cn("relative flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground", iconButton.action)}
         aria-label={triggerLabel}
       >
         <Icon icon={ServerIcon} class={cn("size-3.5", backend.icon)} />
@@ -106,14 +138,22 @@
     {/snippet}
   </TooltipSimple>
   <Popover.Content
+    bind:ref={contentRef}
     align="end"
     side="top"
-    class="w-64 p-0"
-    onOpenAutoFocus={(event) => event.preventDefault()}
+    width="status"
+    padding="none"
+    onInteractOutside={onInteractOutside}
+    onEscapeKeydown={() => (closeReason = "escape")}
     onCloseAutoFocus={(event) => {
-      event.preventDefault();
       triggerTooltipOpen = false;
-      (document.activeElement as HTMLElement | null)?.blur();
+      if (shouldPreventStatusPopoverAutoFocus(closeReason)) {
+        event.preventDefault();
+      } else {
+        // The trigger is wrapped by TooltipSimple; keep Bits' default restoration
+        // and repair the nested-scope fallback if it lands on document.body.
+        queueMicrotask(() => triggerRef?.focus());
+      }
     }}
   >
     <div class="flex flex-col gap-2 p-3">
@@ -132,7 +172,7 @@
           {app.errorMessage}
         </div>
       {/if}
-      <div class="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+      <div class={cn(overlay.dataRow, "border-t border-border/60 pt-2")}>
         <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("status.backendRepos")}</span>
         <span class={cn("shrink-0 font-medium tabular-nums text-foreground", text.body)}>
           {app.repos.length}
@@ -146,6 +186,7 @@
         type="button"
         class="flex w-full items-center gap-1.5 border-t border-border/60 px-3 py-2 text-muted-foreground hover:text-foreground {text.meta}"
         onclick={() => {
+          closeReason = "navigation";
           open = false;
           app.openSettings("resources");
         }}
@@ -162,7 +203,7 @@
           <span class="text-sm font-medium text-foreground">{i18n.t("github.title")}</span>
         </div>
         {#if showUnread}
-          <div class="flex items-center justify-between gap-2">
+          <div class={overlay.dataRow}>
             <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("status.githubUnread")}</span>
             <span
               class={cn(
@@ -175,7 +216,7 @@
             </span>
           </div>
         {/if}
-        <div class="flex items-center justify-between gap-2">
+        <div class={overlay.dataRow}>
           <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("github.account.rateLimit")}</span>
           <span class={cn("shrink-0 font-medium tabular-nums text-foreground", text.body)}>
             {#if rate}
@@ -191,6 +232,7 @@
         type="button"
         class="flex w-full items-center gap-1.5 border-t border-border/60 px-3 py-2 text-muted-foreground hover:text-foreground {text.meta}"
         onclick={() => {
+          closeReason = "navigation";
           open = false;
           app.openSettings("github");
         }}

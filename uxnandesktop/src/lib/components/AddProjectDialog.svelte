@@ -95,7 +95,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-[560px]">
+  <Dialog.Content size="form" composition="sectioned" class="overflow-hidden">
     <!-- Header: what we're adding and where. -->
     <div class="flex flex-col gap-1 border-b border-border/60 px-4 pb-3 pt-4 pr-10">
       <Dialog.Title class="text-[15px] font-semibold leading-none">{i18n.t("addProject.title")}</Dialog.Title>

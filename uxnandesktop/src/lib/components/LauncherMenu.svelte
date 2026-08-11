@@ -80,7 +80,7 @@
       </Button>
     {/snippet}
   </DropdownMenu.Trigger>
-  <DropdownMenu.Content {align} class="min-w-56">
+  <DropdownMenu.Content width="wide" {align}>
     {#if target}
       {@const t = target}
       <!-- Single-worktree mode (center "+"): sections by type. -->

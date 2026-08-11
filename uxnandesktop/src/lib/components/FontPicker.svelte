@@ -102,7 +102,7 @@
       </Button>
     {/snippet}
   </Popover.Trigger>
-  <Popover.Content class="w-72 p-0" {align}>
+  <Popover.Content width="command" padding="none" {align}>
     <Command.Root value={current}>
       <Command.Input placeholder={i18n.t("appearance.fontSearch")} oninput={(e) => (query = e.currentTarget.value)} />
       <Command.List class="uxnan-scroll max-h-72">
