@@ -2081,6 +2081,13 @@ class ThreadManager {
   /// Only deltas go through here. Every other event (a turn completing, a block
   /// landing, a re-sync) still rebuilds immediately: those are one-off and the
   /// user must see them at once.
+  ///
+  /// FOR-DEV (optional, nothing is broken): text lands at ~6 repaints/s on a
+  /// long reply because that is how fast it ARRIVES — a display buffer consumed
+  /// at a steady rate, draining hard on `turn/completed`, is the one lever left
+  /// for smoothness. Perception, not throughput. Do NOT instead shrink
+  /// [_streamCoalesceWindow]: measured, the repaint rate already sits well
+  /// under what it allows. See `FOR-DEV.md` and `docs/testing.md` to measure.
   void _rebuildActiveTimelineCoalesced(int streamedLength) {
     if (_streamRebuildTimer?.isActive ?? false) return;
     _streamRebuildTimer = Timer(_streamCoalesceWindow(streamedLength), () {

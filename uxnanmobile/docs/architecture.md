@@ -317,6 +317,14 @@ and composed in `application_providers.dart`. The important ones:
    renders differently, so "it looks the same" is asserted, not assumed.
    Measured on device before this: 5.4 ms per frame at p95 under 4 500
    characters against 28.1 ms past it, with the raster flat at 3.7 ms.
+   **Do not lower the coalescing window to chase more smoothness.** Once a
+   rebuild became cheap it looked like the obvious next step, and it is a dead
+   end: measured across twelve samples the actual repaint rate always sat well
+   under what the window already allows (17 per 3 s where 100 ms permits 30).
+   The rate is limited by how fast text arrives, not by the window. The lever
+   that IS left is a display buffer decoupled from arrival — see `FOR-DEV.md`,
+   and note it is perception rather than throughput. How to re-measure any of
+   this is in [`testing.md`](testing.md).
 4. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.
