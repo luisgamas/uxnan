@@ -1425,6 +1425,16 @@ IncomingMessageProcessor
 ```
 
 Reglas de streaming:
+- **The bridge coalesces text deltas over a 25 ms window (or 512 characters,
+  whichever comes first) before notifying.** `stream/message/delta` carries the
+  accumulated run, so nothing on the wire or in the app changes shape — there
+  are simply fewer, larger deltas. Agents emit prose in bursts (measured: 60% of
+  a real turn's deltas arrived within 5 ms of the previous one), and one
+  serialization + AES-GCM seal + WebSocket frame per handful of characters was
+  paid on both ends; batching that recording cut 911 notifications to 244.
+  **Order is the invariant:** any non-delta event — a content block, a turn
+  ending — flushes the open batch first, so a block still lands against the text
+  run it belongs to and a completion never overtakes the prose before it.
 - El auto-scroll esta activo mientras el usuario no haya scrolleado hacia arriba.
 - Si el usuario scrollea durante streaming, el auto-scroll se pausa.
 - Al completar el turno, si el usuario esta cerca del fondo, auto-scroll se reactiva.

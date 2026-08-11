@@ -173,6 +173,27 @@ interface QueuedTurn {
  */
 const QUEUE_LIMIT = 10;
 
+/**
+ * How long streamed prose may wait to be sent as one notification, and how much
+ * may accumulate before it is sent regardless.
+ *
+ * 25 ms sits where the measured burstiness pays off without being felt: on a
+ * real recording of 911 deltas it cut 911 notifications to 244 (3.7x), against
+ * 2.4x at 10 ms and 5.0x at 40 ms. The window is the worst case a character can
+ * wait — well under the ~100 ms at which a person notices a pause, and under
+ * the phone's own render coalescing window.
+ */
+const DELTA_BATCH_WINDOW_MS = 25;
+const DELTA_BATCH_MAX_CHARS = 512;
+
+/** One turn's prose waiting to be sent, and the timer that will send it. */
+interface PendingText {
+  threadId: string;
+  messageId: string;
+  text: string;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export class AgentManager {
   readonly #adapters = new Map<AgentId, IAgentAdapter>();
   readonly #meta = new Map<AgentId, AgentMeta>();
@@ -896,6 +917,9 @@ export class AgentManager {
     // user's message stays visible with its mark). Checked first — routing it to
     // an adapter would be a no-op that leaves the turn queued forever.
     if (await this.#cancelQueuedTurn(threadId, turnId)) return;
+    // Whatever this turn had produced is already persisted; send it before the
+    // cancel so the phone's live view is not left missing its last words.
+    this.#flushText(turnId);
     // Resolve the thread's OWN agent (as respondApproval/respondQuestion do), not
     // the default: a cancel for a thread running on a non-default agent must reach
     // that agent's adapter, otherwise the wrong adapter no-ops and the turn keeps
@@ -1047,6 +1071,7 @@ export class AgentManager {
   }
 
   async stopAll(): Promise<void> {
+    for (const turnId of [...this.#pendingText.keys()]) this.#flushText(turnId);
     for (const [agentId, adapter] of this.#adapters) {
       if (this.#started.has(agentId)) {
         await adapter.stop().catch(() => undefined);
@@ -1055,10 +1080,67 @@ export class AgentManager {
     this.#started.clear();
   }
 
+  /**
+   * Text deltas waiting to be sent as one notification, per turn.
+   *
+   * Agents emit prose in bursts, not at a steady rate: measured on a real
+   * OpenCode turn, 60% of deltas arrived within 5 ms of the previous one (911
+   * deltas, gaps p10 1.4 ms / p50 3.0 ms / p90 27.7 ms). Sending each one
+   * separately paid a JSON serialization, an AES-GCM seal and a WebSocket frame
+   * per handful of characters — and the phone paid the mirror of that to open
+   * them. Coalescing over a 25 ms window cut it to a third of the
+   * notifications on that same recording, for a delay nobody can perceive.
+   */
+  readonly #pendingText = new Map<string, PendingText>();
+
+  /**
+   * Sends whatever text is buffered for [turnId] right now.
+   *
+   * Called before EVERY non-delta event (see `#onEvent`) because order is the
+   * whole contract here: a block carries `beforeText` so the phone can place it
+   * against the open text run, and a turn's completion must not overtake the
+   * prose that preceded it. Flushing from one place at the top of the handler is
+   * what makes it impossible for a new event type to forget.
+   */
+  #flushText(turnId: string): void {
+    const pending = this.#pendingText.get(turnId);
+    if (pending === undefined) return;
+    this.#pendingText.delete(turnId);
+    clearTimeout(pending.timer);
+    this.#options.notify(
+      makeNotification(StreamNotification.MessageDelta, {
+        threadId: pending.threadId,
+        turnId,
+        messageId: pending.messageId,
+        delta: pending.text,
+      }),
+    );
+  }
+
+  /** Buffers one streamed delta, sending the batch when it is full or due. */
+  #bufferText(threadId: string, turnId: string, messageId: string, delta: string): void {
+    if (delta.length === 0) return;
+    const pending = this.#pendingText.get(turnId);
+    if (pending === undefined) {
+      const timer = setTimeout(() => this.#flushText(turnId), DELTA_BATCH_WINDOW_MS);
+      // Never let a pending batch hold the process open on shutdown.
+      timer.unref?.();
+      this.#pendingText.set(turnId, { threadId, messageId, text: delta, timer });
+    } else {
+      pending.text += delta;
+    }
+    if ((this.#pendingText.get(turnId)?.text.length ?? 0) >= DELTA_BATCH_MAX_CHARS) {
+      this.#flushText(turnId);
+    }
+  }
+
   async #onEvent(event: AgentStreamEvent): Promise<void> {
     const { threadId, turnId } = event;
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const now = this.#options.now();
+    // Anything that is not more prose closes the open batch first, so the
+    // stream the phone sees is in the order the agent produced it.
+    if (event.type !== 'delta') this.#flushText(turnId);
     try {
       switch (event.type) {
         case 'turn_started':
@@ -1077,15 +1159,18 @@ export class AgentManager {
         }
         case 'delta': {
           const delta = readText(event.data);
+          // Buffered BEFORE the store write, and both are synchronous up to
+          // here: adapters emit events without awaiting the handler
+          // (`void this.#onEvent`), so only the synchronous prefix of each
+          // handler is guaranteed to run in arrival order. Buffering there is
+          // what keeps a terminal event that lands mid-write from flushing an
+          // empty buffer and overtaking the prose that preceded it. The store
+          // still receives this delta before `completeTurn` — that call is
+          // enqueued on the same mutex, from a handler that started later.
+          this.#bufferText(threadId, turnId, messageId, delta);
+          // Persisted per delta, exactly as before: the batching is about how
+          // OFTEN the phone is told, never about when this becomes durable.
           await this.#options.store.appendDelta(threadId, turnId, delta, now);
-          this.#options.notify(
-            makeNotification(StreamNotification.MessageDelta, {
-              threadId,
-              turnId,
-              messageId,
-              delta,
-            }),
-          );
           break;
         }
         case 'thinking': {

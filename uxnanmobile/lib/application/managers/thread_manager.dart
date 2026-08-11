@@ -2055,9 +2055,13 @@ class ThreadManager {
   /// re-parses ALL of it — so a turn costs time quadratic in its own length,
   /// which is what made streaming feel slower than the unformatted text the app
   /// used to show. Rebuilding less often is the whole fix, but a fixed window
-  /// is the wrong shape for it: agents emit a delta roughly every 20 ms, so a
-  /// one-frame window collapses almost nothing, while a window wide enough to
-  /// help a long reply would make a short one look chunky for no gain.
+  /// is the wrong shape for it: deltas land in bursts (the bridge coalesces the
+  /// agent's own output over 25 ms before sending, and even so 60% of an
+  /// agent's deltas arrive within 5 ms of the previous one), so a one-frame
+  /// window collapses almost nothing, while a window wide enough to help a long
+  /// reply would make a short one look chunky for no gain. This window is not
+  /// redundant with the bridge's: that one saves frames and encryptions on the
+  /// wire, this one saves *rebuilds*, and the rebuild is what costs 43–49 ms.
   ///
   /// So the window grows with the reply, exactly where the cost is. Measured on
   /// a realistic 6000-character reply (prose, list, inline code, fenced block)

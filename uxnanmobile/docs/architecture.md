@@ -300,7 +300,8 @@ and composed in `application_providers.dart`. The important ones:
    that grows with the reply** (`_streamCoalesceWindow`, 16→100 ms): the reply
    is rendered as Markdown while it streams, so rebuilding per delta re-parsed
    all of it every time, making a turn quadratic in its own length. A fixed
-   one-frame window does not help — agents emit a delta about every 20 ms — so
+   one-frame window does not help — deltas land in bursts, even after the
+   bridge coalesces the agent's output over 25 ms before sending — so
    the window widens as the text grows, which is where the cost is (measured on
    a 6 000-char reply: 18.9 s of rebuild work per delta, 3.4 s at 100 ms).
    Nothing is dropped: whatever lands inside the window renders together on the

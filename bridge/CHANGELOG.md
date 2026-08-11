@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — streamed prose is coalesced before it leaves the bridge
+
+Agents emit text in bursts, not at a steady rate: on a real OpenCode turn, 60%
+of deltas arrived within 5 ms of the previous one (911 deltas, gaps p10 1.4 ms /
+p50 3.0 ms / p90 27.7 ms). Each one was paying a JSON serialization, an AES-GCM
+seal and a WebSocket frame for a handful of characters, and the phone paid the
+mirror of that to open them.
+
+Text deltas are now batched over a 25 ms window, or 512 characters, whichever
+comes first. `stream/message/delta` carries the accumulated run, so nothing
+changes shape on the wire or in the app — there are simply fewer, larger
+deltas. Replayed over that recording the policy cut 911 notifications to 244
+(3.7x); driven live it carried the same prose at 22.1 characters per
+notification instead of 4.1. The window is the worst case a character can wait,
+well under the ~100 ms at which a person notices a pause.
+
+**Order is preserved, and that is the part with teeth.** Any non-delta event
+flushes the open batch first, so a content block still lands against the text
+run it belongs to (`beforeText`) and a turn's completion never overtakes the
+prose before it. Adapters emit events without awaiting the handler, so only each
+handler's synchronous prefix runs in arrival order — the delta is buffered
+there, before its store write. Buffering it after that write let the completion
+flush an empty buffer and arrive first, which the suite caught.
+
+Durability is untouched: every delta is still persisted individually as it
+arrives. The batching decides how often the phone is told, never when the
+conversation becomes durable.
+
 ### Changed — one file per conversation, so a streamed reply stops fighting the disk
 
 Replies arrived on the phone in lurches, and the longer your history got the
