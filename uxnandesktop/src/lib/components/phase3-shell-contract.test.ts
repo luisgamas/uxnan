@@ -133,7 +133,7 @@ describe("phase-three shell contracts", () => {
     expect(agentSpace).toContain("return () => observer.disconnect()");
     expect(worktree).toContain('class="w-full min-w-0 pl-6 pr-1 pb-1"');
     expect(terminal).toContain("data-tab-close");
-    expect(terminal).toContain("iconButton.xs");
+    expect(terminal).toContain("iconButton.tabClose");
     expect(terminal).toContain("×");
     expect(terminal).not.toContain("Cancel01Icon");
   });

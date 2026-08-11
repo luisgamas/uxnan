@@ -7,7 +7,7 @@
   // "where does it run" or "is it healthy".
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { field, icon, iconButton, panel, text } from "$lib/design";
+  import { field, icon, iconButton, panel, row, text } from "$lib/design";
   import { automations } from "$lib/state/automations.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import {
@@ -91,14 +91,15 @@
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2">
       <Input
-        class={cn(field.input, "h-8 w-56")}
+        class={cn("w-56 max-w-full", field.input)}
+        density="compact"
         placeholder={i18n.t("automations.searchPlaceholder")}
         bind:value={query}
       />
       <Combobox
         value={groupBy}
         groups={groupOptions}
-        triggerClass="w-48"
+        triggerClass={field.selectNarrow}
         searchPlaceholder={i18n.t("common.search")}
         onChange={(v) => (groupBy = v as GroupBy)}
       />
@@ -134,14 +135,11 @@
           {#each group.items as a (a.id)}
             {@const status = automations.scheduler[a.id]}
             <div
-              class={cn(
-                "flex items-center gap-3 px-3 py-2.5 transition-colors hover:border-border",
-                panel.card,
-              )}
+              class={cn(row.list, panel.card, "gap-3")}
             >
               <button
                 type="button"
-                class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                class="min-w-0 flex-1 self-stretch text-left"
                 onclick={() => (app.automationsSelectedId = a.id)}
               >
                 <!-- Every agent involved, not just the first: the whole point is

@@ -181,7 +181,7 @@ describe("FileTreePanel — the tree follows the open file", () => {
     // Clicking a row both selects it and opens it, and while it is selected that
     // is the mark you see — the two never stack.
     await user.click(panelRow);
-    await until(() => panelRow.className.includes("bg-primary/15"), {
+    await until(() => panelRow.className.includes("bg-accent"), {
       label: "the selection on panel.ts",
     });
     expect(isMarked(panelRow)).toBe(false);

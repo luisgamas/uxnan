@@ -71,7 +71,7 @@
     <Dialog.Description class="sr-only">{i18n.t("palette.placeholder")}</Dialog.Description>
 
     <!-- Search: the field is the focal point — a roomy input row over a hairline. -->
-    <div class="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
+    <div class="flex items-center gap-3 border-b border-border/60 px-5 py-4 pr-12">
       <Icon icon={SearchIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
       <input
         bind:this={inputEl}
@@ -141,6 +141,6 @@
     {/if}
     </div>
 
-    <DialogHints class="border-t border-border/60 bg-muted/30 px-4 py-2.5" />
+    <DialogHints />
   </Dialog.Content>
 </Dialog.Root>

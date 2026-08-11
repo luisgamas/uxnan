@@ -10,7 +10,7 @@
   import Kbd from "./Kbd.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { DirEntry } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
@@ -107,24 +107,17 @@
     {#if entries.length > 0}
       <!-- Select-all header for the sub-folder list. -->
       <div class="flex items-center gap-2.5 border-b border-border/60 px-4 py-2.5">
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={allSelected}
-          aria-label={i18n.t("addProject.selectAll")}
-          class="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-          onclick={toggleAll}
-        >
+        <label class={cn(row.choice, "min-w-0 flex-1 cursor-pointer justify-start px-0")}>
           <Checkbox
             checked={allSelected}
             indeterminate={someSelected}
-            tabindex={-1}
-            class="pointer-events-none"
+            aria-label={i18n.t("addProject.selectAll")}
+            onCheckedChange={toggleAll}
           />
           <span class={cn(text.meta, "truncate")}>
             {i18n.t("addProject.subfolders", { count: String(entries.length) })}
           </span>
-        </button>
+        </label>
         <span class={cn(text.meta, "shrink-0")}>
           {i18n.t("addProject.selectedCount", { count: String(selectedCount) })}
         </span>
@@ -134,16 +127,12 @@
            the same git glyph + tag as the picker so the two read coherently. -->
       <div class="uxnan-scroll max-h-64 overflow-y-auto p-2">
         {#each entries as entry (entry.path)}
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected.has(entry.path)}
-            class="group flex h-9 w-full items-center gap-2.5 rounded-md px-2 text-left hover:bg-accent/50"
-            onclick={() => toggle(entry.path)}
-          >
-            <!-- Display-only: the whole row is the click target, so the checkbox
-                 itself must not capture clicks (that would double-toggle). -->
-            <Checkbox checked={selected.has(entry.path)} tabindex={-1} class="pointer-events-none" />
+          <label class={cn(row.choice, "cursor-pointer justify-start")}>
+            <Checkbox
+              checked={selected.has(entry.path)}
+              aria-label={entry.name}
+              onCheckedChange={() => toggle(entry.path)}
+            />
             {#if entry.isRepo}
               <Icon icon={FolderGitIcon} class={cn(icon.button, "shrink-0 text-primary")} />
             {:else}
@@ -157,7 +146,7 @@
                 {i18n.t("picker.repoBadge")}
               </span>
             {/if}
-          </button>
+          </label>
         {/each}
       </div>
     {:else}

@@ -88,7 +88,6 @@
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
-  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
   import LoaderIcon from "@hugeicons/core-free-icons/Loading01Icon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
@@ -104,6 +103,7 @@
   import FileTextIcon from "@hugeicons/core-free-icons/Doc01Icon";
   import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
   import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
+  import WorkspaceAppBar from "./WorkspaceAppBar.svelte";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -805,28 +805,7 @@
   <div class="flex h-full w-full flex-col bg-background text-foreground">
     <!-- Header (draggable on Tauri via the title bar; the buttons inside are
          not part of the drag region). -->
-    <header
-      data-tauri-drag-region
-      class={cn("flex h-9 shrink-0 items-center gap-2 px-3", divider.bottom)}
-    >
-      <TooltipSimple title={i18n.t("common.close")}>
-        {#snippet children(tp)}
-          <Button
-            {...tp}
-            variant="ghost"
-            size="icon-sm"
-            class={iconButton.action}
-            aria-label={i18n.t("common.close")}
-            onclick={close}
-          >
-            <Icon icon={ArrowLeftIcon} class={icon.button} />
-          </Button>
-        {/snippet}
-      </TooltipSimple>
-      <h1 class="text-sm font-semibold tracking-tight">
-        {i18n.t("settings.title")}
-      </h1>
-    </header>
+    <WorkspaceAppBar title={i18n.t("settings.title")} onback={close} />
 
     <div class="flex min-h-0 flex-1">
       <!-- Section nav (left sidebar): titled groups + settings-nav rows. -->

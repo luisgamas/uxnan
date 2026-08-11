@@ -70,8 +70,8 @@
 <div class="flex h-full min-h-0 w-full flex-col">
   <!-- Region: Window-controls header — a drag strip; the min/max/close controls
        float over its right (fixed overlay rendered in +page.svelte). -->
-  <div data-tauri-drag-region class={cn(shell.rightPanelHeader, divider.bottom)}></div>
-  <Tabs.Root bind:value={tab} class="flex min-h-0 w-full flex-1 flex-col gap-0">
+  <div data-tauri-drag-region class={cn(shell.appBar, shell.rightPanelHeader)}></div>
+  <Tabs.Root bind:value={tab} class="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-0">
   <!-- Tabs never wrap or get clipped: the shell floors the panel width at this
        strip's measured width, so all tabs always fit. `justify-start` keeps them
        left-aligned; at the exact minimum the strip fills the panel edge-to-edge,
@@ -80,7 +80,7 @@
        Each trigger keeps its width (`shrink-0`) instead of shrinking away. -->
   <Tabs.List
     bind:ref={tabStripEl}
-    class={cn("scrollbar-sleek justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-2 py-0", shell.rightPanelTabs, divider.bottom)}
+    class={cn("scrollbar-sleek max-w-full min-w-0 justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-2 py-0", shell.rightPanelTabs, divider.bottom)}
   >
     <Tabs.Trigger
       value="files"
@@ -113,17 +113,17 @@
       </Tabs.Trigger>
     {/if}
   </Tabs.List>
-  <Tabs.Content value="files" class="min-h-0 flex-1 overflow-hidden">
+  <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
     <FileTreePanel />
   </Tabs.Content>
-  <Tabs.Content value="changes" class="min-h-0 flex-1 overflow-hidden">
+  <Tabs.Content value="changes" class="min-h-0 min-w-0 flex-1 overflow-hidden">
     <ChangesPanel />
   </Tabs.Content>
-  <Tabs.Content value="history" class="min-h-0 flex-1 overflow-hidden">
+  <Tabs.Content value="history" class="min-h-0 min-w-0 flex-1 overflow-hidden">
     <HistoryPanel />
   </Tabs.Content>
   {#if showGithub}
-    <Tabs.Content value="github" class="min-h-0 flex-1 overflow-hidden">
+    <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
       <GithubPanel />
     </Tabs.Content>
   {/if}

@@ -12,7 +12,7 @@
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { focus, icon, iconButton, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -147,38 +147,42 @@
   {@const isOpen =
     git.path != null && terminals.isFileChangesOpen(git.path, f.path, area === "staged")}
   {@const ns = git.numstat[f.path]}
-  <TooltipSimple title={i18n.t("rightPanel.viewDiff")}>
-    {#snippet children(tp)}
-      <div
-        {...tp}
-        class={cn(
-          "group flex h-8 cursor-pointer items-center gap-1.5 rounded-md pl-1.5 pr-1",
-          isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
-        )}
-        role="button"
-        tabindex="0"
-        onclick={() => git.path && terminals.openFileChanges(git.path, f.path, area === "staged")}
-        onkeydown={(e) =>
-          (e.key === "Enter" || e.key === " ") &&
-          git.path &&
-          terminals.openFileChanges(git.path, f.path, area === "staged")}
-      >
-    <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
-      {b.letter}
-    </span>
-    <span class={cn("min-w-0 flex-1 truncate font-medium", text.body, b.cls)}>
-      {fileName(f.path)}
-      {#if fileDir(f.path)}
-        <span class={cn("ml-1 font-normal", text.meta)}>{fileDir(f.path)}</span>
-      {/if}
-    </span>
+  <div
+    class={cn(
+      "group",
+      row.list,
+      "gap-1.5 pl-1.5 pr-1",
+      isOpen ? row.listActive : "hover:bg-accent/40",
+    )}
+  >
+    <TooltipSimple title={i18n.t("rightPanel.viewDiff")}>
+      {#snippet children(tp)}
+        <button
+          {...tp}
+          type="button"
+          class={cn("flex min-w-0 flex-1 items-center gap-1.5 text-left", focus.ring)}
+          aria-label={f.path}
+          onclick={() => git.path && terminals.openFileChanges(git.path, f.path, area === "staged")}
+        >
+          <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, b.cls)}>
+            {b.letter}
+          </span>
+          <span class={cn("min-w-0 flex-1 truncate font-medium", text.body, b.cls)}>
+            {fileName(f.path)}
+            {#if fileDir(f.path)}
+              <span class={cn("ml-1 font-normal", text.meta)}>{fileDir(f.path)}</span>
+            {/if}
+          </span>
+        </button>
+      {/snippet}
+    </TooltipSimple>
     {#if ns && (ns.added > 0 || ns.deleted > 0)}
       <span class={cn("shrink-0 tabular-nums group-hover:hidden", text.indicator)}>
         <span class="text-emerald-600 dark:text-emerald-400">+{ns.added}</span>
         <span class="ml-0.5 text-red-600 dark:text-red-400">−{ns.deleted}</span>
       </span>
     {/if}
-    <div class="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
+    <div class="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
       <TooltipSimple title={i18n.t("rightPanel.discard")}>
         {#snippet children(tp)}
           <Button
@@ -186,6 +190,7 @@
             variant="ghost"
             size="icon"
             class={iconButton.action}
+            aria-label={i18n.t("rightPanel.discard")}
             disabled={git.busy}
             onclick={(e) => {
               e.stopPropagation();
@@ -204,6 +209,7 @@
               variant="ghost"
               size="icon"
               class={iconButton.action}
+              aria-label={i18n.t("rightPanel.unstage")}
               disabled={git.busy}
               onclick={(e) => {
                 e.stopPropagation();
@@ -226,6 +232,7 @@
               variant="ghost"
               size="icon"
               class={iconButton.action}
+              aria-label={i18n.t("rightPanel.stage")}
               disabled={git.busy}
               onclick={(e) => {
                 e.stopPropagation();
@@ -243,12 +250,10 @@
       {/if}
     </div>
   </div>
-  {/snippet}
-</TooltipSimple>
 {/snippet}
 
 {#snippet sectionHeader(area: Area, count: number)}
-  <div class="flex h-8 items-center justify-between pl-1.5 pr-0.5">
+  <div class={cn(row.list, "justify-between pl-1.5 pr-0.5", text.meta)}>
     <span class={text.section}>
       {area === "staged" ? i18n.t("rightPanel.staged") : i18n.t("rightPanel.changes")}
       <span class="text-muted-foreground/60">({count})</span>
@@ -256,7 +261,7 @@
     <Button
       variant="outline"
       size="sm"
-      class={cn("h-6", text.body)}
+      class={text.body}
       disabled={git.busy}
       onclick={() => void (area === "staged" ? git.unstageAll() : git.stageAll())}
     >
@@ -277,6 +282,7 @@
         autofocus
         type="text"
         placeholder={i18n.t("rightPanel.searchPlaceholder")}
+        aria-label={i18n.t("rightPanel.searchPlaceholder")}
         bind:value={query}
         class={cn(
           "min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60",
@@ -286,7 +292,14 @@
       />
       <TooltipSimple title={i18n.t("common.close")}>
         {#snippet children(tp)}
-          <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+          <Button
+            variant="ghost"
+            size="icon"
+            class={iconButton.xs}
+            aria-label={i18n.t("common.close")}
+            {...tp}
+            onclick={toggleSearch}
+          >
             <Icon icon={XIcon} class={icon.action} />
           </Button>
         {/snippet}
@@ -300,7 +313,14 @@
       {#if git.path}
         <TooltipSimple title={i18n.t("rightPanel.search")}>
           {#snippet children(tp)}
-            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+            <Button
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              aria-label={i18n.t("rightPanel.search")}
+              {...tp}
+              onclick={toggleSearch}
+            >
               <Icon icon={SearchIcon} class={icon.action} />
             </Button>
           {/snippet}
@@ -312,6 +332,8 @@
               variant="ghost"
               size="icon"
               class={iconButton.xs}
+              aria-label={i18n.t("rightPanel.refresh")}
+              disabled={git.loading}
               onclick={() => void git.refresh()}
             >
               <Icon icon={RefreshCwIcon} class={cn(icon.action, git.loading && "animate-spin")} />
@@ -352,7 +374,7 @@
             : i18n.t("rightPanel.noChanges")}
       </p>
     {:else}
-      <VirtualList items={rows} estimateSize={32} class="min-h-0 flex-1 px-2">
+      <VirtualList items={rows} estimateSize={36} class="min-h-0 flex-1 px-2">
         {#snippet row(r)}
           {#if r.kind === "header"}
             {@render sectionHeader(r.area, r.count)}
@@ -373,7 +395,7 @@
                 {...tp}
                 variant="outline"
                 size="sm"
-                class={cn("h-6", text.body)}
+                class={text.body}
                 disabled={git.aiGenerating || git.committing}
                 onclick={() => void git.generateMessage()}
               >
@@ -392,6 +414,7 @@
         class="uxnan-scroll min-h-0 resize-none text-xs"
         rows={2}
         placeholder={i18n.t("rightPanel.summaryPlaceholder")}
+        aria-label={i18n.t("rightPanel.summaryPlaceholder")}
         bind:value={git.message}
       />
 
@@ -417,6 +440,7 @@
             class="uxnan-scroll min-h-0 resize-none text-xs"
             rows={3}
             placeholder={i18n.t("rightPanel.descriptionPlaceholder")}
+            aria-label={i18n.t("rightPanel.descriptionPlaceholder")}
             bind:value={git.body}
           />
 
@@ -430,7 +454,9 @@
               <div class="flex items-center gap-1">
                 <Input
                   type="text"
-                  class="h-7 min-w-0 flex-1 text-xs"
+                  density="compact"
+                  class="min-w-0 flex-1 text-xs"
+                  aria-label={i18n.t("rightPanel.coAuthorPlaceholder")}
                   placeholder={i18n.t("rightPanel.coAuthorPlaceholder")}
                   value={coAuthor}
                   oninput={(e) => setCoAuthor(i, e.currentTarget.value)}
@@ -453,7 +479,7 @@
             <Button
               variant="outline"
               size="sm"
-              class={cn("h-6 self-start", text.body)}
+              class={cn("self-start", text.body)}
               onclick={addCoAuthor}
             >
               <Icon icon={PlusIcon} data-icon="inline-start" />

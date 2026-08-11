@@ -5,7 +5,7 @@
   // the reason for every refusal.
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, panel, text } from "$lib/design";
+  import { icon, panel, row, text } from "$lib/design";
   import { clock, relTime } from "$lib/time.svelte";
   import { app } from "$lib/state/app.svelte";
   import {
@@ -70,7 +70,7 @@
           {#snippet child({ props })}
             <button
               {...props}
-              class="group flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-accent/40"
+              class={cn(row.list, "group")}
             >
               <Icon icon={ChevronRightIcon}
                 class={cn(icon.action, "shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90")}

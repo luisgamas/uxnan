@@ -15,6 +15,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Final work-surface and chrome density pass:** file, diff, GitHub, browser,
+  automation and orchestration surfaces now consume the shared row, field,
+  panel, tab and control roles instead of carrying pixel-equivalent local
+  geometry. The top-level appbar is one 40px contract across the three-panel
+  shell, Settings and Automations; its icon actions are square 40px targets and
+  share one bottom hairline. The intentionally quieter terminal-tab close
+  remains the sole 24px nested action.
+- Dialog headers, full-bleed footers and hint bars now share one composition:
+  form dialogs use the named 560px role, palettes use 600px, and keyboard-only
+  footers retain the same 56px minimum band as action footers. Worktree search,
+  project launch, profile editing and avatar/color editing therefore keep the
+  same breathing room instead of shrinking around their contents.
+- macOS now keeps native left-side traffic-light controls through a
+  platform-specific Tauri overlay-titlebar configuration; Windows and Linux
+  retain the aligned custom controls. Native time inputs also advertise the
+  active light/dark color scheme so Chromium's clock glyph follows the theme.
+
 - **Phase 4 settings/editor pass:** Settings navigation, control rows, profile
   editors, hooks, providers, quick commands, external-editor choices, resources,
   pets, and project/profile dialogs now consume shared row, field, container,
@@ -29,7 +46,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 - **Phase 3 shell/navigation pass:** named shell, row, tab, search-field and
   palette roles now govern the status bar, sidebar hierarchy, terminal strip,
-  right-panel header and native window controls. Project identity is separated
+  right-panel header and window chrome. Project identity is separated
   from its actions to avoid nested interactive elements; the worktree palette
   exposes valid combobox/listbox semantics, preserves its exact 52px virtual row,
   and safely represents an empty result set.
@@ -44,7 +61,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - Normalized remaining shell callers onto shared roles: the search trigger keeps
   a stable icon/label/keycap composition, audited terminal/profile/file-tree/pet
   menus use the standard width, and terminal tabs retain a compact reddish close
-  action with a 28px hit target. Terminal menus also rely on the shared overlay
+  action with a deliberately nested 24px target. Terminal menus also rely on the shared overlay
   lifecycle rather than a competing Escape/outside-pointer listener.
 
 - Migrated dialogs, command popovers, menus, selects and status surfaces to the

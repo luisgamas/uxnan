@@ -59,15 +59,19 @@ preference:
 | Standard control | 36px (`h-9`) | Button, Input, Select trigger |
 | Compact control | 32px (`h-8`) | compact Input (`density="compact"`), Select `size="compact"` |
 | Dense chrome | 28px (`h-7`) | terminal tabs and constrained panel-header actions only |
+| Appbar / top-level appbar action | 40px (`h-10` / `size-10`) | shell appbars, window controls, workspace back, tab carousel, launch action |
 | Sidebar row | min 32px (`min-h-8`) | navigation and project/worktree rows |
 | Content/list row | min 36px (`min-h-9`) | file and status lists |
 | Standard icon button | 32px (`size-8`) | icon-only toolbar and row action |
 | Dense icon button | 28px (`size-7`) | terminal-tab and panel-header action |
 
-Generic 24px interactive targets are not part of the contract. A platform-native
-exception must retain an effective hit area of at least 28px and be documented
-at its call site. Paint-only controls such as checkboxes may render smaller when
-their effective target remains at least 32px.
+Generic 24px interactive targets are not part of the contract. The single named
+exception is `iconButton.tabClose`: a visually subordinate 24px close action
+nested inside a full-height 40px terminal tab. It must not be reused for
+top-level appbar actions. A platform-native exception must retain an effective
+hit area of at least 28px and be documented at its call site. Paint-only
+controls such as checkboxes may render smaller when their effective target
+remains at least 32px.
 
 Use the role tokens from `src/lib/design.ts` and let a local class override a
 token only when the component has a named, constrained role. Do not resize
@@ -123,13 +127,15 @@ roving Arrow/Home/End focus, Escape/Tab close, outside-pointer dismissal, and
 viewport-clamped width roles. This is an interaction primitive, not a styling-
 only wrapper.
 
-Dialogs use named `small`, `medium`, `form`, `palette`, `large`, and `workspace` width roles. `form` preserves the existing 560px form dialogs, `palette` preserves the 576px worktree palette, and `large` is a 600px data-rich surface. Their
-content shell has 20px horizontal padding and no forced vertical padding. Use
-`Dialog.Header` and `Dialog.Body` for the named 16px (`py-4`) header/body rhythm;
-`Dialog.Footer` owns its 12px (`p-3`) section padding. Existing composed dialogs
-may opt into `padding="none"` on `Dialog.Content` without fighting a negative margin. The
-close target is a 32px icon button. Footer sections stay composable inside the
-content padding (no negative-margin hacks). Outside-pointer dismissal must preserve
+Dialogs use named `small`, `medium`, `form`, `palette`, `large`, and `workspace`
+width roles. `form` is 560px; both the worktree `palette` and data-rich `large`
+roles are 600px. Their content shell has 20px horizontal padding and no forced
+vertical padding. `Dialog.Header` uses 20px above / 16px below, with right-side
+clearance for the 32px close target; `Dialog.Body` keeps a 16px vertical rhythm.
+`Dialog.Footer` deliberately extends through the content inset and restores
+20px internal padding, producing one full-width muted action band. Sectioned
+dialogs use `dialog.footerSurface`; hint-only bars have a 56px minimum so they
+do not collapse below action footers. Outside-pointer dismissal must preserve
 the pointer sequence for the newly targeted underlying control; keyboard close
 may restore the trigger, while navigation must not restore stale chrome.
 Tooltip coordination is provider-owned by Bits UI: one tooltip is open per root
@@ -152,6 +158,7 @@ and keyboard focus remains supported without global document listeners.
 | Token | Size | Use |
 |---|---|---|
 | `iconButton.xs` | 28px (`size-7`) | Dense terminal-tab / panel-header action |
+| `iconButton.tabClose` | 24px (`size-6`) | Sole nested exception: terminal-tab close |
 | `iconButton.sm` | 32px (`size-8`) | Standard icon action |
 | `iconButton.action` | 32px (`size-8`) | Canonical ghost icon button in toolbars, cards and rows |
 | `iconButton.toolbar` | 36px (`size-9`) | Standard toolbar button |
@@ -195,10 +202,17 @@ from the theme palette so they follow every theme — see
 
 Structural shell bands use named roles so navigation, terminal and status chrome
 share geometry without making work-surface components depend on one another.
-`shell.root`, `shell.sidebar`, `shell.statusBar`, `shell.terminalStrip`,
-`shell.rightPanelHeader`, `shell.laneHeader`, `shell.laneAction`, and
-`shell.titlebar` are reserved for those regions;
-they do not replace `surface.*` on content surfaces.
+`shell.appBar` owns the 40px height and paints its bottom hairline above hover
+fills. Top-level icon controls use the square `shell.appBarAction` or
+`shell.appBarCompactAction`; both are 40×40px. The fixed window-control overlay
+uses `shell.appBarOverlay`, which intentionally has no second hairline because
+the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
+for Settings and Automations. `shell.root`, `shell.sidebar`, `shell.statusBar`,
+`shell.terminalStrip`, `shell.rightPanelHeader`, `shell.laneHeader`,
+`shell.laneAction`, and `shell.titlebar` remain the region-specific roles; they
+do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
+config supplies native overlay traffic lights and `shell.macTrafficLightsInset`
+keeps left-aligned content clear of them.
 
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes

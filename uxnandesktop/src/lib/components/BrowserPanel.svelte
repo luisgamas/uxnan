@@ -38,7 +38,11 @@
   } from "$lib/api";
   import { app } from "$lib/state/app.svelte";
   import { overlayCovers } from "$lib/overlayLayer";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import { cn } from "$lib/utils";
+  import { focus, icon } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { Icon } from "$lib/components/ui/icon";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
@@ -215,42 +219,49 @@
   <div class="flex shrink-0 items-center gap-1 border-b border-border/60 px-1.5 py-1">
     <TooltipSimple title={i18n.t("browser.back")}>
       {#snippet children(tp)}
-        <button
+        <Button
           {...tp}
-          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          variant="ghost"
+          size="icon-xs"
+          class={cn(focus.ring, "text-muted-foreground hover:bg-accent hover:text-foreground")}
           aria-label={i18n.t("browser.back")}
           onclick={() => void browserWindowBack().catch(() => {})}
         >
-          <Icon icon={ArrowLeftIcon} class="size-4" />
-        </button>
+          <Icon icon={ArrowLeftIcon} class={icon.action} />
+        </Button>
       {/snippet}
     </TooltipSimple>
     <TooltipSimple title={i18n.t("browser.forward")}>
       {#snippet children(tp)}
-        <button
+        <Button
           {...tp}
-          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          variant="ghost"
+          size="icon-xs"
+          class={cn(focus.ring, "text-muted-foreground hover:bg-accent hover:text-foreground")}
           aria-label={i18n.t("browser.forward")}
           onclick={() => void browserWindowForward().catch(() => {})}
         >
-          <Icon icon={ArrowRightIcon} class="size-4" />
-        </button>
+          <Icon icon={ArrowRightIcon} class={icon.action} />
+        </Button>
       {/snippet}
     </TooltipSimple>
     <TooltipSimple title={i18n.t("browser.reload")}>
       {#snippet children(tp)}
-        <button
+        <Button
           {...tp}
-          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          variant="ghost"
+          size="icon-xs"
+          class={cn(focus.ring, "text-muted-foreground hover:bg-accent hover:text-foreground")}
           aria-label={i18n.t("browser.reload")}
           onclick={() => void browserWindowReload().catch(() => {})}
         >
-          <Icon icon={RotateCwIcon} class="size-4" />
-        </button>
+          <Icon icon={RotateCwIcon} class={icon.action} />
+        </Button>
       {/snippet}
     </TooltipSimple>
-    <input
-      class="min-w-0 flex-1 rounded border border-input bg-card px-2 py-1 text-xs outline-none focus:border-ring"
+    <Input
+      density="compact"
+      class="min-w-0 flex-1 bg-card font-mono text-xs"
       type="text"
       spellcheck="false"
       autocapitalize="off"
@@ -261,38 +272,44 @@
     />
     <TooltipSimple title={i18n.t("browser.openExternal")}>
       {#snippet children(tp)}
-        <button
+        <Button
           {...tp}
-          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          variant="ghost"
+          size="icon-xs"
+          class={cn(focus.ring, "text-muted-foreground hover:bg-accent hover:text-foreground")}
           aria-label={i18n.t("browser.openExternal")}
           onclick={() => void openExternal(address).catch(() => {})}
         >
-          <Icon icon={ExternalLinkIcon} class="size-4" />
-        </button>
+          <Icon icon={ExternalLinkIcon} class={icon.action} />
+        </Button>
       {/snippet}
     </TooltipSimple>
     <TooltipSimple title={i18n.t("browser.devtools")}>
       {#snippet children(tp)}
-        <button
+        <Button
           {...tp}
-          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          variant="ghost"
+          size="icon-xs"
+          class={cn(focus.ring, "text-muted-foreground hover:bg-accent hover:text-foreground")}
           aria-label={i18n.t("browser.devtools")}
           onclick={() => void browserWindowDevtools().catch(() => {})}
         >
-          <Icon icon={BugIcon} class="size-4" />
-        </button>
+          <Icon icon={BugIcon} class={icon.action} />
+        </Button>
       {/snippet}
     </TooltipSimple>
     <TooltipSimple title={i18n.t("browser.close")}>
       {#snippet children(tp)}
-        <button
+        <Button
           {...tp}
-          class="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          variant="ghost"
+          size="icon-xs"
+          class={cn(focus.ring, "text-muted-foreground hover:bg-accent hover:text-foreground")}
           aria-label={i18n.t("browser.close")}
           onclick={() => app.closeBrowser()}
         >
-          <Icon icon={XIcon} class="size-4" />
-        </button>
+          <Icon icon={XIcon} class={icon.action} />
+        </Button>
       {/snippet}
     </TooltipSimple>
   </div>
@@ -304,12 +321,14 @@
         class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
       >
         <p>{i18n.t("browser.unavailable")}</p>
-        <button
-          class="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent hover:text-foreground"
+        <Button
+          variant="outline"
+          size="sm"
+          class="text-xs hover:bg-accent hover:text-foreground"
           onclick={() => void openExternal(address).catch(() => {})}
         >
           {i18n.t("browser.openExternal")}
-        </button>
+        </Button>
       </div>
     {/if}
   </div>

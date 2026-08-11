@@ -9,7 +9,7 @@
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { RunStep } from "$lib/orchestration/run";
   import { Icon } from "$lib/components/ui/icon";
@@ -84,7 +84,8 @@
       <div class="overflow-hidden rounded-md border border-border/60 bg-background">
         <button
           type="button"
-          class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+          class={cn(row.list, "rounded-none gap-1.5")}
+          aria-expanded={isOpen}
           onclick={() => toggle(c.id)}
         >
           <Icon icon={ChevronRightIcon}
@@ -119,7 +120,7 @@
                       {...tp}
                       variant="outline"
                       size="sm"
-                      class="h-6 shrink-0 px-2 text-[11px]"
+                      class="shrink-0"
                       onclick={() => oninsert(c.id, f)}
                     >
                       {i18n.t("orchestration.insert")}

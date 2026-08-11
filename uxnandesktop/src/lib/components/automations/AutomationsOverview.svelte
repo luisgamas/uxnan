@@ -5,7 +5,7 @@
   // worth surfacing above all else.
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, panel, text } from "$lib/design";
+  import { icon, panel, row, text } from "$lib/design";
   import { app } from "$lib/state/app.svelte";
   import { automations } from "$lib/state/automations.svelte";
   import { agentsOf, isScheduled } from "$lib/automations/display";
@@ -76,7 +76,7 @@
         {#each unscheduled as a (a.id)}
           <button
             type="button"
-            class={cn("flex items-center gap-2.5 px-3 py-2 text-left", panel.card)}
+            class={cn(row.list, panel.card, "gap-2.5")}
             onclick={() => open(a.id)}
           >
             <span class={cn("min-w-0 flex-1 truncate", text.body)}>{a.name}</span>
@@ -94,7 +94,7 @@
         {#each upcoming as item (item.automation.id)}
           <button
             type="button"
-            class={cn("flex items-center gap-2.5 px-3 py-2 text-left", panel.card)}
+            class={cn(row.list, panel.card, "gap-2.5")}
             onclick={() => open(item.automation.id)}
           >
             <span class="flex shrink-0 -space-x-1.5">

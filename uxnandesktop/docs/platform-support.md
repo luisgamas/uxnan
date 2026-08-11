@@ -157,14 +157,14 @@ uncovered branches get evidence before they get changes.
 | `editors.rs`, `fonts.rs`, `agentcli.rs`, `agent_hooks.rs`, `hooks.rs`, `browse.rs`, `zero.rs`, `codex_trust.rs`, `which.rs` | Home-dir/`PATHEXT`/`%VAR%` expansion, per-OS probe paths, `.cmd` vs `.sh` reporters, `chmod 0755/0600` on Unix, `WSLENV` injection, 8.3 short paths | Host-OS halves covered by their module suites (each runs on all three CI runners); Windows-gated cases in `editors.rs` | `fonts.rs` enumeration (3 per-OS impls) has no tests — output feeds a font picker, degrades to empty list; macOS-only branches execute on the `macos-14` leg only |
 | `path_env.rs` (macOS Finder PATH) | macOS-only enrichment; no-op elsewhere | Merge/dedupe logic + the off-macOS no-op tested | The macOS ON-branch (login-shell probe) needs real hardware → mac checklist (agent/`gh` detection item) |
 | `pty.rs`, `model.rs` | Default shell per OS (PowerShell / zsh / bash), profile seeds | Lifecycle + seed tests run per-OS on each runner | Interactive behavior per OS → smoke checklists |
-| `main.rs`, `Cargo.toml`, `tauri.conf.json`, `capabilities/` | `windows_subsystem`, `windows-sys` deps, `macOSPrivateApi`, ad-hoc signing identity, bundle targets, per-window capabilities (no platform filters) | Config is exercised by every build; capabilities audit is a standing FOR-DEV item | — |
+| `main.rs`, `Cargo.toml`, `tauri.conf.json`, `tauri.macos.conf.json`, `capabilities/` | `windows_subsystem`, `windows-sys` deps, `macOSPrivateApi`, native macOS overlay titlebar/traffic lights, ad-hoc signing identity, bundle targets, per-window capabilities | Config is exercised by each platform build; the macOS window override also has a static frontend/config contract test; capabilities audit is a standing FOR-DEV item | Native traffic-light placement still needs the macOS visual smoke checklist |
 
 ### Frontend (TS/Svelte)
 
 | Area | Branches | Coverage |
 |---|---|---|
 | `platform.ts` | User-agent OS detection; the status-bar "untested platform" badge for macOS/Linux | Unit-tested (`platform.test.ts`) |
-| `keybindings.ts`, `Terminal.svelte`, dialogs | `isMac` modifier mapping (⌘ vs Ctrl), chord rendering | Untested — behavior is visible on first keypress; verified as part of each platform's smoke checklist |
+| `keybindings.ts`, `Terminal.svelte`, `WindowControls.svelte`, dialogs | `isMac` modifier mapping (⌘ vs Ctrl), chord rendering, native macOS controls vs custom Windows/Linux controls | Platform selection/config is contract-tested; actual traffic-light placement and input behavior remain visible checks in each platform's smoke checklist |
 | `shell.ts`, `terminalTemplates.ts` | Per-shell quoting (PowerShell/cmd/POSIX), per-OS profile templates | Quoting fully tested; templates are data |
 | `windowsJunctionGuard.ts` | Windows-only Redirection-Guard detection | Pure detector fully tested; the OS gate is a one-line guard |
 | `pathid.ts` | Case-insensitive path identity (Windows semantics applied everywhere, deliberately) | Tested, including UNC/WSL spellings |

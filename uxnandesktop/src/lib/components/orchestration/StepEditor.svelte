@@ -18,7 +18,7 @@
   import * as Select from "$lib/components/ui/select";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { control, field, icon, row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
@@ -221,12 +221,14 @@
         {@const on = kind === k.value}
         <TooltipSimple title={i18n.t(k.hint)}>
           {#snippet children(tp)}
-            <button
+            <Button
               {...tp}
               type="button"
+              variant="ghost"
+              size="sm"
               aria-pressed={on}
               class={cn(
-                "flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left transition-colors",
+                "flex items-center gap-1.5 rounded-md border px-2 text-left transition-colors",
                 on
                   ? "border-primary/60 bg-primary/5"
                   : "border-border/60 hover:border-border hover:bg-accent/40",
@@ -235,7 +237,7 @@
             >
               <Icon icon={glyph} class={cn("size-3.5 shrink-0", on ? "text-primary" : "text-muted-foreground")} />
               <span class={cn("truncate", text.body, on && "font-medium")}>{i18n.t(k.label)}</span>
-            </button>
+            </Button>
           {/snippet}
         </TooltipSimple>
       {/each}
@@ -255,7 +257,8 @@
     <Input
       bind:value={title}
       placeholder={i18n.t("orchestration.stepTitlePlaceholder")}
-      class="h-8 text-[13px]"
+      density="compact"
+      class="text-[13px]"
     />
   </div>
 
@@ -274,7 +277,7 @@
           placeholder={i18n.t("orchestration.stepAgentPlaceholder")}
           searchPlaceholder={i18n.t("orchestration.stepAgentPlaceholder")}
           onChange={(v) => (tabId = v)}
-          triggerClass="h-8 text-[13px]"
+          triggerClass={cn(control.compact, "text-[13px]")}
         >
           {#snippet itemPrefix(item)}
             <AgentLogo logo={interactiveIcons.get(item.value) ?? null} class="size-4 shrink-0" />
@@ -296,7 +299,7 @@
             placeholder={i18n.t("orchestration.stepAgentPlaceholder")}
             searchPlaceholder={i18n.t("orchestration.stepAgentPlaceholder")}
             onChange={(v) => (hAgent = v)}
-            triggerClass="h-8 text-[13px]"
+            triggerClass={cn(control.compact, "text-[13px]")}
           >
             {#snippet itemPrefix(item)}
               <AgentLogo logo={app.resolveAgent(item.value).icon} class="size-4 shrink-0" />
@@ -311,7 +314,7 @@
           value={hModel}
           loading={modelsLoading}
           onSelect={(id) => (hModel = id)}
-          triggerClass="h-8 w-full text-[13px]"
+          triggerClass={cn(control.compact, "w-full text-[13px]")}
         />
       </div>
       <div class="col-span-2 flex flex-col gap-1">
@@ -325,7 +328,7 @@
             placeholder={i18n.t("orchestration.workspacePlaceholder")}
             searchPlaceholder={i18n.t("orchestration.workspacePlaceholder")}
             onChange={(v) => (hWorkspace = v)}
-            triggerClass="h-8 text-[13px]"
+            triggerClass={cn(control.compact, "text-[13px]")}
           />
         {/if}
       </div>
@@ -359,11 +362,13 @@
       <div class="flex flex-wrap gap-1">
         {#each candidates as c (c.id)}
           {@const on = dependsOn.includes(c.id)}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             aria-pressed={on}
             class={cn(
-              "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+              "rounded-full border px-2 text-[11px] transition-colors",
               on
                 ? "border-primary/60 bg-primary/10 text-foreground"
                 : "border-border/70 text-muted-foreground hover:text-foreground",
@@ -371,7 +376,7 @@
             onclick={() => toggleDep(c.id)}
           >
             {c.title || c.id}
-          </button>
+          </Button>
         {/each}
       </div>
       <p class={text.meta}>{i18n.t("orchestration.stepDependsHint")}</p>
@@ -382,7 +387,8 @@
   {#if kind !== "gate"}
     <Collapsible.Root bind:open={advancedOpen}>
       <Collapsible.Trigger
-        class={cn("flex items-center gap-1 text-left", text.meta, "hover:text-foreground")}
+        class={cn(row.editorDisclosure, "flex items-center gap-1", text.meta, "hover:text-foreground")}
+        aria-expanded={advancedOpen}
       >
         <Icon icon={ChevronDownIcon} class={cn("size-3 transition-transform", !advancedOpen && "-rotate-90")} />
         {i18n.t("orchestration.advancedOptions")}
@@ -397,12 +403,13 @@
                 min="2"
                 max="9"
                 bind:value={maxAttempts}
-                class="h-8 w-16 text-[13px]"
+                class={cn(field.editorNumber, "text-[13px]")}
+                density="compact"
                 aria-label={i18n.t("orchestration.maxAttempts")}
               />
             {/if}
             <Select.Root type="single" bind:value={onFailure}>
-              <Select.Trigger size="compact" class="w-44 text-[13px]">
+              <Select.Trigger size="compact" class={cn(field.selectNarrow, "text-[13px]")}>
                 {onFailure === "retry"
                   ? i18n.t("orchestration.onFailureRetry")
                   : i18n.t("orchestration.onFailureStop")}

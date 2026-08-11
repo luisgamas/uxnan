@@ -41,7 +41,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-  <Dialog.Content size="medium">
+  <Dialog.Content size="form">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("sidebarProfile.editTitle")}</Dialog.Title>
       <Dialog.Description>{i18n.t("sidebarProfile.editDesc")}</Dialog.Description>

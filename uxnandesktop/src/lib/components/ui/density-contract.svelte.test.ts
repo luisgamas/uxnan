@@ -52,9 +52,11 @@ describe("primitive density contract", () => {
 		expect(content?.getAttribute("data-size")).toBe("large");
 		expect(content?.className).toContain("sm:max-w-[600px]");
 		expect(content?.className).toContain("max-w-[calc(100%-2rem)]");
-		expect(document.body.querySelector('[data-slot="dialog-header"]')?.className).toContain("py-4");
+		expect(document.body.querySelector('[data-slot="dialog-header"]')?.className).toContain("pt-5");
+		expect(document.body.querySelector('[data-slot="dialog-header"]')?.className).toContain("pb-4");
 		expect(document.body.querySelector('[data-slot="dialog-body"]')?.className).toContain("py-4");
-		expect(document.body.querySelector('[data-slot="dialog-footer"]')?.className).toContain("p-3");
+		expect(document.body.querySelector('[data-slot="dialog-footer"]')?.className).toContain("-mx-5");
+		expect(document.body.querySelector('[data-slot="dialog-footer"]')?.className).toContain("px-5");
 		const close = document.body.querySelector('[data-slot="dialog-close"]');
 		expect(close?.className).toContain("size-8");
 	});

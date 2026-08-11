@@ -524,12 +524,12 @@
                        scrollbar is hidden (`.uxnan-scrollbar-none`) so grabbing
                        it never starts a window drag; the strip scrolls only via
                        the edge chevrons and the mouse wheel. -->
-                  <div class={cn(shell.terminalStrip, divider.bottom)} role="group" aria-label={i18n.t("terminal.tabs")}>
+                  <div class={cn(shell.appBar, shell.terminalStrip)} role="group" aria-label={i18n.t("terminal.tabs")}>
                     {#if stripOverflow[g.group.id]?.hasOverflow}
                       <button
                         type="button"
                         class={cn(
-                          iconButton.xs,
+                          shell.appBarCompactAction,
                           focus.ring,
                           "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                           stripOverflow[g.group.id]?.canScrollStart ? "opacity-100" : "pointer-events-none opacity-0",
@@ -594,7 +594,7 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                                class={cn(tab.terminalLabel, t.exited && "line-through")}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
@@ -606,7 +606,7 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class="max-w-[120px] truncate"
+                                class={tab.terminalLabel}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
@@ -628,7 +628,7 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class="max-w-[120px] truncate font-mono"
+                                class={cn(tab.terminalLabel, "font-mono")}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
@@ -639,7 +639,7 @@
                           {#snippet children(tp)}
                             <button
                               {...tp}
-                              class={cn(iconButton.xs, focus.ring, "flex shrink-0 items-center justify-center rounded text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100")}
+                              class={cn(iconButton.tabClose, focus.ring, "flex shrink-0 items-center justify-center rounded text-[12px] leading-none text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100")}
                               aria-label={i18n.t("terminal.closeTab")}
                               data-tab-close
                               onclick={() => terminals.closeTab(g.group.id, t.id)}
@@ -673,7 +673,7 @@
                           ? () => (projects.newWorktreeOpen = true)
                           : undefined}
                         align="start"
-                        triggerClass="ml-0.5"
+                        triggerClass={cn(shell.appBarCompactAction, "ml-0.5")}
                         title={i18n.t("launcher.openHere")}
                       />
                     {:else}
@@ -681,7 +681,7 @@
                         {#snippet children(tp)}
                           <button
                             {...tp}
-                            class={cn("ml-0.5 shrink-0", iconButton.xs, focus.ring, "flex items-center justify-center rounded text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground")}
+                            class={cn("ml-0.5", shell.appBarCompactAction, focus.ring, "text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground")}
                             aria-label={i18n.t("terminal.newTerminal")}
                             onclick={() =>
                               terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
@@ -699,7 +699,7 @@
                       <button
                         type="button"
                         class={cn(
-                          iconButton.xs,
+                          shell.appBarCompactAction,
                           focus.ring,
                           "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                           stripOverflow[g.group.id]?.canScrollEnd ? "opacity-100" : "pointer-events-none opacity-0",

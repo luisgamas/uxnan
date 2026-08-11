@@ -35,6 +35,10 @@ export const icon = {
    *  sidebar row, a context menu or a terminal tab (12px). Deliberately a notch
    *  under `decorative`: it sits beside 12-13px text and must not outweigh it. */
   status: "size-3",
+  /** Optical size for minimize/close glyphs in the custom title bar. */
+  windowControl: "size-3.5",
+  /** The outlined maximize glyph reads larger, so it gets a smaller optical box. */
+  windowMaximize: "size-3",
   /** Empty-state illustration (32px). */
   empty: "size-8",
 } as const;
@@ -43,6 +47,8 @@ export const icon = {
 export const iconButton = {
   /** Dense terminal-tab / panel-header action (28px). */
   xs: "size-7",
+  /** Compact close affordance inside a terminal tab (24px target). */
+  tabClose: "size-6",
   /** Standard icon action (32px). */
   sm: "size-8",
   /** Standard icon action (32px). Canonical alias. */
@@ -98,13 +104,15 @@ export const overlay = {
 export const dialog = {
   content: "gap-4 px-5 py-0",
   sectioned: "gap-0 p-0",
-  header: "py-4",
+  header: "pb-4 pt-5 pr-8",
   body: "py-4",
-  footer: "rounded-b-xl border-t bg-muted/50 p-3",
+  footer: "-mx-5 rounded-b-xl border-t bg-muted/50 px-5 py-3",
+  /** Footer surface shared by sectioned dialogs, including hint-only palettes. */
+  footerSurface: "min-h-14 border-t border-border/60 bg-muted/30 px-5 py-3",
   smallWidth: "sm:max-w-sm",
   mediumWidth: "sm:max-w-lg",
   formWidth: "sm:max-w-[560px]",
-  paletteWidth: "sm:max-w-xl",
+  paletteWidth: "sm:max-w-[600px]",
   largeWidth: "sm:max-w-[600px]",
   workspaceWidth: "sm:max-w-[900px]",
 } as const;
@@ -162,16 +170,29 @@ export const shell = {
   root: "bg-[var(--ux-shell)] text-foreground",
   sidebar: "bg-sidebar text-sidebar-foreground",
   statusBar: "flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground",
-  terminalStrip: "flex h-9 shrink-0 items-center bg-sidebar",
-  rightPanelHeader: "h-9 shrink-0",
+  /** One 40px appbar box. Its overlay hairline stays visible above full-height actions. */
+  appBar:
+    "relative h-10 shrink-0 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:h-px after:bg-border/60",
+  /** Overlay height without a second hairline (the underlying appbar owns it). */
+  appBarOverlay: "h-10",
+  /** A square top-level appbar action; the appbar paints its line above it. */
+  appBarAction: "flex size-10 shrink-0 items-center justify-center rounded-none",
+  /** Square top-level actions used around the center tab strip. */
+  appBarCompactAction: "flex size-10 shrink-0 items-center justify-center rounded-none",
+  terminalStrip: "flex items-center bg-sidebar",
+  rightPanelHeader: "bg-sidebar",
   rightPanelTabs: "h-8 shrink-0",
   laneHeader: "flex min-h-7 min-w-0 flex-1 items-center gap-1 rounded px-1 text-left",
   laneAction: "min-h-7 shrink-0 rounded px-1.5 py-0.5",
-  sidebarBrand: "flex h-9 shrink-0 select-none items-center gap-2 px-3",
+  sidebarBrand: "flex select-none items-center gap-2 px-3",
+  /** Full-screen workspace header; its actions use the full appbar height. */
+  workspaceHeader: "flex items-center gap-2 px-3",
+  /** Keeps native macOS traffic lights clear of left-aligned app chrome. */
+  macTrafficLightsInset: "pl-20",
   sidebarSectionHeader: "flex h-8 shrink-0 items-center gap-0.5 px-2.5",
   titlebar: "fixed right-0 top-0 z-50 flex select-none items-center",
-  titlebarControl: "flex h-9 w-11 items-center justify-center",
-  titlebarLauncher: "flex h-9 w-12 items-center justify-center",
+  titlebarControl: "flex size-10 items-center justify-center",
+  titlebarLauncher: "flex size-10 items-center justify-center",
 } as const;
 
 /** Row recipes — comfortable, breathable list/nav rows. `*Inactive` /
@@ -191,7 +212,7 @@ export const row = {
   /** Agent rows nested below a worktree. */
   agent: "relative flex min-h-8 w-full items-start gap-2 rounded-md px-1 py-1 text-left transition-colors",
   /** Project identity header; shared by project cards and future sidebar shells. */
-  projectHeader: "flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+  projectHeader: "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
   agentModel: "max-w-28 shrink-0 truncate font-mono text-[10px] text-muted-foreground/70",
   agentDetail: "ml-[1.375rem] mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2",
   agentSpaceHeader: "flex w-full min-w-0 items-center gap-1 pr-1",
@@ -244,6 +265,8 @@ export const field = {
   /** Stable labels in repeated color/value editor rows. */
   editorLabel: "w-28 min-w-0 shrink-0 truncate",
   editorLabelShort: "w-24 min-w-0 shrink-0 truncate",
+  /** Native clock input: wide enough for localized 12-hour suffixes and its picker glyph. */
+  time: "w-44 max-w-full shrink-0 tabular-nums",
   /** Repeated settings-select widths; every role clamps at the pane width. */
   selectCompact: "w-36 max-w-full",
   selectNarrow: "w-44 max-w-full",
@@ -292,6 +315,8 @@ export const tab = {
   base: "border-b-2 border-transparent transition-colors",
   panelTrigger: "shrink-0 whitespace-nowrap px-3 text-[13px]",
   terminalTrigger: "flex h-full shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[13px]",
+  /** Truncating title inside a draggable terminal/file/commit tab. */
+  terminalLabel: "max-w-[120px] truncate",
   /** Filled tabs (center terminal strip): quiet fill + firm underline. */
   active: "bg-[var(--ux-sidebar-accent)] border-foreground text-foreground",
   inactive: "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",

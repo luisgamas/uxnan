@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { control, dialog, field, iconButton, overlay, panel, row, shell, surface, tab } from "$lib/design";
+import { control, dialog, field, icon, iconButton, overlay, panel, row, shell, surface, tab } from "$lib/design";
 
 describe("desktop density tokens", () => {
 	it("keeps interactive roles at or above the 28px floor", () => {
@@ -8,6 +8,7 @@ describe("desktop density tokens", () => {
 		expect(control.compact).toContain("h-8");
 		expect(control.dense).toContain("h-7");
 		expect(iconButton.xs).toContain("size-7");
+		expect(iconButton.tabClose).toContain("size-6");
 		expect(iconButton.sm).toContain("size-8");
 		expect(iconButton.action).toContain("size-8");
 		expect(control.entityPicker).toContain("size-12");
@@ -24,17 +25,30 @@ describe("desktop density tokens", () => {
 		expect(overlay.menuStandard).toContain("min-w-52");
 		expect(overlay.menuWide).toContain("min-w-56");
 		expect(dialog.content).toContain("px-5");
-		expect(dialog.footer).not.toContain("-mx");
+		expect(dialog.footer).toContain("-mx-5");
+		expect(dialog.footer).toContain("px-5");
+		expect(dialog.footerSurface).toContain("min-h-14");
+		expect(dialog.footerSurface).toContain("px-5");
+		expect(dialog.paletteWidth).toContain("600px");
 		expect(iconButton.sm).toBe("size-8");
 	});
 
 	it("exposes named shell and row roles for phase-three chrome", () => {
 		expect(shell.statusBar).toContain("h-7");
-		expect(shell.terminalStrip).toContain("h-9");
+		expect(shell.appBar).toContain("h-10");
+		expect(shell.appBar).toContain("after:bottom-0");
+		expect(shell.appBar).toContain("after:z-10");
+		expect(shell.appBarOverlay).toBe("h-10");
+		expect(shell.appBarAction).toContain("size-10");
+		expect(shell.appBarCompactAction).toContain("size-10");
 		expect(shell.rightPanelTabs).toContain("h-8");
 		expect(shell.laneHeader).toContain("min-h-7");
 		expect(shell.laneAction).toContain("min-h-7");
-		expect(shell.titlebarControl).toContain("h-9");
+		expect(shell.titlebarControl).toContain("size-10");
+		expect(shell.titlebarLauncher).toContain("size-10");
+		expect(shell.macTrafficLightsInset).toContain("pl-20");
+		expect(icon.windowControl).toBe("size-3.5");
+		expect(icon.windowMaximize).toBe("size-3");
 		expect(row.agent).toContain("min-h-8");
 		expect(row.agent).toContain("relative");
 		expect(row.agentActiveIndicator).toContain("h-4");
@@ -42,6 +56,7 @@ describe("desktop density tokens", () => {
 		expect(row.agentActiveIndicator).toContain("-left-1");
 		expect(row.agentLeading).toContain("self-center");
 		expect(row.projectHeader).toContain("min-h-9");
+		expect(row.projectHeader).toContain("group/header");
 		expect(row.searchResult).toContain("h-[52px]");
 		expect(row.agentModel).toContain("max-w-28");
 		expect(row.agentDetail).toContain("ml-[1.375rem]");
@@ -51,13 +66,14 @@ describe("desktop density tokens", () => {
 		expect(row.agentAvatarStrip).toContain("overflow-hidden");
 		expect(row.agentOverflow).toContain("size-7");
 		expect(row.agentSpaceDetail).toContain("pl-1.5");
+		expect(field.time).toContain("w-44");
 		expect(surface.active).not.toContain("ring-");
 		expect(row.projectSummary).toContain("pl-8");
 		expect(overlay.paletteViewport).toContain("max-h-[22rem]");
-		expect(shell.sidebarBrand).toContain("h-9");
 		expect(shell.sidebarSectionHeader).toContain("h-8");
 		expect(tab.panelTrigger).toContain("px-3");
 		expect(tab.terminalTrigger).toContain("text-[13px]");
+		expect(tab.terminalLabel).toContain("max-w-[120px]");
 		expect(field.search).toContain("items-center");
 		expect(field.searchIcon).toContain("shrink-0");
 		expect(field.searchLabel).toContain("flex-1");

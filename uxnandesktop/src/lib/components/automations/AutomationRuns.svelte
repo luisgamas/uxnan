@@ -4,7 +4,7 @@
   // because the interesting question is usually "what failed".
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { field, text } from "$lib/design";
   import { automations } from "$lib/state/automations.svelte";
   import { runStatusLabelKey } from "$lib/automations/display";
   import type { RunStatus } from "$lib/automations/types";
@@ -58,14 +58,14 @@
     <Combobox
       value={automationFilter}
       groups={automationOptions}
-      triggerClass="w-64"
+      triggerClass={field.selectComfortable}
       searchPlaceholder={i18n.t("common.search")}
       onChange={(v) => (automationFilter = v)}
     />
     <Combobox
       value={statusFilter}
       groups={statusOptions}
-      triggerClass="w-52"
+      triggerClass={field.selectStandard}
       searchPlaceholder={i18n.t("common.search")}
       onChange={(v) => (statusFilter = v)}
     />

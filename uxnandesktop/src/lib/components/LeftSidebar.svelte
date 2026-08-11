@@ -19,11 +19,11 @@
   import type { SidebarGroupBy, SortMode } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
-  import { control, divider, field, focus, icon, row, shell, text } from "$lib/design";
+  import { control, field, focus, icon, row, shell, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import { formatChord, resolveBinding } from "$lib/keybindings";
+  import { formatChord, isMac, resolveBinding } from "$lib/keybindings";
   import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
   import FolderPlusIcon from "@hugeicons/core-free-icons/FolderAddIcon";
   import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
@@ -148,7 +148,7 @@
        is no title bar). -->
   <div
     data-tauri-drag-region
-    class={cn(shell.sidebarBrand, divider.bottom)}
+    class={cn(shell.appBar, shell.sidebarBrand, isMac && shell.macTrafficLightsInset)}
   >
     <img
       src="/logo_nb.svg"

@@ -13,7 +13,7 @@
   import { github } from "$lib/state/github.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { surface, text } from "$lib/design";
+  import { control, surface, text } from "$lib/design";
   import { toast, toastError } from "$lib/toast";
   import { githubPrCreate, githubAiDraftPr, githubBranches, openExternal } from "$lib/api";
   import type { PrBranches } from "$lib/types";
@@ -210,7 +210,7 @@
     <Combobox
       value={base}
       groups={branchGroups}
-      triggerClass="h-7 min-w-0 flex-1"
+      triggerClass={cn(control.compact, "min-w-0 flex-1")}
       placeholder={branchesLoading ? i18n.t("github.loading") : i18n.t("github.pr.baseLabel")}
       searchPlaceholder={i18n.t("common.search")}
       disabled={branchesLoading || !branches}
@@ -233,7 +233,7 @@
       <Combobox
         value={head}
         groups={branchGroups}
-        triggerClass="h-7 min-w-0 flex-1"
+        triggerClass={cn(control.compact, "min-w-0 flex-1")}
         placeholder={branchesLoading ? i18n.t("github.loading") : i18n.t("github.pr.headLabel")}
         searchPlaceholder={i18n.t("common.search")}
         disabled={branchesLoading || !branches}
@@ -259,7 +259,7 @@
       <Button
         variant="ghost"
         size="sm"
-        class="absolute right-1 top-1 h-6 gap-1 px-2"
+        class={cn(control.compact, "absolute right-1 top-1 gap-1 px-2")}
         disabled={aiDrafting}
         onclick={draftBody}
       >

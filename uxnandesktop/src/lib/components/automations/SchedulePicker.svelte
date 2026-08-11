@@ -93,7 +93,7 @@
     <Combobox
       value={schedule.kind}
       groups={kindGroups}
-      triggerClass="w-44"
+      triggerClass={field.selectNarrow}
       onChange={setKind}
       searchPlaceholder={i18n.t("common.search")}
     />
@@ -102,7 +102,7 @@
       <Input
         type="number"
         min="1"
-        class="w-20"
+        class={field.editorNumber}
         value={String(schedule.n)}
         oninput={(e) => {
           const n = Number((e.currentTarget as HTMLInputElement).value);
@@ -114,7 +114,7 @@
       <Combobox
         value={schedule.unit}
         groups={unitGroups}
-        triggerClass="w-36"
+        triggerClass={field.selectCompact}
         onChange={(v) => {
           if (schedule.kind === "every") schedule = { ...schedule, unit: v as TimeUnit };
         }}
@@ -125,16 +125,17 @@
         <Combobox
           value={String(schedule.day)}
           groups={dayGroups}
-          triggerClass="w-36"
+          triggerClass={field.selectCompact}
           onChange={(v) => {
             if (schedule.kind === "weeklyAt") schedule = { ...schedule, day: Number(v) };
           }}
           searchPlaceholder={i18n.t("common.search")}
         />
       {/if}
-      <input
+      <Input
         type="time"
-        class={cn(field.input, "w-32")}
+        density="compact"
+        class={field.time}
         value={timeValue}
         oninput={(e) => setTime((e.currentTarget as HTMLInputElement).value)}
       />

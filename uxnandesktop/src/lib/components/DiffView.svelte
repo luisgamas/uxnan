@@ -14,10 +14,12 @@
   } from "@codemirror/view";
   import { EditorState, RangeSetBuilder } from "@codemirror/state";
   import { parseDiff, hunkPatch, toSideRows } from "$lib/diff";
+  import { Button } from "$lib/components/ui/button";
+  import * as Tabs from "$lib/components/ui/tabs";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { text as textToken } from "$lib/design";
+  import { focus, icon, tab as tabStyle, text as textToken } from "$lib/design";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ColumnsIcon from "@hugeicons/core-free-icons/TableColumnsSplitIcon";
@@ -231,52 +233,56 @@
           <div class="flex shrink-0 items-center overflow-hidden rounded-md border border-border">
             <TooltipSimple title={h.header}>
               {#snippet children(tp)}
-                <button
+                <Button
                   {...tp}
-                  type="button"
-                  class={cn("px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground", textToken.indicator)}
+                  variant="ghost"
+                  size="xs"
+                  class={cn(focus.ring, "px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground", textToken.indicator)}
                   onclick={() => scrollToHunk(h.index)}
                 >
                   #{h.index + 1}
-                </button>
+                </Button>
               {/snippet}
             </TooltipSimple>
             {#if area === "staged"}
               <TooltipSimple title={i18n.t("diff.unstageHunk")}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    type="button"
-                    class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    variant="ghost"
+                    size="icon-xs"
+                    class={cn(focus.ring, "rounded-none border-l border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground")}
                     onclick={() => act(h.index, "unstage")}
                   >
-                    <Icon icon={MinusIcon} class="size-3.5" />
-                  </button>
+                    <Icon icon={MinusIcon} class={icon.action} />
+                  </Button>
                 {/snippet}
               </TooltipSimple>
             {:else}
               <TooltipSimple title={i18n.t("diff.stageHunk")}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    type="button"
-                    class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    variant="ghost"
+                    size="icon-xs"
+                    class={cn(focus.ring, "rounded-none border-l border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground")}
                     onclick={() => act(h.index, "stage")}
                   >
-                    <Icon icon={PlusIcon} class="size-3.5" />
-                  </button>
+                    <Icon icon={PlusIcon} class={icon.action} />
+                  </Button>
                 {/snippet}
               </TooltipSimple>
               <TooltipSimple title={i18n.t("diff.discardHunk")}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    type="button"
-                    class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                    variant="ghost"
+                    size="icon-xs"
+                    class={cn(focus.ring, "rounded-none border-l border-border/60 text-muted-foreground hover:bg-accent hover:text-destructive")}
                     onclick={() => act(h.index, "discard")}
                   >
-                    <Icon icon={Undo2Icon} class="size-3.5" />
-                  </button>
+                    <Icon icon={Undo2Icon} class={icon.action} />
+                  </Button>
                 {/snippet}
               </TooltipSimple>
             {/if}
@@ -287,42 +293,47 @@
       <div class="min-w-0 flex-1"></div>
     {/if}
 
-    <div class="inline-flex shrink-0 overflow-hidden rounded-md border border-border">
-      <TooltipSimple title={i18n.t("diff.unified")}>
-        {#snippet children(tp)}
-          <button
-            {...tp}
-            type="button"
-            class={cn(
-              "flex items-center gap-1 px-2 py-0.5",
-              textToken.indicator,
-              mode === "unified" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-            onclick={() => (mode = "unified")}
-          >
-            <Icon icon={AlignLeftIcon} class="size-3.5" />
-            {i18n.t("diff.unified")}
-          </button>
-        {/snippet}
-      </TooltipSimple>
-      <TooltipSimple title={i18n.t("diff.sideBySide")}>
-        {#snippet children(tp)}
-          <button
-            {...tp}
-            type="button"
-            class={cn(
-              "flex items-center gap-1 border-l border-border/60 px-2 py-0.5",
-              textToken.indicator,
-              mode === "side" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-            onclick={() => (mode = "side")}
-          >
-            <Icon icon={ColumnsIcon} class="size-3.5" />
-            {i18n.t("diff.sideBySide")}
-          </button>
-        {/snippet}
-      </TooltipSimple>
-    </div>
+    <Tabs.Root
+      value={mode}
+      onValueChange={(value) => {
+        if (value === "unified" || value === "side") mode = value;
+      }}
+      class="shrink-0"
+    >
+      <Tabs.List class={tabStyle.segmentedList}>
+        <TooltipSimple title={i18n.t("diff.unified")}>
+          {#snippet children(tp)}
+            <Tabs.Trigger
+              {...tp}
+              value="unified"
+              class={cn(
+                tabStyle.segmentedTrigger,
+                mode === "unified" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon icon={AlignLeftIcon} class={icon.action} />
+              {i18n.t("diff.unified")}
+            </Tabs.Trigger>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("diff.sideBySide")}>
+          {#snippet children(tp)}
+            <Tabs.Trigger
+              {...tp}
+              value="side"
+              class={cn(
+                tabStyle.segmentedTrigger,
+                "border-l border-border/60",
+                mode === "side" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon icon={ColumnsIcon} class={icon.action} />
+              {i18n.t("diff.sideBySide")}
+            </Tabs.Trigger>
+          {/snippet}
+        </TooltipSimple>
+      </Tabs.List>
+    </Tabs.Root>
   </div>
 
   <!-- Both layouts stay mounted; only the active one is shown. -->

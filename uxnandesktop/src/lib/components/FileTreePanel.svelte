@@ -30,7 +30,7 @@
   import { dropPathsIntoTerminal } from "$lib/terminal/terminalDrop";
   import { cn } from "$lib/utils";
   import { deferModalOpen } from "$lib/utils/pointerLock";
-  import { icon, iconButton, text } from "$lib/design";
+  import { field, focus, icon, iconButton, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
@@ -488,17 +488,12 @@
 
   // Recipes for the two collapsible search sections — quiet rows, not cards (this
   // is a dense panel, and the tree below is the surface that matters).
-  const sectionTrigger = cn(
-    "flex h-7 w-full items-center gap-1.5 rounded-md px-1.5 hover:bg-accent/40",
-    text.meta,
-  );
-  const sectionField = cn(
-    "h-7 w-full min-w-0 rounded-md border border-sidebar-border/60 bg-sidebar-foreground/5 px-2 text-[12px] text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-ring",
-  );
+  const sectionTrigger = cn(row.list, focus.ring, "gap-1.5 px-1.5 hover:bg-accent/40", text.meta);
+  const sectionField = cn(field.search, "h-8 text-[12px]");
   /** A match-mode toggle (Aa / whole word / regex) in the content input. */
   function modeButton(on: boolean): string {
     return cn(
-      "flex size-5 shrink-0 items-center justify-center rounded transition-colors",
+      "shrink-0 rounded transition-colors",
       on ? "bg-primary/20 text-foreground" : "text-muted-foreground/70 hover:bg-accent/60",
     );
   }
@@ -517,14 +512,15 @@
         >
           <Icon icon={FolderIcon} class={cn(icon.decorative, "shrink-0")} />
           <span class="truncate">{scopeName}</span>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             class="shrink-0 hover:text-foreground"
             onclick={() => (fileTree.searchScope = null)}
             aria-label={i18n.t("fileTree.clearScope")}
           >
-            <Icon icon={XIcon} class="size-3" />
-          </button>
+            <Icon icon={XIcon} class={icon.button} />
+          </Button>
         </span>
       {/if}
       {#if fileTree.searchLoading}
@@ -540,6 +536,7 @@
           ? i18n.t("fileTree.searchInFolder")
           : i18n.t("fileTree.searchProjectPlaceholder")}
         bind:value={fileTree.query}
+        aria-label={i18n.t("fileTree.searchProjectPlaceholder")}
         class={cn(
           "min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60",
           text.body,
@@ -601,6 +598,7 @@
               class={iconButton.xs}
               {...tp}
               aria-label={i18n.t("fileTree.refresh")}
+              disabled={fileTree.loadingDir.size > 0}
               onclick={() => fileTree.refresh()}
             >
               <Icon icon={RefreshCwIcon} class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
@@ -617,6 +615,7 @@
                 size="icon"
                 class={iconButton.xs}
                 title={i18n.t("fileTree.moreActions")}
+                aria-label={i18n.t("fileTree.moreActions")}
                 {...props}
               >
                 <Icon icon={EllipsisIcon} class={icon.action} />
@@ -679,6 +678,7 @@
               type="text"
               placeholder={i18n.t("fileTree.contentPlaceholder")}
               bind:value={fileTree.contentQuery}
+              aria-label={i18n.t("fileTree.contentPlaceholder")}
               class={cn(sectionField, "flex-1")}
               spellcheck="false"
               autocapitalize="off"
@@ -687,44 +687,47 @@
             />
             <TooltipSimple title={i18n.t("fileTree.matchCase")}>
               {#snippet children(tp)}
-                <button
+                <Button
                   {...tp}
-                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   aria-pressed={fileTree.contentCaseSensitive}
                   aria-label={i18n.t("fileTree.matchCase")}
-                  class={modeButton(fileTree.contentCaseSensitive)}
+                  class={cn(modeButton(fileTree.contentCaseSensitive), focus.ring)}
                   onclick={() => (fileTree.contentCaseSensitive = !fileTree.contentCaseSensitive)}
                 >
                   <Icon icon={CaseSensitiveIcon} class={icon.decorative} />
-                </button>
+                </Button>
               {/snippet}
             </TooltipSimple>
             <TooltipSimple title={i18n.t("fileTree.matchWholeWord")}>
               {#snippet children(tp)}
-                <button
+                <Button
                   {...tp}
-                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   aria-pressed={fileTree.contentWholeWord}
                   aria-label={i18n.t("fileTree.matchWholeWord")}
-                  class={modeButton(fileTree.contentWholeWord)}
+                  class={cn(modeButton(fileTree.contentWholeWord), focus.ring)}
                   onclick={() => (fileTree.contentWholeWord = !fileTree.contentWholeWord)}
                 >
                   <Icon icon={WholeWordIcon} class={icon.decorative} />
-                </button>
+                </Button>
               {/snippet}
             </TooltipSimple>
             <TooltipSimple title={i18n.t("fileTree.matchRegex")}>
               {#snippet children(tp)}
-                <button
+                <Button
                   {...tp}
-                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   aria-pressed={fileTree.contentRegex}
                   aria-label={i18n.t("fileTree.matchRegex")}
-                  class={modeButton(fileTree.contentRegex)}
+                  class={cn(modeButton(fileTree.contentRegex), focus.ring)}
                   onclick={() => (fileTree.contentRegex = !fileTree.contentRegex)}
                 >
                   <Icon icon={RegexIcon} class={icon.decorative} />
-                </button>
+                </Button>
               {/snippet}
             </TooltipSimple>
           </div>
@@ -797,7 +800,8 @@
             {@const dir = dirLabel(f.path)}
             <button
               type="button"
-              class="flex h-7 w-full items-center gap-1 rounded-md px-1 text-left hover:bg-accent/40"
+              class={cn(row.list, focus.ring, "gap-1 px-1 hover:bg-accent/40")}
+              aria-label={f.path}
               onclick={() => toggleContentFile(f.path)}
             >
               {#if collapsed}
@@ -808,7 +812,7 @@
               <Icon icon={FileIcon}
                 class={cn(icon.decorative, "shrink-0", fileColor(changes.fileMap.get(relOf(f.path))) || "text-muted-foreground")}
               />
-              <span class={cn("shrink-0 truncate font-medium", text.body)}>{f.name}</span>
+              <span class={cn("min-w-0 max-w-[45%] truncate font-medium", text.body)}>{f.name}</span>
               {#if dir}
                 <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{dir}</span>
               {:else}
@@ -822,7 +826,7 @@
               {#each f.matches as m, i (`${m.line}:${i}`)}
                 <button
                   type="button"
-                  class="flex h-6 w-full items-center gap-2 rounded-md pl-6 pr-1 text-left hover:bg-accent/40"
+                  class={cn(row.list, focus.ring, "gap-2 pl-6 pr-1 hover:bg-accent/40")}
                   onclick={() => openMatch(f, m)}
                   title={i18n.t("fileTree.openAtLine", { line: m.line })}
                   aria-label={i18n.t("fileTree.openAtLine", { line: m.line })}

@@ -17,7 +17,7 @@
   import type { DisplayStatus } from "$lib/state/agentDisplay";
   import { untrack } from "svelte";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, iconButton, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "../AgentLogo.svelte";
@@ -132,10 +132,10 @@
       {i18n.t("orchestration.selectedCount", { n: selectedCount, total: agents.length })}
     </span>
     <div class="flex-1"></div>
-    <Button variant="ghost" size="sm" class="h-6 px-2 text-[11px]" onclick={selectAll}>
+    <Button variant="ghost" size="sm" onclick={selectAll}>
       {i18n.t("orchestration.selectAll")}
     </Button>
-    <Button variant="ghost" size="sm" class="h-6 px-2 text-[11px]" onclick={selectNone}>
+    <Button variant="ghost" size="sm" onclick={selectNone}>
       {i18n.t("orchestration.selectNone")}
     </Button>
   </div>
@@ -162,7 +162,8 @@
           {@const waiting = orchestration.waitingForFree(a.tabId)}
           <div
             class={cn(
-              "flex items-center gap-2 rounded-md border px-2 py-1.5 transition-colors",
+              row.list,
+              "border",
               on ? "border-border bg-foreground/[0.03]" : "border-border/60",
             )}
           >
@@ -173,7 +174,7 @@
             />
             <button
               type="button"
-              class="flex min-w-0 flex-1 items-center gap-2 text-left"
+              class="flex min-w-0 flex-1 self-stretch items-center gap-2 text-left"
               onclick={() => setSel(a.tabId, !on)}
             >
               <AgentStatusIndicator status={dotStatus(a)} />

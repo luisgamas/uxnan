@@ -356,13 +356,13 @@
     >
       <Icon icon={RefreshCwIcon} class={cn(icon.decorative, "shrink-0 text-amber-600 dark:text-amber-400")} />
       <span class={cn("min-w-0 flex-1", text.body)}>{i18n.t("editor.externalChanged")}</span>
-      <Button variant="outline" size="sm" class={cn("h-6", text.body)} onclick={() => void fileState.load()}>
+      <Button variant="outline" size="sm" class={text.body} onclick={() => void fileState.load()}>
         {i18n.t("editor.reload")}
       </Button>
       <Button
         variant="ghost"
         size="sm"
-        class={cn("h-6", text.body)}
+        class={text.body}
         onclick={() => (fileState.externallyChanged = false)}
       >
         {i18n.t("editor.keepMine")}

@@ -17,7 +17,7 @@
     type GitHubWorkItemKind,
   } from "$lib/githubInput";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
   import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
@@ -229,8 +229,9 @@
           role="option"
           aria-selected={number === item.number}
           class={cn(
-            "flex min-h-11 w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
-            number === item.number ? "bg-accent text-foreground" : "hover:bg-accent/55",
+            row.choice,
+            number === item.number ? row.choiceActive : row.choiceInactive,
+            "items-start",
           )}
           onclick={() => choose(item)}
         >
