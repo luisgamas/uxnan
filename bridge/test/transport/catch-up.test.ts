@@ -15,6 +15,23 @@ import { FakePhone, newPhoneIdentity } from '../helpers/fake-phone.js';
 
 const tick = (ms = 15): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Waits until the bridge has actually torn the phone's session down.
+ *
+ * Closing the socket only *starts* that cleanup, so a fixed pause was a race:
+ * the notifications below are meant to land in the outbound log rather than on
+ * a live channel, and one tick was not always enough (measured: this test
+ * failed about twice in ten runs before this, and more often on a busier event
+ * loop). Waiting for the state the assertions depend on removes the guesswork.
+ */
+async function waitForDisconnect(bridge: Bridge, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (bridge.context.sessionRegistry.anyActive()) {
+    if (Date.now() > deadline) throw new Error('the phone session never closed');
+    await tick(5);
+  }
+}
+
 test('a reconnecting phone is caught up on outbound it missed (seq > resumeState)', async () => {
   const baseDir = join(tmpdir(), `uxnan-catchup-${randomUUID()}`);
   const bridge: Bridge = await startBridge({
@@ -54,7 +71,7 @@ test('a reconnecting phone is caught up on outbound it missed (seq > resumeState
 
     // --- Drop the connection; let the bridge run its disconnect cleanup.
     phone1.close();
-    await tick();
+    await waitForDisconnect(bridge);
 
     // --- While offline, the bridge produces two more notifications (seq 3, 4),
     // recorded in the device's outbound log.
