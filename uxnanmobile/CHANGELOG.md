@@ -6,6 +6,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — opening a second conversation in the same pane
+
+On a tablet, picking another conversation changed the app bar while the body
+kept rendering the one you left — and the agent's answer would hang on
+"responding", or arrive duplicated.
+
+One cause for all three. go_router keys a page by the route **pattern**
+(`/conversation/:threadId`), not by the location it matched, so every thread
+produced the same page: replacing one with another handed Flutter a page it
+considered identical, the element was reused, and `initState` never ran again.
+The screen's whole per-thread startup lives there — `selectThread`,
+`resumeThread`, the foreground marker — so the ThreadManager was never told to
+switch. The app bar still looked right because it reads `widget.threadId`
+directly; the body follows the *manager's* active thread. And streaming deltas,
+which do not all carry a threadId of their own, kept being attributed to the
+thread you had left — hence the turn that never finished, and the turn that
+reappeared once the real thread re-synced against the bridge.
+
+Every parameterised route now keys its screen by its parameter, so a different
+thread (or PC) is a different element and restarts exactly as it does on a
+phone. It was **four** routes, not one: the per-PC threads list, its archive and
+the PC details screen had the same latent bug, and the threads list also starts
+per-PC work in `initState`.
+
+A phone was never affected: there opening pushes, which always builds a new
+element. Nothing outside the app changed — no bridge or contract work — so this
+runs against any bridge the app already worked with.
+
 ## [0.0.19-alpha.20260810+20260810] - 2026-08-10
 
 ### Fixed — the profile stopped being clamped to a paragraph's width

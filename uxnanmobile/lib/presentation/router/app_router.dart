@@ -118,21 +118,48 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ? const ShellWelcome()
                 : const MyDevicesScreen(),
           ),
+          // EVERY parameterised route below keys its screen by the parameter.
+          //
+          // go_router derives a page's key from the route **pattern**, not from
+          // the location it matched: `pageKey: ValueKey(newMatchedPath)` where
+          // `newMatchedPath` is `/conversation/:threadId`, the same string for
+          // every thread. So replacing `/conversation/a` with `/conversation/b`
+          // hands Flutter the same page, and the element — and with it the
+          // `State` — is REUSED. `initState` never runs again.
+          //
+          // That is invisible while every screen is pushed, which is what a
+          // phone does. Beside a permanent drawer opening REPLACES the pane
+          // (`openInPane`), and the reuse showed up as the app bar changing to
+          // the conversation you picked while the body kept rendering the
+          // previous one — and worse, the ThreadManager was never told to
+          // switch, so streaming deltas (which do not all carry a threadId)
+          // kept being attributed to the thread you had left.
+          //
+          // A `ValueKey` on the built widget makes a different parameter a
+          // different element, so the whole per-parameter setup —
+          // subscriptions, the foreground marker, scroll position, drafts — is
+          // rebuilt exactly as it is on a phone. Keying is deliberately
+          // preferred over a `didUpdateWidget` in each screen: it needs no
+          // screen to remember to re-do its own `initState`, and none to be
+          // audited again when a new per-parameter field is added.
           GoRoute(
             path: AppRoutes.deviceThreadsPattern,
             builder: (context, state) => ThreadsScreen(
+              key: ValueKey(state.pathParameters['deviceId']),
               deviceId: state.pathParameters['deviceId']!,
             ),
           ),
           GoRoute(
             path: AppRoutes.deviceArchivedPattern,
             builder: (context, state) => ArchivedThreadsScreen(
+              key: ValueKey(state.pathParameters['deviceId']),
               deviceId: state.pathParameters['deviceId']!,
             ),
           ),
           GoRoute(
             path: AppRoutes.deviceStatsPattern,
             builder: (context, state) => PcDetailsScreen(
+              key: ValueKey(state.pathParameters['deviceId']),
               deviceId: state.pathParameters['deviceId']!,
             ),
           ),
@@ -159,6 +186,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutes.conversationPattern,
             builder: (context, state) => ConversationScreen(
+              key: ValueKey(state.pathParameters['threadId']),
               threadId: state.pathParameters['threadId']!,
             ),
           ),
