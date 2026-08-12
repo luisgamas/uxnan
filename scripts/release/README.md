@@ -91,6 +91,7 @@ way to be wrong.
 | `git.mjs` | the only place that shells out to git |
 | `plan.mjs` | what to cut, in what order — the workflow's decisions |
 | `notes.mjs` | the release body, with the baseline pinned |
+| `changelog.mjs` | heads `[Unreleased]` with the version being cut — and knows a desktop nightly must not |
 
 `node --test "scripts/release/*.test.mjs"` (also part of the root `npm test`)
 covers all of it, including the failures that have actually shipped here: a
