@@ -31,3 +31,29 @@ export function nextInstallAction(
   // "ask" and "manual" both wait for an explicit action.
   return "wait";
 }
+
+/** What a finished check means, given what is already staged for install.
+ *  `found` is the version the manifest offered (`null` = nothing newer than the
+ *  running build); `staged` is the version whose installer is already downloaded
+ *  (`null` = nothing staged).
+ *
+ *   - `upToDate`   — nothing new and nothing staged.
+ *   - `available`  — a newer version to download.
+ *   - `keepStaged` — the staged installer is still what the channel offers, so it
+ *                    stays ready to install. Crucial: a check re-runs against the
+ *                    *running* version, so it keeps re-reporting the version we
+ *                    already downloaded — treating that as "available" would
+ *                    download the same bytes again on every check.
+ *   - `superseded` — the channel now offers a **different** version, so the staged
+ *                    bytes are stale (`updater_install` rejects them) and must be
+ *                    re-downloaded. This is what lets a second release land while
+ *                    the first one sits downloaded, without restarting the app. */
+export function checkOutcome(
+  found: string | null,
+  staged: string | null,
+): "upToDate" | "available" | "keepStaged" | "superseded" {
+  if (!staged) return found ? "available" : "upToDate";
+  // A check that finds nothing while bytes are staged (e.g. the release was
+  // pulled) leaves the download alone — install re-checks and reports honestly.
+  return found && found !== staged ? "superseded" : "keepStaged";
+}

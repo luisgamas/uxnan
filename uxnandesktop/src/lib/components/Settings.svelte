@@ -1376,7 +1376,7 @@
                     {i18n.t("updates.currentVersion", { version: currentVersion || "—" })}
                   </div>
                   <p class="text-[12px] leading-5 text-muted-foreground">
-                    {#if updater.status === "checking"}
+                    {#if updater.checking}
                       {i18n.t("updates.checking")}
                     {:else if updater.status === "available"}
                       {i18n.t("updates.bannerAvailable", { version: updater.update?.version ?? "" })}
@@ -1404,10 +1404,28 @@
                   {/if}
                 </div>
 
-                <!-- Phase-aware actions: mirror the update toast so the user can
-                     download / install straight from Settings, consistent with the
-                     install policy. Falls back to "Check now" when idle. -->
-                <div class="flex shrink-0 items-center gap-1.5">
+                <!-- Two independent actions, never one morphing into the other:
+                     "Check now" is always present (a newer release can land while
+                     a downloaded one waits for idle agents — the user must be able
+                     to pick it up without restarting the app), and the phase action
+                     (download / install) only appears when there is one to take. -->
+                <div class="flex flex-wrap items-center justify-end gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={updater.checking ||
+                      updater.status === "downloading" ||
+                      updater.status === "installing"}
+                    onclick={() => void updater.checkNow()}
+                  >
+                    {#if updater.checking}
+                      <Icon icon={LoaderIcon} data-icon="inline-start" class="animate-spin" />
+                    {:else}
+                      <Icon icon={RotateCcwIcon} data-icon="inline-start" />
+                    {/if}
+                    {i18n.t("updates.checkNow")}
+                  </Button>
+
                   {#if updater.status === "available"}
                     <Button size="sm" onclick={() => void updater.download()}>
                       <Icon icon={DownloadIcon} data-icon="inline-start" />
@@ -1425,31 +1443,17 @@
                     </Button>
                   {:else if updater.status === "downloaded"}
                     {#if updater.agentsBusy}
-                      <Button size="sm" onclick={() => updater.installWhenIdle()}>
+                      <Button variant="outline" size="sm" onclick={() => updater.installWhenIdle()}>
                         {i18n.t("updates.installWhenIdle")}
                       </Button>
-                      <Button variant="outline" size="sm" onclick={() => void updater.installNow()}>
-                        {i18n.t("updates.installNow")}
-                      </Button>
-                    {:else}
-                      <Button size="sm" onclick={() => void updater.installNow()}>
-                        {i18n.t("updates.installNow")}
-                      </Button>
                     {/if}
+                    <Button size="sm" onclick={() => void updater.installNow()}>
+                      {i18n.t("updates.installNow")}
+                    </Button>
                   {:else if updater.status === "installing"}
                     <Button size="sm" disabled>
                       <Icon icon={LoaderIcon} data-icon="inline-start" class="animate-spin" />
                       {i18n.t("updates.bannerInstalling")}
-                    </Button>
-                  {:else}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={updater.status === "checking"}
-                      onclick={() => void updater.checkNow()}
-                    >
-                      <Icon icon={RotateCcwIcon} data-icon="inline-start" />
-                      {i18n.t("updates.checkNow")}
                     </Button>
                   {/if}
                 </div>

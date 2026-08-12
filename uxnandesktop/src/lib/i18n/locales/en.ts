@@ -1566,6 +1566,7 @@ export const en = {
   "updates.agentsBusyWarning": "An agent is running — installing will stop it",
   "updates.willInstallWhenIdle": "Will install once all agents are idle",
   "updates.upToDate": "You're on the latest version",
+  "updates.stagedIsLatest": "Version {version} is the latest — ready to install",
   "updates.checking": "Checking for updates…",
   "updates.checkNow": "Check now",
   "updates.currentVersion": "Current version: {version}",

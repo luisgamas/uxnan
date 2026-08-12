@@ -203,6 +203,27 @@ pub async fn updater_staged(
         .map(|s| s.version.clone()))
 }
 
+/// Drop a staged download, freeing the installer bytes it holds in memory, and
+/// report the version that was discarded (`None` when nothing was staged).
+///
+/// Called when a check finds the channel now offers a **different** version: the
+/// staged bytes are unusable from that moment on (`updater_install` re-checks and
+/// refuses a version mismatch), so keeping a whole installer resident buys
+/// nothing — the app only ever offers the newest build, and any older one is a
+/// manual download from the GitHub Release.
+#[tauri::command]
+pub async fn updater_discard_staged(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, CommandError> {
+    Ok(discard_staged(&state.staged_update).await)
+}
+
+/// The body of [`updater_discard_staged`], taking the slot directly so it can be
+/// tested without a Tauri `State` wrapper.
+async fn discard_staged(slot: &tokio::sync::RwLock<Option<StagedUpdate>>) -> Option<String> {
+    slot.write().await.take().map(|s| s.version)
+}
+
 /// Apply the staged update and restart into the new version. **This stops every
 /// running agent**: each is a PTY child of this process, so we close them
 /// cleanly first (rather than letting the installer kill them mid-write). The
@@ -265,6 +286,24 @@ mod tests {
             endpoint_for(UpdateChannel::Nightly),
             "https://github.com/luisgamas/uxnan/releases/download/desktop-updater-nightly/latest.json"
         );
+    }
+
+    #[tokio::test]
+    async fn discarding_a_staged_update_frees_it_and_reports_its_version() {
+        let slot = tokio::sync::RwLock::new(Some(StagedUpdate {
+            version: "0.0.41".into(),
+            bytes: vec![1, 2, 3],
+        }));
+        assert_eq!(discard_staged(&slot).await.as_deref(), Some("0.0.41"));
+        // The installer bytes are gone, not merely marked stale.
+        assert!(slot.read().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn discarding_nothing_is_a_no_op() {
+        let slot = tokio::sync::RwLock::new(None);
+        assert_eq!(discard_staged(&slot).await, None);
+        assert!(slot.read().await.is_none());
     }
 
     #[test]

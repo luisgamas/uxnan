@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A downloaded update no longer hides the "Check now" button.**
+  Settings → Updates now shows two independent buttons instead of one that
+  morphs: *Check now* is always there, and the phase action (*Download* /
+  *Install now*, plus *Install when idle* while an agent works) appears next to
+  it only when there is one to take. The old single button became *Install* the
+  moment an update was staged — which is exactly when checking matters most: an
+  install waits for agents to go idle, releases keep landing meanwhile, and the
+  only way to pick up a newer one was to finish the work, quit the app and
+  reopen it.
+- **Checking is no longer a lifecycle state.** `updater.checking` overlays
+  `status`, so a check can run in any phase without erasing what is already
+  downloaded — the *Install* button (and the pinned toast) stay put while it
+  runs, and a check that fails no longer throws away a ready-to-install
+  download.
+- **A check that re-reports the version already staged no longer re-downloads
+  it.** The updater compares against the *running* build, so every check kept
+  offering the version sitting in memory — and each one (including the automatic
+  6-hourly one) downloaded the same installer again. `checkOutcome` now decides
+  between keeping the staged download, superseding it when the channel offers a
+  genuinely different version (dropping any armed install-when-idle, since the
+  backend rejects stale bytes), and the plain up-to-date / available cases.
+- **A superseded download stops occupying memory.** New
+  `updater_discard_staged` command: when a check supersedes a staged update, the
+  installer bytes are released before the new download starts (awaited, so a
+  late discard can't throw away the version just fetched) instead of sitting in
+  memory until the app quits. Nothing is lost — those bytes could no longer be
+  installed, and any older build is still a manual download from its GitHub
+  Release.
+- **A failed install no longer offers a retry the backend can't serve.**
+  `updater_install` takes the staged bytes before it can fail — on every failure
+  path — so returning the UI to "downloaded" left an *Install* button whose only
+  possible answer was *no downloaded update to install*. It now returns to
+  "available", which is the true state: the version is still on offer, just no
+  longer downloaded. It does not re-download by itself, so an installer that
+  genuinely breaks can't loop with an auto-install policy.
+
+Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version,
+including the channel-switch and "release pulled" cases) + 2 Rust
+(`updater.rs` — discarding frees the bytes and reports the version; discarding
+nothing is a no-op).
+
 ## [0.0.39] - 2026-08-12
 
 ### Removed
