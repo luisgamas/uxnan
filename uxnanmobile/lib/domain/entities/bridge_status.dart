@@ -15,6 +15,7 @@ class BridgeStatus extends Equatable {
     this.latestVersion,
     this.updateAvailable = false,
     this.supportsMessageQueue = false,
+    this.supportsManagedWorktrees = false,
   });
 
   /// Reconstructs a [BridgeStatus] from a `bridge/status` result.
@@ -32,6 +33,8 @@ class BridgeStatus extends Equatable {
       // cosmetic mistake here: offering to queue against a bridge that cannot
       // queue makes it start a second concurrent turn, corrupting the session.
       supportsMessageQueue: features is Map && features['messageQueue'] == true,
+      supportsManagedWorktrees:
+          features is Map && features['managedWorktrees'] == true,
     );
   }
 
@@ -63,6 +66,13 @@ class BridgeStatus extends Equatable {
   /// conversation screen hides the "queue message" action unless this is true.
   final bool supportsMessageQueue;
 
+  /// Whether the bridge places a new worktree itself when `git/createWorktree`
+  /// is sent without a `path` (`features.managedWorktrees`), under the same
+  /// managed layout the desktop uses. **False on any bridge that doesn't
+  /// advertise it**, where `path` is still required — so the phone keeps
+  /// deriving one as its fallback.
+  final bool supportsManagedWorktrees;
+
   @override
   List<Object?> get props => [
         relayConnected,
@@ -72,5 +82,6 @@ class BridgeStatus extends Equatable {
         latestVersion,
         updateAvailable,
         supportsMessageQueue,
+        supportsManagedWorktrees,
       ];
 }

@@ -164,7 +164,12 @@ connected to live bridge data, validated on-device against a real bridge.
   **folder browser** (`workspace/browseDirs`) to root a thread anywhere. The
   full-screen Neural Expressive dialog compares agents in one dynamic-corner
   card group; selecting an agent expands only its capability chips and
-  collapses the previous selection.
+  collapses the previous selection. Starting one in a fresh worktree sends
+  **no path**: the bridge places the checkout under the folder it manages, the
+  same one the desktop uses, gated on `features.managedWorktrees`. Against an
+  older bridge (which requires a path) the phone derives one, now spelled the
+  way the desktop spells it — the two used to disagree, so one project's
+  worktrees ended up in two folder schemes.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
   of the selected row; editable highlighted text, selectable diffs,
@@ -368,17 +373,6 @@ shipping.
 
 ## App+bridge seams (need a live bridge to finish/verify)
 
-- [ ] **Worktree location is derived on the phone, and disagrees with the
-      desktop.** `new_conversation_screen.dart` `_worktreePath()` builds
-      `<parent>/<repo>-<branch>` (one dash, its own slug rule) because the bridge
-      requires an explicit `path`. The desktop now groups worktrees under a
-      managed root (`~/uxnan/worktrees/<repo>/<branch>`), so the same repository
-      and branch land in two different folders depending on which app created
-      them. Owed once the bridge resolves locations itself (item in
-      `bridge/FOR-DEV.md`): send `managed: true` **without** `path` when
-      `bridge/status` advertises `features.managedWorktrees`, keep the derived
-      path only as the fallback for an older bridge, and align that fallback with
-      the desktop's spelling so the two stop diverging even there.
 - [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**
       now enforce the per-turn access mode (see `bridge/CHANGELOG.md`
       "per-turn access-mode enforcement"). Remaining: **Codex mid-thread re-apply**

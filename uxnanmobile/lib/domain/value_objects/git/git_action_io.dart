@@ -380,16 +380,18 @@ class GitBranchResult extends Equatable {
 
 /// Parameters for a `git/createWorktree` request.
 ///
-/// FOR-DEV: the bridge requires an explicit [path] and does not yet implement
-/// managed worktrees (auto-path) — so [path] is derived on the phone from the
-/// repo `cwd` + branch. When the bridge gains managed-worktree support (pick
-/// the path itself), drop the derived path and rely on [managed].
+/// Leave [path] null on a bridge that advertises `features.managedWorktrees`:
+/// it then places the worktree itself, under the same layout the desktop uses
+/// (`~/uxnan/worktrees/<repo>/<branch>` by default), and the result carries the
+/// path it chose. An older bridge still **requires** a path, which is why
+/// [path] can still be given — see [managedWorktreePath] for the fallback the
+/// phone derives, deliberately spelled the way the desktop spells it.
 class GitWorktreeParams extends Equatable {
   /// Creates a [GitWorktreeParams].
   const GitWorktreeParams({
     required this.cwd,
     required this.branch,
-    required this.path,
+    this.path,
     this.managed = true,
     this.threadId,
   });
@@ -400,21 +402,49 @@ class GitWorktreeParams extends Equatable {
   /// Branch to create/check out in the worktree.
   final String branch;
 
-  /// Absolute path of the new worktree.
-  final String path;
+  /// Absolute path for the new worktree. Null lets the bridge choose it.
+  final String? path;
 
-  /// Whether the worktree is uxnan-managed (forwarded for future bridge use).
+  /// Whether the worktree is uxnan-managed (the bridge records the ones it
+  /// placed itself, so a later cleanup can tell them from pre-existing ones).
   final bool managed;
 
   /// Owning thread, used to record the action in the local log.
   final String? threadId;
 
-  /// The JSON-RPC params for the bridge (`threadId` is local-only).
-  Map<String, dynamic> toRpcParams() =>
-      {'cwd': cwd, 'branch': branch, 'path': path, 'managed': managed};
+  /// The JSON-RPC params for the bridge (`threadId` is local-only). `path` is
+  /// omitted entirely when absent: sending `null` would fail validation on a
+  /// bridge that requires it, which reads worse than the "missing param" error.
+  Map<String, dynamic> toRpcParams() => {
+        'cwd': cwd,
+        'branch': branch,
+        if (path != null) 'path': path,
+        'managed': managed,
+      };
 
   @override
   List<Object?> get props => [cwd, branch, path, managed, threadId];
+}
+
+/// The folder a worktree for [branch] off the repository at [cwd] would land
+/// in, **when the bridge is too old to place it itself**.
+///
+/// Spelled exactly as `uxnandesktop/src-tauri/src/worktreeloc.rs`'s sibling
+/// layout does — `<parent>/<repo>--<branch>`, two dashes — because the phone
+/// used to build `<repo>-<branch>` with its own slug rule, so the same
+/// repository and branch produced two different folders depending on which app
+/// created the worktree. Prefer letting the bridge decide; this exists only so
+/// an older bridge still works.
+String managedWorktreePath(String cwd, String branch) {
+  final sep = cwd.contains(r'\') ? r'\' : '/';
+  final trimmed = cwd.replaceAll(RegExp(r'[\\/]+$'), '');
+  final idx = trimmed.lastIndexOf(RegExp(r'[\\/]'));
+  final parent = idx < 0 ? '' : trimmed.substring(0, idx);
+  final repo = idx < 0 ? trimmed : trimmed.substring(idx + 1);
+  final safeBranch = branch.replaceAll(RegExp(r'[\\/]'), '-');
+  return parent.isEmpty
+      ? '$repo--$safeBranch'
+      : '$parent$sep$repo--$safeBranch';
 }
 
 /// Result of a successful `git/createWorktree`.
