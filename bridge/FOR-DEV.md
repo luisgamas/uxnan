@@ -227,6 +227,20 @@ push validation (FOR-HUMAN).
 
 ## Handlers
 
+- [ ] **Managed worktree locations — the bridge still takes the path from the
+      phone.** `git/createWorktree` requires `path` (`git-handler.ts`) and ignores
+      the `managed` flag the phone already sends (`GitWorktreeParams.managed`);
+      `DAEMON_FILES.managedWorktrees` (`managed-worktrees.json`) is declared and
+      never read or written. The desktop now resolves the location itself
+      (`uxnandesktop/src-tauri/src/worktreeloc.rs`: managed root
+      `~/uxnan/worktrees/<repo>/<branch>`, branch sanitizing, collision suffixes,
+      main-worktree grouping, WSL mirroring), so the two apps place the same
+      repository's worktrees differently — the phone derives
+      `<repo>-<branch>` next to the repo, the desktop groups them. Owed:
+      mirror that resolver in `bridge/src/git/`, make `path` optional in
+      `shared/` (`GitWorktreeParams`), honour `managed`, write the registry, and
+      advertise `features.managedWorktrees` on `bridge/status` so an older bridge
+      keeps working. Pairs with the mobile item in `uxnanmobile/FOR-DEV.md`.
 - [ ] **Checkpoints on an unborn branch** — `capture` requires at least one commit
       (no HEAD → `-32003`). Support checkpoints on an unborn branch if a use case
       appears. Low priority.

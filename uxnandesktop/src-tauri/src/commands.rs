@@ -12,8 +12,11 @@ use uuid::Uuid;
 use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
-use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
+use crate::model::{
+    AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData, WorktreeLocationMode,
+};
 use crate::state::{AppState, HookServerInfo};
+use crate::worktreeloc::{self, Resolved};
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -785,6 +788,7 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         icon: None,
         branch_icons: std::collections::HashMap::new(),
         worktree_order: Vec::new(),
+        worktree_root: None,
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
@@ -988,6 +992,98 @@ pub async fn branch_list(
     })
 }
 
+/// Resolve where a worktree for `branch` goes, from the settings that apply to
+/// this project: the global layout, plus the effective root — the project's own
+/// override first, then the global custom root (which only a `custom` layout
+/// uses; a leftover value must not silently move a `managed` project).
+async fn resolve_worktree_location(
+    state: &AppState,
+    repo_id: &str,
+    repo_path: &str,
+    branch: &str,
+) -> Result<Resolved, CommandError> {
+    let (mode, root) = {
+        let data = state.data.read().await;
+        let settings = data.settings.worktrees.clone();
+        let project_root = data
+            .repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .and_then(|r| r.worktree_root.clone());
+        let global_root = match settings.location {
+            WorktreeLocationMode::Custom => settings.root.clone(),
+            _ => None,
+        };
+        (settings.location, project_root.or(global_root))
+    };
+    worktreeloc::resolve(repo_path, branch, mode, root.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The git identity commits are authored with (Settings → Git), read from the
+/// global/system config rather than any open repository. Never fails: an unset
+/// field comes back as `null` so the pane can say so — an identity that isn't
+/// set is exactly what makes `git commit` fail later.
+#[tauri::command]
+pub async fn git_identity() -> Result<git::GitIdentity, CommandError> {
+    let home = agent_hooks::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+    Ok(git::identity(&home).await)
+}
+
+/// Where a worktree for `branch` **would** be created, for the create dialog's
+/// location field. Read-only — it neither creates directories nor claims a
+/// group, so it is safe to call while the user is still typing the branch name.
+#[tauri::command]
+pub async fn worktree_preview_path(
+    state: State<'_, AppState>,
+    repo_id: String,
+    branch: String,
+) -> Result<String, CommandError> {
+    let branch = branch.trim().to_string();
+    if branch.is_empty() {
+        return Ok(String::new());
+    }
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    Ok(
+        resolve_worktree_location(&state, &repo_id, &repo_path, &branch)
+            .await?
+            .path,
+    )
+}
+
+/// Set (or clear, with `None`/blank) a project's own managed-worktree root, so a
+/// repository can live somewhere else than the global setting says.
+#[tauri::command]
+pub async fn repo_set_worktree_root(
+    state: State<'_, AppState>,
+    repo_id: String,
+    root: Option<String>,
+) -> Result<RepoData, CommandError> {
+    let root = root
+        .map(|r| worktreeloc::normalize(r.trim()))
+        .filter(|r| !r.is_empty());
+    if let Some(root) = root.as_deref() {
+        if !std::path::Path::new(root).is_absolute() {
+            return Err(CommandError::from(AppError::Invalid(
+                "worktree root must be an absolute path".to_string(),
+            )));
+        }
+    }
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == repo_id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?;
+    repo.worktree_root = root;
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
 /// Create a worktree in the given repo. Two modes:
 /// - **new branch** (`from_existing = false`): create `branch` from `base` (or
 ///   the repo's resolved default base — remote HEAD → main → master → HEAD);
@@ -995,9 +1091,11 @@ pub async fn branch_list(
 ///   local or remote-only `branch` (a remote-only one gets a local tracking
 ///   branch), ignoring `base`.
 ///
-/// `path` is an optional custom worktree directory (must be absolute and not yet
-/// exist); when omitted the backend uses the automatic sibling location
-/// `<repo>--<branch>`. Returns the created entry as git itself lists it.
+/// `path` is an optional custom worktree directory for this one creation (must
+/// be absolute and not yet exist); when omitted the backend resolves the
+/// location from the user's settings — by default the managed root
+/// `<home>/uxnan/worktrees/<repo>/<branch>` (`worktreeloc.rs`). Returns the
+/// created entry as git itself lists it.
 #[tauri::command]
 pub async fn worktree_create(
     state: State<'_, AppState>,
@@ -1016,9 +1114,9 @@ pub async fn worktree_create(
     let repo_path = repo_path_of(&state, &repo_id).await?;
     let from_existing = from_existing.unwrap_or(false);
 
-    // Resolve the worktree location: a custom absolute path, or the automatic
-    // sibling. A custom path is normalized to forward slashes (matching git's own
-    // spelling) and must be absolute and not already exist.
+    // Resolve the worktree location: a custom absolute path for this creation,
+    // or the configured layout. A custom path is normalized to forward slashes
+    // (matching git's own spelling) and must be absolute and not already exist.
     let worktree_path = match path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
         Some(custom) => {
             let normalized = custom.replace('\\', "/");
@@ -1035,7 +1133,11 @@ pub async fn worktree_create(
             }
             normalized
         }
-        None => git::worktree_path_for(&repo_path, &branch),
+        None => {
+            let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
+            worktreeloc::prepare(&resolved).await;
+            resolved.path
+        }
     };
 
     if from_existing {
@@ -2230,7 +2332,9 @@ pub async fn github_pr_checkout(
     git::fetch(&repo_path, &format!("pull/{number}/head"))
         .await
         .map_err(CommandError::from)?;
-    let worktree_path = git::worktree_path_for(&repo_path, &branch);
+    let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
+    worktreeloc::prepare(&resolved).await;
+    let worktree_path = resolved.path;
     git::add_worktree(&repo_path, &branch, &worktree_path, Some("FETCH_HEAD"))
         .await
         .map_err(CommandError::from)?;
@@ -2377,15 +2481,20 @@ pub async fn github_issue_develop(
     let repo_path = repo_path_of(&state, &repo_id).await?;
     let branch = branch_or_default(branch, || format!("issue-{number}"))?;
     // If a worktree for this branch already exists (a re-run), just return it.
-    let worktree_path = git::worktree_path_for(&repo_path, &branch);
-    if std::path::Path::new(&worktree_path).exists() {
-        return Ok(WorktreeEntry {
-            path: worktree_path,
-            branch: Some(branch),
-            head: None,
-            is_main: false,
-        });
+    // Asked of git rather than guessed from a path, so a re-run finds the
+    // existing checkout wherever it lives — including one created under the
+    // previous sibling layout, or moved by hand.
+    if let Ok(entries) = git::list_worktrees(&repo_path).await {
+        if let Some(existing) = entries
+            .into_iter()
+            .find(|e| e.branch.as_deref() == Some(branch.as_str()))
+        {
+            return Ok(existing);
+        }
     }
+    let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
+    worktreeloc::prepare(&resolved).await;
+    let worktree_path = resolved.path;
     // Prefer GitHub's linked branch. When the account can read the issue but may
     // not mutate the repository, fall back to a regular local branch rather than
     // making the issue launcher unusable. Authentication/network failures still

@@ -14,7 +14,8 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { taskBranchName, worktreeFolderFor, randomBranchName } from "$lib/branchName";
+  import { taskBranchName, randomBranchName } from "$lib/branchName";
+  import { worktreePreviewPath } from "$lib/api";
   import type { RepoData } from "$lib/types";
   import FolderSelectDialog from "./FolderSelectDialog.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -91,9 +92,30 @@
   const repoName = $derived(
     repo.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? repo.name,
   );
-  const autoPath = $derived(
-    effectiveBranch ? worktreeFolderFor(repo.path, effectiveBranch) : "",
-  );
+  // Where the worktree would land, asked of the backend rather than recomputed
+  // here: the layout (managed root, per-project override, branch sanitizing, WSL
+  // mirroring) has one owner. Debounced because it costs a `git worktree list`,
+  // and the branch name changes on every keystroke; the last request to be sent
+  // is the only one allowed to write, so a slow reply can't overwrite a newer one.
+  let autoPath = $state("");
+  let previewSeq = 0;
+  $effect(() => {
+    const branch = effectiveBranch;
+    const repoId = repo.id;
+    if (!branch) {
+      autoPath = "";
+      return;
+    }
+    const seq = ++previewSeq;
+    const timer = setTimeout(() => {
+      void worktreePreviewPath(repoId, branch)
+        .then((path) => {
+          if (seq === previewSeq) autoPath = path;
+        })
+        .catch(() => {});
+    }, 150);
+    return () => clearTimeout(timer);
+  });
   const autoFolderName = $derived(autoPath.split("/").pop() ?? "");
 
   // Derived outputs, published to the parent's bound props.

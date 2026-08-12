@@ -86,10 +86,53 @@ una **ubicación opcional**:
   (`git worktree add <ruta> <rama>`); una **remota-solo** (`origin/<rama>` sin
   contraparte local) obtiene una rama local con tracking
   (`git worktree add --track -b <rama> <ruta> origin/<rama>`).
-- **Ubicación**: por defecto la carpeta hermana automática `<repo>--<rama>`; el
-  usuario puede **editar la ruta** o **explorar** hasta una carpeta padre (con el
-  explorador in-app compartido). Una ruta personalizada debe ser absoluta y no
-  existir; se normaliza a barras `/`.
+- **Ubicación**: la decide el backend (`worktreeloc.rs`) a partir de los ajustes,
+  y el formulario solo la **previsualiza** pidiéndosela (`worktree_preview_path`).
+  El usuario puede además **editar la ruta** o **explorar** hasta una carpeta
+  padre (con el explorador in-app compartido) para esa creación concreta; una
+  ruta personalizada debe ser absoluta y no existir, y se normaliza a barras `/`.
+
+#### 2.1.1 Dónde se crea un worktree
+
+Tres disposiciones, elegidas en **Ajustes → Git → Ubicación de los worktrees**
+(`AppSettings.worktrees.location`, con `worktrees.root` para la personalizada) y
+sobrescribibles por proyecto (`RepoData.worktreeRoot`):
+
+| Modo | Ruta | Para qué |
+|---|---|---|
+| `managed` (por defecto) | `<home>/uxnan/worktrees/<repo>/<rama>` | Agrupa los checkouts de un repositorio en una carpeta que la app gestiona, junto a la que ya usa el clon (`<home>/uxnan/<repo>`) |
+| `sibling` | `<padre>/<repo>--<rama>` | El comportamiento anterior, para quien lo prefiera |
+| `custom` | `<raíz elegida>/<repo>/<rama>` | La misma agrupación en otro volumen o en una ruta más corta |
+
+Reglas que aplica el resolver, en este orden:
+
+1. **La clave del repositorio se mide desde su worktree PRINCIPAL** (la primera
+   entrada de `git worktree list`). Crear un worktree estando dentro de otro no
+   debe anidar el nuevo bajo el anterior.
+2. **La rama se sanea a un nombre de carpeta válido en todos los sistemas**: `/`
+   y `\` → `-`; se eliminan los caracteres que Windows rechaza (`<>:"|?*` y los
+   de control); se recortan los puntos y espacios finales que Windows elimina en
+   silencio; se escapan los nombres de dispositivo reservados (`CON`, `NUL`,
+   `COM1`…); y se corta a 60 caracteres respetando la última palabra.
+3. **Dos proyectos con el mismo nombre de carpeta no comparten grupo**: la
+   carpeta de grupo lleva un marcador `.uxnan-repo` con la ruta canónica del
+   repositorio; si ya pertenece a otro, el grupo pasa a `<repo>-<hash8>` (FNV-1a
+   de esa ruta, escrito a mano para que sea estable entre versiones y
+   reproducible desde el bridge).
+4. **Un destino ocupado toma el siguiente sufijo libre** (`-2`, `-3`, …), porque
+   `git worktree add` rechaza una carpeta existente.
+5. **Un repositorio en WSL se resuelve dentro de la distro**
+   (`//wsl.localhost/<distro>/<home>/uxnan/worktrees/…`), nunca en el lado
+   Windows del recurso 9P: un checkout ahí es lento y pierde los modos de
+   fichero.
+6. La ruta se devuelve siempre con barras `/`, la forma en que git reporta los
+   worktrees y con la que el frontend indexa sus espacios de trabajo.
+
+**Nada se migra.** Los worktrees existentes se leen de `git worktree list` y
+siguen funcionando donde estén; el ajuste solo afecta a los que se creen a partir
+de entonces. Por el mismo motivo, los flujos de PR e issue comprueban si ya hay
+un worktree **en esa rama** (preguntándoselo a git) en lugar de mirar si existe
+una ruta concreta.
 
 El flujo del backend (comando `worktree_create` con `fromExisting` y `path`
 opcionales) tiene varias garantías:

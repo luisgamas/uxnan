@@ -73,9 +73,12 @@ available today are:
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
   stash` / `git checkout` cycle. Create a worktree on a **new branch** (with an
-  auto-name generator) or by **checking out any existing local or remote branch**,
-  and optionally pick a **custom location** — the automatic sibling folder is used
-  otherwise. Add projects from a local folder or by cloning a pasted GitHub
+  auto-name generator) or by **checking out any existing local or remote branch**.
+  New worktrees are grouped by project under a folder uxnan manages
+  (`~/uxnan/worktrees/<project>/<branch>`); **Settings → Git** switches that to a
+  folder beside the repository or to one you choose, per app or per project, and
+  the create dialog can still override it for a single worktree. Existing
+  worktrees are never moved. Add projects from a local folder or by cloning a pasted GitHub
   repository reference (full history, with file objects transferred on demand),
   then use the project-card **+** launcher to start from a
   new/existing branch, a pull request, or an issue and open the selected terminals,
@@ -269,6 +272,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·
 [file viewer](./docs/file-viewer.md) ·
 [provider usage statistics](./docs/providers.md) ·

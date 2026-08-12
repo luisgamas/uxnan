@@ -368,6 +368,17 @@ shipping.
 
 ## App+bridge seams (need a live bridge to finish/verify)
 
+- [ ] **Worktree location is derived on the phone, and disagrees with the
+      desktop.** `new_conversation_screen.dart` `_worktreePath()` builds
+      `<parent>/<repo>-<branch>` (one dash, its own slug rule) because the bridge
+      requires an explicit `path`. The desktop now groups worktrees under a
+      managed root (`~/uxnan/worktrees/<repo>/<branch>`), so the same repository
+      and branch land in two different folders depending on which app created
+      them. Owed once the bridge resolves locations itself (item in
+      `bridge/FOR-DEV.md`): send `managed: true` **without** `path` when
+      `bridge/status` advertises `features.managedWorktrees`, keep the derived
+      path only as the fallback for an older bridge, and align that fallback with
+      the desktop's spelling so the two stop diverging even there.
 - [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**
       now enforce the per-turn access mode (see `bridge/CHANGELOG.md`
       "per-turn access-mode enforcement"). Remaining: **Codex mid-thread re-apply**

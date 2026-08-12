@@ -5,6 +5,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **New worktrees land in a folder uxnan manages, grouped by project.** The
+  default is now `~/uxnan/worktrees/<project>/<branch>` — beside the folder the
+  clone flow already writes to — instead of a `<project>--<branch>` sibling
+  dropped next to the repository. **Settings → Git → Worktree location** offers
+  the three layouts (managed, beside the project, a folder you choose), and a
+  project can override the root from its own settings when it belongs on another
+  volume or needs a shorter path. Nothing is migrated: worktrees already on disk
+  are read from `git worktree list` and keep working exactly where they are, so
+  only creation changes.
+- **Branch names are folded into folder names that are valid everywhere.**
+  Beyond the `/` → `-` flattening, the characters Windows rejects are dropped,
+  the trailing dots and spaces it silently strips are trimmed, its reserved
+  device names (`CON`, `NUL`, `COM1`, …) are escaped, and a long branch is capped
+  on a word boundary. A destination that is already taken takes the next free
+  `-2` / `-3` suffix rather than failing in git.
+- **Settings → Git also shows the identity commits are authored with** — name,
+  email, `init.defaultBranch` and the installed git version, read from git's own
+  global/system configuration (never from an open repository, which can override
+  it for itself). An identity that is not set says so, with the reason it
+  matters: git refuses to commit without one.
+- **A worktree of a WSL repository stays inside the distro**, under the same
+  `~/uxnan/worktrees` layout on the Linux filesystem — never on the Windows side
+  of the 9P share, where it would be slow and lose file modes.
+
+### Changed
+
+- **Where a worktree goes is decided in one place.** It used to be computed in
+  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
+  copy that had already drifted into a different folder name for the same
+  repository and branch. The layout now lives only in
+  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
+  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
+- **The PR and issue worktree flows use the same location and the same reuse
+  check.** Both used to build the sibling path themselves, and the issue flow
+  decided "this was already checked out" by testing whether that exact folder
+  existed. It now asks git which worktree is on the branch, so a re-run finds the
+  existing checkout wherever it lives — including one created under the old
+  layout.
+
 ### Fixed
 
 - **A downloaded update no longer hides the "Check now" button.**

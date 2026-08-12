@@ -17,6 +17,7 @@ import {
   repoRemove,
   repoReorder as apiRepoReorder,
   repoSetBranchIcon,
+  repoSetWorktreeRoot,
   repoUpdate,
   setWorktreeOrder as apiSetWorktreeOrder,
   worktreeCreate,
@@ -989,6 +990,16 @@ class ProjectsStore {
       toastError(e);
       return false;
     }
+  }
+
+  /** Set (or clear with null) this project's own managed-worktree root, which
+   *  overrides Settings → Git for this repository only. Reconciles the returned
+   *  repo into `app.repos`. Rethrows, so the dialog can keep what was typed and
+   *  show why an invalid path was refused. */
+  async setWorktreeRoot(repoId: string, root: string | null): Promise<void> {
+    const updated = await repoSetWorktreeRoot(repoId, root);
+    const i = app.repos.findIndex((r) => r.id === repoId);
+    if (i !== -1) app.repos[i] = updated;
   }
 
   /** Set (or clear with null) a per-branch icon, keyed by branch name (or the

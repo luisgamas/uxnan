@@ -203,6 +203,67 @@ pub async fn is_git_repo(path: &str) -> bool {
     )
 }
 
+/// The git identity commits are authored with, plus the two facts that decide
+/// what a fresh worktree starts from and what the CLI can do (spec `02c` §2.1).
+/// Every field is optional: an unset identity is a real, reportable state — it
+/// is what makes `git commit` fail — and a missing `git` binary must not turn
+/// the settings pane into an error.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GitIdentity {
+    /// `user.name`.
+    pub name: Option<String>,
+    /// `user.email`.
+    pub email: Option<String>,
+    /// `init.defaultBranch` — what `git init` names the first branch.
+    pub default_branch: Option<String>,
+    /// The `git --version` number, e.g. `2.45.1`. `None` = git is not on PATH.
+    pub version: Option<String>,
+}
+
+/// Read a git config value, or `None` when it isn't set (`git config --get`
+/// exits 1 for a missing key, which the [`git`] helper reports as an error).
+async fn config_value(cwd: &str, args: &[&str]) -> Option<String> {
+    let mut argv = vec!["config", "--get"];
+    argv.extend_from_slice(args);
+    let out = git(cwd, &argv).await.ok()?;
+    let value = out.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// The **global** value of `key`, falling back to whatever git resolves from
+/// `cwd` when nothing is set globally — that covers a system-level identity
+/// (`/etc/gitconfig`, or a corporate install) without reporting a repository's
+/// own override as if it applied everywhere.
+async fn global_or_effective(cwd: &str, key: &str) -> Option<String> {
+    if let Some(value) = config_value(cwd, &["--global", key]).await {
+        return Some(value);
+    }
+    config_value(cwd, &["--system", key]).await
+}
+
+/// The identity git will author with outside any particular repository, for
+/// Settings → Git. `cwd` only anchors the process (the home directory); the
+/// values themselves come from the global/system config, never from a repo.
+pub async fn identity(cwd: &str) -> GitIdentity {
+    GitIdentity {
+        name: global_or_effective(cwd, "user.name").await,
+        email: global_or_effective(cwd, "user.email").await,
+        default_branch: global_or_effective(cwd, "init.defaultBranch").await,
+        version: git(cwd, &["--version"])
+            .await
+            .ok()
+            .and_then(|out| parse_git_version(&out)),
+    }
+}
+
+/// Pull the number out of `git version 2.45.1.windows.1` → `2.45.1.windows.1`.
+/// Pure so it's unit-tested; returns `None` for output that isn't a version line.
+fn parse_git_version(output: &str) -> Option<String> {
+    let rest = output.trim().strip_prefix("git version ")?.trim();
+    (!rest.is_empty()).then(|| rest.to_string())
+}
+
 /// Human-friendly name for a repo path (its final path component).
 pub fn repo_name(path: &str) -> String {
     Path::new(path)
@@ -398,24 +459,11 @@ fn split_host_owner(host_and_path: &str) -> Option<RemoteOwner> {
     })
 }
 
-/// Where a new worktree for `branch` is created: a sibling of the repo named
-/// `<repo>--<branch>` (branch separators flattened so it's a valid folder).
-///
-/// The path is returned with forward slashes so it matches what `git worktree
-/// list` reports (git normalizes to `/` even on Windows). Keeping one canonical
-/// form means the frontend's per-worktree workspace keys line up — otherwise a
-/// freshly-created worktree's backslash path wouldn't match its list entry, and
-/// e.g. an auto-launched agent would open in an invisible workspace.
-pub fn worktree_path_for(repo_path: &str, branch: &str) -> String {
-    let repo = Path::new(repo_path);
-    let parent = repo.parent().unwrap_or(repo);
-    let name = repo_name(repo_path);
-    let safe_branch = branch.replace(['/', '\\'], "-");
-    parent
-        .join(format!("{name}--{safe_branch}"))
-        .to_string_lossy()
-        .replace('\\', "/")
-}
+// Where a new worktree lands is decided by `worktreeloc.rs`, which owns both
+// layouts (the managed root and the legacy sibling) and the settings that pick
+// between them. It is deliberately not duplicated here: the app used to compute
+// this path in three places — Rust, the Svelte dialog and the phone — and they
+// had already drifted apart into three different folder names.
 
 /// Normalize a path for comparison only: forward slashes, no trailing slash, and
 /// lowercased on Windows (its filesystem is case-insensitive). Pure so it's
@@ -1595,10 +1643,36 @@ mod tests {
     }
 
     #[test]
-    fn worktree_path_flattens_branch_separators() {
-        let p = worktree_path_for("/home/u/myrepo", "feature/login");
-        assert!(p.ends_with("myrepo--feature-login"));
-        assert!(p.contains("/home/u") || p.contains("\\home\\u"));
+    fn parses_the_git_version_line() {
+        assert_eq!(
+            parse_git_version("git version 2.45.1.windows.1\n").as_deref(),
+            Some("2.45.1.windows.1")
+        );
+        assert_eq!(
+            parse_git_version("git version 2.45.1").as_deref(),
+            Some("2.45.1")
+        );
+        // Anything that isn't a version line reports "unknown", not a bogus value.
+        assert_eq!(parse_git_version(""), None);
+        assert_eq!(parse_git_version("command not found"), None);
+        assert_eq!(parse_git_version("git version "), None);
+    }
+
+    #[tokio::test]
+    async fn identity_reads_the_configured_author_and_version() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // `init_repo` sets the author LOCALLY. The identity is deliberately read
+        // from the global/system config, so a repo's own override must not show
+        // up here — otherwise the pane would report an identity the user does
+        // not actually have anywhere else.
+        let id = identity(&repo_path).await;
+        assert_ne!(id.name.as_deref(), Some("Uxnan Test"));
+        assert_ne!(id.email.as_deref(), Some("test@uxnan.dev"));
+        // git is on PATH in every environment that runs these tests.
+        assert!(id.version.is_some(), "no git version reported");
     }
 
     #[test]
@@ -1642,19 +1716,6 @@ mod tests {
         // Garbage / empty return None rather than a bogus owner.
         assert!(parse_remote_owner("").is_none());
         assert!(parse_remote_owner("not-a-url").is_none());
-    }
-
-    #[test]
-    fn worktree_path_for_stays_under_wsl_unc_prefix() {
-        // A WSL repo's worktree must remain a sibling under the same UNC share so
-        // the path keeps parsing as WSL (and routes through wsl.exe).
-        let p = worktree_path_for("//wsl.localhost/Ubuntu/home/u/myrepo", "feature/login");
-        assert!(p.ends_with("myrepo--feature-login"), "got {p}");
-        assert!(p.contains("wsl.localhost/Ubuntu/home/u"), "got {p}");
-        assert!(
-            crate::wsl::parse(&p).is_some(),
-            "result should still parse as WSL"
-        );
     }
 
     #[test]
@@ -1858,7 +1919,7 @@ mod tests {
 
         // A feature worktree — even a fully-merged branch stays untouched when no
         // cleanup is opted into: removing a worktree removes only the worktree.
-        let wt = worktree_path_for(&repo_path, "feature");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "feature");
         add_worktree(&repo_path, "feature", &wt, Some("main"))
             .await
             .unwrap();
@@ -1888,7 +1949,7 @@ mod tests {
         init_repo(&repo_path).await;
 
         // A feature worktree with its own commit.
-        let wt = worktree_path_for(&repo_path, "feature");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "feature");
         add_worktree(&repo_path, "feature", &wt, Some("main"))
             .await
             .unwrap();
@@ -1922,7 +1983,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "wip");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "wip");
         add_worktree(&repo_path, "wip", &wt, Some("main"))
             .await
             .unwrap();
@@ -1952,7 +2013,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "feature");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "feature");
         add_worktree(&repo_path, "feature", &wt, Some("main"))
             .await
             .unwrap();
@@ -1980,7 +2041,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "squashed");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "squashed");
         add_worktree(&repo_path, "squashed", &wt, Some("main"))
             .await
             .unwrap();
@@ -2009,7 +2070,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "untouched");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "untouched");
         add_worktree(&repo_path, "untouched", &wt, Some("main"))
             .await
             .unwrap();
@@ -2035,7 +2096,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "did-the-work");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "did-the-work");
         add_worktree(&repo_path, "did-the-work", &wt, Some("main"))
             .await
             .unwrap();
@@ -2072,7 +2133,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "brand-new");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "brand-new");
         add_worktree(&repo_path, "brand-new", &wt, Some("main"))
             .await
             .unwrap();
@@ -2125,7 +2186,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "side");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "side");
         add_worktree(&repo_path, "side", &wt, Some("main"))
             .await
             .unwrap();
@@ -2159,7 +2220,7 @@ mod tests {
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "wip");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "wip");
         add_worktree(&repo_path, "wip", &wt, Some("main"))
             .await
             .unwrap();
@@ -2203,7 +2264,7 @@ mod tests {
         // A local branch that isn't checked out anywhere yet.
         run_git(&repo_path, &["branch", "existing"]).await;
 
-        let wt = worktree_path_for(&repo_path, "existing");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "existing");
         add_worktree_from_existing(&repo_path, "existing", &wt)
             .await
             .unwrap();

@@ -57,6 +57,7 @@
   import ThemeSettings from "./ThemeSettings.svelte";
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import OpenWithSettings from "./OpenWithSettings.svelte";
+  import GitSettings from "./GitSettings.svelte";
   import GithubSettings from "./GithubSettings.svelte";
   import PetsSettings from "./PetsSettings.svelte";
   import ResourceSettings from "./ResourceSettings.svelte";
@@ -96,6 +97,7 @@
   import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
   import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
   import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
   import CircleHelpIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
   import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
@@ -784,6 +786,7 @@
       items: [
         { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
         { id: "browser", key: "settings.browser", icon: GlobeIcon },
+        { id: "git", key: "settings.git", icon: GitBranchIcon },
         { id: "github", key: "settings.github", icon: GithubIcon },
         { id: "openWith", key: "settings.openWith", icon: AppWindowIcon },
       ],
@@ -1685,6 +1688,8 @@
           </SettingsSection>
         {:else if app.settingsSection === "openWith"}
           <OpenWithSettings />
+        {:else if app.settingsSection === "git"}
+          <GitSettings />
         {:else if app.settingsSection === "github"}
           <GithubSettings />
         {:else if app.settingsSection === "resources"}

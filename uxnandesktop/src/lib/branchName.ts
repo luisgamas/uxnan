@@ -1,24 +1,10 @@
-// Branch-name helpers shared by the worktree dialogs. Pure, so they're unit-tested
-// and can't drift from their Rust counterparts unnoticed.
-
-/**
- * The sibling folder a worktree for `branch` will land in — the mirror of
- * `git::worktree_path_for`: `<parent>/<repo>--<safe-branch>`, with `/` and `\` in
- * the branch flattened to `-`.
- *
- * The result is canonicalized to **forward slashes**, exactly as git reports
- * worktree paths (and as the backend returns them). That matters beyond looks:
- * a path built here is compared against listed worktree paths, and a
- * backslash form would never match its own worktree on Windows.
- */
-export function worktreeFolderFor(repoPath: string, branch: string): string {
-  const norm = repoPath.replace(/\\/g, "/").replace(/\/+$/, "");
-  const segments = norm.split("/");
-  const repoName = segments.pop() ?? "";
-  const parent = segments.join("/");
-  const safeBranch = branch.replace(/[\\/]/g, "-");
-  return `${parent}/${repoName}--${safeBranch}`;
-}
+// Branch-NAME helpers shared by the worktree dialogs. Pure, so they're unit-tested.
+//
+// Where a worktree lands is deliberately NOT here. That path used to be computed
+// in this file as a mirror of the Rust one, and mirrors drift: this copy and the
+// phone's ended up producing different folder names for the same repository and
+// branch. The layout now lives once in `src-tauri/src/worktreeloc.rs`, and the
+// dialogs ask it for a preview (`worktreePreviewPath` in `$lib/api`).
 
 /**
  * Slugify a PR/issue title into the branch-name form GitHub itself uses

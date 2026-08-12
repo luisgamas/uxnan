@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 542 Rust tests (513 unit + 29
+always wins). 563 Rust tests (534 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,029 passing frontend Vitest tests across two
+probe) + 1,031 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -65,7 +65,14 @@ started.**
   through `wsl.exe`. **Creation** offers two modes — a **new branch** from a base
   (with a friendly auto-name generator) or **checking out any existing local /
   remote branch** into an isolated worktree — plus an **optional custom location**
-  (editable path + an in-app folder browser). **Removal is worktree-only by
+  (editable path + an in-app folder browser). **Where a new worktree lands** is
+  decided once, in `src-tauri/src/worktreeloc.rs`: by default the managed root
+  `~/uxnan/worktrees/<project>/<branch>`, switchable in **Settings → Git** to the
+  legacy `<project>--<branch>` sibling or to a root of the user's own, and
+  overridable per project. Branch names are folded into folder names valid on
+  every OS, a taken destination takes the next free suffix, the group is always
+  measured from the repository's **main** worktree, and a WSL repo's worktrees
+  stay inside the distro. Existing worktrees are never moved. **Removal is worktree-only by
   default**: the branch is kept unless the user opts into **deleting the local
   branch** (safe `-d`, with a force for unmerged work and the squash-merge
   safety net preserved) and/or the **remote branch** on `origin`. The **in-app
@@ -1203,7 +1210,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 542 Rust + 1,029 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 563 Rust + 1,031 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

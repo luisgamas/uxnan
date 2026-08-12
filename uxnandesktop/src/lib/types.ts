@@ -368,6 +368,37 @@ export interface AppSettings {
    *  per-capability overrides. Absent = `balanced` (the pre-mode behavior).
    *  Validated and resolved by `$lib/resources/policy`. */
   resourceMode?: ResourceModeSettings;
+  /** Where new worktrees are created. Absent = the managed root
+   *  (`<home>/uxnan/worktrees/<repo>/<branch>`). Only affects worktrees created
+   *  from now on: the ones already on disk are read from git and keep working
+   *  wherever they live. */
+  worktrees?: WorktreeSettings;
+}
+
+/** The git identity commits are authored with (mirror of the Rust
+ *  `GitIdentity`), read from the global/system config — not from any open
+ *  repository, which can override it for itself. Every field is optional: an
+ *  unset identity is a real state, and it is what makes `git commit` fail. */
+export interface GitIdentity {
+  name?: string | null;
+  email?: string | null;
+  /** `init.defaultBranch` — what `git init` names the first branch. */
+  defaultBranch?: string | null;
+  /** The `git --version` number. Absent = git is not on PATH. */
+  version?: string | null;
+}
+
+/** Which layout a new worktree uses (mirror of the Rust `WorktreeLocationMode`).
+ *  - `managed`: `<home>/uxnan/worktrees/<repo>/<branch>` — the default;
+ *  - `sibling`: `<parent>/<repo>--<branch>`, what the app did before;
+ *  - `custom`: the managed layout under a root the user names. */
+export type WorktreeLocationMode = "managed" | "sibling" | "custom";
+
+/** Worktree placement settings (mirror of the Rust `WorktreeSettings`). */
+export interface WorktreeSettings {
+  location?: WorktreeLocationMode;
+  /** Root for `custom`; ignored by the other modes. */
+  root?: string | null;
 }
 
 /** Resource-mode settings (mirror of the Rust `ResourceModeSettings`). Every
@@ -637,6 +668,10 @@ export interface RepoData {
    *  present are ignored and freshly-seen ones fall to the end (self-healing).
    *  Absent/empty → the git listing order. Set via `setWorktreeOrder`. */
   worktreeOrder?: string[];
+  /** This project's own managed-worktree root, overriding the global setting
+   *  (another volume, or a path short enough for a deep dependency tree on
+   *  Windows). Absent/null → the global setting. Set via `repoSetWorktreeRoot`. */
+  worktreeRoot?: string | null;
 }
 
 /** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
@@ -1320,6 +1355,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pets: { enabled: true },
   resources: { enabled: true, orphanSweep: false, orphanSweepSeconds: 20 },
   resourceMode: { profile: "balanced", overrides: {}, autoSleep: false, schemaVersion: 1 },
+  worktrees: { location: "managed", root: null },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,

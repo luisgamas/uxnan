@@ -1,15 +1,17 @@
 <script lang="ts">
   // Per-project settings: the card's display name and icon (both display-only —
-  // the folder on disk is never touched), plus read-only project info (location,
-  // type, git remote, worktree count). Opened from the project card's ⋯ menu.
-  // The icon is committed immediately by the shared IconPicker; the name is
-  // committed on Save.
+  // the folder on disk is never touched), this project's own worktree folder,
+  // plus read-only project info (location, type, git remote, worktree count).
+  // Opened from the project card's ⋯ menu. The icon is committed immediately by
+  // the shared IconPicker; the name and the worktree folder are committed on Save.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
   import { repoRemoteOwner, revealPath } from "$lib/api";
+  import { toastError } from "$lib/toast";
+  import FolderSelectDialog from "./FolderSelectDialog.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
   import { control, icon, iconButton, text } from "$lib/design";
@@ -41,6 +43,7 @@
   $effect(() => {
     if (!open) return;
     name = repo.name;
+    worktreeRoot = repo.worktreeRoot ?? "";
     ownerLabel = null;
     if (isGit) {
       repoRemoteOwner(repo.id)
@@ -50,15 +53,36 @@
   });
 
   const worktreeCount = $derived(projects.worktreeCount(repo.id));
-  const dirty = $derived(name.trim() !== repo.name);
 
-  async function saveName() {
+  // This project's own worktree folder. Blank = follow Settings → Git, which is
+  // what almost every project wants; the override exists for the repository that
+  // belongs on another volume, or needs a shorter path than the rest.
+  let worktreeRoot = $state("");
+  let rootBrowseOpen = $state(false);
+
+  const dirty = $derived(
+    name.trim() !== repo.name || worktreeRoot.trim() !== (repo.worktreeRoot ?? ""),
+  );
+
+  async function save() {
     if (busy) return;
     busy = true;
-    // An empty name resets the card label to the real folder name (backend).
-    await projects.updateProject(repo.id, { name: name.trim() });
-    busy = false;
-    open = false;
+    try {
+      // An empty name resets the card label to the real folder name (backend).
+      if (name.trim() !== repo.name) {
+        await projects.updateProject(repo.id, { name: name.trim() });
+      }
+      if (worktreeRoot.trim() !== (repo.worktreeRoot ?? "")) {
+        await projects.setWorktreeRoot(repo.id, worktreeRoot.trim() || null);
+      }
+      open = false;
+    } catch (e) {
+      // A refused path keeps the dialog open with what they typed, so the fix is
+      // one edit away rather than a retype.
+      toastError(e);
+    } finally {
+      busy = false;
+    }
   }
 </script>
 
@@ -108,11 +132,35 @@
             bind:value={name}
             placeholder={i18n.t("projectSettings.namePlaceholder")}
             autocomplete="off"
-            onkeydown={(e) => e.key === "Enter" && dirty && saveName()}
+            onkeydown={(e) => e.key === "Enter" && dirty && save()}
           />
           <p class={text.meta}>{i18n.t("projectSettings.nameDesc")}</p>
         </div>
       </div>
+
+      <!-- This project's worktree folder (blank = follow the global setting). -->
+      {#if isGit}
+        <div class="flex flex-col gap-1.5">
+          <label for="proj-worktree-root" class={cn("font-medium", text.body)}>
+            {i18n.t("projectSettings.worktreeRoot")}
+          </label>
+          <div class="flex items-center gap-2">
+            <Input
+              id="proj-worktree-root"
+              class="min-w-0 flex-1 font-mono text-[12px]"
+              bind:value={worktreeRoot}
+              spellcheck={false}
+              autocomplete="off"
+              placeholder={i18n.t("projectSettings.worktreeRootPlaceholder")}
+              onkeydown={(e) => e.key === "Enter" && dirty && save()}
+            />
+            <Button variant="outline" size="sm" onclick={() => (rootBrowseOpen = true)}>
+              {i18n.t("newWorktree.browse")}
+            </Button>
+          </div>
+          <p class={text.meta}>{i18n.t("projectSettings.worktreeRootDesc")}</p>
+        </div>
+      {/if}
 
       <!-- Read-only info. -->
       <div class="flex flex-col gap-2 rounded-lg border border-border/50 bg-card/50 px-4 py-3">
@@ -171,7 +219,7 @@
     </div>
 
     <Dialog.Footer>
-      <Button disabled={busy || !dirty} onclick={saveName}>
+      <Button disabled={busy || !dirty} onclick={save}>
         {#if busy}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {/if}
@@ -180,6 +228,13 @@
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
+
+<FolderSelectDialog
+  bind:open={rootBrowseOpen}
+  title={i18n.t("projectSettings.worktreeRoot")}
+  description={i18n.t("projectSettings.worktreeRootDesc")}
+  onselect={(path) => (worktreeRoot = path)}
+/>
 
 <IconPicker
   bind:open={iconPickerOpen}

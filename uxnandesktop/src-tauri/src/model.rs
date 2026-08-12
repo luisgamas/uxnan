@@ -92,6 +92,12 @@ pub struct RepoData {
     /// so the list self-heals. Empty (the default) → the git listing order.
     #[serde(default)]
     pub worktree_order: Vec<String>,
+    /// Per-project override of the managed worktree root, for a repository that
+    /// belongs somewhere else than the rest (another volume, a path short enough
+    /// for a deep dependency tree on Windows). `None` (the default) → the global
+    /// setting. Ignored in `sibling` mode, which has no root.
+    #[serde(default)]
+    pub worktree_root: Option<String>,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.
@@ -518,6 +524,47 @@ pub struct AppSettings {
     /// (`src/lib/resources/policy.ts`); this struct only keeps the shape.
     #[serde(default)]
     pub resource_mode: ResourceModeSettings,
+    /// Where new worktrees are created (Settings → Git → Worktree location).
+    /// All fields default, so state written before this existed loads unchanged
+    /// — and lands on the managed root, which only affects worktrees created
+    /// from then on: the ones already on disk are read from `git worktree list`
+    /// and keep working wherever they are.
+    #[serde(default)]
+    pub worktrees: WorktreeSettings,
+}
+
+/// Where the ADE puts a new worktree (spec `02c` §2.1). The layout itself lives
+/// in `worktreeloc.rs`; this is only the user's choice of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WorktreeLocationMode {
+    /// `<root>/<repo>/<branch>` under a root the app manages — by default
+    /// `<home>/uxnan/worktrees`, beside the folder the clone flow already writes
+    /// to. Groups a repository's checkouts instead of scattering them, and is
+    /// the same layout the bridge gives the phone.
+    #[default]
+    Managed,
+    /// `<parent>/<repo>--<branch>`, the layout the app used before the managed
+    /// root existed. Kept for anyone whose tooling expects the sibling folders.
+    Sibling,
+    /// `<custom-root>/<repo>/<branch>` — the managed layout under a root the
+    /// user names (another drive, a shorter path, a folder outside a synced
+    /// home).
+    Custom,
+}
+
+/// Worktree placement settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeSettings {
+    /// Which layout new worktrees use.
+    #[serde(default)]
+    pub location: WorktreeLocationMode,
+    /// Root for [`WorktreeLocationMode::Custom`]; ignored by the other modes.
+    /// `None`/empty falls back to the default managed root rather than failing,
+    /// so a half-configured setting never blocks creating a worktree.
+    #[serde(default)]
+    pub root: Option<String>,
 }
 
 /// Local resource observability (CPU / memory / process attribution for uxnan,
@@ -1137,6 +1184,7 @@ impl Default for AppSettings {
             profile: None,
             resources: ResourceSettings::default(),
             resource_mode: ResourceModeSettings::default(),
+            worktrees: WorktreeSettings::default(),
         }
     }
 }

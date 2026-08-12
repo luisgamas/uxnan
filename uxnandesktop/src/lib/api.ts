@@ -30,6 +30,7 @@ import type {
   FileNumstat,
   FileSearch,
   FsEntry,
+  GitIdentity,
   GithubStatus,
   ImportablePet,
   InstalledPet,
@@ -438,11 +439,37 @@ export function branchList(repoId: string): Promise<BranchList> {
   return invoke<BranchList>('branch_list', { repoId });
 }
 
+/** The git identity commits are authored with (Settings → Git), read from the
+ *  global/system config rather than any open repository. Never rejects: an unset
+ *  field comes back `null`, which is itself worth showing — an identity that is
+ *  not set is what makes `git commit` fail later. */
+export function gitIdentity(): Promise<GitIdentity> {
+  return invoke<GitIdentity>('git_identity');
+}
+
+/** Where a worktree for `branch` would land, under the settings that apply to
+ *  this project. Read-only, so the create dialog can show it while the user
+ *  types. Empty string for an empty branch.
+ *
+ *  The path is deliberately NOT recomputed in the frontend: the layout (managed
+ *  root, per-project override, branch sanitizing, WSL mirroring, collision
+ *  suffixes) lives once in the backend, and the last time this was mirrored here
+ *  the two copies drifted into different folder names. */
+export function worktreePreviewPath(repoId: string, branch: string): Promise<string> {
+  return invoke<string>('worktree_preview_path', { repoId, branch });
+}
+
+/** Set (or clear, with `null`) a project's own managed-worktree root, overriding
+ *  the global setting for that repository. Returns the updated repo. */
+export function repoSetWorktreeRoot(repoId: string, root: string | null): Promise<RepoData> {
+  return invoke<RepoData>('repo_set_worktree_root', { repoId, root });
+}
+
 /** Create a worktree in a repo. `fromExisting` checks out an existing local/
  *  remote branch (ignoring `base`); otherwise a new `branch` is created from
  *  `base` (omit `base` to let the backend resolve the default base). `path` is an
- *  optional custom worktree directory (absolute, not yet existing); omit it for
- *  the automatic sibling location. */
+ *  optional custom worktree directory for this one creation (absolute, not yet
+ *  existing); omit it to let the backend place it per the user's settings. */
 export function worktreeCreate(
   repoId: string,
   branch: string,
