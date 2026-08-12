@@ -24,6 +24,7 @@ file is optional; create it to override. Defaults live in
 | `checkpointTtlDays` | `0` | Delete workspace checkpoints older than N days on capture. `0` = no TTL. |
 | `workspaceRoots` | `[]` | Absolute project dirs exposed via `project/list` (empty → the bridge cwd). |
 | `browseRoots` | `[]` | Absolute base dirs the phone may **browse** under (`workspace/browseDirs`). Empty → falls back to `workspaceRoots`, then the **bridge's launch directory** (`process.cwd()`). So with nothing configured, the phone browses from wherever you started the bridge — zero-config plug-and-play. |
+| `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
 | `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
@@ -37,6 +38,43 @@ file is optional; create it to override. Defaults live in
 > (`.env*`, `*.pem`/`*.key`, `id_rsa*`, `credentials.json`, `.npmrc`) in any
 > segment of the path, and it refuses anything that is not an existing regular
 > file. The trust boundary is the pairing itself.
+
+### Worktree location (`worktrees`)
+
+Where a worktree goes when `git/createWorktree` is called **without** a `path`.
+A client that sends one still gets exactly that path.
+
+| `location` | Result | |
+|---|---|---|
+| `managed` (default) | `<home>/uxnan/worktrees/<repo>/<branch>` | Grouped by project under a folder uxnan owns |
+| `sibling` | `<parent>/<repo>--<branch>` | The layout used before the managed root |
+| `custom` | `<worktrees.root>/<repo>/<branch>` | The managed layout under a root you name |
+
+```json
+{ "worktrees": { "location": "custom", "root": "D:/trees" } }
+```
+
+This mirrors the desktop's **Settings → Git → Worktree location** on purpose:
+both apps place worktrees for the same repositories, and the two derivations had
+drifted into different folder names for the same repository and branch. The
+layout lives in `src/git/worktree-location.ts` here and in
+`uxnandesktop/src-tauri/src/worktreeloc.rs` there, driven by one shared table of
+cases — including the digest that keeps two projects with the same folder name
+apart, which both sides pin to the same value.
+
+The rules it applies: the group is measured from the repository's **main**
+worktree (creating one from inside another must not nest); branch names are
+folded into folder names valid on every OS (Windows-invalid characters, trailing
+dots and spaces, reserved device names like `CON`, length capped at 60 on a word
+boundary); a taken destination takes the next free `-2`/`-3`; and nothing is ever
+placed inside the repository's own work tree.
+
+Worktrees the bridge placed itself are recorded in `~/.uxnan/managed-worktrees.json`,
+so a later cleanup can tell them from checkouts that were already on disk. A
+client-supplied path is not recorded — that is the client's own arrangement.
+
+Clients discover support through `features.managedWorktrees` on `bridge/status`:
+absent means the bridge still requires `path`.
 
 ### Per-agent overrides (`agents.<id>`)
 

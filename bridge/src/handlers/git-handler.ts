@@ -3,10 +3,12 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.6.
  */
-import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError, type GitWorktreeResult } from '@uxnan/shared';
 import type { HandlerRouter, RpcHandler } from '../handler-router.js';
+import type { BridgeContext } from '../bridge-context.js';
 import { GitService } from '../git/git-service.js';
 import { GitCommandError } from '../git/git-runner.js';
+import { DAEMON_FILES } from '../daemon-state.js';
 import { optionalString, requireSafe, requireString } from './params.js';
 
 /** Wrap a git operation so failures become a -32003 GitOperationFailed error. */
@@ -17,6 +19,48 @@ function gitOp(fn: () => Promise<unknown>): Promise<unknown> {
     }
     throw err;
   });
+}
+
+/**
+ * One worktree uxnan itself created, as recorded in `managed-worktrees.json`.
+ * Knowing which checkouts are ours is what lets a later cleanup pass tell them
+ * from the ones that were already on disk — which must never be touched.
+ */
+interface ManagedWorktreeRecord {
+  path: string;
+  branch: string;
+  /** The repository this belongs to, as the client named it. */
+  cwd: string;
+  /** Epoch ms. */
+  createdAt: number;
+}
+
+/**
+ * Record a worktree the bridge placed. Only the ones the bridge located itself
+ * are registered: a client-supplied `path` is the client's own arrangement, not
+ * a managed folder. Best-effort — a registry that cannot be written must never
+ * fail a worktree that git already created.
+ */
+async function recordManagedWorktree(
+  ctx: BridgeContext,
+  worktree: GitWorktreeResult,
+  params: unknown,
+): Promise<void> {
+  if (optionalSafe(params, 'path')) return;
+  try {
+    const existing =
+      (await ctx.state.readJson<ManagedWorktreeRecord[]>(DAEMON_FILES.managedWorktrees)) ?? [];
+    const kept = existing.filter((entry: ManagedWorktreeRecord) => entry.path !== worktree.path);
+    kept.push({
+      path: worktree.path,
+      branch: worktree.branch,
+      cwd: requireString(params, 'cwd'),
+      createdAt: Date.now(),
+    });
+    await ctx.state.writeJson(DAEMON_FILES.managedWorktrees, kept);
+  } catch {
+    // Never fails the creation: the worktree exists either way.
+  }
 }
 
 export function registerGitHandlers(router: HandlerRouter): void {
@@ -41,14 +85,21 @@ export function registerGitHandlers(router: HandlerRouter): void {
       gitOp(() => git.checkout(requireString(p, 'cwd'), requireSafe(p, 'branch'))),
     'git/createBranch': (p) =>
       gitOp(() => git.createBranch(requireString(p, 'cwd'), requireSafe(p, 'name'))),
-    'git/createWorktree': (p) =>
-      gitOp(() =>
-        git.createWorktree(
+    // `path` is optional: without one, the bridge places the worktree itself,
+    // under the same managed layout the desktop uses. A client that must also
+    // work against a bridge without `features.managedWorktrees` keeps sending
+    // its own path, which is honoured unchanged.
+    'git/createWorktree': (p, ctx) =>
+      gitOp(async () => {
+        const worktree = await git.createWorktree(
           requireString(p, 'cwd'),
           requireSafe(p, 'branch'),
-          requireSafe(p, 'path'),
-        ),
-      ),
+          optionalSafe(p, 'path'),
+          ctx.config.worktrees,
+        );
+        await recordManagedWorktree(ctx, worktree, p);
+        return worktree;
+      }),
     'git/stage': (p) => gitOp(() => git.stage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),
     'git/unstage': (p) =>
       gitOp(() => git.unstage(requireString(p, 'cwd'), requirePaths(p, 'paths'))),

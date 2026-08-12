@@ -280,7 +280,23 @@ export interface GitBranchParams {
 export interface GitWorktreeParams {
   cwd: string;
   branch: string;
-  path: string;
+  /**
+   * Absolute directory for the new worktree. **Optional**: omit it (with
+   * {@link managed}) and the bridge resolves the location itself, from its
+   * `worktrees` config — by default the managed root
+   * `<home>/uxnan/worktrees/<repo>/<branch>`, the same layout the desktop uses,
+   * so both apps group one repository's checkouts in one place.
+   *
+   * A bridge that does not advertise `features.managedWorktrees` still
+   * **requires** this, so a client that wants to work against an older bridge
+   * has to keep deriving a path as its fallback.
+   */
+  path?: string;
+  /**
+   * Let the bridge own the location (the default when {@link path} is absent).
+   * A managed worktree is recorded in the bridge's registry, so the ones uxnan
+   * created can be told from the ones that were already there.
+   */
   managed?: boolean;
 }
 export interface GitRevertParams {

@@ -143,3 +143,46 @@ test('workspace/resolveFileLink routes to a cross-worktree-safe viewer target', 
   await rmrf(baseDir);
   await rmrf(parent);
 });
+
+test('git/createWorktree places and registers a worktree with no path given', async () => {
+  const { bridge, baseDir } = await boot();
+  const repoDir = join(tmpdir(), `uxnan-gwwt-${randomUUID()}`);
+  await mkdir(repoDir, { recursive: true });
+  // Canonicalized: a temp dir is a symlink on macOS and an 8.3 short path on
+  // Windows, and git reports the real one back.
+  const repo = await realpath(repoDir);
+  await runGit(repo, ['init', '-b', 'main']);
+  await runGit(repo, ['config', 'user.email', 'test@uxnan.dev']);
+  await runGit(repo, ['config', 'user.name', 'Uxnan Test']);
+  await runGit(repo, ['config', 'commit.gpgsign', 'false']);
+  await writeFile(join(repo, 'README.md'), 'base\n');
+  await runGit(repo, ['add', '-A']);
+  await runGit(repo, ['commit', '-m', 'initial']);
+
+  // Put the managed root inside the test's own base dir so nothing lands in the
+  // real `~/uxnan`.
+  const root = join(baseDir, 'trees');
+  bridge.context.config.worktrees = { location: 'custom', root };
+
+  const res = await bridge.router.dispatch(
+    makeRequest('9', 'git/createWorktree', { cwd: repo, branch: 'feature/login' }),
+  );
+  assert.ok('result' in res, JSON.stringify(res));
+  const created = res.result as { path: string; branch: string };
+  assert.ok(
+    created.path.split('\\').join('/').endsWith('/feature-login'),
+    `unexpected path: ${created.path}`,
+  );
+  assert.equal(created.branch, 'feature/login');
+
+  // The bridge records the ones it placed itself, so a later cleanup can tell
+  // them from checkouts that were already on disk.
+  const registry = await bridge.context.state.readJson<Array<{ path: string; branch: string }>>(
+    'managed-worktrees.json',
+  );
+  assert.ok(registry?.some((entry) => entry.path === created.path), JSON.stringify(registry));
+
+  await bridge.stop();
+  await rmrf(baseDir);
+  await rmrf(repo);
+});

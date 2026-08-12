@@ -194,7 +194,7 @@ git/push                -> push a remote, con progreso por fase (stream/git/prog
 git/pull                -> pull desde remote
 git/checkout            -> checkout de rama (con auto-stash opcional)
 git/createBranch        -> crear nueva rama
-git/createWorktree      -> crear worktree (path explicito; managed flag reservado)
+git/createWorktree      -> crear worktree (`path` OPCIONAL: sin el, lo ubica el bridge)
 git/stage               -> stage de archivos o hunks especificos
 git/unstage             -> unstage de archivos o hunks especificos
 git/discard             -> descartar cambios de archivos o hunks especificos
@@ -301,8 +301,23 @@ bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push
   `bridge/docs/configuration.md`).
 - `git/branch/create` -> `git/createBranch`.
 - `git/worktree/create` -> `git/createWorktree`.
-- `git/worktree/managed/create` -> eliminado (el flag `managed` queda
-  reservado en `GitWorktreeParams` para uso futuro).
+- `git/worktree/managed/create` -> eliminado: no hace falta un metodo aparte,
+  porque **`GitWorktreeParams.path` es opcional**. Sin `path` (con `managed`),
+  el bridge ubica el worktree el mismo, con la misma disposicion que el
+  desktop: por defecto `<home>/uxnan/worktrees/<repo>/<rama>`, configurable a
+  la hermana `<repo>--<rama>` o a una raiz propia (`worktrees` en
+  `daemon-config`). El cliente lo descubre con
+  `BridgeFeatures.managedWorktrees` en `bridge/status`; si no esta, el bridge
+  sigue **exigiendo** `path` y el cliente debe derivarlo el mismo.
+
+  Esto cierra una divergencia real: la ruta se derivaba en cada cliente y las
+  derivaciones ya no coincidian — para el mismo repositorio y la misma rama,
+  el desktop producia `<repo>--<rama>` y el movil `<repo>-<rama>`, con reglas
+  de saneado distintas. La disposicion vive ahora una vez por runtime
+  (`bridge/src/git/worktree-location.ts` y
+  `uxnandesktop/src-tauri/src/worktreeloc.rs`), gobernada por la misma tabla de
+  casos en ambos lados; el detalle de las reglas esta en
+  `uxnandesktop/architecture/02c-git-worktrees.md` §2.1.1.
 - `git/stacked/publish` -> reemplazado por `git/commit` + `git/push` +
   `git/createPr` con auto-push condicional; el flujo "stacked" ya no
   es un metodo dedicado.

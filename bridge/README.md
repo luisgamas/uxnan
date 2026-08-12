@@ -34,6 +34,13 @@ Uxnan distinct actually live:
   launch a separate process per project: the phone browses the configured roots
   (`workspace/browseDirs`, constrained by the `browseRoots` setting) and roots a
   new conversation anywhere it is allowed to look.
+- **New worktrees land where the desktop puts them.** `git/createWorktree` takes
+  no path from the phone any more: the bridge places the worktree itself, under
+  `~/uxnan/worktrees/<project>/<branch>` by default — the same layout
+  `uxnandesktop` resolves — so one repository's checkouts stay grouped whichever
+  app created them. Configurable per install (`worktrees` in
+  [`docs/configuration.md`](docs/configuration.md)), and existing worktrees are
+  never moved.
 - **Conversation links follow the agent across worktrees.**
   `workspace/resolveFileLink` canonicalizes a local path cited in a response.
   Relative paths start at the conversation cwd; an absolute or `..` path can

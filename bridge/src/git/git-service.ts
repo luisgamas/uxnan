@@ -28,6 +28,11 @@ import type {
   GitWorktreeResult,
 } from '@uxnan/shared';
 import { GitCommandError, runGh, runGit } from './git-runner.js';
+import {
+  prepareWorktreePath,
+  resolveWorktreePath,
+  type WorktreeLocationConfig,
+} from './worktree-location.js';
 
 /**
  * Parses `git worktree list --porcelain`.
@@ -512,13 +517,33 @@ export class GitService {
     return { branch: name };
   }
 
-  async createWorktree(cwd: string, branch: string, path: string): Promise<GitWorktreeResult> {
+  /**
+   * Create a worktree for [branch]. With no [path], the location is resolved
+   * from [worktrees] — by default the managed root
+   * `<home>/uxnan/worktrees/<repo>/<branch>`, the same layout the desktop uses,
+   * so one repository's checkouts stay grouped whichever app created them.
+   *
+   * The group is measured from the repository's MAIN worktree, not from [cwd]:
+   * a thread whose cwd IS a worktree must not nest the new one under it.
+   */
+  async createWorktree(
+    cwd: string,
+    branch: string,
+    path?: string,
+    worktrees: WorktreeLocationConfig = { location: 'managed' },
+  ): Promise<GitWorktreeResult> {
+    let target = path;
+    if (!target) {
+      const resolved = await resolveWorktreePath(await this.#mainWorktree(cwd), branch, worktrees);
+      await prepareWorktreePath(resolved);
+      target = resolved.path;
+    }
     const exists = await this.#branchExists(cwd, branch);
     const args = exists
-      ? ['worktree', 'add', path, branch]
-      : ['worktree', 'add', '-b', branch, path];
+      ? ['worktree', 'add', target, branch]
+      : ['worktree', 'add', '-b', branch, target];
     await runGit(cwd, args);
-    return { path, branch };
+    return { path: target, branch };
   }
 
   /**

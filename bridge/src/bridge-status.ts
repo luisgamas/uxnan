@@ -33,6 +33,9 @@ const BRIDGE_FEATURES = {
   // Handing a queued follow-up to the turn already running, on agents whose CLI
   // has an input channel mid-turn (architecture/02a §5.8.13).
   midTurnDelivery: true,
+  // `git/createWorktree` resolves its own location when `path` is omitted, under
+  // the same managed layout the desktop uses (`git/worktree-location.ts`).
+  managedWorktrees: true,
 } as const;
 
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
