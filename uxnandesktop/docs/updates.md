@@ -181,6 +181,12 @@ survives every case:
   newer release first gets there sooner: it discards the staged installer
   (`updater_discard_staged`) and downloads the new one, so the offer on screen
   is always the version that would actually install.
+- **An install that fails** — `updater_install` takes the staged bytes out of
+  the backend before it can fail, on every one of its failure paths, so there is
+  nothing left to retry. The app returns to **available** (the version is still
+  offered, just no longer downloaded) and the action on screen becomes
+  *Download*. It never re-downloads on its own: under an auto-install policy a
+  genuinely broken installer would otherwise loop.
 - **Channel switched by the user** — the endpoint is rebuilt from the selected
   channel at runtime; the next check runs against the other channel's manifest,
   which still has to carry a valid signature. CI prevents a release from ever

@@ -285,7 +285,15 @@ class UpdaterStore {
     try {
       await updaterInstall(); // resolves only if the restart didn't happen
     } catch (e) {
-      this.status = "downloaded"; // back to a re-tryable state
+      // `updater_install` takes the staged bytes out of the backend before it
+      // can fail — on *every* failure path (dead re-check, pulled release, stale
+      // download, a failing installer). So there is nothing left to re-install:
+      // the honest state is "a version is on offer, not downloaded", and the
+      // action on screen becomes Download rather than an Install that could only
+      // answer "no downloaded update to install". Deliberately does not
+      // re-download on its own: with an auto-install policy, a genuinely broken
+      // installer would loop download → install → fail.
+      this.status = "available";
       this.error = e instanceof Error ? e.message : String(e);
       toastError(e);
     }

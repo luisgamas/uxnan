@@ -35,6 +35,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   memory until the app quits. Nothing is lost — those bytes could no longer be
   installed, and any older build is still a manual download from its GitHub
   Release.
+- **A failed install no longer offers a retry the backend can't serve.**
+  `updater_install` takes the staged bytes before it can fail — on every failure
+  path — so returning the UI to "downloaded" left an *Install* button whose only
+  possible answer was *no downloaded update to install*. It now returns to
+  "available", which is the true state: the version is still on offer, just no
+  longer downloaded. It does not re-download by itself, so an installer that
+  genuinely breaks can't loop with an auto-install policy.
 
 Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version,
 including the channel-switch and "release pulled" cases) + 2 Rust
