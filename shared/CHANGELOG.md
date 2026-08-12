@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — the README badge undercounted the methods
+
+`69 methods` on the badge against `70 JSON-RPC methods` in the prose two lines
+below it, with `METHOD_NAMES` holding 70. The bridge's README carried the same
+stale badge. Both now say 70.
+
 ### Changed — `git/createWorktree` can let the bridge place the worktree
 
 `GitWorktreeParams.path` is now **optional**. Omitted (with `managed`), the
