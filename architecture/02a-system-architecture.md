@@ -1039,6 +1039,30 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > el `Navigator` de la `ShellRoute`, y `GoRouterDelegate.popRoute` — a donde va
 > el boton atras del sistema — lo desreferencia sin comprobar. Sustituirlo por
 > otro widget en alguna ruta rompe el boton atras en TODA la app.
+>
+> **Un unico ambito responde por el boton atras, y esta montado en TODA ruta.**
+> Android no pregunta cuando se pulsa atras: actua sobre una afirmacion que la
+> app publica *antes*
+> (`SystemNavigator.setFrameworkHandlesBack`, que Flutter deriva de la ultima
+> `NavigationNotification` que llega a `WidgetsApp`). Como `AppShell` envuelve
+> al `Navigator` de la `ShellRoute`, ese ambito queda registrado en la ruta que
+> esta **por encima** de ese navigator, y de ahi salen dos reglas que ya se
+> incumplieron una vez:
+>
+> - **Devolver `child` pelado en una ruta desregistra el ambito**, y eso publica
+>   "esta app no gestiona atras". El sistema cerraba la app en vez de salir de
+>   Ajustes, mientras la flecha de la barra — un pop directo, que nunca pasa por
+>   el sistema — seguia funcionando en la misma pantalla.
+> - **El navigator de abajo puede contradecirlo.** Publica lo suyo en cada
+>   cambio de historial; un `Navigator` normal corrige un "no puedo" de su
+>   subarbol cuando el si puede, pero nada corrige el que viene de un navigator
+>   *por debajo* de la ruta que responde. Un panel abierto con `go` deja una
+>   sola pagina y anula asi el "atras vacia el panel" de la tablet. La
+>   correccion la hace el propio ambito mientras atras sea de la app.
+>
+> Lo que significa atras no cambia: sacar la pantalla que abriste; con drawer
+> permanente, vaciar el panel; en telefono sin nada que sacar, subir en la
+> jerarquia; y en la vista general, salir de la app.
 
 ```
 lib/presentation/

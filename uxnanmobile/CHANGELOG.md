@@ -6,6 +6,46 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — back from Settings returned to the launcher instead of the overview
+
+On a phone, opening Settings from the overview and pressing Android's back
+button left the app. Same from Profile. The app bar's own arrow worked from
+those very screens, and so did back from anywhere deeper — overview → Settings →
+Profile went back to Settings normally — which made it look like there were two
+Profile screens. There is one, at one route; what differed was the depth.
+
+Android does not ask the app when back is pressed. Through the predictive-back
+dispatcher — which this app is on, targeting SDK 36 — the platform acts on a
+claim published *ahead* of the press: `SystemNavigator.setFrameworkHandlesBack`,
+which Flutter derives from the last `NavigationNotification` to reach
+`WidgetsApp`. When that claim says the framework does not handle back, the
+platform closes the activity without ever calling into Flutter — which is
+exactly why the arrow, and every in-app pop, kept working on the screens that
+were leaving the app.
+
+The shell returned the router's navigator **bare** on its four full-screen
+routes (onboarding, pairing, settings, profile). That unregistered the scope
+answering for back and published precisely that claim. Reaching one of those
+routes from a deeper screen changed nothing in the shell, so the earlier claim
+stood and back behaved.
+
+The same false claim was reaching tablets from the other direction. A pane
+opened with `go` **replaces** the route rather than stacking on it, so the
+shell's navigator holds a single page and publishes its own "nothing to pop" —
+from below the scope answering for back, and late enough to overrule it. The
+first back press on a deep-linked conversation therefore closed an app visibly
+full of work, in spite of the handler written to empty the pane instead.
+
+The shell now mounts one back scope on **every** route, at one fixed place in
+the tree, and replaces a "nothing to pop" coming from below with the truth on
+its way up — the same upgrade an ordinary `Navigator` performs for its own
+subtree. Layouts, the route table and what every screen renders are untouched:
+back pops the screen you opened, empties the pane on a tablet, and still leaves
+the app from the overview, where there is genuinely nothing left.
+
+Eight tests pin both halves at both widths: the claim the app publishes before
+the press, and what the press then does.
+
 ## [0.0.20-alpha.20260812+20260812] - 2026-08-12
 
 ### Changed — a long reply no longer slows itself down while it streams

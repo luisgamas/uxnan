@@ -76,9 +76,36 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
 
 **Wide windows get a permanent drawer, and only that changes.** `AppShell`
 (`presentation/screens/shell/app_shell.dart`) is the `ShellRoute` builder: on
-compact and medium it returns the routed screen *literally*, so the phone's
-screen stack and back behaviour are untouched; on expanded and above it puts
-that screen in `TwoPaneScaffold`'s content pane beside `NavDrawer`.
+compact and medium it returns the routed screen as-is, so the phone keeps its
+plain screen stack; on expanded and above it puts that screen in
+`TwoPaneScaffold`'s content pane beside `NavDrawer`.
+
+**One place answers the system back button, on every route.** `_SystemBack`
+(same file) wraps the shell at one fixed spot in the tree, and it has to be
+exactly one, always mounted, because of *where* the router's `Navigator` sits:
+`AppShell` is above it, so the scope registers on the route **above** that
+navigator. Two things follow, and both shipped as bugs before they were
+understood.
+
+Android acts on a claim published *before* the press —
+`SystemNavigator.setFrameworkHandlesBack`, derived from the last
+`NavigationNotification` to reach `WidgetsApp` — and a route publishes one
+whenever its pop entries change. Returning the navigator bare on the
+full-screen routes removed that scope and published "this app does not handle
+back", so the OS closed the app rather than popping Settings, while the app
+bar's arrow (a direct pop, never routed through the OS) kept working.
+
+And the navigator underneath publishes its own claim on every history change,
+from below the scope: an ordinary `Navigator` upgrades a "cannot pop" from its
+subtree when it *can* pop, but nothing upgrades one that comes from a navigator
+below the route answering for it. A pane opened with `go` holds one page and
+says "nothing to pop", which overruled the tablet's own back handling. So
+`_SystemBack` performs that upgrade itself while back is the app's to answer.
+
+What back then means is unchanged: pop the screen you opened; with a permanent
+drawer, empty the pane (`closePane`'s rule, for a deep link that left nothing
+behind); on a phone with nothing to pop, walk up the hierarchy the phone would
+have built; and at the overview, leave the app.
 
 **Destinations are never wrapped.** Onboarding and pairing because there is
 nothing to navigate to yet (and pairing would offer to switch to a PC you are

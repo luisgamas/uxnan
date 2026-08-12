@@ -1335,6 +1335,55 @@ que es justo donde arranca una tablet. Lo que la raiz **muestra** es asunto de
 la ruta (`AppRoutes.home` devuelve la portada en telefono y el panel tranquilo
 junto al drawer), nunca del shell.
 
+**`_SystemBack` es el unico que responde por el boton atras, y va montado en
+toda ruta** — incluidas las de pantalla completa, que antes devolvian `child`
+pelado. Android no pregunta cuando se pulsa: actua sobre
+`SystemNavigator.setFrameworkHandlesBack`, que Flutter deriva de la ultima
+`NavigationNotification` que llega a `WidgetsApp`. Como `AppShell` esta por
+encima del `Navigator` del router, su `PopScope` se registra en la ruta de
+arriba, y eso obliga a dos cosas:
+
+```dart
+// app_shell.dart — un solo ambito, siempre en el mismo sitio del arbol.
+PopScope(
+  // Atras es de la app en todas partes menos en la vista general, donde ya no
+  // queda nada y debe salir como en cualquier otra app de Android.
+  canPop: location == AppRoutes.home,
+  onPopInvokedWithResult: (didPop, _) {
+    if (didPop || location == AppRoutes.home) return;
+    final nested = shellNavigatorKey.currentState;
+    if (nested != null && nested.canPop()) {
+      nested.pop();
+      return;
+    }
+    context.go(
+      context.hasPermanentPane ? AppRoutes.home : parentOf(location, context),
+    );
+  },
+  child: NotificationListener<NavigationNotification>(
+    onNotification: (n) {
+      // La misma correccion que hace un Navigator con SU subarbol: un "no
+      // puedo" que viene de abajo no puede anular a quien si va a responder.
+      if (n.canHandlePop || location == AppRoutes.home) return false;
+      const NavigationNotification(canHandlePop: true).dispatch(context);
+      return true;
+    },
+    child: child,
+  ),
+)
+```
+
+1. **Desmontar el ambito publica "esta app no gestiona atras".** Devolver
+   `child` pelado en ajustes/perfil/pairing/onboarding cerraba la app al pulsar
+   atras, mientras la flecha de la barra — un pop directo, que no pasa por el
+   sistema — funcionaba en esa misma pantalla. Entrar a una de esas rutas desde
+   una pantalla mas profunda no tocaba el shell, asi que la afirmacion anterior
+   seguia en pie y atras funcionaba: por eso parecia que habia dos perfiles.
+2. **El navigator de abajo publica lo suyo en cada cambio de historial**, y sale
+   por encima del `PopScope` en vez de a traves de el. Un panel abierto con `go`
+   deja una sola pagina que dice "nada que sacar", y eso anulaba el "atras vacia
+   el panel" de la tablet. De ahi el `NotificationListener`.
+
 ---
 
 ## 4. Plan de pruebas
