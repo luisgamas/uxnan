@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.20-alpha.20260812] - 2026-08-12
+
 ### Changed — streamed prose is coalesced before it leaves the bridge
 
 Agents emit text in bursts, not at a steady rate: on a real OpenCode turn, 60%

@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.20-alpha.20260812+20260812] - 2026-08-12
+
 ### Changed — a long reply no longer slows itself down while it streams
 
 Past a few thousand characters an answer started arriving in small jerks, and

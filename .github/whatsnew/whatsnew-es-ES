@@ -1,9 +1,7 @@
-Tus conversaciones se agrupan por la carpeta en la que trabajan, con el repositorio por encima de las carpetas que van juntas.
+Las conversaciones ya no vuelven duplicadas. Si alguna te muestra un intercambio dos veces, se repara sola la próxima vez que la abras: no se pierde nada de lo que escribiste.
 
-Cada carpeta indica de un vistazo si tiene cambios sin confirmar o si va por delante o por detrás de su remoto.
+Las respuestas largas se mantienen fluidas hasta el final, en vez de ralentizarse al crecer.
 
-Ordena proyectos, carpetas y conversaciones como prefieras.
+Abrir una segunda conversación en el mismo panel ahora muestra la que elegiste.
 
-En tablets y plegables la app aprovecha toda la pantalla: la lista se queda junto a lo que estás leyendo.
-
-Nueva imagen en toda la app. Gemini CLI ya no está; el resto de agentes sigue igual.
+El panel de conversaciones vacío te ofrece configurar la app, no la cámara.

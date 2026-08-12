@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.39] - 2026-08-12
+
 ### Removed
 
 - Removed the standalone Gemini CLI from the agent catalog, headless runner,
