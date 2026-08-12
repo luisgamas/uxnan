@@ -33,10 +33,11 @@ which files carry a version) and the **machinery** that follows it.
 
 **Automated.** Working out whether a component genuinely changed, computing the
 next version, writing it into every version-bearing file, proving those files
-agree, committing, tagging, pushing the tag, opening the pull request that brings
-all of it into `main` **and merging it once its checks pass**, and — for a desktop
-**nightly** — writing the release notes and publishing. A nightly at 00:20 local
-therefore finishes on its own, with nobody awake.
+agree, **heading the CHANGELOG with that version**, committing, tagging, pushing
+the tag, opening the pull request that brings all of it into `main` **and merging
+it once its checks pass**, and — for a desktop **nightly** — writing the release
+notes and publishing. A nightly at 00:20 local therefore finishes on its own,
+with nobody awake.
 
 **Not automated, on purpose.**
 
@@ -44,17 +45,21 @@ therefore finishes on its own, with nobody awake.
   signatures, `latest.json`, and its notes already written. Pressing *Publish* is
   the moment it becomes the default download and the updater starts offering it.
   That is a judgement call, not a build step.
-- **The CHANGELOG.** The tooling never writes your prose. Rename
-  `## [Unreleased]` to the version yourself before cutting a stable desktop
-  build, or any shared / bridge / relay / mobile release. (Desktop *nightlies*
-  deliberately do not convert it — a run of them piles up under `[Unreleased]`
-  and the next stable absorbs the lot.)
+- **CHANGELOG *entries*.** The heading is written for you — it is a version and
+  a date, and the cut already knows both. The prose under it is not: every entry
+  is authored in the pull request that changed the behaviour, which is the only
+  place anyone knows what happened. If `[Unreleased]` is empty at cut time the
+  run says so out loud, because a release with nothing to tell anyone is a
+  mistake, not a style.
 - **Google Play's "what's new", for a mobile release.**
   `.github/whatsnew/whatsnew-en-US` and `whatsnew-es-ES` must describe *this*
-  version in plain, non-technical language, **≤ 500 characters each**.
-  `release-mobile.yml` fails the release when either is missing, empty, a
-  leftover placeholder, or over the limit — so a stale file does not ship quietly,
-  it stops the cut.
+  version in plain, non-technical language, **≤ 500 characters each**. A workflow
+  can check shape, never meaning — so it checks everything about them that is
+  mechanical: present, non-empty, under the limit, not a placeholder, **and
+  touched since the previous `mobile-v*` tag**. That last one exists because the
+  notes for 0.0.19 were valid prose about 0.0.18 and would have shipped: files
+  nobody has edited since the last release either describe that release or were
+  never reviewed.
 
 ---
 
@@ -262,8 +267,9 @@ run at all.
    component genuinely has something to release.
 2. **Write the version.** `npm run release:prepare -- <component> [--channel=nightly]`
    computes it, refuses it if the base would not move past every channel, writes
-   every file from the registry, reads them back, and prints the exact commit and
-   tag commands. It never commits, tags or pushes.
+   every file from the registry, heads the CHANGELOG with it, reads the version
+   files back, and prints the exact commit and tag commands. It never commits,
+   tags or pushes. `--dry-run` prints all of it and writes nothing.
 3. **Mobile only, and non-negotiable:** commit **and push** the `pubspec.yaml`
    bump *before* tagging, so the tagged commit carries the matching version. Also
    rewrite `.github/whatsnew/whatsnew-en-US` and `whatsnew-es-ES` — a short,

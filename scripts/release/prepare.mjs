@@ -12,11 +12,14 @@
  * commands so the tag can never disagree with the files it just wrote.
  */
 
+import { readFileSync, writeFileSync } from 'node:fs';
+
 import { inspect } from './changes.mjs';
 import { applyVersion, versionForFiles } from './bump.mjs';
+import { convertHeading, convertsHeading, unreleasedBody } from './changelog.mjs';
 import { component } from './components.mjs';
 import { tagsFor, workingTreeState } from './git.mjs';
-import { assertMovesForward } from './version.mjs';
+import { assertMovesForward, dateStamp } from './version.mjs';
 
 const [id, ...rest] = process.argv.slice(2);
 const flag = (name) =>
@@ -81,7 +84,38 @@ for (const change of applyVersion(id, version, { dryRun })) {
 }
 
 console.log(dryRun ? '\n(dry run — nothing written)\n' : '\nAll version files agree.\n');
-console.log('Next, once the CHANGELOG entry is under the right heading:\n');
+// The CHANGELOG heading is a version and a date, which makes it this script's
+// business and not a person's. The entries under it stay authored where they
+// belong: in the pull request that changed the behaviour.
+const changelogPath = `${meta.path}/CHANGELOG.md`;
+if (!convertsHeading({ kind: meta.kind, channel })) {
+  console.log('CHANGELOG: left at [Unreleased] — a nightly piles up until the next stable.\n');
+} else {
+  let current = '';
+  try {
+    current = readFileSync(changelogPath, 'utf8');
+  } catch {
+    console.log(`CHANGELOG: ${changelogPath} not found — skipped.\n`);
+  }
+  if (current) {
+    if (unreleasedBody(current) === '') {
+      console.log(
+        `CHANGELOG: WARNING — [Unreleased] is empty, so ${version} would ship with nothing to tell anyone.`,
+      );
+    }
+    const heading = convertHeading(current, { version, date: dateStamp() });
+    if (!heading.converted) {
+      console.log(`CHANGELOG: unchanged — ${heading.reason}.\n`);
+    } else if (dryRun) {
+      console.log(`CHANGELOG: would head ${changelogPath} with [${version}].\n`);
+    } else {
+      writeFileSync(changelogPath, heading.markdown);
+      console.log(`CHANGELOG: ${changelogPath} now heads with [${version}].\n`);
+    }
+  }
+}
+
+console.log('Next:\n');
 console.log(`  git commit -am "chore(release): ${id} ${version}"`);
 console.log(`  git tag ${tag}`);
 console.log(`  git push origin main --tags\n`);

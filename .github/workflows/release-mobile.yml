@@ -35,6 +35,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Tags and history, so the notes check can ask whether anyone has
+          # touched them since the previous mobile release.
+          fetch-depth: 0
 
       # Non-negotiable release rule: every uxnanmobile tag MUST ship short,
       # user-facing "What's new" notes for en-US and es-ES (≤ 500 chars each,
@@ -60,11 +64,29 @@ jobs:
               fail=1
             fi
           done
+          # Present, short and not a placeholder is not the same as CURRENT. The
+          # notes for 0.0.19 were valid prose about 0.0.18 — 491 and 506 bytes,
+          # no placeholder word in sight — and would have shipped to users
+          # describing the previous release. Nothing here can read them, but git
+          # knows whether anyone touched them since the last mobile release, and
+          # notes that have not moved since then either describe that release or
+          # were never reviewed. Both are worth stopping for.
+          previous=$(git describe --tags --match 'mobile-v*' --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            touched=$(git diff --name-only "$previous" "$GITHUB_REF_NAME" -- .github/whatsnew | wc -l)
+            if [ "$touched" -eq 0 ]; then
+              echo "::error::.github/whatsnew has not changed since $previous, so these notes describe THAT release. Rewrite them for this version and re-tag."
+              fail=1
+            fi
+          else
+            echo "::notice::No earlier mobile tag to compare against — skipping the staleness check."
+          fi
+
           if [ "$fail" -ne 0 ]; then
             echo "::error::Release-notes check failed. Update .github/whatsnew/whatsnew-{en-US,es-ES} (see CONTRIBUTING.md) and re-tag."
             exit 1
           fi
-          echo "Release notes present and within Google Play's 500-char limit."
+          echo "Release notes present, current, and within Google Play's 500-char limit."
 
       # Non-negotiable release rule: the Flutter project's version MUST be bumped to
       # the release version and committed+pushed BEFORE tagging, so uxnanmobile/
