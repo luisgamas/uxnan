@@ -915,8 +915,10 @@ final projectsProvider = FutureProvider<List<Project>>((ref) {
 /// found"; [ThreadManager.loadWorktrees] turns that into an empty list, this
 /// table stays empty, and the folder list falls back to exactly the flat
 /// behaviour it had before — no error, no guess. That is why the hierarchy is
-/// never inferred from path prefixes: worktrees are siblings on disk, so a
-/// prefix would be a guess wearing the clothes of a fact.
+/// never inferred from path prefixes: a worktree can live anywhere, and the
+/// ones grouped under the folder uxnan manages share a prefix with worktrees of
+/// OTHER repositories — so a prefix would be a guess wearing the clothes of a
+/// fact.
 final workspaceRepoTableProvider = FutureProvider<Map<String, WorkspaceRepo>>((
   ref,
 ) async {

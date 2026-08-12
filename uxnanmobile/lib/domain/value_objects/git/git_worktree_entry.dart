@@ -2,11 +2,13 @@ import 'package:equatable/equatable.dart';
 
 /// One entry of the bridge's `git/worktrees` reply.
 ///
-/// A repository's worktrees are **siblings on disk**: a checkout of `repo` at
-/// `../repo-feature` is a peer directory with no path relationship to its main
-/// worktree. That is exactly why the phone cannot infer the hierarchy and has
-/// to be told — and why an older bridge, which cannot tell it, leaves the list
-/// flat instead of guessing from prefixes.
+/// A worktree can live **anywhere**: beside its repository (`../repo-feature`),
+/// grouped under the folder uxnan manages (`~/uxnan/worktrees/<repo>/<branch>`),
+/// or wherever the user put it. None of those is a child of the main worktree,
+/// and the grouped one shares a prefix with worktrees of OTHER repositories.
+/// That is exactly why the phone cannot infer the hierarchy and has to be told
+/// — and why an older bridge, which cannot tell it, leaves the list flat
+/// instead of guessing from prefixes.
 class GitWorktreeEntry extends Equatable {
   /// Creates a [GitWorktreeEntry].
   const GitWorktreeEntry({

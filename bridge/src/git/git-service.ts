@@ -584,10 +584,11 @@ export class GitService {
   /**
    * Every worktree of the repository at [cwd], main one first.
    *
-   * A repository's worktrees are SIBLINGS on disk — a checkout of `repo` at
-   * `../repo-feature` is a peer directory with no path relationship to its
-   * main worktree — so a client cannot infer this hierarchy and has to be
-   * told. Returns an empty list outside a repository rather than throwing:
+   * A worktree can live ANYWHERE — beside its repository (`../repo-feature`),
+   * grouped under the managed root (`~/uxnan/worktrees/<repo>/<branch>`), or
+   * wherever the user put it. None of those spellings carries a usable path
+   * relationship to the main worktree, so a client cannot infer this hierarchy
+   * and has to be told. Returns an empty list outside a repository rather than throwing:
    * the caller asks per configured root, and a root that is not a repo is an
    * ordinary case, not an error.
    */

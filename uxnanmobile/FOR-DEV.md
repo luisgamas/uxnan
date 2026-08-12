@@ -38,7 +38,8 @@ connected to live bridge data, validated on-device against a real bridge.
 - **Spaces: projects ▸ worktrees ▸ conversations, with per-folder git.** The
   conversation list is grouped by the folder work runs in, and a **repository**
   level appears over folders that `git/worktrees` relates to each other (never
-  guessed from path prefixes — worktrees are siblings on disk). Each level has
+  guessed from path prefixes — a worktree can live anywhere, and grouped ones
+  share a prefix across repositories). Each level has
   its own ordering (status / activity / created / name) through a routed
   cascading menu. Folder rows carry git indicators (uncommitted, ahead, behind)
   from `git/status` per cwd, throttled and only while visible; the breakdown

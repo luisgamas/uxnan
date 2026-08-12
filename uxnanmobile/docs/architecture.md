@@ -213,8 +213,10 @@ of which repository. It asks about the folders **on the list** — the distinct
 started anywhere through the folder picker. One reply names every sibling of its
 repository, so folders already covered are skipped and ten worktrees of one repo
 cost one call. It is never inferred from
-path prefixes — worktrees are siblings on disk, so a shared prefix says nothing,
-and inferring it is what sank the first attempt at this level.
+path prefixes — a worktree can live anywhere (beside its repository, or grouped
+under the folder uxnan manages, where it shares a prefix with worktrees of other
+repositories), so a shared prefix says nothing, and inferring it is what sank the
+first attempt at this level.
 
 `buildWorkspaceTree` then applies the two rules that keep it honest: a
 repository node appears only when it relates **two or more** folders (a heading
