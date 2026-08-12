@@ -31,6 +31,8 @@ import type {
   FileSearch,
   FsEntry,
   GitIdentity,
+  WorktreeCleanupCandidate,
+  WorktreeCleanupOutcome,
   GithubStatus,
   ImportablePet,
   InstalledPet,
@@ -457,6 +459,35 @@ export function gitIdentity(): Promise<GitIdentity> {
  *  the two copies drifted into different folder names. */
 export function worktreePreviewPath(repoId: string, branch: string): Promise<string> {
   return invoke<string>('worktree_preview_path', { repoId, branch });
+}
+
+/** How many worktree folders the managed roots hold. Directory counting only —
+ *  no git, and no size walk — because this is asked at startup to decide whether
+ *  the status bar mentions the folder at all. */
+export function worktreeCleanupCount(): Promise<number> {
+  return invoke<number>('worktree_cleanup_count');
+}
+
+/** Worktrees inside the managed folder that can be cleaned up, plus the ones
+ *  blocked by uncommitted work (listed, never removable). Read-only, and it only
+ *  ever looks inside the managed roots — a worktree beside its repository is
+ *  never listed and never touched. */
+export function worktreeCleanupScan(): Promise<WorktreeCleanupCandidate[]> {
+  return invoke<WorktreeCleanupCandidate[]>('worktree_cleanup_scan');
+}
+
+/** Size on disk of each path, in bytes, in the order asked. Separate from the
+ *  scan because walking a checkout's `node_modules` costs more than every git
+ *  query in the scan combined — the list appears first, the sizes fill in. */
+export function worktreeCleanupSizes(paths: string[]): Promise<number[]> {
+  return invoke<number[]>('worktree_cleanup_sizes', { paths });
+}
+
+/** Remove the given worktrees. Every path is re-verified against a fresh scan
+ *  (inside a managed root, still disposable, still clean), so a stale list can
+ *  never delete the wrong folder; refusals come back with their reason. */
+export function worktreeCleanupRemove(paths: string[]): Promise<WorktreeCleanupOutcome> {
+  return invoke<WorktreeCleanupOutcome>('worktree_cleanup_remove', { paths });
 }
 
 /** Set (or clear, with `null`) a project's own managed-worktree root, overriding

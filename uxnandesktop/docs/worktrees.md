@@ -45,6 +45,64 @@ Precedence: dialog location → project root → global setting.
   walks the tree — analyzers, watchers, the app's own file tree — would walk one
   copy of the project per worktree.
 
+## Cleanup
+
+Settings → **Git** → *Cleanup* is what keeps the managed folder from growing
+forever. It is out of sight by design, and what is out of sight never gets
+pruned — the sibling folders it replaced at least annoyed you into deleting
+them.
+
+Press **Look for old worktrees** and it reports three buckets:
+
+| Bucket | What it means | Pre-selected |
+|---|---|---|
+| **No longer owned by git** | The repository is gone from disk, or git no longer lists this folder as one of its worktrees | Yes — git owns nothing there |
+| **Work finished** | A clean checkout whose branch landed on its base (merge or squash-merge), or whose remote branch is gone after being pushed | No — that is a judgement call |
+| **Has unsaved changes** | Listed with the file count, never removable from here | Never |
+
+Sizes are fetched after the list appears (`worktree_cleanup_sizes`): walking a
+checkout's `node_modules` costs more than every git query in the scan combined.
+
+### Why it is safe to have a delete button here
+
+Implementation: [`src-tauri/src/worktreeclean.rs`](../src-tauri/src/worktreeclean.rs).
+
+- **It only ever looks inside the managed roots** — the global one plus each
+  project's override. A worktree beside its repository, or anywhere else you put
+  one, is never listed and never touched. Symlinked entries are skipped, so a
+  link cannot walk the scan out of the folder.
+- **Nothing is automatic.** The scan reports, you pick, and the button removes.
+- **Every path is re-verified at removal time** against a fresh scan — inside a
+  root, still disposable, still clean — instead of being trusted from the
+  caller. A list that went stale while you read it cannot delete the wrong
+  folder, and a refusal comes back with its reason rather than being skipped
+  silently.
+- **"Never pushed" is not "finished".** A branch with no upstream is simply one
+  you never pushed; only a branch that *had* a remote-tracking ref and lost it
+  counts. Read from the last fetch — this screen never goes to the network.
+- **An untouched branch is never offered**, because `branch_integrated` treats a
+  branch that never diverged from its base as unfinished rather than merged.
+
+### What removal actually does
+
+The folder is renamed into `.uxnan-trash` inside the same root (instant, and on
+one volume by construction) and deleted in the background; `git worktree prune`
+then drops the admin entry. Deleting a checkout in the foreground is tens of
+seconds of frozen UI.
+
+If the app dies mid-delete, the next startup sweeps the leftovers — matching
+**only** names this app generated (`wt-<millis>-<32 hex>`), inside a trash folder
+inside a managed root. It never deletes a folder just because of where it sits.
+
+### The status-bar nudge
+
+Once the managed folder holds 12 or more checkouts, a one-time item appears in
+the status bar linking here. It counts **folders**, not bytes: measuring the
+size means walking every `node_modules`, and that question would be asked at
+every startup. Dismissing it is permanent
+(`worktrees.cleanupNoticeDismissed`) — a reminder that returns after being waved
+away is nagging, and this section is always here to open on purpose.
+
 ## Rules the resolver applies
 
 In order, from `worktreeloc.rs`:

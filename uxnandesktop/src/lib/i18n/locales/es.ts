@@ -721,6 +721,32 @@ export const es: Record<MessageKey, string> = {
   "settings.worktreeMode.siblingExample": "<repositorio>/../<proyecto>--<rama>",
   "settings.worktreeMode.custom": "Carpeta propia",
   "settings.worktreeMode.customExample": "<tu carpeta>/<proyecto>/<rama>",
+  "settings.worktreeCleanup": "Limpieza",
+  "settings.worktreeCleanupDesc":
+    "Worktrees dentro de la carpeta gestionada que se pueden quitar.",
+  "settings.worktreeCleanupScan": "Buscar worktrees viejos",
+  "settings.worktreeCleanupNotice": "{count} worktrees",
+  "settings.worktreeCleanupNoticeHint":
+    "La carpeta gestionada de worktrees se está llenando. Abre Ajustes → Git para ver qué se puede quitar.",
+  "settings.worktreeCleanupNoticeDismiss": "No volver a avisar",
+  "settings.worktreeCleanupIdle":
+    "Todavía no se ha buscado nada. Solo se mira la carpeta gestionada, y no se borra nada hasta que tú lo marques.",
+  "settings.worktreeCleanupEmpty":
+    "Nada que limpiar: en la carpeta gestionada solo hay trabajo vivo.",
+  "settings.worktreeCleanupBucket.orphaned": "Git ya no los reconoce",
+  "settings.worktreeCleanupBucket.finished": "Trabajo terminado",
+  "settings.worktreeCleanupBucket.blocked": "Con cambios sin guardar",
+  "settings.worktreeCleanupReason.repoGone": "su repositorio ya no está en el disco",
+  "settings.worktreeCleanupReason.notAWorktree": "git ya no conoce esta carpeta",
+  "settings.worktreeCleanupReason.merged": "la rama se fusionó con su base",
+  "settings.worktreeCleanupReason.branchGone": "la rama ya no está en origin",
+  "settings.worktreeCleanupReason.uncommittedChangesOne": "1 archivo sin commitear",
+  "settings.worktreeCleanupReason.uncommittedChangesOther": "{n} archivos sin commitear",
+  "settings.worktreeCleanupSelected": "{count} marcados · {size}",
+  "settings.worktreeCleanupRemove": "Limpiar",
+  "settings.worktreeCleanupDoneOne": "1 worktree eliminado",
+  "settings.worktreeCleanupDoneOther": "{n} worktrees eliminados",
+  "settings.worktreeCleanupRefused": "{name} se conservó: {reason}",
   "settings.worktreeRoot": "Carpeta de worktrees",
   "settings.worktreeRootPlaceholder": "Ruta absoluta…",
   "settings.worktreeRootDesc":

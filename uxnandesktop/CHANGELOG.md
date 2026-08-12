@@ -31,6 +31,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `~/uxnan/worktrees` layout on the Linux filesystem — never on the Windows side
   of the 9P share, where it would be slow and lose file modes.
 
+- **Settings → Git → Cleanup empties the managed folder safely.** It lists what
+  the backend can *prove* is disposable — folders git no longer owns (the
+  repository is gone, or the worktree was removed elsewhere) and clean checkouts
+  whose branch landed or whose remote branch is gone — with sizes, so the
+  question "is this worth reclaiming?" has an answer on screen. Anything with
+  uncommitted work is listed **blocked**, never hidden.
+
+  The folder needed this precisely because it is out of sight: the sibling
+  folders it replaced sat next to the repository and annoyed you into pruning
+  them. A one-time status-bar nudge appears once the folder holds 12+ checkouts,
+  counting folders rather than measuring bytes — walking every checkout's
+  `node_modules` at startup to answer that would cost more than the feature is
+  worth.
+
+  Every limit is a safety property: it only ever looks inside the managed roots,
+  so a worktree beside its repository is never listed and never touched; nothing
+  is automatic; and every path is re-verified against a fresh scan at removal
+  time rather than trusted from the caller, so a stale list cannot delete the
+  wrong folder. A removed folder is moved aside first and deleted in the
+  background (a `node_modules` delete is tens of seconds of otherwise-frozen
+  UI), and a run interrupted mid-delete is swept at the next startup — matching
+  only the names this app generates.
+
 ### Changed
 
 - **Where a worktree goes is decided in one place.** It used to be computed in

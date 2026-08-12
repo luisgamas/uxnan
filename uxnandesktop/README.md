@@ -78,7 +78,10 @@ available today are:
   (`~/uxnan/worktrees/<project>/<branch>`); **Settings → Git** switches that to a
   folder beside the repository or to one you choose, per app or per project, and
   the create dialog can still override it for a single worktree. Existing
-  worktrees are never moved. Add projects from a local folder or by cloning a pasted GitHub
+  worktrees are never moved, and **Settings → Git → Cleanup** empties that folder
+  safely: it lists only what it can prove is disposable, shows what has unsaved
+  work as blocked rather than hiding it, and never looks outside the folder it
+  manages. Add projects from a local folder or by cloning a pasted GitHub
   repository reference (full history, with file objects transferred on demand),
   then use the project-card **+** launcher to start from a
   new/existing branch, a pull request, or an issue and open the selected terminals,

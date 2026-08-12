@@ -16,6 +16,7 @@ use crate::model::{
     AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData, WorktreeLocationMode,
 };
 use crate::state::{AppState, HookServerInfo};
+use crate::worktreeclean;
 use crate::worktreeloc::{self, Resolved};
 
 /// Return the full persisted application state. The frontend calls this once at
@@ -1082,6 +1083,90 @@ pub async fn repo_set_worktree_root(
     let updated = repo.clone();
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(updated)
+}
+
+/// Every managed root worth scanning for cleanup: the global one (default or
+/// custom) plus each project's own override. Deduplicated, and **only** these —
+/// the cleanup screen never looks anywhere else, which is what makes it safe to
+/// offer a delete button at all.
+pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
+    let (global, overrides) = {
+        let data = state.data.read().await;
+        let settings = data.settings.worktrees.clone();
+        let overrides: Vec<String> = data
+            .repos
+            .iter()
+            .filter_map(|r| r.worktree_root.clone())
+            .collect();
+        (settings, overrides)
+    };
+    let mut roots: Vec<String> = Vec::new();
+    let default_root = agent_hooks::home_dir()
+        .map(|home| worktreeloc::default_root(&home.to_string_lossy()))
+        .unwrap_or_default();
+    // The sibling layout has no root of its own, so nothing to scan; the managed
+    // default still applies to any project that overrode nothing.
+    for candidate in std::iter::once(match global.location {
+        WorktreeLocationMode::Custom => global
+            .root
+            .clone()
+            .filter(|r| !r.trim().is_empty())
+            .unwrap_or(default_root.clone()),
+        _ => default_root.clone(),
+    })
+    .chain(overrides)
+    {
+        let normalized = worktreeloc::normalize(candidate.trim());
+        if !normalized.is_empty() && !roots.contains(&normalized) {
+            roots.push(normalized);
+        }
+    }
+    roots
+}
+
+/// How many worktree folders the managed roots hold — the cheap question the
+/// status bar asks at startup to decide whether to mention the folder at all.
+/// Directory counting only: no git, and emphatically no size walk.
+#[tauri::command]
+pub async fn worktree_cleanup_count(state: State<'_, AppState>) -> Result<u32, CommandError> {
+    let roots = managed_roots(&state).await;
+    Ok(worktreeclean::count(&roots).await)
+}
+
+/// Worktrees inside the managed folder that can be cleaned up, plus the ones
+/// blocked by uncommitted work (listed, never removable). Read-only.
+#[tauri::command]
+pub async fn worktree_cleanup_scan(
+    state: State<'_, AppState>,
+) -> Result<Vec<worktreeclean::CleanupCandidate>, CommandError> {
+    let roots = managed_roots(&state).await;
+    Ok(worktreeclean::scan(&roots).await)
+}
+
+/// Size on disk of each given worktree, in bytes, in the order asked.
+///
+/// Separate from the scan on purpose: walking a checkout's `node_modules` costs
+/// far more than every git query in the scan combined, so the list appears
+/// immediately and the sizes fill in.
+#[tauri::command]
+pub async fn worktree_cleanup_sizes(paths: Vec<String>) -> Result<Vec<u64>, CommandError> {
+    let mut sizes = Vec::with_capacity(paths.len());
+    for path in paths {
+        sizes.push(worktreeclean::dir_size(path).await);
+    }
+    Ok(sizes)
+}
+
+/// Remove the given worktrees. Every path is re-verified against a fresh scan —
+/// inside a managed root, still disposable, still clean — so a stale list can
+/// never delete the wrong folder.
+#[tauri::command]
+pub async fn worktree_cleanup_remove(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<worktreeclean::CleanupOutcome, CommandError> {
+    let roots = managed_roots(&state).await;
+    Ok(worktreeclean::remove(&roots, &paths).await)
 }
 
 /// Create a worktree in the given repo. Two modes:

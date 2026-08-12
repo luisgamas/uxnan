@@ -388,6 +388,44 @@ export interface GitIdentity {
   version?: string | null;
 }
 
+/** Why a worktree is offered for cleanup — or refused (mirror of the Rust
+ *  `CleanupReason`). The backend classifies; the frontend words it. */
+export type WorktreeCleanupReason =
+  | "repoGone"
+  | "notAWorktree"
+  | "merged"
+  | "branchGone"
+  | "uncommittedChanges";
+
+/** Which bucket a cleanup candidate belongs to (mirror of `CleanupKind`).
+ *  `blocked` is listed but never removable — it exists so "why isn't this
+ *  offered?" is answered on screen instead of by its absence. */
+export type WorktreeCleanupKind = "orphaned" | "finished" | "blocked";
+
+/** One worktree the cleanup screen can show (mirror of `CleanupCandidate`).
+ *  Only ever a folder inside a managed root. */
+export interface WorktreeCleanupCandidate {
+  path: string;
+  /** The group folder — the repository's name, for display. */
+  group: string;
+  /** The worktree's own folder name. */
+  name: string;
+  branch?: string | null;
+  kind: WorktreeCleanupKind;
+  reason: WorktreeCleanupReason;
+  /** How many files are dirty, for `uncommittedChanges`. */
+  changedFiles?: number | null;
+  repoPath?: string | null;
+}
+
+/** What a cleanup run did (mirror of `CleanupOutcome`). A refusal is reported
+ *  rather than silently skipped: a cleanup that quietly does less than it said
+ *  is worse than one that explains itself. */
+export interface WorktreeCleanupOutcome {
+  removed: string[];
+  refused: { path: string; reason: string }[];
+}
+
 /** Which layout a new worktree uses (mirror of the Rust `WorktreeLocationMode`).
  *  - `managed`: `<home>/uxnan/worktrees/<repo>/<branch>` — the default;
  *  - `sibling`: `<parent>/<repo>--<branch>`, what the app did before;
@@ -399,6 +437,10 @@ export interface WorktreeSettings {
   location?: WorktreeLocationMode;
   /** Root for `custom`; ignored by the other modes. */
   root?: string | null;
+  /** The user waved away the status-bar nudge about the managed folder filling
+   *  up. Set once and kept — a reminder that returns after being dismissed is
+   *  nagging, and the cleanup section is always there to open deliberately. */
+  cleanupNoticeDismissed?: boolean;
 }
 
 /** Resource-mode settings (mirror of the Rust `ResourceModeSettings`). Every

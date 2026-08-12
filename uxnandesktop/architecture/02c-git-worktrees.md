@@ -134,6 +134,45 @@ de entonces. Por el mismo motivo, los flujos de PR e issue comprueban si ya hay
 un worktree **en esa rama** (preguntándoselo a git) en lugar de mirar si existe
 una ruta concreta.
 
+#### 2.1.2 Limpieza de la carpeta gestionada
+
+Una raíz gestionada agrupa los checkouts **fuera de la vista**, y lo que no se ve
+no se poda: las carpetas hermanas a las que sustituye al menos estorbaban al lado
+del repositorio. **Ajustes → Git → Limpieza** (`worktreeclean.rs`) es lo que
+impide que crezca sin límite.
+
+Reporta tres grupos: **huérfanos** (git ya no posee la carpeta — el repositorio
+desapareció, o el worktree se quitó desde fuera), **terminados** (checkout limpio
+cuya rama se fusionó con su base o cuya rama remota ya no existe tras haber sido
+empujada) y **bloqueados** (con cambios sin commitear: se listan con el número de
+archivos, nunca se pueden quitar desde aquí). Los tamaños se piden **después** de
+la lista: recorrer el `node_modules` de un checkout cuesta más que todas las
+consultas a git del escaneo juntas.
+
+Cada límite es una propiedad de seguridad:
+
+1. **Solo mira dentro de las raíces gestionadas** (la global más los overrides por
+   proyecto). Un worktree junto a su repositorio no se lista ni se toca jamás; las
+   entradas que son enlaces simbólicos se ignoran, de modo que un enlace no puede
+   sacar el escaneo de la carpeta.
+2. **Nada es automático.** El escaneo informa, el usuario elige.
+3. **Cada ruta se vuelve a verificar en el borrado** contra un escaneo nuevo
+   —dentro de una raíz, aún desechable, aún limpia— en vez de confiar en la lista
+   del llamante; un rechazo se devuelve **con su motivo**, nunca se omite en
+   silencio.
+4. **"Nunca empujada" no es "terminada".** Una rama sin upstream simplemente no se
+   ha empujado; solo cuenta la que *tuvo* referencia remota y la perdió. Se lee del
+   último fetch: esta pantalla nunca sale a la red.
+5. El borrado **renombra la carpeta** a `.uxnan-trash` dentro de la misma raíz
+   (instantáneo, y en el mismo volumen por construcción) y la elimina en segundo
+   plano; luego `git worktree prune`. Una ejecución interrumpida se barre en el
+   siguiente arranque, y el barrido solo acepta los nombres que genera este módulo
+   (`wt-<millis>-<32 hex>`).
+
+El aviso de la barra de estado cuenta **carpetas**, no bytes (umbral: 12), porque
+medir el tamaño obligaría a recorrer cada `node_modules` en cada arranque.
+Descartarlo es permanente (`worktrees.cleanupNoticeDismissed`).
+
 El flujo del backend (comando `worktree_create` con `fromExisting` y `path`
 opcionales) tiene varias garantías:
 

@@ -565,6 +565,11 @@ pub struct WorktreeSettings {
     /// so a half-configured setting never blocks creating a worktree.
     #[serde(default)]
     pub root: Option<String>,
+    /// The user dismissed the status-bar nudge about the managed folder filling
+    /// up. Set once and kept: a reminder that comes back after being waved away
+    /// is nagging, and the cleanup section is always there to open on purpose.
+    #[serde(default)]
+    pub cleanup_notice_dismissed: bool,
 }
 
 /// Local resource observability (CPU / memory / process attribution for uxnan,

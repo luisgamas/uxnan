@@ -5,11 +5,22 @@
  * only for the layout that has one, and the surface is localized (EN/ES).
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mountWithProviders, until } from "../../test/render";
 import { app } from "$lib/state/app.svelte";
 import GitSettings from "./GitSettings.svelte";
+
+// The test harness mounts no toaster, so what the user is TOLD is captured here
+// instead: a refusal that never reaches them is the failure worth catching.
+const toasts = vi.hoisted(() => ({ success: [] as string[], error: [] as string[] }));
+vi.mock("$lib/toast", () => ({
+  toast: {
+    success: (message: string) => toasts.success.push(message),
+    error: (message: string) => toasts.error.push(message),
+  },
+  toastError: (e: unknown) => toasts.error.push(String(e)),
+}));
 
 function baseCommands(identity: Record<string, unknown> = IDENTITY) {
   return {
@@ -39,6 +50,117 @@ beforeEach(() => {
   document.body.style.pointerEvents = "";
   app.settings.language = "en";
   app.settings.worktrees = { location: "managed", root: null };
+  toasts.success.length = 0;
+  toasts.error.length = 0;
+});
+
+const CANDIDATES = [
+  {
+    path: "C:/Users/u/uxnan/worktrees/api/feat-login",
+    group: "api",
+    name: "feat-login",
+    branch: "feat/login",
+    kind: "orphaned",
+    reason: "repoGone",
+  },
+  {
+    path: "C:/Users/u/uxnan/worktrees/uxnan/fix-nav",
+    group: "uxnan",
+    name: "fix-nav",
+    branch: "fix/nav",
+    kind: "finished",
+    reason: "merged",
+  },
+  {
+    path: "C:/Users/u/uxnan/worktrees/uxnan/wip-tests",
+    group: "uxnan",
+    name: "wip-tests",
+    branch: "wip/tests",
+    kind: "blocked",
+    reason: "uncommittedChanges",
+    changedFiles: 3,
+  },
+];
+
+describe("GitSettings — cleanup", () => {
+  it("scans on demand and buckets what it found", async () => {
+    const { screen, user } = mountWithProviders(GitSettings, {
+      commands: {
+        ...baseCommands(),
+        worktree_cleanup_scan: () => CANDIDATES,
+        worktree_cleanup_sizes: () => [1024 * 1024 * 340, 1024 * 1024 * 620],
+      },
+    });
+    // Nothing is scanned until asked: this reads the disk.
+    expect(screen.getByText(/Nothing scanned yet/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+    expect(await screen.findByText("No longer owned by git")).toBeInTheDocument();
+    expect(screen.getByText("Work finished")).toBeInTheDocument();
+    expect(screen.getByText("Has unsaved changes")).toBeInTheDocument();
+    expect(screen.getByText("its repository is gone from disk")).toBeInTheDocument();
+    expect(screen.getByText("3 files not committed")).toBeInTheDocument();
+  });
+
+  it("pre-selects the orphans and never lets a blocked one be selected", async () => {
+    const { screen, user } = mountWithProviders(GitSettings, {
+      commands: {
+        ...baseCommands(),
+        worktree_cleanup_scan: () => CANDIDATES,
+        worktree_cleanup_sizes: () => [0, 0],
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+
+    const orphan = await screen.findByRole("checkbox", { name: "api / feat-login" });
+    const finished = screen.getByRole("checkbox", { name: "uxnan / fix-nav" });
+    const blocked = screen.getByRole("checkbox", { name: "uxnan / wip-tests" });
+    // Git owns nothing in an orphan, so there is nothing to weigh up.
+    expect(orphan).toBeChecked();
+    // Finished work is a judgement call: the user makes it.
+    expect(finished).not.toBeChecked();
+    // Unsaved work is never removable from here, at any cost.
+    expect(blocked).toBeDisabled();
+  });
+
+  it("removes only what is selected and reports what was kept", async () => {
+    const calls: string[][] = [];
+    const { screen, user } = mountWithProviders(GitSettings, {
+      commands: {
+        ...baseCommands(),
+        worktree_cleanup_scan: () => CANDIDATES,
+        worktree_cleanup_sizes: () => [0, 0],
+        worktree_cleanup_remove: (args: Record<string, unknown>) => {
+          calls.push(args.paths as string[]);
+          return {
+            removed: [CANDIDATES[0].path],
+            refused: [{ path: CANDIDATES[1].path, reason: "has uncommitted changes" }],
+          };
+        },
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+    await screen.findByText("No longer owned by git");
+    await user.click(screen.getByRole("button", { name: "Clean up" }));
+
+    await until(() => calls.length > 0, { label: "removal requested" });
+    // Only the pre-selected orphan; the finished one was never ticked.
+    expect(calls[0]).toEqual([CANDIDATES[0].path]);
+    // A refusal is surfaced rather than swallowed.
+    await until(() => toasts.error.length > 0, { label: "refusal surfaced" });
+    expect(toasts.error[0]).toContain("fix-nav was kept");
+    expect(toasts.success[0]).toBe("1 worktree removed");
+  });
+
+  it("says so plainly when there is nothing to clean", async () => {
+    const { screen, user } = mountWithProviders(GitSettings, {
+      commands: { ...baseCommands(), worktree_cleanup_scan: () => [] },
+    });
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+    expect(
+      await screen.findByText(/the managed folder holds only live work/),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("GitSettings — identity", () => {

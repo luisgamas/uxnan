@@ -359,6 +359,30 @@ pub async fn add_worktree_existing(
         .map(|_| ())
 }
 
+/// A git config value, or `None` when the key is unset (`--get` exits 1, which
+/// [`git`] reports as an error). Reads whatever git resolves from `repo_path`,
+/// repository config included — unlike [`identity`], which asks about the
+/// machine.
+pub async fn config_get(repo_path: &str, key: &str) -> Option<String> {
+    let out = git(repo_path, &["config", "--get", key]).await.ok()?;
+    let value = out.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// Whether a ref exists (`refs/heads/…`, `refs/remotes/origin/…`, a tag).
+pub async fn ref_exists(repo_path: &str, reference: &str) -> bool {
+    git(repo_path, &["rev-parse", "--verify", "--quiet", reference])
+        .await
+        .is_ok()
+}
+
+/// Drop the admin entries of worktrees whose directories are gone
+/// (`git worktree prune`). Best-effort: a repository that cannot be pruned is
+/// not worth failing a cleanup that already removed the folders.
+pub async fn prune_worktrees(repo_path: &str) {
+    let _ = git(repo_path, &["worktree", "prune"]).await;
+}
+
 /// Whether a local branch named `branch` exists (`refs/heads/<branch>`).
 async fn local_branch_exists(repo_path: &str, branch: &str) -> bool {
     git(

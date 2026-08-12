@@ -15,12 +15,26 @@
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import FolderSelectDialog from "$lib/components/FolderSelectDialog.svelte";
+  import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { app } from "$lib/state/app.svelte";
-  import { gitIdentity } from "$lib/api";
+  import {
+    gitIdentity,
+    worktreeCleanupRemove,
+    worktreeCleanupScan,
+    worktreeCleanupSizes,
+  } from "$lib/api";
+  import { formatBytes } from "$lib/resources/format";
+  import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { field, text } from "$lib/design";
-  import type { GitIdentity, WorktreeLocationMode } from "$lib/types";
+  import type {
+    GitIdentity,
+    WorktreeCleanupCandidate,
+    WorktreeCleanupKind,
+    WorktreeLocationMode,
+  } from "$lib/types";
 
   const MODES = ["managed", "sibling", "custom"] as const satisfies readonly WorktreeLocationMode[];
 
@@ -45,6 +59,110 @@
   function set(patch: { location?: WorktreeLocationMode; root?: string | null }) {
     app.settings.worktrees = { ...app.settings.worktrees, ...patch };
     void app.persistSettings();
+  }
+
+  // --- Cleanup ---------------------------------------------------------------
+  //
+  // The managed folder collects checkouts out of sight, and what is out of sight
+  // never gets pruned. This lists what the backend can PROVE is disposable, and
+  // nothing else: it only looks inside the managed roots, and anything with
+  // uncommitted work is shown blocked rather than hidden — so "why isn't this
+  // offered?" is answered on screen. Nothing is ever removed automatically.
+
+  const BUCKETS = ["orphaned", "finished", "blocked"] as const;
+
+  let candidates = $state<WorktreeCleanupCandidate[] | null>(null);
+  let sizes = $state<Record<string, number>>({});
+  let selected = $state<Set<string>>(new Set());
+  let scanning = $state(false);
+  let removing = $state(false);
+
+  const bucketOf = (kind: WorktreeCleanupKind) => candidates?.filter((c) => c.kind === kind) ?? [];
+  const removable = $derived((candidates ?? []).filter((c) => c.kind !== "blocked"));
+  const selectedSize = $derived(
+    [...selected].reduce((total, path) => total + (sizes[path] ?? 0), 0),
+  );
+  /** Sizes are still being measured while any selected row has no figure yet. */
+  const sizesPending = $derived(removable.some((c) => sizes[c.path] === undefined));
+
+  async function scan() {
+    if (scanning) return;
+    scanning = true;
+    try {
+      const found = await worktreeCleanupScan();
+      candidates = found;
+      // Orphans are pre-selected: git owns nothing there, so there is nothing to
+      // weigh up. Everything else the user picks deliberately.
+      selected = new Set(found.filter((c) => c.kind === "orphaned").map((c) => c.path));
+      void loadSizes(found.filter((c) => c.kind !== "blocked").map((c) => c.path));
+    } catch (e) {
+      candidates = [];
+      toastError(e);
+    } finally {
+      scanning = false;
+    }
+  }
+
+  async function loadSizes(paths: string[]) {
+    if (paths.length === 0) return;
+    try {
+      const measured = await worktreeCleanupSizes(paths);
+      const next = { ...sizes };
+      paths.forEach((path, i) => (next[path] = measured[i] ?? 0));
+      sizes = next;
+    } catch {
+      // A size that cannot be measured just stays unknown; it is decoration.
+    }
+  }
+
+  function toggle(path: string, on: boolean) {
+    const next = new Set(selected);
+    if (on) next.add(path);
+    else next.delete(path);
+    selected = next;
+  }
+
+  async function removeSelected() {
+    if (removing || selected.size === 0) return;
+    removing = true;
+    try {
+      const outcome = await worktreeCleanupRemove([...selected]);
+      if (outcome.removed.length > 0) {
+        toast.success(
+          i18n.plural(
+            outcome.removed.length,
+            "settings.worktreeCleanupDoneOne",
+            "settings.worktreeCleanupDoneOther",
+          ),
+        );
+      }
+      // A refusal is surfaced, never swallowed: the backend re-checks every path
+      // against a fresh scan, so "it was clean a minute ago" is a real outcome.
+      for (const refusal of outcome.refused) {
+        toast.error(
+          i18n.t("settings.worktreeCleanupRefused", {
+            name: refusal.path.split("/").pop() ?? refusal.path,
+            reason: refusal.reason,
+          }),
+        );
+      }
+      await scan();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      removing = false;
+    }
+  }
+
+  function reasonText(candidate: WorktreeCleanupCandidate): string {
+    if (candidate.reason === "uncommittedChanges") {
+      return i18n.plural(
+        candidate.changedFiles ?? 0,
+        "settings.worktreeCleanupReason.uncommittedChangesOne",
+        "settings.worktreeCleanupReason.uncommittedChangesOther",
+      );
+    }
+    return i18n.t(`settings.worktreeCleanupReason.${candidate.reason}`);
   }
 </script>
 
@@ -143,7 +261,88 @@
       {/if}
     </div>
   </SettingsSection>
+
+  <!-- Cleanup: only inside the managed folder, only what is provably
+       disposable, and never on its own. -->
+  <SettingsSection
+    title={i18n.t("settings.worktreeCleanup")}
+    description={i18n.t("settings.worktreeCleanupDesc")}
+    headerAction={cleanupAction}
+  >
+    {#if candidates === null}
+      <p class={text.meta}>{i18n.t("settings.worktreeCleanupIdle")}</p>
+    {:else if candidates.length === 0}
+      <p class={text.meta}>{i18n.t("settings.worktreeCleanupEmpty")}</p>
+    {:else}
+      <div class="space-y-5">
+        {#each BUCKETS as bucket (bucket)}
+          {@const rows = bucketOf(bucket)}
+          {#if rows.length > 0}
+            <div class="space-y-1.5">
+              <span class={cn("px-0.5", text.section)}>
+                {i18n.t(`settings.worktreeCleanupBucket.${bucket}`)}
+              </span>
+              <div class="divide-y divide-border/60">
+                {#each rows as row (row.path)}
+                  <div class="flex items-center gap-3 py-2">
+                    <Checkbox
+                      checked={selected.has(row.path)}
+                      disabled={row.kind === "blocked" || removing}
+                      aria-label={`${row.group} / ${row.name}`}
+                      onCheckedChange={(v) => toggle(row.path, v === true)}
+                    />
+                    <div class="min-w-0 flex-1">
+                      <div class={cn("truncate", text.body)}>
+                        <span class="text-muted-foreground">{row.group}</span>
+                        <span class="text-muted-foreground/50"> / </span>
+                        <span class="font-medium">{row.name}</span>
+                      </div>
+                      <div class={cn("truncate", text.meta)}>{reasonText(row)}</div>
+                    </div>
+                    <span class={cn("shrink-0 tabular-nums", text.meta)}>
+                      {sizes[row.path] === undefined ? "—" : formatBytes(sizes[row.path])}
+                    </span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {/each}
+
+        {#if removable.length > 0}
+          <div class="flex items-center justify-between gap-4 border-t border-border/60 pt-4">
+            <span class={text.meta}>
+              {i18n.t("settings.worktreeCleanupSelected", {
+                count: selected.size,
+                size: sizesPending ? "…" : formatBytes(selectedSize),
+              })}
+            </span>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={selected.size === 0 || removing}
+              onclick={() => void removeSelected()}
+            >
+              {#if removing}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {/if}
+              {i18n.t("settings.worktreeCleanupRemove")}
+            </Button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </SettingsSection>
 </div>
+
+{#snippet cleanupAction()}
+  <Button variant="outline" size="sm" disabled={scanning} onclick={() => void scan()}>
+    {#if scanning}
+      <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+    {/if}
+    {i18n.t("settings.worktreeCleanupScan")}
+  </Button>
+{/snippet}
 
 <FolderSelectDialog
   bind:open={browseOpen}
