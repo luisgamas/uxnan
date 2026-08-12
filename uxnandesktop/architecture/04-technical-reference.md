@@ -394,7 +394,21 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
   `updateToast.ts` con id estable + `duration: Infinity`, reemplaza al antiguo
   banner fijo superior) + acciones de **descargar/instalar dentro de
   Settings → Updates** (coherentes con la política de instalación); store
-  `state/updater.svelte.ts`; i18n EN/ES. Firma minisign gratuita (`pubkey` en
+  `state/updater.svelte.ts`; i18n EN/ES.
+- **Buscar es independiente del ciclo de vida.** En Settings → Updates conviven
+  **dos botones**: *Buscar ahora*, presente en todos los estados, y la acción de
+  fase (*Descargar* / *Instalar*), que solo aparece cuando existe. Buscar es un
+  flag propio (`checking`) superpuesto a `status`, no un estado: una comprobación
+  —o su fallo— nunca descarta una descarga ya lista para instalar. `checkOutcome`
+  (`updaterLogic.ts`) decide el resultado comparando la versión ofrecida con la
+  preparada: `keepStaged` si son la misma (la comprobación se hace contra la
+  versión **en ejecución**, así que reofrece indefinidamente la ya descargada) y
+  `superseded` si el canal ofrece otra distinta, en cuyo caso se desarma la
+  instalación diferida y se descarga la nueva. La app solo ofrece la última: una
+  versión anterior ya no era instalable —`updater_install` rechaza el desajuste
+  de versión— y quien la quiera la baja del Release de GitHub. Esto es lo que
+  permite recoger una release posterior mientras la primera espera a que los
+  agentes queden inactivos, sin reiniciar la app. Firma minisign gratuita (`pubkey` en
   `tauri.conf.json`), independiente del code-signing del SO. **Distribucion macOS
   EXPERIMENTAL:** el CI genera dos DMG por arquitectura (Intel `x86_64` + Apple
   Silicon `aarch64`) con **firma ad-hoc** (`bundle.macOS.signingIdentity "-"`,

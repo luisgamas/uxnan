@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A downloaded update no longer hides the "Check now" button.**
+  Settings → Updates now shows two independent buttons instead of one that
+  morphs: *Check now* is always there, and the phase action (*Download* /
+  *Install now*, plus *Install when idle* while an agent works) appears next to
+  it only when there is one to take. The old single button became *Install* the
+  moment an update was staged — which is exactly when checking matters most: an
+  install waits for agents to go idle, releases keep landing meanwhile, and the
+  only way to pick up a newer one was to finish the work, quit the app and
+  reopen it.
+- **Checking is no longer a lifecycle state.** `updater.checking` overlays
+  `status`, so a check can run in any phase without erasing what is already
+  downloaded — the *Install* button (and the pinned toast) stay put while it
+  runs, and a check that fails no longer throws away a ready-to-install
+  download.
+- **A check that re-reports the version already staged no longer re-downloads
+  it.** The updater compares against the *running* build, so every check kept
+  offering the version sitting in memory — and each one (including the automatic
+  6-hourly one) downloaded the same installer again. `checkOutcome` now decides
+  between keeping the staged download, superseding it when the channel offers a
+  genuinely different version (dropping any armed install-when-idle, since the
+  backend rejects stale bytes), and the plain up-to-date / available cases.
+
+Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version,
+including the channel-switch and "release pulled" cases).
+
 ## [0.0.39] - 2026-08-12
 
 ### Removed

@@ -1572,6 +1572,8 @@ export const es: Record<MessageKey, string> = {
   "updates.willInstallWhenIdle":
     "Se instalará cuando todos los agentes estén inactivos",
   "updates.upToDate": "Estás en la última versión",
+  "updates.stagedIsLatest":
+    "La versión {version} es la más reciente — lista para instalar",
   "updates.checking": "Buscando actualizaciones…",
   "updates.checkNow": "Buscar ahora",
   "updates.currentVersion": "Versión actual: {version}",

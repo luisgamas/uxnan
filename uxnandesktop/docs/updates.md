@@ -12,7 +12,11 @@ background, and installs it **on your terms**. Configure it in
 - **Release channel** — `stable` (default) or `nightly`. Nightly gets earlier,
   less-stable builds (GitHub **pre-releases**).
 - **Check automatically** — on launch + every 6 h (default on). A manual
-  **Check now** button always works.
+  **Check now** button sits in that row **in every state** — including while an
+  update is downloaded and waiting to install. If the channel has since published
+  a newer version, that check supersedes the waiting download and fetches the new
+  one; if it re-finds the same version, the download you already have stays ready
+  to install. The install action appears **next to** it, never instead of it.
 - **Download automatically** — fetch a found update in the background (default
   on). Downloading never interrupts a running agent.
 - **Install** — how a downloaded update is applied: **Ask me** (default),
@@ -56,7 +60,15 @@ quitting the app), so nothing is killed mid-write.
     a stale download, closes terminals, installs, and restarts.
   - The frontend store `src/lib/state/updater.svelte.ts` orchestrates check →
     (auto?)download → install, applies the install policy, and runs the
-    idle-guard. The prompt is a **pinned sonner toast**
+    idle-guard. **Checking is orthogonal to that lifecycle**: `checking` is its
+    own flag overlaying `status`, so a check runs in any phase without erasing a
+    staged download (and a failed check keeps it). What a finished check means is
+    decided by the pure `checkOutcome(found, staged)` in
+    `src/lib/updaterLogic.ts` — `keepStaged` when the channel still offers the
+    version already downloaded (the plugin compares against the *running* build,
+    so it keeps re-reporting it), `superseded` when it offers a different one
+    (stale bytes: any armed install-when-idle is disarmed and the new version is
+    fetched), else `upToDate` / `available`. The prompt is a **pinned sonner toast**
     (`src/lib/components/UpdateToast.svelte`, driven by `src/lib/updateToast.svelte.ts`
     with a stable id + `duration: Infinity`), and the same download/install
     actions are also available inline in **Settings → Updates**
@@ -161,7 +173,10 @@ survives every case:
   nothing is staged, nothing is installed.
 - **Stale staged download** — if a newer release appears between download and
   install, `updater_install` compares versions, refuses the stale bytes, and
-  asks for a fresh download (`src-tauri/src/updater.rs`).
+  asks for a fresh download (`src-tauri/src/updater.rs`). A check that spots the
+  newer release first gets there sooner: it supersedes the staged installer and
+  downloads the new one, so the offer on screen is always the version that would
+  actually install.
 - **Channel switched by the user** — the endpoint is rebuilt from the selected
   channel at runtime; the next check runs against the other channel's manifest,
   which still has to carry a valid signature. CI prevents a release from ever

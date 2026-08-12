@@ -11,6 +11,11 @@
 // is gated: `ask` waits for a banner choice, `whenIdle` auto-installs once no
 // agent is working, `manual` only on an explicit click. The "Install now anyway"
 // path is always available for an impatient user.
+//
+// Checking is *orthogonal* to that lifecycle (`checking` overlays `status`), so a
+// downloaded-but-not-installed update never blocks looking for a newer one: with
+// agents running, an install can wait hours while releases keep landing, and the
+// user must be able to pick up the newest one without restarting the app.
 
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -23,7 +28,11 @@ import { app } from "./app.svelte";
 import { anyAgentWorking } from "./agentDisplay";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
-import { downloadFraction, nextInstallAction } from "$lib/updaterLogic";
+import {
+  checkOutcome,
+  downloadFraction,
+  nextInstallAction,
+} from "$lib/updaterLogic";
 import type { UpdateDownloadProgress, UpdateInfo } from "$lib/types";
 
 /** How often to re-check for updates in the background (6 h). */
@@ -33,10 +42,11 @@ const INITIAL_CHECK_DELAY_MS = 8_000;
 /** While waiting to install on idle, re-evaluate agent activity this often. */
 const IDLE_POLL_MS = 2_000;
 
-/** Where the updater is in its lifecycle. */
+/** Where the updater is in its lifecycle. Checking is deliberately **not** a
+ *  state here: it can overlay any of these (see `UpdaterStore.checking`), so a
+ *  re-check never erases a download that is already staged and installable. */
 export type UpdaterStatus =
   | "idle" // nothing known yet / dismissed
-  | "checking"
   | "upToDate"
   | "available" // a newer version exists, not downloaded
   | "downloading"
@@ -47,6 +57,10 @@ export type UpdaterStatus =
 class UpdaterStore {
   /** Current lifecycle state. */
   status = $state<UpdaterStatus>("idle");
+  /** A check is in flight. Overlays `status` rather than replacing it, so the
+   *  "Check now" action stays available in every phase and a staged download
+   *  stays installable while the check runs. */
+  checking = $state(false);
   /** The available/downloaded update's metadata, when one is known. */
   update = $state<UpdateInfo | null>(null);
   /** Live download progress (null unless downloading). */
@@ -116,33 +130,73 @@ class UpdaterStore {
     }
   }
 
+  /** The version already downloaded and waiting to be installed, or null. */
+  get stagedVersion(): string | null {
+    return this.status === "downloaded" ? (this.update?.version ?? null) : null;
+  }
+
   /** Check the configured channel for a newer version. `auto` checks stay quiet
-   *  (no toast on up-to-date / transient error); a manual check reports both. */
+   *  (no toast on up-to-date / transient error); a manual check reports both.
+   *
+   *  Safe to run in any phase — including with an update already staged, which is
+   *  the point: releases keep coming while agents work, and the user must be able
+   *  to pick up a newer one without restarting the app to clear the staged one. */
   async checkNow(auto = false): Promise<void> {
-    // Don't interrupt an in-flight download/install with a re-check.
+    // Don't interrupt an in-flight download/install (or another check) with one.
+    if (this.checking) return;
     if (this.status === "downloading" || this.status === "installing") return;
-    this.status = "checking";
+    this.checking = true;
     this.error = null;
     try {
       const info = await updaterCheck();
       this.lastChecked = Date.now();
-      if (info) {
-        // A genuinely new version resets a prior dismissal.
-        if (this.update?.version !== info.version) this.dismissed = false;
-        this.update = info;
-        this.status = "available";
-        if (app.settings.updater?.autoDownload !== false) {
-          void this.download();
-        }
-      } else {
-        this.update = null;
-        this.status = "upToDate";
-        if (!auto) toast.success(i18n.t("updates.upToDate"));
+      switch (checkOutcome(info?.version ?? null, this.stagedVersion)) {
+        case "upToDate":
+          this.update = null;
+          this.status = "upToDate";
+          if (!auto) toast.success(i18n.t("updates.upToDate"));
+          break;
+        case "keepStaged":
+          // Still the newest build on this channel: keep the staged installer
+          // (and its "Install" action) instead of downloading it a second time.
+          if (info) this.update = info;
+          if (!auto) {
+            toast.success(
+              i18n.t("updates.stagedIsLatest", {
+                version: this.update?.version ?? "",
+              }),
+            );
+          }
+          break;
+        case "superseded":
+          // A newer release landed after the download: the staged bytes are
+          // stale, so drop any armed install and fetch the new version instead.
+          this.disarmIdle();
+          this.onAvailable(info!);
+          break;
+        case "available":
+          this.onAvailable(info!);
+          break;
       }
     } catch (e) {
-      this.status = "error";
       this.error = e instanceof Error ? e.message : String(e);
+      // A failed check must never discard a download that is ready to install.
+      if (this.status !== "downloaded") this.status = "error";
       if (!auto) toastError(e);
+    } finally {
+      this.checking = false;
+    }
+  }
+
+  /** Record a newer version to offer and start the background download when the
+   *  user has auto-download on. */
+  private onAvailable(info: UpdateInfo): void {
+    // A genuinely new version resets a prior dismissal.
+    if (this.update?.version !== info.version) this.dismissed = false;
+    this.update = info;
+    this.status = "available";
+    if (app.settings.updater?.autoDownload !== false) {
+      void this.download();
     }
   }
 
