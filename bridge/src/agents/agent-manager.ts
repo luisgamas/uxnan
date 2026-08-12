@@ -1195,7 +1195,19 @@ export class AgentManager {
             // rides on the notification so the phone's live buffer applies the
             // identical placement — live view and re-sync render the same order.
             const beforeText = readBeforeText(event.data);
-            await this.#options.store.appendBlock(threadId, turnId, content, now, beforeText);
+            // Notified from the handler's SYNCHRONOUS prefix, before the store
+            // write is awaited — which is the only part of a handler guaranteed
+            // to run in arrival order, since adapters emit without awaiting
+            // (`void this.#onEvent`). Announcing after the await let a delta
+            // that arrived during it overtake the block: the phone was told
+            // "Son 24." before the command whose output that sentence
+            // describes, and the work log read out of order. CI caught it as
+            // `[delta, delta, block]`.
+            //
+            // Persistence still follows immediately, and is what a re-sync
+            // reads. Telling the phone before the disk agrees is the same
+            // trade the streamed prose above already makes: when it becomes
+            // durable is a separate question from when the phone is told.
             this.#options.notify(
               makeNotification(StreamNotification.ContentBlock, {
                 threadId,
@@ -1205,6 +1217,7 @@ export class AgentManager {
                 ...(beforeText ? { beforeText } : {}),
               }),
             );
+            await this.#options.store.appendBlock(threadId, turnId, content, now, beforeText);
           }
           break;
         }

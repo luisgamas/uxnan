@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a tool step could be announced after the sentence that followed it
+
+The work log is ordered by the order the phone is told, and a content block was
+told last. Its branch notified *after* awaiting the store write, and adapters
+emit without awaiting the handler — so only a handler's synchronous prefix runs
+in arrival order. A delta arriving during that write overtook the block: the
+phone showed "Son 24." before the command whose output that sentence describes.
+
+The block is now announced from the synchronous prefix, with the store write
+following it, exactly as the streamed prose above already works. When something
+becomes durable is a separate question from when the phone is told about it.
+
+Found by CI rather than by a person: the ordering test had been asserting a
+fixed 80 ms snapshot, which hid the reorder as a "missing" block; waiting for
+the three notifications instead is what showed the real order.
+
 ## [0.0.20-alpha.20260812] - 2026-08-12
 
 ### Changed — streamed prose is coalesced before it leaves the bridge
