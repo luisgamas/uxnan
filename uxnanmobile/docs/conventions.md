@@ -134,6 +134,27 @@ spec, the spec wins.
     *went*, not something you opened from a list, so they own the window and the
     drawer steps aside — see `AppShell.isFullScreen`.
 
+- **Which navigation API depends on what the screen IS.** Both are in use, and
+  mixing them is the design, not drift:
+
+  | The screen is… | Open it with | Why |
+  |---|---|---|
+  | a **destination** you went to | `context.push` / `context.go` (go_router) | it is in the flat route table, so deep links and push notifications reach it |
+  | **content** opened from a list | `context.openInPane` | a tap means two different things by width, and this is the one place that decides (`router/pane_navigation.dart`) |
+  | a **child** of what is already open | `Navigator.of(context).push` + a `static push(...)` on the screen | it lands in the nearest navigator, which is the pane's — so it stacks inside instead of taking the window |
+
+  Going back is `Navigator.of(context).maybePop()` — the app bar's arrow
+  (`NeTopBar`) and every screen that draws its own. **Never `context.pop()`**,
+  which is why there are zero of them: a raw `Navigator.push` puts pages
+  go_router does not know about on top of the route, so `context.pop` pops the
+  *route underneath* and leaves the child covering the screen. The same
+  mismatch is why `openInPane` empties `shellNavigatorKey` before it calls
+  `go`.
+
+  The OS back button reaches none of this directly — it goes to
+  `GoRouterDelegate.popRoute`, and what the app tells Android about it lives in
+  `AppShell._SystemBack` (see [`architecture.md`](architecture.md)).
+
 - **Icons come from the catalogue, never from the package.** `UxIcons`
   (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and
   `UxIcon` (`presentation/widgets/ux_icon.dart`) is the only widget that talks
