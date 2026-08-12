@@ -111,6 +111,24 @@ async function harness(): Promise<Harness> {
   };
 }
 
+/**
+ * Wait for a condition instead of guessing how long the bridge needs.
+ *
+ * A block is notified only after its store write returns, so a fixed sleep is a
+ * bet on disk latency: the ordering test below snapshotted at 80 ms and caught a
+ * loaded CI runner mid-write, reporting the block as missing when it was merely
+ * late. The deltas have their own 25 ms coalescing window, which is why the
+ * tests that assert *coalescing* still sleep — there the wait is the subject.
+ */
+async function waitFor(predicate: () => boolean, timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await delay(5);
+  }
+  throw new Error('waitFor timed out');
+}
+
 test('deltas arriving together leave as one notification', async () => {
   const h = await harness();
   const { turnId } = await h.manager.sendTurn(h.threadId, 'ask');
@@ -147,7 +165,7 @@ test('buffered prose is sent before the turn completes, never after', async () =
 
   h.adapter.delta(h.threadId, turnId, 'the answer');
   h.adapter.complete(h.threadId, turnId, 'the answer');
-  await delay(80);
+  await waitFor(() => h.methods().includes(StreamNotification.TurnCompleted));
 
   const methods = h.methods();
   const delta = methods.indexOf(StreamNotification.MessageDelta);
@@ -165,12 +183,12 @@ test('buffered prose is sent before a content block, keeping the work log in ord
   h.adapter.delta(h.threadId, turnId, 'Voy a mirar.');
   h.adapter.block(h.threadId, turnId, { type: 'command_execution', command: 'ls' });
   h.adapter.delta(h.threadId, turnId, 'Son 24.');
-  await delay(80);
 
   const ordered = new Set<string>([
     StreamNotification.MessageDelta,
     StreamNotification.ContentBlock,
   ]);
+  await waitFor(() => h.methods().filter((m) => ordered.has(m)).length === 3);
   assert.deepEqual(
     h.methods().filter((m) => ordered.has(m)),
     [
