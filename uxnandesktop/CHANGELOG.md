@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **A second pet ships with the app: Nox.** Settings → Pets → Your pets now
+  offers two companions instead of one — **Uxni**, the mascot, still the default,
+  and **Nox**, a compact anime-styled urban hoodie character. Both are uxnan's
+  own artwork in the ordinary v2 pack format (8 × 11 frames of 192 × 208, rows
+  0–8 one animation each, rows 9–10 the 16 look poses), so neither is
+  special-cased: they animate, react and get replaced by an import exactly like
+  any community pack, and the provenance rule is unchanged — uxnan bundles only
+  pets it owns.
+- **Which pets ship is now a list, not a constant.** `src/lib/pets/bundled.ts`
+  declares `BUILTIN_PET_IDS`; the library loads each of them, and one whose
+  manifest can't be read no longer takes the rest of the shipped library down
+  with it. Adding another pet is a folder in `static/pets/` plus its id in that
+  list — no other code. New `tests/bundled-pets.test.mjs` holds the two halves
+  together: art that was never listed (packaged into every build and never
+  shown), an id with no art behind it, a manifest whose `id` disagrees with its
+  folder, a sheet path that isn't a bare file name, and a sheet whose pixels
+  don't divide exactly into the format's 192 × 208 cell all fail the suite.
+
 ### Fixed
 
 - **A downloaded update no longer hides the "Check now" button.**
