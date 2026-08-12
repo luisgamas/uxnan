@@ -7,6 +7,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **The "needs you" pill is a badge again, not a 28px control.** It carried a
+  control height, so an 11px counter sat inside an orange lozenge nearly as tall
+  as the row that holds it; it now takes the same padding as every other count
+  badge and hugs its contents.
+
+- **The pill takes a bell — the general notification for the whole tree.** It
+  totals `waiting` *and* `blocked` worktrees, so neither state's own glyph would
+  be true of the whole count.
+
+- **The waiting agent state keeps its question *bubble*.** At the size these are
+  drawn, `done` and `blocked` are already two rings; a "?" inside a third ring
+  made the one state that is about *you* the hardest of the three to pick out —
+  and it silently contradicted the glyph table in `architecture/02d`.
+
+- **An agent's brand mark now outranks its state glyph.** Both sat at 12px in
+  the agent and worktree rows, so the logo was too small to identify and neither
+  led the row; the mark moves to a new 16px `icon.brand` role and the state
+  glyph to 14px. Who is running reads first, how it is doing reads second.
+
+- **Unread reads the same on a project row and a worktree row.** Both now use
+  the notification bubble; the worktree rows had been left on the old red dot,
+  so the same signal was drawn two ways depending on where it appeared.
+
+- **The destructive confirmation dialog no longer floats over 32px of dead
+  space.** Its header holds the dialog's whole content, so it was adding a
+  bottom padding meant to separate it from a following section *on top of* the
+  content grid's own gap, plus a right inset reserving room for a close button
+  this dialog does not show — which also wrapped the description early. The
+  footer goes back to the one shared action band the rest of the dialogs use.
+
 - **A downloaded update no longer hides the "Check now" button.**
   Settings → Updates now shows two independent buttons instead of one that
   morphs: *Check now* is always there, and the phase action (*Download* /

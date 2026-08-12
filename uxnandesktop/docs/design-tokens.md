@@ -135,7 +135,12 @@ clearance for the 32px close target; `Dialog.Body` keeps a 16px vertical rhythm.
 `Dialog.Footer` deliberately extends through the content inset and restores
 20px internal padding, producing one full-width muted action band. Sectioned
 dialogs use `dialog.footerSurface`; hint-only bars have a 56px minimum so they
-do not collapse below action footers. Outside-pointer dismissal must preserve
+do not collapse below action footers. Every action footer uses the one
+`dialog.footer` band — a confirmation is not a second footer role. A dialog
+whose header carries its whole content (`ConfirmDialog`) drops the header's
+16px bottom padding and its 32px close-button inset instead, because the
+content grid's own 16px gap already separates that header from the footer.
+Outside-pointer dismissal must preserve
 the pointer sequence for the newly targeted underlying control; keyboard close
 may restore the trigger, while navigation must not restore stale chrome.
 Tooltip coordination is provider-owned by Bits UI: one tooltip is open per root
@@ -151,7 +156,8 @@ and keyboard focus remains supported without global document listeners.
 | `icon.action` | 14px (`size-3.5`) | Icon inside a compact toolbar / panel-header action button (pairs with `iconButton.xs`) |
 | `icon.nav` | 16px (`size-4`) | A leading icon in a nav / list row |
 | `icon.decorative` | 14px (`size-3.5`) | Purely-visual / informational: breadcrumb, leading item icons, "running terminals" indicators |
-| `icon.status` | 12px (`size-3`) | An agent-state glyph — the Comet Trail matrix or a state icon (`AgentStatusIndicator`) — in a sidebar row, a context menu or a terminal tab. A notch under `decorative`: it sits beside 12-13px text and must not outweigh it |
+| `icon.brand` | 16px (`size-4`) | An agent's brand logo leading an agent / worktree row. Deliberately a notch above the 14px state glyph beside it: the mark answers *who is running* and the glyph answers *how it is doing*, so identity reads first |
+| `icon.status` | 12px (`size-3`) | A count-adjacent indicator in a sidebar row (running terminals, per-row counters). A notch under `decorative`: it sits beside 12-13px text and must not outweigh it. The agent-state glyph itself (`AgentStatusIndicator`) sits at `decorative`, one notch under its brand mark |
 | `icon.empty` | 32px (`size-8`) | Empty-state illustration |
 
 ### Icon buttons (`iconButton`)
