@@ -379,7 +379,8 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
 #### Auto-updater in-app — ✅ Hecho (adición post-plan)
 
 - `tauri-plugin-updater` envuelto en `src-tauri/src/updater.rs`: comandos
-  `updater_check` / `updater_download` / `updater_staged` / `updater_install`.
+  `updater_check` / `updater_download` / `updater_staged` /
+  `updater_discard_staged` / `updater_install`.
 - **Descarga e instalación separadas a propósito**: descargar es en segundo plano
   (no molesta a los agentes); instalar reinicia la app y por tanto **detiene los
   agentes** (cada agente es un hijo PTY del proceso), así que la instalación está
@@ -404,11 +405,13 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
   preparada: `keepStaged` si son la misma (la comprobación se hace contra la
   versión **en ejecución**, así que reofrece indefinidamente la ya descargada) y
   `superseded` si el canal ofrece otra distinta, en cuyo caso se desarma la
-  instalación diferida y se descarga la nueva. La app solo ofrece la última: una
-  versión anterior ya no era instalable —`updater_install` rechaza el desajuste
-  de versión— y quien la quiera la baja del Release de GitHub. Esto es lo que
-  permite recoger una release posterior mientras la primera espera a que los
-  agentes queden inactivos, sin reiniciar la app. Firma minisign gratuita (`pubkey` en
+  instalación diferida, se **descarta el instalador preparado**
+  (`updater_discard_staged`, esperado antes de la descarga nueva para que no
+  borre la que acaba de llegar) y se descarga la nueva. La app solo ofrece la
+  última: una versión anterior ya no era instalable —`updater_install` rechaza
+  el desajuste de versión— y quien la quiera la baja del Release de GitHub. Esto
+  es lo que permite recoger una release posterior mientras la primera espera a
+  que los agentes queden inactivos, sin reiniciar la app. Firma minisign gratuita (`pubkey` en
   `tauri.conf.json`), independiente del code-signing del SO. **Distribucion macOS
   EXPERIMENTAL:** el CI genera dos DMG por arquitectura (Intel `x86_64` + Apple
   Silicon `aarch64`) con **firma ad-hoc** (`bundle.macOS.signingIdentity "-"`,

@@ -28,9 +28,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   between keeping the staged download, superseding it when the channel offers a
   genuinely different version (dropping any armed install-when-idle, since the
   backend rejects stale bytes), and the plain up-to-date / available cases.
+- **A superseded download stops occupying memory.** New
+  `updater_discard_staged` command: when a check supersedes a staged update, the
+  installer bytes are released before the new download starts (awaited, so a
+  late discard can't throw away the version just fetched) instead of sitting in
+  memory until the app quits. Nothing is lost — those bytes could no longer be
+  installed, and any older build is still a manual download from its GitHub
+  Release.
 
 Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version,
-including the channel-switch and "release pulled" cases).
+including the channel-switch and "release pulled" cases) + 2 Rust
+(`updater.rs` — discarding frees the bytes and reports the version; discarding
+nothing is a no-op).
 
 ## [0.0.39] - 2026-08-12
 

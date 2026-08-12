@@ -428,6 +428,7 @@ pub fn run() {
             updater::updater_check,
             updater::updater_download,
             updater::updater_staged,
+            updater::updater_discard_staged,
             updater::updater_install,
             commands::github_status,
             commands::github_repo_context,

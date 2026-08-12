@@ -930,6 +930,14 @@ export function updaterStaged(): Promise<string | null> {
   return invoke<string | null>('updater_staged');
 }
 
+/** Drop a staged download without installing it, freeing the installer bytes the
+ *  backend holds in memory. Resolves to the discarded version, or `null` when
+ *  nothing was staged. Used when a check supersedes a staged update: those bytes
+ *  can no longer be installed, so the app stops paying for them. */
+export function updaterDiscardStaged(): Promise<string | null> {
+  return invoke<string | null>('updater_discard_staged');
+}
+
 /** Apply the staged update and restart into the new version. **Stops every
  *  running agent** (the app restarts) — call only when it's safe to do so. */
 export function updaterInstall(): Promise<void> {

@@ -20,6 +20,7 @@
 import { listen } from "@tauri-apps/api/event";
 import {
   updaterCheck,
+  updaterDiscardStaged,
   updaterDownload,
   updaterInstall,
   updaterStaged,
@@ -169,9 +170,18 @@ class UpdaterStore {
           }
           break;
         case "superseded":
-          // A newer release landed after the download: the staged bytes are
-          // stale, so drop any armed install and fetch the new version instead.
+          // A newer release landed after the download: the staged bytes can no
+          // longer be installed (`updater_install` refuses a version mismatch),
+          // so disarm any pending install and hand the whole installer back to
+          // the OS instead of holding it in memory until the app quits. Awaited
+          // deliberately — a discard that landed after the new download finished
+          // would throw away the version we just fetched.
           this.disarmIdle();
+          try {
+            await updaterDiscardStaged();
+          } catch {
+            // Not fatal: the next download replaces the staged bytes anyway.
+          }
           this.onAvailable(info!);
           break;
         case "available":

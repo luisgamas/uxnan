@@ -56,6 +56,10 @@ quitting the app), so nothing is killed mid-write.
   - `updater_download` → downloads + **stages the installer bytes in memory**
     (`AppState.staged_update`), emitting `updater:download-progress` and
     `updater:downloaded`.
+  - `updater_discard_staged` → drops the staged bytes and reports the version
+    discarded. The store calls it when a check supersedes a staged update: those
+    bytes can never be installed again, so a whole installer stops sitting in
+    memory for the rest of the session.
   - `updater_install` → re-checks (to get a fresh install handle), guards against
     a stale download, closes terminals, installs, and restarts.
   - The frontend store `src/lib/state/updater.svelte.ts` orchestrates check →
@@ -174,9 +178,9 @@ survives every case:
 - **Stale staged download** — if a newer release appears between download and
   install, `updater_install` compares versions, refuses the stale bytes, and
   asks for a fresh download (`src-tauri/src/updater.rs`). A check that spots the
-  newer release first gets there sooner: it supersedes the staged installer and
-  downloads the new one, so the offer on screen is always the version that would
-  actually install.
+  newer release first gets there sooner: it discards the staged installer
+  (`updater_discard_staged`) and downloads the new one, so the offer on screen
+  is always the version that would actually install.
 - **Channel switched by the user** — the endpoint is rebuilt from the selected
   channel at runtime; the next check runs against the other channel's manifest,
   which still has to carry a valid signature. CI prevents a release from ever
