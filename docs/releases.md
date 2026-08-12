@@ -406,7 +406,7 @@ and the defects that found are fixed and pinned by tests.
 
 | Component | Exercised | What is still unproven |
 |---|---|---|
-| desktop | ✅ 0.0.29 → 0.0.37, end to end, several cut unattended and landing their own pull request | — |
+| desktop | ✅ 0.0.29 → 0.0.39, both channels: nightlies cut unattended and landing their own pull request, and **0.0.39 as a stable** — draft built, reviewed, published, and the stable updater channel rolled 0.0.28 → 0.0.39 while nightly stayed at 0.0.38 | — |
 | shared | ✅ 0.0.14-alpha.20260810 — tagged, published, `latest` moved | — |
 | bridge | ✅ 0.0.19-alpha.20260810 — **published pinned to the shared cut minutes earlier**, which is the whole reason this is one workflow | — |
 | mobile | ✅ 0.0.19-alpha.20260810+20260810 — pubspec↔tag gate passed on a pubspec `prepare.mjs` wrote, notes gate passed, uploaded to Play open testing | — |
@@ -426,10 +426,22 @@ describe *this* version in plain language under 500 characters, and the
 `CHANGELOG` heading must be the version being cut. The tooling prints a reminder
 and writes neither — the prose is the part someone is supposed to have read.
 
-One desktop detail is also still unproven: the `notes` job now survives a failed
-macOS leg (`if: always()`), but every run since that fix has been fully green, so
-the path it was written for has not run again. The next release that loses a mac
-leg is the one that confirms it.
+Two things proved themselves on the 0.0.39 cut by going wrong first, which is
+the only way either could have been observed:
+
+- **The `land` job refused to merge**, exactly as designed, because a `verify`
+  leg was red. It held that line while the failure was diagnosed — and the
+  failure was real (a content block announced after the prose that followed it),
+  not the flake it looked like.
+- **Re-running only `land`** then merged the pull request without re-cutting
+  anything. That is why it is a separate job, and it had never been needed.
+
+Still unproven: the `notes` job surviving a failed macOS leg (`if: always()`) —
+every run since that fix has kept its mac legs, so the path it was written for
+has not run again. A `build` leg *did* fail on 0.0.39 (ubuntu, a transient
+`Not Found` from the release-asset API after its artifacts had already
+uploaded), and `notes` ran through it green, which is the same guard from the
+other side.
 
 **What the first unattended cut cost, and what it teaches.** 0.0.31 was cut by
 the cron with nobody watching, and it got everything right up to the last step:
