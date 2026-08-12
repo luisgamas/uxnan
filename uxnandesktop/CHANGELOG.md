@@ -7,6 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Status-bar highlights no longer spill out of the status bar.** The backend
+  and providers buttons were the standard 32px icon action inside a 28px bar, so
+  their hover fill crossed the hairline above and ran past the window edge below
+  — and even the 28px panel toggles overflowed by half a pixel, because the bar's
+  `border-t` lives inside its own 28px box and left 27px for them.
+
+  The bar now follows the app bar's anatomy, which had this right all along: the
+  hairline is painted as an overlay instead of a border, so a control gets the
+  full 28px, and every control is square and full-height
+  (`shell.statusBarAction` / `shell.statusBarItem`) instead of a rounded pill
+  floating inside the band. Highlights fill the bar from seam to bottom edge, the
+  way the window controls and the app-bar actions already did.
+
 - **A downloaded update no longer hides the "Check now" button.**
   Settings → Updates now shows two independent buttons instead of one that
   morphs: *Check now* is always there, and the phase action (*Download* /
