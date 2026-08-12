@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.21-alpha.20260812] - 2026-08-12
+
 ### Fixed — a tool step could be announced after the sentence that followed it
 
 The work log is ordered by the order the phone is told, and a content block was
