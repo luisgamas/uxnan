@@ -1,9 +1,7 @@
-Your conversations are now grouped by the folder they run in, with the repository shown above the folders that belong together.
+Conversations no longer come back duplicated. If one of yours already shows an exchange twice, it repairs itself the next time you open it — nothing you wrote is lost.
 
-Each folder tells you at a glance whether it has uncommitted work, or is ahead of or behind its remote.
+Long replies stay smooth to the end instead of slowing down as they grow.
 
-Sort projects, folders and conversations the way you prefer.
+Opening a second conversation in the same pane now shows the one you picked.
 
-On tablets and foldables the app uses the whole screen: the list stays beside what you are reading.
-
-A refreshed look throughout. Gemini CLI has been removed; every other agent works as before.
+The empty conversation drawer offers to get you set up, instead of the camera.
