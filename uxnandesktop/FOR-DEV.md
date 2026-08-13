@@ -830,11 +830,13 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
          doctor should report this per-host cost since it has a user-side fix
          (`DefaultShell` = cmd, or a fast path in their profile). See
          `architecture/02g` §5.3.
-      3. ~~Authentication through the Windows agent named pipe.~~ **Proven**:
-         with a key loaded in this machine's agent, the named-pipe conversation
-         happens and the agent's identities are put on the wire (a live test
-         asserts the agent was consulted). A *successful* agent login still
-         needs a host that authorizes that key — orthogonal to the transport.
+      3. ~~Authentication through the Windows agent named pipe.~~ **Proven end
+         to end**: the named pipe is spoken to, an identity it holds is offered,
+         the server accepts it, and a command then runs on that authenticated
+         session. The live test uses `USERNAME` (overridable with
+         `UXNAN_SSH_TEST_USER`) so it works on any machine whose sshd authorizes
+         a key that machine's agent holds, and degrades to "agent consulted, no
+         key authorized" rather than failing where none is.
       4. ~~`known_hosts` verification, including the *changed fingerprint*
          case.~~ **Proven live**, first against the sshd on this machine and
          then against a *real remote host over a private tailnet*: unknown host

@@ -532,24 +532,42 @@ mod tests {
             // conversation, which either works or silently offers nothing.
             // Authorization is a separate matter — what is asserted here is that
             // the agent was actually consulted and its keys put on the wire.
+            // The current user, so the test works on any machine whose sshd
+            // authorizes a key held by that user's agent.
+            let user = std::env::var("UXNAN_SSH_TEST_USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .or_else(|_| std::env::var("USER"))
+                .expect("a username to authenticate as");
+
             let mut conn = verified_connection().await;
-            let outcome = authenticate(&mut conn, "uxnan-no-such-user", &[Credential::Agent])
+            let outcome = authenticate(&mut conn, &user, &[Credential::Agent])
                 .await
                 .unwrap();
-            let attempted = match outcome {
-                AuthOutcome::NeedsPassword { attempted } => attempted,
-                AuthOutcome::Failed { attempted } => attempted,
+
+            match outcome {
+                // The full agent path: the named pipe was spoken to, an identity
+                // it holds was offered, and the server took it.
                 AuthOutcome::Success { method } => {
-                    println!("live: agent authenticated via {method}");
-                    return;
+                    assert_eq!(method, "ssh-agent");
+                    let out = conn.exec("echo agent-session").await.expect("exec");
+                    assert!(out.stdout.contains("agent-session"), "{out:?}");
+                    assert_eq!(out.exit_code, Some(0));
+                    println!("live: agent login succeeded for {user}, session usable");
+                }
+                // No key of the agent's is authorized here. The transport half
+                // is still proven — the agent was consulted and its identities
+                // went on the wire — so this is reported, not failed.
+                AuthOutcome::NeedsPassword { attempted } | AuthOutcome::Failed { attempted } => {
+                    assert!(
+                        attempted.contains(&"ssh-agent".to_string()),
+                        "the agent should have been consulted: {attempted:?}"
+                    );
+                    println!(
+                        "live: agent reached and its identities offered, none authorized for {user}"
+                    );
                 }
                 other => panic!("unexpected outcome {other:?}"),
-            };
-            assert!(
-                attempted.contains(&"ssh-agent".to_string()),
-                "the agent should have been consulted: {attempted:?}"
-            );
-            println!("live: agent reached and its identities offered");
+            }
         }
 
         #[tokio::test]

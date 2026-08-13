@@ -216,9 +216,12 @@ autenticacion, con sus principales y su validez, y ofrecerlo como si fuera una
 llave suelta fallaria de una forma que parece una llave rechazada.
 
 Windows habla con el agente por named pipe de OpenSSH; el resto por
-`SSH_AUTH_SOCK`. Validado en vivo contra el `sshd` local: el intercambio
-completo ocurre y una llave no autorizada vuelve como rechazo limpio nombrando
-lo que se ofrecio. Falta una corrida con una llave cargada en el agente.
+`SSH_AUTH_SOCK`. **Validado de punta a punta** contra un `sshd` real: se habla
+con el named pipe, se ofrece una identidad que el agente sostiene, el servidor la
+acepta y despues un comando corre en esa sesion autenticada. Tambien validado el
+lado negativo: una llave no autorizada vuelve como rechazo limpio nombrando lo
+que se ofrecio, y una contrasena incorrecta como rechazo, no como error de
+transporte.
 
 ## 5.3 Comandos como canales — IMPLEMENTADO, con una medicion que condiciona el diseño
 
