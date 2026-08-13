@@ -32,8 +32,9 @@ use crate::error::AppError;
 #[cfg(windows)]
 const WINDOWS_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
-/// Something that can prove identity. Never a secret — always a reference to one
-/// held somewhere the user already controls.
+/// Something that can prove identity. Never a stored secret — a reference to one
+/// the user already controls, or a value they just typed and that lives only for
+/// this attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Credential {
     /// The system's ssh-agent: Windows' named pipe, or `SSH_AUTH_SOCK`.
@@ -44,15 +45,21 @@ pub enum Credential {
         path: PathBuf,
         passphrase: Option<String>,
     },
+    /// A password the user just typed. This is the path that makes a first
+    /// connection possible with **no setup at all** on the remote machine — no
+    /// key to generate, nothing to append to `authorized_keys` — which for most
+    /// people is the difference between "I connected" and "I gave up".
+    Password(String),
 }
 
 impl Credential {
     /// How this credential is named in logs and in the UI. Deliberately never
-    /// includes the passphrase, and for a file only its path.
+    /// includes the passphrase or the password, and for a file only its path.
     pub fn label(&self) -> String {
         match self {
             Credential::Agent => "ssh-agent".to_string(),
             Credential::IdentityFile { path, .. } => path.display().to_string(),
+            Credential::Password(_) => "password".to_string(),
         }
     }
 }
@@ -66,11 +73,21 @@ pub enum AuthOutcome {
     /// A key file is encrypted and no passphrase was supplied. Ask for one and
     /// retry that credential; this is not a failure of the key.
     NeedsPassphrase { path: String },
+    /// The server accepts a password and we have none. Ask for one and retry
+    /// with [`Credential::Password`] added — on a first connection to a machine
+    /// that has never seen your key, this is the normal path, not a failure.
+    ///
+    /// `attempted` carries whatever was offered and rejected first, so the
+    /// message can be both things at once: *the key at X was refused, and this
+    /// host also takes a password*. Collapsing that into a bare "type a
+    /// password" would hide a rejected key the user may well want to fix.
+    NeedsPassword { attempted: Vec<String> },
     /// Everything offered was rejected. `attempted` is what we tried, in order,
     /// so the message can be specific instead of "authentication failed".
     Failed { attempted: Vec<String> },
-    /// Nothing could be offered at all: no agent, no key files configured.
-    NoCredentials,
+    /// The server accepts nothing we can offer: no keys, no password. Rare, and
+    /// worth saying plainly rather than reporting as a rejection.
+    NoUsableMethod,
 }
 
 /// Build the credential list for a host, in the order they will be tried.
@@ -109,50 +126,151 @@ fn expand_home(raw: &str) -> PathBuf {
     PathBuf::from(trimmed)
 }
 
-/// Try each credential in order until one authenticates.
+/// Authenticate, trying what the **server says it accepts** in OpenSSH's order.
+///
+/// The exchange opens with a `none` attempt. That is not a shortcut hoping for
+/// an open server: it is how SSH asks "what do you take?", and the answer is
+/// what keeps us from offering keys to a password-only host — or, worse, from
+/// telling a user "authentication failed" when the real answer is "this machine
+/// wants a password and you have not been asked for one yet".
 ///
 /// Stops early on [`AuthOutcome::NeedsPassphrase`]: continuing past a key we
-/// could not even open would report "authentication failed" for a key that may
-/// well be the right one, sending the user to debug the wrong problem.
+/// could not even open would report a failure for a key that may well be the
+/// right one, sending the user to debug the wrong problem.
 pub async fn authenticate(
     conn: &mut Connection,
     user: &str,
     credentials: &[Credential],
 ) -> Result<AuthOutcome, AppError> {
-    if credentials.is_empty() {
-        return Ok(AuthOutcome::NoCredentials);
-    }
+    let accepted = match conn
+        .handle_mut()
+        .authenticate_none(user)
+        .await
+        .map_err(|e| AppError::Invalid(format!("authentication failed: {e}")))?
+    {
+        // A server configured to let anyone in. Vanishingly rare, but the
+        // protocol allows it and pretending otherwise would be a lie.
+        russh::client::AuthResult::Success => {
+            return Ok(AuthOutcome::Success {
+                method: "none".to_string(),
+            })
+        }
+        russh::client::AuthResult::Failure {
+            remaining_methods, ..
+        } => remaining_methods,
+    };
+
+    let takes = |kind: russh::MethodKind| accepted.contains(&kind);
+    let takes_public_key = takes(russh::MethodKind::PublicKey);
+    let takes_password =
+        takes(russh::MethodKind::Password) || takes(russh::MethodKind::KeyboardInteractive);
+
     let mut attempted = Vec::new();
 
-    for credential in credentials {
-        attempted.push(credential.label());
-        match credential {
-            Credential::Agent => {
-                if try_agent(conn, user).await? {
-                    return Ok(AuthOutcome::Success {
-                        method: credential.label(),
-                    });
-                }
-            }
-            Credential::IdentityFile { path, passphrase } => {
-                match try_identity_file(conn, user, path, passphrase.as_deref()).await? {
-                    IdentityAttempt::Authenticated => {
+    if takes_public_key {
+        for credential in credentials {
+            match credential {
+                Credential::Agent => {
+                    attempted.push(credential.label());
+                    if try_agent(conn, user).await? {
                         return Ok(AuthOutcome::Success {
                             method: credential.label(),
-                        })
+                        });
                     }
-                    IdentityAttempt::Encrypted => {
-                        return Ok(AuthOutcome::NeedsPassphrase {
-                            path: path.display().to_string(),
-                        })
-                    }
-                    IdentityAttempt::Rejected => {}
                 }
+                Credential::IdentityFile { path, passphrase } => {
+                    attempted.push(credential.label());
+                    match try_identity_file(conn, user, path, passphrase.as_deref()).await? {
+                        IdentityAttempt::Authenticated => {
+                            return Ok(AuthOutcome::Success {
+                                method: credential.label(),
+                            })
+                        }
+                        IdentityAttempt::Encrypted => {
+                            return Ok(AuthOutcome::NeedsPassphrase {
+                                path: path.display().to_string(),
+                            })
+                        }
+                        IdentityAttempt::Rejected => {}
+                    }
+                }
+                Credential::Password(_) => {}
             }
         }
     }
 
+    if takes_password {
+        if let Some(Credential::Password(password)) = credentials
+            .iter()
+            .find(|c| matches!(c, Credential::Password(_)))
+        {
+            attempted.push("password".to_string());
+            if try_password(conn, user, password).await? {
+                return Ok(AuthOutcome::Success {
+                    method: "password".to_string(),
+                });
+            }
+        } else {
+            // Nothing else worked and the server takes a password: ask for one.
+            // Reporting a failure here would hide the one action that works.
+            return Ok(AuthOutcome::NeedsPassword { attempted });
+        }
+    }
+
+    if attempted.is_empty() {
+        return Ok(AuthOutcome::NoUsableMethod);
+    }
     Ok(AuthOutcome::Failed { attempted })
+}
+
+/// Offer a password, falling back to keyboard-interactive.
+///
+/// Both are tried because servers disagree about which one a plain password
+/// belongs to: OpenSSH commonly answers `password`, while others (and anything
+/// with PAM in the way) only expose `keyboard-interactive`. To the person typing
+/// it, it is the same password either way.
+///
+/// The keyboard-interactive side answers **only** a single-prompt request. A
+/// server asking two things is asking for a second factor, and replaying the
+/// password into it would be both wrong and a way to burn an OTP attempt; that
+/// needs a real prompt-by-prompt UI, which is deferred rather than faked.
+async fn try_password(conn: &mut Connection, user: &str, password: &str) -> Result<bool, AppError> {
+    let direct = conn
+        .handle_mut()
+        .authenticate_password(user, password)
+        .await
+        .map_err(|e| AppError::Invalid(format!("authentication failed: {e}")))?;
+    if direct.success() {
+        return Ok(true);
+    }
+
+    use russh::client::KeyboardInteractiveAuthResponse as Ki;
+    let mut response = conn
+        .handle_mut()
+        .authenticate_keyboard_interactive_start(user, None)
+        .await
+        .map_err(|e| AppError::Invalid(format!("authentication failed: {e}")))?;
+
+    loop {
+        match response {
+            Ki::Success => return Ok(true),
+            Ki::Failure { .. } => return Ok(false),
+            Ki::InfoRequest { ref prompts, .. } => {
+                let answers = match prompts.len() {
+                    // An empty request is the server's way of saying "continue".
+                    0 => Vec::new(),
+                    1 => vec![password.to_string()],
+                    // More than one prompt is a second factor, not a password.
+                    _ => return Ok(false),
+                };
+                response = conn
+                    .handle_mut()
+                    .authenticate_keyboard_interactive_respond(answers)
+                    .await
+                    .map_err(|e| AppError::Invalid(format!("authentication failed: {e}")))?;
+            }
+        }
+    }
 }
 
 enum IdentityAttempt {
@@ -315,10 +433,57 @@ mod tests {
 
         #[tokio::test]
         #[ignore = "needs a local sshd; run explicitly with --ignored"]
-        async fn offering_no_credentials_is_reported_as_such() {
+        async fn a_password_server_with_no_password_asks_for_one() {
+            // The first-connection case, and the reason this outcome exists:
+            // with nothing to offer against a server that takes a password,
+            // "authentication failed" would hide the one action that works.
             let mut conn = verified_connection().await;
             let outcome = authenticate(&mut conn, "nobody", &[]).await.unwrap();
-            assert_eq!(outcome, AuthOutcome::NoCredentials);
+            assert_eq!(outcome, AuthOutcome::NeedsPassword { attempted: vec![] });
+        }
+
+        #[tokio::test]
+        #[ignore = "needs a local sshd and a key loaded in the agent; run with --ignored"]
+        async fn the_system_agent_is_reached_and_its_identities_are_offered() {
+            // Transport gate item 3: on Windows this is a named-pipe
+            // conversation, which either works or silently offers nothing.
+            // Authorization is a separate matter — what is asserted here is that
+            // the agent was actually consulted and its keys put on the wire.
+            let mut conn = verified_connection().await;
+            let outcome = authenticate(&mut conn, "uxnan-no-such-user", &[Credential::Agent])
+                .await
+                .unwrap();
+            let attempted = match outcome {
+                AuthOutcome::NeedsPassword { attempted } => attempted,
+                AuthOutcome::Failed { attempted } => attempted,
+                AuthOutcome::Success { method } => {
+                    println!("live: agent authenticated via {method}");
+                    return;
+                }
+                other => panic!("unexpected outcome {other:?}"),
+            };
+            assert!(
+                attempted.contains(&"ssh-agent".to_string()),
+                "the agent should have been consulted: {attempted:?}"
+            );
+            println!("live: agent reached and its identities offered");
+        }
+
+        #[tokio::test]
+        #[ignore = "needs a local sshd; run explicitly with --ignored"]
+        async fn a_wrong_password_is_a_rejection_not_a_transport_error() {
+            let mut conn = verified_connection().await;
+            let creds = vec![Credential::Password("definitely-not-the-password".into())];
+            match authenticate(&mut conn, "uxnan-no-such-user", &creds)
+                .await
+                .unwrap()
+            {
+                AuthOutcome::Failed { attempted } => {
+                    assert!(attempted.contains(&"password".to_string()), "{attempted:?}");
+                    println!("live: wrong password rejected cleanly, tried {attempted:?}");
+                }
+                other => panic!("expected a clean rejection, got {other:?}"),
+            }
         }
 
         #[tokio::test]
@@ -344,13 +509,18 @@ mod tests {
                 .await
                 .unwrap();
 
+            // The key is refused *and* this server takes a password, so the
+            // useful answer says both: what was rejected, and what to try next.
             match outcome {
-                AuthOutcome::Failed { attempted } => {
+                AuthOutcome::NeedsPassword { attempted } => {
                     assert_eq!(attempted.len(), 1);
                     assert!(attempted[0].contains("id_ed25519"), "{attempted:?}");
-                    println!("live: rejected as expected, offered {}", attempted[0]);
+                    println!(
+                        "live: key refused ({}), password offered next",
+                        attempted[0]
+                    );
                 }
-                other => panic!("expected a clean rejection, got {other:?}"),
+                other => panic!("expected the key refused + password offered, got {other:?}"),
             }
         }
     }

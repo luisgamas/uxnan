@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **You can connect with just a password.** No key to generate, nothing to
+  append to `authorized_keys` on the far machine — if the host accepts a
+  password, the app asks for one and connects. The exchange starts by asking the
+  server *what it accepts*, so the app offers keys only to hosts that take them
+  and, crucially, never reports "authentication failed" when the real answer is
+  "this machine wants a password and nobody asked you for one". A rejected key
+  followed by a password-capable host says both things at once: what was refused,
+  and what to try next.
 - **Authentication, in the order OpenSSH would use it.** The system's ssh-agent
   first — it holds keys you have already unlocked, which is what keeps connecting
   to several hosts from becoming several passphrase prompts — then the identity

@@ -71,8 +71,19 @@ run a proxy command called `none`.
 
 ## How you authenticate
 
-The app tries your **ssh-agent first**, then the identity files your SSH config
-points at for that host. The agent goes first on purpose: it holds keys you have
+**You can just use a password.** If the host accepts one — most do out of the box
+— there is nothing to set up on the far machine: no key to generate, nothing to
+append to `authorized_keys`. The app asks for the password and connects. Setting
+up a key later is a convenience so you stop typing it, not a prerequisite.
+
+The app starts by asking the server what it accepts, so it never offers keys to a
+host that does not take them, and never tells you "authentication failed" when
+the truth is "this machine wants a password and nobody asked you for one". If a
+key of yours is refused on a host that also takes passwords, you get told both
+things: which key was refused, and that you can try a password.
+
+When you do have keys, the app tries your **ssh-agent first**, then the identity
+files your SSH config points at for that host. The agent goes first on purpose: it holds keys you have
 already unlocked, so connecting to five hosts does not mean five passphrase
 prompts. On Windows that is OpenSSH's agent service; elsewhere it is whatever
 `SSH_AUTH_SOCK` points at.

@@ -160,14 +160,34 @@ varios prompts de passphrase.
 se escribe en ningun sitio. La etiqueta de una credencial (la que va a logs y
 UI) nunca incluye la passphrase, y hay un test que lo exige.
 
+**El intercambio abre con un intento `none`.** No es un atajo esperando un
+servidor abierto: es como SSH pregunta *"¿que aceptas?"*. Esa respuesta es lo que
+evita ofrecer llaves a un host que solo toma contraseña y, sobre todo, lo que
+evita decir "fallo la autenticacion" cuando la respuesta real es "esta maquina
+quiere una contraseña y a nadie se le ha pedido una".
+
 Resultados tipados, no un booleano:
 
 | Resultado | Significa | Que hace la UI |
 |---|---|---|
 | `Success { method }` | autenticado, y **con que** credencial | puede decir por donde entro |
 | `NeedsPassphrase { path }` | la llave esta cifrada y no habia passphrase (o era incorrecta) | la pide y reintenta **esa** credencial |
+| `NeedsPassword { attempted }` | el host acepta contraseña y no teniamos ninguna; `attempted` lleva lo ya rechazado | pide contraseña, diciendo tambien que llave fue rechazada |
 | `Failed { attempted }` | todo lo ofrecido fue rechazado, con la lista en orden | mensaje concreto, no "fallo la autenticacion" |
-| `NoCredentials` | no habia nada que ofrecer | ofrece configurar una llave |
+| `NoUsableMethod` | el host no acepta nada que podamos ofrecer | lo dice tal cual, no como rechazo |
+
+**La contraseña es el camino que hace posible una primera conexion sin preparar
+nada en la maquina remota** — sin generar llave, sin tocar `authorized_keys` —, y
+para la mayoria de la gente esa es la diferencia entre "conecte" y "lo deje".
+`NeedsPassword` lleva lo ya intentado para poder decir las dos cosas a la vez:
+que llave se rechazo y que se puede probar contraseña.
+
+Se prueban `password` y `keyboard-interactive`, porque los servidores discrepan
+sobre a cual pertenece una contraseña simple (con PAM de por medio suele ser solo
+la segunda). El lado interactivo responde **solo a peticiones de un unico
+prompt**: un servidor que pregunta dos cosas esta pidiendo un segundo factor, y
+repetir ahi la contraseña seria erroneo ademas de quemar un intento de OTP; eso
+necesita una UI prompt-a-prompt y queda diferido en vez de fingido.
 
 Dos decisiones que evitan diagnosticos equivocados:
 
