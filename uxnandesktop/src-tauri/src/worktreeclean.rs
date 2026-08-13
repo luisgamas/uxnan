@@ -91,6 +91,17 @@ pub enum CleanupKind {
     Blocked,
 }
 
+/// Which of the two things a candidate is. Stated by the backend rather than
+/// inferred in the UI: a blocked row can be either, and "guess it from the
+/// reason" breaks the moment both kinds share one — `uncommittedChanges`
+/// already does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CleanupScope {
+    Worktree,
+    Clone,
+}
+
 /// One worktree the cleanup screen can show.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +113,7 @@ pub struct CleanupCandidate {
     /// Folder name of the worktree itself, for display.
     pub name: String,
     pub branch: Option<String>,
+    pub scope: CleanupScope,
     pub kind: CleanupKind,
     pub reason: CleanupReason,
     /// For [`CleanupReason::UncommittedChanges`], how many files are dirty.
@@ -220,6 +232,7 @@ pub async fn scan_clones(repos_root: &str, projects: &[String]) -> Vec<CleanupCa
             group: root.clone(),
             name: entry.name.clone(),
             branch: None,
+            scope: CleanupScope::Clone,
             kind,
             reason,
             changed_files,
@@ -360,6 +373,7 @@ async fn classify(
         group: group.to_string(),
         name: entry.name.clone(),
         branch,
+        scope: CleanupScope::Worktree,
         kind,
         reason,
         changed_files,
@@ -625,6 +639,11 @@ pub async fn remove(
             }),
         }
     }
+    // Removing the last worktree of a project leaves its group holding only the
+    // marker — which the next project of that name would read as a live claim.
+    if !outcome.removed.is_empty() {
+        prune_empty_groups(roots).await;
+    }
     outcome
 }
 
@@ -655,6 +674,50 @@ async fn retire(path: &str, root: &str) -> Result<(), AppError> {
         // tree. Deleting in place is slower but correct.
         Err(_) => tokio::fs::remove_dir_all(path).await.map_err(AppError::Io),
     }
+}
+
+/// Delete group folders left holding nothing but their marker.
+///
+/// Removing the last worktree of a project empties its group, and an empty
+/// group is not merely untidy: its `.uxnan-repo` outlives the repository it
+/// named, and the next project of the same name reads that stale claim and gets
+/// a hash suffix hung on a name that was free. Litter with consequences.
+///
+/// Only a directory whose sole entry is the marker is removed — one holding
+/// anything else is left exactly as found.
+pub async fn prune_empty_groups(roots: &[String]) -> u32 {
+    let mut pruned = 0;
+    for root in roots {
+        let root = normalize(root);
+        for group in read_dirs(&root).await {
+            if group.name == TRASH_DIR {
+                continue;
+            }
+            if !holds_only_marker(&group.path).await {
+                continue;
+            }
+            if tokio::fs::remove_dir_all(&group.path).await.is_ok() {
+                pruned += 1;
+            }
+        }
+    }
+    pruned
+}
+
+/// Whether a directory contains the marker file and nothing else.
+async fn holds_only_marker(path: &str) -> bool {
+    let Ok(mut reader) = tokio::fs::read_dir(path).await else {
+        return false;
+    };
+    let mut saw_marker = false;
+    while let Ok(Some(item)) = reader.next_entry().await {
+        if item.file_name().to_string_lossy() == MARKER_FILE {
+            saw_marker = true;
+        } else {
+            return false;
+        }
+    }
+    saw_marker
 }
 
 /// Delete trash left behind by a run that was interrupted (a crash, a kill, or
@@ -1067,9 +1130,65 @@ mod tests {
         .await;
         assert_eq!(outcome.removed, vec![stray.clone()]);
         assert!(!Path::new(&stray).exists());
-        // The group, its marker and the repository are untouched.
-        assert!(Path::new(&format!("{group}/{MARKER_FILE}")).is_file());
+        // The group went with it: nothing was left in it but the marker, and a
+        // marker with no worktrees under it is what the next project of this
+        // name would misread as a live claim.
+        assert!(!Path::new(&group).exists());
+        // The repository itself is untouched.
         assert!(Path::new(&repo).is_dir());
+    }
+
+    #[tokio::test]
+    async fn cleaning_the_last_worktree_takes_the_empty_group_with_it() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo).await;
+        let (_root_dir, root, group) = managed_root(&repo).await;
+        let stray = format!("{group}/stray");
+        tokio::fs::create_dir_all(&stray).await.unwrap();
+
+        remove(
+            std::slice::from_ref(&root),
+            "",
+            std::slice::from_ref(&repo),
+            std::slice::from_ref(&stray),
+        )
+        .await;
+
+        // The group is gone, marker and all: left behind, its stale marker is
+        // what the next project of this name would read as a live claim.
+        assert!(!Path::new(&group).exists(), "the empty group must go");
+    }
+
+    #[tokio::test]
+    async fn pruning_leaves_a_group_that_holds_anything_else() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let empty = format!("{root}/empty");
+        let occupied = format!("{root}/occupied");
+        tokio::fs::create_dir_all(&empty).await.unwrap();
+        tokio::fs::create_dir_all(format!("{occupied}/a-worktree"))
+            .await
+            .unwrap();
+        for dir in [&empty, &occupied] {
+            tokio::fs::write(format!("{dir}/{MARKER_FILE}"), "C:/repo")
+                .await
+                .unwrap();
+        }
+        // A group holding something the app did not put there is untouchable.
+        let with_file = format!("{root}/with-file");
+        tokio::fs::create_dir_all(&with_file).await.unwrap();
+        tokio::fs::write(format!("{with_file}/{MARKER_FILE}"), "C:/repo")
+            .await
+            .unwrap();
+        tokio::fs::write(format!("{with_file}/notes.txt"), "mine")
+            .await
+            .unwrap();
+
+        assert_eq!(prune_empty_groups(std::slice::from_ref(&root)).await, 1);
+        assert!(!Path::new(&empty).exists());
+        assert!(Path::new(&occupied).is_dir());
+        assert!(Path::new(&with_file).is_dir());
     }
 
     #[tokio::test]

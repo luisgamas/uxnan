@@ -142,11 +142,17 @@ pub fn run() {
                     crate::commands::managed_roots(&state).await
                 };
                 let swept = crate::worktreeclean::sweep_trash(&roots).await;
-                if swept > 0 {
+                // Also drop group folders left holding nothing but their marker:
+                // a marker that outlives its repository is read as a live claim
+                // by the next project of the same name.
+                let pruned = crate::worktreeclean::prune_empty_groups(&roots).await;
+                if swept > 0 || pruned > 0 {
                     crate::diagnostics::log(
                         crate::diagnostics::Level::Info,
                         "worktrees",
-                        &format!("swept {swept} leftover worktree folder(s) from a previous run"),
+                        &format!(
+                            "swept {swept} leftover worktree folder(s) and {pruned} empty group(s)"
+                        ),
                     );
                 }
             });

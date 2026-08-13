@@ -74,6 +74,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   UI), and a run interrupted mid-delete is swept at the next startup — matching
   only the names this app generates.
 
+### Fixed
+
+- **A cleaned-up project no longer leaves a marker that renames the next one.**
+  Removing the last worktree of a project left its group folder holding just
+  `.uxnan-repo`, and that marker outlived the repository it named. Cloning the
+  same project again read the stale claim as "another project owns this name"
+  and hung a hash suffix on a name that was free — `skills` became
+  `skills-bd229bab`, with the new worktrees inside it.
+
+  Two fixes, because there were two faults: an empty group is now pruned (on
+  removal and at startup, and only when it holds nothing but the marker), and a
+  marker whose repository no longer exists is treated as litter rather than a
+  claim — the name is reclaimed and the marker rewritten. A marker naming a
+  repository that *does* still exist keeps its group, as before.
+
+- **Settings → Git → Cleanup lists worktrees and repositories separately.**
+  They are different things with different risk, and mixing them made "what am I
+  about to delete?" harder to answer than it needed to be. Which list a row
+  belongs to is stated by the backend rather than guessed from its reason —
+  both kinds can be held back by uncommitted changes.
+
 ### Changed
 
 - **Where a worktree goes is decided in one place.** It used to be computed in

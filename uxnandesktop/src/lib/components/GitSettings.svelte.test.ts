@@ -60,6 +60,7 @@ const CANDIDATES = [
     group: "api",
     name: "feat-login",
     branch: "feat/login",
+    scope: "worktree",
     kind: "orphaned",
     reason: "repoGone",
   },
@@ -68,6 +69,7 @@ const CANDIDATES = [
     group: "uxnan",
     name: "fix-nav",
     branch: "fix/nav",
+    scope: "worktree",
     kind: "finished",
     reason: "merged",
   },
@@ -76,6 +78,7 @@ const CANDIDATES = [
     group: "closed",
     name: "mi-rama",
     branch: "mi-rama",
+    scope: "worktree",
     kind: "unregistered",
     reason: "projectRemoved",
   },
@@ -83,6 +86,7 @@ const CANDIDATES = [
     path: "C:/Users/u/uxnan/repos/sample",
     group: "C:/Users/u/uxnan/repos",
     name: "sample",
+    scope: "clone",
     kind: "clone",
     reason: "cloneFullyPushed",
   },
@@ -90,6 +94,7 @@ const CANDIDATES = [
     path: "C:/Users/u/uxnan/repos/unpushed",
     group: "C:/Users/u/uxnan/repos",
     name: "unpushed",
+    scope: "clone",
     kind: "blocked",
     reason: "unpushedCommits",
     changedFiles: 2,
@@ -99,6 +104,7 @@ const CANDIDATES = [
     group: "uxnan",
     name: "wip-tests",
     branch: "wip/tests",
+    scope: "worktree",
     kind: "blocked",
     reason: "uncommittedChanges",
     changedFiles: 3,
@@ -126,8 +132,14 @@ describe("GitSettings — cleanup", () => {
     expect(await screen.findByText("No longer owned by git")).toBeInTheDocument();
     expect(screen.getByText("Work finished")).toBeInTheDocument();
     expect(screen.getByText("No longer a project in uxnan")).toBeInTheDocument();
-    expect(screen.getByText("Cloned repositories, fully pushed")).toBeInTheDocument();
-    expect(screen.getByText("Has unsaved changes")).toBeInTheDocument();
+    // The two kinds are separated: a worktree and a repository are not the
+    // same thing to be about to delete.
+    expect(screen.getByText("Worktrees")).toBeInTheDocument();
+    expect(screen.getByText("Cloned repositories")).toBeInTheDocument();
+    expect(screen.getByText("Fully pushed")).toBeInTheDocument();
+    // Both lists can hold back rows, each stating its own reason — so the
+    // heading is neutral and appears once per list.
+    expect(screen.getAllByText("Held back")).toHaveLength(2);
     expect(screen.getByText("its repository is gone from disk")).toBeInTheDocument();
     expect(screen.getByText("3 files not committed")).toBeInTheDocument();
     // Each counted reason carries its own noun rather than borrowing another's.

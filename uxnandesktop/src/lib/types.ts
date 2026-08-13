@@ -413,6 +413,11 @@ export type WorktreeCleanupKind =
   | "clone"
   | "blocked";
 
+/** Which of the two things a cleanup candidate is (mirror of `CleanupScope`).
+ *  Stated by the backend, not inferred here: a blocked row can be either, and
+ *  guessing from the reason breaks as soon as both kinds share one. */
+export type WorktreeCleanupScope = "worktree" | "clone";
+
 /** One worktree the cleanup screen can show (mirror of `CleanupCandidate`).
  *  Only ever a folder inside a managed root. */
 export interface WorktreeCleanupCandidate {
@@ -422,6 +427,7 @@ export interface WorktreeCleanupCandidate {
   /** The worktree's own folder name. */
   name: string;
   branch?: string | null;
+  scope: WorktreeCleanupScope;
   kind: WorktreeCleanupKind;
   reason: WorktreeCleanupReason;
   /** The count the reason needs: dirty files, unpushed commits, or worktrees

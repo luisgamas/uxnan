@@ -193,6 +193,20 @@ Los repositorios clonados caen en `<home>/uxnan/repos/<repo>`, hermano de
 `<home>/uxnan/worktrees`: dos carpetas con roles evidentes, y un repositorio
 llamado `worktrees` ya no puede chocar con la raíz. Lo ya clonado no se mueve.
 
+La pantalla separa **worktrees** y **repositorios clonados** en dos listas: son
+cosas distintas con riesgos distintos, y a qué lista pertenece cada fila lo dice
+el backend (`CleanupScope`), no se infiere del motivo — ambos tipos pueden quedar
+retenidos por cambios sin commitear.
+
+Quitar el último worktree de un proyecto **poda además su carpeta de grupo**,
+pero solo si no queda nada dentro salvo el marcador. No es cosmético: un
+`.uxnan-repo` que sobrevive a su repositorio se leía como una reivindicación viva
+y el siguiente proyecto del mismo nombre recibía un sufijo con hash sobre un
+nombre que estaba libre. Por eso un marcador que nombra un repositorio
+inexistente se trata ahora como basura —se reclama el nombre y se reescribe el
+marcador—, mientras que uno que nombra un repositorio que sí existe conserva su
+grupo.
+
 El aviso de la barra de estado cuenta **carpetas**, no bytes (umbral: 12), porque
 medir el tamaño obligaría a recorrer cada `node_modules` en cada arranque.
 Descartarlo es permanente (`worktrees.cleanupNoticeDismissed`).

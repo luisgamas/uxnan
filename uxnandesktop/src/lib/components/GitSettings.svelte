@@ -33,6 +33,7 @@
     GitIdentity,
     WorktreeCleanupCandidate,
     WorktreeCleanupKind,
+    WorktreeCleanupScope,
     WorktreeLocationMode,
   } from "$lib/types";
 
@@ -69,7 +70,21 @@
   // uncommitted work is shown blocked rather than hidden — so "why isn't this
   // offered?" is answered on screen. Nothing is ever removed automatically.
 
-  const BUCKETS = ["orphaned", "finished", "unregistered", "clone", "blocked"] as const;
+    // Two lists, not one: a worktree and a cloned repository are different things
+  // with different risk, and mixing them made "what am I about to delete?"
+  // harder to answer than it needs to be. A blocked row joins whichever list it
+  // belongs to, which is why the backend says which — inferring it from the
+  // reason would break the moment both kinds share one.
+  // Blocked comes last in both lists: it is context for what is NOT offered.
+  const WORKTREE_BUCKETS: readonly WorktreeCleanupKind[] = [
+    "orphaned",
+    "finished",
+    "unregistered",
+    "blocked",
+  ];
+  const CLONE_BUCKETS: readonly WorktreeCleanupKind[] = ["clone", "blocked"];
+
+
 
   let candidates = $state<WorktreeCleanupCandidate[] | null>(null);
   let sizes = $state<Record<string, number>>({});
@@ -77,7 +92,10 @@
   let scanning = $state(false);
   let removing = $state(false);
 
-  const bucketOf = (kind: WorktreeCleanupKind) => candidates?.filter((c) => c.kind === kind) ?? [];
+  const bucketOf = (scope: WorktreeCleanupScope, kind: WorktreeCleanupKind) =>
+    candidates?.filter((c) => c.scope === scope && c.kind === kind) ?? [];
+  const scopeHas = (scope: WorktreeCleanupScope) =>
+    (candidates ?? []).some((c) => c.scope === scope);
   const removable = $derived((candidates ?? []).filter((c) => c.kind !== "blocked"));
   const selectedSize = $derived(
     [...selected].reduce((total, path) => total + (sizes[path] ?? 0), 0),
@@ -295,40 +313,9 @@
     {:else if candidates.length === 0}
       <p class={text.meta}>{i18n.t("settings.worktreeCleanupEmpty")}</p>
     {:else}
-      <div class="space-y-5">
-        {#each BUCKETS as bucket (bucket)}
-          {@const rows = bucketOf(bucket)}
-          {#if rows.length > 0}
-            <div class="space-y-1.5">
-              <span class={cn("px-0.5", text.section)}>
-                {i18n.t(`settings.worktreeCleanupBucket.${bucket}`)}
-              </span>
-              <div class="divide-y divide-border/60">
-                {#each rows as row (row.path)}
-                  <div class="flex items-center gap-3 py-2">
-                    <Checkbox
-                      checked={selected.has(row.path)}
-                      disabled={row.kind === "blocked" || removing}
-                      aria-label={`${row.group} / ${row.name}`}
-                      onCheckedChange={(v) => toggle(row.path, v === true)}
-                    />
-                    <div class="min-w-0 flex-1">
-                      <div class={cn("truncate", text.body)}>
-                        <span class="text-muted-foreground">{row.group}</span>
-                        <span class="text-muted-foreground/50"> / </span>
-                        <span class="font-medium">{row.name}</span>
-                      </div>
-                      <div class={cn("truncate", text.meta)}>{reasonText(row)}</div>
-                    </div>
-                    <span class={cn("shrink-0 tabular-nums", text.meta)}>
-                      {sizes[row.path] === undefined ? "—" : formatBytes(sizes[row.path])}
-                    </span>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        {/each}
+      <div class="space-y-7">
+        {@render scopeList("worktree", WORKTREE_BUCKETS)}
+        {@render scopeList("clone", CLONE_BUCKETS)}
 
         {#if removable.length > 0}
           <div class="flex items-center justify-between gap-4 border-t border-border/60 pt-4">
@@ -355,6 +342,54 @@
     {/if}
   </SettingsSection>
 </div>
+
+{#snippet scopeList(
+  scope: WorktreeCleanupScope,
+  buckets: readonly WorktreeCleanupKind[],
+)}
+  {#if scopeHas(scope)}
+    <div class="space-y-4">
+      <span class={cn("px-0.5", text.section)}>
+        {i18n.t(`settings.worktreeCleanupScope.${scope}`)}
+      </span>
+      {#each buckets as bucket (bucket)}
+        {@const rows = bucketOf(scope, bucket)}
+        {#if rows.length > 0}
+          <div class="space-y-1.5">
+            <span class={cn("px-0.5 text-[11px] uppercase tracking-wide", text.meta)}>
+              {i18n.t(`settings.worktreeCleanupBucket.${bucket}`)}
+            </span>
+            <div class="divide-y divide-border/60">
+              {#each rows as row (row.path)}
+                <div class="flex items-center gap-3 py-2">
+                  <Checkbox
+                    checked={selected.has(row.path)}
+                    disabled={row.kind === "blocked" || removing}
+                    aria-label={`${row.group} / ${row.name}`}
+                    onCheckedChange={(v) => toggle(row.path, v === true)}
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class={cn("truncate", text.body)}>
+                      {#if row.scope === "worktree"}
+                        <span class="text-muted-foreground">{row.group}</span>
+                        <span class="text-muted-foreground/50"> / </span>
+                      {/if}
+                      <span class="font-medium">{row.name}</span>
+                    </div>
+                    <div class={cn("truncate", text.meta)}>{reasonText(row)}</div>
+                  </div>
+                  <span class={cn("shrink-0 tabular-nums", text.meta)}>
+                    {sizes[row.path] === undefined ? "—" : formatBytes(sizes[row.path])}
+                  </span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {/each}
+    </div>
+  {/if}
+{/snippet}
 
 {#snippet cleanupAction()}
   <Button variant="outline" size="sm" disabled={scanning} onclick={() => void scan()}>

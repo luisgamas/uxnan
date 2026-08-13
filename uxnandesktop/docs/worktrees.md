@@ -66,7 +66,12 @@ forever. It is out of sight by design, and what is out of sight never gets
 pruned — the sibling folders it replaced at least annoyed you into deleting
 them.
 
-Press **Look for old worktrees** and it reports five buckets:
+Press **Look for old worktrees** and it reports two lists — **Worktrees** and
+**Cloned repositories**, kept apart because they are different things with
+different risk. Which list a row belongs to is stated by the backend, not
+guessed from its reason: both kinds can be held back by uncommitted changes.
+
+Between them, five buckets:
 
 | Bucket | What it means | Pre-selected |
 |---|---|---|
@@ -74,7 +79,7 @@ Press **Look for old worktrees** and it reports five buckets:
 | **Work finished** | A clean checkout whose branch landed on its base (merge or squash-merge), or whose remote branch is gone after being pushed | No — that is a judgement call |
 | **No longer a project in uxnan** | The repository is still on disk, but you removed it from the app — which touches nothing on disk, so its worktrees stayed | No — the repository and the branch are both intact |
 | **Cloned repositories, fully pushed** | A repository in `~/uxnan/repos` that is no longer a project **and** whose every commit is already on a remote | No — see below |
-| **Has unsaved changes** | Listed with the reason and its count, never removable from here | Never |
+| **Held back** | In either list: uncommitted changes, unpushed commits, stashes, no remote, or worktrees still out — each row states which | Never |
 
 Sizes are fetched after the list appears (`worktree_cleanup_sizes`): walking a
 checkout's `node_modules` costs more than every git query in the scan combined.
@@ -132,6 +137,14 @@ The folder is renamed into `.uxnan-trash` inside the same root (instant, and on
 one volume by construction) and deleted in the background; `git worktree prune`
 then drops the admin entry. Deleting a checkout in the foreground is tens of
 seconds of frozen UI.
+
+Removing the last worktree of a project also **prunes its group folder**, but
+only when nothing is left in it but the marker. That matters beyond tidiness: a
+`.uxnan-repo` outliving its repository used to be read as a live claim by the
+next project of the same name, which then got a hash suffix on a name that was
+free. For the same reason, a marker naming a repository that no longer exists is
+now treated as litter — the name is reclaimed and the marker rewritten — while a
+marker naming one that still exists keeps its group.
 
 If the app dies mid-delete, the next startup sweeps the leftovers — matching
 **only** names this app generated (`wt-<millis>-<32 hex>`), inside a trash folder

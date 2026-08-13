@@ -331,6 +331,11 @@ async fn group_key(root: &str, main_worktree_path: &str) -> String {
     match tokio::fs::read_to_string(&marker).await {
         // Claimed by this same repository, or a group we have not marked yet.
         Ok(contents) if marker_matches(&contents, main_worktree_path) => key,
+        // Claimed by a repository that is **gone**. The name is free: a marker
+        // outliving its repository is litter, not a claim, and suffixing around
+        // it hangs a hash on a clean name for no reason — which is exactly what
+        // happened after the first project was deleted and cloned again.
+        Ok(contents) if !Path::new(normalize(contents.trim()).as_str()).is_dir() => key,
         Ok(_) => format!("{key}-{}", repo_hash(main_worktree_path)),
         Err(_) => key,
     }
@@ -363,9 +368,14 @@ pub async fn prepare(resolved: &Resolved) {
     if tokio::fs::create_dir_all(parent).await.is_err() {
         return;
     }
+    // Overwrite a marker left by a repository that no longer exists: taking the
+    // group over is the whole point of [`group_key`] having allowed the name.
+    // Only a live claim is left alone.
     let marker = parent.join(MARKER_FILE);
-    if tokio::fs::try_exists(&marker).await.unwrap_or(false) {
-        return;
+    if let Ok(contents) = tokio::fs::read_to_string(&marker).await {
+        if Path::new(normalize(contents.trim()).as_str()).is_dir() {
+            return;
+        }
     }
     let _ = tokio::fs::write(&marker, normalize(&resolved.main_worktree)).await;
 }
@@ -588,6 +598,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_marker_left_by_a_deleted_repository_does_not_earn_a_suffix() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().to_string_lossy().replace('\\', "/");
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        let name = repo_key(&repo_path);
+
+        // Exactly what a cleaned-up project leaves behind: an empty group whose
+        // marker names a repository that no longer exists. Reading that as a
+        // live claim is what hung a hash on a clean name after the user deleted
+        // a project and cloned it again.
+        std::fs::create_dir_all(format!("{root}/{name}")).unwrap();
+        std::fs::write(
+            format!("{root}/{name}/{MARKER_FILE}"),
+            "C:/gone/for/good/repo",
+        )
+        .unwrap();
+
+        let resolved = resolve(&repo_path, "wip", WorktreeLocationMode::Custom, Some(&root))
+            .await
+            .unwrap();
+        assert_eq!(resolved.path, format!("{root}/{name}/wip"));
+
+        // And preparing it takes the group over rather than leaving the lie.
+        prepare(&resolved).await;
+        let marker = std::fs::read_to_string(format!("{root}/{name}/{MARKER_FILE}")).unwrap();
+        assert!(marker_matches(&marker, &repo_path), "marker: {marker}");
+    }
+
+    #[tokio::test]
+    async fn a_marker_of_a_repository_that_still_exists_earns_a_suffix() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().to_string_lossy().replace('\\', "/");
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        let other = tempfile::tempdir().unwrap();
+        let other_path = other.path().to_string_lossy().replace('\\', "/");
+        let name = repo_key(&repo_path);
+
+        // A different project that DOES still exist keeps its group.
+        std::fs::create_dir_all(format!("{root}/{name}")).unwrap();
+        std::fs::write(format!("{root}/{name}/{MARKER_FILE}"), &other_path).unwrap();
+
+        let resolved = resolve(&repo_path, "wip", WorktreeLocationMode::Custom, Some(&root))
+            .await
+            .unwrap();
+        assert_eq!(
+            resolved.path,
+            format!("{root}/{name}-{}/wip", repo_hash(&repo_path))
+        );
+        // …and its marker is left exactly as it was.
+        let marker = std::fs::read_to_string(format!("{root}/{name}/{MARKER_FILE}")).unwrap();
+        assert!(marker_matches(&marker, &other_path));
+    }
+
+    #[tokio::test]
     async fn a_taken_destination_gets_the_next_free_suffix() {
         let home = tempfile::tempdir().unwrap();
         let root = home.path().to_string_lossy().replace('\\', "/");
@@ -613,13 +681,13 @@ mod tests {
         init_repo(&repo_path).await;
         let name = repo_key(&repo_path);
 
-        // Another repository already owns this group name.
+        // Another repository already owns this group name — and, crucially, it
+        // still EXISTS. A marker naming a repository that is gone is litter, not
+        // a claim, and reclaiming the name is the point of the sibling test.
+        let other = tempfile::tempdir().unwrap();
+        let other_path = other.path().to_string_lossy().replace('\\', "/");
         std::fs::create_dir_all(format!("{root}/{name}")).unwrap();
-        std::fs::write(
-            format!("{root}/{name}/{MARKER_FILE}"),
-            "/somewhere/else/api",
-        )
-        .unwrap();
+        std::fs::write(format!("{root}/{name}/{MARKER_FILE}"), &other_path).unwrap();
 
         let resolved = resolve(&repo_path, "wip", WorktreeLocationMode::Custom, Some(&root))
             .await
