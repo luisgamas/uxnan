@@ -11,7 +11,7 @@
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import FreshnessHint from "./FreshnessHint.svelte";
   import { cn } from "$lib/utils";
-  import { iconButton, overlay, text } from "$lib/design";
+  import { icon as iconSize, overlay, shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { usageProvider } from "$lib/usageCatalog";
   import { formatCredit } from "$lib/usageFormat";
@@ -113,10 +113,13 @@
         <Popover.Trigger
           bind:ref={triggerRef}
           {...tp}
-          class={cn("flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground", iconButton.action)}
+          class={cn(
+            shell.statusBarAction,
+            "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          )}
           aria-label={i18n.t("providers.statusBarTooltip")}
         >
-          <Icon icon={GaugeIcon} class={cn("size-3.5", iconTint)} />
+          <Icon icon={GaugeIcon} class={cn(iconSize.action, iconTint)} />
         </Popover.Trigger>
       {/snippet}
     </TooltipSimple>

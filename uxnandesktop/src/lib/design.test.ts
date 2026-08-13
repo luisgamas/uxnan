@@ -33,6 +33,23 @@ describe("desktop density tokens", () => {
 		expect(iconButton.sm).toBe("size-8");
 	});
 
+	it("keeps the status bar's controls inside the bar", () => {
+		// Both bands paint their hairline as an overlay rather than a border: a
+		// `border-t` sits inside the border-box, so a control the same height as
+		// the bar would spill past it and the highlight would cross the seam.
+		expect(shell.statusBar).toContain("h-7");
+		expect(shell.statusBar).toContain("before:top-0");
+		expect(shell.statusBar).toContain("before:z-10");
+		expect(shell.statusBar).not.toContain("border-t");
+		// Full bar height, square — the shape `appBarAction` gives the top chrome.
+		expect(shell.statusBarAction).toContain("h-7");
+		expect(shell.statusBarAction).toContain("rounded-none");
+		expect(shell.statusBarItem).toContain("h-7");
+		expect(shell.statusBarItem).toContain("rounded-none");
+		// No gap: the actions sit flush, so each one owns its own padding.
+		expect(shell.statusBar).not.toMatch(/\bgap-/);
+	});
+
 	it("exposes named shell and row roles for phase-three chrome", () => {
 		expect(shell.statusBar).toContain("h-7");
 		expect(shell.appBar).toContain("h-10");

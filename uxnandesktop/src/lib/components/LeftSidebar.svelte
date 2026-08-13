@@ -19,7 +19,7 @@
   import type { SidebarGroupBy, SortMode } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
-  import { control, field, focus, icon, row, shell, text } from "$lib/design";
+  import { field, focus, icon, row, shell, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -30,6 +30,10 @@
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  // A bell: this pill is the general notification for the tree, counting both
+  // `waiting` and `blocked` worktrees (see `projects.needsYouCount`). Neither
+  // state's own glyph would do — half the count is never a question for you.
+  import BellIcon from "@hugeicons/core-free-icons/Notification01Icon";
 
   // The five sort modes offered for each axis (projects and worktrees). "manual"
   // and the two "name" modes don't drift over time; "recent"/"attention" do (they
@@ -214,14 +218,13 @@
           <button
             {...props}
             class={cn(
-              control.dense,
-              "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 font-medium tabular-nums text-orange-600 transition-colors hover:bg-orange-500/25 dark:text-orange-400",
+              "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 px-1.5 py-0.5 font-medium tabular-nums text-orange-600 transition-colors hover:bg-orange-500/25 dark:text-orange-400",
               focus.ring,
               text.indicator,
             )}
             onclick={() => projects.revealNeedsYou()}
           >
-            <span class="size-1.5 rounded-full bg-orange-500"></span>
+            <Icon icon={BellIcon} class={icon.decorative} />
             {projects.needsYouCount}
           </button>
         {/snippet}

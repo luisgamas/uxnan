@@ -58,10 +58,12 @@
           {#if active}
             <span class={row.agentActiveIndicator} aria-hidden="true"></span>
           {/if}
-          <span class={cn(row.agentLeading, icon.status)}>
+          <span class={cn(row.agentLeading, icon.nav)}>
             <AgentStatusIndicator status={view.status} stale={view.stale} />
           </span>
-          <AgentLogo logo={tab.agentIcon} class={cn(row.agentLeading, icon.status)} />
+          <!-- The brand mark leads the row, so it outranks the state glyph beside
+               it: who is running reads first, how it is doing reads second. -->
+          <AgentLogo logo={tab.agentIcon} class={cn(row.agentLeading, icon.brand)} />
           <span class="flex min-w-0 flex-1 flex-col leading-tight">
             <span class="flex items-baseline gap-1.5">
               <span
