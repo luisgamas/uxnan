@@ -180,7 +180,8 @@ available today are:
   runs whichever way you carry it, and floats over the whole desktop in its own
   always-on-top window by default (or stays a layer inside the app if you
   prefer).
-  uxnan bundles its own; you can import more from `~/.codex/pets` or any folder
+  uxnan bundles two of its own — **Uxni** and **Nox** — and you can import more
+  from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).
 - **Personalization and internationalization.** Full custom theming with design

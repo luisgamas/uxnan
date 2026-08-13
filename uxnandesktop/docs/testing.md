@@ -158,8 +158,12 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **1,037 passing tests** across both projects,
-config in `vitest.config.ts` / `vitest.dom.config.ts`.
+[`platform-support.md`](platform-support.md)) and the **bundled-pet** check
+(`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
+`static/pets/` are the same set, each manifest's id matches its folder, and
+each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
+ships in every build and is never shown). **1,052 passing tests** across both
+projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
 
@@ -241,6 +245,15 @@ instead of quietly agreeing with a mock nobody updated.
   still type-checks and renders an empty `<svg>`. Each assertion is about painted
   geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
   it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
+
+- `state/pets.svelte.test.ts` — the library the Pets screen renders: every
+  bundled pet loads (they are static assets, faked at `fetch`, not a command),
+  they keep the order `BUILTIN_PET_IDS` declares, one whose manifest can't be
+  read leaves the others standing rather than emptying the shelf, an imported
+  pack sharing a bundled id replaces it instead of duplicating the key, and the
+  selection rests on the default pet until the user picks another. The on-disk
+  half of that contract — that those manifests exist and slice — is
+  `tests/bundled-pets.test.mjs` in the `node` project.
 
 House style: query the way a user finds things — role, label, text. Reach for
 `data-testid` only where there is genuinely no accessible handle. A test that

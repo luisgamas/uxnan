@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 542 Rust tests (513 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,037 passing frontend Vitest tests across two
+probe) + 1,052 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -531,15 +531,18 @@ leaving it alone.
   frames of 192 × 208 by default, `fallback` chains), so community packs load
   unmodified; import from `~/.codex/pets` or any folder is a **validating copy**
   (manifest + referenced sheet only, traversal-checked ids, bare-filename sheet path,
-  ≤ 24 MiB, image sniff, bounded grid). uxnan bundles **only its own pet** and says
+  ≤ 24 MiB, image sniff, bounded grid). uxnan bundles **only its own pets** —
+  **Uxni** (the default) and **Nox** — and says
   so in the library + import dialog; each imported pet records its origin. Renderer
   wakes only on frame boundaries, parks while hidden, one still frame under
   `prefers-reduced-motion`, and loads nothing until enabled. Backend
   `src-tauri/src/pets.rs` + `AppSettings.pets`; frontend `src/lib/pets/` +
   `state/pets.svelte.ts` + `PetSprite`/`PetLayer`/`PetsSettings`. See
-  [`docs/pets.md`](docs/pets.md). The bundled pet is a normal pack in
-  `static/pets/uxni/` (8 x 11 sheet, one animation per row) — swapped by replacing
-  the files, not regenerated. A generated pack declares neither `frame` nor
+  [`docs/pets.md`](docs/pets.md). The bundled pets are normal packs in
+  `static/pets/<id>/` (8 x 11 sheet, one animation per row) — swapped by replacing
+  the files, not regenerated — listed by id in `src/lib/pets/bundled.ts` and held
+  to the art actually on disk by `tests/bundled-pets.test.mjs` (art nobody listed
+  ships unseen; an id with no art leaves the library short). A generated pack declares neither `frame` nor
   `animations`, so both are recovered from the image — grid from its dimensions,
   animations from the conventional row order with its declared per-row frame counts (the
   reference map: `running` is the in-place row 7, not the travelling run on rows 1-2,
@@ -1203,7 +1206,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 542 Rust + 1,037 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 542 Rust + 1,052 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

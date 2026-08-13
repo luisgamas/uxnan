@@ -14,7 +14,7 @@
 //! }
 //! ```
 //!
-//! uxnan ships **none** of that third-party artwork: the only bundled pet is our
+//! uxnan ships **none** of that third-party artwork: every bundled pet is our
 //! own (`static/pets/`, resolved frontend-side), and everything else arrives by
 //! the user importing a folder they already have — typically `~/.codex/pets/`.
 //!

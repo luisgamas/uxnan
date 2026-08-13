@@ -13,7 +13,7 @@
 // never defined still renders something sensible.
 //
 // This module is pure (no Tauri, no DOM) so it is unit-testable and shared by
-// the bundled pet, imported pets and the Settings preview alike. The Rust side
+// bundled pets, imported pets and the Settings preview alike. The Rust side
 // validates the same shape at the trust boundary (`src-tauri/src/pets.rs`);
 // this is the rendering-side reader, so it is forgiving rather than strict —
 // it repairs what it can and never throws on a malformed pack.
@@ -433,12 +433,12 @@ export function defaultAnimations(columns: number, rows: number): Record<string,
 /**
  * Collapse a library to one pet per id, later entries winning.
  *
- * The bundled pet and an imported one can genuinely share an id — importing a
- * pack called `uxni` is exactly how you'd replace the bundled mascot — and two
- * entries with the same id are not merely redundant: they break the keyed
- * `{#each}` that renders the library (`each_key_duplicate`), taking the whole
- * Pets screen down. Imported pets are passed last so a deliberate install wins
- * over the bundled default, and the original ordering is preserved.
+ * A bundled pet and an imported one can genuinely share an id — importing a
+ * pack called `uxni` is exactly how you'd replace that mascot — and two entries
+ * with the same id are not merely redundant: they break the keyed `{#each}`
+ * that renders the library (`each_key_duplicate`), taking the whole Pets screen
+ * down. Imported pets are passed last so a deliberate install wins over the
+ * bundled pack it shadows, and the original ordering is preserved.
  */
 export function dedupeById(pets: readonly Pet[]): Pet[] {
   const byId = new Map<string, Pet>();
