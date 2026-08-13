@@ -1085,6 +1085,28 @@ pub async fn ssh_host_connect(
     }
 }
 
+/// Ask a connected host what it has: its OS, home, git, a multiplexer, and which
+/// agent CLIs are installed there with what version.
+///
+/// Requires a live session — the answer is what the launcher filters on, and
+/// guessing it from the local machine would offer agents that are not there.
+#[tauri::command]
+pub async fn ssh_host_inventory(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<ssh::inventory::HostInventory, CommandError> {
+    let commands = state.agent_commands.read().await.clone();
+    let sessions = state.ssh_sessions.read().await;
+    let Some(conn) = sessions.get(&host_id) else {
+        return Err(CommandError::from(AppError::Invalid(
+            "connect to this host before asking what it has".to_string(),
+        )));
+    };
+    ssh::inventory::probe(conn, &commands)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Drop a host's session. Idempotent — disconnecting one that is not connected
 /// answers `false` rather than failing.
 #[tauri::command]

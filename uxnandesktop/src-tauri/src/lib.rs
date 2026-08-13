@@ -367,6 +367,7 @@ pub fn run() {
             commands::ssh_host_connect,
             commands::ssh_host_disconnect,
             commands::ssh_hosts_connected,
+            commands::ssh_host_inventory,
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,

@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A host can say what it has.** Its OS, home, git, whether a terminal
+  multiplexer is there, and **which agent CLIs are installed on it, with their
+  versions** — which is what will let the launcher offer the agents that machine
+  actually has instead of the ones yours does. It is deliberately *one* command
+  with delimited output: a single remote command costs seconds because the host
+  starts a shell for each one, so ten facts in ten commands would be ten times
+  the wait. Reading only what sits between the markers also means a chatty (or
+  failing) remote shell profile cannot be mistaken for an answer.
 - **A host holds one live session, shared by everything that runs on it.**
   Connecting authenticates once and keeps the connection; the terminal, the
   inventory and git calls will each be a *channel* on it rather than another

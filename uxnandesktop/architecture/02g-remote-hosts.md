@@ -335,6 +335,35 @@ nunca guardado), `ssh_host_disconnect`, `ssh_hosts_connected`.
 Pendiente y anotado: reconectar al arrancar, y notificar una sesion caida — hoy
 solo se nota cuando falla el siguiente comando.
 
+## 5.6 Inventario del host — IMPLEMENTADO
+
+`src-tauri/src/ssh/inventory.rs`. Pregunta a un host que tiene: SO, home, git,
+si hay multiplexor, y **que CLIs de agente estan instalados alli y con que
+version**. Es lo que permitira que el lanzador ofrezca los agentes de esa
+maquina y no los de la del usuario.
+
+**Un solo comando**, con la salida entre marcadores. Es consecuencia directa de
+la medicion de §5.3: si cada `exec` cuesta segundos porque el host arranca un
+shell, diez datos en diez comandos serian diez veces la espera. Los marcadores
+sirven ademas para lo otro que pasa de verdad: un perfil remoto que imprime — o
+que **falla**, como el de PowerShell sin consola — no puede confundirse con una
+respuesta. Misma tecnica que `path_env.rs` en local.
+
+**Dos shells**, porque un host no siempre es POSIX. Se intenta primero un script
+POSIX con **login shell** (`sh -lc`) —sin `-l`, el PATH es el no interactivo,
+donde nvm/mise/fnm no existen, que es la razon numero uno por la que un CLI
+remoto parece no estar instalado— y, si no vuelve el marcador, uno de PowerShell
+con **`-NoProfile -NonInteractive`**.
+
+Los nombres de CLI se sanean antes de entrar en la linea de comandos remota. Hoy
+vienen del catalogo propio; "hoy" es la palabra que deja de ser cierta tras un
+refactor, y ese string acaba en un shell ajeno.
+
+**Medido en vivo** contra el `sshd` de una maquina Windows: inventario completo
+en **1.46 s incluyendo el intento POSIX fallido**, frente a los 2.1 s que costaba
+un solo `echo` por el shell con perfil. Saltarse el perfil paga con creces el
+viaje extra.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
