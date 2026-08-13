@@ -29,8 +29,8 @@ the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 568 Rust tests (539 unit + 29
-integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,050 passing frontend Vitest tests across two
+integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
+probe, +1 ignored real-scheduler probe) + 1,050 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its

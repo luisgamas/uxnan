@@ -430,4 +430,38 @@ mod tests {
         assert!(resolve("-oProxyCommand=calc.exe").await.is_err());
         assert!(resolve("  ").await.is_err());
     }
+
+    /// The one thing unit tests cannot cover: that the *real* `ssh` on this
+    /// machine is spawned correctly and its real output parses. Ignored by
+    /// default because it shells out to the system OpenSSH (same posture as the
+    /// live GitHub suite); it resolves an alias only and connects to nothing.
+    ///
+    /// Run it with:
+    /// `cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml -- --ignored ssh_dash_g`
+    #[tokio::test]
+    #[ignore = "spawns the system ssh; run explicitly with --ignored"]
+    async fn live_ssh_dash_g_resolves_through_the_real_binary() {
+        // A name with no config entry: `ssh -G` still answers, from its built-in
+        // defaults, so this works on a machine with no `~/.ssh/config` at all.
+        let resolved = resolve("example.invalid")
+            .await
+            .expect("`ssh -G` should resolve even an unconfigured name");
+
+        // What OpenSSH always fills in, and what the app relies on.
+        assert_eq!(resolved.hostname, "example.invalid");
+        assert_eq!(resolved.port, 22, "default port");
+        assert!(!resolved.user.is_empty(), "OpenSSH resolves a login user");
+        // The `none` placeholders must never survive as values.
+        assert_eq!(resolved.proxy_command, None);
+        assert_eq!(resolved.proxy_jump, None);
+
+        println!(
+            "live ssh -G → hostname={} port={} user={} identityFiles={} forwardAgent={}",
+            resolved.hostname,
+            resolved.port,
+            resolved.user,
+            resolved.identity_files.len(),
+            resolved.forward_agent
+        );
+    }
 }
