@@ -275,7 +275,7 @@ mod tests {
         // plausible on this one.
         if let Some(child) = home.dirs.first() {
             let inside = list_dirs(&conn, &child.path).await.expect("a subfolder");
-            let normalize = |p: &str| p.replace(std::path::MAIN_SEPARATOR, "/").replace('\\', "/");
+            let normalize = |p: &str| p.replace([std::path::MAIN_SEPARATOR, '\\'], "/");
             assert_eq!(normalize(&inside.path), normalize(&child.path));
             println!(
                 "live: walked into {} ({} folders)",
