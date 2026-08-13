@@ -275,6 +275,42 @@ Corolarios:
   entonces, no adoptada ahora: complica el enmarcado de la salida y aun no hay
   un caso que lo pague.
 
+## 5.4 Registro de hosts y lapidas — LOGICA IMPLEMENTADA
+
+`src-tauri/src/ssh/registry.rs`, funciones puras sobre los vectores de ajustes
+(`AppSettings::ssh_hosts` y `removed_ssh_hosts`): la parte que puede perder datos
+del usuario se prueba sin red.
+
+**El problema.** Un proyecto guarda solo su `targetId` (`ssh:<hostId>`). Al
+borrar un host, cada proyecto suyo apunta a un id que no volvera a existir; y si
+se vuelve a añadir la misma maquina, recibe un id **nuevo**, asi que esos
+proyectos quedan varados.
+
+**La solucion, y aqui hay una decision.** Borrar deja una lapida con la identidad
+de la maquina; volver a añadirla **reutiliza el id viejo** en lugar de crear uno
+nuevo y reescribir todos los proyectos. Nada mas hay que tocar, asi que no existe
+un estado a medio migrar que pueda salir mal: los proyectos nunca estuvieron
+rotos, solo apuntaban a algo ausente.
+
+El coste, dicho en voz alta: si la "misma" maquina resulta ser otra que comparte
+hostname y usuario, sus proyectos vuelven apuntando a rutas que quiza no existan.
+Eso se ve —una ruta que no esta— y se arregla; y una maquina genuinamente
+distinta choca antes con la verificacion de clave de host (§5.1), que rechaza la
+conexion.
+
+**Identidad de una maquina** (`MachineKey`): gana el alias de `~/.ssh/config`
+compartido, porque es el nombre que el usuario le da y una direccion cambia con
+la red; si no hay alias en ambos lados, la terna `(hostname, puerto, usuario)`.
+El usuario cuenta: dos cuentas en una maquina son dos homes, dos juegos de
+credenciales y dos juegos de rutas.
+
+Otras reglas cubiertas por tests: reimportar la config **nunca** sobrescribe un
+host escrito a mano; actualizar un host conserva su id y si necesitaba prompt;
+borrar dos veces no acumula lapidas; el numero de lapidas esta acotado y se poda
+por antiguedad.
+
+Falta: la superficie de comandos Tauri que la UI llama.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |

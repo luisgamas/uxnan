@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Removing a host no longer strands its projects.** A project stores only its
+  target id, so deleting a host used to leave every project on it pointing at an
+  id that would never exist again. Removal now remembers the machine, and
+  re-adding it **reuses the old id** — the projects come back with it, and
+  nothing else has to be rewritten, so there is no half-migrated state to get
+  wrong. A machine is recognised by your own `~/.ssh/config` alias first (an
+  address changes with the network, your name for the machine does not), else by
+  host + port + user, user included: two accounts on one machine are two
+  different homes. Re-importing your SSH config never overwrites a host you typed
+  by hand.
 - **Remote commands run as channels on one connection.** A single command
   primitive (`exec`) that opens a channel, runs, and collects stdout and stderr
   *separately* — a remote shell profile that prints noise, or fails outright as

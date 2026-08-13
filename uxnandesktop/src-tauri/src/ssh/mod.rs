@@ -25,3 +25,4 @@ pub mod auth;
 pub mod config;
 pub mod conn;
 pub mod hostkey;
+pub mod registry;
