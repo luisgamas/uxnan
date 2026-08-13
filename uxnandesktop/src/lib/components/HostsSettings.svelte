@@ -25,7 +25,7 @@
   import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { hosts } from "$lib/state/hosts.svelte";
-  import { terminals } from "$lib/state/terminals.svelte";
+  import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
   import { app } from "$lib/state/app.svelte";
   import type { SshHost } from "$lib/types";
   import { i18n } from "$lib/i18n";
@@ -97,6 +97,11 @@
     terminals.create({
       title: host.label,
       target: `ssh:${host.id}`,
+      // The Global space, not whatever project happens to be active: this
+      // terminal belongs to no local project, and filing it under one would put
+      // a tab for another machine inside a folder it has nothing to do with.
+      // Once a project can live on a host, it opens in *that* project instead.
+      workspace: GLOBAL_WORKSPACE,
       // No cwd: the host's own login shell decides, which lands the user in
       // their home directory there — the same place `ssh <host>` would.
     });

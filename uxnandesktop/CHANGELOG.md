@@ -7,6 +7,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A terminal only inherits a folder from its own machine.** Opening a terminal
+  on a host while a *local* project was the active workspace handed the remote
+  shell a local path; it tried to `cd` somewhere that does not exist there and
+  died at once — which looked like a terminal that flashed and refused to open.
+  A workspace knows which machine it belongs to, so its folder now seeds a
+  terminal only when both are on the same one. The same mistake in reverse (a
+  local terminal seeded with a remote path) is closed too, before there is
+  anything to trip over it.
+- **A host's terminal opens in the Global space**, not inside whichever project
+  happens to be selected. A terminal on another machine does not belong filed
+  under a local folder it has nothing to do with; when a project can live on a
+  host, it will open in that project instead.
 - **A settings change no longer deletes your hosts.** Settings travel as one
   whole object, and the interface does not model the host list — so writing any
   unrelated setting used to send an empty one and wipe every host *and* every

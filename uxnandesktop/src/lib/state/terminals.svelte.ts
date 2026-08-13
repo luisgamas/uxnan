@@ -15,6 +15,7 @@ import { tick } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { fsRename, termBuffersSet } from '$lib/api';
+import { inheritedCwd } from '$lib/terminalCwd';
 import { registerFlush } from '$lib/state/flushRegistry';
 import { disposeInstance, serializeInstance } from '$lib/terminal/instances';
 import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
@@ -943,13 +944,12 @@ class TerminalStore {
   }
 
   // --- Tabs ----------------------------------------------------------------
-  /** The folder a new terminal should open in: an explicit `cwd` wins; otherwise
-   *  the target workspace's folder (its worktree path), so a terminal opened in a
-   *  project lands in that project rather than the PC home. The Global scratch
-   *  space (`""`) has no folder, so it falls back to the backend default (home). */
-  private cwdFor(explicit: string | undefined, workspace: string): string | undefined {
-    if (explicit) return explicit;
-    return workspace && workspace !== GLOBAL_WORKSPACE ? workspace : undefined;
+  private cwdFor(
+    explicit: string | undefined,
+    workspace: string,
+    target: string | undefined,
+  ): string | undefined {
+    return inheritedCwd(explicit, workspace, target);
   }
 
   /** Add a tab to a region (defaults to the active region of the active
@@ -958,7 +958,7 @@ class TerminalStore {
    *  target workspace's folder (see [`cwdFor`]). */
   create(opts?: NewTabOptions): string {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
-    const cwd = this.cwdFor(opts?.cwd, opts?.workspace ?? this.activeWorkspace);
+    const cwd = this.cwdFor(opts?.cwd, opts?.workspace ?? this.activeWorkspace, opts?.target);
     const tab = newTab({ ...opts, cwd });
     this.insertTab(tab, opts?.groupId);
     return tab.id;
@@ -1558,14 +1558,14 @@ class TerminalStore {
   split(
     groupId: string,
     dir: SplitDir,
-    opts?: { cwd?: string; shell?: string; args?: string[] },
+    opts?: { cwd?: string; shell?: string; args?: string[]; target?: string },
   ): void {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
     // The new pane inherits the active workspace's folder when no cwd is given,
     // so a split in a project opens in that project (not the PC home).
-    const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace);
+    const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace, opts?.target);
     const fresh = newGroup({ ...opts, cwd });
     this.root = replaceGroup(this.root, groupId, {
       kind: 'split',
