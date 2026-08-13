@@ -1124,6 +1124,94 @@ pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
     roots
 }
 
+/// Registered projects whose folder is not on disk right now, by id.
+///
+/// **Not proof that anything was deleted.** An unmounted drive, an offline
+/// network share and a cloud placeholder all look exactly like this, which is
+/// why the app only *marks* such a project and stops spending work on it —
+/// polling git and `gh` against a path that is not there produces nothing but
+/// errors — and never removes it. Removing stays the user's call.
+#[tauri::command]
+pub async fn repos_missing(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    let repos: Vec<(String, String)> = state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .map(|r| (r.id.clone(), r.path.clone()))
+        .collect();
+    Ok(repos
+        .into_iter()
+        .filter(|(_, path)| !std::path::Path::new(path).is_dir())
+        .map(|(id, _)| id)
+        .collect())
+}
+
+/// A project still carrying worktree bookkeeping for folders that are gone.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleWorktrees {
+    pub repo_id: String,
+    pub name: String,
+    /// Paths git still lists that are not on disk.
+    pub paths: Vec<String>,
+}
+
+/// Projects whose git bookkeeping still lists worktrees that are gone.
+///
+/// Read-only, and it deliberately skips a project whose own folder is missing:
+/// there is no repository left to ask, and the answer for that is to deal with
+/// the project itself.
+#[tauri::command]
+pub async fn worktree_stale_scan(
+    state: State<'_, AppState>,
+) -> Result<Vec<StaleWorktrees>, CommandError> {
+    let repos: Vec<(String, String, String)> = state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .filter(|r| r.is_git)
+        .map(|r| (r.id.clone(), r.name.clone(), r.path.clone()))
+        .collect();
+
+    let mut found = Vec::new();
+    for (repo_id, name, path) in repos {
+        if !std::path::Path::new(&path).is_dir() {
+            continue;
+        }
+        let paths = git::stale_worktrees(&path).await;
+        if !paths.is_empty() {
+            found.push(StaleWorktrees {
+                repo_id,
+                name,
+                paths,
+            });
+        }
+    }
+    Ok(found)
+}
+
+/// Drop a project's bookkeeping for worktrees whose folders are gone
+/// (`git worktree prune`).
+///
+/// Safe in a way the cleanup is not: it removes **records, never files** — the
+/// directories it forgets are already missing. It is still never automatic,
+/// because a folder that is absent today can be a drive that is plugged in
+/// tomorrow, and pruning first would leave that checkout orphaned from its
+/// repository.
+#[tauri::command]
+pub async fn worktree_prune(
+    state: State<'_, AppState>,
+    repo_id: String,
+) -> Result<Vec<String>, CommandError> {
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    git::prune_worktrees(&repo_path).await;
+    Ok(git::stale_worktrees(&repo_path).await)
+}
+
 /// How many worktree folders the managed roots hold — the cheap question the
 /// status bar asks at startup to decide whether to mention the folder at all.
 /// Directory counting only: no git, and emphatically no size walk.

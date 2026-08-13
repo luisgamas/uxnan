@@ -174,6 +174,26 @@ every startup. Dismissing it is permanent
 (`worktrees.cleanupNoticeDismissed`) — a reminder that returns after being waved
 away is nagging, and this section is always here to open on purpose.
 
+## When a folder is not there
+
+Two states the app used to carry silently, both answered the same way: **detect,
+mark, stop spending work on it, offer the action — never take it.**
+
+The reason that rule is not timidity: **a missing folder is not proof of
+deletion.** An unmounted drive, an offline network share and a cloud placeholder
+that has not hydrated all look exactly like a folder that was deleted. Acting on
+that guess turns a temporary absence into a permanent loss.
+
+| State | What the app does |
+|---|---|
+| A **project** whose folder is gone | Marks the card, skips it in the worktree reconcile and the GitHub badge poll (asking git and `gh` about a missing path produced nothing but failed spawns, forever), and leaves removing it to the ⋯ menu |
+| A **worktree** git still lists whose folder is gone | Lists it under Settings → Git → *Git bookkeeping* with a **Forget them** action per project (`git worktree prune`) |
+
+Pruning is the safest thing in this page: it removes **records, never files**,
+because the directories it forgets are already missing. It is still never
+automatic — pruning a drive that gets plugged back in tomorrow would leave that
+checkout orphaned from its repository.
+
 ## Rules the resolver applies
 
 In order, from `worktreeloc.rs`:

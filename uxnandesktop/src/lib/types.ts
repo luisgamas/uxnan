@@ -414,6 +414,16 @@ export type WorktreeCleanupKind =
   | "clone"
   | "blocked";
 
+/** A project still carrying git bookkeeping for worktrees that are gone
+ *  (mirror of the Rust `StaleWorktrees`). Pruning it removes records, never
+ *  files — the directories it forgets are already missing. */
+export interface StaleWorktrees {
+  repoId: string;
+  name: string;
+  /** Paths git still lists that are not on disk. */
+  paths: string[];
+}
+
 /** Which of the two things a cleanup candidate is (mirror of `CleanupScope`).
  *  Stated by the backend, not inferred here: a blocked row can be either, and
  *  guessing from the reason breaks as soon as both kinds share one. */

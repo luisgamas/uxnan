@@ -216,6 +216,25 @@ inexistente se trata ahora como basura —se reclama el nombre y se reescribe el
 marcador—, mientras que uno que nombra un repositorio que sí existe conserva su
 grupo.
 
+#### 2.1.3 Cuando una carpeta no está
+
+Dos estados que la app arrastraba en silencio, ambos resueltos igual:
+**detectar, marcar, dejar de gastar trabajo, ofrecer la acción — nunca tomarla.**
+
+La razón no es timidez: **que una carpeta no esté no prueba que la hayan
+borrado.** Una unidad desmontada, un recurso de red caído y un marcador de nube
+sin hidratar se ven idénticos a una carpeta eliminada, y actuar sobre esa
+suposición convierte una ausencia temporal en una pérdida permanente.
+
+- Un **proyecto** cuya carpeta falta (`repos_missing`) se marca en su tarjeta y
+  se salta en la reconciliación de worktrees y en el sondeo de insignias de
+  GitHub — preguntar a git y a `gh` por una ruta inexistente solo producía
+  procesos fallidos, indefinidamente. **No se quita**: eso sigue en su menú ⋯.
+- Un **worktree** que git sigue listando y cuya carpeta ya no está
+  (`worktree_stale_scan`) aparece en **Ajustes → Git → Registro de git**, con una
+  acción *Olvidarlos* por proyecto (`worktree_prune` → `git worktree prune`).
+  Borra **registros, nunca archivos**: los directorios que olvida ya no existen.
+
 El aviso de la barra de estado cuenta **carpetas**, no bytes (umbral: 12), porque
 medir el tamaño obligaría a recorrer cada `node_modules` en cada arranque.
 Descartarlo es permanente (`worktrees.cleanupNoticeDismissed`).

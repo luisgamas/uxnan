@@ -31,6 +31,7 @@ import type {
   FileSearch,
   FsEntry,
   GitIdentity,
+  StaleWorktrees,
   WorktreeCleanupCandidate,
   WorktreeCleanupOutcome,
   GithubStatus,
@@ -459,6 +460,30 @@ export function gitIdentity(): Promise<GitIdentity> {
  *  the two copies drifted into different folder names. */
 export function worktreePreviewPath(repoId: string, branch: string): Promise<string> {
   return invoke<string>('worktree_preview_path', { repoId, branch });
+}
+
+/** Registered projects whose folder is not on disk right now, by id.
+ *
+ *  NOT proof anything was deleted: an unmounted drive, an offline share and a
+ *  cloud placeholder all look identical to this. The app marks such a project
+ *  and stops polling it — asking git and `gh` about a path that is not there
+ *  produces nothing but errors — and never removes it on its own. */
+export function reposMissing(): Promise<string[]> {
+  return invoke<string[]>('repos_missing');
+}
+
+/** Projects whose git bookkeeping still lists worktrees that are gone.
+ *  `git worktree list` keeps reporting a worktree after its folder is deleted,
+ *  so the sidebar shows checkouts that are not there. */
+export function worktreeStaleScan(): Promise<StaleWorktrees[]> {
+  return invoke<StaleWorktrees[]>('worktree_stale_scan');
+}
+
+/** Drop a project's records for worktrees whose folders are gone
+ *  (`git worktree prune`). Removes **records, never files** — the directories
+ *  it forgets are already missing. Resolves to whatever is still stale. */
+export function worktreePrune(repoId: string): Promise<string[]> {
+  return invoke<string[]>('worktree_prune', { repoId });
 }
 
 /** How many worktree folders the managed roots hold. Directory counting only —

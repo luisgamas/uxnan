@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 588 Rust tests (559 unit + 29
+always wins). 589 Rust tests (560 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,036 passing frontend Vitest tests across two
+probe) + 1,038 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -85,7 +85,12 @@ started.**
   ever looks inside the managed roots, re-verifies every path against a fresh
   scan at removal time, and moves a folder aside before deleting it in the
   background (a `node_modules` delete is tens of seconds). A one-time status-bar
-  nudge appears once the folder holds 12+ checkouts. **Removal is worktree-only by
+  nudge appears once the folder holds 12+ checkouts. A project whose folder is
+  **not on disk right now** is marked and stops being polled (git and `gh`
+  against a missing path produce nothing but errors) but is never removed — an
+  unmounted drive looks identical — and **Settings → Git → Git bookkeeping**
+  offers to forget worktrees git still lists whose folders are gone, which
+  removes records, never files. **Removal is worktree-only by
   default**: the branch is kept unless the user opts into **deleting the local
   branch** (safe `-d`, with a force for unmerged work and the squash-merge
   safety net preserved) and/or the **remote branch** on `origin`. The **in-app
@@ -1223,7 +1228,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 588 Rust + 1,036 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 589 Rust + 1,038 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -123,6 +123,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   belongs to is stated by the backend rather than guessed from its reason —
   both kinds can be held back by uncommitted changes.
 
+- **A project whose folder is not on disk is marked, and stops being polled.**
+  It used to stay in the sidebar looking normal while every background pass
+  asked git and `gh` about a path that is not there — an endless stream of
+  failed spawns (`os error 267`) for as long as the app ran. It now carries a
+  warning explaining the state, the worktree reconcile and the GitHub badge poll
+  skip it, and **nothing is removed**: an unmounted drive, an offline share and
+  a cloud placeholder all look exactly like a deleted project, so acting on that
+  guess would turn a temporary absence into a permanent loss. Removing stays in
+  the project's own ⋯ menu.
+- **Settings → Git → Git bookkeeping** offers to forget worktrees git still
+  lists whose folders are gone. `git worktree list` keeps reporting a worktree
+  after its directory is deleted, so the sidebar showed checkouts that were not
+  there and opening one failed. Pruning removes **records, never files** — the
+  directories it forgets are already missing — which is why it sits apart from
+  the cleanup rather than among things that delete work. Never automatic, for
+  the same reason as above.
+
 ### Changed
 
 - **Where a worktree goes is decided in one place.** It used to be computed in

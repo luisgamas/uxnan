@@ -246,6 +246,40 @@ describe("GitSettings — cleanup", () => {
   });
 });
 
+describe("GitSettings — git bookkeeping", () => {
+  const STALE = [
+    { repoId: "r1", name: "uxnan", paths: ["C:/gone/one", "C:/gone/two"] },
+  ];
+
+  it("offers to forget worktrees git lists but disk does not have", async () => {
+    const pruned: string[] = [];
+    const { screen, user } = mountWithProviders(GitSettings, {
+      commands: {
+        ...baseCommands(),
+        worktree_stale_scan: () => STALE,
+        worktree_prune: (args: Record<string, unknown>) => {
+          pruned.push(args.repoId as string);
+          return [];
+        },
+      },
+    });
+    expect(await screen.findByText("Git bookkeeping")).toBeInTheDocument();
+    expect(screen.getByText("2 worktrees that no longer exist")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Forget them" }));
+    await until(() => pruned.length > 0, { label: "pruned" });
+    expect(pruned).toEqual(["r1"]);
+  });
+
+  it("stays out of the way when git's records are accurate", async () => {
+    const { screen } = mountWithProviders(GitSettings, {
+      commands: { ...baseCommands(), worktree_stale_scan: () => [] },
+    });
+    await screen.findByText("Worktree location");
+    expect(screen.queryByText("Git bookkeeping")).not.toBeInTheDocument();
+  });
+});
+
 describe("GitSettings — identity", () => {
   it("shows who commits are authored as, and the two git facts around it", async () => {
     const { screen } = mountWithProviders(GitSettings, { commands: baseCommands() });

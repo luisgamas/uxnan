@@ -700,6 +700,7 @@ export const es: Record<MessageKey, string> = {
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",
   "settings.openWith": "Abrir con",
   "settings.git": "Git",
+  "project.missingTooltip": "La carpeta de este proyecto no está en el disco ahora mismo. uxnan dejó de sondearla y no ha cambiado nada — reconecta la unidad, o quita el proyecto desde su menú ⋯.",
   "settings.gitIdentity": "Identidad",
   "settings.gitIdentityDesc": "Con qué autoría se firman los commits. Se lee de la configuración global de git.",
   "settings.gitIdentityName": "Nombre",
@@ -721,6 +722,12 @@ export const es: Record<MessageKey, string> = {
   "settings.worktreeMode.siblingExample": "<repositorio>/../<proyecto>--<rama>",
   "settings.worktreeMode.custom": "Carpeta propia",
   "settings.worktreeMode.customExample": "<tu carpeta>/<proyecto>/<rama>",
+  "settings.staleWorktrees": "Registro de git",
+  "settings.staleWorktreesDesc":
+    "Worktrees que git sigue listando y cuyas carpetas ya no están. Olvidarlos borra registros, nunca archivos.",
+  "settings.staleWorktreesCountOne": "1 worktree que ya no existe",
+  "settings.staleWorktreesCountOther": "{n} worktrees que ya no existen",
+  "settings.staleWorktreesPrune": "Olvidarlos",
   "settings.worktreeCleanup": "Limpieza",
   "settings.worktreeCleanupDesc":
     "Worktrees dentro de la carpeta gestionada que se pueden quitar.",

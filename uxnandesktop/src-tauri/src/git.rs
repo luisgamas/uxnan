@@ -376,6 +376,25 @@ pub async fn ref_exists(repo_path: &str, reference: &str) -> bool {
         .is_ok()
 }
 
+/// Worktrees git still lists whose directory is gone from disk.
+///
+/// `git worktree list` keeps reporting a worktree after its folder is deleted —
+/// the bookkeeping in `.git/worktrees/` outlives it until someone prunes. So the
+/// sidebar shows checkouts that are not there, and opening one fails.
+///
+/// The repository's own main worktree is never included: if *that* is missing,
+/// the whole repository is, which is a different problem with a different
+/// answer (see `repos_missing`).
+pub async fn stale_worktrees(repo_path: &str) -> Vec<String> {
+    list_worktrees(repo_path)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| !e.is_main && !Path::new(&e.path).is_dir())
+        .map(|e| e.path)
+        .collect()
+}
+
 /// The main worktree of the repository `path` belongs to, or `None` when git
 /// cannot say. Used to place a worktree that sits somewhere the app did not put
 /// it — a hand-made one, or one from the dialog's custom location.
@@ -1701,6 +1720,37 @@ mod tests {
     #[test]
     fn empty_output_yields_no_entries() {
         assert!(parse_worktree_porcelain("").is_empty());
+    }
+
+    #[tokio::test]
+    async fn stale_worktrees_are_the_ones_git_lists_but_disk_does_not_have() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let alive = crate::worktreeloc::sibling_path(&repo_path, "alive");
+        let gone = crate::worktreeloc::sibling_path(&repo_path, "gone");
+        add_worktree(&repo_path, "alive", &alive, Some("main"))
+            .await
+            .unwrap();
+        add_worktree(&repo_path, "gone", &gone, Some("main"))
+            .await
+            .unwrap();
+        assert!(stale_worktrees(&repo_path).await.is_empty());
+
+        // Deleted from outside the app — git keeps listing it until pruned,
+        // which is exactly why the sidebar showed checkouts that are not there.
+        std::fs::remove_dir_all(&gone).unwrap();
+        assert_eq!(stale_worktrees(&repo_path).await, vec![gone.clone()]);
+
+        // The main worktree is never reported: if THAT is gone the whole
+        // repository is, which is a different problem.
+        assert!(!stale_worktrees(&repo_path).await.contains(&repo_path));
+
+        prune_worktrees(&repo_path).await;
+        assert!(stale_worktrees(&repo_path).await.is_empty());
+        // Pruning touched records, not files: the live worktree is untouched.
+        assert!(std::path::Path::new(&alive).is_dir());
     }
 
     #[test]

@@ -38,6 +38,7 @@
   import type { RepoData } from "$lib/types";
   import type { DisplayStatus } from "$lib/state/agentDisplay";
   import { Icon } from "$lib/components/ui/icon";
+  import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
   import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
   import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
@@ -255,6 +256,17 @@
         <span {...tp2} class={cn("min-w-0 flex-1 truncate", text.title)}>{repo.name}</span>
       {/snippet}
     </TooltipSimple>
+    {#if projects.isMissing(repo.id)}
+      <!-- Its folder is not there right now. Said, not acted on: an unmounted
+           drive and a deleted project look identical from here. -->
+      <TooltipSimple title={i18n.t("project.missingTooltip")}>
+        {#snippet children(tp2)}
+          <span {...tp2} class="shrink-0 text-amber-600 dark:text-amber-400">
+            <Icon icon={AlertIcon} class={icon.decorative} />
+          </span>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
     {#if projects.isProjectPinned(repo.id)}
       <Icon icon={PinIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
     {/if}

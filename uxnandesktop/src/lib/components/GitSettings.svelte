@@ -21,6 +21,8 @@
   import {
     gitIdentity,
     worktreeCleanupRemove,
+    worktreePrune,
+    worktreeStaleScan,
     worktreeCleanupScan,
     worktreeCleanupSizes,
   } from "$lib/api";
@@ -31,6 +33,7 @@
   import { field, text } from "$lib/design";
   import type {
     GitIdentity,
+    StaleWorktrees,
     WorktreeCleanupCandidate,
     WorktreeCleanupKind,
     WorktreeCleanupScope,
@@ -182,6 +185,39 @@
       toastError(e);
     } finally {
       removing = false;
+    }
+  }
+
+  // --- Git bookkeeping -------------------------------------------------------
+  //
+  // `git worktree list` keeps reporting a worktree after its folder is deleted,
+  // so the sidebar shows checkouts that are not there and opening one fails.
+  // Pruning removes RECORDS, never files — the directories it forgets are
+  // already missing — which is why this sits apart from the cleanup above
+  // instead of among things that delete your work.
+  //
+  // Still never automatic: a folder absent today can be a drive plugged in
+  // tomorrow, and having pruned first would leave that checkout orphaned from
+  // its repository.
+  let stale = $state<StaleWorktrees[] | null>(null);
+  let pruning = $state<string | null>(null);
+
+  $effect(() => {
+    void worktreeStaleScan()
+      .then((v) => (stale = v))
+      .catch(() => (stale = []));
+  });
+
+  async function prune(repoId: string) {
+    if (pruning) return;
+    pruning = repoId;
+    try {
+      await worktreePrune(repoId);
+      stale = await worktreeStaleScan();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      pruning = null;
     }
   }
 
@@ -359,6 +395,40 @@
       </div>
     {/if}
   </SettingsSection>
+  <!-- Git bookkeeping: records, not files. -->
+  {#if stale && stale.length > 0}
+    <SettingsSection
+      title={i18n.t("settings.staleWorktrees")}
+      description={i18n.t("settings.staleWorktreesDesc")}
+    >
+      <div class="divide-y divide-border/60">
+        {#each stale as entry (entry.repoId)}
+          <SettingsRow
+            label={entry.name}
+            description={i18n.plural(
+              entry.paths.length,
+              "settings.staleWorktreesCountOne",
+              "settings.staleWorktreesCountOther",
+            )}
+          >
+            {#snippet control()}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pruning !== null}
+                onclick={() => void prune(entry.repoId)}
+              >
+                {#if pruning === entry.repoId}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {/if}
+                {i18n.t("settings.staleWorktreesPrune")}
+              </Button>
+            {/snippet}
+          </SettingsRow>
+        {/each}
+      </div>
+    </SettingsSection>
+  {/if}
 </div>
 
 {#snippet scopeList(
