@@ -21,6 +21,7 @@
 //! rest, which is also why `ForwardAgent` matters: it lets git on the remote use
 //! the keys held here without a private key ever being copied.
 
+pub mod auth;
 pub mod config;
 pub mod conn;
 pub mod hostkey;

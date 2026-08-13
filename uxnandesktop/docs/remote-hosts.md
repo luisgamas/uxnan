@@ -69,6 +69,24 @@ What is read from the resolved output: hostname, port, user, identity files,
 unset, and the app treats that as "not configured" — otherwise it would try to
 run a proxy command called `none`.
 
+## How you authenticate
+
+The app tries your **ssh-agent first**, then the identity files your SSH config
+points at for that host. The agent goes first on purpose: it holds keys you have
+already unlocked, so connecting to five hosts does not mean five passphrase
+prompts. On Windows that is OpenSSH's agent service; elsewhere it is whatever
+`SSH_AUTH_SOCK` points at.
+
+If a key file is encrypted and the app has no passphrase for it, it **asks you
+for that key** rather than reporting a failure — "wrong key" and "I could not
+open your key" are different problems, and telling you the first when it is the
+second sends you off to debug the wrong thing. Key paths in your config that do
+not exist on disk are skipped rather than attempted, because OpenSSH lists its
+defaults whether or not you have them.
+
+Nothing you type is stored: a passphrase lives in memory for one attempt. The
+app records the *path* to a key, never the key.
+
 ## Host keys — the rules the app connects under
 
 Not reachable from the UI yet, but the connection and the decision behind it are

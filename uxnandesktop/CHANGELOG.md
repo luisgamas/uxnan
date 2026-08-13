@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Authentication, in the order OpenSSH would use it.** The system's ssh-agent
+  first — it holds keys you have already unlocked, which is what keeps connecting
+  to several hosts from becoming several passphrase prompts — then the identity
+  files your SSH config actually points at. **No secret is stored by the app**: a
+  credential is a reference (the agent, or a path), and a passphrase lives in
+  memory for one attempt. An encrypted key stops the attempt asking for a
+  passphrase rather than reporting "authentication failed", because "wrong key"
+  and "I could not open your key" send you to different places. Key paths that do
+  not exist are dropped instead of attempted — OpenSSH lists its defaults whether
+  or not they are there, and trying each one would bury the real answer.
 - **The app can reach a host and decide whether to trust it.** The TCP
   connection and the SSH handshake, with one rule that shapes everything else:
   **an unverified host is never connected to, not even in order to ask.** When

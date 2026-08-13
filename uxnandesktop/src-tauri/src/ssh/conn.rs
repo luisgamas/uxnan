@@ -115,6 +115,11 @@ impl Connection {
     pub fn handle(&self) -> &client::Handle<Client> {
         &self.handle
     }
+
+    /// Mutable access, needed by the authentication exchange.
+    pub fn handle_mut(&mut self) -> &mut client::Handle<Client> {
+        &mut self.handle
+    }
 }
 
 /// The russh client handler. Its only job is the host-key decision; it records

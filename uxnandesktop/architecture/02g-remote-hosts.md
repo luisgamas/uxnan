@@ -143,6 +143,46 @@ no valdria nada.
 
 Falta: llamarla desde el callback del cliente y la confirmacion TOFU en la UI.
 
+## 5.2 Autenticacion — IMPLEMENTADA
+
+`src-tauri/src/ssh/auth.rs`. Orden: **agente del sistema primero**, luego los
+ficheros de identidad que la configuracion resuelta del host señala. El orden no
+es cosmetico: el agente sostiene llaves que el usuario ya desbloqueo, asi que
+probarlo primero es lo que evita que conectar a varios hosts se convierta en
+varios prompts de passphrase.
+
+**Ningun secreto se guarda.** Una credencial es una *referencia* —"el agente" o
+"la llave en esta ruta"—; la passphrase vive en memoria durante un intento y no
+se escribe en ningun sitio. La etiqueta de una credencial (la que va a logs y
+UI) nunca incluye la passphrase, y hay un test que lo exige.
+
+Resultados tipados, no un booleano:
+
+| Resultado | Significa | Que hace la UI |
+|---|---|---|
+| `Success { method }` | autenticado, y **con que** credencial | puede decir por donde entro |
+| `NeedsPassphrase { path }` | la llave esta cifrada y no habia passphrase (o era incorrecta) | la pide y reintenta **esa** credencial |
+| `Failed { attempted }` | todo lo ofrecido fue rechazado, con la lista en orden | mensaje concreto, no "fallo la autenticacion" |
+| `NoCredentials` | no habia nada que ofrecer | ofrece configurar una llave |
+
+Dos decisiones que evitan diagnosticos equivocados:
+
+- Una llave cifrada **detiene** la cadena. Seguir probando reportaria "fallo la
+  autenticacion" para una llave que quiza es la correcta, y mandaria al usuario
+  a depurar el problema equivocado.
+- Las rutas de identidad que **no existen se descartan**, no se intentan:
+  `ssh -G` lista los defaults de OpenSSH existan o no, y probar cada ausente
+  convertiria un "no tienes credenciales" en una lista de fallos sin sentido.
+
+Un certificado OpenSSH presente en el agente se **salta**: es otro metodo de
+autenticacion, con sus principales y su validez, y ofrecerlo como si fuera una
+llave suelta fallaria de una forma que parece una llave rechazada.
+
+Windows habla con el agente por named pipe de OpenSSH; el resto por
+`SSH_AUTH_SOCK`. Validado en vivo contra el `sshd` local: el intercambio
+completo ocurre y una llave no autorizada vuelve como rechazo limpio nombrando
+lo que se ofrecio. Falta una corrida con una llave cargada en el agente.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
