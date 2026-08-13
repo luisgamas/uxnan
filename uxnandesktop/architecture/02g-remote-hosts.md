@@ -83,9 +83,37 @@ conexion alguna.
 - **`ssh` del sistema como plan B declarado por host**, para los casos que un
   cliente en proceso no cubre (GSSAPI, ciertos `ProxyCommand`), anunciando que
   capacidades se pierden en ese modo.
-- **Verificacion de host obligatoria** contra `known_hosts`, con confirmacion
-  explicita de huella desconocida y error —nunca "continuar"— ante una huella
-  cambiada. No existe modo "ignorar host key".
+## 5.1 Verificacion de host key — LOGICA IMPLEMENTADA
+
+`src-tauri/src/ssh/hostkey.rs`. Es la unica decision de esta capa que no tiene
+valor por defecto seguro: equivocarse no es una funcion rota, es un
+man-in-the-middle. Por eso devuelve **cuatro veredictos**, nunca un booleano:
+
+| Veredicto | Cuando | Que hace la app |
+|---|---|---|
+| `Trusted` | la clave exacta ya esta en `known_hosts` | conecta |
+| `Unknown` | no hay nada para ese host | pregunta al usuario (TOFU) y **no escribe nada** hasta que confirme |
+| `Changed` | hay clave para ese host y **no** es esta | rechaza; lleva la huella almacenada para poder mostrar ambas |
+| `Revoked` | entrada `@revoked` | rechaza y no ofrece confiar |
+
+`Unknown` y `Changed` estan separados a proposito: "no conozco este host" y "la
+clave de este host no es la que tengo" son sucesos distintos y colapsarlos seria
+el fallo. **No existe modo "ignorar host key"**, ni siquiera tras un ajuste.
+
+Detalles del formato que se respetan: patrones separados por comas, negaciones
+(`!host`), forma `[host]:puerto` para puertos no estandar (una clave no se
+hereda entre puertos), lineas `@cert-authority` **saltadas** —leerlas como la
+clave del host produciria una falsa alarma de clave cambiada— y entradas
+**hasheadas** (`|1|salt|hmac`, HMAC-SHA1) que `HashKnownHosts yes` genera; sin
+soportarlas, un usuario con fichero hasheado veria todos sus hosts como nuevos.
+
+La logica trabaja sobre el blob de la clave, no sobre tipos de la libreria SSH:
+se prueba sin conexion y una actualizacion de la libreria no puede cambiarla en
+silencio. La huella `SHA256:…` se contrasta en tests contra la que calcula la
+propia libreria, porque si divergiera, la que se ensena al usuario para comparar
+no valdria nada.
+
+Falta: llamarla desde el callback del cliente y la confirmacion TOFU en la UI.
 
 ## 6. Que funciona y que no en un contexto remoto
 

@@ -4,7 +4,13 @@ version = "0.0.40"
 description = "Uxnan Desktop — Agent Development Environment (ADE)."
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
-rust-version = "1.77.2"
+# Floor set by `russh` (the SSH client), not by anything in this crate. Raised
+# from 1.77.2 deliberately: nothing consumes this as a contract — every workflow
+# builds on `stable`, `rust-toolchain.toml` says `stable`, there is no MSRV job
+# and this crate is never published — so holding it back would only have meant
+# shipping an SSH/crypto stack eight minor versions behind to protect a claim
+# nobody verifies.
+rust-version = "1.85"
 license = "MPL-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -95,6 +101,20 @@ ignore = "0.4"
 # naming them here adds no build cost. MIT/Apache-2.0.
 regex = "1"
 globset = "0.4"
+# SSH client for remote hosts (`ssh/`). In-process rather than shelling out to
+# `ssh` per operation: the Windows OpenSSH client does not implement
+# `ControlMaster`, so every invocation would pay a full TCP + auth handshake
+# (~400 ms), and one connection carrying many channels is the whole design.
+# Pure Rust, Apache-2.0, and its crypto backend (`aws-lc-rs`) is already in the
+# tree via rustls/reqwest, so it adds no new build toolchain. It sets this
+# crate's MSRV — see `rust-version` above.
+russh = "0.62.6"
+# SHA-1, for exactly one thing: reading OpenSSH's hashed `known_hosts` entries
+# (`|1|salt|hmac`), whose lookup keys are HMAC-SHA1 by that file format's own
+# definition. Not a security primitive here — the host key itself is compared
+# byte-for-byte. Pinned to 0.10 to share `digest` 0.10 with sha2 already in the
+# tree; 0.11 pulls a second, incompatible digest generation into the graph.
+sha1 = "0.10"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs),
 # and GetShortPathNameW for the agent hooks — Grok parses a hook command as a

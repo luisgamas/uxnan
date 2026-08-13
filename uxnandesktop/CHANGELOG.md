@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Host-key verification, with no way to turn it off.** The rule set the app
+  will connect under: a key already in `known_hosts` connects, an unknown host
+  asks you first and nothing is written until you say yes, and a host whose key
+  *changed* is refused outright — the two are separate verdicts on purpose,
+  because "never seen this host" and "this host's key is not the one I have" are
+  not the same event. `@revoked` is refused and never offered for trust,
+  `@cert-authority` lines are skipped rather than misread as the host's own key,
+  and hashed entries (`HashKnownHosts yes`) are matched properly so a hashed
+  file does not make every host look new. There is no "ignore host key" mode,
+  not even behind a setting.
 - **The app can read your own SSH configuration.** It lists the `Host` aliases
   in `~/.ssh/config` (following `Include`, globs included, surviving cycles, and
   skipping wildcard patterns — `Host *` configures defaults, it is not a host)
@@ -33,6 +43,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **Building from source now needs Rust 1.85** (was 1.77.2). The floor comes
+  from the SSH client the remote-hosts work uses; nothing consumed the old
+  value as a contract — every workflow builds on `stable`, `rust-toolchain.toml`
+  selects `stable`, there is no MSRV job and this crate is never published — so
+  holding it back would only have meant shipping an SSH/crypto stack eight minor
+  versions behind. `Cargo.lock` moves to format v4 as a consequence (cargo
+  1.78+).
 - Persistence schema is now **v2**: loading stamps `target: "local"` on every
   stored repo and worktree, and a document written by a newer build is refused
   rather than half-understood (an older build would otherwise ignore an unknown

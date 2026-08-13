@@ -69,6 +69,25 @@ What is read from the resolved output: hostname, port, user, identity files,
 unset, and the app treats that as "not configured" — otherwise it would try to
 run a proxy command called `none`.
 
+## Host keys — the rules the app will connect under
+
+Not reachable from the UI yet (there is nothing to connect to), but the decision
+logic is in place and these are the rules it enforces:
+
+- **A key already in `known_hosts`** → connects.
+- **A host you have never seen** → the app asks you, showing the `SHA256:…`
+  fingerprint to compare, and **writes nothing** until you confirm.
+- **A host whose key changed** → refused, showing both fingerprints. This is a
+  separate outcome from "never seen", deliberately: collapsing the two is how a
+  man-in-the-middle gets waved through.
+- **`@revoked`** → refused, and never offered for trust.
+
+There is **no "ignore host key" mode**, and there will not be one behind a
+setting. Non-default ports use OpenSSH's `[host]:port` form, so trusting a key on
+one port does not trust it on another; hashed files (`HashKnownHosts yes`) are
+matched properly, so your hosts do not all look new; and `@cert-authority` lines
+are skipped rather than mistaken for a host's own key.
+
 ### Troubleshooting
 
 **"`ssh -G` failed."** Run the same command yourself:

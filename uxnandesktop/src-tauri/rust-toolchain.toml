@@ -1,5 +1,7 @@
-# Pin the Rust toolchain for deterministic local + CI builds (ci-desktop.yml).
-# MSRV is 1.77.2 (see Cargo.toml `rust-version`); we build on stable.
+# Pin the Rust toolchain for deterministic local + CI builds. Every workflow that
+# compiles this crate (verify-desktop, release-desktop, e2e-desktop,
+# resource-benchmarks) installs `stable`, which is what this file selects.
+# MSRV is 1.85 — see `Cargo.toml`'s `rust-version`, where the reason lives.
 [toolchain]
 channel = "stable"
 components = ["rustfmt", "clippy"]
