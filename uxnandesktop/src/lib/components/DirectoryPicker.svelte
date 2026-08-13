@@ -53,10 +53,19 @@
   const detectedKind = $derived(classifyProjectInput(sourceInput));
   const showsGitHub = $derived(mode === "github" || (mode === "auto" && detectedKind === "github"));
   const cloneRepository = $derived(showsGitHub ? parseGitHubRepositoryInput(sourceInput) : null);
+  // `<home>/uxnan/repos/<repo>`, beside `<home>/uxnan/worktrees`. Clones used to
+  // land directly in `<home>/uxnan`, which made the worktree root just another
+  // folder among the projects — a repository literally named `worktrees` would
+  // have collided with it, and the folder needed explaining. Two folders with
+  // obvious roles explain themselves. Only the suggestion changes: the field is
+  // editable, and clones already on disk stay where they are.
   const suggestedDestination = $derived(
     cloneRepository
       ? githubCloneDestination(
-          githubCloneDestination(homePath || listing?.path || path, "uxnan"),
+          githubCloneDestination(
+            githubCloneDestination(homePath || listing?.path || path, "uxnan"),
+            "repos",
+          ),
           cloneRepository.repo,
         )
       : "",

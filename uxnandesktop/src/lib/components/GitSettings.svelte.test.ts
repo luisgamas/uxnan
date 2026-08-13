@@ -72,6 +72,14 @@ const CANDIDATES = [
     reason: "merged",
   },
   {
+    path: "C:/Users/u/uxnan/worktrees/closed/mi-rama",
+    group: "closed",
+    name: "mi-rama",
+    branch: "mi-rama",
+    kind: "unregistered",
+    reason: "projectRemoved",
+  },
+  {
     path: "C:/Users/u/uxnan/worktrees/uxnan/wip-tests",
     group: "uxnan",
     name: "wip-tests",
@@ -88,7 +96,7 @@ describe("GitSettings — cleanup", () => {
       commands: {
         ...baseCommands(),
         worktree_cleanup_scan: () => CANDIDATES,
-        worktree_cleanup_sizes: () => [1024 * 1024 * 340, 1024 * 1024 * 620],
+        worktree_cleanup_sizes: () => [1024 * 1024 * 340, 1024 * 1024 * 620, 1024 * 1024 * 90],
       },
     });
     // Nothing is scanned until asked: this reads the disk.
@@ -97,6 +105,7 @@ describe("GitSettings — cleanup", () => {
     await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
     expect(await screen.findByText("No longer owned by git")).toBeInTheDocument();
     expect(screen.getByText("Work finished")).toBeInTheDocument();
+    expect(screen.getByText("No longer a project in uxnan")).toBeInTheDocument();
     expect(screen.getByText("Has unsaved changes")).toBeInTheDocument();
     expect(screen.getByText("its repository is gone from disk")).toBeInTheDocument();
     expect(screen.getByText("3 files not committed")).toBeInTheDocument();
@@ -107,7 +116,7 @@ describe("GitSettings — cleanup", () => {
       commands: {
         ...baseCommands(),
         worktree_cleanup_scan: () => CANDIDATES,
-        worktree_cleanup_sizes: () => [0, 0],
+        worktree_cleanup_sizes: () => [0, 0, 0],
       },
     });
     await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
@@ -117,8 +126,10 @@ describe("GitSettings — cleanup", () => {
     const blocked = screen.getByRole("checkbox", { name: "uxnan / wip-tests" });
     // Git owns nothing in an orphan, so there is nothing to weigh up.
     expect(orphan).toBeChecked();
-    // Finished work is a judgement call: the user makes it.
+    // Finished work is a judgement call: the user makes it. So is a checkout
+    // whose project was closed — the repository and the branch are both intact.
     expect(finished).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "closed / mi-rama" })).not.toBeChecked();
     // Unsaved work is never removable from here, at any cost.
     expect(blocked).toBeDisabled();
   });
@@ -129,7 +140,7 @@ describe("GitSettings — cleanup", () => {
       commands: {
         ...baseCommands(),
         worktree_cleanup_scan: () => CANDIDATES,
-        worktree_cleanup_sizes: () => [0, 0],
+        worktree_cleanup_sizes: () => [0, 0, 0],
         worktree_cleanup_remove: (args: Record<string, unknown>) => {
           calls.push(args.paths as string[]);
           return {

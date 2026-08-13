@@ -11,9 +11,10 @@
 //!   project's override). A worktree beside its repository, or anywhere else the
 //!   user put one, is never listed and never touched.
 //! - It only offers what it can **prove** is disposable: a folder git no longer
-//!   knows about, or a clean checkout whose branch has landed or whose remote
-//!   branch is gone. Anything with uncommitted work is listed **blocked**, so
-//!   the answer to "why isn't this offered?" is on screen instead of absent.
+//!   knows about, a clean checkout whose branch has landed or whose remote
+//!   branch is gone, or one belonging to a repository that is no longer a
+//!   project in the app. Anything with uncommitted work is listed **blocked**,
+//!   so the answer to "why isn't this offered?" is on screen instead of absent.
 //! - Nothing is automatic. The scan reports; the user picks; and every path is
 //!   **re-verified from scratch** at removal time rather than trusted from the
 //!   caller — a stale list must not be able to delete the wrong folder.
@@ -47,6 +48,9 @@ pub enum CleanupReason {
     Merged,
     /// The branch was pushed once and its remote-tracking branch is gone.
     BranchGone,
+    /// The repository is still on disk, but it is no longer one of the app's
+    /// projects — so nothing in uxnan leads here any more.
+    ProjectRemoved,
     /// Blocked: the checkout has uncommitted or untracked changes.
     UncommittedChanges,
 }
@@ -59,6 +63,13 @@ pub enum CleanupKind {
     Orphaned,
     /// A live, clean worktree whose work is done.
     Finished,
+    /// A live, clean worktree of a repository the app no longer lists as a
+    /// project. Removing a project does not touch the disk, so its worktrees
+    /// stay behind — invisible to everything, since they are neither orphaned
+    /// (git still owns them) nor finished (the branch may never have landed).
+    /// **Not** pre-selected: the repository and the branch are both intact, so
+    /// this is a judgement call, not garbage.
+    Unregistered,
     /// Listed so the user sees it, never removable without dealing with it.
     Blocked,
 }
@@ -111,7 +122,18 @@ pub fn is_inside(root: &str, path: &str) -> bool {
 }
 
 /// Scan `roots` for worktrees worth offering. Read-only.
-pub async fn scan(roots: &[String]) -> Vec<CleanupCandidate> {
+///
+/// `projects` is the paths of the repositories the app currently lists. A
+/// worktree whose repository is not among them is reported
+/// [`CleanupKind::Unregistered`]: removing a project from uxnan touches nothing
+/// on disk, so its worktrees stay behind — and without this they are invisible
+/// to the cleanup forever, being neither orphaned (git still owns them) nor
+/// finished (the branch may never have landed).
+pub async fn scan(roots: &[String], projects: &[String]) -> Vec<CleanupCandidate> {
+    let known: Vec<String> = projects
+        .iter()
+        .map(|p| normalize(p).to_lowercase())
+        .collect();
     let mut found: Vec<CleanupCandidate> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
     for root in roots {
@@ -126,7 +148,9 @@ pub async fn scan(roots: &[String]) -> Vec<CleanupCandidate> {
                     continue;
                 }
                 seen.push(entry.path.clone());
-                if let Some(candidate) = classify(&group.name, &entry, repo.as_deref()).await {
+                if let Some(candidate) =
+                    classify(&group.name, &entry, repo.as_deref(), &known).await
+                {
                     found.push(candidate);
                 }
             }
@@ -200,7 +224,13 @@ async fn marker_repo(group_path: &str) -> Option<String> {
 }
 
 /// Decide what, if anything, to report about one folder inside a group.
-async fn classify(group: &str, entry: &Dir, repo: Option<&str>) -> Option<CleanupCandidate> {
+/// `known_projects` is normalized, lowercased repository paths.
+async fn classify(
+    group: &str,
+    entry: &Dir,
+    repo: Option<&str>,
+    known_projects: &[String],
+) -> Option<CleanupCandidate> {
     let make = |kind, reason, branch, changed_files, repo_path| CleanupCandidate {
         path: entry.path.clone(),
         group: group.to_string(),
@@ -278,6 +308,18 @@ async fn classify(group: &str, entry: &Dir, repo: Option<&str>) -> Option<Cleanu
             Some(repo.to_string()),
         ));
     }
+    // Last: the work says nothing, but nothing in the app leads here any more.
+    // Checked after the two above because "it landed" is a stronger statement
+    // about the checkout than "you closed the project".
+    if !known_projects.contains(&normalize(repo).to_lowercase()) {
+        return Some(make(
+            CleanupKind::Unregistered,
+            CleanupReason::ProjectRemoved,
+            Some(branch),
+            None,
+            Some(repo.to_string()),
+        ));
+    }
     None
 }
 
@@ -339,9 +381,9 @@ fn walk_size(path: &Path) -> u64 {
 /// the scan classifies as removable. A path that fails either check is refused
 /// with a reason instead of being skipped silently — a cleanup that quietly
 /// does less than it said is worse than one that explains itself.
-pub async fn remove(roots: &[String], paths: &[String]) -> CleanupOutcome {
+pub async fn remove(roots: &[String], projects: &[String], paths: &[String]) -> CleanupOutcome {
     let mut outcome = CleanupOutcome::default();
-    let candidates = scan(roots).await;
+    let candidates = scan(roots, projects).await;
 
     for path in paths {
         let path = normalize(path);
@@ -368,8 +410,10 @@ pub async fn remove(roots: &[String], paths: &[String]) -> CleanupOutcome {
         }
         // Last gate before anything is touched: ask git again. The scan may be
         // seconds old, and an agent writes files the whole time.
-        if candidate.kind == CleanupKind::Finished
-            && !matches!(crate::git::is_worktree_clean(&path).await, Ok(true))
+        if matches!(
+            candidate.kind,
+            CleanupKind::Finished | CleanupKind::Unregistered
+        ) && !matches!(crate::git::is_worktree_clean(&path).await, Ok(true))
         {
             outcome.refused.push(CleanupRefusal {
                 path,
@@ -537,7 +581,7 @@ mod tests {
             .await
             .unwrap();
 
-        let found = scan(&[root]).await;
+        let found = scan(&[root], std::slice::from_ref(&repo)).await;
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].kind, CleanupKind::Orphaned);
         assert_eq!(found[0].reason, CleanupReason::NotAWorktree);
@@ -554,7 +598,7 @@ mod tests {
             .unwrap();
         drop(repo_dir); // the repository is deleted from disk
 
-        let found = scan(&[root]).await;
+        let found = scan(&[root], std::slice::from_ref(&repo)).await;
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].reason, CleanupReason::RepoGone);
     }
@@ -583,7 +627,7 @@ mod tests {
             .unwrap();
         std::fs::write(format!("{dirty}/scratch.txt"), "unsaved\n").unwrap();
 
-        let found = scan(&[root]).await;
+        let found = scan(&[root], std::slice::from_ref(&repo)).await;
         let done = found.iter().find(|c| c.name == "done").expect("done");
         assert_eq!(done.kind, CleanupKind::Finished);
         assert_eq!(done.reason, CleanupReason::Merged);
@@ -607,7 +651,59 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(scan(&[root]).await.is_empty());
+        assert!(scan(&[root], std::slice::from_ref(&repo)).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_worktree_of_a_closed_project_is_offered_but_not_pre_selected() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo).await;
+        let (_root_dir, root, group) = managed_root(&repo).await;
+
+        // Created and never touched — exactly what the sidebar would call
+        // unfinished, so none of the other rules sees it.
+        crate::git::add_worktree(&repo, "fresh", &format!("{group}/fresh"), Some("main"))
+            .await
+            .unwrap();
+        assert!(
+            scan(std::slice::from_ref(&root), std::slice::from_ref(&repo))
+                .await
+                .is_empty()
+        );
+
+        // Remove the project from the app (which touches nothing on disk) and
+        // it becomes the one thing that DOES say this checkout is disposable.
+        let found = scan(std::slice::from_ref(&root), &[]).await;
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].kind, CleanupKind::Unregistered);
+        assert_eq!(found[0].reason, CleanupReason::ProjectRemoved);
+        assert_eq!(found[0].branch.as_deref(), Some("fresh"));
+    }
+
+    #[tokio::test]
+    async fn a_closed_project_with_unsaved_work_is_still_blocked() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo).await;
+        let (_root_dir, root, group) = managed_root(&repo).await;
+        let dirty = format!("{group}/wip");
+        crate::git::add_worktree(&repo, "wip", &dirty, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{dirty}/scratch.txt"), "unsaved\n").unwrap();
+
+        // Closing the project must not downgrade the protection.
+        let found = scan(std::slice::from_ref(&root), &[]).await;
+        assert_eq!(found[0].kind, CleanupKind::Blocked);
+        let outcome = remove(
+            std::slice::from_ref(&root),
+            &[],
+            std::slice::from_ref(&dirty),
+        )
+        .await;
+        assert!(outcome.removed.is_empty());
+        assert!(Path::new(&dirty).is_dir(), "the worktree must survive");
     }
 
     #[tokio::test]
@@ -619,7 +715,12 @@ mod tests {
 
         // The repository itself: inside no managed root, and the exact thing a
         // stale or forged list must never be able to delete.
-        let outcome = remove(&[root], std::slice::from_ref(&repo)).await;
+        let outcome = remove(
+            &[root],
+            std::slice::from_ref(&repo),
+            std::slice::from_ref(&repo),
+        )
+        .await;
         assert!(outcome.removed.is_empty());
         assert_eq!(outcome.refused.len(), 1);
         assert!(Path::new(&repo).is_dir(), "the repository must survive");
@@ -637,7 +738,12 @@ mod tests {
             .unwrap();
         std::fs::write(format!("{dirty}/scratch.txt"), "unsaved\n").unwrap();
 
-        let outcome = remove(&[root], std::slice::from_ref(&dirty)).await;
+        let outcome = remove(
+            &[root],
+            std::slice::from_ref(&repo),
+            std::slice::from_ref(&dirty),
+        )
+        .await;
         assert!(outcome.removed.is_empty());
         assert_eq!(outcome.refused.len(), 1);
         assert!(Path::new(&dirty).is_dir(), "the worktree must survive");
@@ -657,7 +763,12 @@ mod tests {
             .await
             .unwrap();
 
-        let outcome = remove(std::slice::from_ref(&root), std::slice::from_ref(&stray)).await;
+        let outcome = remove(
+            std::slice::from_ref(&root),
+            std::slice::from_ref(&repo),
+            std::slice::from_ref(&stray),
+        )
+        .await;
         assert_eq!(outcome.removed, vec![stray.clone()]);
         assert!(!Path::new(&stray).exists());
         // The group, its marker and the repository are untouched.

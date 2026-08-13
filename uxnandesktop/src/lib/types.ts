@@ -395,12 +395,13 @@ export type WorktreeCleanupReason =
   | "notAWorktree"
   | "merged"
   | "branchGone"
+  | "projectRemoved"
   | "uncommittedChanges";
 
 /** Which bucket a cleanup candidate belongs to (mirror of `CleanupKind`).
  *  `blocked` is listed but never removable — it exists so "why isn't this
  *  offered?" is answered on screen instead of by its absence. */
-export type WorktreeCleanupKind = "orphaned" | "finished" | "blocked";
+export type WorktreeCleanupKind = "orphaned" | "finished" | "unregistered" | "blocked";
 
 /** One worktree the cleanup screen can show (mirror of `CleanupCandidate`).
  *  Only ever a folder inside a managed root. */

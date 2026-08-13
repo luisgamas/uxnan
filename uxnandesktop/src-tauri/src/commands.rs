@@ -1133,6 +1133,21 @@ pub async fn worktree_cleanup_count(state: State<'_, AppState>) -> Result<u32, C
     Ok(worktreeclean::count(&roots).await)
 }
 
+/// The paths of the repositories currently registered as projects. A worktree
+/// under a managed root whose repository is not among them belongs to a project
+/// the user closed — removing one touches nothing on disk, so its worktrees stay
+/// behind, and this is what lets the cleanup see them.
+async fn project_paths(state: &AppState) -> Vec<String> {
+    state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .map(|r| r.path.clone())
+        .collect()
+}
+
 /// Worktrees inside the managed folder that can be cleaned up, plus the ones
 /// blocked by uncommitted work (listed, never removable). Read-only.
 #[tauri::command]
@@ -1140,7 +1155,8 @@ pub async fn worktree_cleanup_scan(
     state: State<'_, AppState>,
 ) -> Result<Vec<worktreeclean::CleanupCandidate>, CommandError> {
     let roots = managed_roots(&state).await;
-    Ok(worktreeclean::scan(&roots).await)
+    let projects = project_paths(&state).await;
+    Ok(worktreeclean::scan(&roots, &projects).await)
 }
 
 /// Size on disk of each given worktree, in bytes, in the order asked.
@@ -1166,7 +1182,8 @@ pub async fn worktree_cleanup_remove(
     paths: Vec<String>,
 ) -> Result<worktreeclean::CleanupOutcome, CommandError> {
     let roots = managed_roots(&state).await;
-    Ok(worktreeclean::remove(&roots, &paths).await)
+    let projects = project_paths(&state).await;
+    Ok(worktreeclean::remove(&roots, &projects, &paths).await)
 }
 
 /// Create a worktree in the given repo. Two modes:

@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Cloned repositories land in `~/uxnan/repos`.** They used to go directly into
+  `~/uxnan`, which left the worktree root as just another folder among the
+  projects — a repository literally named `worktrees` would have collided with
+  it, and the folder needed explaining. `repos/` and `worktrees/` explain
+  themselves. Only the suggested destination changes: the field is editable, and
+  clones already on disk are not moved.
 - **New worktrees land in a folder uxnan manages, grouped by project.** The
   default is now `~/uxnan/worktrees/<project>/<branch>` — beside the folder the
   clone flow already writes to — instead of a `<project>--<branch>` sibling
@@ -33,9 +39,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 - **Settings → Git → Cleanup empties the managed folder safely.** It lists what
   the backend can *prove* is disposable — folders git no longer owns (the
-  repository is gone, or the worktree was removed elsewhere) and clean checkouts
-  whose branch landed or whose remote branch is gone — with sizes, so the
-  question "is this worth reclaiming?" has an answer on screen. Anything with
+  repository is gone, or the worktree was removed elsewhere), clean checkouts
+  whose branch landed or whose remote branch is gone, and those whose repository
+  is **no longer a project in uxnan** — removing a project touches nothing on
+  disk, so its worktrees stay behind, and without that category they would be
+  invisible here forever, being neither orphaned (git still owns them) nor
+  finished (the branch may never have landed). All with sizes, so the question
+  "is this worth reclaiming?" has an answer on screen. Anything with
   uncommitted work is listed **blocked**, never hidden.
 
   The folder needed this precisely because it is out of sight: the sibling

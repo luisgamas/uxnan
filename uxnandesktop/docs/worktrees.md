@@ -9,13 +9,27 @@ Spec: [`architecture/02c-git-worktrees.md`](../architecture/02c-git-worktrees.md
 
 ## Settings → Git
 
-Two sections. **Identity** is read-only: the name, email, `init.defaultBranch`
+Three sections. **Identity** is read-only: the name, email, `init.defaultBranch`
 and git version the app reads from git's **global/system** configuration
 (`git_identity` → `git::identity`), never from an open repository — a repo can
 override its own author, and reporting that here would describe an identity the
 user does not have anywhere else. An unset name/email is shown as such, because
-it is what makes `git commit` fail later. **Worktree location** is the rest of
-this page.
+it is what makes `git commit` fail later. **Worktree location** and **Cleanup**
+are the rest of this page.
+
+## What lives in `~/uxnan`
+
+```
+~/uxnan/
+  repos/<repo>/                 cloned repositories
+  worktrees/<repo>/<branch>/    worktrees, grouped by project
+```
+
+Two siblings with obvious roles. Clones used to land directly in `~/uxnan`,
+which left the worktree root as just another folder among the projects — a
+repository literally named `worktrees` would have collided with it. Only the
+destination the clone dialog *suggests* changed; clones already on disk are not
+moved.
 
 ## The three layouts
 
@@ -23,7 +37,7 @@ Settings → **Git** → *Worktree location*:
 
 | Mode | Path | When |
 |---|---|---|
-| **Managed folder** (default) | `<home>/uxnan/worktrees/<project>/<branch>` | Groups a repository's checkouts under a folder uxnan owns, beside the `<home>/uxnan/<project>` the clone flow already writes to |
+| **Managed folder** (default) | `<home>/uxnan/worktrees/<project>/<branch>` | Groups a repository's checkouts under a folder uxnan owns, beside the `<home>/uxnan/repos` the clone flow writes to |
 | **Beside the project** | `<parent>/<project>--<branch>` | What the app did before; keep it if your tooling expects the sibling folders |
 | **Custom folder** | `<your root>/<project>/<branch>` | Same grouping on another volume, or under a shorter path |
 
@@ -52,12 +66,13 @@ forever. It is out of sight by design, and what is out of sight never gets
 pruned — the sibling folders it replaced at least annoyed you into deleting
 them.
 
-Press **Look for old worktrees** and it reports three buckets:
+Press **Look for old worktrees** and it reports four buckets:
 
 | Bucket | What it means | Pre-selected |
 |---|---|---|
 | **No longer owned by git** | The repository is gone from disk, or git no longer lists this folder as one of its worktrees | Yes — git owns nothing there |
 | **Work finished** | A clean checkout whose branch landed on its base (merge or squash-merge), or whose remote branch is gone after being pushed | No — that is a judgement call |
+| **No longer a project in uxnan** | The repository is still on disk, but you removed it from the app — which touches nothing on disk, so its worktrees stayed | No — the repository and the branch are both intact |
 | **Has unsaved changes** | Listed with the file count, never removable from here | Never |
 
 Sizes are fetched after the list appears (`worktree_cleanup_sizes`): walking a
@@ -82,6 +97,9 @@ Implementation: [`src-tauri/src/worktreeclean.rs`](../src-tauri/src/worktreeclea
   counts. Read from the last fetch — this screen never goes to the network.
 - **An untouched branch is never offered**, because `branch_integrated` treats a
   branch that never diverged from its base as unfinished rather than merged.
+  That rule is also why closing a project needed its own category: a worktree
+  created and never touched is neither orphaned nor finished, so without it the
+  worktrees of every project you close would be invisible here forever.
 
 ### What removal actually does
 

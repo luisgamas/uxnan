@@ -59,7 +59,9 @@ user's home directory, and executes
 `github_clone` followed by the normal `repo_add` path. Successful registration
 loads the canonical worktree list and focuses the primary worktree. A failed
 clone is reported without deleting a partial destination automatically.
-The default destination is `<home>/uxnan/<repository>`; the backend creates its
+The default destination is `<home>/uxnan/repos/<repository>` — a sibling of
+`<home>/uxnan/worktrees`, so a repository named `worktrees` cannot collide with
+the worktree root; the backend creates its
 missing parent directories. A native OS directory picker can replace that parent
 without introducing a second project-import dialog. Clone transfers use a bounded
 15-minute timeout rather than the one-minute budget used by API-shaped GitHub
@@ -100,7 +102,7 @@ sobrescribibles por proyecto (`RepoData.worktreeRoot`):
 
 | Modo | Ruta | Para qué |
 |---|---|---|
-| `managed` (por defecto) | `<home>/uxnan/worktrees/<repo>/<rama>` | Agrupa los checkouts de un repositorio en una carpeta que la app gestiona, junto a la que ya usa el clon (`<home>/uxnan/<repo>`) |
+| `managed` (por defecto) | `<home>/uxnan/worktrees/<repo>/<rama>` | Agrupa los checkouts de un repositorio en una carpeta que la app gestiona, junto a la que usa el clon (`<home>/uxnan/repos/<repo>`) |
 | `sibling` | `<padre>/<repo>--<rama>` | El comportamiento anterior, para quien lo prefiera |
 | `custom` | `<raíz elegida>/<repo>/<rama>` | La misma agrupación en otro volumen o en una ruta más corta |
 
@@ -141,11 +143,14 @@ no se poda: las carpetas hermanas a las que sustituye al menos estorbaban al lad
 del repositorio. **Ajustes → Git → Limpieza** (`worktreeclean.rs`) es lo que
 impide que crezca sin límite.
 
-Reporta tres grupos: **huérfanos** (git ya no posee la carpeta — el repositorio
+Reporta cuatro grupos: **huérfanos** (git ya no posee la carpeta — el repositorio
 desapareció, o el worktree se quitó desde fuera), **terminados** (checkout limpio
 cuya rama se fusionó con su base o cuya rama remota ya no existe tras haber sido
-empujada) y **bloqueados** (con cambios sin commitear: se listan con el número de
-archivos, nunca se pueden quitar desde aquí). Los tamaños se piden **después** de
+empujada), **sin proyecto** (el repositorio sigue en disco pero ya no está en la
+lista de proyectos: quitar un proyecto no toca el disco, así que sus worktrees se
+quedan — y sin esta categoría serían invisibles aquí para siempre, porque no son
+huérfanos ni han terminado) y **bloqueados** (con cambios sin commitear: se
+listan con el número de archivos, nunca se pueden quitar desde aquí). Los tamaños se piden **después** de
 la lista: recorrer el `node_modules` de un checkout cuesta más que todas las
 consultas a git del escaneo juntas.
 
@@ -168,6 +173,10 @@ Cada límite es una propiedad de seguridad:
    plano; luego `git worktree prune`. Una ejecución interrumpida se barre en el
    siguiente arranque, y el barrido solo acepta los nombres que genera este módulo
    (`wt-<millis>-<32 hex>`).
+
+Los repositorios clonados caen en `<home>/uxnan/repos/<repo>`, hermano de
+`<home>/uxnan/worktrees`: dos carpetas con roles evidentes, y un repositorio
+llamado `worktrees` ya no puede chocar con la raíz. Lo ya clonado no se mueve.
 
 El aviso de la barra de estado cuenta **carpetas**, no bytes (umbral: 12), porque
 medir el tamaño obligaría a recorrer cada `node_modules` en cada arranque.

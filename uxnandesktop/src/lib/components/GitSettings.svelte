@@ -69,7 +69,7 @@
   // uncommitted work is shown blocked rather than hidden — so "why isn't this
   // offered?" is answered on screen. Nothing is ever removed automatically.
 
-  const BUCKETS = ["orphaned", "finished", "blocked"] as const;
+  const BUCKETS = ["orphaned", "finished", "unregistered", "blocked"] as const;
 
   let candidates = $state<WorktreeCleanupCandidate[] | null>(null);
   let sizes = $state<Record<string, number>>({});
