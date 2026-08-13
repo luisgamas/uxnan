@@ -376,6 +376,31 @@ pub async fn ref_exists(repo_path: &str, reference: &str) -> bool {
         .is_ok()
 }
 
+/// Whether the repository has any remote configured. A repository with none has
+/// nowhere else its history exists, which is what makes deleting its folder
+/// unconditional data loss.
+pub async fn has_remote(repo_path: &str) -> bool {
+    matches!(git(repo_path, &["remote"]).await, Ok(out) if !out.trim().is_empty())
+}
+
+/// How many commits on local branches exist on **no** remote — the number that
+/// decides whether deleting a clone loses work.
+///
+/// `git rev-list --branches --not --remotes --count`: everything reachable from
+/// a local branch, minus everything reachable from any remote-tracking ref.
+/// `None` when git could not answer, which callers must treat as "unknown", not
+/// as zero — a count we failed to read is not proof that there is nothing to
+/// lose.
+pub async fn unpushed_commits(repo_path: &str) -> Option<u32> {
+    let out = git(
+        repo_path,
+        &["rev-list", "--branches", "--not", "--remotes", "--count"],
+    )
+    .await
+    .ok()?;
+    out.trim().parse().ok()
+}
+
 /// Drop the admin entries of worktrees whose directories are gone
 /// (`git worktree prune`). Best-effort: a repository that cannot be pruned is
 /// not worth failing a cleanup that already removed the folders.

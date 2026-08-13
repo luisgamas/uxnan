@@ -143,14 +143,15 @@ no se poda: las carpetas hermanas a las que sustituye al menos estorbaban al lad
 del repositorio. **Ajustes → Git → Limpieza** (`worktreeclean.rs`) es lo que
 impide que crezca sin límite.
 
-Reporta cuatro grupos: **huérfanos** (git ya no posee la carpeta — el repositorio
+Reporta cinco grupos: **huérfanos** (git ya no posee la carpeta — el repositorio
 desapareció, o el worktree se quitó desde fuera), **terminados** (checkout limpio
 cuya rama se fusionó con su base o cuya rama remota ya no existe tras haber sido
 empujada), **sin proyecto** (el repositorio sigue en disco pero ya no está en la
 lista de proyectos: quitar un proyecto no toca el disco, así que sus worktrees se
 quedan — y sin esta categoría serían invisibles aquí para siempre, porque no son
-huérfanos ni han terminado) y **bloqueados** (con cambios sin commitear: se
-listan con el número de archivos, nunca se pueden quitar desde aquí). Los tamaños se piden **después** de
+huérfanos ni han terminado) **clonados** (repositorios de `repos/` que ya no son proyectos y cuyo historial
+está entero en un remoto — ver más abajo) y **bloqueados** (se listan con el
+motivo y su recuento, nunca se pueden quitar desde aquí). Los tamaños se piden **después** de
 la lista: recorrer el `node_modules` de un checkout cuesta más que todas las
 consultas a git del escaneo juntas.
 
@@ -173,6 +174,20 @@ Cada límite es una propiedad de seguridad:
    plano; luego `git worktree prune`. Una ejecución interrumpida se barre en el
    siguiente arranque, y el barrido solo acepta los nombres que genera este módulo
    (`wt-<millis>-<32 hex>`).
+
+La limpieza cubre además los **repositorios clonados** de `<home>/uxnan/repos`
+que ya no son proyectos, con un listón deliberadamente más alto: un worktree es
+un segundo checkout de un historial que vive en el repositorio; un clon **es** el
+historial. Solo se ofrece cuando se puede *demostrar* que borrarlo no pierde
+nada: no es un proyecto, el árbol está limpio, no hay worktrees enlazados, no hay
+stashes, hay remoto, y **ningún commit de ninguna rama local falta en todos los
+remotos** (`git rev-list --branches --not --remotes --count`). Lo que falle
+cualquiera de esas puertas se lista **bloqueado nombrando la puerta**, y un
+recuento que git no pudo leer se trata como inseguro, nunca como cero. Todas se
+vuelven a comprobar en el borrado. Esa carpeta **no es configurable** —a
+diferencia de la raíz de worktrees— porque el destino de clonado es una
+sugerencia editable: un repositorio guardado en cualquier otro sitio no se lista
+ni se toca.
 
 Los repositorios clonados caen en `<home>/uxnan/repos/<repo>`, hermano de
 `<home>/uxnan/worktrees`: dos carpetas con roles evidentes, y un repositorio

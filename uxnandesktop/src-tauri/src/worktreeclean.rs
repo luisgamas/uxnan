@@ -51,8 +51,20 @@ pub enum CleanupReason {
     /// The repository is still on disk, but it is no longer one of the app's
     /// projects — so nothing in uxnan leads here any more.
     ProjectRemoved,
+    /// A cloned repository in the managed `repos` folder that is no longer a
+    /// project, and whose every commit is already on a remote.
+    CloneFullyPushed,
     /// Blocked: the checkout has uncommitted or untracked changes.
     UncommittedChanges,
+    /// Blocked: local commits that exist on no remote. Deleting the folder
+    /// would be the only copy gone.
+    UnpushedCommits,
+    /// Blocked: the repository has stashes, which live nowhere else.
+    HasStashes,
+    /// Blocked: no remote at all, so nothing here can be fetched again.
+    NoRemote,
+    /// Blocked: linked worktrees still point into this repository.
+    HasWorktrees,
 }
 
 /// The bucket a candidate is shown in.
@@ -70,6 +82,11 @@ pub enum CleanupKind {
     /// **Not** pre-selected: the repository and the branch are both intact, so
     /// this is a judgement call, not garbage.
     Unregistered,
+    /// A cloned repository, not a worktree. Its own bucket because the risk is
+    /// not comparable: a worktree is a second checkout of history that lives in
+    /// the repository, while this **is** the history. Only ever offered when
+    /// every commit is already on a remote, so the folder can be cloned again.
+    Clone,
     /// Listed so the user sees it, never removable without dealing with it.
     Blocked,
 }
@@ -155,6 +172,113 @@ pub async fn scan(roots: &[String], projects: &[String]) -> Vec<CleanupCandidate
                 }
             }
         }
+    }
+    found
+}
+
+/// Scan the managed `repos` folder for **cloned repositories** that are no
+/// longer projects in the app.
+///
+/// A repository is not a worktree, and the difference is the whole design here:
+/// a worktree is a second checkout of history that lives in the repository, so
+/// removing one costs a checkout. A clone **is** the history. Deleting it is
+/// only recoverable if every commit already exists somewhere else, so that is
+/// exactly the bar — one that can be *proved*, not estimated:
+///
+/// 1. it is not a registered project (nothing in the app leads there);
+/// 2. the working tree is clean;
+/// 3. no linked worktrees point into it (removing it would break them);
+/// 4. no stashes — those live in no remote and no branch;
+/// 5. it has a remote at all;
+/// 6. **no commit on any local branch is missing from every remote.**
+///
+/// Anything that fails 2–6 is reported [`CleanupKind::Blocked`] with which gate
+/// it failed, because "your repository has commits you never pushed" is worth
+/// saying out loud far more than it is worth hiding.
+///
+/// Only ever looks inside `repos_root`. A repository the user keeps anywhere
+/// else is never listed and never touched.
+pub async fn scan_clones(repos_root: &str, projects: &[String]) -> Vec<CleanupCandidate> {
+    let known: Vec<String> = projects
+        .iter()
+        .map(|p| normalize(p).to_lowercase())
+        .collect();
+    let root = normalize(repos_root);
+    let mut found = Vec::new();
+
+    for entry in read_dirs(&root).await {
+        if entry.name == TRASH_DIR || known.contains(&entry.path.to_lowercase()) {
+            continue;
+        }
+        // Not a git repository: a failed clone, or something the user put here
+        // by hand. Guessing what it is would be guessing what to delete.
+        if !crate::git::is_git_repo(&entry.path).await {
+            continue;
+        }
+        let make = |kind, reason, changed_files| CleanupCandidate {
+            path: entry.path.clone(),
+            group: root.clone(),
+            name: entry.name.clone(),
+            branch: None,
+            kind,
+            reason,
+            changed_files,
+            repo_path: Some(entry.path.clone()),
+        };
+
+        match crate::git::status_files(&entry.path).await {
+            Ok(files) if !files.is_empty() => {
+                found.push(make(
+                    CleanupKind::Blocked,
+                    CleanupReason::UncommittedChanges,
+                    Some(files.len() as u32),
+                ));
+                continue;
+            }
+            // An unreadable status is not a licence to delete a repository.
+            Err(_) => continue,
+            _ => {}
+        }
+
+        let worktrees = crate::git::list_worktrees(&entry.path)
+            .await
+            .unwrap_or_default();
+        if worktrees.len() > 1 {
+            found.push(make(
+                CleanupKind::Blocked,
+                CleanupReason::HasWorktrees,
+                Some((worktrees.len() - 1) as u32),
+            ));
+            continue;
+        }
+        if crate::git::ref_exists(&entry.path, "refs/stash").await {
+            found.push(make(CleanupKind::Blocked, CleanupReason::HasStashes, None));
+            continue;
+        }
+        if !crate::git::has_remote(&entry.path).await {
+            found.push(make(CleanupKind::Blocked, CleanupReason::NoRemote, None));
+            continue;
+        }
+        match crate::git::unpushed_commits(&entry.path).await {
+            // Unknown is not zero: a count we could not read must not be read
+            // as "nothing to lose".
+            None => continue,
+            Some(n) if n > 0 => {
+                found.push(make(
+                    CleanupKind::Blocked,
+                    CleanupReason::UnpushedCommits,
+                    Some(n),
+                ));
+                continue;
+            }
+            _ => {}
+        }
+
+        found.push(make(
+            CleanupKind::Clone,
+            CleanupReason::CloneFullyPushed,
+            None,
+        ));
     }
     found
 }
@@ -374,6 +498,51 @@ fn walk_size(path: &Path) -> u64 {
     total
 }
 
+/// Why a blocked candidate was refused, in one line for the toast. Derived from
+/// the reason so a refusal never says "uncommitted changes" about a repository
+/// that was actually held back by, say, a stash.
+fn blocked_reason(reason: CleanupReason) -> &'static str {
+    match reason {
+        CleanupReason::UnpushedCommits => "has commits that are on no remote",
+        CleanupReason::HasStashes => "has stashes",
+        CleanupReason::NoRemote => "has no remote to fetch it from again",
+        CleanupReason::HasWorktrees => "still has worktrees",
+        _ => "has uncommitted changes",
+    }
+}
+
+/// Re-prove, from scratch, that a cloned repository is safe to delete. `None`
+/// when it still is; otherwise the gate it now fails.
+///
+/// This repeats what [`scan_clones`] already checked, deliberately: the list the
+/// user acted on may be minutes old, and this folder is the history. A pull, a
+/// commit, or a stash in between has to move the answer.
+async fn clone_still_unsafe(path: &str) -> Option<String> {
+    if !matches!(crate::git::is_worktree_clean(path).await, Ok(true)) {
+        return Some(blocked_reason(CleanupReason::UncommittedChanges).to_string());
+    }
+    if crate::git::list_worktrees(path)
+        .await
+        .unwrap_or_default()
+        .len()
+        > 1
+    {
+        return Some(blocked_reason(CleanupReason::HasWorktrees).to_string());
+    }
+    if crate::git::ref_exists(path, "refs/stash").await {
+        return Some(blocked_reason(CleanupReason::HasStashes).to_string());
+    }
+    if !crate::git::has_remote(path).await {
+        return Some(blocked_reason(CleanupReason::NoRemote).to_string());
+    }
+    match crate::git::unpushed_commits(path).await {
+        Some(0) => None,
+        // Unknown is refused, not allowed: a count we cannot read is not proof
+        // that there is nothing to lose.
+        _ => Some(blocked_reason(CleanupReason::UnpushedCommits).to_string()),
+    }
+}
+
 /// Remove the given worktrees, re-deriving every fact rather than trusting the
 /// caller's list.
 ///
@@ -381,19 +550,31 @@ fn walk_size(path: &Path) -> u64 {
 /// the scan classifies as removable. A path that fails either check is refused
 /// with a reason instead of being skipped silently — a cleanup that quietly
 /// does less than it said is worse than one that explains itself.
-pub async fn remove(roots: &[String], projects: &[String], paths: &[String]) -> CleanupOutcome {
+pub async fn remove(
+    roots: &[String],
+    repos_root: &str,
+    projects: &[String],
+    paths: &[String],
+) -> CleanupOutcome {
     let mut outcome = CleanupOutcome::default();
-    let candidates = scan(roots, projects).await;
+    let mut candidates = scan(roots, projects).await;
+    candidates.extend(scan_clones(repos_root, projects).await);
 
     for path in paths {
         let path = normalize(path);
-        if !roots.iter().any(|root| is_inside(root, &path)) {
+        // The root this path belongs to is also where its trash folder goes.
+        let owning_root = roots
+            .iter()
+            .find(|root| is_inside(root, &path))
+            .cloned()
+            .or_else(|| is_inside(repos_root, &path).then(|| normalize(repos_root)));
+        let Some(owning_root) = owning_root else {
             outcome.refused.push(CleanupRefusal {
                 path,
-                reason: "outside the managed worktree folder".to_string(),
+                reason: "outside the folders uxnan manages".to_string(),
             });
             continue;
-        }
+        };
         let Some(candidate) = candidates.iter().find(|c| c.path == path) else {
             outcome.refused.push(CleanupRefusal {
                 path,
@@ -404,9 +585,18 @@ pub async fn remove(roots: &[String], projects: &[String], paths: &[String]) -> 
         if candidate.kind == CleanupKind::Blocked {
             outcome.refused.push(CleanupRefusal {
                 path,
-                reason: "has uncommitted changes".to_string(),
+                reason: blocked_reason(candidate.reason).to_string(),
             });
             continue;
+        }
+        // A repository re-passes every gate that let it be offered. The scan may
+        // be seconds old, and this folder IS the history: "it was fully pushed a
+        // minute ago" has to be re-proved, not remembered.
+        if candidate.kind == CleanupKind::Clone {
+            if let Some(reason) = clone_still_unsafe(&path).await {
+                outcome.refused.push(CleanupRefusal { path, reason });
+                continue;
+            }
         }
         // Last gate before anything is touched: ask git again. The scan may be
         // seconds old, and an agent writes files the whole time.
@@ -422,7 +612,7 @@ pub async fn remove(roots: &[String], projects: &[String], paths: &[String]) -> 
             continue;
         }
 
-        match retire(&path).await {
+        match retire(&path, &owning_root).await {
             Ok(()) => {
                 if let Some(repo) = &candidate.repo_path {
                     crate::git::prune_worktrees(repo).await;
@@ -444,14 +634,8 @@ pub async fn remove(roots: &[String], projects: &[String], paths: &[String]) -> 
 /// from the list immediately, and the tens of seconds it takes to unlink a
 /// `node_modules` happen after the user has moved on. The trash folder lives
 /// inside the same root, so the rename is always within one volume.
-async fn retire(path: &str) -> Result<(), AppError> {
-    let parent = Path::new(path)
-        .parent()
-        .ok_or_else(|| AppError::Invalid("no parent directory".to_string()))?;
-    let root = parent
-        .parent()
-        .ok_or_else(|| AppError::Invalid("no managed root".to_string()))?;
-    let trash = root.join(TRASH_DIR);
+async fn retire(path: &str, root: &str) -> Result<(), AppError> {
+    let trash = Path::new(root).join(TRASH_DIR);
     tokio::fs::create_dir_all(&trash).await?;
 
     let stamp = std::time::SystemTime::now()
@@ -544,7 +728,11 @@ mod tests {
             .output()
             .await
             .unwrap();
-        assert!(out.status.success(), "git {args:?}");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     async fn init_repo(dir: &str) {
@@ -698,12 +886,117 @@ mod tests {
         assert_eq!(found[0].kind, CleanupKind::Blocked);
         let outcome = remove(
             std::slice::from_ref(&root),
+            "",
             &[],
             std::slice::from_ref(&dirty),
         )
         .await;
         assert!(outcome.removed.is_empty());
         assert!(Path::new(&dirty).is_dir(), "the worktree must survive");
+    }
+
+    /// A repository in the managed `repos` folder, cloned from a bare "remote"
+    /// so the pushed/unpushed distinction is real rather than simulated.
+    async fn cloned_repo(name: &str) -> (tempfile::TempDir, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().to_string_lossy().replace('\\', "/");
+        let origin = format!("{base}/origin.git");
+        let source = format!("{base}/source");
+        std::fs::create_dir_all(&source).unwrap();
+        init_repo(&source).await;
+        // `-b main`: without it the bare repo's HEAD points at this machine's
+        // `init.defaultBranch`, the clone checks out a branch that does not
+        // exist, and every test here would run against an unborn HEAD — passing
+        // for the wrong reason.
+        run_git(&base, &["init", "--bare", "-b", "main", "origin.git"]).await;
+        run_git(&source, &["remote", "add", "origin", &origin]).await;
+        run_git(&source, &["push", "-u", "origin", "main"]).await;
+
+        let repos_root = format!("{base}/repos");
+        std::fs::create_dir_all(&repos_root).unwrap();
+        let clone = format!("{repos_root}/{name}");
+        run_git(&base, &["clone", &origin, &clone]).await;
+        run_git(&clone, &["config", "user.email", "test@uxnan.dev"]).await;
+        run_git(&clone, &["config", "user.name", "Uxnan Test"]).await;
+        run_git(&clone, &["config", "commit.gpgsign", "false"]).await;
+        (dir, repos_root, clone)
+    }
+
+    #[tokio::test]
+    async fn a_fully_pushed_clone_that_is_no_longer_a_project_is_offered() {
+        let (_dir, repos_root, clone) = cloned_repo("sample").await;
+
+        // While it is a project, it is in use and never listed.
+        assert!(scan_clones(&repos_root, std::slice::from_ref(&clone))
+            .await
+            .is_empty());
+
+        let found = scan_clones(&repos_root, &[]).await;
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].kind, CleanupKind::Clone);
+        assert_eq!(found[0].reason, CleanupReason::CloneFullyPushed);
+    }
+
+    #[tokio::test]
+    async fn a_clone_with_commits_on_no_remote_is_blocked_and_survives() {
+        let (_dir, repos_root, clone) = cloned_repo("sample").await;
+        std::fs::write(format!("{clone}/local.txt"), "only here\n").unwrap();
+        run_git(&clone, &["add", "-A"]).await;
+        run_git(&clone, &["commit", "-m", "never pushed"]).await;
+
+        let found = scan_clones(&repos_root, &[]).await;
+        assert_eq!(found[0].kind, CleanupKind::Blocked);
+        assert_eq!(found[0].reason, CleanupReason::UnpushedCommits);
+        assert_eq!(found[0].changed_files, Some(1));
+
+        // And the gate holds through the removal path, not just the listing.
+        let outcome = remove(&[], &repos_root, &[], std::slice::from_ref(&clone)).await;
+        assert!(outcome.removed.is_empty());
+        assert_eq!(outcome.refused.len(), 1);
+        assert!(Path::new(&clone).is_dir(), "the repository must survive");
+    }
+
+    #[tokio::test]
+    async fn a_clone_with_a_stash_is_blocked() {
+        let (_dir, repos_root, clone) = cloned_repo("sample").await;
+        std::fs::write(format!("{clone}/README.md"), "changed\n").unwrap();
+        run_git(&clone, &["stash"]).await;
+
+        let found = scan_clones(&repos_root, &[]).await;
+        assert_eq!(found[0].kind, CleanupKind::Blocked);
+        assert_eq!(found[0].reason, CleanupReason::HasStashes);
+    }
+
+    #[tokio::test]
+    async fn a_clone_with_no_remote_is_blocked() {
+        let (_dir, repos_root, clone) = cloned_repo("sample").await;
+        run_git(&clone, &["remote", "remove", "origin"]).await;
+
+        let found = scan_clones(&repos_root, &[]).await;
+        assert_eq!(found[0].kind, CleanupKind::Blocked);
+        assert_eq!(found[0].reason, CleanupReason::NoRemote);
+    }
+
+    #[tokio::test]
+    async fn a_clone_whose_worktrees_are_still_out_is_blocked() {
+        let (_dir, repos_root, clone) = cloned_repo("sample").await;
+        let wt = format!("{repos_root}/../wt");
+        crate::git::add_worktree(&clone, "side", &wt, Some("main"))
+            .await
+            .unwrap();
+
+        let found = scan_clones(&repos_root, &[]).await;
+        assert_eq!(found[0].kind, CleanupKind::Blocked);
+        assert_eq!(found[0].reason, CleanupReason::HasWorktrees);
+    }
+
+    #[tokio::test]
+    async fn removing_a_fully_pushed_clone_takes_it() {
+        let (_dir, repos_root, clone) = cloned_repo("sample").await;
+
+        let outcome = remove(&[], &repos_root, &[], std::slice::from_ref(&clone)).await;
+        assert_eq!(outcome.removed, vec![clone.clone()]);
+        assert!(!Path::new(&clone).exists());
     }
 
     #[tokio::test]
@@ -717,6 +1010,7 @@ mod tests {
         // stale or forged list must never be able to delete.
         let outcome = remove(
             &[root],
+            "",
             std::slice::from_ref(&repo),
             std::slice::from_ref(&repo),
         )
@@ -740,6 +1034,7 @@ mod tests {
 
         let outcome = remove(
             &[root],
+            "",
             std::slice::from_ref(&repo),
             std::slice::from_ref(&dirty),
         )
@@ -765,6 +1060,7 @@ mod tests {
 
         let outcome = remove(
             std::slice::from_ref(&root),
+            "",
             std::slice::from_ref(&repo),
             std::slice::from_ref(&stray),
         )

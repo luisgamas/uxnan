@@ -69,7 +69,7 @@
   // uncommitted work is shown blocked rather than hidden — so "why isn't this
   // offered?" is answered on screen. Nothing is ever removed automatically.
 
-  const BUCKETS = ["orphaned", "finished", "unregistered", "blocked"] as const;
+  const BUCKETS = ["orphaned", "finished", "unregistered", "clone", "blocked"] as const;
 
   let candidates = $state<WorktreeCleanupCandidate[] | null>(null);
   let sizes = $state<Record<string, number>>({});
@@ -154,15 +154,36 @@
     }
   }
 
+  /** The reason, worded. A `switch` rather than a built key so the compiler
+   *  checks every reason has a string, and so a counted one never borrows
+   *  another's noun — "3 commits on no remote" is not "3 files not committed". */
   function reasonText(candidate: WorktreeCleanupCandidate): string {
-    if (candidate.reason === "uncommittedChanges") {
-      return i18n.plural(
-        candidate.changedFiles ?? 0,
-        "settings.worktreeCleanupReason.uncommittedChangesOne",
-        "settings.worktreeCleanupReason.uncommittedChangesOther",
-      );
+    const n = candidate.changedFiles ?? 0;
+    const R = "settings.worktreeCleanupReason" as const;
+    switch (candidate.reason) {
+      case "uncommittedChanges":
+        return i18n.plural(n, `${R}.uncommittedChangesOne`, `${R}.uncommittedChangesOther`);
+      case "unpushedCommits":
+        return i18n.plural(n, `${R}.unpushedCommitsOne`, `${R}.unpushedCommitsOther`);
+      case "hasWorktrees":
+        return i18n.plural(n, `${R}.hasWorktreesOne`, `${R}.hasWorktreesOther`);
+      case "repoGone":
+        return i18n.t(`${R}.repoGone`);
+      case "notAWorktree":
+        return i18n.t(`${R}.notAWorktree`);
+      case "merged":
+        return i18n.t(`${R}.merged`);
+      case "branchGone":
+        return i18n.t(`${R}.branchGone`);
+      case "projectRemoved":
+        return i18n.t(`${R}.projectRemoved`);
+      case "cloneFullyPushed":
+        return i18n.t(`${R}.cloneFullyPushed`);
+      case "hasStashes":
+        return i18n.t(`${R}.hasStashes`);
+      case "noRemote":
+        return i18n.t(`${R}.noRemote`);
     }
-    return i18n.t(`settings.worktreeCleanupReason.${candidate.reason}`);
   }
 </script>
 

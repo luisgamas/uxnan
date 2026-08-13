@@ -66,17 +66,42 @@ forever. It is out of sight by design, and what is out of sight never gets
 pruned — the sibling folders it replaced at least annoyed you into deleting
 them.
 
-Press **Look for old worktrees** and it reports four buckets:
+Press **Look for old worktrees** and it reports five buckets:
 
 | Bucket | What it means | Pre-selected |
 |---|---|---|
 | **No longer owned by git** | The repository is gone from disk, or git no longer lists this folder as one of its worktrees | Yes — git owns nothing there |
 | **Work finished** | A clean checkout whose branch landed on its base (merge or squash-merge), or whose remote branch is gone after being pushed | No — that is a judgement call |
 | **No longer a project in uxnan** | The repository is still on disk, but you removed it from the app — which touches nothing on disk, so its worktrees stayed | No — the repository and the branch are both intact |
-| **Has unsaved changes** | Listed with the file count, never removable from here | Never |
+| **Cloned repositories, fully pushed** | A repository in `~/uxnan/repos` that is no longer a project **and** whose every commit is already on a remote | No — see below |
+| **Has unsaved changes** | Listed with the reason and its count, never removable from here | Never |
 
 Sizes are fetched after the list appears (`worktree_cleanup_sizes`): walking a
 checkout's `node_modules` costs more than every git query in the scan combined.
+
+### Cloned repositories are held to a higher bar
+
+A worktree is a second checkout of history that lives in the repository, so
+removing one costs a checkout. A clone **is** the history. It is therefore only
+offered when it can be *proved* that deleting the folder loses nothing:
+
+1. it is not a registered project;
+2. the working tree is clean;
+3. no linked worktrees point into it (removing it would break them);
+4. no stashes — those live in no remote and no branch;
+5. it has a remote at all;
+6. **no commit on any local branch is missing from every remote**
+   (`git rev-list --branches --not --remotes --count`).
+
+Anything failing 2–6 is listed **blocked**, naming the gate: "3 commits are on
+no remote" is worth saying out loud far more than it is worth hiding. A count
+git could not read is treated as unsafe, never as zero. Every gate is re-proved
+at removal time, because the list the user acted on may be minutes old and a
+pull or a commit in between has to move the answer.
+
+Only `~/uxnan/repos` is ever looked at — that folder is not configurable, unlike
+the worktree root, because the clone destination is an editable suggestion. A
+repository you keep anywhere else is never listed and never touched.
 
 ### Why it is safe to have a delete button here
 

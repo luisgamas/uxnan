@@ -1133,6 +1133,21 @@ pub async fn worktree_cleanup_count(state: State<'_, AppState>) -> Result<u32, C
     Ok(worktreeclean::count(&roots).await)
 }
 
+/// The managed `repos` folder — where the clone flow suggests putting a
+/// repository. Not configurable: the clone destination is an editable
+/// suggestion, so the only folder the cleanup may consider its own is this one.
+/// A repository the user keeps anywhere else is never listed and never touched.
+fn repos_root() -> String {
+    agent_hooks::home_dir()
+        .map(|home| {
+            format!(
+                "{}/uxnan/repos",
+                worktreeloc::normalize(&home.to_string_lossy())
+            )
+        })
+        .unwrap_or_default()
+}
+
 /// The paths of the repositories currently registered as projects. A worktree
 /// under a managed root whose repository is not among them belongs to a project
 /// the user closed — removing one touches nothing on disk, so its worktrees stay
@@ -1156,7 +1171,9 @@ pub async fn worktree_cleanup_scan(
 ) -> Result<Vec<worktreeclean::CleanupCandidate>, CommandError> {
     let roots = managed_roots(&state).await;
     let projects = project_paths(&state).await;
-    Ok(worktreeclean::scan(&roots, &projects).await)
+    let mut found = worktreeclean::scan(&roots, &projects).await;
+    found.extend(worktreeclean::scan_clones(&repos_root(), &projects).await);
+    Ok(found)
 }
 
 /// Size on disk of each given worktree, in bytes, in the order asked.
@@ -1183,7 +1200,7 @@ pub async fn worktree_cleanup_remove(
 ) -> Result<worktreeclean::CleanupOutcome, CommandError> {
     let roots = managed_roots(&state).await;
     let projects = project_paths(&state).await;
-    Ok(worktreeclean::remove(&roots, &projects, &paths).await)
+    Ok(worktreeclean::remove(&roots, &repos_root(), &projects, &paths).await)
 }
 
 /// Create a worktree in the given repo. Two modes:

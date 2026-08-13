@@ -80,6 +80,21 @@ const CANDIDATES = [
     reason: "projectRemoved",
   },
   {
+    path: "C:/Users/u/uxnan/repos/sample",
+    group: "C:/Users/u/uxnan/repos",
+    name: "sample",
+    kind: "clone",
+    reason: "cloneFullyPushed",
+  },
+  {
+    path: "C:/Users/u/uxnan/repos/unpushed",
+    group: "C:/Users/u/uxnan/repos",
+    name: "unpushed",
+    kind: "blocked",
+    reason: "unpushedCommits",
+    changedFiles: 2,
+  },
+  {
     path: "C:/Users/u/uxnan/worktrees/uxnan/wip-tests",
     group: "uxnan",
     name: "wip-tests",
@@ -96,7 +111,12 @@ describe("GitSettings — cleanup", () => {
       commands: {
         ...baseCommands(),
         worktree_cleanup_scan: () => CANDIDATES,
-        worktree_cleanup_sizes: () => [1024 * 1024 * 340, 1024 * 1024 * 620, 1024 * 1024 * 90],
+        worktree_cleanup_sizes: () => [
+          1024 * 1024 * 340,
+          1024 * 1024 * 620,
+          1024 * 1024 * 90,
+          1024 * 1024 * 500,
+        ],
       },
     });
     // Nothing is scanned until asked: this reads the disk.
@@ -106,9 +126,12 @@ describe("GitSettings — cleanup", () => {
     expect(await screen.findByText("No longer owned by git")).toBeInTheDocument();
     expect(screen.getByText("Work finished")).toBeInTheDocument();
     expect(screen.getByText("No longer a project in uxnan")).toBeInTheDocument();
+    expect(screen.getByText("Cloned repositories, fully pushed")).toBeInTheDocument();
     expect(screen.getByText("Has unsaved changes")).toBeInTheDocument();
     expect(screen.getByText("its repository is gone from disk")).toBeInTheDocument();
     expect(screen.getByText("3 files not committed")).toBeInTheDocument();
+    // Each counted reason carries its own noun rather than borrowing another's.
+    expect(screen.getByText("2 commits are on no remote")).toBeInTheDocument();
   });
 
   it("pre-selects the orphans and never lets a blocked one be selected", async () => {
@@ -116,7 +139,7 @@ describe("GitSettings — cleanup", () => {
       commands: {
         ...baseCommands(),
         worktree_cleanup_scan: () => CANDIDATES,
-        worktree_cleanup_sizes: () => [0, 0, 0],
+        worktree_cleanup_sizes: () => [0, 0, 0, 0],
       },
     });
     await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
@@ -130,6 +153,10 @@ describe("GitSettings — cleanup", () => {
     // whose project was closed — the repository and the branch are both intact.
     expect(finished).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "closed / mi-rama" })).not.toBeChecked();
+    // A cloned repository IS the history, so it is never pre-selected either.
+    expect(
+      screen.getByRole("checkbox", { name: "C:/Users/u/uxnan/repos / sample" }),
+    ).not.toBeChecked();
     // Unsaved work is never removable from here, at any cost.
     expect(blocked).toBeDisabled();
   });
@@ -140,7 +167,7 @@ describe("GitSettings — cleanup", () => {
       commands: {
         ...baseCommands(),
         worktree_cleanup_scan: () => CANDIDATES,
-        worktree_cleanup_sizes: () => [0, 0, 0],
+        worktree_cleanup_sizes: () => [0, 0, 0, 0],
         worktree_cleanup_remove: (args: Record<string, unknown>) => {
           calls.push(args.paths as string[]);
           return {

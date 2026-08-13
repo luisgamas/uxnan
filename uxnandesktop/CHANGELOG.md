@@ -45,7 +45,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   disk, so its worktrees stay behind, and without that category they would be
   invisible here forever, being neither orphaned (git still owns them) nor
   finished (the branch may never have landed). All with sizes, so the question
-  "is this worth reclaiming?" has an answer on screen. Anything with
+  "is this worth reclaiming?" has an answer on screen.
+
+  It covers **cloned repositories** too — the ones in `~/uxnan/repos` that are no
+  longer projects — but the bar there is deliberately higher, because a worktree
+  is a second checkout of history while a clone *is* the history. One is offered
+  only when it can be proved that deleting it loses nothing: no uncommitted
+  changes, no linked worktrees, no stashes, a remote to fetch from, and **no
+  commit on any local branch missing from every remote**. Fail any of those and
+  it is listed blocked, naming the gate — "3 commits are on no remote" is worth
+  saying out loud far more than it is worth hiding. A count git could not read
+  is treated as unsafe, never as zero. Anything with
   uncommitted work is listed **blocked**, never hidden.
 
   The folder needed this precisely because it is out of sight: the sibling

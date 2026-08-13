@@ -396,12 +396,22 @@ export type WorktreeCleanupReason =
   | "merged"
   | "branchGone"
   | "projectRemoved"
-  | "uncommittedChanges";
+  | "cloneFullyPushed"
+  | "uncommittedChanges"
+  | "unpushedCommits"
+  | "hasStashes"
+  | "noRemote"
+  | "hasWorktrees";
 
 /** Which bucket a cleanup candidate belongs to (mirror of `CleanupKind`).
  *  `blocked` is listed but never removable — it exists so "why isn't this
  *  offered?" is answered on screen instead of by its absence. */
-export type WorktreeCleanupKind = "orphaned" | "finished" | "unregistered" | "blocked";
+export type WorktreeCleanupKind =
+  | "orphaned"
+  | "finished"
+  | "unregistered"
+  | "clone"
+  | "blocked";
 
 /** One worktree the cleanup screen can show (mirror of `CleanupCandidate`).
  *  Only ever a folder inside a managed root. */
@@ -414,7 +424,8 @@ export interface WorktreeCleanupCandidate {
   branch?: string | null;
   kind: WorktreeCleanupKind;
   reason: WorktreeCleanupReason;
-  /** How many files are dirty, for `uncommittedChanges`. */
+  /** The count the reason needs: dirty files, unpushed commits, or worktrees
+   *  still out — whichever the reason is about. */
   changedFiles?: number | null;
   repoPath?: string | null;
 }
