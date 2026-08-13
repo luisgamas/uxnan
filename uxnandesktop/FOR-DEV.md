@@ -813,13 +813,21 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
          and there is no MSRV job, so the bump is one line; but a declared MSRV
          is a public compatibility claim, so it is the maintainer's call.
          macOS/Linux still unverified.
-      2. One connection sustains ≥8 concurrent channels. **Test written**
-         (`ssh/auth.rs` → `one_connection_carries_many_channels`), waiting on a
-         host that will authenticate: it needs
-         `UXNAN_SSH_TEST_{HOST,USER,PASSWORD}` and must be run from the
-         operator's own shell so the password never leaves their process. It
-         authenticates for real, then runs eight `exec` calls concurrently and
-         checks each one's output and exit code.
+      2. ~~One connection sustains ≥8 concurrent channels.~~ **Proven** against
+         a real remote Windows host over a private tailnet: password
+         authentication succeeded and eight `exec` calls ran on the one
+         connection, each with the right output and a zero exit code, with no
+         second handshake and no second login
+         (`ssh/auth.rs` → `one_connection_carries_many_channels`, driven by
+         `UXNAN_SSH_TEST_{HOST,USER,PASSWORD}` from the operator's own shell so
+         the password never leaves their process).
+         **Open question, not a blocker:** the eight took 3.2 s, which is close
+         to eight times a single round trip — so either the channel opens
+         serialize or each remote shell start is expensive. The test now times
+         one channel alone to tell those apart, because they call for opposite
+         fixes (batch probes into fewer commands vs. stop paying for the remote
+         shell profile). Either way the inventory's one-command-with-markers
+         design is the right shape; see `architecture/02g` §5.3.
       3. ~~Authentication through the Windows agent named pipe.~~ **Proven**:
          with a key loaded in this machine's agent, the named-pipe conversation
          happens and the agent's identities are put on the wire (a live test

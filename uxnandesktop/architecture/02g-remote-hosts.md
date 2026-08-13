@@ -207,6 +207,36 @@ Windows habla con el agente por named pipe de OpenSSH; el resto por
 completo ocurre y una llave no autorizada vuelve como rechazo limpio nombrando
 lo que se ofrecio. Falta una corrida con una llave cargada en el agente.
 
+## 5.3 Comandos como canales — IMPLEMENTADO, con una medicion que condiciona el diseño
+
+`Connection::exec` abre un canal, ejecuta y recoge la salida. Es el primitivo del
+que cuelgan el inventario, las versiones de agentes y las llamadas a git, y la
+razon de ser del cliente en proceso: **cada comando es un canal sobre la conexion
+que ya existe**, no otro handshake y otro login.
+
+`stdout` y `stderr` se capturan **separados**. No es pijeria: un perfil de
+PowerShell remoto que llama a `Set-PSReadLineOption` **falla** en una sesion SSH
+no interactiva —no hay consola— y escribe un error. Ese ruido en stdout
+corromperia lo que el llamador parsea. Observado en una maquina Windows real, no
+supuesto.
+
+Un exit code que nunca llega se queda en `None`, no en cero: un canal cerrado sin
+codigo significa comando matado o conexion caida, y llamar a eso exito seria
+mentir. El bucle de lectura tampoco corta en el exit status, porque puede llegar
+mas salida despues.
+
+**Medicion (host Windows remoto, tailnet):** ocho canales concurrentes sobre una
+conexion tardaron 3.2 s, aproximadamente ocho veces un viaje de ida y vuelta. O
+las aperturas de canal se serializan, o arrancar el shell remoto es caro por si
+mismo. La prueba mide ahora un canal aislado para distinguirlo, porque las dos
+causas piden arreglos opuestos: **agrupar** el trabajo en menos comandos, o
+**dejar de pagar el perfil** del shell remoto (`-NoProfile`).
+
+Consecuencia de diseño, valida en ambos casos: **el inventario se hace con un
+solo comando** cuya salida va delimitada por marcadores, no con una llamada por
+dato. Es la misma tecnica que `path_env.rs` ya usa en local, y aqui hay un numero
+que la respalda.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |

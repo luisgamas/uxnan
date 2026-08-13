@@ -487,6 +487,18 @@ mod tests {
             // the floor the transport gate asks for; OpenSSH's own default
             // MaxSessions is 10.
             const CHANNELS: usize = 8;
+
+            // Time one channel alone first. Without it the concurrent figure is
+            // unreadable: eight channels in 3.2 s means "they serialized" if one
+            // costs 400 ms, and "they overlapped fine, the remote shell is just
+            // expensive to start" if one costs 3 s. Those two call for opposite
+            // fixes — batch the work into fewer commands, or stop paying for a
+            // shell profile — so the test measures which one it is.
+            let single_started = std::time::Instant::now();
+            let warm = conn.exec("echo warmup").await.expect("first channel");
+            let single = single_started.elapsed();
+            assert!(warm.stdout.contains("warmup"), "{:?}", warm);
+
             let started = std::time::Instant::now();
             let commands: Vec<String> =
                 (0..CHANNELS).map(|i| format!("echo channel-{i}")).collect();
@@ -506,8 +518,10 @@ mod tests {
                 assert_eq!(out.exit_code, Some(0), "channel {i} exit code");
             }
             println!(
-                "{CHANNELS} concurrent channels on one connection in {} ms",
-                elapsed.as_millis()
+                "one channel: {} ms | {CHANNELS} concurrent: {} ms | ratio {:.1}x",
+                single.as_millis(),
+                elapsed.as_millis(),
+                elapsed.as_secs_f64() / single.as_secs_f64().max(0.001)
             );
         }
 
