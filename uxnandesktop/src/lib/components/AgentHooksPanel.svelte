@@ -3,15 +3,20 @@
   // states to the ADE's local hook server, so the sidebar / tab bar show
   // working / waiting / done / blocked without manual setup.
   //
-  // Layout: one master card carries the "Install agent hooks" switch (the
-  // feature's power) and a master–detail list — agents down the left, the
-  // selected one's status + actions on the right. It replaced a tab strip, which
-  // stopped working the moment the ADE could report for more agents than fit on
-  // one line; the list also groups by whether the CLI is actually on this
-  // machine, so the ones you use are the ones you see first. The generic wrapper
-  // (for any other CLI) is a separate card. Per-agent actions are gated by the
-  // master switch: Install only when the feature is on, Uninstall always, so you
-  // can always clean up. The agent list itself comes from the backend registry —
+  // Layout: the ordinary settings language — `SettingsRow`s in a
+  // `panel.settingsBody` band, grouped under `text.section` headers. The master
+  // "Install agent hooks" switch is the first row; then one `AgentSettingsRow`
+  // per agent (the row Settings → Browser lists its agents with, so the two read
+  // as one thing), its reporter installed or removed by the switch on the right
+  // (it *is* a boolean, so it reads like every other setting), its config file
+  // under the name and the rendered config behind the row's own disclosure.
+  // This replaced a master–detail card with a nav
+  // rail of its own: the rail nested a second navigation surface inside a pane
+  // that already has one, and hid the one thing the panel exists to answer —
+  // which of your agents are wired, at a glance. Agents on this machine are
+  // listed first; the rest sit in a collapsed group. Per-agent installs are gated
+  // by the master switch (install only when the feature is on, uninstall always,
+  // so you can always clean up). The list comes from the backend registry —
   // wiring a new agent never edits this file.
   // See `docs/agent-hooks.md` and `architecture/02d-agent-monitoring.md` §1.1.
 
@@ -19,9 +24,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
-  import { Badge } from "$lib/components/ui/badge";
   import { Switch } from "$lib/components/ui/switch";
-  import * as Card from "$lib/components/ui/card";
   import { app } from "$lib/state/app.svelte";
   import {
     getHookInstall,
@@ -33,20 +36,19 @@
     uninstallAgentHooks,
   } from "$lib/api";
   import type { HookAgentEntry, HookInstall, HookScripts } from "$lib/types";
-  import { AGENT_CATALOG } from "$lib/agentCatalog";
+  import { backendAgentLogo, backendAgentName } from "$lib/agentCatalog";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { clipboardWrite } from "$lib/clipboard";
-  import { focus, icon, iconButton, row, text } from "$lib/design";
-  import AgentLogo from "./AgentLogo.svelte";
+  import { focus, icon, iconButton, panel, text } from "$lib/design";
+  import AgentSettingsRow from "./AgentSettingsRow.svelte";
+  import SettingsRow from "./SettingsRow.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
-  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
-  import BotIcon from "@hugeicons/core-free-icons/BotIcon";
 
   type Platform = "bash" | "powershell" | "cmd" | "fish";
   const PLATFORMS: { id: Platform; label: string }[] = [
@@ -55,21 +57,6 @@
     { id: "cmd", label: "cmd" },
     { id: "fish", label: "fish" },
   ];
-
-  /** The hook kind → the catalog id that carries its product name and logo. They
-   *  are the same string for every agent but Claude Code, whose CLI is `claude`
-   *  and whose catalog entry is `claudecode`. */
-  function catalogId(id: string): string {
-    return id === "claude" ? "claudecode" : id;
-  }
-
-  function agentName(id: string): string {
-    return AGENT_CATALOG.find((c) => c.id === catalogId(id))?.name ?? id;
-  }
-
-  function agentLogo(id: string): string {
-    return AGENT_CATALOG.find((c) => c.id === catalogId(id))?.logo ?? "";
-  }
 
   /** One line on what this agent's hook can report. Keyed by hook id, so a new
    *  agent needs its line here (and in `es.ts`) — the only copy this panel owns. */
@@ -85,9 +72,10 @@
   let agents = $state<HookAgentEntry[]>([]);
   let busy = $state<string | null>(null);
   let busyOperation = $state<"install" | "uninstall" | null>(null);
-  let activeAgent = $state<string>("claude");
-  let configOpen = $state(false);
-  let configText = $state("");
+  /** Rendered config per agent, filled when its row is opened — the rows keep
+   *  their own disclosure state, so this is keyed rather than a single slot. */
+  let configTexts = $state<Record<string, string>>({});
+  let othersOpen = $state(false);
   let platform = $state<Platform>("bash");
   let copied = $state<Record<string, boolean>>({});
 
@@ -95,11 +83,10 @@
   /** The feature is "on" (the master switch) and usable — gates Install. */
   const featureOn = $derived(app.settings.autoInstallHooks !== false && !degraded);
 
-  /** Agents this machine actually has, and the rest — two groups so a long list
-   *  still opens on something meaningful. */
+  /** Agents this machine actually has, and the rest — two groups so the ones you
+   *  use are the ones you see, and the long tail stays folded away. */
   const mine = $derived(agents.filter((a) => a.present));
   const others = $derived(agents.filter((a) => !a.present));
-  const selected = $derived(agents.find((a) => a.id === activeAgent) ?? null);
 
   onMount(async () => {
     try {
@@ -113,10 +100,6 @@
       scripts = null;
     }
     await refreshAll();
-    // Open on an agent the user actually has, rather than always on the first.
-    if (mine.length > 0 && !mine.some((a) => a.id === activeAgent)) {
-      activeAgent = mine[0].id;
-    }
   });
 
   async function refreshAll() {
@@ -127,24 +110,19 @@
     }
   }
 
-  /** Load the exact config the ADE writes for the selected agent, on demand —
-   *  rendering every agent's up front would be one round-trip each for a
-   *  disclosure most users never open. */
-  async function toggleConfig(open: boolean) {
-    configOpen = open;
+  /** Load the exact config the ADE writes for one agent, on demand — rendering
+   *  every agent's up front would be one round-trip each for a disclosure most
+   *  users never open. Re-read on every open, so a row reopened after an install
+   *  or uninstall shows what is on disk now. */
+  async function loadConfig(id: string, open: boolean) {
     if (!open) return;
-    configText = "";
+    configTexts = { ...configTexts, [id]: "" };
     try {
-      configText = await renderAgentHooksConfig(activeAgent);
+      const text = await renderAgentHooksConfig(id);
+      configTexts = { ...configTexts, [id]: text };
     } catch (err) {
-      configText = err instanceof Error ? err.message : String(err);
+      configTexts = { ...configTexts, [id]: err instanceof Error ? err.message : String(err) };
     }
-  }
-
-  function selectAgent(id: string) {
-    activeAgent = id;
-    configOpen = false;
-    configText = "";
   }
 
   async function act(id: string, operation: "install" | "uninstall") {
@@ -204,22 +182,10 @@
     }, 1200);
   }
 
-  function badge(entry: HookAgentEntry | null) {
-    if (!entry) return { variant: "secondary" as const, label: i18n.t("settings.detecting") };
-    const s = entry.status;
-    if (s.unavailable && !s.installed)
-      return { variant: "destructive" as const, label: i18n.t("hooks.statusUnavailable") };
-    if (s.installed)
-      return { variant: "secondary" as const, label: i18n.t("hooks.statusInstalledShort") };
-    if (!s.fileExists) return { variant: "outline" as const, label: i18n.t("hooks.statusMissing") };
-    return { variant: "outline" as const, label: i18n.t("hooks.statusNotInstalled") };
-  }
-
-  /** Colored dot on a row, telling installed / attention / not-installed apart. */
-  function tone(entry: HookAgentEntry): string {
-    if (entry.status.installed) return "bg-emerald-500";
-    if (entry.status.unavailable) return "bg-amber-500";
-    return "bg-muted-foreground/40";
+  /** An agent whose CLI documents no usable hook can't be installed at all — its
+   *  switch stays off and disabled, with the backend's reason under the name. */
+  function blocked(entry: HookAgentEntry): boolean {
+    return entry.status.unavailable && !entry.status.installed;
   }
 
   const wrapperScript = $derived.by(() => {
@@ -246,236 +212,188 @@
   const wrapperUsage = $derived(i18n.t("hooks.wrapperUsage", { script: wrapperPath || "<path>" }));
 </script>
 
-{#snippet agentRow(entry: HookAgentEntry)}
-  <button
-    type="button"
-    onclick={() => selectAgent(entry.id)}
-    class={cn(
-      row.settingsNav,
-      focus.ring,
-      activeAgent === entry.id
-        ? "bg-accent text-accent-foreground"
-        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-    )}
-    aria-current={activeAgent === entry.id ? "page" : undefined}
-  >
-    <AgentLogo logo={agentLogo(entry.id)} class={icon.decorative} />
-    <span class="min-w-0 flex-1 truncate">{agentName(entry.id)}</span>
-    <span class={cn("size-1.5 shrink-0 rounded-full", tone(entry))}></span>
-  </button>
+<!-- A copyable script/config block: the shared shape for the per-agent config
+     and the generic wrapper. -->
+{#snippet codeBlock(key: string, value: string)}
+  <div class="relative">
+    <TooltipSimple title={i18n.t("hooks.copy")}>
+      {#snippet children(tp)}
+        <Button
+          {...tp}
+          variant="ghost"
+          size="icon-sm"
+          class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
+          onclick={() => copy(key, value)}
+        >
+          {#if copied[key]}
+            <Icon icon={CheckIcon} class={icon.button} />
+          {:else}
+            <Icon icon={CopyIcon} class={icon.button} />
+          {/if}
+        </Button>
+      {/snippet}
+    </TooltipSimple>
+    <pre
+      class={cn(
+        "scrollbar-sleek max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
+        text.meta,
+        "whitespace-pre font-mono",
+      )}>{value || "…"}</pre>
+  </div>
 {/snippet}
 
-<div class="flex flex-col gap-4">
+{#snippet groupHeader(title: string, description?: string)}
+  <div class="px-1">
+    <span class={text.section}>{title}</span>
+    {#if description}<p class={cn("mt-1", text.meta)}>{description}</p>{/if}
+  </div>
+{/snippet}
+
+<!-- One agent: name + what its reporter reports, installed by the switch on the
+     right, with its config file and rendered config behind the disclosure. -->
+{#snippet agentRow(entry: HookAgentEntry)}
+  {@const stuck = blocked(entry)}
+  {@const name = backendAgentName(entry.id)}
+  <AgentSettingsRow
+    logo={backendAgentLogo(entry.id)}
+    {name}
+    description={agentDesc(entry.id)}
+    path={entry.configPath}
+    note={stuck
+      ? entry.status.detail || i18n.t("hooks.statusUnavailable")
+      : !entry.status.fileExists && !entry.status.installed
+        ? i18n.t("hooks.statusMissing")
+        : undefined}
+    noteTone={stuck ? "warning" : "muted"}
+    detailsLabel={i18n.t("hooks.showConfig")}
+    onDetailsOpen={(open) => loadConfig(entry.id, open)}
+  >
+    {#snippet control()}
+      {#if busy === entry.id}
+        <Spinner aria-label={i18n.t("common.loading")} />
+      {/if}
+      <Switch
+        checked={entry.status.installed}
+        disabled={busy !== null || degraded || stuck || (!entry.status.installed && !featureOn)}
+        aria-label={i18n.t("hooks.toggleAria", { agent: name })}
+        onCheckedChange={(c) => act(entry.id, c ? "install" : "uninstall")}
+      />
+    {/snippet}
+    {#snippet details()}
+      {@render codeBlock(`${entry.id}-config`, configTexts[entry.id] ?? "")}
+    {/snippet}
+  </AgentSettingsRow>
+{/snippet}
+
+<div class="flex flex-col gap-6">
   {#if degraded}
-    <p class={text.meta}>{i18n.t("settings.detecting")}</p>
+    <p class={cn("px-1", text.meta)}>{i18n.t("settings.detecting")}</p>
   {/if}
 
-  <!-- Master container: the "Install agent hooks" switch + the agent list. -->
-  <Card.Root>
-    <Card.Header class="gap-3">
-      <div class="flex items-start justify-between gap-4">
-        <div class="flex min-w-0 flex-col gap-1">
-          <Card.Title class="flex items-center gap-2">
-            <Icon icon={BotIcon} class={icon.button} />
-            {i18n.t("hooks.autoInstall")}
-          </Card.Title>
-          <Card.Description>{i18n.t("hooks.autoInstallDesc")}</Card.Description>
-        </div>
-        <div class="flex shrink-0 items-center gap-2 pt-0.5">
+  <!-- The feature's power: one switch that installs / removes every reporter. -->
+  <div class={panel.settingsBody}>
+    <SettingsRow
+      label={i18n.t("hooks.autoInstall")}
+      description={i18n.t("hooks.autoInstallDesc")}
+    >
+      {#snippet control()}
+        <div class="flex items-center gap-2">
           {#if busy === "all"}
             <Spinner aria-label={i18n.t("common.loading")} />
-            <span class={text.meta}>{i18n.t("hooks.installing")}</span>
+            <span class={text.meta}>
+              {busyOperation === "uninstall"
+                ? i18n.t("hooks.uninstalling")
+                : i18n.t("hooks.installing")}
+            </span>
           {/if}
           <Switch
             checked={app.settings.autoInstallHooks}
             disabled={busy !== null || degraded}
+            aria-label={i18n.t("hooks.autoInstall")}
             onCheckedChange={toggleAllHooks}
           />
         </div>
-      </div>
-    </Card.Header>
+      {/snippet}
+    </SettingsRow>
+  </div>
 
-    <Card.Content>
-      <div class="flex min-w-0 flex-col gap-4 md:flex-row">
-        <!-- Agent list: the ones on this machine first, everything else after. -->
-        <nav
-          class="scrollbar-sleek max-h-[26rem] w-full min-w-0 overflow-y-auto md:w-44 md:shrink-0 md:border-r md:border-border/50 md:pr-2"
-          aria-label={i18n.t("hooks.agentListLabel")}
-        >
-          {#if mine.length > 0}
-            <p
-              class="flex h-8 items-center px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground"
-            >
-              {i18n.t("hooks.groupInstalled")}
-            </p>
-            {#each mine as entry (entry.id)}
-              {@render agentRow(entry)}
-            {/each}
-          {/if}
-          {#if others.length > 0}
-            <p
-              class="flex h-8 items-center px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground"
-            >
-              {i18n.t("hooks.groupOthers")}
-            </p>
+  {#if !featureOn && !degraded}
+    <p class={cn("-mt-3 px-1", text.meta)}>{i18n.t("hooks.enableToManage")}</p>
+  {/if}
+
+  <!-- The agents you actually have, open. -->
+  {#if mine.length > 0}
+    <div class="space-y-2">
+      {@render groupHeader(i18n.t("hooks.groupInstalled"))}
+      <div class={panel.settingsBody}>
+        <div class="divide-y divide-border/60">
+          {#each mine as entry (entry.id)}
+            {@render agentRow(entry)}
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Everything else, folded: a reporter can be installed before its CLI is. -->
+  {#if others.length > 0}
+    <Collapsible.Root bind:open={othersOpen} class="space-y-2">
+      <Collapsible.Trigger
+        class={cn(
+          "flex min-h-8 items-center gap-1.5 rounded-md px-1 hover:bg-muted/60",
+          focus.ring,
+        )}
+      >
+        <Icon
+          icon={ChevronDownIcon}
+          class={cn(
+            icon.decorative,
+            "text-muted-foreground transition-transform",
+            othersOpen && "rotate-180",
+          )}
+        />
+        <span class={text.section}>{i18n.t("hooks.groupOthers")}</span>
+        <span class={cn("tabular-nums text-muted-foreground/70", text.indicator)}>
+          {others.length}
+        </span>
+      </Collapsible.Trigger>
+      <Collapsible.Content class="space-y-2">
+        <p class={cn("px-1", text.meta)}>{i18n.t("hooks.notOnThisMachine")}</p>
+        <div class={panel.settingsBody}>
+          <div class="divide-y divide-border/60">
             {#each others as entry (entry.id)}
               {@render agentRow(entry)}
             {/each}
-          {/if}
-        </nav>
-
-        <!-- Detail for the selected agent. -->
-        <div class="flex min-w-0 flex-1 flex-col gap-3">
-          {#if selected}
-            {@const b = badge(selected)}
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex min-w-0 flex-col gap-0.5">
-                <span class={text.subheading}>{agentName(selected.id)}</span>
-                <span class={text.meta}>{agentDesc(selected.id)}</span>
-              </div>
-              <Badge variant={b.variant} class="shrink-0">{b.label}</Badge>
-            </div>
-
-            {#if selected.configPath}
-              <p class={cn("truncate font-mono", text.meta)}>{selected.configPath}</p>
-            {/if}
-
-            {#if !selected.present}
-              <p class={text.meta}>{i18n.t("hooks.notOnThisMachine")}</p>
-            {/if}
-
-            <div class="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant={selected.status.installed ? "outline" : "secondary"}
-                disabled={busy !== null || !featureOn}
-                onclick={() => act(selected.id, "install")}
-              >
-                {#if busy === selected.id && busyOperation === "install"}
-                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                {/if}
-                {busy === selected.id ? i18n.t("hooks.installing") : i18n.t("hooks.install")}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== null || !selected.status.installed}
-                onclick={() => act(selected.id, "uninstall")}
-              >
-                {#if busy === selected.id && busyOperation === "uninstall"}
-                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                {/if}
-                {i18n.t("hooks.uninstall")}
-              </Button>
-              {#if !featureOn && !degraded}
-                <span class={text.meta}>{i18n.t("hooks.enableToManage")}</span>
-              {/if}
-            </div>
-
-            <!-- Inspect / copy the exact config the ADE installs (a `hooks`
-                 block for the config agents, the plugin/extension source for
-                 OpenCode and Pi). -->
-            <Collapsible.Root open={configOpen} onOpenChange={toggleConfig}>
-              <Collapsible.Trigger
-                class={cn(
-                  "flex min-h-8 items-center gap-1 self-start rounded-md px-1.5 hover:bg-muted",
-                  focus.ring,
-                  text.meta,
-                )}
-              >
-                <Icon icon={ChevronDownIcon}
-                  class={cn(icon.button, "transition-transform", configOpen && "rotate-180")}
-                />
-                {configOpen ? i18n.t("hooks.hideConfig") : i18n.t("hooks.showConfig")}
-              </Collapsible.Trigger>
-              <Collapsible.Content>
-                <div class="relative mt-2">
-                  <TooltipSimple title={i18n.t("hooks.copy")}>
-                    {#snippet children(tp)}
-                      <Button
-                        {...tp}
-                        variant="ghost"
-                        size="icon-sm"
-                        class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-                        onclick={() => copy(`${activeAgent}-config`, configText)}
-                      >
-                        {#if copied[`${activeAgent}-config`]}
-                          <Icon icon={CheckIcon} class={icon.button} />
-                        {:else}
-                          <Icon icon={CopyIcon} class={icon.button} />
-                        {/if}
-                      </Button>
-                    {/snippet}
-                  </TooltipSimple>
-                  <pre
-                    class={cn(
-                      "max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
-                      text.meta,
-                      "whitespace-pre font-mono",
-                    )}>{configText || "…"}</pre>
-                </div>
-              </Collapsible.Content>
-            </Collapsible.Root>
-          {:else}
-            <p class={text.meta}>{i18n.t("settings.detecting")}</p>
-          {/if}
+          </div>
         </div>
-      </div>
-    </Card.Content>
-  </Card.Root>
+      </Collapsible.Content>
+    </Collapsible.Root>
+  {/if}
 
   <!-- Generic wrapper: bash / PowerShell / cmd / fish, one per platform. -->
-  <Card.Root>
-    <Card.Header class="pb-2">
-      <Card.Title class="flex items-center gap-2">
-        <Icon icon={TerminalIcon} class={icon.button} />
-        {i18n.t("hooks.wrapperTitle")}
-      </Card.Title>
-      <Card.Description>{i18n.t("hooks.wrapperDesc")}</Card.Description>
-    </Card.Header>
-    <Card.Content class="flex flex-col gap-2">
-      {#if install}
-        <p class={cn("truncate font-mono", text.meta)}>
-          {i18n.t("hooks.installedAt", { path: install.dir })}
-        </p>
-      {/if}
-      <div class="flex flex-wrap items-center gap-1">
-        {#each PLATFORMS as p (p.id)}
-          <Button
-            variant={platform === p.id ? "secondary" : "outline"}
-            size="sm"
-            onclick={() => (platform = p.id)}
-          >
-            {p.label}
-          </Button>
-        {/each}
-      </div>
-      <p class={cn("font-mono", text.meta)}>{wrapperUsage}</p>
-      <div class="relative">
-        <TooltipSimple title={i18n.t("hooks.copy")}>
-          {#snippet children(tp)}
+  <div class="space-y-2">
+    {@render groupHeader(i18n.t("hooks.wrapperTitle"), i18n.t("hooks.wrapperDesc"))}
+    <div class={panel.settingsBody}>
+      <div class="flex flex-col gap-2">
+        {#if install}
+          <p class={cn("truncate font-mono", text.meta)}>
+            {i18n.t("hooks.installedAt", { path: install.dir })}
+          </p>
+        {/if}
+        <div class="flex flex-wrap items-center gap-1">
+          {#each PLATFORMS as p (p.id)}
             <Button
-              {...tp}
-              variant="ghost"
-              size="icon-sm"
-              class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-              onclick={() => copy(`wrapper-${platform}`, wrapperScript)}
+              variant={platform === p.id ? "secondary" : "outline"}
+              size="sm"
+              onclick={() => (platform = p.id)}
             >
-              {#if copied[`wrapper-${platform}`]}
-                <Icon icon={CheckIcon} class={icon.button} />
-              {:else}
-                <Icon icon={CopyIcon} class={icon.button} />
-              {/if}
+              {p.label}
             </Button>
-          {/snippet}
-        </TooltipSimple>
-        <pre
-          class={cn(
-            "max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
-            text.meta,
-            "whitespace-pre font-mono",
-          )}>{wrapperScript || "…"}</pre>
+          {/each}
+        </div>
+        <p class={cn("font-mono", text.meta)}>{wrapperUsage}</p>
+        {@render codeBlock(`wrapper-${platform}`, wrapperScript)}
       </div>
-    </Card.Content>
-  </Card.Root>
+    </div>
+  </div>
 </div>

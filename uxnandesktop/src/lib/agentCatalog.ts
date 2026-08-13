@@ -103,3 +103,25 @@ export function agentLogoKey(
   if (icon) return icon;
   return AGENT_CATALOG.find((c) => c.command === command.trim())?.logo ?? null;
 }
+
+/** The catalog entry behind a **backend** agent id — the hooks registry
+ *  (`agent_hooks::hook_agent_ids`) and the browser-MCP catalog
+ *  (`mcpinject::AGENTS`) both key on the CLI's own name. Those ids match the
+ *  catalog's for every agent but Claude Code, whose CLI is `claude` and whose
+ *  catalog entry is `claudecode`. Undefined for an id we ship no entry for. */
+export function backendAgentEntry(id: string): CatalogAgent | undefined {
+  const key = id === "claude" ? "claudecode" : id;
+  return AGENT_CATALOG.find((c) => c.id === key);
+}
+
+/** Product name for a backend agent id, falling back to the id itself so a
+ *  newly wired agent still renders a row instead of an empty label. */
+export function backendAgentName(id: string): string {
+  return backendAgentEntry(id)?.name ?? id;
+}
+
+/** Logo key for a backend agent id (empty when we ship no catalog entry, which
+ *  `AgentLogo` renders as its generic Bot glyph). */
+export function backendAgentLogo(id: string): string {
+  return backendAgentEntry(id)?.logo ?? "";
+}

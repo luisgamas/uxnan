@@ -98,15 +98,26 @@ pub struct McpAgent {
 pub struct AgentInfo {
     pub id: String,
     pub label: String,
+    /// The user-global config file this agent's entry is written into, shown
+    /// under its name in Settings so the row says *where* the wiring lands —
+    /// the same metadata the hooks list shows. Empty when the home directory
+    /// can't be resolved.
+    pub config_path: String,
 }
 
 /// The supported-agent catalog for the frontend (Settings panel + docs).
 pub fn agent_infos() -> Vec<AgentInfo> {
+    let home = crate::agent_hooks::home_dir();
     AGENTS
         .iter()
         .map(|a| AgentInfo {
             id: a.id.to_string(),
             label: a.label.to_string(),
+            config_path: home
+                .as_deref()
+                .and_then(|h| config_path(a.id, h))
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
         })
         .collect()
 }
@@ -614,6 +625,28 @@ mod tests {
                 agent.id,
                 path.display()
             );
+        }
+    }
+
+    #[test]
+    fn agent_infos_carry_the_catalog_and_their_config_path() {
+        // The Settings rows render one entry per catalog agent, and each shows
+        // the file its wiring lands in — an empty path would leave the row
+        // claiming a name with nowhere to point.
+        let infos = agent_infos();
+        assert_eq!(infos.len(), AGENTS.len());
+        for (info, agent) in infos.iter().zip(AGENTS) {
+            assert_eq!(info.id, agent.id);
+            assert_eq!(info.label, agent.label);
+            // The path is only empty when the home directory can't be resolved;
+            // on a machine running the suite it always can.
+            if crate::agent_hooks::home_dir().is_some() {
+                assert!(
+                    !info.config_path.is_empty(),
+                    "{} resolves no config path",
+                    agent.id
+                );
+            }
         }
     }
 

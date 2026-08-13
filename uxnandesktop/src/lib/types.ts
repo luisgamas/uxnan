@@ -617,6 +617,9 @@ export interface BrowserSettings {
 export interface McpAgentInfo {
   id: string;
   label: string;
+  /** User-global config file this agent's server entry is written into, shown
+   *  under its name in Settings → Browser. Empty when home can't be resolved. */
+  configPath: string;
 }
 
 /** Runtime MCP coordinates for the Settings panel (mirror of Rust `McpInfo`). */
