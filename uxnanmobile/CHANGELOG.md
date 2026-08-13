@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.21-alpha.20260813+20260813] - 20260813
 ### Changed — the PC decides where a conversation's worktree goes
 
 Starting a conversation in a fresh worktree no longer sends a folder the phone
