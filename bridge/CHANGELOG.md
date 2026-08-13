@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.22-alpha.20260813] - 20260813
 ### Added — the bridge places worktrees itself, where the desktop places them
 
 `git/createWorktree` no longer requires a `path`. Without one it resolves the
