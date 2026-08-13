@@ -182,15 +182,22 @@ distinct, precise states** plus a derived idle:
 
 These states show up everywhere you track an agent:
 
-- **Sidebar** — a colored dot next to each agent terminal, on the project /
-  worktree header (and on the project header even when collapsed).
+- **Sidebar** — a per-state glyph next to each agent terminal, on the project /
+  worktree header (and on the project header even when collapsed); `idle` keeps
+  a plain grey dot.
 - **Terminal tab bar** — a colored dot on each tab. If the state is *not*
   coming from the hook server (you have no hook installed for that agent), a
   small **Webhook** icon appears next to the dot and clicking it takes you
   straight to **Settings → Hooks** so you can wire up the ready-made
   config.
-- **Unread / done badges** — a worktree is flagged (red dot on the card +
-  dock/taskbar count) when an agent finishes while you're not looking.
+- **Unread / done badges** — a worktree is flagged (a red notification bubble on
+  the project and worktree rows + dock/taskbar count) when an agent finishes
+  while you're not looking.
+- **Needs-you pill** — the projects header carries an orange count of the
+  worktrees whose agent is `waiting` or `blocked`, under a bell (it covers both
+  states, so it borrows neither one's glyph), because an agent stuck inside a
+  collapsed project is otherwise invisible. Clicking it opens the status view on
+  that lane.
 - **Native notifications** — fired only when an agent goes idle / done while
   the ADE is unfocused (or you're on a different terminal / workspace).
 

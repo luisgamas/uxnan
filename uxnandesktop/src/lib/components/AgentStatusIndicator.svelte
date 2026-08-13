@@ -10,6 +10,12 @@
   // `idle` deliberately keeps the plain dot: it is by far the most frequent state,
   // so a glyph there would be constant noise. "Glyph = something is happening /
   // dot = nothing is" is what makes the sidebar scannable at a glance.
+  //
+  // `waiting` keeps the *bubble* silhouette on purpose. At the 12px these glyphs
+  // are drawn, `done` and `blocked` are already two rings with something inside;
+  // a third ring (a "?" in a circle) reads as the same shape at a glance, so the
+  // one state that is about *you* would be the hardest to spot. The bubble is
+  // the only outline in the set that is not a circle.
   import { cn } from "$lib/utils";
   import { icon } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -43,20 +49,20 @@
     <span
       {...tp}
       class={cn(
-        "inline-flex size-3.5 shrink-0 items-center justify-center",
+        "inline-flex size-4 shrink-0 items-center justify-center",
         COLOR[status],
         stale && "opacity-40",
         className,
       )}
     >
       {#if status === "working"}
-        <CometTrail size={12} />
+        <CometTrail size={14} />
       {:else if status === "waiting"}
-        <Icon icon={MessageCircleQuestionMarkIcon} class={icon.status} />
+        <Icon icon={MessageCircleQuestionMarkIcon} class={icon.decorative} />
       {:else if status === "blocked"}
-        <Icon icon={CirclePauseIcon} class={icon.status} />
+        <Icon icon={CirclePauseIcon} class={icon.decorative} />
       {:else if status === "done"}
-        <Icon icon={CircleCheckIcon} class={icon.status} />
+        <Icon icon={CircleCheckIcon} class={icon.decorative} />
       {:else}
         <span class="size-1.5 rounded-full bg-current"></span>
       {/if}

@@ -61,7 +61,12 @@
     class="flex min-w-0 flex-col"
     showCloseButton={false}
   >
-    <div class="flex min-w-0 gap-3">
+    <!-- The hero row *is* this dialog's whole content, so the header drops both
+         paddings it reserves for what a bigger dialog has next: the 16px below
+         (the content grid's own 16px gap already separates it from the footer,
+         which would otherwise read as 32px of dead space) and the 32px right
+         inset for a close button this dialog never shows. -->
+    <Dialog.Header class="flex-row items-start gap-3 pb-0 pr-0">
       {#if danger}
         <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
           <Icon icon={TriangleAlertIcon} class={cn(icon.button, "text-destructive")} />
@@ -73,12 +78,12 @@
           <Dialog.Description class={cn(text.body, "break-words")}>{description}</Dialog.Description>
         {/if}
       </div>
-    </div>
+    </Dialog.Header>
 
     {#if error}
       <p
         class={cn(
-          "mt-2 break-words rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive",
+          "break-words rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive",
           text.body,
         )}
       >
