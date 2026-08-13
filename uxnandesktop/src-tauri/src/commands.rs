@@ -34,12 +34,33 @@ pub async fn update_settings(
     settings: AppSettings,
 ) -> Result<AppData, CommandError> {
     let mut data = state.data.write().await;
-    data.settings = settings;
+    data.settings = preserve_backend_owned(&mut data.settings, settings);
     state.persistence.save(&data).map_err(CommandError::from)?;
     // Keep the resource monitor's cadence in step (no-op unless the resource
     // settings actually changed — this command fires for every settings write).
     state.resources.apply_settings(&data.settings.resources);
     Ok(data.clone())
+}
+
+/// Merge a settings payload from the UI over what is already stored, keeping the
+/// fields the **backend** owns.
+///
+/// Settings travel as one whole object, so every field in the payload replaces
+/// its stored counterpart. That is fine for things the user edits and wrong for
+/// anything only the backend writes: the frontend does not model those, so its
+/// copy is an empty one, and accepting it deletes them.
+///
+/// This is not hypothetical. Adding an SSH host and then changing any unrelated
+/// setting silently deleted every host *and* every tombstone — and because the
+/// tombstones went too, re-adding the same machine minted a fresh id, which no
+/// live session matched, so opening a terminal on it failed with "connect
+/// first" while the host sat there looking connected.
+fn preserve_backend_owned(stored: &mut AppSettings, incoming: AppSettings) -> AppSettings {
+    AppSettings {
+        ssh_hosts: std::mem::take(&mut stored.ssh_hosts),
+        removed_ssh_hosts: std::mem::take(&mut stored.removed_ssh_hosts),
+        ..incoming
+    }
 }
 
 // --- Resource observability (`resources.rs`) ---------------------------------
@@ -3136,9 +3157,64 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, fs_path_exists, issue_link_permission_denied, pty_submit_payload,
-        read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
+        bracketed_paste, fs_path_exists, issue_link_permission_denied, preserve_backend_owned,
+        pty_submit_payload, read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner,
+        term_buffers_path,
     };
+    use crate::model::{AppSettings, SshHost, SshHostTombstone};
+
+    fn host(id: &str) -> SshHost {
+        SshHost {
+            id: id.into(),
+            label: id.into(),
+            config_host: None,
+            hostname: "10.0.0.5".into(),
+            port: 22,
+            user: "dev".into(),
+            identity_files: vec![],
+            identity_agent: None,
+            identities_only: false,
+            forward_agent: false,
+            proxy_command: None,
+            proxy_jump: None,
+            source: Default::default(),
+            needs_prompt: false,
+        }
+    }
+
+    #[test]
+    fn a_settings_write_from_the_ui_cannot_delete_the_hosts() {
+        // The bug this exists for: the UI sends the whole settings object, does
+        // not model the host list, and so used to send an empty one — deleting
+        // every host on any unrelated settings change.
+        let mut stored = AppSettings {
+            ssh_hosts: vec![host("h1"), host("h2")],
+            removed_ssh_hosts: vec![SshHostTombstone {
+                host_id: "gone".into(),
+                config_host: None,
+                hostname: "old".into(),
+                port: 22,
+                user: "dev".into(),
+                label: "old".into(),
+                removed_at: 1,
+            }],
+            ..AppSettings::default()
+        };
+        let from_ui = AppSettings {
+            left_sidebar_width: 999,
+            ..AppSettings::default()
+        };
+
+        let merged = preserve_backend_owned(&mut stored, from_ui);
+
+        assert_eq!(merged.ssh_hosts.len(), 2, "the hosts must survive");
+        assert_eq!(merged.removed_ssh_hosts.len(), 1, "and the tombstones");
+        // Tombstones matter as much as the hosts: lose them and a re-added
+        // machine gets a new id, stranding its projects and its live session.
+        assert_eq!(merged.removed_ssh_hosts[0].host_id, "gone");
+        // Everything the user *did* change still lands.
+        assert_eq!(merged.left_sidebar_width, 999);
+    }
 
     #[test]
     fn issue_link_falls_back_only_for_authorization_failures() {

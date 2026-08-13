@@ -63,6 +63,9 @@ export interface TerminalTab extends BaseTab {
   agentSession?: CapturedAgentSession;
   /** Machine this tab's shell runs on (`ssh:<hostId>`); absent = this one. */
   target?: string;
+  /** The shell could not be started. Keeps the tab open so the reason written
+   *  into the pane can be read. */
+  spawnFailed?: boolean;
   cwd?: string;
   /** Shell executable for this tab's PTY (from the chosen terminal profile). */
   shell?: string;
@@ -1344,8 +1347,25 @@ class TerminalStore {
    *
    *  "Hosted an agent" is read from `agentCommand`/`agentName` (this session's
    *  launch) or `agentSession` (persisted, so a restored tab still counts). */
+  /** Record that a tab's shell never started, so the exit that follows does
+   *  not close it before the reason can be read. */
+  markSpawnFailed(tabId: string): void {
+    const tab = this.findTab(tabId);
+    if (tab?.kind === 'terminal') tab.spawnFailed = true;
+  }
+
   handleShellExit(tabId: string): void {
     const tab = this.findTab(tabId);
+    // A shell that never started keeps its tab, whatever it was hosting: the
+    // pane holds the reason it failed, and closing it is how that reason turns
+    // into a tab that flashes and vanishes. (Seen with a remote terminal whose
+    // host had no live session — the error was written and immediately thrown
+    // away.)
+    if (tab?.kind === 'terminal' && tab.spawnFailed) {
+      tab.exited = true;
+      tab.working = false;
+      return;
+    }
     if (tab?.kind === 'terminal' && (tab.agentCommand || tab.agentName || tab.agentSession)) {
       tab.exited = true;
       tab.working = false;

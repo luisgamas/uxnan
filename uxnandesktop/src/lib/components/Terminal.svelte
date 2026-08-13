@@ -658,6 +658,10 @@
         // into a dead PTY (`spawnFailed` gates the launch).
         term.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
         term.writeln(`\x1b[90m${res.error}\x1b[0m`);
+        // Keep the tab. Without this the exit that follows closes a plain
+        // terminal outright and takes the message with it — the pane flashes and
+        // the user is left with no idea what went wrong.
+        terminals.markSpawnFailed(id);
       }
     }
 

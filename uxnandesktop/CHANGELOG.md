@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A settings change no longer deletes your hosts.** Settings travel as one
+  whole object, and the interface does not model the host list — so writing any
+  unrelated setting used to send an empty one and wipe every host *and* every
+  tombstone. Because the tombstones went too, re-adding the same machine minted
+  a fresh id that no live session matched, which is why a host could sit there
+  looking connected while opening a terminal on it failed. Fields the backend
+  owns are now carried over rather than taken from the payload.
+- **A terminal that could not start stays open.** It writes why into the pane —
+  and then used to close itself immediately, because a plain terminal that exits
+  is closed. The pane flashed and the reason went with it.
 - **Open a terminal on a host, from the host list.** A connected machine gets an
   *Open terminal* button; the terminal opens in the main area like any other,
   because it *is* one. Disconnecting a host now ends its terminals rather than
