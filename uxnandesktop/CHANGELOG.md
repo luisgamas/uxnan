@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Terminals can live on another machine.** A remote terminal is one channel on
+  that host's existing connection carrying a PTY and a shell — no second
+  handshake, no second login. It is deliberately the *same shape* as a local one:
+  the same five commands, the same output and exit events, and the terminal UI
+  (xterm, splits, re-parenting on a pane move) cannot tell which kind it got. A
+  second terminal implementation the interface had to branch on would drift from
+  the first within a release. Two honest differences: closing ends the channel
+  rather than guaranteeing every descendant dies, and there is no local process,
+  so the process-detection layer of agent monitoring cannot see these — the
+  title/OSC layer works untouched, because it reads the byte stream.
 - **A host can say what it has.** Its OS, home, git, whether a terminal
   multiplexer is there, and **which agent CLIs are installed on it, with their
   versions** — which is what will let the launcher offer the agents that machine

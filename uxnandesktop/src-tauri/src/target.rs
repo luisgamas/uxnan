@@ -70,6 +70,16 @@ impl TargetId {
         matches!(self, TargetId::Local)
     }
 
+    /// The SSH host id, when this is an SSH target. `None` for anything else —
+    /// which is how a caller that can only act on a host refuses everything else
+    /// without matching on the enum.
+    pub fn ssh_host_id(&self) -> Option<&str> {
+        match self {
+            TargetId::Ssh(id) => Some(id),
+            _ => None,
+        }
+    }
+
     /// Parse a target id from **input** (a command parameter, a settings value).
     ///
     /// Strict on purpose: unlike deserialization of already-persisted data, an
@@ -207,6 +217,8 @@ mod tests {
         let t = TargetId::parse("ssh:h-42").unwrap();
         assert_eq!(t, TargetId::Ssh("h-42".into()));
         assert_eq!(t.to_string(), "ssh:h-42");
+        assert_eq!(t.ssh_host_id(), Some("h-42"));
+        assert_eq!(TargetId::Local.ssh_host_id(), None);
         assert!(!t.is_local());
         assert_eq!(TargetId::parse(&t.to_string()).unwrap(), t);
     }

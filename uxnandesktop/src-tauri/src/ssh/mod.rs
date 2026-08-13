@@ -26,4 +26,5 @@ pub mod config;
 pub mod conn;
 pub mod hostkey;
 pub mod inventory;
+pub mod pty;
 pub mod registry;

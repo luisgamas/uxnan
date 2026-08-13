@@ -364,6 +364,40 @@ en **1.46 s incluyendo el intento POSIX fallido**, frente a los 2.1 s que costab
 un solo `echo` por el shell con perfil. Saltarse el perfil paga con creces el
 viaje extra.
 
+## 5.7 Terminal remota — IMPLEMENTADO
+
+`src-tauri/src/ssh/pty.rs`. Una terminal remota es **un canal** sobre la conexion
+que ese host ya tiene, con PTY y shell. Ni segundo handshake ni segundo login.
+
+**Misma forma que la local, a proposito.** Los mismos cinco comandos
+(`pty_create/write/paste_submit/resize/close`), los mismos eventos
+`pty:output:{id}` y `pty:exit:{id}`, y el mismo espacio de ids. El frontend
+—xterm, splits, re-parenting al mover un panel— no sabe cual le toco, y el
+enrutado lo decide el backend preguntando **quien es dueño del id**, no la UI
+recordandolo. Una segunda implementacion de terminal sobre la que la interfaz
+tuviera que ramificar se separaria de la primera en una release.
+
+Diferencias reales, dichas y no escondidas:
+
+- **Cerrar termina el canal**, no garantiza matar el arbol. Un descendiente que
+  se solto sobrevive. En local pasa lo mismo hoy (`pty.rs` mata al hijo directo);
+  aqui se nota menos porque el proceso huerfano esta en una maquina que el
+  usuario no mira.
+- **No hay proceso local que inspeccionar**, asi que la capa 3 del monitoreo de
+  agentes no ve estas terminales. La capa 2 (titulo/OSC) funciona intacta: lee el
+  stream de bytes.
+
+**Un solo dueño del canal.** La primera version lo guardaba tras un mutex y
+dejaba que el bucle de lectura lo sostuviera mientras esperaba el siguiente
+mensaje — es decir, lo sostenia todo el tiempo que el usuario no escribiera, de
+modo que escribir, redimensionar y cerrar se bloqueaban hasta que el remoto
+dijera algo. Una terminal que se bloquea justo cuando esta ociosa. El arreglo no
+fue un cerrojo mas listo sino **un solo dueño**: una tarea posee el canal y todo
+lo demas le habla por una cola. Medido: de 300 s bloqueado a 0.33 s.
+
+Validado en vivo contra un `sshd` real: abrir, escribir un comando, leer su eco,
+redimensionar y cerrar; y crear dos veces el mismo id no abre dos terminales.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |

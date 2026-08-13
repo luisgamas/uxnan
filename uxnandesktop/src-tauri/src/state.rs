@@ -47,6 +47,11 @@ pub struct AppState {
     pub persistence: PersistenceManager,
     /// Live pseudoterminal sessions.
     pub pty: PtyManager,
+    /// Terminals running on a remote host. Separate from `pty` because they are
+    /// a different mechanism, but keyed in the same id space: a terminal id
+    /// means one thing app-wide, and the command layer asks who owns it rather
+    /// than making the frontend remember.
+    pub ssh_pty: crate::ssh::pty::RemotePtyManager,
     /// Live, authenticated sessions, keyed by host id.
     ///
     /// One connection per host, shared by everything that runs on it — the
@@ -120,6 +125,7 @@ impl AppState {
             data: RwLock::new(data),
             persistence,
             pty: PtyManager::default(),
+            ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
             git_watch: Arc::new(RwLock::new(None)),

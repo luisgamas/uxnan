@@ -439,7 +439,60 @@ pub async fn pty_create(
     // Workspace this terminal belongs to (the tab's workspace key), used only to
     // attribute the shell's resource cost to its workspace (`resources.rs`).
     workspace: Option<String>,
+    // Machine to open it on. Absent or `local` spawns a process here; an
+    // `ssh:<hostId>` target opens a channel on that host's live session.
+    target: Option<String>,
 ) -> Result<bool, CommandError> {
+    // Remote first, because everything below this line is about spawning a local
+    // process: hook coordinates for a local server, WSLENV, resource attribution
+    // of a pid. None of it applies to a terminal on another machine, and running
+    // it anyway would inject a loopback URL the host cannot reach.
+    if let Some(target) = target.as_deref().filter(|t| !t.is_empty() && *t != "local") {
+        let host_id = TargetId::parse(target)
+            .map_err(CommandError::from)?
+            .ssh_host_id()
+            .ok_or_else(|| {
+                CommandError::from(AppError::Invalid(format!(
+                    "{target} is not a machine a terminal can open on"
+                )))
+            })?
+            .to_string();
+
+        let sessions = state.ssh_sessions.read().await;
+        let Some(conn) = sessions.get(&host_id) else {
+            return Err(CommandError::from(AppError::Invalid(
+                "connect to this host before opening a terminal on it".to_string(),
+            )));
+        };
+
+        let out_app = app.clone();
+        let out_id = id.clone();
+        let exit_app = app.clone();
+        let exit_id = id.clone();
+        return state
+            .ssh_pty
+            .create(
+                conn,
+                crate::ssh::pty::RemotePtySpec {
+                    id: id.clone(),
+                    cwd,
+                    // An interactive shell, like the local path: the launcher
+                    // delivers its command by typing it in afterwards
+                    // (`pty_paste_submit`), which works the same either side.
+                    command: None,
+                    cols,
+                    rows,
+                },
+                move |bytes: &[u8]| {
+                    let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
+                },
+                move || {
+                    let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
+                },
+            )
+            .await
+            .map_err(CommandError::from);
+    }
     let out_app = app.clone();
     let out_id = id.clone();
     let on_output = move |bytes: &[u8]| {
@@ -615,6 +668,13 @@ pub async fn pty_write(
     id: String,
     data: String,
 ) -> Result<(), CommandError> {
+    if state.ssh_pty.owns(&id).await {
+        return state
+            .ssh_pty
+            .write(&id, data.as_bytes())
+            .await
+            .map_err(CommandError::from);
+    }
     state.pty.write(&id, &data).map_err(CommandError::from)
 }
 
@@ -743,6 +803,13 @@ pub async fn pty_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), CommandError> {
+    if state.ssh_pty.owns(&id).await {
+        return state
+            .ssh_pty
+            .resize(&id, cols, rows)
+            .await
+            .map_err(CommandError::from);
+    }
     state
         .pty
         .resize(&id, cols, rows)
@@ -754,6 +821,10 @@ pub async fn pty_resize(
 pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     // Snapshot the terminal's last-known members first, so a subtree that
     // survives the kill shows up as an orphan on the next resource sample.
+    if state.ssh_pty.owns(&id).await {
+        // No local process tree to account for: this terminal never had one.
+        return state.ssh_pty.close(&id).await.map_err(CommandError::from);
+    }
     state
         .resources
         .terminal_closed(&id, crate::resources::now_ms());
