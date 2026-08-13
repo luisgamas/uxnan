@@ -79,7 +79,7 @@ Between them, five buckets:
 | **Work finished** | A clean checkout whose branch landed on its base (merge or squash-merge), or whose remote branch is gone after being pushed | No — that is a judgement call |
 | **No longer a project in uxnan** | The repository is still on disk, but you removed it from the app — which touches nothing on disk, so its worktrees stayed | No — the repository and the branch are both intact |
 | **Cloned repositories, fully pushed** | A repository in `~/uxnan/repos` that is no longer a project **and** whose every commit is already on a remote | No — see below |
-| **Held back** | In either list: uncommitted changes, unpushed commits, stashes, no remote, or worktrees still out — each row states which | Never |
+| **Held back** | In either list: a terminal running in it, uncommitted changes, unpushed commits, stashes, no remote, or worktrees still out — each row states which | Never |
 
 Each list has a **select-all** beside its heading. It reaches only the rows the
 safety rules allow removing — a held-back one is never picked up by it — and
