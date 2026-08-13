@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.15-alpha.20260813] - 20260813
 ### Fixed — the README badge undercounted the methods
 
 `69 methods` on the badge against `70 JSON-RPC methods` in the prose two lines
