@@ -1,7 +1,3 @@
-Conversations no longer come back duplicated. If one of yours already shows an exchange twice, it repairs itself the next time you open it — nothing you wrote is lost.
+Settings and Profile now answer Android's back button: it takes you back to the screen you came from instead of closing the app.
 
-Long replies stay smooth to the end instead of slowing down as they grow.
-
-Opening a second conversation in the same pane now shows the one you picked.
-
-The empty conversation drawer offers to get you set up, instead of the camera.
+A conversation that gets its own copy of your project now lands wherever your PC puts it, in the folder the desktop app already uses — so the two apps stop making separate folders for the same branch.
