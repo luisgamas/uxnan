@@ -945,6 +945,182 @@ pub async fn ssh_host_trust(
     Ok(true)
 }
 
+/// The result of trying to open a working session on a host.
+///
+/// One shape for every outcome, because each one sends the user somewhere
+/// different and "it failed" sends them nowhere.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConnectReport {
+    /// `connected` | `hostUnknown` | `hostChanged` | `hostRevoked` |
+    /// `needsPassword` | `needsPassphrase` | `failed` | `noUsableMethod`.
+    pub status: String,
+    /// The connection incarnation, for `connected`. Travels with every mutation
+    /// prepared against this session (`target::TargetExpectation`).
+    pub generation: Option<u64>,
+    /// Which credential worked, so the UI can say how you got in.
+    pub method: Option<String>,
+    /// For the host-key outcomes.
+    pub fingerprint: Option<String>,
+    pub stored_fingerprint: Option<String>,
+    /// For `needsPassphrase`: which key file needs one.
+    pub path: Option<String>,
+    /// What was offered and refused, in order, so the message can name it.
+    pub attempted: Vec<String>,
+}
+
+impl SshConnectReport {
+    fn of(status: &str) -> Self {
+        Self {
+            status: status.to_string(),
+            generation: None,
+            method: None,
+            fingerprint: None,
+            stored_fingerprint: None,
+            path: None,
+            attempted: Vec::new(),
+        }
+    }
+}
+
+/// Open an authenticated session on a host and keep it.
+///
+/// Idempotent: a host that already has a live session reports it rather than
+/// opening a second one. Everything that runs on the host — terminal, inventory,
+/// git — shares this connection, which is the point of an in-process client.
+///
+/// `password` is supplied only on a retry, after the app has asked for it. It is
+/// used for this attempt and never stored.
+#[tauri::command]
+pub async fn ssh_host_connect(
+    state: State<'_, AppState>,
+    host_id: String,
+    password: Option<String>,
+) -> Result<SshConnectReport, CommandError> {
+    if let Some(existing) = state.ssh_sessions.read().await.get(&host_id) {
+        let mut report = SshConnectReport::of("connected");
+        report.generation = Some(existing.generation());
+        return Ok(report);
+    }
+
+    let host = find_ssh_host(&state, &host_id).await?;
+    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
+    let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
+
+    let mut connection = match ssh::conn::connect(endpoint, &known)
+        .await
+        .map_err(CommandError::from)?
+    {
+        ssh::conn::Handshake::Ready(conn) => conn,
+        ssh::conn::Handshake::Unknown { fingerprint, key } => {
+            let mut report = SshConnectReport::of("hostUnknown");
+            report.fingerprint = Some(fingerprint);
+            state
+                .ssh_pending_keys
+                .write()
+                .await
+                .insert(host_id.clone(), key);
+            return Ok(report);
+        }
+        ssh::conn::Handshake::Changed {
+            presented_fingerprint,
+            stored_fingerprint,
+        } => {
+            let mut report = SshConnectReport::of("hostChanged");
+            report.fingerprint = Some(presented_fingerprint);
+            report.stored_fingerprint = Some(stored_fingerprint);
+            return Ok(report);
+        }
+        ssh::conn::Handshake::Revoked { fingerprint } => {
+            let mut report = SshConnectReport::of("hostRevoked");
+            report.fingerprint = Some(fingerprint);
+            return Ok(report);
+        }
+    };
+
+    // The agent first, then the key files this host's config points at, then a
+    // password if the user has already been asked for one.
+    let mut credentials = ssh::auth::credentials_for(true, &host.identity_files);
+    if let Some(password) = password {
+        credentials.push(ssh::auth::Credential::Password(password));
+    }
+
+    let outcome = ssh::auth::authenticate(&mut connection, &host.user, &credentials)
+        .await
+        .map_err(CommandError::from)?;
+
+    match outcome {
+        ssh::auth::AuthOutcome::Success { method } => {
+            let mut report = SshConnectReport::of("connected");
+            report.generation = Some(connection.generation());
+            report.method = Some(method);
+            state
+                .ssh_sessions
+                .write()
+                .await
+                .insert(host_id.clone(), connection);
+            // Remember that this host let us in without asking, so startup can
+            // reconnect the silent ones and leave the rest until the user is here.
+            set_needs_prompt(&state, &host_id, false).await?;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::NeedsPassword { attempted } => {
+            let mut report = SshConnectReport::of("needsPassword");
+            report.attempted = attempted;
+            set_needs_prompt(&state, &host_id, true).await?;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::NeedsPassphrase { path } => {
+            let mut report = SshConnectReport::of("needsPassphrase");
+            report.path = Some(path);
+            set_needs_prompt(&state, &host_id, true).await?;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::Failed { attempted } => {
+            let mut report = SshConnectReport::of("failed");
+            report.attempted = attempted;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::NoUsableMethod => Ok(SshConnectReport::of("noUsableMethod")),
+    }
+}
+
+/// Drop a host's session. Idempotent — disconnecting one that is not connected
+/// answers `false` rather than failing.
+#[tauri::command]
+pub async fn ssh_host_disconnect(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
+}
+
+/// The host ids with a live session, so the UI can show which are connected
+/// without probing anything.
+#[tauri::command]
+pub async fn ssh_hosts_connected(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    Ok(state.ssh_sessions.read().await.keys().cloned().collect())
+}
+
+/// Record whether a host asked for something interactive. Persisted because the
+/// value is only learned by connecting, and losing it means prompting at every
+/// startup for a host we already knew was silent.
+async fn set_needs_prompt(
+    state: &AppState,
+    host_id: &str,
+    needs_prompt: bool,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    let Some(host) = data.settings.ssh_hosts.iter_mut().find(|h| h.id == host_id) else {
+        return Ok(());
+    };
+    if host.needs_prompt == needs_prompt {
+        return Ok(());
+    }
+    host.needs_prompt = needs_prompt;
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
 async fn find_ssh_host(state: &AppState, host_id: &str) -> Result<SshHost, CommandError> {
     state
         .data

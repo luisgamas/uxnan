@@ -32,6 +32,7 @@ import type {
   FileSearch,
   FsEntry,
   SshConfigAlias,
+  SshConnectReport,
   SshHost,
   SshHostAdded,
   SshHostDraft,
@@ -560,6 +561,25 @@ export function sshHostProbe(hostId: string): Promise<SshHostProbe> {
  *  trust a *changed* key. */
 export function sshHostTrust(hostId: string): Promise<boolean> {
   return invoke<boolean>('ssh_host_trust', { hostId });
+}
+
+/** Open an authenticated session on a host and keep it. Idempotent: a host that
+ *  is already connected reports that rather than connecting twice. `password` is
+ *  passed only on a retry, after the app has asked for one — it is used for that
+ *  attempt and never stored. */
+export function sshHostConnect(hostId: string, password?: string): Promise<SshConnectReport> {
+  return invoke<SshConnectReport>('ssh_host_connect', { hostId, password: password ?? null });
+}
+
+/** Drop a host's session. Resolves `false` when it was not connected. */
+export function sshHostDisconnect(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_disconnect', { hostId });
+}
+
+/** The host ids with a live session, so the UI can show what is connected
+ *  without reaching out to anything. */
+export function sshHostsConnected(): Promise<string[]> {
+  return invoke<string[]>('ssh_hosts_connected');
 }
 
 // --- Filesystem: file tree + editor ----------------------------------------

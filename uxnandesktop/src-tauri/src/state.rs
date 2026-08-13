@@ -47,6 +47,13 @@ pub struct AppState {
     pub persistence: PersistenceManager,
     /// Live pseudoterminal sessions.
     pub pty: PtyManager,
+    /// Live, authenticated sessions, keyed by host id.
+    ///
+    /// One connection per host, shared by everything that runs on it — the
+    /// terminal, the inventory probe, git calls. That is the whole reason the
+    /// SSH client is in-process: each of those is a channel here, not another
+    /// handshake and another login.
+    pub ssh_sessions: Arc<RwLock<std::collections::HashMap<String, crate::ssh::conn::Connection>>>,
     /// Host keys seen during a probe, kept between "we asked" and "the user
     /// said yes", keyed by host id.
     ///
@@ -113,6 +120,7 @@ impl AppState {
             data: RwLock::new(data),
             persistence,
             pty: PtyManager::default(),
+            ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),

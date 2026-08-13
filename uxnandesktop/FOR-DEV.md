@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 610 Rust tests (576 unit + 29
 integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
-probe, +1 ignored real-scheduler probe) + 1,056 passing frontend Vitest tests across two
+probe, +1 ignored real-scheduler probe) + 1,061 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -846,11 +846,13 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
          `ssh-keygen -lf` byte for byte. Point any host at it with
          `UXNAN_SSH_TEST_HOST=<host[:port]>`.
       5. Idle cost of an open connection, measured with `npm run bench`.
-- [ ] Connect and authenticate from the UI. `ssh_hosts_list` / `ssh_host_add` /
-      `ssh_host_remove` / `ssh_host_probe` / `ssh_host_trust` exist and are
-      contract-tested; what is missing is holding a *live authenticated session*
-      per host in `AppState` (connect, disconnect, status) so the terminal and
-      the inventory have something to run on.
+- [ ] Reconnect on startup for hosts that need no prompt. `needs_prompt` is
+      recorded at connect time and persisted; nothing reads it yet, so every
+      launch starts with no sessions. The partitioning is the point — silent
+      hosts come back on their own, the rest wait for the user.
+- [ ] Surface a dropped session. A connection that dies is only noticed when the
+      next command on it fails; the UI has no event to react to, and
+      `ssh_hosts_connected` will happily list a corpse.
 - [ ] Connection manager: one connection, N channels, a connection generation
       (feeds the fencing above), reconnect ladder, typed error classification.
 - [ ] Wire host-key verification into the live connection. The decision logic is
@@ -1314,7 +1316,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 610 Rust + 1,056 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 610 Rust + 1,061 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

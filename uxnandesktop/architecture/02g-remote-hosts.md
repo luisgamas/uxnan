@@ -311,6 +311,30 @@ por antiguedad.
 
 Falta: la superficie de comandos Tauri que la UI llama.
 
+## 5.5 Sesion viva por host — IMPLEMENTADO
+
+Un host sostiene **una** sesion autenticada, guardada en `AppState`, y todo lo
+que corre en el —terminal, inventario, git— la comparte como canal. Es la razon
+de ser del cliente en proceso, y con la medicion de §5.3 detras: cada `exec`
+paga el arranque del shell remoto, pero no otro handshake ni otro login.
+
+Conectar es idempotente: un host ya conectado se reporta, no se conecta dos
+veces. Cada desenlace tiene forma propia —conectado, clave desconocida, clave
+cambiada, hace falta contrasena, hace falta passphrase, rechazado, sin metodo
+usable— porque cada uno manda al usuario a un sitio distinto y fallo no manda
+a ninguno.
+
+Si un host pidio algo interactivo se **persiste** (`needsPrompt`): sirve para
+que un arranque posterior reconecte solo los silenciosos y deje los demas hasta
+que el usuario este delante. El valor solo se aprende conectando, asi que
+perderlo significa volver a preguntar por un host que ya sabiamos callado.
+
+Comandos: `ssh_host_connect` (con `password` opcional, usado para ese intento y
+nunca guardado), `ssh_host_disconnect`, `ssh_hosts_connected`.
+
+Pendiente y anotado: reconectar al arrancar, y notificar una sesion caida — hoy
+solo se nota cuando falla el siguiente comando.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |

@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A host holds one live session, shared by everything that runs on it.**
+  Connecting authenticates once and keeps the connection; the terminal, the
+  inventory and git calls will each be a *channel* on it rather than another
+  handshake and another login. Connecting a host that is already connected
+  reports that instead of opening a second one. Every outcome has its own shape —
+  connected, unknown host key, changed key, needs a password, needs a passphrase,
+  refused — because each sends you somewhere different and "it failed" sends you
+  nowhere. Whether a host asked for anything interactive is remembered, so a
+  later startup can bring back the silent ones and leave the rest until you are
+  there to answer.
 - **Hosts can be registered, probed and trusted.** The command surface the
   Settings UI will sit on: list, add (or update), remove, probe, trust. Adding a
   host reports whether it *recovered* a machine you had removed — its projects

@@ -690,6 +690,32 @@ export interface SshHostProbe {
   storedFingerprint?: string | null;
 }
 
+/** The result of trying to open a working session on a host (mirror of Rust
+ *  `SshConnectReport`). One shape for every outcome, because each one sends you
+ *  somewhere different and "it failed" sends you nowhere. */
+export interface SshConnectReport {
+  status:
+    | "connected"
+    | "hostUnknown"
+    | "hostChanged"
+    | "hostRevoked"
+    | "needsPassword"
+    | "needsPassphrase"
+    | "failed"
+    | "noUsableMethod";
+  /** Connection incarnation, for `connected`. Travels with every mutation
+   *  prepared against this session. */
+  generation?: number | null;
+  /** Which credential worked, so the UI can say how you got in. */
+  method?: string | null;
+  fingerprint?: string | null;
+  storedFingerprint?: string | null;
+  /** For `needsPassphrase`: which key file needs one. */
+  path?: string | null;
+  /** What was offered and refused, in order. */
+  attempted: string[];
+}
+
 /** A `Host` alias found in the user's OpenSSH configuration (mirror of Rust
  *  `ConfigAlias`). Candidates for the host picker — no resolved values, since
  *  resolving costs a process spawn and only the chosen one is worth it. */

@@ -13,6 +13,9 @@ import {
   sshConfigHosts,
   sshConfigResolve,
   sshHostAdd,
+  sshHostConnect,
+  sshHostDisconnect,
+  sshHostsConnected,
   sshHostProbe,
   sshHostRemove,
   sshHostTrust,
@@ -151,5 +154,72 @@ describe("ssh host registry API", () => {
       },
     });
     await expect(sshHostTrust("h1")).rejects.toThrow(/awaiting confirmation/);
+  });
+});
+
+describe("ssh session API", () => {
+  let backend: FakeBackend;
+
+  beforeEach(() => {
+    backend = installFakeBackend({
+      ssh_host_connect: () => ({
+        status: "connected",
+        generation: 3,
+        method: "ssh-agent",
+        attempted: [],
+      }),
+      ssh_host_disconnect: () => true,
+      ssh_hosts_connected: () => ["h1"],
+    });
+  });
+
+  it("connects without sending a password when there is none", async () => {
+    const report = await sshHostConnect("h1");
+    expect(report.status).toBe("connected");
+    expect(report.generation).toBe(3);
+    expect(backend.lastCallTo("ssh_host_connect")?.args).toEqual({
+      hostId: "h1",
+      password: null,
+    });
+  });
+
+  it("sends a password only when one was supplied", async () => {
+    await sshHostConnect("h1", "s3cret");
+    expect(backend.lastCallTo("ssh_host_connect")?.args).toEqual({
+      hostId: "h1",
+      password: "s3cret",
+    });
+  });
+
+  it("reports an unknown host key as an outcome to act on, not an error", async () => {
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: "hostUnknown",
+        fingerprint: "SHA256:abc",
+        attempted: [],
+      }),
+    });
+    const report = await sshHostConnect("h1");
+    expect(report.status).toBe("hostUnknown");
+    expect(report.fingerprint).toBe("SHA256:abc");
+  });
+
+  it("reports a refused key alongside the password path", async () => {
+    // Both facts matter: which key was refused, and what to try next.
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: "needsPassword",
+        attempted: ["C:/keys/id_ed25519"],
+      }),
+    });
+    const report = await sshHostConnect("h1");
+    expect(report.status).toBe("needsPassword");
+    expect(report.attempted).toEqual(["C:/keys/id_ed25519"]);
+  });
+
+  it("lists connected hosts and disconnects by id", async () => {
+    expect(await sshHostsConnected()).toEqual(["h1"]);
+    expect(await sshHostDisconnect("h1")).toBe(true);
+    expect(backend.lastCallTo("ssh_host_disconnect")?.args).toEqual({ hostId: "h1" });
   });
 });
