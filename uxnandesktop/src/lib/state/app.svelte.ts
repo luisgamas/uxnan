@@ -78,6 +78,7 @@ export type SettingsSection =
   | "browser"
   | "openWith"
   | "github"
+  | "hosts"
   | "resources"
   | "diagnostics"
   | "updates";

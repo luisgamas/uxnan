@@ -33,6 +33,7 @@ import type {
   FsEntry,
   SshConfigAlias,
   SshConnectReport,
+  SshHostInventory,
   SshHost,
   SshHostAdded,
   SshHostDraft,
@@ -569,6 +570,13 @@ export function sshHostTrust(hostId: string): Promise<boolean> {
  *  attempt and never stored. */
 export function sshHostConnect(hostId: string, password?: string): Promise<SshConnectReport> {
   return invoke<SshConnectReport>('ssh_host_connect', { hostId, password: password ?? null });
+}
+
+/** Ask a connected host what it has: OS, home, git, a multiplexer, and the agent
+ *  CLIs installed there with their versions. Needs a live session — guessing it
+ *  from this machine would offer agents that are not there. */
+export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
+  return invoke<SshHostInventory>('ssh_host_inventory', { hostId });
 }
 
 /** Drop a host's session. Resolves `false` when it was not connected. */

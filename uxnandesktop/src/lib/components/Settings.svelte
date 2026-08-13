@@ -57,6 +57,7 @@
   import ThemeSettings from "./ThemeSettings.svelte";
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import OpenWithSettings from "./OpenWithSettings.svelte";
+  import HostsSettings from "$lib/components/HostsSettings.svelte";
   import GithubSettings from "./GithubSettings.svelte";
   import PetsSettings from "./PetsSettings.svelte";
   import ResourceSettings from "./ResourceSettings.svelte";
@@ -82,6 +83,7 @@
   import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
   import LanguagesIcon from "@hugeicons/core-free-icons/LanguageSkillIcon";
   import ComputerActivityIcon from "@hugeicons/core-free-icons/ComputerActivityIcon";
+  import ServerStackIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
@@ -786,6 +788,7 @@
         { id: "browser", key: "settings.browser", icon: GlobeIcon },
         { id: "github", key: "settings.github", icon: GithubIcon },
         { id: "openWith", key: "settings.openWith", icon: AppWindowIcon },
+        { id: "hosts", key: "settings.hosts", icon: ServerStackIcon },
       ],
     },
     {
@@ -1687,6 +1690,8 @@
           <OpenWithSettings />
         {:else if app.settingsSection === "github"}
           <GithubSettings />
+        {:else if app.settingsSection === "hosts"}
+          <HostsSettings />
         {:else if app.settingsSection === "resources"}
           <div class="flex flex-col gap-10">
             <ResourceModeSection />

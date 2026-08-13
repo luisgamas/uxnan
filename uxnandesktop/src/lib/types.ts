@@ -690,6 +690,20 @@ export interface SshHostProbe {
   storedFingerprint?: string | null;
 }
 
+/** What a host reported about itself (mirror of Rust `HostInventory`). */
+export interface SshHostInventory {
+  os: string;
+  home: string;
+  git: string;
+  /** A terminal multiplexer, if one is there — what decides whether a session
+   *  can outlive a disconnection. Empty when there is none. */
+  multiplexer: string;
+  /** Agent CLI id → version. Absent means "not installed here". */
+  agents: Record<string, string>;
+  /** Which shell answered, for troubleshooting. */
+  shell: string;
+}
+
 /** The result of trying to open a working session on a host (mirror of Rust
  *  `SshConnectReport`). One shape for every outcome, because each one sends you
  *  somewhere different and "it failed" sends you nowhere. */
