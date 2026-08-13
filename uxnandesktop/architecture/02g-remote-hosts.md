@@ -83,6 +83,34 @@ conexion alguna.
 - **`ssh` del sistema como plan B declarado por host**, para los casos que un
   cliente en proceso no cubre (GSSAPI, ciertos `ProxyCommand`), anunciando que
   capacidades se pierden en ese modo.
+## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
+
+`src-tauri/src/ssh/conn.rs`. Establece el TCP, corre el handshake SSH y aplica
+§5.1. Dos propiedades que definen el resto:
+
+**A un host no verificado no se conecta, ni siquiera para preguntar.** Si
+`known_hosts` no dice nada, el handshake se **rechaza** y el llamador recibe la
+huella para mostrarla; confiar es un acto aparte y explicito del usuario, tras el
+cual se conecta de nuevo. Completar la conexion y preguntar despues significaria
+que ya se hablo con un posible man-in-the-middle.
+
+**Cada conexion lleva una generacion** (contador monotono, nunca reutilizado).
+Es lo que `target::check` compara: una operacion preparada antes de una
+reconexion no puede ejecutarse despues de ella — mismo host, conexion nueva, y
+posiblemente otro directorio de trabajo y otros procesos vivos.
+
+Un rechazo por clave de host **no es un error de transporte**: es una variante
+del resultado, porque el llamador tiene algo que enseñar y quiza una accion que
+ofrecer. Los errores quedan para lo que de verdad lo es (inalcanzable, timeout,
+fallo de protocolo).
+
+Validado en vivo contra un `sshd` real (tests `--ignored` en el modulo): host
+desconocido rechazado con huella utilizable, la clave registrada verificando en
+la siguiente conexion, y una clave distinta reportada como *cambiada* con ambas
+huellas. La huella que calculamos coincide con la de `ssh-keygen -lf`.
+
+Falta: autenticacion.
+
 ## 5.1 Verificacion de host key — LOGICA IMPLEMENTADA
 
 `src-tauri/src/ssh/hostkey.rs`. Es la unica decision de esta capa que no tiene

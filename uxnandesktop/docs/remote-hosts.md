@@ -69,10 +69,10 @@ What is read from the resolved output: hostname, port, user, identity files,
 unset, and the app treats that as "not configured" — otherwise it would try to
 run a proxy command called `none`.
 
-## Host keys — the rules the app will connect under
+## Host keys — the rules the app connects under
 
-Not reachable from the UI yet (there is nothing to connect to), but the decision
-logic is in place and these are the rules it enforces:
+Not reachable from the UI yet, but the connection and the decision behind it are
+implemented and verified against a real SSH server. The rules:
 
 - **A key already in `known_hosts`** → connects.
 - **A host you have never seen** → the app asks you, showing the `SHA256:…`
@@ -81,6 +81,17 @@ logic is in place and these are the rules it enforces:
   separate outcome from "never seen", deliberately: collapsing the two is how a
   man-in-the-middle gets waved through.
 - **`@revoked`** → refused, and never offered for trust.
+
+An unverified host is **never connected to, not even to ask you**: the handshake
+is refused, and only after you confirm does the app connect again with the key
+recorded. Asking after connecting would mean an impostor had already been talked
+to.
+
+The fingerprint the app shows is the same string OpenSSH shows, so you can
+compare it against `ssh-keygen -lf` or what the host's administrator gave you —
+that equivalence is asserted by the test suite, because a fingerprint that
+differed by so much as its padding would make the comparison you are being asked
+to do worthless.
 
 There is **no "ignore host key" mode**, and there will not be one behind a
 setting. Non-default ports use OpenSSH's `[host]:port` form, so trusting a key on
