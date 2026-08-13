@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Hosts can be registered, probed and trusted.** The command surface the
+  Settings UI will sit on: list, add (or update), remove, probe, trust. Adding a
+  host reports whether it *recovered* a machine you had removed — its projects
+  come back with it, and being told beats having them reappear unannounced.
+  Probing reaches the host, reports what `known_hosts` says about the key it
+  presents, and writes nothing; the key itself is held by the backend rather than
+  handed to the interface and back, so what gets recorded is exactly what the
+  server presented. Trusting appends to `known_hosts` — never rewrites it — and
+  is only possible right after an *unknown* probe: there is deliberately no way
+  to trust a key that **changed**.
 - **Removing a host no longer strands its projects.** A project stores only its
   target id, so deleting a host used to leave every project on it pointing at an
   id that would never exist again. Removal now remembers the machine, and

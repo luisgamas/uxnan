@@ -620,6 +620,76 @@ export interface WorktreeData {
   target?: TargetId;
 }
 
+/** Where a registered host record came from (mirror of Rust `SshHostSource`). */
+export type SshHostSource = "manual" | "sshConfig";
+
+/** A registered remote machine (mirror of Rust `SshHost`).
+ *
+ *  Holds **no secret**: alias, address, user and a *reference* to an identity
+ *  file. Keys and passwords come from the system agent, from disk, or from a
+ *  prompt that lives in memory for one attempt. */
+export interface SshHost {
+  /** Stable id, and the only thing a project stores. Never the hostname. */
+  id: string;
+  label: string;
+  /** The `~/.ssh/config` alias this came from, when it did. */
+  configHost?: string | null;
+  hostname: string;
+  port: number;
+  user: string;
+  /** Paths to private keys, as OpenSSH reported them. Paths, not keys. */
+  identityFiles?: string[];
+  identityAgent?: string | null;
+  identitiesOnly?: boolean;
+  /** Lets git *on the host* use the keys held by the agent *here*, without a
+   *  private key ever leaving this machine. */
+  forwardAgent?: boolean;
+  proxyCommand?: string | null;
+  proxyJump?: string | null;
+  source?: SshHostSource;
+  /** Set after a connection that needed a passphrase or password, so startup can
+   *  reconnect the silent hosts and leave the rest until the user is present. */
+  needsPrompt?: boolean;
+}
+
+/** What the form (or an imported alias) sends. Never an id — those are minted
+ *  by the backend, so the UI cannot overwrite a record by guessing one. */
+export interface SshHostDraft {
+  label: string;
+  configHost?: string | null;
+  hostname: string;
+  port: number;
+  user: string;
+  identityFiles?: string[];
+  identityAgent?: string | null;
+  identitiesOnly?: boolean;
+  forwardAgent?: boolean;
+  proxyCommand?: string | null;
+  proxyJump?: string | null;
+  source?: SshHostSource;
+}
+
+/** The result of registering a host. */
+export interface SshHostAdded {
+  host: SshHost;
+  /** This machine had been removed and its id was reused — so projects that
+   *  looked lost are live again. Worth telling the user rather than letting
+   *  them reappear unannounced. */
+  recovered: boolean;
+  /** An already-registered machine was updated instead of a new one added. */
+  updatedExisting: boolean;
+}
+
+/** What reaching a host said about its identity, before any credential. */
+export interface SshHostProbe {
+  status: "trusted" | "unknown" | "changed" | "revoked";
+  /** In OpenSSH's own format, so it can be compared with `ssh-keygen -lf`. */
+  fingerprint?: string | null;
+  algorithm?: string | null;
+  /** For `changed`: what `known_hosts` holds instead. Show both. */
+  storedFingerprint?: string | null;
+}
+
 /** A `Host` alias found in the user's OpenSSH configuration (mirror of Rust
  *  `ConfigAlias`). Candidates for the host picker — no resolved values, since
  *  resolving costs a process spawn and only the chosen one is worth it. */

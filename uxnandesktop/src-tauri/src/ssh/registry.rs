@@ -38,19 +38,32 @@ use crate::model::{SshHost, SshHostSource, SshHostTombstone};
 pub const MAX_TOMBSTONES: usize = 100;
 
 /// What the user filled in (or an import resolved) before an id exists.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Deserialized straight from the form: the frontend never invents an id, so
+/// there is one place ids come from and no way for the UI to overwrite a record
+/// by guessing one.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HostDraft {
     pub label: String,
+    #[serde(default)]
     pub config_host: Option<String>,
     pub hostname: String,
     pub port: u16,
     pub user: String,
+    #[serde(default)]
     pub identity_files: Vec<String>,
+    #[serde(default)]
     pub identity_agent: Option<String>,
+    #[serde(default)]
     pub identities_only: bool,
+    #[serde(default)]
     pub forward_agent: bool,
+    #[serde(default)]
     pub proxy_command: Option<String>,
+    #[serde(default)]
     pub proxy_jump: Option<String>,
+    #[serde(default)]
     pub source: SshHostSource,
 }
 

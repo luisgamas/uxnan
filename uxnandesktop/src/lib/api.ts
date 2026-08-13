@@ -32,6 +32,10 @@ import type {
   FileSearch,
   FsEntry,
   SshConfigAlias,
+  SshHost,
+  SshHostAdded,
+  SshHostDraft,
+  SshHostProbe,
   SshResolvedHost,
   GithubStatus,
   ImportablePet,
@@ -524,6 +528,38 @@ export function sshConfigHosts(): Promise<SshConfigAlias[]> {
  *  resolved, so we never quietly connect somewhere else. */
 export function sshConfigResolve(alias: string): Promise<SshResolvedHost> {
   return invoke<SshResolvedHost>('ssh_config_resolve', { alias });
+}
+
+/** The registered remote machines. */
+export function sshHostsList(): Promise<SshHost[]> {
+  return invoke<SshHost[]>('ssh_hosts_list');
+}
+
+/** Register a machine, or update the one already registered for it. Resolves
+ *  with `recovered: true` when a previously removed machine's id was reused —
+ *  its projects are live again and the user should be told. */
+export function sshHostAdd(draft: SshHostDraft): Promise<SshHostAdded> {
+  return invoke<SshHostAdded>('ssh_host_add', { draft });
+}
+
+/** Forget a machine, remembering enough to give its projects back if it returns.
+ *  Resolves `false` when no such host is registered (removing twice is fine). */
+export function sshHostRemove(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_remove', { hostId });
+}
+
+/** Reach a host and report what `known_hosts` says about the key it presents.
+ *  Writes nothing and offers no credential. On `unknown`, the backend holds the
+ *  key so `sshHostTrust` can record exactly what the server presented. */
+export function sshHostProbe(hostId: string): Promise<SshHostProbe> {
+  return invoke<SshHostProbe>('ssh_host_probe', { hostId });
+}
+
+/** Record the key the last probe saw, after the user confirmed its fingerprint.
+ *  Only valid right after an `unknown` probe — there is deliberately no way to
+ *  trust a *changed* key. */
+export function sshHostTrust(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_trust', { hostId });
 }
 
 // --- Filesystem: file tree + editor ----------------------------------------

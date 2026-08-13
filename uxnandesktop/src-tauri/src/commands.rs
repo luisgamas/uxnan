@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
-use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
+use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData, SshHost};
 use crate::ssh;
 use crate::state::{AppState, HookServerInfo};
 use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
@@ -784,6 +784,217 @@ pub async fn ssh_config_resolve(alias: String) -> Result<ssh::config::ResolvedHo
     ssh::config::resolve(&alias)
         .await
         .map_err(CommandError::from)
+}
+
+/// The registered remote machines.
+#[tauri::command]
+pub async fn ssh_hosts_list(state: State<'_, AppState>) -> Result<Vec<SshHost>, CommandError> {
+    Ok(state.data.read().await.settings.ssh_hosts.clone())
+}
+
+/// What adding a host did. `recovered` matters to the user: it means projects
+/// they thought were gone came back with the id, and saying so is better than
+/// having them reappear unannounced.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostAdded {
+    pub host: SshHost,
+    pub recovered: bool,
+    pub updated_existing: bool,
+}
+
+/// Register a machine (or update the one already registered for it).
+///
+/// Ids are minted here and nowhere else: the frontend sends a description, never
+/// an id, so there is no way for the UI to overwrite a record by guessing one.
+#[tauri::command]
+pub async fn ssh_host_add(
+    state: State<'_, AppState>,
+    draft: ssh::registry::HostDraft,
+) -> Result<SshHostAdded, CommandError> {
+    if draft.hostname.trim().is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "a host needs a hostname".to_string(),
+        )));
+    }
+    let mut data = state.data.write().await;
+    let settings = &mut data.settings;
+    let outcome = ssh::registry::add_host(
+        &mut settings.ssh_hosts,
+        &mut settings.removed_ssh_hosts,
+        draft,
+        || Uuid::new_v4().to_string(),
+    );
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(SshHostAdded {
+        host: outcome.host,
+        recovered: outcome.recovered,
+        updated_existing: outcome.updated_existing,
+    })
+}
+
+/// Forget a machine, remembering enough to give its projects back if it returns.
+/// Idempotent — removing an unknown id answers `false` rather than failing.
+#[tauri::command]
+pub async fn ssh_host_remove(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let mut data = state.data.write().await;
+    let settings = &mut data.settings;
+    let removed = ssh::registry::remove_host(
+        &mut settings.ssh_hosts,
+        &mut settings.removed_ssh_hosts,
+        &host_id,
+        now,
+    )
+    .is_some();
+    if removed {
+        state.persistence.save(&data).map_err(CommandError::from)?;
+    }
+    Ok(removed)
+}
+
+/// What reaching a host said about its identity, before any credential.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostProbe {
+    /// `trusted` | `unknown` | `changed` | `revoked`.
+    pub status: String,
+    /// The fingerprint to show the user, in OpenSSH's own format.
+    pub fingerprint: Option<String>,
+    pub algorithm: Option<String>,
+    /// For `changed`: what `known_hosts` has on file instead.
+    pub stored_fingerprint: Option<String>,
+}
+
+/// Reach a host and report what `known_hosts` says about the key it presents.
+///
+/// Nothing is written and no credential is offered. On `unknown` the key is held
+/// in memory so [`ssh_host_trust`] can record *exactly what the server
+/// presented* once the user confirms — the blob never travels through the UI.
+#[tauri::command]
+pub async fn ssh_host_probe(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<SshHostProbe, CommandError> {
+    let host = find_ssh_host(&state, &host_id).await?;
+    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
+    let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
+
+    match ssh::conn::connect(endpoint, &known)
+        .await
+        .map_err(CommandError::from)?
+    {
+        ssh::conn::Handshake::Ready(_) => Ok(SshHostProbe {
+            status: "trusted".into(),
+            fingerprint: None,
+            algorithm: None,
+            stored_fingerprint: None,
+        }),
+        ssh::conn::Handshake::Unknown { fingerprint, key } => {
+            let algorithm = key.algorithm.clone();
+            state.ssh_pending_keys.write().await.insert(host_id, key);
+            Ok(SshHostProbe {
+                status: "unknown".into(),
+                fingerprint: Some(fingerprint),
+                algorithm: Some(algorithm),
+                stored_fingerprint: None,
+            })
+        }
+        ssh::conn::Handshake::Changed {
+            presented_fingerprint,
+            stored_fingerprint,
+        } => Ok(SshHostProbe {
+            status: "changed".into(),
+            fingerprint: Some(presented_fingerprint),
+            algorithm: None,
+            stored_fingerprint: Some(stored_fingerprint),
+        }),
+        ssh::conn::Handshake::Revoked { fingerprint } => Ok(SshHostProbe {
+            status: "revoked".into(),
+            fingerprint: Some(fingerprint),
+            algorithm: None,
+            stored_fingerprint: None,
+        }),
+    }
+}
+
+/// Record the key a probe just saw, after the user confirmed the fingerprint.
+///
+/// Only ever appends the key **this app watched the server present**, and only
+/// for a host whose probe came back `unknown`. There is deliberately no way to
+/// trust a *changed* key from here: that path exists to be refused.
+#[tauri::command]
+pub async fn ssh_host_trust(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    let host = find_ssh_host(&state, &host_id).await?;
+    let Some(key) = state.ssh_pending_keys.write().await.remove(&host_id) else {
+        return Err(CommandError::from(AppError::Invalid(
+            "no host key is awaiting confirmation for this host".to_string(),
+        )));
+    };
+    let line = ssh::hostkey::trust_line(&host.hostname, host.port, &key);
+    append_known_host(&line).map_err(CommandError::from)?;
+    Ok(true)
+}
+
+async fn find_ssh_host(state: &AppState, host_id: &str) -> Result<SshHost, CommandError> {
+    state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .find(|h| h.id == host_id)
+        .cloned()
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("ssh host {host_id}"))))
+}
+
+fn known_hosts_path() -> Result<std::path::PathBuf, CommandError> {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .ok_or_else(|| {
+            CommandError::from(AppError::Invalid("no home directory to read".to_string()))
+        })?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".ssh")
+        .join("known_hosts"))
+}
+
+/// Append one line to `known_hosts`, creating `~/.ssh` if this is the first
+/// host ever trusted. Appends — never rewrites — so entries the user or their
+/// own `ssh` put there are untouched.
+fn append_known_host(line: &str) -> Result<(), AppError> {
+    use std::io::Write;
+    let path = known_hosts_path().map_err(|e| AppError::Invalid(e.message))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    // A file that does not end in a newline would otherwise glue our entry onto
+    // the last one and corrupt both.
+    let needs_newline = std::fs::metadata(&path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
+        && !std::fs::read_to_string(&path)
+            .map(|s| s.ends_with('\n'))
+            .unwrap_or(true);
+    if needs_newline {
+        file.write_all(b"\n")?;
+    }
+    writeln!(file, "{line}")?;
+    Ok(())
 }
 
 // --- Repositories ----------------------------------------------------------

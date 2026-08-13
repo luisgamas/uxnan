@@ -47,6 +47,14 @@ pub struct AppState {
     pub persistence: PersistenceManager,
     /// Live pseudoterminal sessions.
     pub pty: PtyManager,
+    /// Host keys seen during a probe, kept between "we asked" and "the user
+    /// said yes", keyed by host id.
+    ///
+    /// The key never travels to the frontend and back. The UI is shown a
+    /// fingerprint and returns a decision, not a blob it could have altered —
+    /// what gets written to `known_hosts` is exactly what the server presented.
+    pub ssh_pending_keys:
+        Arc<RwLock<std::collections::HashMap<String, crate::ssh::hostkey::PresentedKey>>>,
     /// Worktree path the right panel is reviewing, polled for status while set
     /// (the background git watcher reads this). `None` = nothing to watch.
     pub git_watch: Arc<RwLock<Option<String>>>,
@@ -105,6 +113,7 @@ impl AppState {
             data: RwLock::new(data),
             persistence,
             pty: PtyManager::default(),
+            ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),
             browse_watcher: BrowseWatcher::default(),

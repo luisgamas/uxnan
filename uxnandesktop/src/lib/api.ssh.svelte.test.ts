@@ -9,8 +9,16 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { installFakeBackend, type FakeBackend } from "../test/tauri";
-import { sshConfigHosts, sshConfigResolve } from "$lib/api";
-import type { SshResolvedHost } from "$lib/types";
+import {
+  sshConfigHosts,
+  sshConfigResolve,
+  sshHostAdd,
+  sshHostProbe,
+  sshHostRemove,
+  sshHostTrust,
+  sshHostsList,
+} from "$lib/api";
+import type { SshHost, SshHostDraft, SshResolvedHost } from "$lib/types";
 
 const RESOLVED: SshResolvedHost = {
   hostname: "10.0.0.5",
@@ -65,5 +73,83 @@ describe("ssh config API", () => {
       },
     });
     await expect(sshConfigResolve("nope")).rejects.toThrow(/no such host/);
+  });
+});
+
+const HOST: SshHost = {
+  id: "h1",
+  label: "build-box",
+  hostname: "10.0.0.5",
+  port: 22,
+  user: "dev",
+};
+
+describe("ssh host registry API", () => {
+  let backend: FakeBackend;
+
+  beforeEach(() => {
+    backend = installFakeBackend({
+      ssh_hosts_list: () => [HOST],
+      ssh_host_add: () => ({ host: HOST, recovered: false, updatedExisting: false }),
+      ssh_host_remove: () => true,
+      ssh_host_probe: () => ({
+        status: "unknown",
+        fingerprint: "SHA256:abc",
+        algorithm: "ssh-ed25519",
+      }),
+      ssh_host_trust: () => true,
+    });
+  });
+
+  it("lists registered hosts", async () => {
+    const hosts = await sshHostsList();
+    expect(hosts.map((h) => h.id)).toEqual(["h1"]);
+  });
+
+  it("sends the draft under the key the Rust command expects, and never an id", async () => {
+    const draft: SshHostDraft = {
+      label: "build-box",
+      hostname: "10.0.0.5",
+      port: 22,
+      user: "dev",
+    };
+    await sshHostAdd(draft);
+    const args = backend.lastCallTo("ssh_host_add")?.args;
+    expect(args).toEqual({ draft });
+    // Ids are minted by the backend; a UI that could send one could overwrite
+    // an unrelated record by guessing it.
+    expect(JSON.stringify(args)).not.toContain('"id"');
+  });
+
+  it("reports a recovered host so the UI can say projects came back", async () => {
+    backend.setCommands({
+      ssh_host_add: () => ({ host: HOST, recovered: true, updatedExisting: false }),
+    });
+    const result = await sshHostAdd({ label: "x", hostname: "10.0.0.5", port: 22, user: "dev" });
+    expect(result.recovered).toBe(true);
+  });
+
+  it("passes the host id for remove, probe and trust", async () => {
+    await sshHostRemove("h1");
+    await sshHostProbe("h1");
+    await sshHostTrust("h1");
+    for (const command of ["ssh_host_remove", "ssh_host_probe", "ssh_host_trust"]) {
+      expect(backend.lastCallTo(command)?.args).toEqual({ hostId: "h1" });
+    }
+  });
+
+  it("surfaces an unknown host key with its fingerprint, not as an error", async () => {
+    const probe = await sshHostProbe("h1");
+    expect(probe.status).toBe("unknown");
+    expect(probe.fingerprint).toBe("SHA256:abc");
+  });
+
+  it("propagates a refused trust instead of pretending it worked", async () => {
+    backend.setCommands({
+      ssh_host_trust: () => {
+        throw new Error("no host key is awaiting confirmation for this host");
+      },
+    });
+    await expect(sshHostTrust("h1")).rejects.toThrow(/awaiting confirmation/);
   });
 });
