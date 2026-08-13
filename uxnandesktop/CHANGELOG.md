@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Folders on a host can be browsed, and one can become a project.** There is no
+  filesystem to walk on another machine, only a shell, so the host is asked to
+  enumerate a directory and the answer is parsed — one command with delimited
+  output, for the same reason as the inventory. Only directories come back: a
+  project is a folder, and shipping thousands of files nobody can pick is bytes
+  spent on noise. A listing that had to be cut says so, because a picker quietly
+  showing 500 of 3,000 folders is one that cannot find yours and will not admit
+  it. Whether the folder is a git repository is asked of the host too — only it
+  can answer, and guessing wrong would leave a real repository with permanently
+  empty git panels.
 - **A terminal only inherits a folder from its own machine.** Opening a terminal
   on a host while a *local* project was the active workspace handed the remote
   shell a local path; it tried to `cd` somewhere that does not exist there and

@@ -1200,6 +1200,86 @@ pub async fn ssh_host_inventory(
         .map_err(CommandError::from)
 }
 
+/// List the directories inside `path` on a connected host, for the picker that
+/// adds a project living there. An empty `path` starts at that machine's home.
+#[tauri::command]
+pub async fn ssh_browse_dirs(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<ssh::browse::RemoteListing, CommandError> {
+    let sessions = state.ssh_sessions.read().await;
+    let Some(conn) = sessions.get(&host_id) else {
+        return Err(CommandError::from(AppError::Invalid(
+            "connect to this host before browsing it".to_string(),
+        )));
+    };
+    ssh::browse::list_dirs(conn, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Register a folder that lives on a host as a project.
+///
+/// The path is the host's, so it is stored exactly as that machine spells it;
+/// the identity is the pair `(target, path)`, which is why the same absolute
+/// path on two machines is two projects rather than one.
+#[tauri::command]
+pub async fn ssh_repo_add(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<RepoData, CommandError> {
+    let path = path.trim().to_string();
+    if path.is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "a project needs a folder".to_string(),
+        )));
+    }
+    let target = TargetId::Ssh(host_id.clone());
+    // Ask the host whether this is a git repository, the same question the local
+    // path asks — a plain folder is a valid project too, it just has no branches.
+    let is_git = {
+        let sessions = state.ssh_sessions.read().await;
+        let Some(conn) = sessions.get(&host_id) else {
+            return Err(CommandError::from(AppError::Invalid(
+                "connect to this host before adding a project on it".to_string(),
+            )));
+        };
+        ssh::browse::is_git_repo(conn, &path).await
+    };
+
+    let mut data = state.data.write().await;
+    if let Some(existing) = data
+        .repos
+        .iter()
+        .find(|r| r.target == target && r.path == path)
+    {
+        return Ok(existing.clone());
+    }
+    let name = path
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&path)
+        .to_string();
+    let repo = RepoData {
+        id: Uuid::new_v4().to_string(),
+        name,
+        path,
+        target,
+        worktrees: Vec::new(),
+        is_git,
+        icon: None,
+        branch_icons: std::collections::HashMap::new(),
+        worktree_order: Vec::new(),
+    };
+    data.repos.push(repo.clone());
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(repo)
+}
+
 /// Drop a host's session. Idempotent — disconnecting one that is not connected
 /// answers `false` rather than failing.
 #[tauri::command]

@@ -368,6 +368,8 @@ pub fn run() {
             commands::ssh_host_disconnect,
             commands::ssh_hosts_connected,
             commands::ssh_host_inventory,
+            commands::ssh_browse_dirs,
+            commands::ssh_repo_add,
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,

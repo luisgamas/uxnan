@@ -22,6 +22,7 @@
 //! the keys held here without a private key ever being copied.
 
 pub mod auth;
+pub mod browse;
 pub mod config;
 pub mod conn;
 pub mod hostkey;

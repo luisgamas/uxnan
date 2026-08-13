@@ -410,6 +410,34 @@ Validado en vivo contra un `sshd` real: abrir, escribir un comando, leer su eco,
 redimensionar y cerrar; crear dos veces el mismo id no abre dos terminales; y
 desconectar el host hace que la terminal reporte salida.
 
+## 5.8 Explorar carpetas del host — IMPLEMENTADO
+
+`src-tauri/src/ssh/browse.rs`. En la otra maquina no hay filesystem que recorrer,
+solo un shell: se le pide que enumere un directorio y se parsea la respuesta. Un
+comando, salida entre marcadores, por lo mismo que §5.6.
+
+**Solo directorios.** Un proyecto es una carpeta; mandar miles de ficheros que
+nadie va a elegir es gastar bytes y segundos en ruido. Un listado que hubo que
+**cortar lo dice** (`truncated`): un selector que enseña 500 de 3.000 carpetas en
+silencio es un selector que no encuentra la tuya y encima no lo admite.
+
+**El separador y el padre los pone el host**, no esta maquina: un host Windows
+explorado desde Linux tiene que devolver rutas que *ese* host pueda abrir. En la
+raiz no se reporta padre, porque un "subir" que no sube es una afordancia que
+miente.
+
+**Si la carpeta es un repositorio git se le pregunta al host.** Solo el puede
+responder, y adivinar mal dejaria un repositorio real con sus paneles de git
+vacios para siempre. Si la pregunta falla se responde "no": un proyecto que
+funciona menos sus ramas es mejor que negarse a añadirlo.
+
+Comandos: `ssh_browse_dirs` y `ssh_repo_add`. Este ultimo registra el proyecto con
+`target = ssh:<hostId>` y la ruta **tal como la escribe el host**; la identidad es
+el par, asi que la misma ruta absoluta en dos maquinas son dos proyectos.
+
+Validado en vivo: listar el home de una maquina Windows (63 carpetas) y entrar en
+una de ellas, comprobando que la ruta devuelta es la que el host abre.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
