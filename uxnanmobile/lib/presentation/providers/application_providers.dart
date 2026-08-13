@@ -189,6 +189,18 @@ final bridgeSupportsQueueProvider = Provider<bool>((ref) {
   return ref.watch(bridgeStatusProvider).value?.supportsMessageQueue ?? false;
 });
 
+/// Whether the connected bridge places a new worktree itself
+/// (`bridge/status` → `features.managedWorktrees`), so the phone can create one
+/// without naming a path and let both apps group a repository's checkouts in
+/// the same folder.
+///
+/// **False whenever we don't know**, which keeps the phone on the derived-path
+/// fallback — an older bridge rejects `git/createWorktree` without a `path`.
+final bridgeSupportsManagedWorktreesProvider = Provider<bool>((ref) {
+  return ref.watch(bridgeStatusProvider).value?.supportsManagedWorktrees ??
+      false;
+});
+
 /// Tracks the bridge `latestVersion`s the user dismissed so the informational
 /// "bridge update available" banner stays hidden until a newer bridge appears.
 /// In-memory (per app session); the banner reappears next launch if the bridge
@@ -903,8 +915,10 @@ final projectsProvider = FutureProvider<List<Project>>((ref) {
 /// found"; [ThreadManager.loadWorktrees] turns that into an empty list, this
 /// table stays empty, and the folder list falls back to exactly the flat
 /// behaviour it had before — no error, no guess. That is why the hierarchy is
-/// never inferred from path prefixes: worktrees are siblings on disk, so a
-/// prefix would be a guess wearing the clothes of a fact.
+/// never inferred from path prefixes: a worktree can live anywhere, and the
+/// ones grouped under the folder uxnan manages share a prefix with worktrees of
+/// OTHER repositories — so a prefix would be a guess wearing the clothes of a
+/// fact.
 final workspaceRepoTableProvider = FutureProvider<Map<String, WorkspaceRepo>>((
   ref,
 ) async {

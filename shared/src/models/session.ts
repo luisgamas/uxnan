@@ -77,4 +77,17 @@ export interface BridgeFeatures {
    * whether it waits there or goes straight through.
    */
   midTurnDelivery?: boolean;
+  /**
+   * The bridge resolves where a worktree goes on its own, so `git/createWorktree`
+   * accepts `managed: true` **without** a `path` and places it under the managed
+   * root (`<home>/uxnan/worktrees/<repo>/<branch>` by default) — the same layout
+   * the desktop uses, so one repository's checkouts stay grouped no matter which
+   * app created them.
+   *
+   * Absent/false → the bridge still **requires** `path`, and a client must keep
+   * deriving one itself. That fallback is worth keeping aligned with the
+   * desktop's spelling: the two derivations had already drifted into different
+   * folder names for the same repository and branch.
+   */
+  managedWorktrees?: boolean;
 }

@@ -12,8 +12,12 @@ use uuid::Uuid;
 use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
-use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
+use crate::model::{
+    AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData, WorktreeLocationMode,
+};
 use crate::state::{AppState, HookServerInfo};
+use crate::worktreeclean;
+use crate::worktreeloc::{self, Resolved};
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -785,6 +789,7 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
         icon: None,
         branch_icons: std::collections::HashMap::new(),
         worktree_order: Vec::new(),
+        worktree_root: None,
     };
     data.repos.push(repo.clone());
     state.persistence.save(&data).map_err(CommandError::from)?;
@@ -988,6 +993,306 @@ pub async fn branch_list(
     })
 }
 
+/// Resolve where a worktree for `branch` goes, from the settings that apply to
+/// this project: the global layout, plus the effective root — the project's own
+/// override first, then the global custom root (which only a `custom` layout
+/// uses; a leftover value must not silently move a `managed` project).
+async fn resolve_worktree_location(
+    state: &AppState,
+    repo_id: &str,
+    repo_path: &str,
+    branch: &str,
+) -> Result<Resolved, CommandError> {
+    let (mode, root) = {
+        let data = state.data.read().await;
+        let settings = data.settings.worktrees.clone();
+        let project_root = data
+            .repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .and_then(|r| r.worktree_root.clone());
+        let global_root = match settings.location {
+            WorktreeLocationMode::Custom => settings.root.clone(),
+            _ => None,
+        };
+        (settings.location, project_root.or(global_root))
+    };
+    worktreeloc::resolve(repo_path, branch, mode, root.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The git identity commits are authored with (Settings → Git), read from the
+/// global/system config rather than any open repository. Never fails: an unset
+/// field comes back as `null` so the pane can say so — an identity that isn't
+/// set is exactly what makes `git commit` fail later.
+#[tauri::command]
+pub async fn git_identity() -> Result<git::GitIdentity, CommandError> {
+    let home = agent_hooks::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+    Ok(git::identity(&home).await)
+}
+
+/// Where a worktree for `branch` **would** be created, for the create dialog's
+/// location field. Read-only — it neither creates directories nor claims a
+/// group, so it is safe to call while the user is still typing the branch name.
+#[tauri::command]
+pub async fn worktree_preview_path(
+    state: State<'_, AppState>,
+    repo_id: String,
+    branch: String,
+) -> Result<String, CommandError> {
+    let branch = branch.trim().to_string();
+    if branch.is_empty() {
+        return Ok(String::new());
+    }
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    Ok(
+        resolve_worktree_location(&state, &repo_id, &repo_path, &branch)
+            .await?
+            .path,
+    )
+}
+
+/// Set (or clear, with `None`/blank) a project's own managed-worktree root, so a
+/// repository can live somewhere else than the global setting says.
+#[tauri::command]
+pub async fn repo_set_worktree_root(
+    state: State<'_, AppState>,
+    repo_id: String,
+    root: Option<String>,
+) -> Result<RepoData, CommandError> {
+    let root = root
+        .map(|r| worktreeloc::normalize(r.trim()))
+        .filter(|r| !r.is_empty());
+    if let Some(root) = root.as_deref() {
+        if !std::path::Path::new(root).is_absolute() {
+            return Err(CommandError::from(AppError::Invalid(
+                "worktree root must be an absolute path".to_string(),
+            )));
+        }
+    }
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == repo_id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?;
+    repo.worktree_root = root;
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(updated)
+}
+
+/// Every managed root worth scanning for cleanup: the global one (default or
+/// custom) plus each project's own override. Deduplicated, and **only** these —
+/// the cleanup screen never looks anywhere else, which is what makes it safe to
+/// offer a delete button at all.
+pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
+    let (global, overrides) = {
+        let data = state.data.read().await;
+        let settings = data.settings.worktrees.clone();
+        let overrides: Vec<String> = data
+            .repos
+            .iter()
+            .filter_map(|r| r.worktree_root.clone())
+            .collect();
+        (settings, overrides)
+    };
+    let mut roots: Vec<String> = Vec::new();
+    let default_root = agent_hooks::home_dir()
+        .map(|home| worktreeloc::default_root(&home.to_string_lossy()))
+        .unwrap_or_default();
+    // The sibling layout has no root of its own, so nothing to scan; the managed
+    // default still applies to any project that overrode nothing.
+    for candidate in std::iter::once(match global.location {
+        WorktreeLocationMode::Custom => global
+            .root
+            .clone()
+            .filter(|r| !r.trim().is_empty())
+            .unwrap_or(default_root.clone()),
+        _ => default_root.clone(),
+    })
+    .chain(overrides)
+    {
+        let normalized = worktreeloc::normalize(candidate.trim());
+        if !normalized.is_empty() && !roots.contains(&normalized) {
+            roots.push(normalized);
+        }
+    }
+    roots
+}
+
+/// Registered projects whose folder is not on disk right now, by id.
+///
+/// **Not proof that anything was deleted.** An unmounted drive, an offline
+/// network share and a cloud placeholder all look exactly like this, which is
+/// why the app only *marks* such a project and stops spending work on it —
+/// polling git and `gh` against a path that is not there produces nothing but
+/// errors — and never removes it. Removing stays the user's call.
+#[tauri::command]
+pub async fn repos_missing(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    let repos: Vec<(String, String)> = state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .map(|r| (r.id.clone(), r.path.clone()))
+        .collect();
+    Ok(repos
+        .into_iter()
+        .filter(|(_, path)| !std::path::Path::new(path).is_dir())
+        .map(|(id, _)| id)
+        .collect())
+}
+
+/// A project still carrying worktree bookkeeping for folders that are gone.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaleWorktrees {
+    pub repo_id: String,
+    pub name: String,
+    /// Paths git still lists that are not on disk.
+    pub paths: Vec<String>,
+}
+
+/// Projects whose git bookkeeping still lists worktrees that are gone.
+///
+/// Read-only, and it deliberately skips a project whose own folder is missing:
+/// there is no repository left to ask, and the answer for that is to deal with
+/// the project itself.
+#[tauri::command]
+pub async fn worktree_stale_scan(
+    state: State<'_, AppState>,
+) -> Result<Vec<StaleWorktrees>, CommandError> {
+    let repos: Vec<(String, String, String)> = state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .filter(|r| r.is_git)
+        .map(|r| (r.id.clone(), r.name.clone(), r.path.clone()))
+        .collect();
+
+    let mut found = Vec::new();
+    for (repo_id, name, path) in repos {
+        if !std::path::Path::new(&path).is_dir() {
+            continue;
+        }
+        let paths = git::stale_worktrees(&path).await;
+        if !paths.is_empty() {
+            found.push(StaleWorktrees {
+                repo_id,
+                name,
+                paths,
+            });
+        }
+    }
+    Ok(found)
+}
+
+/// Drop a project's bookkeeping for worktrees whose folders are gone
+/// (`git worktree prune`).
+///
+/// Safe in a way the cleanup is not: it removes **records, never files** — the
+/// directories it forgets are already missing. It is still never automatic,
+/// because a folder that is absent today can be a drive that is plugged in
+/// tomorrow, and pruning first would leave that checkout orphaned from its
+/// repository.
+#[tauri::command]
+pub async fn worktree_prune(
+    state: State<'_, AppState>,
+    repo_id: String,
+) -> Result<Vec<String>, CommandError> {
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    git::prune_worktrees(&repo_path).await;
+    Ok(git::stale_worktrees(&repo_path).await)
+}
+
+/// How many worktree folders the managed roots hold — the cheap question the
+/// status bar asks at startup to decide whether to mention the folder at all.
+/// Directory counting only: no git, and emphatically no size walk.
+#[tauri::command]
+pub async fn worktree_cleanup_count(state: State<'_, AppState>) -> Result<u32, CommandError> {
+    let roots = managed_roots(&state).await;
+    Ok(worktreeclean::count(&roots).await)
+}
+
+/// The managed `repos` folder — where the clone flow suggests putting a
+/// repository. Not configurable: the clone destination is an editable
+/// suggestion, so the only folder the cleanup may consider its own is this one.
+/// A repository the user keeps anywhere else is never listed and never touched.
+fn repos_root() -> String {
+    agent_hooks::home_dir()
+        .map(|home| {
+            format!(
+                "{}/uxnan/repos",
+                worktreeloc::normalize(&home.to_string_lossy())
+            )
+        })
+        .unwrap_or_default()
+}
+
+/// The paths of the repositories currently registered as projects. A worktree
+/// under a managed root whose repository is not among them belongs to a project
+/// the user closed — removing one touches nothing on disk, so its worktrees stay
+/// behind, and this is what lets the cleanup see them.
+async fn project_paths(state: &AppState) -> Vec<String> {
+    state
+        .data
+        .read()
+        .await
+        .repos
+        .iter()
+        .map(|r| r.path.clone())
+        .collect()
+}
+
+/// Worktrees inside the managed folder that can be cleaned up, plus the ones
+/// blocked by uncommitted work (listed, never removable). Read-only.
+#[tauri::command]
+pub async fn worktree_cleanup_scan(
+    state: State<'_, AppState>,
+) -> Result<Vec<worktreeclean::CleanupCandidate>, CommandError> {
+    let roots = managed_roots(&state).await;
+    let projects = project_paths(&state).await;
+    let busy = state.pty.live_cwds();
+    let mut found = worktreeclean::scan(&roots, &projects, &busy).await;
+    found.extend(worktreeclean::scan_clones(&repos_root(), &projects, &busy).await);
+    Ok(found)
+}
+
+/// Size on disk of each given worktree, in bytes, in the order asked.
+///
+/// Separate from the scan on purpose: walking a checkout's `node_modules` costs
+/// far more than every git query in the scan combined, so the list appears
+/// immediately and the sizes fill in.
+#[tauri::command]
+pub async fn worktree_cleanup_sizes(paths: Vec<String>) -> Result<Vec<u64>, CommandError> {
+    let mut sizes = Vec::with_capacity(paths.len());
+    for path in paths {
+        sizes.push(worktreeclean::dir_size(path).await);
+    }
+    Ok(sizes)
+}
+
+/// Remove the given worktrees. Every path is re-verified against a fresh scan —
+/// inside a managed root, still disposable, still clean — so a stale list can
+/// never delete the wrong folder.
+#[tauri::command]
+pub async fn worktree_cleanup_remove(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<worktreeclean::CleanupOutcome, CommandError> {
+    let roots = managed_roots(&state).await;
+    let projects = project_paths(&state).await;
+    let busy = state.pty.live_cwds();
+    Ok(worktreeclean::remove(&roots, &repos_root(), &projects, &busy, &paths).await)
+}
+
 /// Create a worktree in the given repo. Two modes:
 /// - **new branch** (`from_existing = false`): create `branch` from `base` (or
 ///   the repo's resolved default base — remote HEAD → main → master → HEAD);
@@ -995,9 +1300,11 @@ pub async fn branch_list(
 ///   local or remote-only `branch` (a remote-only one gets a local tracking
 ///   branch), ignoring `base`.
 ///
-/// `path` is an optional custom worktree directory (must be absolute and not yet
-/// exist); when omitted the backend uses the automatic sibling location
-/// `<repo>--<branch>`. Returns the created entry as git itself lists it.
+/// `path` is an optional custom worktree directory for this one creation (must
+/// be absolute and not yet exist); when omitted the backend resolves the
+/// location from the user's settings — by default the managed root
+/// `<home>/uxnan/worktrees/<repo>/<branch>` (`worktreeloc.rs`). Returns the
+/// created entry as git itself lists it.
 #[tauri::command]
 pub async fn worktree_create(
     state: State<'_, AppState>,
@@ -1016,9 +1323,9 @@ pub async fn worktree_create(
     let repo_path = repo_path_of(&state, &repo_id).await?;
     let from_existing = from_existing.unwrap_or(false);
 
-    // Resolve the worktree location: a custom absolute path, or the automatic
-    // sibling. A custom path is normalized to forward slashes (matching git's own
-    // spelling) and must be absolute and not already exist.
+    // Resolve the worktree location: a custom absolute path for this creation,
+    // or the configured layout. A custom path is normalized to forward slashes
+    // (matching git's own spelling) and must be absolute and not already exist.
     let worktree_path = match path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
         Some(custom) => {
             let normalized = custom.replace('\\', "/");
@@ -1035,7 +1342,11 @@ pub async fn worktree_create(
             }
             normalized
         }
-        None => git::worktree_path_for(&repo_path, &branch),
+        None => {
+            let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
+            worktreeloc::prepare(&resolved).await;
+            resolved.path
+        }
     };
 
     if from_existing {
@@ -2230,7 +2541,9 @@ pub async fn github_pr_checkout(
     git::fetch(&repo_path, &format!("pull/{number}/head"))
         .await
         .map_err(CommandError::from)?;
-    let worktree_path = git::worktree_path_for(&repo_path, &branch);
+    let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
+    worktreeloc::prepare(&resolved).await;
+    let worktree_path = resolved.path;
     git::add_worktree(&repo_path, &branch, &worktree_path, Some("FETCH_HEAD"))
         .await
         .map_err(CommandError::from)?;
@@ -2377,15 +2690,20 @@ pub async fn github_issue_develop(
     let repo_path = repo_path_of(&state, &repo_id).await?;
     let branch = branch_or_default(branch, || format!("issue-{number}"))?;
     // If a worktree for this branch already exists (a re-run), just return it.
-    let worktree_path = git::worktree_path_for(&repo_path, &branch);
-    if std::path::Path::new(&worktree_path).exists() {
-        return Ok(WorktreeEntry {
-            path: worktree_path,
-            branch: Some(branch),
-            head: None,
-            is_main: false,
-        });
+    // Asked of git rather than guessed from a path, so a re-run finds the
+    // existing checkout wherever it lives — including one created under the
+    // previous sibling layout, or moved by hand.
+    if let Ok(entries) = git::list_worktrees(&repo_path).await {
+        if let Some(existing) = entries
+            .into_iter()
+            .find(|e| e.branch.as_deref() == Some(branch.as_str()))
+        {
+            return Ok(existing);
+        }
     }
+    let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
+    worktreeloc::prepare(&resolved).await;
+    let worktree_path = resolved.path;
     // Prefer GitHub's linked branch. When the account can read the issue but may
     // not mutate the repository, fall back to a regular local branch rather than
     // making the issue launcher unusable. Authentication/network failures still

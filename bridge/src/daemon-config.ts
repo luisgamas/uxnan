@@ -14,6 +14,17 @@ import { DEFAULT_LAN_PORT, DEFAULT_RELAY_URL, type AgentConfig, type AgentId } f
 export type AgentPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
 /**
+ * Where the bridge puts a worktree it places itself. The layout lives in
+ * `git/worktree-location.ts`, mirroring the desktop's `worktreeloc.rs`; this is
+ * only the choice of it.
+ */
+export interface WorktreesConfig {
+  location: 'managed' | 'sibling' | 'custom';
+  /** Absolute root for `custom`; ignored by the other modes. */
+  root?: string;
+}
+
+/**
  * An explicit model to surface in the phone's model picker, declared in config.
  *
  * Use this to pin concrete, versioned models alongside an agent's own
@@ -115,6 +126,15 @@ export interface DaemonConfig {
    * `Documents` folder.
    */
   browseRoots: string[];
+  /**
+   * Where `git/createWorktree` puts a worktree when the client does not name a
+   * path. Mirrors the desktop's Settings → Git so one repository's checkouts
+   * stay grouped in one place no matter which app created them:
+   * - `managed` (default) → `<home>/uxnan/worktrees/<repo>/<branch>`;
+   * - `sibling` → `<parent>/<repo>--<branch>` (the pre-managed layout);
+   * - `custom` → the managed layout under {@link WorktreesConfig.root}.
+   */
+  worktrees: WorktreesConfig;
   /** Per-agent settings keyed by {@link AgentId}. */
   agents: Partial<Record<AgentId, AgentSettings>>;
   /**
@@ -148,6 +168,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   checkpointTtlDays: 0,
   workspaceRoots: [],
   browseRoots: [],
+  worktrees: { location: 'managed' },
   projectAgents: [],
   // Seed Claude Code with the concrete, currently-available versions its CLI
   // accepts, so the picker shows exact models out of the box alongside the

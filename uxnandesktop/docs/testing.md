@@ -162,7 +162,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,052 passing tests** across both
+ships in every build and is never shown). **1,061 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

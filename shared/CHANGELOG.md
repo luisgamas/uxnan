@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — the README badge undercounted the methods
+
+`69 methods` on the badge against `70 JSON-RPC methods` in the prose two lines
+below it, with `METHOD_NAMES` holding 70. The bridge's README carried the same
+stale badge. Both now say 70.
+
+### Changed — `git/createWorktree` can let the bridge place the worktree
+
+`GitWorktreeParams.path` is now **optional**. Omitted (with `managed`), the
+bridge resolves the location itself, under the same managed layout the desktop
+uses: `<home>/uxnan/worktrees/<repo>/<branch>` by default, configurable to the
+old `<repo>--<branch>` sibling or to a root of the user's own.
+
+This closes a real divergence rather than adding an option. The path used to be
+derived by every client, and the two derivations had drifted: for one repository
+and one branch, the desktop produced `<repo>--<branch>` and the phone
+`<repo>-<branch>`, with different sanitizing rules — so the same project's
+checkouts ended up split across two folder schemes depending on which app made
+them.
+
+`BridgeFeatures.managedWorktrees` says whether a bridge can do this. It is
+additive, like every other flag there: absent means the bridge still requires
+`path`, and a client that supports older bridges keeps deriving one as its
+fallback.
+
 ## [0.0.14-alpha.20260810] - 2026-08-10
 
 ### Added — `git/worktrees`

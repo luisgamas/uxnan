@@ -17,6 +17,8 @@ import {
   repoRemove,
   repoReorder as apiRepoReorder,
   repoSetBranchIcon,
+  repoSetWorktreeRoot,
+  reposMissing,
   repoUpdate,
   setWorktreeOrder as apiSetWorktreeOrder,
   worktreeCreate,
@@ -573,6 +575,29 @@ class ProjectsStore {
   private worktreeRefreshInFlight = false;
   /** When the last worktree-list reconcile pass started (policy pacing). */
   #lastReconcile = 0;
+
+  /** Projects whose folder is not on disk right now, by id.
+   *
+   *  NOT proof anything was deleted — an unmounted drive, an offline share and
+   *  a cloud placeholder all look like this. So the app marks them and stops
+   *  spending work on them (polling git and `gh` at a path that is not there
+   *  produces nothing but errors, forever) and never removes them itself. */
+  missingRepoIds = $state<Set<string>>(new Set());
+
+  /** Whether a project's folder is currently missing. */
+  isMissing(repoId: string): boolean {
+    return this.missingRepoIds.has(repoId);
+  }
+
+  /** Re-read which projects are missing. Cheap: one directory check each. */
+  async refreshMissing(): Promise<void> {
+    try {
+      this.missingRepoIds = new Set(await reposMissing());
+    } catch {
+      // Unknown is treated as present: marking a project missing on a failed
+      // check would hide a working project behind a warning.
+    }
+  }
   /** Single-flight + rate-limit state for the all-worktree status sweep. */
   #sweepInFlight = false;
   #lastSweep = 0;
@@ -650,8 +675,13 @@ class ProjectsStore {
     this.#lastReconcile = Date.now();
     this.worktreeRefreshInFlight = true;
     try {
+      await this.refreshMissing();
       await Promise.all(
         app.repos.map(async (repo) => {
+          // A project whose folder is gone has nothing to reconcile, and asking
+          // anyway is what turned one deleted folder into an endless stream of
+          // failed git and `gh` spawns.
+          if (this.isMissing(repo.id)) return;
           try {
             const list = await worktreeList(repo.id);
             const current = this.worktreesByRepo[repo.id] ?? [];
@@ -737,6 +767,8 @@ class ProjectsStore {
   allWorktreePaths(): string[] {
     const out: string[] = [];
     for (const repo of app.repos) {
+      // Feeds the GitHub badge poll: a missing project must not be polled.
+      if (this.isMissing(repo.id)) continue;
       const list = this.worktreesOf(repo.id);
       if (list.length) out.push(...list.map((w) => w.path));
       else if (repo.isGit !== false) out.push(repo.path);
@@ -989,6 +1021,16 @@ class ProjectsStore {
       toastError(e);
       return false;
     }
+  }
+
+  /** Set (or clear with null) this project's own managed-worktree root, which
+   *  overrides Settings → Git for this repository only. Reconciles the returned
+   *  repo into `app.repos`. Rethrows, so the dialog can keep what was typed and
+   *  show why an invalid path was refused. */
+  async setWorktreeRoot(repoId: string, root: string | null): Promise<void> {
+    const updated = await repoSetWorktreeRoot(repoId, root);
+    const i = app.repos.findIndex((r) => r.id === repoId);
+    if (i !== -1) app.repos[i] = updated;
   }
 
   /** Set (or clear with null) a per-branch icon, keyed by branch name (or the

@@ -368,6 +368,108 @@ export interface AppSettings {
    *  per-capability overrides. Absent = `balanced` (the pre-mode behavior).
    *  Validated and resolved by `$lib/resources/policy`. */
   resourceMode?: ResourceModeSettings;
+  /** Where new worktrees are created. Absent = the managed root
+   *  (`<home>/uxnan/worktrees/<repo>/<branch>`). Only affects worktrees created
+   *  from now on: the ones already on disk are read from git and keep working
+   *  wherever they live. */
+  worktrees?: WorktreeSettings;
+}
+
+/** The git identity commits are authored with (mirror of the Rust
+ *  `GitIdentity`), read from the global/system config — not from any open
+ *  repository, which can override it for itself. Every field is optional: an
+ *  unset identity is a real state, and it is what makes `git commit` fail. */
+export interface GitIdentity {
+  name?: string | null;
+  email?: string | null;
+  /** `init.defaultBranch` — what `git init` names the first branch. */
+  defaultBranch?: string | null;
+  /** The `git --version` number. Absent = git is not on PATH. */
+  version?: string | null;
+}
+
+/** Why a worktree is offered for cleanup — or refused (mirror of the Rust
+ *  `CleanupReason`). The backend classifies; the frontend words it. */
+export type WorktreeCleanupReason =
+  | "repoGone"
+  | "notAWorktree"
+  | "merged"
+  | "branchGone"
+  | "projectRemoved"
+  | "cloneFullyPushed"
+  | "uncommittedChanges"
+  | "unpushedCommits"
+  | "hasStashes"
+  | "noRemote"
+  | "hasWorktrees"
+  | "inUse";
+
+/** Which bucket a cleanup candidate belongs to (mirror of `CleanupKind`).
+ *  `blocked` is listed but never removable — it exists so "why isn't this
+ *  offered?" is answered on screen instead of by its absence. */
+export type WorktreeCleanupKind =
+  | "orphaned"
+  | "finished"
+  | "unregistered"
+  | "clone"
+  | "blocked";
+
+/** A project still carrying git bookkeeping for worktrees that are gone
+ *  (mirror of the Rust `StaleWorktrees`). Pruning it removes records, never
+ *  files — the directories it forgets are already missing. */
+export interface StaleWorktrees {
+  repoId: string;
+  name: string;
+  /** Paths git still lists that are not on disk. */
+  paths: string[];
+}
+
+/** Which of the two things a cleanup candidate is (mirror of `CleanupScope`).
+ *  Stated by the backend, not inferred here: a blocked row can be either, and
+ *  guessing from the reason breaks as soon as both kinds share one. */
+export type WorktreeCleanupScope = "worktree" | "clone";
+
+/** One worktree the cleanup screen can show (mirror of `CleanupCandidate`).
+ *  Only ever a folder inside a managed root. */
+export interface WorktreeCleanupCandidate {
+  path: string;
+  /** The group folder — the repository's name, for display. */
+  group: string;
+  /** The worktree's own folder name. */
+  name: string;
+  branch?: string | null;
+  scope: WorktreeCleanupScope;
+  kind: WorktreeCleanupKind;
+  reason: WorktreeCleanupReason;
+  /** The count the reason needs: dirty files, unpushed commits, or worktrees
+   *  still out — whichever the reason is about. */
+  changedFiles?: number | null;
+  repoPath?: string | null;
+}
+
+/** What a cleanup run did (mirror of `CleanupOutcome`). A refusal is reported
+ *  rather than silently skipped: a cleanup that quietly does less than it said
+ *  is worse than one that explains itself. */
+export interface WorktreeCleanupOutcome {
+  removed: string[];
+  refused: { path: string; reason: string }[];
+}
+
+/** Which layout a new worktree uses (mirror of the Rust `WorktreeLocationMode`).
+ *  - `managed`: `<home>/uxnan/worktrees/<repo>/<branch>` — the default;
+ *  - `sibling`: `<parent>/<repo>--<branch>`, what the app did before;
+ *  - `custom`: the managed layout under a root the user names. */
+export type WorktreeLocationMode = "managed" | "sibling" | "custom";
+
+/** Worktree placement settings (mirror of the Rust `WorktreeSettings`). */
+export interface WorktreeSettings {
+  location?: WorktreeLocationMode;
+  /** Root for `custom`; ignored by the other modes. */
+  root?: string | null;
+  /** The user waved away the status-bar nudge about the managed folder filling
+   *  up. Set once and kept — a reminder that returns after being dismissed is
+   *  nagging, and the cleanup section is always there to open deliberately. */
+  cleanupNoticeDismissed?: boolean;
 }
 
 /** Resource-mode settings (mirror of the Rust `ResourceModeSettings`). Every
@@ -637,6 +739,10 @@ export interface RepoData {
    *  present are ignored and freshly-seen ones fall to the end (self-healing).
    *  Absent/empty → the git listing order. Set via `setWorktreeOrder`. */
   worktreeOrder?: string[];
+  /** This project's own managed-worktree root, overriding the global setting
+   *  (another volume, or a path short enough for a deep dependency tree on
+   *  Windows). Absent/null → the global setting. Set via `repoSetWorktreeRoot`. */
+  worktreeRoot?: string | null;
 }
 
 /** A git remote's hosting owner/org (mirror of Rust `RemoteOwner`), used to offer
@@ -1320,6 +1426,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pets: { enabled: true },
   resources: { enabled: true, orphanSweep: false, orphanSweepSeconds: 20 },
   resourceMode: { profile: "balanced", overrides: {}, autoSleep: false, schemaVersion: 1 },
+  worktrees: { location: "managed", root: null },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,

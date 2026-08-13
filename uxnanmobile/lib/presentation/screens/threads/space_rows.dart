@@ -317,8 +317,8 @@ class _UnreadDot extends StatelessWidget {
 /// **Only drawn when the relationship is real.** The first attempt at this
 /// level put a heading over a single folder and swept everything else into a
 /// bucket named "other", and it earned its removal: the phone was inferring a
-/// hierarchy from path prefixes, and worktrees are siblings, so the prefixes
-/// said nothing. This row exists again because `git/worktrees` now *tells* us,
+/// hierarchy from path prefixes, which say nothing: a worktree can live
+/// anywhere, and grouped ones share a prefix across repositories. This row exists again because `git/worktrees` now *tells* us,
 /// and `buildWorkspaceTree` only builds one when two or more folders genuinely
 /// belong together.
 ///

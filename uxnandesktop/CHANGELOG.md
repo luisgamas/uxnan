@@ -7,6 +7,73 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Cloned repositories land in `~/uxnan/repos`.** They used to go directly into
+  `~/uxnan`, which left the worktree root as just another folder among the
+  projects — a repository literally named `worktrees` would have collided with
+  it, and the folder needed explaining. `repos/` and `worktrees/` explain
+  themselves. Only the suggested destination changes: the field is editable, and
+  clones already on disk are not moved.
+- **New worktrees land in a folder uxnan manages, grouped by project.** The
+  default is now `~/uxnan/worktrees/<project>/<branch>` — beside the folder the
+  clone flow already writes to — instead of a `<project>--<branch>` sibling
+  dropped next to the repository. **Settings → Git → Worktree location** offers
+  the three layouts (managed, beside the project, a folder you choose), and a
+  project can override the root from its own settings when it belongs on another
+  volume or needs a shorter path. Nothing is migrated: worktrees already on disk
+  are read from `git worktree list` and keep working exactly where they are, so
+  only creation changes.
+- **Branch names are folded into folder names that are valid everywhere.**
+  Beyond the `/` → `-` flattening, the characters Windows rejects are dropped,
+  the trailing dots and spaces it silently strips are trimmed, its reserved
+  device names (`CON`, `NUL`, `COM1`, …) are escaped, and a long branch is capped
+  on a word boundary. A destination that is already taken takes the next free
+  `-2` / `-3` suffix rather than failing in git.
+- **Settings → Git also shows the identity commits are authored with** — name,
+  email, `init.defaultBranch` and the installed git version, read from git's own
+  global/system configuration (never from an open repository, which can override
+  it for itself). An identity that is not set says so, with the reason it
+  matters: git refuses to commit without one.
+- **A worktree of a WSL repository stays inside the distro**, under the same
+  `~/uxnan/worktrees` layout on the Linux filesystem — never on the Windows side
+  of the 9P share, where it would be slow and lose file modes.
+
+- **Settings → Git → Cleanup empties the managed folder safely.** It lists what
+  the backend can *prove* is disposable — folders git no longer owns (the
+  repository is gone, or the worktree was removed elsewhere), clean checkouts
+  whose branch landed or whose remote branch is gone, and those whose repository
+  is **no longer a project in uxnan** — removing a project touches nothing on
+  disk, so its worktrees stay behind, and without that category they would be
+  invisible here forever, being neither orphaned (git still owns them) nor
+  finished (the branch may never have landed). All with sizes, so the question
+  "is this worth reclaiming?" has an answer on screen.
+
+  It covers **cloned repositories** too — the ones in `~/uxnan/repos` that are no
+  longer projects — but the bar there is deliberately higher, because a worktree
+  is a second checkout of history while a clone *is* the history. One is offered
+  only when it can be proved that deleting it loses nothing: no uncommitted
+  changes, no linked worktrees, no stashes, a remote to fetch from, and **no
+  commit on any local branch missing from every remote**. Fail any of those and
+  it is listed blocked, naming the gate — "3 commits are on no remote" is worth
+  saying out loud far more than it is worth hiding. A count git could not read
+  is treated as unsafe, never as zero. Anything with
+  uncommitted work is listed **blocked**, never hidden.
+
+  The folder needed this precisely because it is out of sight: the sibling
+  folders it replaced sat next to the repository and annoyed you into pruning
+  them. A one-time status-bar nudge appears once the folder holds 12+ checkouts,
+  counting folders rather than measuring bytes — walking every checkout's
+  `node_modules` at startup to answer that would cost more than the feature is
+  worth.
+
+  Every limit is a safety property: it only ever looks inside the managed roots,
+  so a worktree beside its repository is never listed and never touched; nothing
+  is automatic; and every path is re-verified against a fresh scan at removal
+  time rather than trusted from the caller, so a stale list cannot delete the
+  wrong folder. A removed folder is moved aside first and deleted in the
+  background (a `node_modules` delete is tens of seconds of otherwise-frozen
+  UI), and a run interrupted mid-delete is swept at the next startup — matching
+  only the names this app generates.
+
 - **A second pet ships with the app: Nox.** Settings → Pets → Your pets now
   offers two companions instead of one — **Uxni**, the mascot, still the default,
   and **Nox**, a compact anime-styled urban hoodie character. Both are uxnan's
@@ -26,6 +93,70 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   don't divide exactly into the format's 192 × 208 cell all fail the suite.
 
 ### Fixed
+
+- **The cleanup no longer offers a live worktree's own directories for
+  deletion.** A worktree placed straight in the managed root — by hand, or
+  through the create dialog's custom location — was read as a *group* folder, so
+  the scan descended into it and listed `bridge`, `shared`, `uxnandesktop` and
+  the rest of the project's directories as abandoned worktrees. Pre-selected,
+  365 MB, one click from gone.
+
+  Two independent faults, either of which alone would have stopped it: the scan
+  descended into a directory that is itself a git work tree, and `classify` read
+  "this folder has no marker" as proof the repository was gone. Both are fixed:
+  a work tree in the root is classified as the one worktree it is and never
+  descended into, and no marker at all now proves nothing and reports nothing.
+  Only a marker *naming a repository that is gone* still means orphaned.
+
+- **A worktree with a terminal running in it is never offered.** Whatever git
+  says about its branch, an agent works by writing files, and between two writes
+  the checkout is momentarily clean — so "clean right now" was never enough on
+  its own. Live PTY working directories are now checked first, including a
+  terminal open in a subfolder, and removal refuses on the same ground.
+
+- **A cleaned-up project no longer leaves a marker that renames the next one.**
+  Removing the last worktree of a project left its group folder holding just
+  `.uxnan-repo`, and that marker outlived the repository it named. Cloning the
+  same project again read the stale claim as "another project owns this name"
+  and hung a hash suffix on a name that was free — `skills` became
+  `skills-bd229bab`, with the new worktrees inside it.
+
+  Two fixes, because there were two faults: an empty group is now pruned (on
+  removal and at startup, and only when it holds nothing but the marker), and a
+  marker whose repository no longer exists is treated as litter rather than a
+  claim — the name is reclaimed and the marker rewritten. A marker naming a
+  repository that *does* still exist keeps its group, as before.
+
+- **Both cleanup actions are `sm`**, the size every other action inside a
+  settings section uses (25 of the 45 buttons there). The default height is for
+  dialog and editor footers — all seven of its uses in Settings are in one — so
+  a taller primary action next to the scan button was the odd one out, not the
+  correction it looked like.
+- **Each cleanup list has a select-all**, which reaches only the rows the safety
+  rules allow removing — a held-back one is never picked up by it — and stays
+  within its own list. It shows a mixed state when only some are selected.
+- **Settings → Git → Cleanup lists worktrees and repositories separately.**
+  They are different things with different risk, and mixing them made "what am I
+  about to delete?" harder to answer than it needed to be. Which list a row
+  belongs to is stated by the backend rather than guessed from its reason —
+  both kinds can be held back by uncommitted changes.
+
+- **A project whose folder is not on disk is marked, and stops being polled.**
+  It used to stay in the sidebar looking normal while every background pass
+  asked git and `gh` about a path that is not there — an endless stream of
+  failed spawns (`os error 267`) for as long as the app ran. It now carries a
+  warning explaining the state, the worktree reconcile and the GitHub badge poll
+  skip it, and **nothing is removed**: an unmounted drive, an offline share and
+  a cloud placeholder all look exactly like a deleted project, so acting on that
+  guess would turn a temporary absence into a permanent loss. Removing stays in
+  the project's own ⋯ menu.
+- **Settings → Git → Git bookkeeping** offers to forget worktrees git still
+  lists whose folders are gone. `git worktree list` keeps reporting a worktree
+  after its directory is deleted, so the sidebar showed checkouts that were not
+  there and opening one failed. Pruning removes **records, never files** — the
+  directories it forgets are already missing — which is why it sits apart from
+  the cleanup rather than among things that delete work. Never automatic, for
+  the same reason as above.
 
 - **Status-bar highlights no longer spill out of the status bar.** The backend
   and providers buttons were the standard 32px icon action inside a 28px bar, so
@@ -110,6 +241,21 @@ Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version
 including the channel-switch and "release pulled" cases) + 2 Rust
 (`updater.rs` — discarding frees the bytes and reports the version; discarding
 nothing is a no-op).
+
+### Changed
+
+- **Where a worktree goes is decided in one place.** It used to be computed in
+  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
+  copy that had already drifted into a different folder name for the same
+  repository and branch. The layout now lives only in
+  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
+  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
+- **The PR and issue worktree flows use the same location and the same reuse
+  check.** Both used to build the sibling path themselves, and the issue flow
+  decided "this was already checked out" by testing whether that exact folder
+  existed. It now asks git which worktree is on the branch, so a re-run finds the
+  existing checkout wherever it lives — including one created under the old
+  layout.
 
 ## [0.0.39] - 2026-08-12
 

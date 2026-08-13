@@ -71,5 +71,32 @@ void main() {
         expect(BridgeStatus.fromJson(json).supportsMessageQueue, isFalse);
       }
     });
+
+    test('reads the managed-worktrees capability from features', () {
+      final status = BridgeStatus.fromJson(const {
+        'relayConnected': true,
+        'features': {'managedWorktrees': true},
+      });
+      expect(status.supportsManagedWorktrees, isTrue);
+      // Capabilities are independent: one does not imply the other.
+      expect(status.supportsMessageQueue, isFalse);
+    });
+
+    test('a bridge that does not advertise it still needs an explicit path',
+        () {
+      // The safe default: an older bridge REQUIRES `path` on
+      // `git/createWorktree`, so the phone must keep deriving one.
+      for (final json in const <Map<String, dynamic>>[
+        {'relayConnected': true},
+        {'relayConnected': true, 'features': <String, dynamic>{}},
+        {'relayConnected': true, 'features': 'nonsense'},
+        {
+          'relayConnected': true,
+          'features': {'managedWorktrees': false},
+        },
+      ]) {
+        expect(BridgeStatus.fromJson(json).supportsManagedWorktrees, isFalse);
+      }
+    });
   });
 }

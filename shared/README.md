@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/validation-Ajv-000000?style=for-the-badge&logo=json&logoColor=white)
-![Contracts](https://img.shields.io/badge/69_methods_%7C_12_notifications-blue?style=for-the-badge)
+![Contracts](https://img.shields.io/badge/70_methods_%7C_12_notifications-blue?style=for-the-badge)
 
 Shared JSON-RPC and E2EE contracts for the [Uxnan](../README.md) ecosystem — the
 single source of truth every component agrees on. Consumed as a local workspace

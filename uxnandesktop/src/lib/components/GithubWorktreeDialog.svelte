@@ -14,7 +14,7 @@
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { toast, toastError } from "$lib/toast";
-  import { worktreeFolderFor } from "$lib/branchName";
+  import { worktreePreviewPath } from "$lib/api";
   import { githubWorkItemBranch } from "$lib/githubInput";
   import AgentLogo from "./AgentLogo.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
@@ -62,14 +62,30 @@
     number === null ? "" : githubWorkItemBranch(kind, number, title, headRefName),
   );
 
-  const previewPath = $derived(
-    repo && branch.trim() ? worktreeFolderFor(repo.path, branch.trim()) : "",
-  );
-  // A worktree already at that path means this PR/issue was checked out before.
+  // Where it would land, per the user's worktree-location settings. Resolved by
+  // the backend (the single owner of that layout) rather than recomputed here.
+  let previewPath = $state("");
+  let previewSeq = 0;
+  $effect(() => {
+    const id = repoId;
+    const name = branch.trim();
+    if (!open || !id || !name) {
+      previewPath = "";
+      return;
+    }
+    const seq = ++previewSeq;
+    void worktreePreviewPath(id, name)
+      .then((path) => {
+        if (seq === previewSeq) previewPath = path;
+      })
+      .catch(() => {});
+  });
+  // A worktree already ON THIS BRANCH means the PR/issue was checked out before.
   // The issue flow silently reuses it; the PR flow would fail in git. Say so.
+  // Matched by branch, not by path, so it holds wherever that checkout lives —
+  // including one created before the managed location existed.
   const existing = $derived(
-    !!previewPath &&
-      projects.worktreesOf(repoId ?? "").some((w) => w.path === previewPath),
+    !!branch.trim() && projects.worktreesOf(repoId ?? "").some((w) => w.branch === branch.trim()),
   );
 
   $effect(() => {

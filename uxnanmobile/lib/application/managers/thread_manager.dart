@@ -360,8 +360,9 @@ class ThreadManager {
   /// Returns an empty list when the bridge does not know the method — a bridge
   /// older than this feature answers "method not found", and the caller's job
   /// is then to leave the folder list flat rather than guess a hierarchy from
-  /// path prefixes. Guessing is precisely what this method exists to stop:
-  /// worktrees are siblings, so a prefix says nothing.
+  /// path prefixes. Guessing is precisely what this method exists to stop: a
+  /// worktree can live anywhere, and the ones grouped under the folder uxnan
+  /// manages share a prefix with worktrees of OTHER repositories.
   Future<List<GitWorktreeEntry>> loadWorktrees(String cwd) async {
     try {
       final response = await _sendRequest('git/worktrees', {'cwd': cwd});

@@ -59,7 +59,9 @@ user's home directory, and executes
 `github_clone` followed by the normal `repo_add` path. Successful registration
 loads the canonical worktree list and focuses the primary worktree. A failed
 clone is reported without deleting a partial destination automatically.
-The default destination is `<home>/uxnan/<repository>`; the backend creates its
+The default destination is `<home>/uxnan/repos/<repository>` — a sibling of
+`<home>/uxnan/worktrees`, so a repository named `worktrees` cannot collide with
+the worktree root; the backend creates its
 missing parent directories. A native OS directory picker can replace that parent
 without introducing a second project-import dialog. Clone transfers use a bounded
 15-minute timeout rather than the one-minute budget used by API-shaped GitHub
@@ -86,10 +88,156 @@ una **ubicación opcional**:
   (`git worktree add <ruta> <rama>`); una **remota-solo** (`origin/<rama>` sin
   contraparte local) obtiene una rama local con tracking
   (`git worktree add --track -b <rama> <ruta> origin/<rama>`).
-- **Ubicación**: por defecto la carpeta hermana automática `<repo>--<rama>`; el
-  usuario puede **editar la ruta** o **explorar** hasta una carpeta padre (con el
-  explorador in-app compartido). Una ruta personalizada debe ser absoluta y no
-  existir; se normaliza a barras `/`.
+- **Ubicación**: la decide el backend (`worktreeloc.rs`) a partir de los ajustes,
+  y el formulario solo la **previsualiza** pidiéndosela (`worktree_preview_path`).
+  El usuario puede además **editar la ruta** o **explorar** hasta una carpeta
+  padre (con el explorador in-app compartido) para esa creación concreta; una
+  ruta personalizada debe ser absoluta y no existir, y se normaliza a barras `/`.
+
+#### 2.1.1 Dónde se crea un worktree
+
+Tres disposiciones, elegidas en **Ajustes → Git → Ubicación de los worktrees**
+(`AppSettings.worktrees.location`, con `worktrees.root` para la personalizada) y
+sobrescribibles por proyecto (`RepoData.worktreeRoot`):
+
+| Modo | Ruta | Para qué |
+|---|---|---|
+| `managed` (por defecto) | `<home>/uxnan/worktrees/<repo>/<rama>` | Agrupa los checkouts de un repositorio en una carpeta que la app gestiona, junto a la que usa el clon (`<home>/uxnan/repos/<repo>`) |
+| `sibling` | `<padre>/<repo>--<rama>` | El comportamiento anterior, para quien lo prefiera |
+| `custom` | `<raíz elegida>/<repo>/<rama>` | La misma agrupación en otro volumen o en una ruta más corta |
+
+Reglas que aplica el resolver, en este orden:
+
+1. **La clave del repositorio se mide desde su worktree PRINCIPAL** (la primera
+   entrada de `git worktree list`). Crear un worktree estando dentro de otro no
+   debe anidar el nuevo bajo el anterior.
+2. **La rama se sanea a un nombre de carpeta válido en todos los sistemas**: `/`
+   y `\` → `-`; se eliminan los caracteres que Windows rechaza (`<>:"|?*` y los
+   de control); se recortan los puntos y espacios finales que Windows elimina en
+   silencio; se escapan los nombres de dispositivo reservados (`CON`, `NUL`,
+   `COM1`…); y se corta a 60 caracteres respetando la última palabra.
+3. **Dos proyectos con el mismo nombre de carpeta no comparten grupo**: la
+   carpeta de grupo lleva un marcador `.uxnan-repo` con la ruta canónica del
+   repositorio; si ya pertenece a otro, el grupo pasa a `<repo>-<hash8>` (FNV-1a
+   de esa ruta, escrito a mano para que sea estable entre versiones y
+   reproducible desde el bridge).
+4. **Un destino ocupado toma el siguiente sufijo libre** (`-2`, `-3`, …), porque
+   `git worktree add` rechaza una carpeta existente.
+5. **Un repositorio en WSL se resuelve dentro de la distro**
+   (`//wsl.localhost/<distro>/<home>/uxnan/worktrees/…`), nunca en el lado
+   Windows del recurso 9P: un checkout ahí es lento y pierde los modos de
+   fichero.
+6. La ruta se devuelve siempre con barras `/`, la forma en que git reporta los
+   worktrees y con la que el frontend indexa sus espacios de trabajo.
+
+**Nada se migra.** Los worktrees existentes se leen de `git worktree list` y
+siguen funcionando donde estén; el ajuste solo afecta a los que se creen a partir
+de entonces. Por el mismo motivo, los flujos de PR e issue comprueban si ya hay
+un worktree **en esa rama** (preguntándoselo a git) en lugar de mirar si existe
+una ruta concreta.
+
+#### 2.1.2 Limpieza de la carpeta gestionada
+
+Una raíz gestionada agrupa los checkouts **fuera de la vista**, y lo que no se ve
+no se poda: las carpetas hermanas a las que sustituye al menos estorbaban al lado
+del repositorio. **Ajustes → Git → Limpieza** (`worktreeclean.rs`) es lo que
+impide que crezca sin límite.
+
+Reporta cinco grupos: **huérfanos** (git ya no posee la carpeta — el repositorio
+desapareció, o el worktree se quitó desde fuera), **terminados** (checkout limpio
+cuya rama se fusionó con su base o cuya rama remota ya no existe tras haber sido
+empujada), **sin proyecto** (el repositorio sigue en disco pero ya no está en la
+lista de proyectos: quitar un proyecto no toca el disco, así que sus worktrees se
+quedan — y sin esta categoría serían invisibles aquí para siempre, porque no son
+huérfanos ni han terminado) **clonados** (repositorios de `repos/` que ya no son proyectos y cuyo historial
+está entero en un remoto — ver más abajo) y **bloqueados** (se listan con el
+motivo y su recuento, nunca se pueden quitar desde aquí). Los tamaños se piden **después** de
+la lista: recorrer el `node_modules` de un checkout cuesta más que todas las
+consultas a git del escaneo juntas.
+
+Cada límite es una propiedad de seguridad:
+
+0. **Nunca desciende a una carpeta que es en sí un árbol de trabajo.** Un
+   worktree puede estar directamente en la raíz (hecho a mano, o con la
+   ubicación personalizada del diálogo); leerlo como carpeta de grupo listaba los
+   directorios del propio proyecto como worktrees abandonados y premarcados. Se
+   clasifica como el worktree que es. Por el mismo motivo, **la ausencia de
+   marcador no prueba nada**: solo un marcador que nombra un repositorio
+   inexistente significa huérfano. Y **nada con una terminal viva dentro** (o en
+   una subcarpeta) se ofrece: un agente trabaja escribiendo archivos, así que
+   entre dos escrituras el checkout está limpio.
+1. **Solo mira dentro de las raíces gestionadas** (la global más los overrides por
+   proyecto). Un worktree junto a su repositorio no se lista ni se toca jamás; las
+   entradas que son enlaces simbólicos se ignoran, de modo que un enlace no puede
+   sacar el escaneo de la carpeta.
+2. **Nada es automático.** El escaneo informa, el usuario elige.
+3. **Cada ruta se vuelve a verificar en el borrado** contra un escaneo nuevo
+   —dentro de una raíz, aún desechable, aún limpia— en vez de confiar en la lista
+   del llamante; un rechazo se devuelve **con su motivo**, nunca se omite en
+   silencio.
+4. **"Nunca empujada" no es "terminada".** Una rama sin upstream simplemente no se
+   ha empujado; solo cuenta la que *tuvo* referencia remota y la perdió. Se lee del
+   último fetch: esta pantalla nunca sale a la red.
+5. El borrado **renombra la carpeta** a `.uxnan-trash` dentro de la misma raíz
+   (instantáneo, y en el mismo volumen por construcción) y la elimina en segundo
+   plano; luego `git worktree prune`. Una ejecución interrumpida se barre en el
+   siguiente arranque, y el barrido solo acepta los nombres que genera este módulo
+   (`wt-<millis>-<32 hex>`).
+
+La limpieza cubre además los **repositorios clonados** de `<home>/uxnan/repos`
+que ya no son proyectos, con un listón deliberadamente más alto: un worktree es
+un segundo checkout de un historial que vive en el repositorio; un clon **es** el
+historial. Solo se ofrece cuando se puede *demostrar* que borrarlo no pierde
+nada: no es un proyecto, el árbol está limpio, no hay worktrees enlazados, no hay
+stashes, hay remoto, y **ningún commit de ninguna rama local falta en todos los
+remotos** (`git rev-list --branches --not --remotes --count`). Lo que falle
+cualquiera de esas puertas se lista **bloqueado nombrando la puerta**, y un
+recuento que git no pudo leer se trata como inseguro, nunca como cero. Todas se
+vuelven a comprobar en el borrado. Esa carpeta **no es configurable** —a
+diferencia de la raíz de worktrees— porque el destino de clonado es una
+sugerencia editable: un repositorio guardado en cualquier otro sitio no se lista
+ni se toca.
+
+Los repositorios clonados caen en `<home>/uxnan/repos/<repo>`, hermano de
+`<home>/uxnan/worktrees`: dos carpetas con roles evidentes, y un repositorio
+llamado `worktrees` ya no puede chocar con la raíz. Lo ya clonado no se mueve.
+
+La pantalla separa **worktrees** y **repositorios clonados** en dos listas: son
+cosas distintas con riesgos distintos, y a qué lista pertenece cada fila lo dice
+el backend (`CleanupScope`), no se infiere del motivo — ambos tipos pueden quedar
+retenidos por cambios sin commitear.
+
+Quitar el último worktree de un proyecto **poda además su carpeta de grupo**,
+pero solo si no queda nada dentro salvo el marcador. No es cosmético: un
+`.uxnan-repo` que sobrevive a su repositorio se leía como una reivindicación viva
+y el siguiente proyecto del mismo nombre recibía un sufijo con hash sobre un
+nombre que estaba libre. Por eso un marcador que nombra un repositorio
+inexistente se trata ahora como basura —se reclama el nombre y se reescribe el
+marcador—, mientras que uno que nombra un repositorio que sí existe conserva su
+grupo.
+
+#### 2.1.3 Cuando una carpeta no está
+
+Dos estados que la app arrastraba en silencio, ambos resueltos igual:
+**detectar, marcar, dejar de gastar trabajo, ofrecer la acción — nunca tomarla.**
+
+La razón no es timidez: **que una carpeta no esté no prueba que la hayan
+borrado.** Una unidad desmontada, un recurso de red caído y un marcador de nube
+sin hidratar se ven idénticos a una carpeta eliminada, y actuar sobre esa
+suposición convierte una ausencia temporal en una pérdida permanente.
+
+- Un **proyecto** cuya carpeta falta (`repos_missing`) se marca en su tarjeta y
+  se salta en la reconciliación de worktrees y en el sondeo de insignias de
+  GitHub — preguntar a git y a `gh` por una ruta inexistente solo producía
+  procesos fallidos, indefinidamente. **No se quita**: eso sigue en su menú ⋯.
+- Un **worktree** que git sigue listando y cuya carpeta ya no está
+  (`worktree_stale_scan`) aparece en **Ajustes → Git → Registro de git**, con una
+  acción *Olvidarlos* por proyecto (`worktree_prune` → `git worktree prune`).
+  Borra **registros, nunca archivos**: los directorios que olvida ya no existen.
+
+El aviso de la barra de estado cuenta **carpetas**, no bytes (umbral: 12), porque
+medir el tamaño obligaría a recorrer cada `node_modules` en cada arranque.
+Descartarlo es permanente (`worktrees.cleanupNoticeDismissed`).
 
 El flujo del backend (comando `worktree_create` con `fromExisting` y `path`
 opcionales) tiene varias garantías:

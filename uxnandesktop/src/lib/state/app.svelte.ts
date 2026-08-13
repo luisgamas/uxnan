@@ -77,6 +77,7 @@ export type SettingsSection =
   | "terminal"
   | "browser"
   | "openWith"
+  | "git"
   | "github"
   | "resources"
   | "diagnostics"
