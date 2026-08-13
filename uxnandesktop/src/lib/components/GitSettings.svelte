@@ -340,8 +340,12 @@
                 size: sizesPending ? "…" : formatBytes(selectedSize),
               })}
             </span>
+            <!-- `sm`, like every other action inside a settings section: the
+                 default height belongs to dialog and editor footers, which is
+                 where all seven of its uses in Settings live. -->
             <Button
               variant="destructive"
+              size="sm"
               disabled={selected.size === 0 || removing}
               onclick={() => void removeSelected()}
             >

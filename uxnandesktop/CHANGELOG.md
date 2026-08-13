@@ -109,6 +109,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   claim — the name is reclaimed and the marker rewritten. A marker naming a
   repository that *does* still exist keeps its group, as before.
 
+- **Both cleanup actions are `sm`**, the size every other action inside a
+  settings section uses (25 of the 45 buttons there). The default height is for
+  dialog and editor footers — all seven of its uses in Settings are in one — so
+  a taller primary action next to the scan button was the odd one out, not the
+  correction it looked like.
 - **Each cleanup list has a select-all**, which reaches only the rows the safety
   rules allow removing — a held-back one is never picked up by it — and stays
   within its own list. It shows a mixed state when only some are selected.
