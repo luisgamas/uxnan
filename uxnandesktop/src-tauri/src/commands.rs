@@ -124,7 +124,7 @@ pub async fn quick_commands_set(
 //
 // Installed pets live under `<app-data>/pets/`, one folder per pet, in the same
 // `pet.json` + spritesheet format the Codex CLI uses (so community packs load
-// unmodified). uxnan bundles only its own pet — see `pets.rs`.
+// unmodified). uxnan bundles only its own pets — see `pets.rs`.
 
 /// Resolve `<app-data>` — the root every persisted file hangs off, honouring the
 /// `UXNAN_DATA_DIR` override so a disposable profile really is self-contained.

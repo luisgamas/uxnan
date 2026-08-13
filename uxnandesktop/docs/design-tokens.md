@@ -135,7 +135,12 @@ clearance for the 32px close target; `Dialog.Body` keeps a 16px vertical rhythm.
 `Dialog.Footer` deliberately extends through the content inset and restores
 20px internal padding, producing one full-width muted action band. Sectioned
 dialogs use `dialog.footerSurface`; hint-only bars have a 56px minimum so they
-do not collapse below action footers. Outside-pointer dismissal must preserve
+do not collapse below action footers. Every action footer uses the one
+`dialog.footer` band — a confirmation is not a second footer role. A dialog
+whose header carries its whole content (`ConfirmDialog`) drops the header's
+16px bottom padding and its 32px close-button inset instead, because the
+content grid's own 16px gap already separates that header from the footer.
+Outside-pointer dismissal must preserve
 the pointer sequence for the newly targeted underlying control; keyboard close
 may restore the trigger, while navigation must not restore stale chrome.
 Tooltip coordination is provider-owned by Bits UI: one tooltip is open per root
@@ -151,7 +156,8 @@ and keyboard focus remains supported without global document listeners.
 | `icon.action` | 14px (`size-3.5`) | Icon inside a compact toolbar / panel-header action button (pairs with `iconButton.xs`) |
 | `icon.nav` | 16px (`size-4`) | A leading icon in a nav / list row |
 | `icon.decorative` | 14px (`size-3.5`) | Purely-visual / informational: breadcrumb, leading item icons, "running terminals" indicators |
-| `icon.status` | 12px (`size-3`) | An agent-state glyph — the Comet Trail matrix or a state icon (`AgentStatusIndicator`) — in a sidebar row, a context menu or a terminal tab. A notch under `decorative`: it sits beside 12-13px text and must not outweigh it |
+| `icon.brand` | 16px (`size-4`) | An agent's brand logo leading an agent / worktree row. Deliberately a notch above the 14px state glyph beside it: the mark answers *who is running* and the glyph answers *how it is doing*, so identity reads first |
+| `icon.status` | 12px (`size-3`) | A count-adjacent indicator in a sidebar row (running terminals, per-row counters). A notch under `decorative`: it sits beside 12-13px text and must not outweigh it. The agent-state glyph itself (`AgentStatusIndicator`) sits at `decorative`, one notch under its brand mark |
 | `icon.empty` | 32px (`size-8`) | Empty-state illustration |
 
 ### Icon buttons (`iconButton`)
@@ -207,7 +213,19 @@ fills. Top-level icon controls use the square `shell.appBarAction` or
 `shell.appBarCompactAction`; both are 40×40px. The fixed window-control overlay
 uses `shell.appBarOverlay`, which intentionally has no second hairline because
 the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
-for Settings and Automations. `shell.root`, `shell.sidebar`, `shell.statusBar`,
+for Settings and Automations.
+
+The status bar is the same anatomy at 28px: `shell.statusBar` paints its *top*
+hairline as an overlay for the same reason the appbar does — a `border-t` lives
+inside the border-box, leaving 27px for a 28px control, so every highlight would
+spill past the bar. Its controls are `shell.statusBarAction` (square, full bar
+height) and `shell.statusBarItem` (the text-bearing ones: a count, a warning),
+both square-cornered and flush against each other. The bar therefore carries no
+`gap`: each item owns its horizontal padding, and a hover fills the band from
+seam to bottom edge rather than floating as a pill inside it. Never give a
+status-bar control a `rounded` or a height other than the bar's.
+
+`shell.root`, `shell.sidebar`,
 `shell.terminalStrip`, `shell.rightPanelHeader`, `shell.laneHeader`,
 `shell.laneAction`, and `shell.titlebar` remain the region-specific roles; they
 do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
@@ -257,7 +275,7 @@ viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
 | `panel.card` | A standalone content card |
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
-| `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel, the status bar) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match |
+| `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match. Not for the app bar or the status bar: those paint the same hairline as an overlay so their full-height controls keep the band's exact height |
 | `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; shared by the center terminal tabs and the right panel |
 | `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors |
 

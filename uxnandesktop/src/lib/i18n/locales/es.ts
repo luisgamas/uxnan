@@ -537,7 +537,7 @@ export const es: Record<MessageKey, string> = {
   "pets.importEmptyFolder":
     "Una mascota es una carpeta con un pet.json (o avatar.json) y su imagen de sprites. Elige una carpeta así, o una carpeta que contenga varias.",
   "pets.provenanceNotice":
-    "uxnan incluye una mascota propia. Cualquier otra la importas tú desde Codex o desde un paquete de la comunidad: ese arte pertenece a sus autores, y uxnan ni lo incluye ni lo redistribuye.",
+    "Las mascotas que incluye uxnan son propias. Cualquier otra la importas tú desde Codex o desde un paquete de la comunidad: ese arte pertenece a sus autores, y uxnan ni lo incluye ni lo redistribuye.",
   "pets.importAttribution":
     "Estas mascotas provienen de una carpeta de tu computadora. Su arte sigue siendo propiedad de quien lo creó; importarlas solo lo copia dentro de uxnan para tu uso personal.",
   "pets.originCodex": "Importada desde Codex",

@@ -74,6 +74,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   UI), and a run interrupted mid-delete is swept at the next startup — matching
   only the names this app generates.
 
+- **A second pet ships with the app: Nox.** Settings → Pets → Your pets now
+  offers two companions instead of one — **Uxni**, the mascot, still the default,
+  and **Nox**, a compact anime-styled urban hoodie character. Both are uxnan's
+  own artwork in the ordinary v2 pack format (8 × 11 frames of 192 × 208, rows
+  0–8 one animation each, rows 9–10 the 16 look poses), so neither is
+  special-cased: they animate, react and get replaced by an import exactly like
+  any community pack, and the provenance rule is unchanged — uxnan bundles only
+  pets it owns.
+- **Which pets ship is now a list, not a constant.** `src/lib/pets/bundled.ts`
+  declares `BUILTIN_PET_IDS`; the library loads each of them, and one whose
+  manifest can't be read no longer takes the rest of the shipped library down
+  with it. Adding another pet is a folder in `static/pets/` plus its id in that
+  list — no other code. New `tests/bundled-pets.test.mjs` holds the two halves
+  together: art that was never listed (packaged into every build and never
+  shown), an id with no art behind it, a manifest whose `id` disagrees with its
+  folder, a sheet path that isn't a bare file name, and a sheet whose pixels
+  don't divide exactly into the format's 192 × 208 cell all fail the suite.
+
 ### Fixed
 
 - **The cleanup no longer offers a live worktree's own directories for
@@ -140,22 +158,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the cleanup rather than among things that delete work. Never automatic, for
   the same reason as above.
 
-### Changed
+- **Status-bar highlights no longer spill out of the status bar.** The backend
+  and providers buttons were the standard 32px icon action inside a 28px bar, so
+  their hover fill crossed the hairline above and ran past the window edge below
+  — and even the 28px panel toggles overflowed by half a pixel, because the bar's
+  `border-t` lives inside its own 28px box and left 27px for them.
 
-- **Where a worktree goes is decided in one place.** It used to be computed in
-  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
-  copy that had already drifted into a different folder name for the same
-  repository and branch. The layout now lives only in
-  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
-  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
-- **The PR and issue worktree flows use the same location and the same reuse
-  check.** Both used to build the sibling path themselves, and the issue flow
-  decided "this was already checked out" by testing whether that exact folder
-  existed. It now asks git which worktree is on the branch, so a re-run finds the
-  existing checkout wherever it lives — including one created under the old
-  layout.
+  The bar now follows the app bar's anatomy, which had this right all along: the
+  hairline is painted as an overlay instead of a border, so a control gets the
+  full 28px, and every control is square and full-height
+  (`shell.statusBarAction` / `shell.statusBarItem`) instead of a rounded pill
+  floating inside the band. Highlights fill the bar from seam to bottom edge, the
+  way the window controls and the app-bar actions already did.
 
-### Fixed
+- **The "needs you" pill is a badge again, not a 28px control.** It carried a
+  control height, so an 11px counter sat inside an orange lozenge nearly as tall
+  as the row that holds it; it now takes the same padding as every other count
+  badge and hugs its contents.
+
+- **The pill takes a bell — the general notification for the whole tree.** It
+  totals `waiting` *and* `blocked` worktrees, so neither state's own glyph would
+  be true of the whole count.
+
+- **The waiting agent state keeps its question *bubble*.** At the size these are
+  drawn, `done` and `blocked` are already two rings; a "?" inside a third ring
+  made the one state that is about *you* the hardest of the three to pick out —
+  and it silently contradicted the glyph table in `architecture/02d`.
+
+- **An agent's brand mark now outranks its state glyph.** Both sat at 12px in
+  the agent and worktree rows, so the logo was too small to identify and neither
+  led the row; the mark moves to a new 16px `icon.brand` role and the state
+  glyph to 14px. Who is running reads first, how it is doing reads second.
+
+- **Unread reads the same on a project row and a worktree row.** Both now use
+  the notification bubble; the worktree rows had been left on the old red dot,
+  so the same signal was drawn two ways depending on where it appeared.
+
+- **The destructive confirmation dialog no longer floats over 32px of dead
+  space.** Its header holds the dialog's whole content, so it was adding a
+  bottom padding meant to separate it from a following section *on top of* the
+  content grid's own gap, plus a right inset reserving room for a close button
+  this dialog does not show — which also wrapped the description early. The
+  footer goes back to the one shared action band the rest of the dialogs use.
 
 - **A downloaded update no longer hides the "Check now" button.**
   Settings → Updates now shows two independent buttons instead of one that
@@ -197,6 +241,21 @@ Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version
 including the channel-switch and "release pulled" cases) + 2 Rust
 (`updater.rs` — discarding frees the bytes and reports the version; discarding
 nothing is a no-op).
+
+### Changed
+
+- **Where a worktree goes is decided in one place.** It used to be computed in
+  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
+  copy that had already drifted into a different folder name for the same
+  repository and branch. The layout now lives only in
+  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
+  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
+- **The PR and issue worktree flows use the same location and the same reuse
+  check.** Both used to build the sibling path themselves, and the issue flow
+  decided "this was already checked out" by testing whether that exact folder
+  existed. It now asks git which worktree is on the branch, so a re-run finds the
+  existing checkout wherever it lives — including one created under the old
+  layout.
 
 ## [0.0.39] - 2026-08-12
 

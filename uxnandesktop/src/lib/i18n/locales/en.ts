@@ -536,7 +536,7 @@ export const en = {
   "pets.importEmptyFolder":
     "A pet is a folder holding a pet.json (or avatar.json) plus its spritesheet image. Choose one such folder, or a folder that contains several of them.",
   "pets.provenanceNotice":
-    "uxnan includes one pet of its own. Any other pet is imported by you from Codex or a community pack — that artwork belongs to its authors, and uxnan neither bundles nor redistributes it.",
+    "The pets uxnan includes are its own. Any other pet is imported by you from Codex or a community pack — that artwork belongs to its authors, and uxnan neither bundles nor redistributes it.",
   "pets.importAttribution":
     "These pets come from a folder on your computer. Their artwork stays the property of whoever made it — importing copies it into uxnan for your own use only.",
   "pets.originCodex": "Imported from Codex",

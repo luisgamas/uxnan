@@ -1,8 +1,8 @@
 // Pets — the library, the active pet, and what each pet is currently reacting to.
 //
 // The library has two halves that resolve identically:
-//   • the bundled pet, read from `static/pets/<id>/pet.json` — uxnan's own
-//     artwork, the only pet we ship;
+//   • the bundled pets, read from `static/pets/<id>/pet.json` — uxnan's own
+//     artwork, the only pets we ship (`$lib/pets/bundled`);
 //   • imported pets under `<app-data>/pets/`, listed by the Rust side.
 // Both are parsed by `$lib/pets/manifest`, so one renderer serves either.
 //
@@ -14,6 +14,7 @@
 // cheap, and a sheet is only inlined when a pet is actually shown or previewed.
 
 import { petsList, petsSheet, petsImport, petsDelete } from "$lib/api";
+import { BUILTIN_PET_IDS, DEFAULT_PET_ID } from "$lib/pets/bundled";
 import {
   dedupeById,
   defaultAnimations,
@@ -32,9 +33,6 @@ import { agentStatus } from "./agentStatus.svelte";
 import { terminals } from "./terminals.svelte";
 import { app } from "./app.svelte";
 import { clock } from "$lib/time.svelte";
-
-/** Id of the pet bundled with the app (see `static/pets/`). */
-export const BUILTIN_PET_ID = "uxni";
 
 /** Hard cap on how old a hook report may be before it is ignored outright,
  *  matching how the sidebar dims a stale report. Individual states decay sooner
@@ -69,9 +67,9 @@ class PetStore {
   /** Last load/import error, surfaced by the Settings section. */
   error = $state("");
 
-  /** The pet the user selected, falling back to the bundled one. */
+  /** The pet the user selected, falling back to the default bundled one. */
   get active(): Pet | undefined {
-    const id = app.petSettings.activePetId || BUILTIN_PET_ID;
+    const id = app.petSettings.activePetId || DEFAULT_PET_ID;
     return this.library.find((p) => p.id === id) ?? this.library[0];
   }
 
@@ -178,20 +176,23 @@ class PetStore {
     }
   }
 
-  /** Load the bundled pet plus every installed one. Safe to call repeatedly —
+  /** Load the bundled pets plus every installed one. Safe to call repeatedly —
    *  the Settings section re-runs it after an import or delete. */
   async load(): Promise<void> {
     const library: Pet[] = [];
-    // Bundled pet: a static asset, so this works in the browser preview too.
-    try {
-      const res = await fetch(`/pets/${BUILTIN_PET_ID}/pet.json`);
-      if (res.ok) {
-        library.push(
-          parsePet(await res.json(), BUILTIN_PET_ID, { source: "builtin" }),
-        );
+    // Bundled pets: static assets, so these work in the browser preview too.
+    // One `try` apiece — a pet whose manifest can't be read must not take the
+    // rest of the shipped library down with it.
+    for (const id of BUILTIN_PET_IDS) {
+      try {
+        const res = await fetch(`/pets/${id}/pet.json`);
+        if (res.ok) {
+          library.push(parsePet(await res.json(), id, { source: "builtin" }));
+        }
+      } catch {
+        // That bundled pet isn't available (unexpected) — the others, and every
+        // imported pet, still work.
       }
-    } catch {
-      // No bundled pet available (unexpected) — imported pets still work.
     }
     try {
       for (const p of await petsList()) {
@@ -200,10 +201,10 @@ class PetStore {
         );
       }
     } catch {
-      // No Tauri backend (web preview): the bundled pet is the whole library.
+      // No Tauri backend (web preview): the bundled pets are the whole library.
     }
-    // One entry per id: an imported pack may share the bundled pet's id (that is
-    // how you replace the mascot), and two entries with the same id break the
+    // One entry per id: an imported pack may share a bundled pet's id (that is
+    // how you replace a mascot), and two entries with the same id break the
     // keyed `{#each}` that renders the library. Imported pets come last, so a
     // deliberate install wins.
     const merged = dedupeById(library);

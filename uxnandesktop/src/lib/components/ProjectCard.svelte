@@ -57,6 +57,9 @@
   import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
+  // A message with a notification dot: unread is *new output waiting to be
+  // read*, distinct from the waiting glyph, which is *a question for you*.
+  import MessageNotificationIcon from "@hugeicons/core-free-icons/MessageNotification01Icon";
 
   let {
     repo,
@@ -273,10 +276,9 @@
     {#if hasUnread}
       <TooltipSimple title={i18n.t("monitor.unread")}>
         {#snippet children(tp2)}
-          <span
-            {...tp2}
-            class="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/15"
-          ></span>
+          <span {...tp2} class="inline-flex shrink-0 text-red-500">
+            <Icon icon={MessageNotificationIcon} class={icon.decorative} />
+          </span>
         {/snippet}
       </TooltipSimple>
     {/if}

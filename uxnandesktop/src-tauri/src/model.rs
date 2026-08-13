@@ -980,8 +980,8 @@ impl Default for BrowserSettings {
 /// Sprite-animated companions that mirror agent state (`pets.rs`).
 ///
 /// Deliberately opt-in: `enabled` is false by default, so a user who never asks
-/// for a pet never gets one. The bundled pet is uxnan's own; every other pet is
-/// imported by the user from a folder they already have (typically
+/// for a pet never gets one. The bundled pets are uxnan's own; every other pet
+/// is imported by the user from a folder they already have (typically
 /// `~/.codex/pets`), and its artwork stays its author's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
