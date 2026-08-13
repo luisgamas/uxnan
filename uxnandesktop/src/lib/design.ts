@@ -174,7 +174,19 @@ export const surface = {
 export const shell = {
   root: "bg-[var(--ux-shell)] text-foreground",
   sidebar: "bg-sidebar text-sidebar-foreground",
-  statusBar: "flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground",
+  /** One 28px status-bar box. Like `appBar`, it paints its hairline as an
+   *  overlay instead of a border: a `border-t` is inside the border-box, so it
+   *  would leave 27px for a 28px control and every highlight would spill past
+   *  the bar. Actions here fill the full height and sit flush, so the bar reads
+   *  as one band of controls rather than a row of floating pills. */
+  statusBar:
+    "relative flex h-7 shrink-0 items-center px-2 text-xs text-muted-foreground before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-px before:bg-border/60",
+  /** A square status-bar action — full bar height, no radius (the shape
+   *  `appBarAction` gives the top chrome). */
+  statusBarAction: "flex h-7 w-7 shrink-0 items-center justify-center rounded-none",
+  /** A text-bearing status-bar item (a count, a warning): same height and square
+   *  corners, with its own horizontal padding since the bar has no gap. */
+  statusBarItem: "flex h-7 shrink-0 items-center gap-1 rounded-none px-1.5",
   /** One 40px appbar box. Its overlay hairline stays visible above full-height actions. */
   appBar:
     "relative h-10 shrink-0 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:h-px after:bg-border/60",

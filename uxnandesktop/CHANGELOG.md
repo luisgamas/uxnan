@@ -7,6 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Status-bar highlights no longer spill out of the status bar.** The backend
+  and providers buttons were the standard 32px icon action inside a 28px bar, so
+  their hover fill crossed the hairline above and ran past the window edge below
+  — and even the 28px panel toggles overflowed by half a pixel, because the bar's
+  `border-t` lives inside its own 28px box and left 27px for them.
+
+  The bar now follows the app bar's anatomy, which had this right all along: the
+  hairline is painted as an overlay instead of a border, so a control gets the
+  full 28px, and every control is square and full-height
+  (`shell.statusBarAction` / `shell.statusBarItem`) instead of a rounded pill
+  floating inside the band. Highlights fill the bar from seam to bottom edge, the
+  way the window controls and the app-bar actions already did.
+
 - **The "needs you" pill is a badge again, not a 28px control.** It carried a
   control height, so an 11px counter sat inside an orange lozenge nearly as tall
   as the row that holds it; it now takes the same padding as every other count

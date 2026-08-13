@@ -213,7 +213,19 @@ fills. Top-level icon controls use the square `shell.appBarAction` or
 `shell.appBarCompactAction`; both are 40×40px. The fixed window-control overlay
 uses `shell.appBarOverlay`, which intentionally has no second hairline because
 the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
-for Settings and Automations. `shell.root`, `shell.sidebar`, `shell.statusBar`,
+for Settings and Automations.
+
+The status bar is the same anatomy at 28px: `shell.statusBar` paints its *top*
+hairline as an overlay for the same reason the appbar does — a `border-t` lives
+inside the border-box, leaving 27px for a 28px control, so every highlight would
+spill past the bar. Its controls are `shell.statusBarAction` (square, full bar
+height) and `shell.statusBarItem` (the text-bearing ones: a count, a warning),
+both square-cornered and flush against each other. The bar therefore carries no
+`gap`: each item owns its horizontal padding, and a hover fills the band from
+seam to bottom edge rather than floating as a pill inside it. Never give a
+status-bar control a `rounded` or a height other than the bar's.
+
+`shell.root`, `shell.sidebar`,
 `shell.terminalStrip`, `shell.rightPanelHeader`, `shell.laneHeader`,
 `shell.laneAction`, and `shell.titlebar` remain the region-specific roles; they
 do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
@@ -263,7 +275,7 @@ viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
 | `panel.card` | A standalone content card |
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
-| `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel, the status bar) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match |
+| `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match. Not for the app bar or the status bar: those paint the same hairline as an overlay so their full-height controls keep the band's exact height |
 | `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; shared by the center terminal tabs and the right panel |
 | `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors |
 
