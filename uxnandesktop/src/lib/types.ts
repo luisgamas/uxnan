@@ -401,7 +401,8 @@ export type WorktreeCleanupReason =
   | "unpushedCommits"
   | "hasStashes"
   | "noRemote"
-  | "hasWorktrees";
+  | "hasWorktrees"
+  | "inUse";
 
 /** Which bucket a cleanup candidate belongs to (mirror of `CleanupKind`).
  *  `blocked` is listed but never removable — it exists so "why isn't this

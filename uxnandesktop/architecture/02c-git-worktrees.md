@@ -157,6 +157,15 @@ consultas a git del escaneo juntas.
 
 Cada límite es una propiedad de seguridad:
 
+0. **Nunca desciende a una carpeta que es en sí un árbol de trabajo.** Un
+   worktree puede estar directamente en la raíz (hecho a mano, o con la
+   ubicación personalizada del diálogo); leerlo como carpeta de grupo listaba los
+   directorios del propio proyecto como worktrees abandonados y premarcados. Se
+   clasifica como el worktree que es. Por el mismo motivo, **la ausencia de
+   marcador no prueba nada**: solo un marcador que nombra un repositorio
+   inexistente significa huérfano. Y **nada con una terminal viva dentro** (o en
+   una subcarpeta) se ofrece: un agente trabaja escribiendo archivos, así que
+   entre dos escrituras el checkout está limpio.
 1. **Solo mira dentro de las raíces gestionadas** (la global más los overrides por
    proyecto). Un worktree junto a su repositorio no se lista ni se toca jamás; las
    entradas que son enlaces simbólicos se ignoran, de modo que un enlace no puede

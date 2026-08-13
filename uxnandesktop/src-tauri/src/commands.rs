@@ -1171,8 +1171,9 @@ pub async fn worktree_cleanup_scan(
 ) -> Result<Vec<worktreeclean::CleanupCandidate>, CommandError> {
     let roots = managed_roots(&state).await;
     let projects = project_paths(&state).await;
-    let mut found = worktreeclean::scan(&roots, &projects).await;
-    found.extend(worktreeclean::scan_clones(&repos_root(), &projects).await);
+    let busy = state.pty.live_cwds();
+    let mut found = worktreeclean::scan(&roots, &projects, &busy).await;
+    found.extend(worktreeclean::scan_clones(&repos_root(), &projects, &busy).await);
     Ok(found)
 }
 
@@ -1200,7 +1201,8 @@ pub async fn worktree_cleanup_remove(
 ) -> Result<worktreeclean::CleanupOutcome, CommandError> {
     let roots = managed_roots(&state).await;
     let projects = project_paths(&state).await;
-    Ok(worktreeclean::remove(&roots, &repos_root(), &projects, &paths).await)
+    let busy = state.pty.live_cwds();
+    Ok(worktreeclean::remove(&roots, &repos_root(), &projects, &busy, &paths).await)
 }
 
 /// Create a worktree in the given repo. Two modes:

@@ -65,6 +65,8 @@ pub enum CleanupReason {
     NoRemote,
     /// Blocked: linked worktrees still point into this repository.
     HasWorktrees,
+    /// Blocked: a terminal — and therefore possibly an agent — is live in it.
+    InUse,
 }
 
 /// The bucket a candidate is shown in.
@@ -158,7 +160,7 @@ pub fn is_inside(root: &str, path: &str) -> bool {
 /// on disk, so its worktrees stay behind — and without this they are invisible
 /// to the cleanup forever, being neither orphaned (git still owns them) nor
 /// finished (the branch may never have landed).
-pub async fn scan(roots: &[String], projects: &[String]) -> Vec<CleanupCandidate> {
+pub async fn scan(roots: &[String], projects: &[String], busy: &[String]) -> Vec<CleanupCandidate> {
     let known: Vec<String> = projects
         .iter()
         .map(|p| normalize(p).to_lowercase())
@@ -171,6 +173,24 @@ pub async fn scan(roots: &[String], projects: &[String]) -> Vec<CleanupCandidate
             if group.name == TRASH_DIR {
                 continue;
             }
+            // A worktree sitting DIRECTLY in the root — one made by hand, or
+            // through the dialog's custom location. It is not a group, and
+            // descending into it would offer its contents as if the project's
+            // own directories were abandoned worktrees. They are the checkout.
+            if is_work_tree(&group.path).await {
+                if seen.contains(&group.path) {
+                    continue;
+                }
+                seen.push(group.path.clone());
+                if let Some(repo) = crate::git::main_worktree_of(&group.path).await {
+                    if let Some(candidate) =
+                        classify(&root, &group, Some(&repo), &known, busy).await
+                    {
+                        found.push(candidate);
+                    }
+                }
+                continue;
+            }
             let repo = marker_repo(&group.path).await;
             for entry in read_dirs(&group.path).await {
                 if seen.contains(&entry.path) {
@@ -178,7 +198,7 @@ pub async fn scan(roots: &[String], projects: &[String]) -> Vec<CleanupCandidate
                 }
                 seen.push(entry.path.clone());
                 if let Some(candidate) =
-                    classify(&group.name, &entry, repo.as_deref(), &known).await
+                    classify(&group.name, &entry, repo.as_deref(), &known, busy).await
                 {
                     found.push(candidate);
                 }
@@ -210,7 +230,11 @@ pub async fn scan(roots: &[String], projects: &[String]) -> Vec<CleanupCandidate
 ///
 /// Only ever looks inside `repos_root`. A repository the user keeps anywhere
 /// else is never listed and never touched.
-pub async fn scan_clones(repos_root: &str, projects: &[String]) -> Vec<CleanupCandidate> {
+pub async fn scan_clones(
+    repos_root: &str,
+    projects: &[String],
+    busy: &[String],
+) -> Vec<CleanupCandidate> {
     let known: Vec<String> = projects
         .iter()
         .map(|p| normalize(p).to_lowercase())
@@ -238,6 +262,11 @@ pub async fn scan_clones(repos_root: &str, projects: &[String]) -> Vec<CleanupCa
             changed_files,
             repo_path: Some(entry.path.clone()),
         };
+
+        if is_busy(&entry.path, busy) {
+            found.push(make(CleanupKind::Blocked, CleanupReason::InUse, None));
+            continue;
+        }
 
         match crate::git::status_files(&entry.path).await {
             Ok(files) if !files.is_empty() => {
@@ -311,6 +340,12 @@ pub async fn count(roots: &[String]) -> u32 {
             if group.name == TRASH_DIR {
                 continue;
             }
+            // A worktree directly in the root is one checkout, not a group of
+            // them — counting its directories would inflate the nudge.
+            if is_work_tree(&group.path).await {
+                total += 1;
+                continue;
+            }
             total += read_dirs(&group.path).await.len() as u32;
         }
     }
@@ -351,6 +386,31 @@ async fn read_dirs(parent: &str) -> Vec<Dir> {
     out
 }
 
+/// Whether a live terminal is running in `path`, or anywhere under it.
+///
+/// A folder with a shell open in it is not a folder to delete, whatever git
+/// says about its branch: an agent works by writing files, and between two
+/// writes the checkout is momentarily clean.
+fn is_busy(path: &str, busy: &[String]) -> bool {
+    let path = normalize(path).to_lowercase();
+    busy.iter().any(|cwd| {
+        let cwd = normalize(cwd).to_lowercase();
+        cwd == path || is_inside(&path, &cwd)
+    })
+}
+
+/// Whether a directory is a git work tree — it holds a `.git`, as a directory
+/// (a repository) or as a file (a linked worktree's pointer).
+///
+/// Cheap on purpose: this runs for every entry in the root, and the answer
+/// decides whether the scan may descend. Spawning git per folder to learn it
+/// would cost more than the whole rest of the scan.
+async fn is_work_tree(path: &str) -> bool {
+    tokio::fs::try_exists(format!("{path}/.git"))
+        .await
+        .unwrap_or(false)
+}
+
 /// The repository a group folder was claimed by, per its marker file.
 async fn marker_repo(group_path: &str) -> Option<String> {
     let contents = tokio::fs::read_to_string(format!("{group_path}/{MARKER_FILE}"))
@@ -367,6 +427,7 @@ async fn classify(
     entry: &Dir,
     repo: Option<&str>,
     known_projects: &[String],
+    busy: &[String],
 ) -> Option<CleanupCandidate> {
     let make = |kind, reason, branch, changed_files, repo_path| CleanupCandidate {
         path: entry.path.clone(),
@@ -380,8 +441,26 @@ async fn classify(
         repo_path,
     };
 
-    // No repository left to ask: the whole group is stranded.
-    let Some(repo) = repo.filter(|r| Path::new(r).is_dir()) else {
+    // Before anything else: something is running in there. An agent writing
+    // files is the one state where "clean right now" says nothing at all.
+    if is_busy(&entry.path, busy) {
+        return Some(make(
+            CleanupKind::Blocked,
+            CleanupReason::InUse,
+            None,
+            None,
+            repo.map(str::to_string),
+        ));
+    }
+
+    let Some(repo) = repo else {
+        // No marker at all. That is proof of NOTHING — it is the shape of a
+        // folder uxnan never placed — and reading it as "abandoned" is what
+        // once offered a live worktree's own directories for deletion.
+        return None;
+    };
+    // A marker naming a repository that is gone: the group really is stranded.
+    if !Path::new(repo).is_dir() {
         return Some(make(
             CleanupKind::Orphaned,
             CleanupReason::RepoGone,
@@ -389,15 +468,19 @@ async fn classify(
             None,
             None,
         ));
-    };
+    }
 
     let listed = crate::git::list_worktrees(repo).await.unwrap_or_default();
     let Some(worktree) = listed
         .iter()
         .find(|e| normalize(&e.path).to_lowercase() == entry.path.to_lowercase())
     else {
-        // The folder is inside our root but git does not own it — a worktree
-        // removed from elsewhere, or a leftover from an interrupted create.
+        // Inside our root, but this repository does not own it. A work tree
+        // belongs to some OTHER repository — never litter. Anything else is a
+        // leftover from an interrupted create.
+        if is_work_tree(&entry.path).await {
+            return None;
+        }
         return Some(make(
             CleanupKind::Orphaned,
             CleanupReason::NotAWorktree,
@@ -521,6 +604,7 @@ fn blocked_reason(reason: CleanupReason) -> &'static str {
         CleanupReason::HasStashes => "has stashes",
         CleanupReason::NoRemote => "has no remote to fetch it from again",
         CleanupReason::HasWorktrees => "still has worktrees",
+        CleanupReason::InUse => "has a terminal running in it",
         _ => "has uncommitted changes",
     }
 }
@@ -568,11 +652,12 @@ pub async fn remove(
     roots: &[String],
     repos_root: &str,
     projects: &[String],
+    busy: &[String],
     paths: &[String],
 ) -> CleanupOutcome {
     let mut outcome = CleanupOutcome::default();
-    let mut candidates = scan(roots, projects).await;
-    candidates.extend(scan_clones(repos_root, projects).await);
+    let mut candidates = scan(roots, projects, busy).await;
+    candidates.extend(scan_clones(repos_root, projects, busy).await);
 
     for path in paths {
         let path = normalize(path);
@@ -832,10 +917,113 @@ mod tests {
             .await
             .unwrap();
 
-        let found = scan(&[root], std::slice::from_ref(&repo)).await;
+        let found = scan(&[root], std::slice::from_ref(&repo), &[]).await;
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].kind, CleanupKind::Orphaned);
         assert_eq!(found[0].reason, CleanupReason::NotAWorktree);
+    }
+
+    #[tokio::test]
+    async fn a_worktree_placed_directly_in_the_root_is_never_descended_into() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let repo_dir = tempfile::tempdir().unwrap();
+        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo).await;
+
+        // Made by hand (or through the dialog's custom location): a worktree
+        // sitting straight in the root, with real project directories inside.
+        let wt = format!("{root}/remote-ssh");
+        crate::git::add_worktree(&repo, "remote-ssh", &wt, Some("main"))
+            .await
+            .unwrap();
+        for dir in ["bridge", "shared", "uxnandesktop"] {
+            std::fs::create_dir_all(format!("{wt}/{dir}")).unwrap();
+            std::fs::write(format!("{wt}/{dir}/f.txt"), "work\n").unwrap();
+        }
+
+        // Treated as a GROUP, its own directories are read as abandoned
+        // worktrees and pre-selected — 365 MB of a live checkout, one click
+        // from deletion. That is the shape this test exists to hold shut.
+        let found = scan(
+            std::slice::from_ref(&root),
+            std::slice::from_ref(&repo),
+            &[],
+        )
+        .await;
+        assert!(
+            !found
+                .iter()
+                .any(|c| ["bridge", "shared", "uxnandesktop"].contains(&c.name.as_str())),
+            "descended into a live worktree: {found:?}"
+        );
+        assert!(
+            found.iter().all(|c| c.kind != CleanupKind::Orphaned),
+            "a live worktree's contents were called orphaned: {found:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_worktree_with_a_live_terminal_is_never_offered() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo).await;
+        let (_root_dir, root, group) = managed_root(&repo).await;
+
+        // A merged branch: by every other rule, finished work ready to go.
+        let wt = format!("{group}/done");
+        crate::git::add_worktree(&repo, "done", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/f.txt"), "work\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "work"]).await;
+        run_git(&repo, &["merge", "--no-ff", "-m", "merge", "done"]).await;
+
+        let idle = scan(
+            std::slice::from_ref(&root),
+            std::slice::from_ref(&repo),
+            &[],
+        )
+        .await;
+        assert_eq!(idle[0].kind, CleanupKind::Finished);
+
+        // Now an agent is working in it. Clean-right-now says nothing: it is
+        // clean between two writes.
+        let busy = [wt.clone()];
+        let working = scan(
+            std::slice::from_ref(&root),
+            std::slice::from_ref(&repo),
+            &busy,
+        )
+        .await;
+        assert_eq!(working[0].kind, CleanupKind::Blocked);
+        assert_eq!(working[0].reason, CleanupReason::InUse);
+
+        // A terminal open in a SUBFOLDER counts too, and removal refuses.
+        let nested = [format!("{wt}/src")];
+        let outcome = remove(
+            std::slice::from_ref(&root),
+            "",
+            std::slice::from_ref(&repo),
+            &nested,
+            std::slice::from_ref(&wt),
+        )
+        .await;
+        assert!(outcome.removed.is_empty());
+        assert!(Path::new(&wt).is_dir(), "the worktree must survive");
+    }
+
+    #[tokio::test]
+    async fn a_folder_with_no_marker_is_left_entirely_alone() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+
+        // Something the app never placed. Absence of a marker proves nothing
+        // about it, so it is reported as nothing at all.
+        std::fs::create_dir_all(format!("{root}/mystery/inside")).unwrap();
+
+        assert!(scan(std::slice::from_ref(&root), &[], &[]).await.is_empty());
     }
 
     #[tokio::test]
@@ -849,7 +1037,7 @@ mod tests {
             .unwrap();
         drop(repo_dir); // the repository is deleted from disk
 
-        let found = scan(&[root], std::slice::from_ref(&repo)).await;
+        let found = scan(&[root], std::slice::from_ref(&repo), &[]).await;
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].reason, CleanupReason::RepoGone);
     }
@@ -878,7 +1066,7 @@ mod tests {
             .unwrap();
         std::fs::write(format!("{dirty}/scratch.txt"), "unsaved\n").unwrap();
 
-        let found = scan(&[root], std::slice::from_ref(&repo)).await;
+        let found = scan(&[root], std::slice::from_ref(&repo), &[]).await;
         let done = found.iter().find(|c| c.name == "done").expect("done");
         assert_eq!(done.kind, CleanupKind::Finished);
         assert_eq!(done.reason, CleanupReason::Merged);
@@ -902,7 +1090,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(scan(&[root], std::slice::from_ref(&repo)).await.is_empty());
+        assert!(scan(&[root], std::slice::from_ref(&repo), &[])
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -917,15 +1107,17 @@ mod tests {
         crate::git::add_worktree(&repo, "fresh", &format!("{group}/fresh"), Some("main"))
             .await
             .unwrap();
-        assert!(
-            scan(std::slice::from_ref(&root), std::slice::from_ref(&repo))
-                .await
-                .is_empty()
-        );
+        assert!(scan(
+            std::slice::from_ref(&root),
+            std::slice::from_ref(&repo),
+            &[]
+        )
+        .await
+        .is_empty());
 
         // Remove the project from the app (which touches nothing on disk) and
         // it becomes the one thing that DOES say this checkout is disposable.
-        let found = scan(std::slice::from_ref(&root), &[]).await;
+        let found = scan(std::slice::from_ref(&root), &[], &[]).await;
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].kind, CleanupKind::Unregistered);
         assert_eq!(found[0].reason, CleanupReason::ProjectRemoved);
@@ -945,11 +1137,12 @@ mod tests {
         std::fs::write(format!("{dirty}/scratch.txt"), "unsaved\n").unwrap();
 
         // Closing the project must not downgrade the protection.
-        let found = scan(std::slice::from_ref(&root), &[]).await;
+        let found = scan(std::slice::from_ref(&root), &[], &[]).await;
         assert_eq!(found[0].kind, CleanupKind::Blocked);
         let outcome = remove(
             std::slice::from_ref(&root),
             "",
+            &[],
             &[],
             std::slice::from_ref(&dirty),
         )
@@ -990,11 +1183,11 @@ mod tests {
         let (_dir, repos_root, clone) = cloned_repo("sample").await;
 
         // While it is a project, it is in use and never listed.
-        assert!(scan_clones(&repos_root, std::slice::from_ref(&clone))
+        assert!(scan_clones(&repos_root, std::slice::from_ref(&clone), &[])
             .await
             .is_empty());
 
-        let found = scan_clones(&repos_root, &[]).await;
+        let found = scan_clones(&repos_root, &[], &[]).await;
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].kind, CleanupKind::Clone);
         assert_eq!(found[0].reason, CleanupReason::CloneFullyPushed);
@@ -1007,13 +1200,13 @@ mod tests {
         run_git(&clone, &["add", "-A"]).await;
         run_git(&clone, &["commit", "-m", "never pushed"]).await;
 
-        let found = scan_clones(&repos_root, &[]).await;
+        let found = scan_clones(&repos_root, &[], &[]).await;
         assert_eq!(found[0].kind, CleanupKind::Blocked);
         assert_eq!(found[0].reason, CleanupReason::UnpushedCommits);
         assert_eq!(found[0].changed_files, Some(1));
 
         // And the gate holds through the removal path, not just the listing.
-        let outcome = remove(&[], &repos_root, &[], std::slice::from_ref(&clone)).await;
+        let outcome = remove(&[], &repos_root, &[], &[], std::slice::from_ref(&clone)).await;
         assert!(outcome.removed.is_empty());
         assert_eq!(outcome.refused.len(), 1);
         assert!(Path::new(&clone).is_dir(), "the repository must survive");
@@ -1025,7 +1218,7 @@ mod tests {
         std::fs::write(format!("{clone}/README.md"), "changed\n").unwrap();
         run_git(&clone, &["stash"]).await;
 
-        let found = scan_clones(&repos_root, &[]).await;
+        let found = scan_clones(&repos_root, &[], &[]).await;
         assert_eq!(found[0].kind, CleanupKind::Blocked);
         assert_eq!(found[0].reason, CleanupReason::HasStashes);
     }
@@ -1035,7 +1228,7 @@ mod tests {
         let (_dir, repos_root, clone) = cloned_repo("sample").await;
         run_git(&clone, &["remote", "remove", "origin"]).await;
 
-        let found = scan_clones(&repos_root, &[]).await;
+        let found = scan_clones(&repos_root, &[], &[]).await;
         assert_eq!(found[0].kind, CleanupKind::Blocked);
         assert_eq!(found[0].reason, CleanupReason::NoRemote);
     }
@@ -1048,7 +1241,7 @@ mod tests {
             .await
             .unwrap();
 
-        let found = scan_clones(&repos_root, &[]).await;
+        let found = scan_clones(&repos_root, &[], &[]).await;
         assert_eq!(found[0].kind, CleanupKind::Blocked);
         assert_eq!(found[0].reason, CleanupReason::HasWorktrees);
     }
@@ -1057,7 +1250,7 @@ mod tests {
     async fn removing_a_fully_pushed_clone_takes_it() {
         let (_dir, repos_root, clone) = cloned_repo("sample").await;
 
-        let outcome = remove(&[], &repos_root, &[], std::slice::from_ref(&clone)).await;
+        let outcome = remove(&[], &repos_root, &[], &[], std::slice::from_ref(&clone)).await;
         assert_eq!(outcome.removed, vec![clone.clone()]);
         assert!(!Path::new(&clone).exists());
     }
@@ -1074,6 +1267,7 @@ mod tests {
         let outcome = remove(
             &[root],
             "",
+            &[],
             std::slice::from_ref(&repo),
             std::slice::from_ref(&repo),
         )
@@ -1098,6 +1292,7 @@ mod tests {
         let outcome = remove(
             &[root],
             "",
+            &[],
             std::slice::from_ref(&repo),
             std::slice::from_ref(&dirty),
         )
@@ -1124,6 +1319,7 @@ mod tests {
         let outcome = remove(
             std::slice::from_ref(&root),
             "",
+            &[],
             std::slice::from_ref(&repo),
             std::slice::from_ref(&stray),
         )
@@ -1151,6 +1347,7 @@ mod tests {
             std::slice::from_ref(&root),
             "",
             std::slice::from_ref(&repo),
+            &[],
             std::slice::from_ref(&stray),
         )
         .await;

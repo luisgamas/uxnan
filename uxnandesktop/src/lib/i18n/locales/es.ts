@@ -753,6 +753,7 @@ export const es: Record<MessageKey, string> = {
   "settings.worktreeCleanupReason.unpushedCommitsOther": "{n} commits no están en ningún remoto",
   "settings.worktreeCleanupReason.hasStashes": "tiene stashes, que no viven en ningún otro sitio",
   "settings.worktreeCleanupReason.noRemote": "no tiene remoto del que volver a traerlo",
+  "settings.worktreeCleanupReason.inUse": "ahora mismo hay una terminal corriendo dentro",
   "settings.worktreeCleanupReason.hasWorktreesOne": "1 worktree sigue apuntando aquí",
   "settings.worktreeCleanupReason.hasWorktreesOther": "{n} worktrees siguen apuntando aquí",
   "settings.worktreeCleanupReason.uncommittedChangesOne": "1 archivo sin commitear",

@@ -214,6 +214,8 @@
         return i18n.t(`${R}.hasStashes`);
       case "noRemote":
         return i18n.t(`${R}.noRemote`);
+      case "inUse":
+        return i18n.t(`${R}.inUse`);
     }
   }
 </script>

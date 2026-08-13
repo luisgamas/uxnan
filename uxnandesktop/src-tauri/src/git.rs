@@ -376,6 +376,18 @@ pub async fn ref_exists(repo_path: &str, reference: &str) -> bool {
         .is_ok()
 }
 
+/// The main worktree of the repository `path` belongs to, or `None` when git
+/// cannot say. Used to place a worktree that sits somewhere the app did not put
+/// it — a hand-made one, or one from the dialog's custom location.
+pub async fn main_worktree_of(path: &str) -> Option<String> {
+    list_worktrees(path)
+        .await
+        .ok()?
+        .into_iter()
+        .find(|e| e.is_main)
+        .map(|e| e.path)
+}
+
 /// Whether the repository has any remote configured. A repository with none has
 /// nowhere else its history exists, which is what makes deleting its folder
 /// unconditional data loss.

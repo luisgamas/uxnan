@@ -116,6 +116,17 @@ repository you keep anywhere else is never listed and never touched.
 
 Implementation: [`src-tauri/src/worktreeclean.rs`](../src-tauri/src/worktreeclean.rs).
 
+- **A folder that is itself a work tree is never descended into.** A worktree
+  can sit straight in the root — made by hand, or through the dialog's custom
+  location — and reading it as a group folder listed the project's own
+  directories as abandoned worktrees, pre-selected. It is classified as the one
+  worktree it is instead.
+- **No marker proves nothing.** A folder uxnan never placed is reported as
+  nothing at all; only a marker *naming a repository that is gone* means
+  orphaned.
+- **Anything with a terminal running in it is held back**, including a terminal
+  open in a subfolder. An agent works by writing files, so between two writes
+  the checkout is clean — "clean right now" is not enough on its own.
 - **It only ever looks inside the managed roots** — the global one plus each
   project's override. A worktree beside its repository, or anywhere else you put
   one, is never listed and never touched. Symlinked entries are skipped, so a

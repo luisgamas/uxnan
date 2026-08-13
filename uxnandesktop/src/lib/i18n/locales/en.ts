@@ -749,6 +749,7 @@ export const en = {
   "settings.worktreeCleanupReason.unpushedCommitsOther": "{n} commits are on no remote",
   "settings.worktreeCleanupReason.hasStashes": "it has stashes, which live nowhere else",
   "settings.worktreeCleanupReason.noRemote": "it has no remote to fetch it from again",
+  "settings.worktreeCleanupReason.inUse": "a terminal is running in it right now",
   "settings.worktreeCleanupReason.hasWorktreesOne": "1 worktree still points here",
   "settings.worktreeCleanupReason.hasWorktreesOther": "{n} worktrees still point here",
   "settings.worktreeCleanupReason.uncommittedChangesOne": "1 file not committed",

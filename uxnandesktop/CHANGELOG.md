@@ -76,6 +76,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **The cleanup no longer offers a live worktree's own directories for
+  deletion.** A worktree placed straight in the managed root — by hand, or
+  through the create dialog's custom location — was read as a *group* folder, so
+  the scan descended into it and listed `bridge`, `shared`, `uxnandesktop` and
+  the rest of the project's directories as abandoned worktrees. Pre-selected,
+  365 MB, one click from gone.
+
+  Two independent faults, either of which alone would have stopped it: the scan
+  descended into a directory that is itself a git work tree, and `classify` read
+  "this folder has no marker" as proof the repository was gone. Both are fixed:
+  a work tree in the root is classified as the one worktree it is and never
+  descended into, and no marker at all now proves nothing and reports nothing.
+  Only a marker *naming a repository that is gone* still means orphaned.
+
+- **A worktree with a terminal running in it is never offered.** Whatever git
+  says about its branch, an agent works by writing files, and between two writes
+  the checkout is momentarily clean — so "clean right now" was never enough on
+  its own. Live PTY working directories are now checked first, including a
+  terminal open in a subfolder, and removal refuses on the same ground.
+
 - **A cleaned-up project no longer leaves a marker that renames the next one.**
   Removing the last worktree of a project left its group folder holding just
   `.uxnan-repo`, and that marker outlived the repository it named. Cloning the
