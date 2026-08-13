@@ -442,6 +442,75 @@ mod tests {
             assert_eq!(outcome, AuthOutcome::NeedsPassword { attempted: vec![] });
         }
 
+        /// A real remote host plus credentials, so the one thing loopback cannot
+        /// prove — that an authenticated session carries many channels over a
+        /// single connection — can be checked against a real machine.
+        ///
+        /// The password is read from the environment and never printed. Run it
+        /// from your own shell so it never leaves your process:
+        ///
+        /// ```powershell
+        /// $env:UXNAN_SSH_TEST_HOST='10.0.0.5'; $env:UXNAN_SSH_TEST_USER='you'
+        /// $env:UXNAN_SSH_TEST_PASSWORD='...'
+        /// cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml -- --ignored many_channels --nocapture
+        /// ```
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_{HOST,USER,PASSWORD}; run with --ignored"]
+        async fn one_connection_carries_many_channels() {
+            let (Ok(host), Ok(user), Ok(password)) = (
+                std::env::var("UXNAN_SSH_TEST_HOST"),
+                std::env::var("UXNAN_SSH_TEST_USER"),
+                std::env::var("UXNAN_SSH_TEST_PASSWORD"),
+            ) else {
+                panic!("set UXNAN_SSH_TEST_HOST, _USER and _PASSWORD to run this");
+            };
+
+            // Trust whatever the host presents: this test is about channels, and
+            // the key decision has its own live coverage in `conn`.
+            let endpoint = crate::ssh::conn::Endpoint::new(host.clone(), 22);
+            let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+                panic!("could not reach {host}");
+            };
+            let trusted = hostkey::trust_line(&host, 22, &key);
+            let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+                panic!("the key just recorded should verify");
+            };
+
+            let creds = vec![Credential::Password(password)];
+            match authenticate(&mut conn, &user, &creds).await.unwrap() {
+                AuthOutcome::Success { method } => println!("authenticated via {method}"),
+                other => panic!("authentication did not succeed: {other:?}"),
+            }
+
+            // The point of an in-process client: many concurrent channels on one
+            // connection, with no second handshake and no second login. Eight is
+            // the floor the transport gate asks for; OpenSSH's own default
+            // MaxSessions is 10.
+            const CHANNELS: usize = 8;
+            let started = std::time::Instant::now();
+            let commands: Vec<String> =
+                (0..CHANNELS).map(|i| format!("echo channel-{i}")).collect();
+            let results = futures::future::join_all(commands.iter().map(|c| conn.exec(c))).await;
+            let elapsed = started.elapsed();
+
+            for (i, result) in results.iter().enumerate() {
+                let out = result
+                    .as_ref()
+                    .unwrap_or_else(|e| panic!("channel {i}: {e}"));
+                assert!(
+                    out.stdout.contains(&format!("channel-{i}")),
+                    "channel {i} returned {:?} (stderr {:?})",
+                    out.stdout,
+                    out.stderr
+                );
+                assert_eq!(out.exit_code, Some(0), "channel {i} exit code");
+            }
+            println!(
+                "{CHANNELS} concurrent channels on one connection in {} ms",
+                elapsed.as_millis()
+            );
+        }
+
         #[tokio::test]
         #[ignore = "needs a local sshd and a key loaded in the agent; run with --ignored"]
         async fn the_system_agent_is_reached_and_its_identities_are_offered() {

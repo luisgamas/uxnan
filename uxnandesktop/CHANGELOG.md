@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Remote commands run as channels on one connection.** A single command
+  primitive (`exec`) that opens a channel, runs, and collects stdout and stderr
+  *separately* — a remote shell profile that prints noise, or fails outright as
+  they commonly do on Windows over a non-interactive session, must not corrupt
+  output the app is parsing. This is why the client is in-process rather than a
+  spawned `ssh` per call: each command is a channel, not a new handshake and a new
+  login. An exit code that never arrives stays `None` instead of being flattened
+  to zero, because "the channel closed without telling us" is information.
 - **You can connect with just a password.** No key to generate, nothing to
   append to `authorized_keys` on the far machine — if the host accepts a
   password, the app asks for one and connects. The exchange starts by asking the

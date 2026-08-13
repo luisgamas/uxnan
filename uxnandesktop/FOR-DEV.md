@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 596 Rust tests (563 unit + 29
+always wins). 597 Rust tests (563 unit + 29
 integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
 probe, +1 ignored real-scheduler probe) + 1,050 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -813,7 +813,13 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
          and there is no MSRV job, so the bump is one line; but a declared MSRV
          is a public compatibility claim, so it is the maintainer's call.
          macOS/Linux still unverified.
-      2. One connection sustains ≥8 concurrent channels.
+      2. One connection sustains ≥8 concurrent channels. **Test written**
+         (`ssh/auth.rs` → `one_connection_carries_many_channels`), waiting on a
+         host that will authenticate: it needs
+         `UXNAN_SSH_TEST_{HOST,USER,PASSWORD}` and must be run from the
+         operator's own shell so the password never leaves their process. It
+         authenticates for real, then runs eight `exec` calls concurrently and
+         checks each one's output and exit code.
       3. ~~Authentication through the Windows agent named pipe.~~ **Proven**:
          with a key loaded in this machine's agent, the named-pipe conversation
          happens and the agent's identities are put on the wire (a live test
@@ -1295,7 +1301,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 596 Rust + 1,050 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 597 Rust + 1,050 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

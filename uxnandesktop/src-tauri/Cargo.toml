@@ -134,3 +134,7 @@ tokio = { version = "1", features = ["test-util"] }
 # The resource-observability integration tests (`tests/resources_processes.rs`)
 # read real process facts through the same sysinfo the app uses.
 sysinfo = "0.33"
+# Only for the live SSH test that opens many channels at once (`ssh/auth.rs`):
+# `join_all` over borrowed futures, which tokio::spawn cannot take. Test-only, so
+# it never reaches the shipped binary.
+futures = "0.3.34"

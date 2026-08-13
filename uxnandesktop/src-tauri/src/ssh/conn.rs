@@ -120,6 +120,62 @@ impl Connection {
     pub fn handle_mut(&mut self) -> &mut client::Handle<Client> {
         &mut self.handle
     }
+
+    /// Run one command on its own channel and collect what it printed.
+    ///
+    /// This is the primitive everything non-interactive is built from — the host
+    /// inventory, `git` calls, version probes — and it is why the transport is an
+    /// in-process client rather than a spawned `ssh` per call: each of these is a
+    /// *channel* on the one connection, not a new TCP handshake and a new
+    /// authentication.
+    ///
+    /// `stderr` is captured separately: a remote shell profile that prints noise
+    /// (or fails outright, which is common on Windows over a non-interactive
+    /// session) must not corrupt the output a caller is parsing.
+    pub async fn exec(&self, command: &str) -> Result<CommandOutput, AppError> {
+        let mut channel = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|e| AppError::Invalid(format!("could not open a channel: {e}")))?;
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| AppError::Invalid(format!("could not run a remote command: {e}")))?;
+
+        let mut out = CommandOutput::default();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                russh::ChannelMsg::Data { ref data } => stdout.extend_from_slice(data),
+                // Extended data type 1 is stderr; anything else is not defined
+                // by the protocol and is ignored rather than merged blindly.
+                russh::ChannelMsg::ExtendedData { ref data, ext: 1 } => {
+                    stderr.extend_from_slice(data)
+                }
+                // Do not break here: more output can still arrive after the
+                // status, and truncating it would corrupt whatever we parse.
+                russh::ChannelMsg::ExitStatus { exit_status } => out.exit_code = Some(exit_status),
+                _ => {}
+            }
+        }
+        out.stdout = String::from_utf8_lossy(&stdout).to_string();
+        out.stderr = String::from_utf8_lossy(&stderr).to_string();
+        Ok(out)
+    }
+}
+
+/// What a remote command produced.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CommandOutput {
+    pub stdout: String,
+    /// Kept apart from stdout on purpose — see [`Connection::exec`].
+    pub stderr: String,
+    /// `None` when the channel closed without one (killed by a signal, or the
+    /// connection dropped mid-command). Absence is information, so it is not
+    /// flattened into a zero.
+    pub exit_code: Option<u32>,
 }
 
 /// The russh client handler. Its only job is the host-key decision; it records
