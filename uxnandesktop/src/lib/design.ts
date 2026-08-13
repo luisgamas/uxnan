@@ -31,6 +31,11 @@ export const icon = {
   /** Purely-visual / informational: breadcrumb, leading item icons,
    *  status & running indicators (14px). */
   decorative: "size-3.5",
+  /** An agent's brand logo leading a row (16px). Deliberately a notch *above*
+   *  the 14px state glyph beside it: the mark answers "who is running" and the
+   *  glyph answers "how is it doing", so identity reads first at a glance —
+   *  without the 20px mark crowding the 12px text in a dense worktree row. */
+  brand: "size-4",
   /** An agent-state glyph — the Comet Trail matrix or a state icon — in a
    *  sidebar row, a context menu or a terminal tab (12px). Deliberately a notch
    *  under `decorative`: it sits beside 12-13px text and must not outweigh it. */
