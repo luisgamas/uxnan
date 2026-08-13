@@ -380,6 +380,22 @@ pub async fn prepare(resolved: &Resolved) {
     let _ = tokio::fs::write(&marker, normalize(&resolved.main_worktree)).await;
 }
 
+/// A temporary directory's path **as git will report it**: canonicalized,
+/// forward slashes, without Windows' `\\?\` prefix.
+///
+/// Shared by every test module here that compares a path against git's own
+/// output, because `tempfile` hands back a path git does not echo: macOS
+/// resolves `/var` to `/private/var`, and a Windows CI runner hands out 8.3
+/// short names (`RUNNER~1` for `runneradmin`). Neither shows up on a developer
+/// machine whose temp path is already canonical — which is exactly how a suite
+/// that was green locally went red on two CI platforms at once.
+#[cfg(test)]
+pub(crate) fn canonical_temp(path: &Path) -> String {
+    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let text = resolved.to_string_lossy().replace('\\', "/");
+    text.strip_prefix("//?/").unwrap_or(&text).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,9 +547,9 @@ mod tests {
     #[tokio::test]
     async fn managed_resolve_groups_by_repo_and_is_accepted_by_git() {
         let home = tempfile::tempdir().unwrap();
-        let root = home.path().to_string_lossy().replace('\\', "/");
+        let root = canonical_temp(home.path());
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = canonical_temp(repo.path());
         init_repo(&repo_path).await;
         let name = repo_key(&repo_path);
 
@@ -568,9 +584,9 @@ mod tests {
     #[tokio::test]
     async fn asking_from_inside_a_worktree_still_groups_under_the_main_one() {
         let home = tempfile::tempdir().unwrap();
-        let root = home.path().to_string_lossy().replace('\\', "/");
+        let root = canonical_temp(home.path());
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = canonical_temp(repo.path());
         init_repo(&repo_path).await;
         let name = repo_key(&repo_path);
 
@@ -600,9 +616,9 @@ mod tests {
     #[tokio::test]
     async fn a_marker_left_by_a_deleted_repository_does_not_earn_a_suffix() {
         let home = tempfile::tempdir().unwrap();
-        let root = home.path().to_string_lossy().replace('\\', "/");
+        let root = canonical_temp(home.path());
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = canonical_temp(repo.path());
         init_repo(&repo_path).await;
         let name = repo_key(&repo_path);
 
@@ -631,12 +647,12 @@ mod tests {
     #[tokio::test]
     async fn a_marker_of_a_repository_that_still_exists_earns_a_suffix() {
         let home = tempfile::tempdir().unwrap();
-        let root = home.path().to_string_lossy().replace('\\', "/");
+        let root = canonical_temp(home.path());
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = canonical_temp(repo.path());
         init_repo(&repo_path).await;
         let other = tempfile::tempdir().unwrap();
-        let other_path = other.path().to_string_lossy().replace('\\', "/");
+        let other_path = canonical_temp(other.path());
         let name = repo_key(&repo_path);
 
         // A different project that DOES still exist keeps its group.
@@ -658,9 +674,9 @@ mod tests {
     #[tokio::test]
     async fn a_taken_destination_gets_the_next_free_suffix() {
         let home = tempfile::tempdir().unwrap();
-        let root = home.path().to_string_lossy().replace('\\', "/");
+        let root = canonical_temp(home.path());
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = canonical_temp(repo.path());
         init_repo(&repo_path).await;
         let name = repo_key(&repo_path);
 
@@ -675,9 +691,9 @@ mod tests {
     #[tokio::test]
     async fn a_second_project_of_the_same_name_gets_its_own_group() {
         let home = tempfile::tempdir().unwrap();
-        let root = home.path().to_string_lossy().replace('\\', "/");
+        let root = canonical_temp(home.path());
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = canonical_temp(repo.path());
         init_repo(&repo_path).await;
         let name = repo_key(&repo_path);
 
@@ -685,7 +701,7 @@ mod tests {
         // still EXISTS. A marker naming a repository that is gone is litter, not
         // a claim, and reclaiming the name is the point of the sibling test.
         let other = tempfile::tempdir().unwrap();
-        let other_path = other.path().to_string_lossy().replace('\\', "/");
+        let other_path = canonical_temp(other.path());
         std::fs::create_dir_all(format!("{root}/{name}")).unwrap();
         std::fs::write(format!("{root}/{name}/{MARKER_FILE}"), &other_path).unwrap();
 

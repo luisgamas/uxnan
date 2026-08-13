@@ -896,7 +896,7 @@ mod tests {
     /// A managed root holding one repo's group, with the marker in place.
     async fn managed_root(repo: &str) -> (tempfile::TempDir, String, String) {
         let root_dir = tempfile::tempdir().unwrap();
-        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let root = crate::worktreeloc::canonical_temp(root_dir.path());
         let group = format!("{root}/{}", crate::worktreeloc::repo_key(repo));
         tokio::fs::create_dir_all(&group).await.unwrap();
         tokio::fs::write(format!("{group}/{MARKER_FILE}"), repo)
@@ -908,7 +908,7 @@ mod tests {
     #[tokio::test]
     async fn a_folder_git_does_not_own_is_reported_orphaned() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
 
@@ -926,9 +926,9 @@ mod tests {
     #[tokio::test]
     async fn a_worktree_placed_directly_in_the_root_is_never_descended_into() {
         let root_dir = tempfile::tempdir().unwrap();
-        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let root = crate::worktreeloc::canonical_temp(root_dir.path());
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
 
         // Made by hand (or through the dialog's custom location): a worktree
@@ -966,7 +966,7 @@ mod tests {
     #[tokio::test]
     async fn a_worktree_with_a_live_terminal_is_never_offered() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
 
@@ -1017,7 +1017,7 @@ mod tests {
     #[tokio::test]
     async fn a_folder_with_no_marker_is_left_entirely_alone() {
         let root_dir = tempfile::tempdir().unwrap();
-        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let root = crate::worktreeloc::canonical_temp(root_dir.path());
 
         // Something the app never placed. Absence of a marker proves nothing
         // about it, so it is reported as nothing at all.
@@ -1029,7 +1029,7 @@ mod tests {
     #[tokio::test]
     async fn a_group_whose_repository_vanished_is_orphaned() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
         tokio::fs::create_dir_all(format!("{group}/feat"))
@@ -1045,7 +1045,7 @@ mod tests {
     #[tokio::test]
     async fn a_clean_merged_worktree_is_offered_and_a_dirty_one_is_blocked() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
 
@@ -1080,7 +1080,7 @@ mod tests {
     #[tokio::test]
     async fn an_untouched_branch_is_not_offered() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
 
@@ -1098,7 +1098,7 @@ mod tests {
     #[tokio::test]
     async fn a_worktree_of_a_closed_project_is_offered_but_not_pre_selected() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
 
@@ -1127,7 +1127,7 @@ mod tests {
     #[tokio::test]
     async fn a_closed_project_with_unsaved_work_is_still_blocked() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
         let dirty = format!("{group}/wip");
@@ -1155,7 +1155,7 @@ mod tests {
     /// so the pushed/unpushed distinction is real rather than simulated.
     async fn cloned_repo(name: &str) -> (tempfile::TempDir, String, String) {
         let dir = tempfile::tempdir().unwrap();
-        let base = dir.path().to_string_lossy().replace('\\', "/");
+        let base = crate::worktreeloc::canonical_temp(dir.path());
         let origin = format!("{base}/origin.git");
         let source = format!("{base}/source");
         std::fs::create_dir_all(&source).unwrap();
@@ -1258,7 +1258,7 @@ mod tests {
     #[tokio::test]
     async fn removal_refuses_a_path_outside_the_managed_root() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, _group) = managed_root(&repo).await;
 
@@ -1280,7 +1280,7 @@ mod tests {
     #[tokio::test]
     async fn removal_refuses_a_worktree_with_uncommitted_work() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
         let dirty = format!("{group}/wip");
@@ -1305,7 +1305,7 @@ mod tests {
     #[tokio::test]
     async fn removing_an_orphan_takes_the_folder_and_leaves_the_rest() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
         let stray = format!("{group}/stray");
@@ -1337,7 +1337,7 @@ mod tests {
     #[tokio::test]
     async fn cleaning_the_last_worktree_takes_the_empty_group_with_it() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let repo = repo_dir.path().to_string_lossy().replace('\\', "/");
+        let repo = crate::worktreeloc::canonical_temp(repo_dir.path());
         init_repo(&repo).await;
         let (_root_dir, root, group) = managed_root(&repo).await;
         let stray = format!("{group}/stray");
@@ -1360,7 +1360,7 @@ mod tests {
     #[tokio::test]
     async fn pruning_leaves_a_group_that_holds_anything_else() {
         let root_dir = tempfile::tempdir().unwrap();
-        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let root = crate::worktreeloc::canonical_temp(root_dir.path());
         let empty = format!("{root}/empty");
         let occupied = format!("{root}/occupied");
         tokio::fs::create_dir_all(&empty).await.unwrap();
@@ -1391,7 +1391,7 @@ mod tests {
     #[tokio::test]
     async fn the_sweep_only_takes_folders_this_module_named() {
         let root_dir = tempfile::tempdir().unwrap();
-        let root = root_dir.path().to_string_lossy().replace('\\', "/");
+        let root = crate::worktreeloc::canonical_temp(root_dir.path());
         let trash = format!("{root}/{TRASH_DIR}");
         let generated = format!("{trash}/wt-1786570000000-0123456789abcdef0123456789abcdef");
         let foreign = format!("{trash}/please-keep-me");

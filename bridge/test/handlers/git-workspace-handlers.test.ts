@@ -177,10 +177,14 @@ test('git/createWorktree places and registers a worktree with no path given', as
 
   // The bridge records the ones it placed itself, so a later cleanup can tell
   // them from checkouts that were already on disk.
-  const registry = await bridge.context.state.readJson<Array<{ path: string; branch: string }>>(
-    'managed-worktrees.json',
+  const registry =
+    await bridge.context.state.readJson<Array<{ path: string; branch: string }>>(
+      'managed-worktrees.json',
+    );
+  assert.ok(
+    registry?.some((entry) => entry.path === created.path),
+    JSON.stringify(registry),
   );
-  assert.ok(registry?.some((entry) => entry.path === created.path), JSON.stringify(registry));
 
   await bridge.stop();
   await rmrf(baseDir);

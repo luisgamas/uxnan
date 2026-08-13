@@ -221,7 +221,11 @@ export async function resolveWorktreePath(
 ): Promise<ResolvedWorktree> {
   const main = normalize(mainWorktree);
   if (config.location === 'sibling') {
-    return { path: await uniquePath(siblingPath(main, branch)), mainWorktree: main, managed: false };
+    return {
+      path: await uniquePath(siblingPath(main, branch)),
+      mainWorktree: main,
+      managed: false,
+    };
   }
   const configured = config.location === 'custom' ? config.root?.trim() : undefined;
   const root = configured ? normalize(configured) : defaultRoot(home);

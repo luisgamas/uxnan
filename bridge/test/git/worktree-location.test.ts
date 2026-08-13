@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { GitService, runGit } from '../../src/index.js';
 import {
   MARKER_FILE,
@@ -31,9 +31,21 @@ import {
 
 const git = new GitService();
 
-async function newRepo(): Promise<string> {
-  const dir = normalize(join(tmpdir(), `uxnan-wtloc-${randomUUID()}`));
+/**
+ * A temp directory **as git will report it**. `tmpdir()` hands back a path git
+ * does not echo: macOS resolves `/var` to `/private/var`, and a Windows CI
+ * runner hands out 8.3 short names (`RUNNER~1` for `runneradmin`). Neither
+ * shows up on a developer machine whose temp path is already canonical — which
+ * is how a suite green locally goes red on two CI platforms at once.
+ */
+async function canonicalTemp(prefix: string): Promise<string> {
+  const dir = join(tmpdir(), `${prefix}-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
+  return normalize(await realpath(dir));
+}
+
+async function newRepo(): Promise<string> {
+  const dir = await canonicalTemp('uxnan-wtloc');
   await runGit(dir, ['init', '-b', 'main']);
   await runGit(dir, ['config', 'user.email', 'test@uxnan.dev']);
   await runGit(dir, ['config', 'user.name', 'Uxnan Test']);
@@ -45,9 +57,7 @@ async function newRepo(): Promise<string> {
 }
 
 async function newDir(): Promise<string> {
-  const dir = normalize(join(tmpdir(), `uxnan-root-${randomUUID()}`));
-  await mkdir(dir, { recursive: true });
-  return dir;
+  return canonicalTemp('uxnan-root');
 }
 
 test('normalizes to forward slashes without a trailing separator', () => {
@@ -111,7 +121,10 @@ test('the group key is the main worktree folder name', () => {
 test('the managed layout groups by repo, then branch', () => {
   const root = defaultRoot('/home/u');
   assert.equal(root, '/home/u/uxnan/worktrees');
-  assert.equal(managedPath(root, 'myrepo', 'feature/login'), '/home/u/uxnan/worktrees/myrepo/feature-login');
+  assert.equal(
+    managedPath(root, 'myrepo', 'feature/login'),
+    '/home/u/uxnan/worktrees/myrepo/feature-login',
+  );
 });
 
 test('the default root normalizes a Windows home', () => {
