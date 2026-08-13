@@ -26,6 +26,10 @@ pub enum AppError {
     Agent(String),
     #[error("invalid input: {0}")]
     Invalid(String),
+    /// A mutation was prepared for one execution target and would have run on
+    /// another (see `target::check`). Always fatal to the call: nothing runs.
+    #[error("execution target mismatch: {0}")]
+    TargetMismatch(String),
     #[error("updater error: {0}")]
     Updater(String),
     #[error("github error: {0}")]
@@ -61,6 +65,7 @@ impl From<AppError> for CommandError {
             AppError::Git(_) => "GIT_ERROR",
             AppError::Agent(_) => "AGENT_ERROR",
             AppError::Invalid(_) => "INVALID_INPUT",
+            AppError::TargetMismatch(_) => "TARGET_MISMATCH",
             AppError::Updater(_) => "UPDATER_ERROR",
             AppError::Github(_) => "GITHUB_ERROR",
         };

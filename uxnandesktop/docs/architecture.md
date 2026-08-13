@@ -47,6 +47,7 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 | `state.rs` | `AppState { RwLock<AppData>, PersistenceManager }` (managed by Tauri). |
 | `commands.rs` | The `#[tauri::command]` surface. |
 | `error.rs` | `AppError` (internal) + serializable `CommandError`. |
+| `target.rs` | Execution-target identity (`local` / `ssh:<host>`) + the fencing that refuses a mutation aimed at another machine. |
 
 Later phases add the runtime modules that are all present today — `pty.rs`,
 `git.rs` / `gitfast.rs`, `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,

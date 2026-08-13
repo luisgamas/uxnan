@@ -3,6 +3,7 @@
 // `src-tauri/src/commands.rs`.
 
 import { invoke } from '@tauri-apps/api/core';
+import type { TargetExpectation } from '$lib/target';
 import type {
   Automation,
   AutomationRun,
@@ -446,7 +447,14 @@ export function branchList(repoId: string): Promise<BranchList> {
 export function worktreeCreate(
   repoId: string,
   branch: string,
-  options: { base?: string; fromExisting?: boolean; path?: string } = {},
+  options: {
+    base?: string;
+    fromExisting?: boolean;
+    path?: string;
+    /** Machine this was prepared for. The backend refuses the call when the
+     *  project no longer lives there; omitting it authorizes local work only. */
+    expect?: TargetExpectation;
+  } = {},
 ): Promise<WorktreeEntry> {
   return invoke<WorktreeEntry>('worktree_create', {
     repoId,
@@ -454,6 +462,7 @@ export function worktreeCreate(
     base: options.base ?? null,
     fromExisting: options.fromExisting ?? false,
     path: options.path ?? null,
+    expect: options.expect ?? null,
   });
 }
 
@@ -467,6 +476,10 @@ export function worktreeRemove(
   branch: string | null,
   force: boolean,
   cleanup?: BranchCleanup,
+  /** Machine this was prepared for — see `worktreeCreate`. Removal deletes a
+   *  working tree and can delete branches, so a stale expectation aborts the
+   *  call before any git process starts. */
+  expect?: TargetExpectation,
 ): Promise<RemoveOutcome> {
   return invoke<RemoveOutcome>('worktree_remove', {
     repoId,
@@ -474,6 +487,7 @@ export function worktreeRemove(
     branch: branch ?? null,
     force,
     cleanup: cleanup ?? null,
+    expect: expect ?? null,
   });
 }
 

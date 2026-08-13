@@ -50,6 +50,9 @@ mod pty;
 // the monitor against real spawned processes through the crate's own API.
 pub mod resources;
 mod state;
+// Execution-target identity (`local`, `ssh:<host>`) plus the fencing that stops
+// a mutation prepared for one machine from running on another.
+mod target;
 mod updater;
 mod usage;
 mod which;

@@ -37,6 +37,7 @@ import type {
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
 import { canonicalFor, reconcilePlan, samePath } from "$lib/pathid";
+import { expectation } from "$lib/target";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
@@ -1099,6 +1100,9 @@ class ProjectsStore {
         base: options.base,
         fromExisting: options.fromExisting,
         path: options.path,
+        // Fence the write to the machine this project lives on, as it was when
+        // the dialog opened: creating a worktree writes to disk.
+        expect: expectation(app.repos.find((r) => r.id === repoId)?.target),
       });
       await this.adoptWorktree(repoId, created, options.agentId);
       return true;
@@ -1184,6 +1188,9 @@ class ProjectsStore {
         row.branch,
         force,
         cleanup,
+        // The most destructive command in the app: fence it to the machine the
+        // user was actually looking at when they confirmed.
+        expectation(app.repos.find((r) => r.id === row.repoId)?.target),
       );
       await this.loadWorktrees(row.repoId);
       // Drop any quick commands scoped to the now-removed worktree.

@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 /// Current persistence schema version. Bump this whenever [`AppData`]'s shape
 /// changes in a backwards-incompatible way and add a migration arm in
 /// [`crate::persistence::migrate`].
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// * v2 — every repo and worktree carries an execution target
+///   ([`crate::target::TargetId`]); everything written before it is local.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Root persisted document. Written atomically to `state.json` in the app data
 /// directory.
@@ -67,6 +70,13 @@ pub struct RepoData {
     pub id: String,
     pub name: String,
     pub path: String,
+    /// Machine this project lives on. `path` alone is not an identity once a
+    /// second execution target exists — the same absolute path names a different
+    /// folder on every machine — so the pair `(target, path)` is what the app
+    /// keys on. Defaults to local, which is what every project persisted before
+    /// this field was (schema v2 stamps it explicitly).
+    #[serde(default)]
+    pub target: crate::target::TargetId,
     #[serde(default)]
     pub worktrees: Vec<WorktreeData>,
     /// Whether the folder is a git repository. Non-git folders are valid projects
@@ -103,6 +113,13 @@ pub struct WorktreeData {
     pub name: String,
     pub branch: String,
     pub path: String,
+    /// Machine this worktree lives on. **Invariant: always equal to its parent
+    /// [`RepoData::target`]** — a worktree is a checkout of that repo's git
+    /// directory, so it cannot live on another machine. It is stored anyway
+    /// because the frontend keys workspaces by `(target, path)` and reads
+    /// worktrees without walking back up to the repo.
+    #[serde(default)]
+    pub target: crate::target::TargetId,
     /// `true` if the ADE created this worktree, `false` if it pre-existed.
     pub created_by_ade: bool,
     pub created_at: i64,

@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Projects and worktrees now record which machine they live on.** Every repo
+  and worktree carries an execution target (`local` today), and workspaces are
+  keyed by the pair *(target, path)* rather than the path alone. Nothing changes
+  for the user yet — everything existing is local, and a local workspace key is
+  still the bare path — but a path stops being an identity the moment a second
+  machine can be registered: `/home/u/repo` names a different folder on each of
+  them, and the reconciler that heals path spellings would have merged two of
+  them into one workspace. It now refuses to re-point a workspace at a different
+  machine even when the paths match exactly.
+- **Mutations are fenced to the machine they were prepared for.** Creating and
+  removing a worktree carry the target (and its connection generation) the
+  caller was looking at, and the backend refuses the call — before any git
+  process starts — when that no longer matches, with an error naming both sides.
+  A call that carries no target can only ever act locally.
+
+### Changed
+
+- Persistence schema is now **v2**: loading stamps `target: "local"` on every
+  stored repo and worktree, and a document written by a newer build is refused
+  rather than half-understood (an older build would otherwise ignore an unknown
+  target field and treat a remote project's path as one of its own).
+
 ### Fixed
 
 - **A downloaded update no longer hides the "Check now" button.**

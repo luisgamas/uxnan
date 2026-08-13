@@ -14,6 +14,7 @@ use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
 use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
 use crate::state::{AppState, HookServerInfo};
+use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
 
 /// Return the full persisted application state. The frontend calls this once at
 /// boot to hydrate its reactive store; it also doubles as the Phase 0
@@ -773,13 +774,23 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
     }
     let is_git = git::is_git_repo(&path).await;
     let mut data = state.data.write().await;
-    if let Some(existing) = data.repos.iter().find(|r| r.path == path) {
+    // Identity is `(target, path)`, not the path: the same absolute path names a
+    // different folder on each machine. Only local projects exist today, so the
+    // target check is a no-op that stays correct once remote ones do.
+    if let Some(existing) = data
+        .repos
+        .iter()
+        .find(|r| r.target.is_local() && r.path == path)
+    {
         return Ok(existing.clone());
     }
     let repo = RepoData {
         id: Uuid::new_v4().to_string(),
         name: git::repo_name(&path),
         path,
+        // This command registers a folder on the machine the ADE runs on; adding
+        // a project that lives on a remote host is a separate entry point.
+        target: TargetId::Local,
         worktrees: Vec::new(),
         is_git,
         icon: None,
@@ -939,6 +950,15 @@ pub async fn repo_list(state: State<'_, AppState>) -> Result<Vec<RepoData>, Comm
 /// Resolve a registered repo's absolute path by id (read lock released before
 /// any git `await`, so we never hold the lock across a subprocess).
 async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, CommandError> {
+    Ok(repo_location_of(state, repo_id).await?.0)
+}
+
+/// Resolve a registered repo's absolute path **and** the machine it lives on.
+/// Same lock discipline as [`repo_path_of`].
+async fn repo_location_of(
+    state: &AppState,
+    repo_id: &str,
+) -> Result<(String, TargetId), CommandError> {
     state
         .data
         .read()
@@ -946,8 +966,27 @@ async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, Command
         .repos
         .iter()
         .find(|r| r.id == repo_id)
-        .map(|r| r.path.clone())
+        .map(|r| (r.path.clone(), r.target.clone()))
         .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))
+}
+
+/// Resolve a repo for a **mutating** command, refusing the call when the target
+/// the caller prepared for is no longer the target the work would run on.
+///
+/// Every destructive repo-bound command goes through here rather than
+/// [`repo_path_of`], so "which machine does this run on" is answered once, in
+/// one place, instead of being re-derived (and eventually forgotten) per command.
+/// See `target::check` for why a missing expectation only ever authorizes local.
+async fn repo_path_for_mutation(
+    state: &AppState,
+    repo_id: &str,
+    expect: Option<&TargetExpectation>,
+) -> Result<String, CommandError> {
+    let (path, actual) = repo_location_of(state, repo_id).await?;
+    // Only local targets exist today, so the live generation is the local
+    // constant; the SSH connection registry supplies the real one in phase 1.
+    target::check(expect, &actual, LOCAL_GENERATION).map_err(CommandError::from)?;
+    Ok(path)
 }
 
 /// A repo's branches plus the resolved default base, for the new-worktree dialog.
@@ -998,6 +1037,10 @@ pub async fn branch_list(
 /// `path` is an optional custom worktree directory (must be absolute and not yet
 /// exist); when omitted the backend uses the automatic sibling location
 /// `<repo>--<branch>`. Returns the created entry as git itself lists it.
+///
+/// `expect` fences the call to the machine the caller prepared it for (see
+/// `target::check`): creating a worktree writes to disk, so it must never land
+/// on a target other than the intended one.
 #[tauri::command]
 pub async fn worktree_create(
     state: State<'_, AppState>,
@@ -1006,6 +1049,7 @@ pub async fn worktree_create(
     base: Option<String>,
     from_existing: Option<bool>,
     path: Option<String>,
+    expect: Option<TargetExpectation>,
 ) -> Result<WorktreeEntry, CommandError> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
@@ -1013,7 +1057,7 @@ pub async fn worktree_create(
             "branch name is required".to_string(),
         )));
     }
-    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
     let from_existing = from_existing.unwrap_or(false);
 
     // Resolve the worktree location: a custom absolute path, or the automatic
@@ -1070,6 +1114,11 @@ pub async fn worktree_create(
 /// by default only the worktree is removed. When asked, the local branch is
 /// deleted (safe, force, or squash-merge) and/or the remote branch on `origin`.
 /// The returned [`git::RemoveOutcome`] tells the UI what happened to each.
+///
+/// `expect` fences the call (see `target::check`). This is the single most
+/// dangerous command to run on the wrong machine — it deletes a working tree and
+/// can delete branches — so an expectation that no longer matches aborts before
+/// any git process starts.
 #[tauri::command]
 pub async fn worktree_remove(
     state: State<'_, AppState>,
@@ -1078,8 +1127,9 @@ pub async fn worktree_remove(
     branch: Option<String>,
     force: bool,
     cleanup: Option<git::BranchCleanup>,
+    expect: Option<TargetExpectation>,
 ) -> Result<git::RemoveOutcome, CommandError> {
-    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
     git::remove_worktree(
         &repo_path,
         &path,

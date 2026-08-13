@@ -2,6 +2,7 @@
 // Serde emits camelCase, so these fields match the Rust structs one-to-one.
 // Keep this file in sync whenever the Rust model changes.
 
+import type { TargetId } from "$lib/target";
 import type {
   Theme as CustomTheme,
   TerminalTheme,
@@ -613,12 +614,20 @@ export interface WorktreeData {
   createdAt: number;
   lastActivity: number;
   agentId: string | null;
+  /** Machine this worktree lives on — always its parent repo's target (a
+   *  worktree is a checkout of that repo). Absent in state written before
+   *  targets existed, which is local by definition. */
+  target?: TargetId;
 }
 
 export interface RepoData {
   id: string;
   name: string;
   path: string;
+  /** Machine this project lives on. `path` alone stopped being an identity once
+   *  a second execution target became possible, so workspaces are keyed by
+   *  `(target, path)` (`workspaceKey` in `pathid.ts`). Absent = local. */
+  target?: TargetId;
   worktrees: WorktreeData[];
   /** Whether the folder is a git repository. Non-git folders are valid projects
    *  too — they just have no worktrees/branches and their git panels stay empty.

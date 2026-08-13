@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 542 Rust tests (513 unit + 29
+always wins). 557 Rust tests (528 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,029 passing frontend Vitest tests across two
+probe) + 1,046 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -785,6 +785,72 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
       trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
 
+## Remote hosts over SSH ☐
+
+**Goal:** connect to a remote machine over SSH and run agents *there* — the UI
+stays local, the work happens on the host with its CLIs and its credentials.
+
+**Landed:** execution-target identity. Every repo/worktree carries a `target`
+(`local` today), workspaces key on `(target, path)` (`src/lib/pathid.ts` →
+`workspaceKey`), persistence is at schema v2, and the fencing guard
+(`src-tauri/src/target.rs` → `check`) refuses a mutation aimed at a machine other
+than the one its caller prepared it for. Spec: `architecture/02a` §2.9.
+
+### Backend (Rust)
+- [ ] **Transport gate — do this before any UI.** Prove: the SSH dependency
+      builds and packages on Windows/macOS/Linux with no extra toolchain for the
+      user; one connection sustains ≥8 concurrent channels; authentication
+      through the Windows agent named pipe works; `known_hosts` verification
+      including the *changed fingerprint* case; and the idle cost of an open
+      connection, measured with `npm run bench`. Failing any of the five is a
+      stop-and-rethink, not a workaround.
+- [ ] Host registry in settings (alias/host/port/user/identity/proxy/jump,
+      `ForwardAgent`, imported-vs-manual origin) + **tombstones**, so removing a
+      host can re-adopt its projects when the same host is added back. Projects
+      store only the target id; without them they strand on a dead id.
+- [ ] Enumerate `~/.ssh/config` aliases (`Host` + `Include` only) and resolve each
+      with `ssh -G` — no config parser of our own.
+- [ ] Connection manager: one connection, N channels, a connection generation
+      (feeds the fencing above), reconnect ladder, typed error classification.
+- [ ] Host-key verification against `known_hosts` + TOFU confirmation. There is
+      no "ignore host key" mode, ever.
+- [ ] Host inventory / doctor: OS, home, **login-shell PATH** (reuse the marker +
+      timeout technique in `path_env.rs` — a non-interactive shell is exactly why
+      a remote agent CLI reports as "not installed"), git, multiplexer, and which
+      agent CLIs exist at what version.
+- [ ] Remote PTY behind the existing `pty_create` / `pty_write` /
+      `pty_paste_submit` / `pty_resize` / `pty_close`, emitting the same
+      `pty:output:{id}` / `pty:exit:{id}` events so the terminal UI is untouched.
+
+### Frontend (Svelte)
+- [ ] Settings → Hosts (cards, form with advanced fields folded, import, doctor,
+      destructive removal naming the affected projects), host badge on project
+      cards, a "where" step in Add project, host indicator on terminal tabs,
+      passphrase + host-key dialogs, launcher filtered by the host's inventory.
+- [ ] **`shellKind` must take the target's platform, not `currentOS()`**
+      (`src/lib/state/app.svelte.ts`). Agent launch quotes its command for the
+      *local* shell today, so a Windows desktop driving a Linux host would quote
+      cmd-style and land the agent in a dead pane.
+- [ ] Thread `target` through terminal tabs (`terminals.create`, `launchAgent`)
+      so a tab knows which machine its shell lives on.
+- [ ] i18n: `en.ts` + `es.ts` in the same change. There is **no key-parity test
+      between locales today** — add one with this section.
+
+### Deferred deliberately
+- [ ] **Fencing covers `worktree_create` / `worktree_remove` only.** Those are the
+      path-bound writes worth running on the wrong machine. Every other mutator
+      (fs writes/deletes, git mutations, `pty_close`) adopts
+      `repo_path_for_mutation` as its remote counterpart lands: a target check is
+      meaningless until there is a second target for it to be wrong about.
+- [ ] **WSL is still detected by sniffing UNC paths** (`wsl.rs`, `git.rs`) instead
+      of being a `wsl:<distro>` target. The id is reserved and `TargetId::parse`
+      rejects it on purpose; promoting it is its own refactor.
+- [ ] Precise agent status in remote sessions (layer 1 needs a reverse tunnel +
+      remote reporter install; layer 3 needs a remote process probe). Layer 2
+      (title/OSC) already works remotely — it rides the PTY stream.
+- [ ] Remote files/git/worktrees, port forwarding + preview, session survival
+      across an app restart, remote resource snapshots. Each is its own phase.
+
 ## Deferred follow-ups (non-blocking) — by area
 
 **Agent hooks**
@@ -1203,7 +1269,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 542 Rust + 1,029 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 557 Rust + 1,046 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
