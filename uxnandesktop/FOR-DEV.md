@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 646 Rust tests (601 unit + 29
 integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
-probe, +1 ignored real-scheduler probe) + 1,068 passing frontend Vitest tests across two
+probe, +1 ignored real-scheduler probe) + 1,072 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -889,10 +889,17 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       needs a keepalive or a transport-level signal.
 
 ### Frontend (Svelte)
-- [ ] Settings → Hosts (cards, form with advanced fields folded, import, doctor,
-      destructive removal naming the affected projects), host badge on project
-      cards, a "where" step in Add project, host indicator on terminal tabs,
-      passphrase + host-key dialogs, launcher filtered by the host's inventory.
+- [ ] **A remote project cannot be opened yet.** It appears in the left panel
+      with its host badge, but selecting it drives the local git/file layers at a
+      path that does not exist here — the panels will be empty or wrong. Those
+      layers are target-blind and that is the next phase; until then a remote
+      project is somewhere to open a *terminal*, not a workspace.
+- [ ] Launcher filtered by the host's inventory (the data is there,
+      `ssh_host_inventory`; the launcher still offers this machine's agents).
+- [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
+      glance rather than only by what its prompt says.
+- [ ] A doctor view per host: the inventory in full, with what is missing and the
+      per-host command cost (§5.3) — it has a fix on the user's side.
 - [ ] **`shellKind` must take the target's platform, not `currentOS()`**
       (`src/lib/state/app.svelte.ts`). Agent launch quotes its command for the
       *local* shell today, so a Windows desktop driving a Linux host would quote
@@ -1335,7 +1342,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 646 Rust + 1,068 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 646 Rust + 1,072 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -2183,4 +2183,15 @@ export const es: Record<MessageKey, string> = {
 
   "hosts.openTerminal": "Abrir terminal",
 
+  "hosts.addProject": "Anadir proyecto",
+  "hosts.pickFolderTitle": "Una carpeta en {host}",
+  "hosts.pickFolderBody": "Navega hasta la carpeta y anadela. Cada paso le pregunta a la maquina, asi que tarda un momento.",
+  "hosts.pickFolderUp": "Subir una carpeta",
+  "hosts.pickFolderEmpty": "No hay carpetas aqui.",
+  "hosts.pickFolderLoading": "Preguntando al host...",
+  "hosts.pickFolderTruncated": "Solo se muestran las primeras carpetas; esta tiene mas.",
+  "hosts.pickFolderAdd": "Anadir esta carpeta",
+
+  "project.onHost": "En {host}",
+
 };

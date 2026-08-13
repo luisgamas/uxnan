@@ -22,6 +22,8 @@
   import { control, focus, icon, row, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
+  import { hosts } from "$lib/state/hosts.svelte";
+  import { sshHostId } from "$lib/target";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
@@ -160,6 +162,14 @@
     return [{ ...main, isMain: true, repoId: repo.id, repoName: repo.name }, ...childRows];
   });
   // The dragged worktree's display name, for the floating label.
+  // The host label when this project lives on another machine, else null. Falls
+  // back to the host id if the record is gone: a badge saying *something* beats
+  // a project that silently looks local.
+  const remoteHost = $derived.by(() => {
+    const id = sshHostId(repo.target);
+    if (!id) return null;
+    return hosts.hosts.find((h) => h.id === id)?.label ?? id;
+  });
   const draggedWorktree = $derived(
     wtDrag.draggingKey
       ? stableChildren.items.find((w) => w.path === wtDrag.draggingKey)
@@ -255,6 +265,23 @@
         <span {...tp2} class={cn("min-w-0 flex-1 truncate", text.title)}>{repo.name}</span>
       {/snippet}
     </TooltipSimple>
+    {#if remoteHost}
+      <!-- Which machine this project lives on. Only for projects that are not on
+           this one: a badge on every card would be noise on the 90% that are
+           local, and the absence of a badge is itself the answer. -->
+      <TooltipSimple title={i18n.t("project.onHost", { host: remoteHost })}>
+        {#snippet children(tp3)}
+          <span
+            {...tp3}
+            class={cn(
+              "shrink-0 truncate rounded-[4px] bg-foreground/[0.06] px-1.5 py-px",
+              text.indicator,
+              "text-muted-foreground",
+            )}
+          >{remoteHost}</span>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
     {#if projects.isProjectPinned(repo.id)}
       <Icon icon={PinIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
     {/if}

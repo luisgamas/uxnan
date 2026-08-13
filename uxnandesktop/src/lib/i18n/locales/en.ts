@@ -2184,6 +2184,17 @@ export const en = {
 
   "hosts.openTerminal": "Open terminal",
 
+  "hosts.addProject": "Add project",
+  "hosts.pickFolderTitle": "A folder on {host}",
+  "hosts.pickFolderBody": "Walk to the folder and add it. Every step asks the machine, so it takes a moment.",
+  "hosts.pickFolderUp": "Up one folder",
+  "hosts.pickFolderEmpty": "No folders here.",
+  "hosts.pickFolderLoading": "Asking the host...",
+  "hosts.pickFolderTruncated": "Only the first folders are shown; this one has more.",
+  "hosts.pickFolderAdd": "Add this folder",
+
+  "project.onHost": "On {host}",
+
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

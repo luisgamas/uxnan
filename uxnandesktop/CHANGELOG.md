@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A project can live on another machine.** A connected host offers *Add
+  project*: walk its folders from its own home, and the folder you are in becomes
+  a project. It appears in the left panel like any other, with a small badge
+  naming the machine it lives on — only on projects that are *not* on this one,
+  because a badge on every card is noise on the 90% that are local, and its
+  absence is already the answer.
 - **Folders on a host can be browsed, and one can become a project.** There is no
   filesystem to walk on another machine, only a shell, so the host is asked to
   enumerate a directory and the answer is parsed — one command with delimited

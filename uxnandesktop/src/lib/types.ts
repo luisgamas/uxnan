@@ -690,6 +690,24 @@ export interface SshHostProbe {
   storedFingerprint?: string | null;
 }
 
+/** A directory on a host (mirror of Rust `RemoteDir`). */
+export interface SshRemoteDir {
+  name: string;
+  /** Absolute path **as that machine spells it** — what gets registered. */
+  path: string;
+}
+
+/** One directory listing from a host (mirror of Rust `RemoteListing`). */
+export interface SshRemoteListing {
+  path: string;
+  /** `null` at a root, so "up" is only offered where it goes somewhere. */
+  parent: string | null;
+  dirs: SshRemoteDir[];
+  /** The listing was cut. Say so: a picker quietly showing part of a folder is
+   *  one that cannot find what you want and will not admit why. */
+  truncated: boolean;
+}
+
 /** What a host reported about itself (mirror of Rust `HostInventory`). */
 export interface SshHostInventory {
   os: string;

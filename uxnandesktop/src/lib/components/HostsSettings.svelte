@@ -18,6 +18,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import RemoteFolderPicker from "$lib/components/RemoteFolderPicker.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import KeyIcon from "@hugeicons/core-free-icons/Key01Icon";
@@ -35,6 +36,9 @@
   let addOpen = $state(false);
   let importOpen = $state(false);
   let removing = $state<string | null>(null);
+  /** The host whose folders are being browsed, if any. */
+  let picking = $state<SshHost | null>(null);
+  let pickerOpen = $state(false);
   let secret = $state("");
 
   // A new host, with the fields OpenSSH itself needs and nothing more. Anything
@@ -169,6 +173,9 @@
           {#if connected}
             <Button variant="outline" size="sm" onclick={() => openTerminal(host)}>
               {i18n.t("hosts.openTerminal")}
+            </Button>
+            <Button variant="ghost" size="sm" onclick={() => { picking = host; pickerOpen = true; }}>
+              {i18n.t("hosts.addProject")}
             </Button>
             <Button variant="ghost" size="sm" onclick={() => hosts.disconnect(host.id)}>
               {i18n.t("hosts.disconnect")}
@@ -440,3 +447,19 @@
   }}
   oncancel={() => (removing = null)}
 />
+
+{#if picking}
+  <!-- Keyed on the host so switching from one to another starts a fresh browse
+       rather than showing the previous machine's folders. -->
+  {#key picking.id}
+    <RemoteFolderPicker
+      hostId={picking.id}
+      hostLabel={picking.label}
+      open={pickerOpen}
+      onOpenChange={(next) => {
+        pickerOpen = next;
+        if (!next) picking = null;
+      }}
+    />
+  {/key}
+{/if}

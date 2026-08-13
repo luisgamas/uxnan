@@ -38,6 +38,7 @@ import type {
   SshHostAdded,
   SshHostDraft,
   SshHostProbe,
+  SshRemoteListing,
   SshResolvedHost,
   GithubStatus,
   ImportablePet,
@@ -577,6 +578,19 @@ export function sshHostConnect(hostId: string, password?: string): Promise<SshCo
  *  from this machine would offer agents that are not there. */
 export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
   return invoke<SshHostInventory>('ssh_host_inventory', { hostId });
+}
+
+/** List the folders inside `path` on a connected host. An empty `path` starts at
+ *  that machine's home — only it knows where that is. */
+export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteListing> {
+  return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
+}
+
+/** Register a folder that lives on a host as a project. The path is stored the
+ *  way that machine spells it; identity is the pair `(host, path)`, so the same
+ *  absolute path on two machines is two projects. */
+export function sshRepoAdd(hostId: string, path: string): Promise<RepoData> {
+  return invoke<RepoData>('ssh_repo_add', { hostId, path });
 }
 
 /** Drop a host's session. Resolves `false` when it was not connected. */

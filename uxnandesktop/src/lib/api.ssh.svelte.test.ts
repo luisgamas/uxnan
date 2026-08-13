@@ -16,6 +16,8 @@ import {
   sshHostConnect,
   sshHostDisconnect,
   sshHostsConnected,
+  sshBrowseDirs,
+  sshRepoAdd,
   sshHostProbe,
   sshHostRemove,
   sshHostTrust,
@@ -221,5 +223,62 @@ describe("ssh session API", () => {
     expect(await sshHostsConnected()).toEqual(["h1"]);
     expect(await sshHostDisconnect("h1")).toBe(true);
     expect(backend.lastCallTo("ssh_host_disconnect")?.args).toEqual({ hostId: "h1" });
+  });
+});
+
+describe("ssh browse API", () => {
+  let backend: FakeBackend;
+
+  beforeEach(() => {
+    backend = installFakeBackend({
+      ssh_browse_dirs: () => ({
+        path: "C:\Users\dev",
+        parent: "C:\Users",
+        dirs: [{ name: "code", path: "C:\Users\dev\code" }],
+        truncated: false,
+      }),
+      ssh_repo_add: () => ({
+        id: "r1",
+        name: "code",
+        path: "C:\Users\dev\code",
+        target: "ssh:h1",
+        worktrees: [],
+      }),
+    });
+  });
+
+  it("asks for the home directory with an empty path", async () => {
+    // Only the host knows where home is; sending a guess would be wrong on
+    // macOS, on Windows, and for anyone with a moved home.
+    await sshBrowseDirs("h1", "");
+    expect(backend.lastCallTo("ssh_browse_dirs")?.args).toEqual({ hostId: "h1", path: "" });
+  });
+
+  it("returns the host's own spelling of a path", async () => {
+    const listing = await sshBrowseDirs("h1", "");
+    expect(listing.path).toBe("C:\Users\dev");
+    expect(listing.dirs[0].path).toBe("C:\Users\dev\code");
+    expect(listing.parent).toBe("C:\Users");
+  });
+
+  it("registers a project with the host it lives on", async () => {
+    const repo = await sshRepoAdd("h1", "C:\Users\dev\code");
+    expect(backend.lastCallTo("ssh_repo_add")?.args).toEqual({
+      hostId: "h1",
+      path: "C:\Users\dev\code",
+    });
+    // The target is what makes this project distinct from a local one at the
+    // same path — the badge, the terminal's cwd rule and the fencing all read it.
+    expect(repo.target).toBe("ssh:h1");
+  });
+
+  it("surfaces a listing failure instead of showing an empty folder", async () => {
+    // "This folder is empty" and "I could not read it" are different answers.
+    backend.setCommands({
+      ssh_browse_dirs: () => {
+        throw new Error("connect to this host before browsing it");
+      },
+    });
+    await expect(sshBrowseDirs("h1", "")).rejects.toThrow(/connect to this host/);
   });
 });
