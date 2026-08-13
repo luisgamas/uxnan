@@ -729,6 +729,8 @@ export const en = {
   "settings.worktreeCleanupIdle":
     "Nothing scanned yet. Only the managed folder is ever looked at, and nothing is removed until you pick it.",
   "settings.worktreeCleanupEmpty": "Nothing to clean up — the managed folder holds only live work.",
+  "settings.worktreeCleanupSelectAll.worktree": "Select every worktree that can be removed",
+  "settings.worktreeCleanupSelectAll.clone": "Select every repository that can be removed",
   "settings.worktreeCleanupScope.worktree": "Worktrees",
   "settings.worktreeCleanupScope.clone": "Cloned repositories",
   "settings.worktreeCleanupBucket.orphaned": "No longer owned by git",

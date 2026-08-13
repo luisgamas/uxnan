@@ -96,6 +96,19 @@
     candidates?.filter((c) => c.scope === scope && c.kind === kind) ?? [];
   const scopeHas = (scope: WorktreeCleanupScope) =>
     (candidates ?? []).some((c) => c.scope === scope);
+  /** The rows of a list the safety rules allow removing — never a blocked one,
+   *  which is exactly what "select all" must not quietly reach for. */
+  const selectableIn = (scope: WorktreeCleanupScope) =>
+    (candidates ?? []).filter((c) => c.scope === scope && c.kind !== "blocked");
+
+  function toggleScope(scope: WorktreeCleanupScope, on: boolean) {
+    const next = new Set(selected);
+    for (const row of selectableIn(scope)) {
+      if (on) next.add(row.path);
+      else next.delete(row.path);
+    }
+    selected = next;
+  }
   const removable = $derived((candidates ?? []).filter((c) => c.kind !== "blocked"));
   const selectedSize = $derived(
     [...selected].reduce((total, path) => total + (sizes[path] ?? 0), 0),
@@ -327,7 +340,6 @@
             </span>
             <Button
               variant="destructive"
-              size="sm"
               disabled={selected.size === 0 || removing}
               onclick={() => void removeSelected()}
             >
@@ -347,11 +359,24 @@
   scope: WorktreeCleanupScope,
   buckets: readonly WorktreeCleanupKind[],
 )}
+  {@const selectable = selectableIn(scope)}
+  {@const chosen = selectable.filter((c) => selected.has(c.path)).length}
   {#if scopeHas(scope)}
     <div class="space-y-4">
-      <span class={cn("px-0.5", text.section)}>
-        {i18n.t(`settings.worktreeCleanupScope.${scope}`)}
-      </span>
+      <div class="flex items-center gap-3">
+        {#if selectable.length > 0}
+          <Checkbox
+            checked={chosen === selectable.length}
+            indeterminate={chosen > 0 && chosen < selectable.length}
+            disabled={removing}
+            aria-label={i18n.t(`settings.worktreeCleanupSelectAll.${scope}`)}
+            onCheckedChange={(v) => toggleScope(scope, v === true)}
+          />
+        {/if}
+        <span class={cn("px-0.5", text.section)}>
+          {i18n.t(`settings.worktreeCleanupScope.${scope}`)}
+        </span>
+      </div>
       {#each buckets as bucket (bucket)}
         {@const rows = bucketOf(scope, bucket)}
         {#if rows.length > 0}

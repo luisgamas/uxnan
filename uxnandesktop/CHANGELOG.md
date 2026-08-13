@@ -89,6 +89,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   claim — the name is reclaimed and the marker rewritten. A marker naming a
   repository that *does* still exist keeps its group, as before.
 
+- **Each cleanup list has a select-all**, which reaches only the rows the safety
+  rules allow removing — a held-back one is never picked up by it — and stays
+  within its own list. It shows a mixed state when only some are selected.
 - **Settings → Git → Cleanup lists worktrees and repositories separately.**
   They are different things with different risk, and mixing them made "what am I
   about to delete?" harder to answer than it needed to be. Which list a row

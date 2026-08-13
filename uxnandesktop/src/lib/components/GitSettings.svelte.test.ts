@@ -173,6 +173,39 @@ describe("GitSettings — cleanup", () => {
     expect(blocked).toBeDisabled();
   });
 
+  it("select-all takes a whole list, and never reaches a held-back row", async () => {
+    const calls: string[][] = [];
+    const { screen, user } = mountWithProviders(GitSettings, {
+      commands: {
+        ...baseCommands(),
+        worktree_cleanup_scan: () => CANDIDATES,
+        worktree_cleanup_sizes: () => [0, 0, 0, 0],
+        worktree_cleanup_remove: (args: Record<string, unknown>) => {
+          calls.push(args.paths as string[]);
+          return { removed: args.paths as string[], refused: [] };
+        },
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Look for old worktrees" }));
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Select every worktree that can be removed",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Clean up" }));
+    await until(() => calls.length > 0, { label: "removal requested" });
+
+    // The three removable worktrees, and NOT the one held back — a select-all
+    // that quietly picked up unsaved work would be the worst bug in here.
+    expect([...calls[0]].sort()).toEqual(
+      [CANDIDATES[0].path, CANDIDATES[1].path, CANDIDATES[2].path].sort(),
+    );
+    expect(calls[0]).not.toContain(CANDIDATES[5].path);
+    // It also stays within its own list: the repository is another list's row.
+    expect(calls[0]).not.toContain(CANDIDATES[3].path);
+  });
+
   it("removes only what is selected and reports what was kept", async () => {
     const calls: string[][] = [];
     const { screen, user } = mountWithProviders(GitSettings, {

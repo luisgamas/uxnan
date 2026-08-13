@@ -733,6 +733,8 @@ export const es: Record<MessageKey, string> = {
     "Todavía no se ha buscado nada. Solo se mira la carpeta gestionada, y no se borra nada hasta que tú lo marques.",
   "settings.worktreeCleanupEmpty":
     "Nada que limpiar: en la carpeta gestionada solo hay trabajo vivo.",
+  "settings.worktreeCleanupSelectAll.worktree": "Marcar todos los worktrees que se pueden quitar",
+  "settings.worktreeCleanupSelectAll.clone": "Marcar todos los repositorios que se pueden quitar",
   "settings.worktreeCleanupScope.worktree": "Worktrees",
   "settings.worktreeCleanupScope.clone": "Repositorios clonados",
   "settings.worktreeCleanupBucket.orphaned": "Git ya no los reconoce",

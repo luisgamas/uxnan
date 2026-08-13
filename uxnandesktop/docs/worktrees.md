@@ -81,6 +81,10 @@ Between them, five buckets:
 | **Cloned repositories, fully pushed** | A repository in `~/uxnan/repos` that is no longer a project **and** whose every commit is already on a remote | No — see below |
 | **Held back** | In either list: uncommitted changes, unpushed commits, stashes, no remote, or worktrees still out — each row states which | Never |
 
+Each list has a **select-all** beside its heading. It reaches only the rows the
+safety rules allow removing — a held-back one is never picked up by it — and
+stays within its own list.
+
 Sizes are fetched after the list appears (`worktree_cleanup_sizes`): walking a
 checkout's `node_modules` costs more than every git query in the scan combined.
 
