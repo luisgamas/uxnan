@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 592 Rust tests (563 unit + 29
+always wins). 593 Rust tests (563 unit + 29
 integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
 probe, +1 ignored real-scheduler probe) + 1,050 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -819,11 +819,13 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
          `SSH_AUTH_SOCK` elsewhere); still needs one live run with a key loaded
          in the agent to call it proven — this machine has none yet.
       4. ~~`known_hosts` verification, including the *changed fingerprint*
-         case.~~ **Proven live** against the sshd on this machine: unknown host
+         case.~~ **Proven live**, first against the sshd on this machine and
+         then against a *real remote host over a private tailnet*: unknown host
          refused with a usable fingerprint, the recorded key verifying on the
          next connect, and a mismatching key reported as *changed* with both
-         fingerprints. The fingerprint our code computes matches
-         `ssh-keygen -lf` byte for byte.
+         fingerprints. Both fingerprints our code computed match
+         `ssh-keygen -lf` byte for byte. Point any host at it with
+         `UXNAN_SSH_TEST_HOST=<host[:port]>`.
       5. Idle cost of an open connection, measured with `npm run bench`.
 - [ ] Host registry in settings (alias/host/port/user/identity/proxy/jump,
       `ForwardAgent`, imported-vs-manual origin) + **tombstones**, so removing a
@@ -1292,7 +1294,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 592 Rust + 1,050 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 593 Rust + 1,050 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

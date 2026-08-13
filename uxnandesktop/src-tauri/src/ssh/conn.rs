@@ -342,6 +342,65 @@ mod tests {
             }
         }
 
+        /// A real remote host to test against, as `host` or `host:port`.
+        /// Loopback proves the protocol; only a second machine proves the
+        /// network path — a tailnet address, a LAN address, whatever the
+        /// operator points this at.
+        const REMOTE_ENV: &str = "UXNAN_SSH_TEST_HOST";
+
+        #[tokio::test]
+        #[ignore = "needs UXNAN_SSH_TEST_HOST=<host[:port]>; run explicitly with --ignored"]
+        async fn a_real_remote_host_completes_the_trust_cycle() {
+            let Ok(spec) = std::env::var(REMOTE_ENV) else {
+                panic!("set {REMOTE_ENV}=<host[:port]> to run this against a real remote host");
+            };
+            let (host, port) = match spec.rsplit_once(':') {
+                Some((h, p)) if !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => {
+                    (h.to_string(), p.parse().unwrap_or(22))
+                }
+                _ => (spec.clone(), 22u16),
+            };
+
+            // 1. Never seen → refused, with a fingerprint to show the user.
+            let Ok(Handshake::Unknown { key, fingerprint }) =
+                connect(Endpoint::new(host.clone(), port), "").await
+            else {
+                panic!("an empty known_hosts must refuse {host}:{port}");
+            };
+            println!("remote {host}:{port} → {fingerprint} ({})", key.algorithm);
+
+            // 2. Recorded → verifies, and the transport is up.
+            let trusted = hostkey::trust_line(&host, port, &key);
+            let Ok(Handshake::Ready(conn)) =
+                connect(Endpoint::new(host.clone(), port), &trusted).await
+            else {
+                panic!("the key just recorded should verify");
+            };
+            assert_eq!(conn.endpoint().hostname, host);
+            println!("remote verified, generation {}", conn.generation());
+
+            // 3. Someone else's key on file → refused as changed, not as new.
+            let impostor = PresentedKey {
+                algorithm: key.algorithm.clone(),
+                blob: vec![0x5A; key.blob.len()],
+            };
+            let stored = hostkey::trust_line(&host, port, &impostor);
+            match connect(Endpoint::new(host, port), &stored).await {
+                Ok(Handshake::Changed {
+                    presented_fingerprint,
+                    stored_fingerprint,
+                }) => {
+                    assert_eq!(presented_fingerprint, key.fingerprint());
+                    assert_ne!(presented_fingerprint, stored_fingerprint);
+                    println!("remote mismatch correctly reported as changed");
+                }
+                other => panic!(
+                    "a mismatching key must be Changed, got {}",
+                    describe(&other)
+                ),
+            }
+        }
+
         fn describe(outcome: &Result<Handshake, AppError>) -> String {
             match outcome {
                 Ok(Handshake::Ready(_)) => "Ready".into(),

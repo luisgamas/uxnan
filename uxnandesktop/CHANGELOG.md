@@ -25,7 +25,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   which it connects again. Completing the connection first and asking afterwards
   would mean a man-in-the-middle has already been talked to. Every connection
   also carries a *generation*, which is what stops an operation prepared before a
-  reconnect from executing after one. Authentication is not wired yet.
+  reconnect from executing after one.
 - **Host-key verification, with no way to turn it off.** The rule set the app
   will connect under: a key already in `known_hosts` connects, an unknown host
   asks you first and nothing is written until you say yes, and a host whose key

@@ -104,10 +104,14 @@ del resultado, porque el llamador tiene algo que enseñar y quiza una accion que
 ofrecer. Los errores quedan para lo que de verdad lo es (inalcanzable, timeout,
 fallo de protocolo).
 
-Validado en vivo contra un `sshd` real (tests `--ignored` en el modulo): host
-desconocido rechazado con huella utilizable, la clave registrada verificando en
-la siguiente conexion, y una clave distinta reportada como *cambiada* con ambas
-huellas. La huella que calculamos coincide con la de `ssh-keygen -lf`.
+Validado en vivo (tests `--ignored` en el modulo), primero contra el `sshd` de la
+propia maquina y despues **contra un host remoto real a traves de una red
+privada tipo tailnet**: host desconocido rechazado con huella utilizable, la
+clave registrada verificando en la siguiente conexion, y una clave distinta
+reportada como *cambiada* con ambas huellas. Las dos huellas que calculamos
+coinciden con las de `ssh-keygen -lf`. El host remoto se elige con la variable
+`UXNAN_SSH_TEST_HOST=<host[:puerto]>`, de modo que la prueba no depende de
+ninguna maquina concreta.
 
 Falta: autenticacion.
 
