@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 557 Rust tests (528 unit + 29
+always wins). 568 Rust tests (539 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,046 passing frontend Vitest tests across two
+probe) + 1,050 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -794,22 +794,33 @@ stays local, the work happens on the host with its CLIs and its credentials.
 (`local` today), workspaces key on `(target, path)` (`src/lib/pathid.ts` →
 `workspaceKey`), persistence is at schema v2, and the fencing guard
 (`src-tauri/src/target.rs` → `check`) refuses a mutation aimed at a machine other
-than the one its caller prepared it for. Spec: `architecture/02a` §2.9.
+than the one its caller prepared it for. The user's own SSH configuration is
+readable too: `ssh/config.rs` enumerates `Host` aliases (following `Include`)
+and resolves one through `ssh -G` instead of reimplementing OpenSSH precedence —
+commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
+§2.9 and `architecture/02g-remote-hosts.md`; user-facing `docs/remote-hosts.md`.
 
 ### Backend (Rust)
-- [ ] **Transport gate — do this before any UI.** Prove: the SSH dependency
-      builds and packages on Windows/macOS/Linux with no extra toolchain for the
-      user; one connection sustains ≥8 concurrent channels; authentication
-      through the Windows agent named pipe works; `known_hosts` verification
-      including the *changed fingerprint* case; and the idle cost of an open
-      connection, measured with `npm run bench`. Failing any of the five is a
-      stop-and-rethink, not a workaround.
+- [ ] **Transport gate — do this before any UI.** Five things to prove; failing
+      any of them is a stop-and-rethink, not a workaround.
+      1. *Builds and packages on all three platforms, with no extra toolchain for
+         the user.* **Measured on Windows: yes** — `russh` 0.62.6 compiles clean
+         in ~2m20s and needs no new build tooling (its crypto backend
+         `aws-lc-rs` is already in the tree via `rustls`/`reqwest`). **Attached
+         decision:** it needs rustc 1.85 while `src-tauri/Cargo.toml` declares
+         `rust-version = "1.77.2"` — without raising that, cargo silently
+         resolves to russh 0.54.6, eight releases behind. CI builds on `stable`
+         and there is no MSRV job, so the bump is one line; but a declared MSRV
+         is a public compatibility claim, so it is the maintainer's call.
+         macOS/Linux still unverified.
+      2. One connection sustains ≥8 concurrent channels.
+      3. Authentication through the Windows agent named pipe.
+      4. `known_hosts` verification, including the *changed fingerprint* case.
+      5. Idle cost of an open connection, measured with `npm run bench`.
 - [ ] Host registry in settings (alias/host/port/user/identity/proxy/jump,
       `ForwardAgent`, imported-vs-manual origin) + **tombstones**, so removing a
       host can re-adopt its projects when the same host is added back. Projects
       store only the target id; without them they strand on a dead id.
-- [ ] Enumerate `~/.ssh/config` aliases (`Host` + `Include` only) and resolve each
-      with `ssh -G` — no config parser of our own.
 - [ ] Connection manager: one connection, N channels, a connection generation
       (feeds the fencing above), reconnect ladder, typed error classification.
 - [ ] Host-key verification against `known_hosts` + TOFU confirmation. There is
@@ -1269,7 +1280,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 557 Rust + 1,046 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 568 Rust + 1,050 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

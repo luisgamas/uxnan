@@ -269,6 +269,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[remote hosts over SSH](./docs/remote-hosts.md) ·
 [file tree & search](./docs/file-tree.md) ·
 [file viewer](./docs/file-viewer.md) ·
 [provider usage statistics](./docs/providers.md) ·

@@ -13,6 +13,7 @@ use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
 use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
+use crate::ssh;
 use crate::state::{AppState, HookServerInfo};
 use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
 
@@ -757,6 +758,32 @@ pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), Com
         .resources
         .terminal_closed(&id, crate::resources::now_ms());
     state.pty.close(&id).map_err(CommandError::from)
+}
+
+// --- Remote hosts (SSH) ----------------------------------------------------
+
+/// List the `Host` aliases in the user's own OpenSSH configuration, so adding a
+/// remote host is picking one rather than retyping what they already wrote.
+///
+/// Read-only and connectionless. An absent config file is an empty list, not an
+/// error: plenty of users have none.
+#[tauri::command]
+pub async fn ssh_config_hosts() -> Result<Vec<ssh::config::ConfigAlias>, CommandError> {
+    let Some(path) = ssh::config::default_config_path() else {
+        return Ok(Vec::new());
+    };
+    Ok(ssh::config::enumerate(&path))
+}
+
+/// Resolve one alias to the settings OpenSSH would actually use, by asking
+/// `ssh -G` rather than reimplementing its precedence rules (`Match` blocks,
+/// pattern order, per-user defaults). Getting those subtly wrong would mean
+/// connecting somewhere the user's own `ssh` would not.
+#[tauri::command]
+pub async fn ssh_config_resolve(alias: String) -> Result<ssh::config::ResolvedHost, CommandError> {
+    ssh::config::resolve(&alias)
+        .await
+        .map_err(CommandError::from)
 }
 
 // --- Repositories ----------------------------------------------------------

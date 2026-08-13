@@ -31,6 +31,8 @@ import type {
   FileNumstat,
   FileSearch,
   FsEntry,
+  SshConfigAlias,
+  SshResolvedHost,
   GithubStatus,
   ImportablePet,
   InstalledPet,
@@ -506,6 +508,22 @@ export function worktreeStatus(path: string): Promise<WorktreeStatus> {
  *  delete, asked without deleting anything. */
 export function branchIntegrated(path: string, branch: string): Promise<boolean> {
   return invoke<boolean>('branch_integrated', { path, branch });
+}
+
+// --- Remote hosts (SSH) ----------------------------------------------------
+
+/** The `Host` aliases declared in the user's own OpenSSH configuration (and
+ *  whatever it `Include`s), so adding a host is picking one instead of retyping
+ *  what they already wrote. Read-only; empty when there is no config file. */
+export function sshConfigHosts(): Promise<SshConfigAlias[]> {
+  return invoke<SshConfigAlias[]>('ssh_config_hosts');
+}
+
+/** Resolve one alias to the settings OpenSSH itself would use (`ssh -G`), rather
+ *  than reimplementing its precedence rules. Rejects when the alias cannot be
+ *  resolved, so we never quietly connect somewhere else. */
+export function sshConfigResolve(alias: string): Promise<SshResolvedHost> {
+  return invoke<SshResolvedHost>('ssh_config_resolve', { alias });
 }
 
 // --- Filesystem: file tree + editor ----------------------------------------

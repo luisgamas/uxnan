@@ -620,6 +620,32 @@ export interface WorktreeData {
   target?: TargetId;
 }
 
+/** A `Host` alias found in the user's OpenSSH configuration (mirror of Rust
+ *  `ConfigAlias`). Candidates for the host picker — no resolved values, since
+ *  resolving costs a process spawn and only the chosen one is worth it. */
+export interface SshConfigAlias {
+  alias: string;
+  /** File it was declared in, so the UI can show where a duplicate came from. */
+  source: string;
+}
+
+/** The effective OpenSSH settings for one alias, as `ssh -G` reports them
+ *  (mirror of Rust `ResolvedHost`). Only the fields the ADE acts on. */
+export interface SshResolvedHost {
+  hostname: string;
+  port: number;
+  user: string;
+  /** Every `IdentityFile`, in the order OpenSSH would try them. */
+  identityFiles: string[];
+  identityAgent: string | null;
+  identitiesOnly: boolean;
+  /** `ForwardAgent yes` — lets git on the remote host use the keys held by the
+   *  agent here, without a private key ever being copied. */
+  forwardAgent: boolean;
+  proxyCommand: string | null;
+  proxyJump: string | null;
+}
+
 export interface RepoData {
   id: string;
   name: string;

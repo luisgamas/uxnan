@@ -53,6 +53,7 @@ El ADE no es un IDE: no edita codigo directamente. Es un **orquestador terminal-
 | 02d | [Monitoreo y Orquestacion de Agentes](02d-agent-monitoring.md) | Hook HTTP local (axum), deteccion por titulo de terminal y proceso en ejecucion, estados (working/waiting/blocked/done), cache persistente con TTL, notificaciones nativas del OS, mascotas (companero animado que refleja el estado), orquestacion multi-agente con grafo de tareas | Desarrolladores |
 | 02e | [Integracion del Bridge y Conexion Movil](02e-bridge-integration.md) | Bridge embebido vs standalone, como el desktop integra el bridge Node.js, conexion E2EE con la app movil, relay server, contratos compartidos entre componentes | Arquitectos, desarrolladores |
 | 02f | [Automatizaciones](02f-automations.md) | Tareas desatendidas y recurrentes que corren **con la app cerrada**: runner headless del propio binario disparado por el programador del SO, motor del grafo multi-agente en Rust, carpeta de trabajo propia, paso de contexto entre corridas, precondicion, worktree por corrida, persistencia con un unico escritor por archivo | Desarrolladores, arquitectos |
+| 02g | [Hosts remotos por SSH](02g-remote-hosts.md) | Conectarse a otra maquina del usuario por SSH y correr los agentes **alli**: modelo (UI local, ejecucion remota), clase de confianza, por que no se guarda ningun secreto, lectura de la configuracion SSH del usuario, transporte y que capas de estado funcionan en remoto | Arquitectos, desarrolladores |
 | 03 | [Guia de Implementacion](03-implementation-guide.md) | Stack detallado (Rust, Tauri 2, Svelte 5, shadcn-svelte, Tailwind CSS, xterm.js, CodeMirror 6), crates Rust esenciales, patrones Svelte 5 con Runes ($state/$derived), Tauri 2 commands/events, persistencia con Serde, seguridad con Stronghold, CI/CD multiplataforma | Desarrolladores, contribuidores |
 | 04 | [Referencia Tecnica](04-technical-reference.md) | MVP checklist organizado en Tiers (Tier 1: indispensable, Tier 2: mejoras UX, Tier 3: diferenciadores), fases de implementacion con estimaciones (11-17 semanas), convenciones de codigo, glosario de terminos, referencia rapida de crates Rust | Desarrolladores, gestores de proyecto |
 
@@ -175,6 +176,7 @@ uxnan/                           # Monorepo raiz
 │       ├── 02d-agent-monitoring.md
 │       ├── 02e-bridge-integration.md
 │       ├── 02f-automations.md
+│       ├── 02g-remote-hosts.md
 │       ├── 03-implementation-guide.md
 │       └── 04-technical-reference.md
 └── uxnanmobile/                 # Proyecto Flutter (Android + iOS)

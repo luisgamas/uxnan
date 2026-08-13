@@ -49,6 +49,9 @@ mod pty;
 // Public so the resource-observability integration tests (`tests/`) can drive
 // the monitor against real spawned processes through the crate's own API.
 pub mod resources;
+// Remote hosts: reading the user's own OpenSSH configuration today; the
+// connection, inventory and remote PTY land on top of it.
+mod ssh;
 mod state;
 // Execution-target identity (`local`, `ssh:<host>`) plus the fencing that stops
 // a mutation prepared for one machine from running on another.
@@ -354,6 +357,8 @@ pub fn run() {
             commands::worktree_list,
             commands::worktree_status,
             commands::branch_integrated,
+            commands::ssh_config_hosts,
+            commands::ssh_config_resolve,
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,

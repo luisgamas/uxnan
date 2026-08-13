@@ -7,6 +7,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The app can read your own SSH configuration.** It lists the `Host` aliases
+  in `~/.ssh/config` (following `Include`, globs included, surviving cycles, and
+  skipping wildcard patterns — `Host *` configures defaults, it is not a host)
+  and resolves one of them through **`ssh -G`** rather than interpreting the file
+  itself. OpenSSH's precedence rules are subtle enough that a hand-written parser
+  eventually connects somewhere your own `ssh` would not; `ssh -G` ships on all
+  three platforms and prints exactly what OpenSSH would use. Nothing connects
+  anywhere yet — this is the first step of remote hosts, and it is read-only.
+  See [`docs/remote-hosts.md`](docs/remote-hosts.md).
 - **Projects and worktrees now record which machine they live on.** Every repo
   and worktree carries an execution target (`local` today), and workspaces are
   keyed by the pair *(target, path)* rather than the path alone. Nothing changes
