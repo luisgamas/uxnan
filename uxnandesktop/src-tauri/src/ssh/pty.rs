@@ -59,6 +59,11 @@ enum PtyCommand {
 /// One live remote terminal: the handle used to reach its owning task.
 struct RemotePty {
     tx: tokio::sync::mpsc::Sender<PtyCommand>,
+    /// Which host it runs on, so disconnecting that host can end its terminals.
+    /// Without this they linger: dropping the connection does **not** wake a
+    /// channel that is waiting for output, so the tab would go on claiming to be
+    /// alive against a machine that is gone.
+    host_id: String,
 }
 
 /// Every remote terminal, keyed by the frontend's id — the same key space the
@@ -76,6 +81,7 @@ impl RemotePtyManager {
     /// re-creates on webview reload.
     pub async fn create<FOut, FExit>(
         &self,
+        host_id: &str,
         conn: &Connection,
         spec: RemotePtySpec,
         on_output: FOut,
@@ -126,10 +132,13 @@ impl RemotePtyManager {
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<PtyCommand>(64);
-        self.sessions
-            .lock()
-            .await
-            .insert(spec.id.clone(), RemotePty { tx });
+        self.sessions.lock().await.insert(
+            spec.id.clone(),
+            RemotePty {
+                tx,
+                host_id: host_id.to_string(),
+            },
+        );
 
         // The one owner. It waits for remote output and for local commands at
         // the same time, so neither can starve the other.
@@ -202,6 +211,31 @@ impl RemotePtyManager {
         // is the outcome we wanted anyway, so it is not an error.
         let _ = session.tx.send(PtyCommand::Close).await;
         Ok(())
+    }
+
+    /// End every terminal running on a host.
+    ///
+    /// Called when that host is disconnected. It exists because dropping the
+    /// connection is *not* enough: a channel parked waiting for output never
+    /// learns its session went away, so its tab would keep claiming to be alive.
+    /// Telling them directly is the difference between a terminal that says it
+    /// exited and one that silently stops answering.
+    ///
+    /// A genuine network drop (rather than the user disconnecting) is still only
+    /// noticed when the connection's inactivity timeout expires — recorded in
+    /// `FOR-DEV.md` rather than papered over.
+    pub async fn close_host(&self, host_id: &str) {
+        let doomed: Vec<String> = {
+            let sessions = self.sessions.lock().await;
+            sessions
+                .iter()
+                .filter(|(_, pty)| pty.host_id == host_id)
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        for id in doomed {
+            let _ = self.close(&id).await;
+        }
     }
 
     async fn send(&self, id: &str, command: PtyCommand) -> Result<(), AppError> {
@@ -307,6 +341,7 @@ mod tests {
         let exit_flag = std::sync::Arc::clone(&exited);
         let created = manager
             .create(
+                "h1",
                 &conn,
                 spec(None, None),
                 move |bytes| {
@@ -323,7 +358,7 @@ mod tests {
         // Creating the same id twice is a no-op, exactly like the local manager.
         assert!(
             !manager
-                .create(&conn, spec(None, None), |_| {}, || {})
+                .create("h1", &conn, spec(None, None), |_| {}, || {})
                 .await
                 .unwrap(),
             "a second create for the same id must not open a second terminal"
@@ -357,6 +392,74 @@ mod tests {
         assert!(manager.owns("t1").await);
         manager.close("t1").await.expect("close");
         assert!(!manager.owns("t1").await, "close must drop the session");
+    }
+
+    /// What a dropped connection does to a terminal running on it.
+    ///
+    /// This is the failure the UI has to render honestly: the host goes away and
+    /// the tab must end up looking exactly like a local shell that exited, not
+    /// like a live terminal that silently stopped responding.
+    #[tokio::test]
+    #[ignore = "needs a local sshd that authorizes a key in the agent"]
+    async fn losing_the_connection_ends_the_terminal_like_an_exit() {
+        use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
+        use crate::ssh::conn::{connect, Endpoint, Handshake};
+        use crate::ssh::hostkey;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let user = std::env::var("UXNAN_SSH_TEST_USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .expect("a username");
+        let endpoint = Endpoint::new("127.0.0.1", 22);
+        let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+            panic!("expected an unknown host");
+        };
+        let trusted = hostkey::trust_line("127.0.0.1", 22, &key);
+        let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+            panic!("the recorded key should verify");
+        };
+        match authenticate(&mut conn, &user, &[Credential::Agent])
+            .await
+            .unwrap()
+        {
+            AuthOutcome::Success { .. } => {}
+            other => panic!("authenticate with the agent first: {other:?}"),
+        }
+
+        let manager = RemotePtyManager::default();
+        let exited = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&exited);
+        manager
+            .create(
+                "h1",
+                &conn,
+                spec(None, None),
+                |_| {},
+                move || flag.store(true, Ordering::SeqCst),
+            )
+            .await
+            .expect("terminal");
+
+        // Disconnecting the host is what the UI does. Dropping the connection
+        // alone is *not* enough — a channel parked waiting for output never
+        // learns its session went away — which is exactly what this test found
+        // the first time it was written, and why `close_host` exists.
+        manager.close_host("h1").await;
+        drop(conn);
+
+        let mut fired = false;
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if exited.load(Ordering::SeqCst) {
+                fired = true;
+                break;
+            }
+        }
+        assert!(
+            fired,
+            "losing the connection must fire the exit event; a terminal that just              stops answering leaves the tab claiming to be alive"
+        );
+        println!("live: connection dropped, terminal reported exit");
     }
 
     #[test]

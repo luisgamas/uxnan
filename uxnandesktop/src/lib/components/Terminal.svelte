@@ -48,6 +48,7 @@
     runCommand,
     runCommandExecute = true,
     env,
+    target,
     onexit,
   }: {
     id: string;
@@ -59,6 +60,8 @@
     /** Whether `runCommand` is auto-run (Enter appended) or only pre-typed. */
     runCommandExecute?: boolean;
     env?: [string, string][];
+    /** Machine to open the shell on (`ssh:<hostId>`); absent = this one. */
+    target?: string;
     onexit?: () => void;
   } = $props();
 
@@ -425,6 +428,7 @@
         env,
         // Attribution only (resource monitor): the workspace this tab lives in.
         workspace: terminals.workspaceOfTab(id),
+        target,
       },
     }));
     if (destroyed) {

@@ -61,6 +61,8 @@ export interface TerminalTab extends BaseTab {
    *  — lets a restored/woken tab pre-type the CLI's own resume command.
    *  Persisted. */
   agentSession?: CapturedAgentSession;
+  /** Machine this tab's shell runs on (`ssh:<hostId>`); absent = this one. */
+  target?: string;
   cwd?: string;
   /** Shell executable for this tab's PTY (from the chosen terminal profile). */
   shell?: string;
@@ -215,6 +217,8 @@ export interface NewTabOptions {
   groupId?: string;
   /** Workspace to open in (switches the active workspace first). */
   workspace?: string;
+  /** Machine to open the shell on (`ssh:<hostId>`); absent = this one. */
+  target?: string;
 }
 
 function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TerminalTab {
@@ -235,6 +239,7 @@ function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TerminalTa
     agentCommand: opts?.agentCommand,
     agentModel: opts?.agentModel,
     agentSession: opts?.agentSession,
+    target: opts?.target,
     exited: false,
   };
 }

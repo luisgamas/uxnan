@@ -25,6 +25,9 @@
   import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { hosts } from "$lib/state/hosts.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
+  import { app } from "$lib/state/app.svelte";
+  import type { SshHost } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { focus, icon, panel, text } from "$lib/design";
@@ -88,6 +91,18 @@
     return Object.keys(inventory.agents).sort();
   }
 
+  /** Open a terminal that lives on this host and go to it. The settings screen
+   *  closes, because the point of the button is the terminal, not the setting. */
+  function openTerminal(host: SshHost): void {
+    terminals.create({
+      title: host.label,
+      target: `ssh:${host.id}`,
+      // No cwd: the host's own login shell decides, which lands the user in
+      // their home directory there — the same place `ssh <host>` would.
+    });
+    app.settingsOpen = false;
+  }
+
   function submitSecret(): void {
     const value = secret;
     secret = "";
@@ -147,6 +162,9 @@
             {/if}
           </div>
           {#if connected}
+            <Button variant="outline" size="sm" onclick={() => openTerminal(host)}>
+              {i18n.t("hosts.openTerminal")}
+            </Button>
             <Button variant="ghost" size="sm" onclick={() => hosts.disconnect(host.id)}>
               {i18n.t("hosts.disconnect")}
             </Button>

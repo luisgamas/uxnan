@@ -472,6 +472,7 @@ pub async fn pty_create(
         return state
             .ssh_pty
             .create(
+                &host_id,
                 conn,
                 crate::ssh::pty::RemotePtySpec {
                     id: id.clone(),
@@ -1185,6 +1186,9 @@ pub async fn ssh_host_disconnect(
     state: State<'_, AppState>,
     host_id: String,
 ) -> Result<bool, CommandError> {
+    // End its terminals first, while the session is still there to carry the
+    // goodbye. Afterwards they would have no way to be told.
+    state.ssh_pty.close_host(&host_id).await;
     Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
 }
 

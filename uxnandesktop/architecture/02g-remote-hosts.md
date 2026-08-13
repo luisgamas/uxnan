@@ -395,8 +395,20 @@ dijera algo. Una terminal que se bloquea justo cuando esta ociosa. El arreglo no
 fue un cerrojo mas listo sino **un solo dueño**: una tarea posee el canal y todo
 lo demas le habla por una cola. Medido: de 300 s bloqueado a 0.33 s.
 
+**Desconectar un host termina sus terminales.** Soltar la conexion **no basta**:
+un canal parado esperando salida nunca se entera de que su sesion desaparecio, y
+la pestaña seguiria diciendo que esta viva contra una maquina que ya no esta. Lo
+encontro un test en vivo que exigia que saltara el evento de salida — fallo la
+primera vez que se escribio. Por eso existe `close_host`, y por eso se llama
+**antes** de quitar la sesion, mientras todavia hay por donde despedirse.
+
+Queda un hueco, anotado en `FOR-DEV.md` en vez de disimulado: una caida **de
+red** (no iniciada por el usuario) solo se nota cuando expira el timeout de
+inactividad de la conexion.
+
 Validado en vivo contra un `sshd` real: abrir, escribir un comando, leer su eco,
-redimensionar y cerrar; y crear dos veces el mismo id no abre dos terminales.
+redimensionar y cerrar; crear dos veces el mismo id no abre dos terminales; y
+desconectar el host hace que la terminal reporte salida.
 
 ## 6. Que funciona y que no en un contexto remoto
 

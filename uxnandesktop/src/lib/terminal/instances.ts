@@ -67,6 +67,11 @@ export interface TerminalSpawnSpec {
   /** Workspace key the tab belongs to at spawn time — only so the backend's
    *  resource monitor can attribute the shell's cost to its workspace. */
   workspace?: string;
+  /** Machine to open the shell on. Absent = this one. An `ssh:<hostId>` target
+   *  opens a channel on that host's live session instead of spawning a process
+   *  here; everything downstream (output events, resize, close) is identical,
+   *  which is why nothing else in this file needs to know. */
+  target?: string;
 }
 
 /** Everything needed to build a fresh instance. */
@@ -327,6 +332,7 @@ export async function spawnPty(
       rows,
       // "" is the global workspace — meaningless as an attribution target.
       workspace: spec.workspace || null,
+      target: spec.target ?? null,
     });
     // The PTY now exists at exactly `cols`×`rows`; record that as the known
     // grid, then flush any fit that settled while the spawn was in flight so

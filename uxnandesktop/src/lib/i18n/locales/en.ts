@@ -2182,6 +2182,8 @@ export const en = {
   "hosts.fieldForwardAgent": "Forward my SSH agent",
   "hosts.fieldForwardAgentHint": "Lets git on that machine use the keys held here, without copying a private key to it.",
 
+  "hosts.openTerminal": "Open terminal",
+
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

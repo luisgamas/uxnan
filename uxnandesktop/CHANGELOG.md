@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Open a terminal on a host, from the host list.** A connected machine gets an
+  *Open terminal* button; the terminal opens in the main area like any other,
+  because it *is* one. Disconnecting a host now ends its terminals rather than
+  leaving them claiming to be alive — dropping the connection is not enough on
+  its own, since a channel waiting for output never learns its session went away.
+  A genuine network drop is still only noticed when the connection times out;
+  that gap is recorded rather than papered over.
 - **Terminals can live on another machine.** A remote terminal is one channel on
   that host's existing connection carrying a PTY and a shell — no second
   handshake, no second login. It is deliberately the *same shape* as a local one:

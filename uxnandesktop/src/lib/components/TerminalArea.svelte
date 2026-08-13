@@ -788,6 +788,7 @@
                               runCommand={t.runCommand}
                               runCommandExecute={t.runCommandExecute}
                               env={t.env}
+                              target={t.target}
                               focused={activeRegion && paneActive}
                               onexit={() => terminals.handleShellExit(t.id)}
                             />

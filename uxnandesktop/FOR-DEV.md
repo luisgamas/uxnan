@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 634 Rust tests (592 unit + 29
+always wins). 636 Rust tests (592 unit + 29
 integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
 probe, +1 ignored real-scheduler probe) + 1,061 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -866,11 +866,12 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       one command with delimited output, POSIX with a login shell or PowerShell
       with `-NoProfile`, reporting OS, home, git, multiplexer and the agent CLIs
       with versions.
-- [ ] Open a remote terminal *from the UI*. The backend is done and proven live
-      (`ssh/pty.rs` behind the existing five commands, same events, routed by
-      whichever manager owns the id): what is missing is the affordance — a
-      terminal on a host has no button yet, and `terminals.create` does not carry
-      a target.
+- [ ] Notice a host that dropped *by itself*. Disconnecting one from the UI now
+      ends its terminals (`RemotePtyManager::close_host`), but a network drop is
+      only noticed when the connection's inactivity timeout expires — until then
+      a tab looks alive against a machine that is gone. Found by a live test that
+      asserted the exit event fires; the user-initiated half is fixed, this half
+      needs a keepalive or a transport-level signal.
 
 ### Frontend (Svelte)
 - [ ] Settings → Hosts (cards, form with advanced fields folded, import, doctor,
@@ -1319,7 +1320,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 634 Rust + 1,061 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 636 Rust + 1,061 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
