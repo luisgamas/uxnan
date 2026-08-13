@@ -225,17 +225,39 @@ codigo significa comando matado o conexion caida, y llamar a eso exito seria
 mentir. El bucle de lectura tampoco corta en el exit status, porque puede llegar
 mas salida despues.
 
-**Medicion (host Windows remoto, tailnet):** ocho canales concurrentes sobre una
-conexion tardaron 3.2 s, aproximadamente ocho veces un viaje de ida y vuelta. O
-las aperturas de canal se serializan, o arrancar el shell remoto es caro por si
-mismo. La prueba mide ahora un canal aislado para distinguirlo, porque las dos
-causas piden arreglos opuestos: **agrupar** el trabajo en menos comandos, o
-**dejar de pagar el perfil** del shell remoto (`-NoProfile`).
+### Medicion, y la restriccion que impone
 
-Consecuencia de diseño, valida en ambos casos: **el inventario se hace con un
-solo comando** cuya salida va delimitada por marcadores, no con una llamada por
-dato. Es la misma tecnica que `path_env.rs` ya usa en local, y aqui hay un numero
-que la respalda.
+Host Windows remoto a traves de un tailnet:
+
+```
+un canal: 2109 ms | 8 concurrentes: 3170 ms | ratio 1.5x
+```
+
+Dos lecturas, ambas importantes:
+
+1. **La concurrencia funciona.** Ocho canales cuestan 1.5 veces lo que uno, no
+   ocho. Las aperturas solapan; el cliente en proceso hace lo que promete.
+2. **Un `echo` cuesta 2.1 s.** Eso no es la red: es el `sshd` remoto arrancando
+   su shell por defecto —PowerShell, con el perfil del usuario— para *cada*
+   `exec`. En esa maquina el perfil ademas falla (`Set-PSReadLineOption` sin
+   consola), asi que se paga el arranque y encima escribe a stderr.
+
+**Restriccion de diseño, ya no una preferencia:** todo lo que se pueda agrupar,
+se agrupa. El inventario se hace con **un solo comando** de salida delimitada por
+marcadores. Diez datos en diez `exec` costarian ~21 s en un host asi; en uno,
+~2 s. Es la misma tecnica que `path_env.rs` usa en local, y aqui hay un numero
+que la exige.
+
+Corolarios:
+
+- El **doctor** mide este coste por host y lo dice, porque explica por que ese
+  host se siente lento y tiene arreglo del lado del usuario (poner `cmd` como
+  `DefaultShell` del `sshd`, o meter una guarda rapida en su perfil).
+- Para trabajo repetido (por ejemplo sondear `git status`), un `exec` por vuelta
+  es el patron equivocado en estos hosts. La alternativa —mantener un canal de
+  shell abierto y escribirle los comandos— queda anotada como opcion para
+  entonces, no adoptada ahora: complica el enmarcado de la salida y aun no hay
+  un caso que lo pague.
 
 ## 6. Que funciona y que no en un contexto remoto
 

@@ -821,13 +821,15 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
          (`ssh/auth.rs` → `one_connection_carries_many_channels`, driven by
          `UXNAN_SSH_TEST_{HOST,USER,PASSWORD}` from the operator's own shell so
          the password never leaves their process).
-         **Open question, not a blocker:** the eight took 3.2 s, which is close
-         to eight times a single round trip — so either the channel opens
-         serialize or each remote shell start is expensive. The test now times
-         one channel alone to tell those apart, because they call for opposite
-         fixes (batch probes into fewer commands vs. stop paying for the remote
-         shell profile). Either way the inventory's one-command-with-markers
-         design is the right shape; see `architecture/02g` §5.3.
+         **Measured, and the answer changes the design:** `one channel: 2109 ms
+         | 8 concurrent: 3170 ms | ratio 1.5x`. Concurrency is fine — eight cost
+         1.5x one, not 8x. What is expensive is a single `exec`: 2.1 s for an
+         `echo`, because that host's sshd starts PowerShell and loads the user
+         profile for every command. So batching is a requirement, not a
+         preference: the inventory is one command with delimited output, and the
+         doctor should report this per-host cost since it has a user-side fix
+         (`DefaultShell` = cmd, or a fast path in their profile). See
+         `architecture/02g` §5.3.
       3. ~~Authentication through the Windows agent named pipe.~~ **Proven**:
          with a key loaded in this machine's agent, the named-pipe conversation
          happens and the agent's identities are put on the wire (a live test
