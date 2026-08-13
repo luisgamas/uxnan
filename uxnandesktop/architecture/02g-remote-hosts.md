@@ -75,14 +75,27 @@ desconcertante en el momento de conectar).
 Comandos: `ssh_config_hosts` y `ssh_config_resolve`. Ambos de solo lectura y sin
 conexion alguna.
 
-## 5. Transporte — decidido, no implementado
+## 5. Transporte — IMPLEMENTADO
 
 - **Cliente en proceso, una conexion y N canales.** El cliente OpenSSH de
   Windows no implementa `ControlMaster`, asi que lanzar `ssh.exe` por operacion
-  significaria un handshake completo por comando. Prohibido.
-- **`ssh` del sistema como plan B declarado por host**, para los casos que un
+  significaria un handshake completo por comando. Prohibido. Medido: ocho
+  canales concurrentes cuestan 1.5 veces lo que uno (§5.3).
+- **`ssh` del sistema como plan B declarado por host** — para los casos que un
   cliente en proceso no cubre (GSSAPI, ciertos `ProxyCommand`), anunciando que
-  capacidades se pierden en ese modo.
+  capacidades se pierden en ese modo. **Pendiente**: hoy solo existe el cliente
+  en proceso; el plan B esta decidido y no implementado.
+- **Verificacion de host obligatoria**, sin modo para saltarla (§5.1).
+
+### Sub-secciones
+
+| | Que cubre | Estado |
+|---|---|---|
+| §5.0 | handshake, veredicto de clave, generacion de conexion | implementado |
+| §5.1 | la decision sobre `known_hosts` | implementado |
+| §5.2 | autenticacion (agente, llave, contrasena) | implementado |
+| §5.3 | comandos como canales, y su coste medido | implementado |
+
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
 
 `src-tauri/src/ssh/conn.rs`. Establece el TCP, corre el handshake SSH y aplica
