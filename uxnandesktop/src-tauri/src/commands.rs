@@ -1316,14 +1316,11 @@ pub async fn ssh_browse_dirs(
     host_id: String,
     path: String,
 ) -> Result<ssh::browse::RemoteListing, CommandError> {
-    let Some(conn) = session_for(&state, &host_id).await else {
-        return Err(CommandError::from(AppError::Invalid(
-            "connect to this host before browsing it".to_string(),
-        )));
-    };
-    ssh::browse::list_dirs(&conn, &path)
-        .await
-        .map_err(CommandError::from)
+    let dir = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        ssh::browse::list_dirs(&session, dir).await
+    })
+    .await
 }
 
 /// Register a folder that lives on a host as a project.
@@ -1347,12 +1344,15 @@ pub async fn ssh_repo_add(
     // Ask the host whether this is a git repository, the same question the local
     // path asks — a plain folder is a valid project too, it just has no branches.
     let is_git = {
-        let Some(conn) = session_for(&state, &host_id).await else {
-            return Err(CommandError::from(AppError::Invalid(
-                "connect to this host before adding a project on it".to_string(),
-            )));
-        };
-        ssh::browse::is_git_repo(&conn, &path).await
+        let folder = path.as_str();
+        // Never a reason to refuse the project: `is_git_repo` answers `false`
+        // when it could not look, and a session that is not there is the same
+        // kind of "could not look".
+        with_sftp(&state, &host_id, |session| async move {
+            Ok(ssh::browse::is_git_repo(&session, folder).await)
+        })
+        .await
+        .unwrap_or(false)
     };
 
     let mut data = state.data.write().await;

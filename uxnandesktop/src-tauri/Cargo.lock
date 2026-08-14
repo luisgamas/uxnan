@@ -6540,6 +6540,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "futures",
+ "futures-util",
  "git2",
  "globset",
  "hex",

@@ -519,6 +519,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Browsing a host's folders is no longer slow.** The picker asked the host's
+  *shell* to list a directory — and tried POSIX first, so a Windows host paid for
+  **two** remote commands per click, each one starting a shell and its profile
+  over there. It now goes the same way the file tree already did, over SFTP: the
+  same listing measured **6.6 ms** instead of 336 ms against this machine's own
+  `sshd`, and on a real host across a tailnet each of those commands had been
+  measured at 2.1 s. The repository badge survives the move because the `.git`
+  checks **pipeline on the one open channel** — 63 folders cost 3.3 ms asked
+  together against 44 ms one after another — and they use no extra channels, so
+  browsing no longer eats into the host's session limit either.
+
+  Two things only running it could show: a Windows host answers SFTP's
+  `realpath(".")` with `/C:/Users/you`, which is unusable as a project path and
+  is now corrected; and the badge is decided by `.git` **existing**, because in a
+  worktree it is a file rather than a folder — asserted against a real worktree.
+  One trade-off, stated rather than hidden: a host with the `sftp` subsystem
+  disabled can no longer be browsed. The file tree already required it.
+
 - **A project on a host no longer wears a "folder is missing" warning.** The
   check ran `is_dir` on *this* machine against the other machine's path, so a
   perfectly healthy remote project was marked as gone — while its neighbour on a

@@ -268,6 +268,24 @@ fn normalize(path: &str) -> String {
     }
 }
 
+/// Undo SFTP's leading slash in front of a Windows drive.
+///
+/// A Windows host answers `realpath(".")` with `/C:/Users/gamas` — correct
+/// inside the protocol, where every path is rooted at `/`, and wrong everywhere
+/// else in the app: that string is handed back as a project's path, typed into
+/// a terminal and passed to git on that machine, none of which accept it. Found
+/// by the live test, which printed it.
+fn strip_sftp_drive_root(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let looks_like_a_drive =
+        bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':';
+    if looks_like_a_drive {
+        path[1..].to_string()
+    } else {
+        path.to_string()
+    }
+}
+
 /// Join a directory and a child name in the normalized form.
 fn join(dir: &str, name: &str) -> String {
     let base = normalize(dir);
@@ -400,6 +418,31 @@ impl RemoteFiles {
             ))));
         }
         Ok(())
+    }
+
+    /// The user's home directory on the host, in the app's forward-slash form.
+    ///
+    /// Asked of SFTP, not of a shell: `realpath(".")` on a freshly opened
+    /// session is where that user lands, which is the same answer `echo $HOME` /
+    /// `%USERPROFILE%` gives without needing to know which of the two to ask.
+    pub async fn home(&self) -> Result<String, SftpFailure> {
+        self.session
+            .canonicalize(".")
+            .await
+            .map(|p| strip_sftp_drive_root(&normalize(&p)))
+            .map_err(|e| self.failed("could not ask that host where its home is", e))
+    }
+
+    /// Whether a path exists on the host, of any kind.
+    ///
+    /// Deliberately not "is a directory": the one caller is the "is this folder a
+    /// repository?" check, and a worktree's `.git` is a **file**, not a folder.
+    pub async fn exists(&self, path: &str) -> Result<bool, SftpFailure> {
+        let target = normalize(path);
+        self.session
+            .try_exists(target.clone())
+            .await
+            .map_err(|e| self.failed(&format!("could not look at {target} on that host"), e))
     }
 
     /// Read a file for the editor, honouring the same guards as the local layer:
@@ -747,6 +790,25 @@ mod tests {
         assert_eq!(normalize("/home/dev/code/"), "/home/dev/code");
         assert_eq!(join(r"C:\Users\dev", "main.rs"), "C:/Users/dev/main.rs");
         assert_eq!(join("/home/dev/", "main.rs"), "/home/dev/main.rs");
+    }
+
+    #[test]
+    fn a_windows_home_loses_the_protocol_slash() {
+        // SFTP roots everything at `/`, so a Windows host answers `/C:/Users/x`.
+        // Handed on as a project path it would be typed into that machine's
+        // terminal and given to its git, and neither accepts it.
+        assert_eq!(strip_sftp_drive_root("/C:/Users/gamas"), "C:/Users/gamas");
+        assert_eq!(strip_sftp_drive_root("/D:/work"), "D:/work");
+    }
+
+    #[test]
+    fn a_posix_home_is_left_exactly_as_it_is() {
+        // The leading slash *is* the path there — stripping it would turn an
+        // absolute path into a relative one.
+        assert_eq!(strip_sftp_drive_root("/home/dev"), "/home/dev");
+        assert_eq!(strip_sftp_drive_root("/"), "/");
+        // And a folder whose name merely starts with a letter is not a drive.
+        assert_eq!(strip_sftp_drive_root("/c/code"), "/c/code");
     }
 
     #[test]

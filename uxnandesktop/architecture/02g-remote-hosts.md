@@ -469,9 +469,37 @@ desconectar el host hace que la terminal reporte salida.
 
 ## 5.8 Explorar carpetas del host — IMPLEMENTADO
 
-`src-tauri/src/ssh/browse.rs`. En la otra maquina no hay filesystem que recorrer,
-solo un shell: se le pide que enumere un directorio y se parsea la respuesta. Un
-comando, salida entre marcadores, por lo mismo que §5.6.
+`src-tauri/src/ssh/browse.rs`. **Por SFTP, igual que el arbol de ficheros — no
+preguntandole a un shell.** Antes se mandaba un script y se parseaba la
+respuesta: POSIX primero y PowerShell de reserva, o sea que un host con
+PowerShell pagaba **dos** comandos remotos por cada clic, y cada uno arranca una
+shell con su perfil en la otra maquina.
+
+Medido, que es lo que decidio el cambio:
+
+| | |
+|---|---|
+| Listar una carpeta **por shell** | 336 ms (contra el `sshd` de esta maquina, con `cmd`) |
+| La misma carpeta **por SFTP** | **6,6 ms** |
+| Un `exec` en el host real del usuario (§5.3) | **2.109 ms** — y eran dos por clic |
+| Insignia de repo: 63 carpetas, una a una | 44 ms |
+| Las mismas 63 **a la vez** | **3,3 ms** |
+
+Esa ultima fila es la que hace viable la insignia: las peticiones SFTP
+**se encauzan en el unico canal**, asi que el listado cuesta un viaje de ida y
+vuelta, no uno por carpeta. Y no consume canales extra (§5.3, `MaxSessions`),
+porque van todas por la sesion que ya esta abierta.
+
+**Detalle que solo aparecio corriendolo:** un host Windows contesta
+`realpath(".")` con `/C:/Users/gamas`. Correcto dentro del protocolo —ahi todo
+cuelga de `/`— e inutilizable fuera: esa cadena se guarda como ruta del proyecto,
+se teclea en una terminal de esa maquina y se le pasa a su git, y ninguno la
+acepta. Se le quita la barra (`strip_sftp_drive_root`), con sus tests.
+
+**Lo que se pierde:** un host con el subsistema `sftp` deshabilitado ya no se
+puede explorar. Es una configuracion rara y el arbol de ficheros ya dependia de
+SFTP, asi que ese host tampoco servia para gran cosa; se dice claro en vez de
+mantener dos implementaciones del mismo listado.
 
 **Solo directorios.** Un proyecto es una carpeta; mandar miles de ficheros que
 nadie va a elegir es gastar bytes y segundos en ruido. Un listado que hubo que
@@ -485,11 +513,12 @@ miente.
 
 **Si la carpeta es un repositorio git se le pregunta al host.** Solo el puede
 responder, y adivinar mal dejaria un repositorio real con sus paneles de git
-vacios para siempre. Si la pregunta falla se responde "no": un proyecto que
-funciona menos sus ramas es mejor que negarse a añadirlo. La pregunta va **dentro
-del mismo comando** y para **cada carpeta del listado** (`repo=` frente a `dir=`),
-no una llamada por carpeta: con §5.3 sobre la mesa, cincuenta carpetas serian
-cincuenta viajes de segundos cada uno.
+vacios para siempre. La prueba es que **exista `.git`**, no `git rev-parse`: en
+un worktree o un submodulo `.git` es un **fichero**, y ademas preguntarselo a git
+significaria arrancar una shell justo lo que este cambio quita. Si la pregunta
+falla se responde "no": un proyecto que funciona menos sus ramas es mejor que
+negarse a añadirlo. Lo cubre un test en vivo que exige la insignia sobre un
+worktree de verdad.
 
 **El listado vuelve con la forma del listado local** (`DirListing`: `path`,
 `parent`, `isRepo`, `entries[]`) mas `truncated`. No es cosmetico: es lo que
