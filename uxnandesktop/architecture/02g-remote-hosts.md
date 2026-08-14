@@ -520,6 +520,48 @@ era resultaba invisible hasta que un proyecto en un host las hizo distintas, y
 entonces *todas* las opciones del `+` abrian una shell aqui, con la clave como
 cwd.
 
+**Al host se le pregunta que shell tiene; no se supone.** SSH no tiene "empieza
+aqui": el protocolo abre una shell en el directorio por defecto y punto. La
+primera version aplicaba el `cwd` con `exec` de `cd /d "..." && cmd` —sintaxis de
+**cmd**— y una maquina Windows cuyo `sshd` arranca PowerShell contestaba con un
+error de parametro y cerraba el canal en ~1,4 s: **toda** terminal de proyecto en
+ese host vivia un segundo, mientras que una sin carpeta iba bien. Peor: la
+siguiente version "portable" tampoco valia, porque el mismo usuario alterna entre
+cmd, PowerShell, WSL y Git Bash en la misma maquina, y ninguna sintaxis las cubre
+a todas.
+
+`src-tauri/src/ssh/shellkind.rs` lo resuelve preguntando. **Una sonda, una vez por
+conexion**, cuya *respuesta* identifica la familia:
+
+```
+echo __UXNAN_SH__ $0 %COMSPEC% __UXNAN_SH__
+```
+
+| Familia | Lo que contesta de verdad |
+|---|---|
+| cmd | `__UXNAN_SH__ $0 C:\WINDOWS\system32\cmd.exe __UXNAN_SH__` |
+| PowerShell 5.1 / pwsh 7 | tres lineas: marcador, `%COMSPEC%`, marcador (`echo` es Write-Output y `$0` no existe) |
+| Git Bash | `__UXNAN_SH__ /usr/bin/bash %COMSPEC% __UXNAN_SH__` |
+| WSL | `__UXNAN_SH__ bash %COMSPEC% __UXNAN_SH__` |
+
+Los campos van separados por **espacios, no por dos puntos**: `$0:` es un error de
+sintaxis en PowerShell, que es lo que descarto la primera sonda. Cada linea de
+esa tabla es una respuesta medida, y cada una es un test.
+
+Con la familia identificada, el `cd` se teclea en la forma que esa shell entiende
+(`cd '...'`, `<unidad>:` + `cd "..."`, o `Set-Location -LiteralPath`). Si la
+respuesta no es reconocible **no se teclea nada**: una terminal que abre en el
+home es una perdida pequeña; una que muere es una funcion rota. La clasificacion
+se guarda con la sesion y se olvida al desconectar, porque una reconexion puede
+encontrar la maquina configurada de otra forma.
+
+**Hacia donde va esto.** Preguntar funciona, pero sigue siendo la interfaz
+hablandole a una shell ajena. La direccion acordada para la fase 3 es **dejar de
+necesitarlo**: un ayudante propio corriendo en el host coloca una terminal en un
+directorio, lee ficheros y ejecuta git sin que ninguna shell intervenga — que es
+el mismo camino que toman los clientes remotos maduros. `shellkind` es lo que
+mantiene correcto el camino solo-SSH mientras tanto.
+
 **Teclear el lanzamiento espera a que el host hable.** El comando del agente se
 *escribe* en la shell, y el canal SSH se abre segundos antes de que la shell
 remota termine de arrancar: teclear entonces parte el comando — la cabeza se la

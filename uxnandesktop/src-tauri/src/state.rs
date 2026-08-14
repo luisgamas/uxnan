@@ -59,6 +59,14 @@ pub struct AppState {
     /// SSH client is in-process: each of those is a channel here, not another
     /// handshake and another login.
     pub ssh_sessions: Arc<RwLock<std::collections::HashMap<String, crate::ssh::conn::Connection>>>,
+    /// Which shell each connected host's `sshd` starts, learned once per
+    /// connection (`ssh::shellkind`). Everything shell-shaped uxnan sends is
+    /// chosen from this rather than assumed — a host's owner switches between
+    /// cmd, PowerShell, WSL and Git Bash as they please, and guessing wrong
+    /// killed every project terminal on a PowerShell machine. Dropped with the
+    /// session, because a reconnect may find a different configuration.
+    pub ssh_shells:
+        Arc<RwLock<std::collections::HashMap<String, crate::ssh::shellkind::ShellKind>>>,
     /// Host keys seen during a probe, kept between "we asked" and "the user
     /// said yes", keyed by host id.
     ///
@@ -127,6 +135,7 @@ impl AppState {
             pty: PtyManager::default(),
             ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),

@@ -486,6 +486,22 @@ pub async fn pty_create(
             )));
         };
 
+        // Which shell this host starts, asked once per connection. A terminal is
+        // placed in its folder by *typing* a `cd`, and the families do not share
+        // syntax — assuming cmd is what killed every project terminal on a
+        // PowerShell host. An unrecognised shell types nothing at all.
+        let shell = {
+            let known = state.ssh_shells.read().await.get(&host_id).copied();
+            match known {
+                Some(kind) => kind,
+                None => {
+                    let kind = crate::ssh::shellkind::classify(conn).await;
+                    state.ssh_shells.write().await.insert(host_id.clone(), kind);
+                    kind
+                }
+            }
+        };
+
         let out_app = app.clone();
         let out_id = id.clone();
         let exit_app = app.clone();
@@ -498,6 +514,7 @@ pub async fn pty_create(
                 crate::ssh::pty::RemotePtySpec {
                     id: id.clone(),
                     cwd,
+                    shell,
                     // An interactive shell, like the local path: the launcher
                     // delivers its command by typing it in afterwards
                     // (`pty_paste_submit`), which works the same either side.
@@ -1306,6 +1323,9 @@ pub async fn ssh_host_disconnect(
     // End its terminals first, while the session is still there to carry the
     // goodbye. Afterwards they would have no way to be told.
     state.ssh_pty.close_host(&host_id).await;
+    // A reconnect may find the machine configured differently, so the shell is
+    // learned again rather than remembered across sessions.
+    state.ssh_shells.write().await.remove(&host_id);
     Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
 }
 

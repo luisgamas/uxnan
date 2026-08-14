@@ -38,6 +38,10 @@ pub struct RemotePtySpec {
     pub cwd: Option<String>,
     /// Command to run instead of an interactive shell, if any.
     pub command: Option<String>,
+    /// Which shell this host starts, so the working directory is typed in a form
+    /// that shell understands (`super::shellkind`). Never assumed: a machine's
+    /// owner switches between cmd, PowerShell, WSL and Git Bash freely.
+    pub shell: super::shellkind::ShellKind,
     pub cols: u16,
     pub rows: u16,
 }
@@ -129,14 +133,22 @@ impl RemotePtyManager {
             .await
             .map_err(|e| AppError::Pty(format!("the host refused a terminal: {e}")))?;
 
+        // A shell, so the user gets their own environment: aliases, prompt, PATH
+        // from their profile. This is the one place we *want* the profile the
+        // inventory probe deliberately skips. Only an explicit command takes the
+        // `exec` path.
+        let mut pending_init = None;
         match build_command(&spec) {
-            // A shell, so the user gets their own environment: aliases, prompt,
-            // PATH from their profile. This is the one place we *want* the
-            // profile the inventory probe deliberately skips.
-            None => channel
-                .request_shell(true)
-                .await
-                .map_err(|e| AppError::Pty(format!("the host refused a shell: {e}")))?,
+            None => {
+                channel
+                    .request_shell(true)
+                    .await
+                    .map_err(|e| AppError::Pty(format!("the host refused a shell: {e}")))?;
+                pending_init = spec
+                    .cwd
+                    .as_deref()
+                    .and_then(|cwd| super::shellkind::cd_line(spec.shell, cwd));
+            }
             Some(command) => channel
                 .exec(true, command)
                 .await
@@ -162,14 +174,33 @@ impl RemotePtyManager {
             // Why this terminal ended, for the log: a tab that disappears has
             // exactly three possible causes, and only the record separates them.
             let mut reason = "the host ended the channel";
+            // The `cd` waits for the shell to speak: the channel is open long
+            // before the shell has finished starting, and typing into one that
+            // is not there yet loses the front of the line.
+            let mut init = pending_init;
+            // Kept only until the terminal has proved it started (see
+            // `early_exit_snippet`); a shell that dies young is the one case
+            // where its own words are the diagnosis.
+            let opened_at = std::time::Instant::now();
+            let mut first_bytes: Vec<u8> = Vec::new();
             loop {
+                let mut send_init = None;
                 let command = tokio::select! {
                     msg = channel.wait() => {
                         match msg {
                             // stdout and stderr both belong on a terminal: that
                             // is what a terminal *is*. (`conn::exec` keeps them
                             // apart because there a caller parses the output.)
-                            Some(ChannelMsg::Data { ref data }) => { on_output(data); None }
+                            Some(ChannelMsg::Data { ref data }) => {
+                                if first_bytes.len() < EARLY_EXIT_SNIPPET * 4
+                                    && opened_at.elapsed().as_millis() < EARLY_EXIT_MS
+                                {
+                                    first_bytes.extend_from_slice(data);
+                                }
+                                on_output(data);
+                                send_init = init.take();
+                                None
+                            }
                             Some(ChannelMsg::ExtendedData { ref data, .. }) => { on_output(data); None }
                             Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
                             Some(_) => None,
@@ -177,8 +208,15 @@ impl RemotePtyManager {
                     }
                     cmd = rx.recv() => cmd.or(Some(PtyCommand::Close)),
                 };
-                // Handled out here rather than inside the arm: the other arm's
-                // future still borrows the channel while the select is running.
+                // Both of these are handled out here rather than inside the arm:
+                // the other arm's future still borrows the channel while the
+                // select is running.
+                if let Some(init) = send_init {
+                    if channel.data(init.as_bytes()).await.is_err() {
+                        reason = "the channel refused the initial directory";
+                        break;
+                    }
+                }
                 match command {
                     Some(PtyCommand::Write(bytes)) => {
                         if channel.data(&bytes[..]).await.is_err() {
@@ -204,7 +242,16 @@ impl RemotePtyManager {
                 let _ = channel.eof().await;
                 let _ = channel.close().await;
             }
-            log(&format!("terminal {log_id} ended: {reason}"));
+            let lived = opened_at.elapsed().as_millis();
+            if lived < EARLY_EXIT_MS && !closing {
+                // It never really started. Say how fast, and what the host said.
+                log(&format!(
+                    "terminal {log_id} ended after {lived} ms: {reason}; the host said: {}",
+                    early_exit_snippet(&first_bytes)
+                ));
+            } else {
+                log(&format!("terminal {log_id} ended: {reason}"));
+            }
             on_exit();
         });
 
@@ -285,34 +332,57 @@ impl RemotePtyManager {
     }
 }
 
-/// The command to run, if the caller asked for one rather than a shell.
+/// What a shell said before dying young, for the log.
 ///
-/// A `cwd` is honored by prefixing a `cd`, because SSH has no "start here" — the
-/// protocol only opens a shell in the user's default directory. Quoting is the
-/// host's problem to interpret, so the path is wrapped in single quotes for a
-/// POSIX host and left alone for a Windows one, decided by how the path is
-/// written rather than by asking (one round trip is worth more than the guess).
-fn build_command(spec: &RemotePtySpec) -> Option<String> {
-    let cwd = spec.cwd.as_deref().map(str::trim).filter(|c| !c.is_empty());
-    match (cwd, spec.command.as_deref()) {
-        (None, None) => None,
-        (None, Some(command)) => Some(command.to_string()),
-        (Some(cwd), command) => {
-            let windows_style = cwd.chars().nth(1) == Some(':') || cwd.starts_with('\\');
-            let cd = if windows_style {
-                format!("cd /d \"{cwd}\"")
-            } else {
-                format!("cd '{}'", cwd.replace('\'', r"'\''"))
-            };
-            Some(match command {
-                Some(command) => format!("{cd} && {command}"),
-                // No command: land in the directory and hand over an interactive
-                // shell there.
-                None if windows_style => format!("{cd} && cmd"),
-                None => format!("{cd} && exec $SHELL -l"),
-            })
+/// A terminal that ends within seconds of opening has failed to start, and the
+/// reason is almost always printed by the shell itself — the one place uxnan
+/// cannot see from here. So an **early** exit, and only an early one, records a
+/// short prefix of what the host sent.
+///
+/// The bounds are the point: at most [`EARLY_EXIT_SNIPPET`] characters, control
+/// bytes and escape sequences collapsed to spaces, and nothing at all once the
+/// terminal has lived past [`EARLY_EXIT_MS`] — by which point the bytes are the
+/// user's work rather than a startup failure, and none of it belongs in a log.
+fn early_exit_snippet(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let mut out = String::new();
+    let mut spaced = false;
+    for ch in text.chars() {
+        if ch.is_control() || ch == '\u{1b}' {
+            if !spaced && !out.is_empty() {
+                out.push(' ');
+                spaced = true;
+            }
+            continue;
+        }
+        out.push(ch);
+        spaced = false;
+        if out.chars().count() >= EARLY_EXIT_SNIPPET {
+            break;
         }
     }
+    out.trim().to_string()
+}
+
+/// How soon an exit counts as "it never started".
+const EARLY_EXIT_MS: u128 = 5_000;
+/// How much of the host's first output an early exit may record.
+const EARLY_EXIT_SNIPPET: usize = 200;
+
+/// The command to run, if the caller asked for one rather than a shell.
+///
+/// Deliberately does **not** touch `cwd`. It used to prefix a `cd` here, in a
+/// syntax picked from how the path was spelled — which is how a PowerShell host
+/// came to be sent cmd syntax and closed the channel on every project terminal.
+/// The directory now belongs to [`super::shellkind::cd_line`], which asks the
+/// host what it runs instead of inferring it; a caller that supplies its own
+/// command supplies whatever directory handling that command needs.
+fn build_command(spec: &RemotePtySpec) -> Option<String> {
+    spec.command
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -324,9 +394,32 @@ mod tests {
             id: "t1".into(),
             cwd: cwd.map(String::from),
             command: command.map(String::from),
+            // The live tests run against this machine's sshd, whose configured
+            // shell is cmd; the classifier is exercised on its own replies in
+            // `super::shellkind`.
+            shell: super::super::shellkind::ShellKind::Cmd,
             cols: 80,
             rows: 24,
         }
+    }
+
+    #[test]
+    fn an_early_exit_records_what_the_shell_said_and_no_more() {
+        // The escape sequences a shell paints on startup carry no information
+        // here and would drown the one line that does.
+        let raw = b"\x1b[2J\x1b[H'cd' is not recognized as an internal or external command.\r\n";
+        let snippet = early_exit_snippet(raw);
+        assert!(snippet.contains("not recognized"), "{snippet}");
+        assert!(!snippet.contains('\x1b'), "{snippet}");
+        assert!(!snippet.contains('\r'), "{snippet}");
+    }
+
+    #[test]
+    fn the_snippet_is_bounded() {
+        // A terminal that dies with a screenful of output must not put a
+        // screenful into the log.
+        let raw = "x".repeat(10_000);
+        assert!(early_exit_snippet(raw.as_bytes()).chars().count() <= EARLY_EXIT_SNIPPET);
     }
 
     /// A real terminal on the sshd of this machine: open it, type a command,
@@ -529,6 +622,140 @@ mod tests {
         manager.close("keep").await.expect("close");
     }
 
+    /// Ask the sshd of this machine which shell it starts, and use the answer.
+    ///
+    /// The end-to-end shape of the fix: nothing here knows in advance whether
+    /// the host runs cmd, PowerShell or a POSIX shell — it asks, and the
+    /// terminal it then opens lands in the folder it was given.
+    #[tokio::test]
+    #[ignore = "needs a local sshd that authorizes a key in the agent"]
+    async fn the_host_is_asked_which_shell_it_runs() {
+        use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
+        use crate::ssh::conn::{connect, Endpoint, Handshake};
+        use crate::ssh::hostkey;
+        use crate::ssh::shellkind::{classify, ShellKind};
+
+        let user = std::env::var("UXNAN_SSH_TEST_USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .expect("a username");
+        let endpoint = Endpoint::new("127.0.0.1", 22);
+        let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+            panic!("expected an unknown host");
+        };
+        let trusted = hostkey::trust_line("127.0.0.1", 22, &key);
+        let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+            panic!("the recorded key should verify");
+        };
+        match authenticate(&mut conn, &user, &[Credential::Agent])
+            .await
+            .unwrap()
+        {
+            AuthOutcome::Success { .. } => {}
+            other => panic!("authenticate with the agent first: {other:?}"),
+        }
+
+        let kind = classify(&conn).await;
+        println!("live: this machine's sshd starts {kind:?}");
+        assert_ne!(
+            kind,
+            ShellKind::Unknown,
+            "a real host must be classifiable; an unknown answer means the probe \
+             stopped working, and every remote terminal silently loses its folder"
+        );
+    }
+
+    /// A terminal opened **in a folder** must actually be in it, and must still
+    /// be alive a few seconds later.
+    ///
+    /// The bug this pins: the directory used to be applied by `exec`ing
+    /// `cd /d "..." && cmd`, which only cmd understands. A Windows host whose
+    /// sshd starts PowerShell answered with a parameter error and closed the
+    /// channel about a second later, so every project terminal on that machine
+    /// opened and died — while a terminal with no folder (the host card's) was
+    /// fine, which is what made it look like the project was at fault.
+    #[tokio::test]
+    #[ignore = "needs a local sshd that authorizes a key in the agent"]
+    async fn a_terminal_opens_in_its_folder_and_stays_alive() {
+        use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
+        use crate::ssh::conn::{connect, Endpoint, Handshake};
+        use crate::ssh::hostkey;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let user = std::env::var("UXNAN_SSH_TEST_USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .expect("a username");
+        let endpoint = Endpoint::new("127.0.0.1", 22);
+        let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+            panic!("expected an unknown host");
+        };
+        let trusted = hostkey::trust_line("127.0.0.1", 22, &key);
+        let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+            panic!("the recorded key should verify");
+        };
+        match authenticate(&mut conn, &user, &[Credential::Agent])
+            .await
+            .unwrap()
+        {
+            AuthOutcome::Success { .. } => {}
+            other => panic!("authenticate with the agent first: {other:?}"),
+        }
+
+        // A folder that is not the home directory, so landing in it proves the
+        // `cd` arrived: the app data directory of this very app.
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .expect("a home directory");
+        let target = std::path::Path::new(&home).join("Documents");
+        let target = target.to_string_lossy().to_string();
+
+        let manager = RemotePtyManager::default();
+        let output = std::sync::Arc::new(Mutex::new(Vec::<u8>::new()));
+        let exited = std::sync::Arc::new(AtomicBool::new(false));
+        let sink = std::sync::Arc::clone(&output);
+        let flag = std::sync::Arc::clone(&exited);
+        manager
+            .create(
+                "h1",
+                &conn,
+                spec(Some(&target), None),
+                move |bytes| {
+                    if let Ok(mut buf) = sink.try_lock() {
+                        buf.extend_from_slice(bytes);
+                    }
+                },
+                move || flag.store(true, Ordering::SeqCst),
+            )
+            .await
+            .expect("a terminal in a folder");
+
+        // The proof is the **prompt**: cmd draws `…\Documents>` and PowerShell
+        // `PS …\Documents>`, so the folder is followed by the prompt character.
+        // The echo of the cd cannot fake it — that line ends in a quote — and on
+        // a shell that clears its screen at startup the echo is gone anyway.
+        let mut seen = String::new();
+        for _ in 0..60 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            seen = String::from_utf8_lossy(&output.lock().await.clone()).to_string();
+            if seen.contains("Documents>") {
+                break;
+            }
+        }
+        println!(
+            "live: the prompt reads {:?}",
+            seen.rsplit('\n').next().unwrap_or_default()
+        );
+        assert!(
+            seen.contains("Documents>"),
+            "the shell should be *in* the folder it was opened in; got {seen:?}"
+        );
+        assert!(
+            !exited.load(Ordering::SeqCst),
+            "a terminal opened in a folder must not die on the syntax of its own cd"
+        );
+
+        manager.close("t1").await.expect("close");
+    }
+
     /// What a dropped connection does to a terminal running on it.
     ///
     /// This is the failure the UI has to render honestly: the host goes away and
@@ -612,33 +839,27 @@ mod tests {
     }
 
     #[test]
-    fn a_posix_cwd_is_quoted_and_keeps_an_interactive_shell() {
-        let out = build_command(&spec(Some("/home/dev/my repo"), None)).unwrap();
-        assert_eq!(out, "cd '/home/dev/my repo' && exec $SHELL -l");
+    fn a_cwd_alone_asks_for_a_shell_rather_than_a_command() {
+        // The directory is no longer smuggled into a command line: it is typed
+        // into the shell the host actually runs (`shellkind::cd_line`). Building
+        // one here again would reintroduce the assumption that broke every
+        // project terminal on a PowerShell host.
+        assert_eq!(build_command(&spec(Some("/home/dev/my repo"), None)), None);
+        assert_eq!(build_command(&spec(Some(r"C:\code\repo"), None)), None);
     }
 
     #[test]
-    fn a_single_quote_in_a_posix_path_cannot_end_the_quoting() {
-        // Otherwise a directory named `it's` would break out of the quotes and
-        // whatever followed would run as a command.
-        let out = build_command(&spec(Some("/home/dev/it's"), None)).unwrap();
-        assert!(out.starts_with(r"cd '/home/dev/it'\''s'"), "{out}");
-    }
-
-    #[test]
-    fn a_windows_cwd_uses_the_form_cmd_understands() {
-        let out = build_command(&spec(Some(r"C:\code\repo"), None)).unwrap();
-        assert_eq!(out, r#"cd /d "C:\code\repo" && cmd"#);
-    }
-
-    #[test]
-    fn a_cwd_and_a_command_run_in_that_order() {
+    fn a_cwd_never_leaks_into_a_command() {
         let out = build_command(&spec(Some("/srv/app"), Some("claude"))).unwrap();
-        assert_eq!(out, "cd '/srv/app' && claude");
+        assert_eq!(
+            out, "claude",
+            "the cwd belongs to the shell, not the command"
+        );
     }
 
     #[test]
-    fn a_blank_cwd_is_treated_as_none() {
+    fn a_blank_command_is_treated_as_none() {
+        assert_eq!(build_command(&spec(None, Some("   "))), None);
         assert_eq!(build_command(&spec(Some("   "), None)), None);
     }
 }

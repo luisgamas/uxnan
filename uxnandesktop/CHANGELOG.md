@@ -53,6 +53,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+- **uxnan asks a host which shell it runs, instead of assuming one.** A terminal
+  is placed in its project's folder by typing a `cd`, and the families share no
+  syntax: the first version sent cmd syntax, so a machine whose sshd starts
+  PowerShell answered with a parameter error and closed the channel a second
+  later — every project terminal there opened and died. Guessing better was not
+  the fix either, because the same person switches between cmd, PowerShell, WSL
+  and Git Bash on the same machine, as they should be able to. A single probe now
+  identifies the family from its own reply, once per connection, and the `cd` is
+  written in that shell's own form. A reply we cannot recognise types **nothing**:
+  a terminal that opens in the home directory is a small loss, one that dies is a
+  broken feature. Every family's reply was measured in cmd, Windows PowerShell
+  5.1, pwsh 7, Git Bash and WSL, and each is a test.
 - **An agent launched on a host stops leaving uxnan's session id in its TUI.**
   The launch command is typed into the shell, and an SSH channel opens seconds
   before the remote shell has finished starting — so the front of the command

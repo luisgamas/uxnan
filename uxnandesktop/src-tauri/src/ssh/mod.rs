@@ -29,6 +29,7 @@ pub mod hostkey;
 pub mod inventory;
 pub mod pty;
 pub mod registry;
+pub mod shellkind;
 
 /// Wrap a PowerShell script so no quoting survives to be misread.
 ///

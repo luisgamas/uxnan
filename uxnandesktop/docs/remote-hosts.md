@@ -156,6 +156,15 @@ claims to be:
 | WSL | the POSIX branch, whether you reach the distro's own `sshd` or the Windows host launches `bash` |
 | Windows with a POSIX shell configured in `sshd` | answers the POSIX probe and is treated as POSIX — which is correct |
 
+**Your login shell is yours.** uxnan does not require a particular one and does
+not need to be told: on connecting it runs one probe whose reply identifies the
+family, and anything it later types into a terminal — the `cd` that puts you in
+your project's folder — is written in that shell's own syntax. Switch the machine
+between cmd, PowerShell, WSL and Git Bash as you like; the next connection asks
+again. If the reply is not recognisable, uxnan types nothing and the terminal
+simply opens where your shell starts, which is the honest outcome rather than a
+terminal that dies on syntax.
+
 The PowerShell branch is base64-encoded on purpose. Whatever your `sshd` is
 configured to launch — `cmd`, `powershell`, `pwsh` — sees the command first, and
 each treats quotes and backslashes differently; an encoded command leaves it

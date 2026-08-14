@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 662 Rust tests (626 unit + 36
+always wins). 671 Rust tests (635 unit + 36
 integration), of which 22 are ignored probes that need something real to talk to
-(15 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
+(17 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
 real-scheduler probe) + 1,096 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
@@ -897,6 +897,18 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       (`RemoteWorkspaceNotice`), and the row shows no branch. Making those layers
       target-aware is phase 3 (`architecture/02g-remote-hosts.md` §7); until then
       a remote project is a place to run agents, not to read code.
+- [ ] **Stop talking to the host's shell at all (phase 3).** Placing a terminal
+      in a directory, reading files and running git are all done today by
+      *typing* into whatever shell the host's sshd starts. `ssh::shellkind`
+      makes that correct by asking which shell it is, but the whole approach is
+      an interface writing syntax for someone else's shell. The direction the
+      mature remote clients take, and the one agreed for phase 3, is a small
+      helper process on the host: it owns the PTY (with a working directory as
+      a parameter, not as typed text), lists files and runs git, and no shell
+      syntax is involved anywhere. Decide its shape (what it needs installed,
+      how it is deployed and versioned, what happens when the host has no
+      runtime) before phase 3 starts, because it also settles remote files and
+      git.
 - [ ] **Launching a dev build must not resume the everyday session's agents.**
       Half-fixed: a debug build now has its own profile, so it restores its own
       tabs rather than the installed app's — which is what made a second agent
@@ -1374,7 +1386,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 662 Rust + 1,096 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 671 Rust + 1,096 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
