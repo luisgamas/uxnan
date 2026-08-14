@@ -132,6 +132,15 @@ its provisional name. That is how the desktop's `agy` mapping was caught —
 The whole path is best-effort and bounded (30s): no credit, a missing CLI or a
 timeout leaves the provisional title in place and never disturbs the thread.
 
+**The name is mirrored back onto the agent's own session when its CLI keeps
+one.** Codex does (`thread/name/set`), so a conversation started on the phone
+shows the same title in Codex Desktop and `codex resume` instead of appearing
+untitled. It is an optional adapter capability (`setNativeTitle`, read
+structurally by the `AgentManager` like `nativeSessionId`), so agents without a
+name concept are unaffected, and it needs no loaded thread — verified against
+codex-cli 0.147.0 from a process that never resumed it: the name lands in
+`~/.codex/session_index.jsonl`, which is the list those clients read.
+
 ## Drive surface (read this before touching an adapter)
 
 Every wired CLI exposes **more than one** headless surface, and they do not
@@ -181,7 +190,7 @@ hand, and it has a matching half in the desktop app.
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
-| **Codex** | long-lived `codex app-server` (JSON-RPC over stdio) | persisted app-server thread id via `thread/start` | `accessMode` → app-server `approvalPolicy` + `sandbox` on `thread/start`; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
+| **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `accessMode` → app-server `approvalPolicy` + `sandbox`, re-applied on **every** `thread/start`/`thread/resume` (so a mid-conversation change lands on the next turn); approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
@@ -242,6 +251,13 @@ written in an agent's desktop app or CLI appear back in Uxnan Mobile.
 | Grok | `~/.grok/sessions/.../<sessionId>/updates.jsonl` | only turns closed by ACP `turn_completed` converge |
 | Antigravity | no reliable source | unsupported: the SQLite step payloads are opaque and `agy` has no history/export command |
 
+The session id that locates those files is the agent's own, persisted per thread
+(`nativeSessionId` → `ThreadStore.setAgentSession`) and **handed back to the
+adapter before a turn** (`adoptNativeSession`, offered only when the stored
+session belongs to the same agent). Both halves matter: without the second one a
+restarted bridge opens a new agent session under a conversation whose history
+the phone still shows, so the agent has lost the context the user can see.
+
 Bridge-created turns keep their public UUID and richer ordered segments, queue
 state and usage. A deterministic native-history id is stored only as a private
 link, preventing the same turn from being imported twice. Native-only turns are
@@ -259,10 +275,58 @@ the next idle read: the imported copy is dropped once its bridge-created twin is
 recognized.
 
 Each agent runs in the thread's `cwd`. Codex turns and model discovery both use
-the long-lived `codex app-server` (`thread/start` / `turn/start` and
-`initialize` → `model/list`). Binary resolution
+`codex app-server` (`thread/start` / `turn/start` and `initialize` →
+`model/list`), each on its own short-lived process — see
+*Codex holds one writer per thread* below. Binary resolution
 (`resolve-*.ts`) prefers a directly-spawnable executable (native binary or
 `node <cli.js>`) so `shell:false` always holds.
+
+### Codex holds one writer per thread — so the bridge lets go between turns
+
+Convergence has a second half: a conversation the **phone** started must open in
+Codex Desktop, `codex resume` or an IDE. That is not a read; it needs the
+thread's writer, and **Codex grants exactly one**, held for as long as the thread
+is loaded in a process. A bridge that kept one long-lived `codex app-server`
+therefore locked every conversation the phone had ever touched — for days — and
+those clients answered `thread <id> already has an active writer`, which the
+Codex app shows as *this conversation is not available*.
+
+So `codex-adapter.ts` spawns the app-server for a turn and **ends it as soon as
+no turn is in flight**, then re-attaches on the next turn with `thread/resume`.
+Measured against codex-cli 0.147.0 by running two app-servers against one thread:
+
+| Attempt | Result |
+|---|---|
+| Second client resumes while the bridge holds the thread | `already has an active writer` |
+| Holder calls `thread/unsubscribe`, second client retries | **still refused** — the reply is `{status:'unsubscribed'}` but the thread stays in `thread/loaded/list` and the writer stays held |
+| Holder's **process exits**, second client retries | resumes immediately |
+
+Ending the process is the only handover. It costs ~250ms to respawn plus
+~200–750ms to `thread/resume` (upper end measured on a 7 166-line rollout),
+paid once per turn against a model call that runs for seconds to minutes.
+
+**This is a Codex-specific constraint, not a general one — do not "fix" the
+other adapters for it.** Measured on this machine (August 2026) by starting a
+conversation through each adapter and then continuing it from a second client:
+
+| Agent | Second client continuing the phone's conversation | Verdict |
+|---|---|---|
+| **Codex** | `thread/resume` from another app-server | refused while the bridge held it → **needed the release above** |
+| **Claude Code** | `claude -p --resume <sessionId>` from the same cwd | works, and appends to the SAME `<sessionId>.jsonl`, so the turn converges back to the phone. Nothing to hold: the adapter spawns one process per turn |
+| **OpenCode** | its own `opencode serve` (the desktop app's model) | works with the bridge's server still running: it lists the session, reads it, and posts a new turn into it. The store is shared, not owned by a process |
+
+pi, Zero, Grok and Antigravity ship no desktop app; their continuity is the
+per-CLI session flag in the *Wired agents* table.
+
+Two consequences worth knowing:
+
+- **The other direction is a real conflict.** If the Codex app has the
+  conversation open when the phone sends, `thread/resume` is refused and the turn
+  reports *open in another Codex client — close it there*. There is nothing to
+  fall back to: one writer is one writer.
+- **A deleted rollout is not an error.** If the session was removed from another
+  client, the resume fails with `no rollout found` and the conversation continues
+  in a fresh Codex thread instead of dead-ending.
 
 ### When a turn ends (and when it only looks like it has)
 
@@ -513,9 +577,12 @@ windows need no edit for a model in an existing tier — `claudeContextWindow()`
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
 real CLI's machine-readable stream once, then copy the closest template — a
 **one-shot per-turn CLI** (`pi-adapter.ts`, which spawns the CLI
-once per turn) or a **long-lived server** (`codex-adapter.ts`/`zero-adapter.ts`/
-`grok-adapter.ts` over stdio JSON-RPC, `opencode-adapter.ts` over `opencode serve`
-HTTP/SSE, when the CLI exposes a pre-tool approval channel). Adjust the args/request builder + event parser, register it in
+once per turn) or a **server the adapter talks to** (`codex-adapter.ts`/
+`zero-adapter.ts`/`grok-adapter.ts` over stdio JSON-RPC,
+`opencode-adapter.ts` over `opencode serve` HTTP/SSE, when the CLI exposes a
+pre-tool approval channel). If that server takes an exclusive claim on the
+conversation (Codex's one-writer-per-thread), hold it **only while a turn is in
+flight** — see *Codex holds one writer per thread* above. Adjust the args/request builder + event parser, register it in
 `startBridge`, then wire it into `agent/models` (discovery), the `*-tools.ts` block
 mapper (structured content), `SessionHistoryReader` (native-session `turn/list`
 convergence),

@@ -23,18 +23,46 @@ import { unifiedDiffBlock } from '../../src/adapters/content-blocks.js';
 //   2. respond to `thread/start` / `turn/start` / `turn/interrupt`
 //   3. push notifications (turn/started, item/*, turn/completed, …)
 //   4. push server requests (approvals)
+// The adapter ends its app-server whenever no turn is in flight (that is how a
+// Codex thread is handed back to the Codex app), so `spawn()` mints a FRESH
+// stdio pair per process, exactly like the real CLI. `sent`, the handler list
+// and `feed()` follow the CURRENT process, so multi-turn tests read as before.
 class FakeAppServer {
-  readonly stdin = new PassThrough();
-  readonly stdout = new PassThrough();
-  private closeCallbacks: ((code: number | null) => void)[] = [];
+  private connections: FakeConnection[] = [];
   /** Handlers are called in install-order; each one may act and pass through. */
   private handlers: Array<(msg: any) => void> = [];
-  /** Captures every JSON line written to stdin, for assertions. */
+  /** Captures every JSON line written to stdin (across processes), for assertions. */
   readonly sent: unknown[] = [];
 
   constructor() {
+    this.#open();
+  }
+
+  /** How many app-server processes the adapter has spawned so far. */
+  get spawnCount(): number {
+    return this.connections.length;
+  }
+
+  get stdin(): PassThrough {
+    return this.#current.stdin;
+  }
+
+  get stdout(): PassThrough {
+    return this.#current.stdout;
+  }
+
+  get #current(): FakeConnection {
+    return this.connections[this.connections.length - 1]!;
+  }
+
+  #open(): void {
+    const connection: FakeConnection = {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      closeCallbacks: [],
+    };
     let buffer = '';
-    this.stdin.on('data', (chunk: Buffer) => {
+    connection.stdin.on('data', (chunk: Buffer) => {
       buffer += chunk.toString('utf-8');
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
@@ -49,9 +77,10 @@ class FakeAppServer {
         }
       }
     });
+    this.connections.push(connection);
   }
 
-  /** Drive incoming messages. */
+  /** Drive incoming messages (into the current process's stdout). */
   feed(lines: string[]): void {
     for (const line of lines) this.stdout.write(`${line}\n`);
   }
@@ -64,21 +93,33 @@ class FakeAppServer {
     this.handlers.push(handler);
   }
 
-  /** Simulate the process exiting. */
+  /** Simulate the current process exiting. */
   close(code: number | null = 0): void {
-    for (const cb of this.closeCallbacks) cb(code);
-    this.stdout.end();
+    const connection = this.#current;
+    for (const cb of connection.closeCallbacks) cb(code);
+    connection.stdout.end();
   }
 
-  /** Adapter-facing factory: returns the streams + lifecycle. */
+  /** Adapter-facing factory: a NEW process (fresh stdio) after each exit. */
   spawn(): SpawnedAppServer {
+    if (this.#current.stdout.writableEnded) this.#open();
+    const connection = this.#current;
     return {
-      stdin: this.stdin,
-      stdout: this.stdout,
-      onClose: (cb) => this.closeCallbacks.push(cb),
-      kill: () => this.close(),
+      stdin: connection.stdin,
+      stdout: connection.stdout,
+      onClose: (cb) => connection.closeCallbacks.push(cb),
+      kill: () => {
+        for (const cb of connection.closeCallbacks) cb(0);
+        connection.stdout.end();
+      },
     };
   }
+}
+
+interface FakeConnection {
+  stdin: PassThrough;
+  stdout: PassThrough;
+  closeCallbacks: ((code: number | null) => void)[];
 }
 
 function collect(adapter: CodexAdapter): {
@@ -138,6 +179,8 @@ function setup(
     ) => Promise<'approve' | 'reject' | 'approveSession'>;
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'interactive';
     defaultModel?: string;
+    /** Make every `thread/resume` fail with this message (see the handover tests). */
+    resumeError?: string;
   } = {},
 ): { adapter: CodexAdapter; server: FakeAppServer } {
   const server = new FakeAppServer();
@@ -148,6 +191,16 @@ function setup(
   server.handle((msg) => {
     if (msg.method === 'initialize') {
       server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { ok: true } })]);
+    } else if (msg.method === 'thread/resume' && options.resumeError) {
+      // A real app-server refuses to hand over a thread another client holds,
+      // and reports a deleted rollout the same way.
+      server.feed([
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: msg.id,
+          error: { code: -32600, message: options.resumeError },
+        }),
+      ]);
     } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
       server.feed([
         JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { thread: { id: THREAD_ID } } }),
@@ -518,6 +571,9 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   const threadStart = server.sent[1] as any;
   assert.equal(threadStart.params.cwd, process.cwd());
   assert.equal(threadStart.params.model, 'gpt-5.4-mini');
+  // A person started this from their phone, so Codex classifies it like any
+  // other human-started thread (its own clients all set this).
+  assert.equal(threadStart.params.threadSource, 'user');
   // Default permission mode is `interactive` → approvalPolicy on-request, sandbox workspace-write
   assert.equal(threadStart.params.approvalPolicy, 'on-request');
   assert.equal(threadStart.params.sandbox, 'workspace-write');
@@ -742,13 +798,61 @@ test('CodexAdapter persists the native session id from thread/start', async () =
   assert.equal(adapter.nativeSessionId('bridge-t1'), '019codex-thread-aaaa-bbbb-cccccccccccc');
 });
 
-test('CodexAdapter reuses the persisted thread id with thread/start on the next turn (no resume needed in the same process)', async () => {
+// ============================================================================
+// Thread handover — Codex allows ONE writer per thread and holds it for as long
+// as the thread is loaded in a process, so the bridge ends its app-server as
+// soon as no turn is in flight and re-attaches with `thread/resume` on the next
+// one. Without that, the phone's conversation cannot be opened in Codex Desktop
+// or `codex resume` at all ("already has an active writer").
+// ============================================================================
+
+test('CodexAdapter releases the app-server when the turn ends and resumes the same thread on the next one', async () => {
   const { adapter, server } = setup();
-  // First turn
   const { until } = collect(adapter);
   const first = collect(adapter);
   void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
   await waitForTurnStarted(until);
+  assert.equal(server.spawnCount, 1);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await first.done;
+  // The turn is over → the process is gone, so no thread is held any more.
+  assert.equal(server.stdout.writableEnded, true);
+
+  // Second turn — a fresh process, re-attached to the SAME Codex thread.
+  const second = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two' });
+  await waitForTurnStarted(second.until);
+  assert.equal(server.spawnCount, 2);
+  // One `thread/start` in total (the first turn); the second turn resumed.
+  assert.equal(server.sent.filter((m: any) => m.method === 'thread/start').length, 1);
+  const resume = server.sent.filter((m: any) => m.method === 'thread/resume').pop() as any;
+  assert.equal(resume.params.threadId, '019codex-thread-aaaa-bbbb-cccccccccccc');
+  const turnStart = server.sent.filter((m: any) => m.method === 'turn/start').pop() as any;
+  assert.equal(turnStart.params.threadId, '019codex-thread-aaaa-bbbb-cccccccccccc');
+
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await second.done;
+});
+
+test('CodexAdapter says who holds the conversation when another Codex client owns the thread', async () => {
+  const { adapter, server } = setup({
+    resumeError: 'thread 019codex-thread-aaaa-bbbb-cccccccccccc already has an active writer',
+  });
+  const first = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(first.until);
   server.feed([
     JSON.stringify({
       jsonrpc: '2.0',
@@ -758,30 +862,148 @@ test('CodexAdapter reuses the persisted thread id with thread/start on the next 
   ]);
   await first.done;
 
-  // Second turn — adapter already has the threadId in its map; expects just a turn/start
+  // The Codex app opened the conversation while the phone was idle, so the
+  // app-server rejects the bridge's `thread/resume` (see `resumeError` above).
   const second = collect(adapter);
   void adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two' });
-  await new Promise<void>((resolve) => {
-    server.handle((msg) => {
-      if (msg.method === 'turn/start') {
-        server.feed([
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { turn: { id: 'codex-turn-2' } },
-          }),
-        ]);
-        resolve();
-      }
-    });
-  });
-  // We should NOT have seen another `thread/start` (the threadId was
-  // persisted by the first turn; the second turn is just `turn/start`).
-  const threadStartCount = server.sent.filter((m: any) => m.method === 'thread/start').length;
-  assert.equal(threadStartCount, 1);
-  const turnStart = server.sent.filter((m: any) => m.method === 'turn/start').pop() as any;
-  assert.equal(turnStart.params.threadId, '019codex-thread-aaaa-bbbb-cccccccccccc');
+  const events = await second.until((e) => e.type === 'turn_error');
+  const error = events.find((e) => e.type === 'turn_error');
+  const text = (error?.data as { text: string }).text;
+  assert.match(text, /open in another Codex client/i);
+  // No turn was started against a thread we do not own.
+  assert.equal(server.sent.filter((m: any) => m.method === 'turn/start').length, 1);
+});
 
+test('CodexAdapter starts a fresh Codex thread when the rollout is gone', async () => {
+  // The session was deleted from another Codex client between turns.
+  const { adapter, server } = setup({ resumeError: 'no rollout found for thread id …' });
+  const first = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(first.until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await first.done;
+
+  const second = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two' });
+  await waitForTurnStarted(second.until);
+  // The conversation continues in a new Codex thread rather than dead-ending.
+  assert.equal(server.sent.filter((m: any) => m.method === 'thread/start').length, 2);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await second.done;
+});
+
+test('CodexAdapter releases the app-server after a catastrophic app-server error', async () => {
+  const { adapter, server } = setup();
+  const run = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(run.until);
+  // Register the waiter BEFORE feeding: the fake server delivers a line
+  // synchronously, so a waiter added afterwards would never see the event.
+  const errored = run.until((e) => e.type === 'turn_error');
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'error',
+      params: { message: 'context window exceeded' },
+    }),
+  ]);
+  const events = await errored;
+  assert.equal(
+    (events.find((e) => e.type === 'turn_error')?.data as { text: string }).text,
+    'context window exceeded',
+  );
+  // The turn is over for the bridge, so the thread must not stay held here.
+  assert.equal(server.stdout.writableEnded, true);
+});
+
+test('CodexAdapter resumes a thread adopted after a bridge restart instead of starting a new one', async () => {
+  const { adapter, server } = setup();
+  // A fresh process (empty map) is handed the id the bridge persisted before.
+  adapter.adoptNativeSession('t1', '019codex-thread-aaaa-bbbb-cccccccccccc');
+  assert.equal(adapter.nativeSessionId('t1'), '019codex-thread-aaaa-bbbb-cccccccccccc');
+
+  const first = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(first.until);
+  assert.equal(server.sent.filter((m: any) => m.method === 'thread/start').length, 0);
+  const resume = server.sent.filter((m: any) => m.method === 'thread/resume').pop() as any;
+  assert.equal(resume.params.threadId, '019codex-thread-aaaa-bbbb-cccccccccccc');
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await first.done;
+});
+
+test('CodexAdapter mirrors the conversation name onto the Codex thread', async () => {
+  const { adapter, server } = setup();
+  const first = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(first.until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await first.done;
+
+  server.handle((msg: any) => {
+    if (msg.method === 'thread/name/set') {
+      server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: {} })]);
+    }
+  });
+  await adapter.setNativeTitle('t1', 'Fix the pairing timeout');
+  const named = server.sent.filter((m: any) => m.method === 'thread/name/set').pop() as any;
+  assert.equal(named.params.threadId, '019codex-thread-aaaa-bbbb-cccccccccccc');
+  assert.equal(named.params.name, 'Fix the pairing timeout');
+  // Naming must not leave the thread held (it runs between turns).
+  assert.equal(server.stdout.writableEnded, true);
+});
+
+test('CodexAdapter re-applies the thread access mode on every resume', async () => {
+  const { adapter, server } = setup();
+  const first = collect(adapter);
+  void adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'one',
+    accessMode: 'requestApproval',
+  });
+  await waitForTurnStarted(first.until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await first.done;
+
+  const second = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two', accessMode: 'fullAccess' });
+  await waitForTurnStarted(second.until);
+  const resume = server.sent.filter((m: any) => m.method === 'thread/resume').pop() as any;
+  // `fullAccess` → danger-full-access, applied from this turn on (verified live
+  // against codex-cli 0.147.0: the rollout's `turn_context` carries the new pair).
+  assert.equal(resume.params.approvalPolicy, 'never');
+  assert.equal(resume.params.sandbox, 'danger-full-access');
   server.feed([
     JSON.stringify({
       jsonrpc: '2.0',

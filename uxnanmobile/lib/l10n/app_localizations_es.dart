@@ -886,7 +886,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get sessionInfoResumeHint =>
-      'Reanuda esta conversación desde la CLI del agente en tu PC.';
+      'Reanuda esta conversación desde la CLI o la app de escritorio del agente en tu PC, mientras no esté ejecutando un turno aquí.';
 
   @override
   String get sessionInfoCopied => 'Copiado al portapapeles';

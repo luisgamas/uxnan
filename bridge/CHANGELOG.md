@@ -4,6 +4,56 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed — a Codex conversation started on the phone now opens in the Codex app
+
+Starting a conversation on Codex from the phone made it **unopenable everywhere
+else**: Codex Desktop (and `codex resume`, and an IDE) answered that the
+conversation was not available. The bridge kept one `codex app-server` alive for
+the whole session, and Codex allows exactly **one writer per thread**, held for
+as long as that thread is loaded in a process — so every conversation the phone
+had ever touched stayed locked, for days, by a process that was doing nothing.
+
+The app-server is now spawned per turn and **released as soon as no turn is in
+flight**, which is what hands the thread back; the next turn re-attaches with
+`thread/resume`. Measured against codex-cli 0.147.0: `thread/unsubscribe`
+answers `unsubscribed` but keeps the thread loaded and the writer held (it does
+**not** hand over), while a second client's `thread/resume` succeeds the moment
+the holding process exits. The handover costs ~250ms to respawn plus
+~200–750ms to resume (the upper end on a 7k-line rollout), once per turn.
+
+This completes the convergence documented in `architecture/02a` §5.8.8 in both
+directions: turns written from Codex Desktop already flowed into the phone, and
+the phone's own conversations are now openable there.
+
+### Added
+- Turns taken while another Codex client holds the conversation report **who has
+  it** ("open in another Codex client… close it there") instead of the raw
+  protocol error. If the rollout is gone (deleted from another client), the
+  conversation continues in a fresh Codex thread rather than dead-ending.
+- `thread/start` sets `threadSource: 'user'`. A person typed the message on
+  their phone, so the thread is classified like every other human-started one —
+  the app-server otherwise leaves the field unset, which no first-party Codex
+  client does.
+- **A restarted bridge continues the same Codex thread.** The native session id
+  was persisted but never handed back, so after a restart the next turn opened a
+  *new* Codex thread while the phone still showed the history (read off the
+  rollout) — the agent had lost the context. The `AgentManager` now offers the
+  stored id back through the optional `adoptNativeSession` capability, and only
+  when it belongs to the same agent.
+- **The conversation's name is mirrored onto the Codex thread**
+  (`thread/name/set`, right after the bridge names a thread), so it is
+  recognizable in Codex Desktop / `codex resume` instead of showing up
+  untitled — a thread the bridge starts comes back with `name: null`, because
+  every Codex client titles its own. `setNativeTitle` is an optional adapter
+  capability, so agents whose CLI keeps no name are unaffected.
+
+### Changed
+- **Codex access mode applies mid-conversation.** The thread's
+  `(approvalPolicy, sandbox)` now rides on every `thread/resume`, so changing the
+  access mode from the phone takes effect on the next turn instead of only on
+  threads created afterwards. Verified live: resuming a `never`/`read-only`
+  thread as `on-request`/`workspace-write` wrote the new pair into that turn's
+  `turn_context`. (Closes the matching `FOR-DEV` item.)
 
 ## [0.0.22-alpha.20260813] - 20260813
 ### Added — the bridge places worktrees itself, where the desktop places them
