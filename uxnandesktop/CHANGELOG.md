@@ -53,6 +53,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+- **Closing one terminal no longer closes its neighbour.** Two terminals in a
+  workspace, close one, both disappear — while the survivor's shell went on
+  running on the far machine, which is what made it look like the backend
+  closing two. It was a race between two paths reacting to the same close: the
+  exit event a close produces arrived while the tab was still in the tree, and
+  the path that handled it decided from a tab count read *before* its own
+  awaits. By then the other path had removed the closed tab, so the count said
+  one, and it deleted the whole **region** — and a workspace with no regions
+  renders nothing. Removal now happens before the backend round trip, and the
+  event path only ever removes a region when removing *its own* tab is what
+  empties it. Reproduced in a test first: it fails without the fix.
 - **uxnan asks a host which shell it runs, instead of assuming one.** A terminal
   is placed in its project's folder by typing a `cd`, and the families share no
   syntax: the first version sent cmd syntax, so a machine whose sshd starts

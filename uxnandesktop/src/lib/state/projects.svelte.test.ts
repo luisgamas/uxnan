@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { installFakeBackend } from '../../test/tauri';
+import { deferred, installFakeBackend } from '../../test/tauri';
 import { projects } from '$lib/state/projects.svelte';
 import { app } from '$lib/state/app.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
@@ -255,6 +255,38 @@ describe('a project that lives on a host', () => {
     const tab = id ? terminals.findTab(id) : undefined;
     expect(tab?.kind === 'terminal' ? tab.target : null).toBe('ssh:h1');
     expect(tab?.kind === 'terminal' ? tab.cwd : null).toBe('/home/dev/app');
+  });
+
+  it('closing one tab cannot take its neighbour, however slow the backend is', async () => {
+    // Reproduced from the app, three times: two terminals on a host, close one,
+    // both vanish — with the survivor's PTY still alive on the far machine.
+    //
+    // The race: `closeTab` awaited the backend *before* taking the tab out of
+    // the model, so the exit event for the tab being closed arrived while it was
+    // still in the tree. `handleShellExit` then routed it to `closeTabAnywhere`,
+    // which — finding what it thought was the region's last tab — removed the
+    // whole region. A workspace with no regions renders nothing, so every pane
+    // in it left the screen at once.
+    const closing = deferred<void>();
+    installFakeBackend({ pty_create: () => true, pty_close: closing.handler });
+
+    terminals.setWorkspace(GLOBAL_WORKSPACE);
+    terminals.root = null;
+    const first = terminals.create({ title: 'shell', target: 'ssh:h1' });
+    const second = terminals.create({ title: 'claude', target: 'ssh:h1' });
+    const group = terminals.activeGroupId;
+
+    const closed = terminals.closeTab(group, first);
+    // The backend answers, and the exit for the closed tab lands in the same
+    // turn — which is exactly what a real host does.
+    closing.resolve();
+    terminals.handleShellExit(first);
+    await closed;
+
+    expect(terminals.findTab(first)).toBeUndefined();
+    expect(terminals.findTab(second)).toBeDefined();
+    expect(terminals.workspaceRoot(GLOBAL_WORKSPACE)).not.toBeNull();
+    expect(terminals.terminalCount(GLOBAL_WORKSPACE)).toBe(1);
   });
 
   it('offers no local path for the file and git layers to read', () => {

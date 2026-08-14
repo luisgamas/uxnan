@@ -31,7 +31,7 @@ has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 671 Rust tests (635 unit + 36
 integration), of which 22 are ignored probes that need something real to talk to
 (17 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,096 passing frontend Vitest tests across two
+real-scheduler probe) + 1,097 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -918,26 +918,6 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       second one. Decide whether a live session id may be claimed twice at all,
       or whether a restored tab must ask first. Until then, treat "open the same
       workspace in two windows" as unsupported rather than as working.
-- [ ] **Reported: closing one remote tab closed two.** Not reproduced here, and
-      two causes that produce exactly that appearance are now fixed: an agent
-      launched from the terminal area's `+` got a workspace key as its cwd (so
-      its shell died on the spot while its tab looked fine), and an exit in a
-      parked pane was held until that tab was next adopted — i.e. delivered as
-      the user closed its sibling. If it survives both, the remaining suspect is
-      the pane layer — but a fourth possibility now outranks it: the two builds
-      were sharing one profile (fixed above), so the *other* app rewrote the
-      state file mid-test, and the remote project and its host vanished from
-      under the tabs. That is consistent with the logs, which show the sibling's
-      PTY alive and untouched while its tab left the screen. Re-test on the
-      separate profile before hunting further. The
-      backend is exonerated by a live test that opens two terminals on one host,
-      closes one and proves the other still answers
-      (`closing_one_terminal_leaves_the_other_running`, both the requested-shell
-      and the `exec`-with-cwd paths). Both sides now log the fork the diagnosis
-      needs — `ssh-pty` records opened/closed/**why** a terminal ended, and the
-      frontend records when *it* decided to close a remote tab — so the next
-      reproduction says whether the UI closed the second tab or the host ended
-      its channel. Ask for `<app data>/logs/` after it happens again.
 - [ ] Launcher filtered by the host's inventory (the data is there,
       `ssh_host_inventory`; the launcher still offers this machine's agents).
 - [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
@@ -1386,7 +1366,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 671 Rust + 1,096 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 671 Rust + 1,097 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

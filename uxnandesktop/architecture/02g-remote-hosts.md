@@ -581,6 +581,17 @@ entrega a mitad de turno no hacian nada por SSH, en silencio.
 modo que tras reiniciar toda pestaña remota volvia como local con la ruta de otra
 maquina, y arrancaba aqui.
 
+**Cerrar una pestaña no puede llevarse a su vecina.** Dos rutas reaccionan al
+mismo cierre —la que lo inicia y la que atiende el evento de salida que ese
+cierre produce— y ambas tocan el mismo grupo. La segunda decidia con un contador
+leido *antes* de sus propios `await`: para entonces la primera ya habia quitado
+la pestaña cerrada, el contador decia uno, y borraba la **region** entera. Un
+espacio sin regiones no dibuja nada, asi que los dos paneles desaparecian a la
+vez mientras la shell superviviente seguia viva en el host. Ahora la pestaña sale
+del modelo antes del viaje al backend, y la ruta del evento solo retira una
+region cuando quitar *su* pestaña es lo que la vacia. Reproducido en un test que
+falla sin el arreglo.
+
 **Ciclo de vida al log.** Las terminales remotas escriben abrir, cerrar y **por
 que** terminaron (lo cerro uxnan / el host cerro el canal / se cayo la conexion),
 y la interfaz escribe su lado de la misma bifurcacion. Una pestaña que desaparece

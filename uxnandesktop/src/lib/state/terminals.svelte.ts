@@ -1385,18 +1385,30 @@ class TerminalStore {
           `tabsHere=${group.tabs.length} regions=${[...groups(this.root)].length} ` +
           `otherWorkspaces=${this.openWorkspaceKeys.filter((k) => k !== this.activeWorkspace).map(wsLabel).join(',') || 'none'}`,
       );
-      try {
-        await invoke('pty_close', { id: tabId });
-      } catch {
-        // Already gone — idempotent.
-      }
     }
+    // The model first, the backend second — never the other way round.
+    //
+    // Awaiting `pty_close` before this left the tab in the tree for the length
+    // of a round trip, and the exit event that the close itself produces lands
+    // in exactly that gap. `handleShellExit` then found a tab that was still
+    // there, routed it to `closeTabAnywhere`, and that path — taking it for the
+    // region's last tab — removed the whole **region**. A workspace with no
+    // regions renders nothing, so both panes left the screen at once while the
+    // survivor's PTY went on running on the far machine: closing one tab took
+    // its neighbour, and looked for all the world like the backend closing two.
     this.disposeTab(tabId);
     group.tabs = group.tabs.filter((t) => t.id !== tabId);
     if (group.tabs.length === 0) {
       this.collapseGroup(groupId);
     } else if (group.activeTabId === tabId) {
       group.activeTabId = group.tabs[group.tabs.length - 1].id;
+    }
+    if (tab.kind === 'terminal') {
+      try {
+        await invoke('pty_close', { id: tabId });
+      } catch {
+        // Already gone — idempotent.
+      }
     }
   }
 
@@ -1494,19 +1506,29 @@ class TerminalStore {
           // Already gone — idempotent.
         }
       }
+      // Both awaits above yield, and this tab can be closed meanwhile by the
+      // very path that produced the exit we are reacting to. So decide from what
+      // the region holds **now**, and only remove the region when removing
+      // *this* tab is what empties it.
+      //
+      // Reading a length captured before the yield is what let one close take
+      // its neighbour: the other path had already removed the closed tab, the
+      // count here was therefore 1, and this branch deleted the whole region —
+      // leaving a workspace with no regions, which renders nothing. Both panes
+      // left the screen at once while the survivor's shell went on running on
+      // the host, so it read as the app closing two terminals.
+      if (!group.tabs.some((t) => t.id === tabId)) return;
       this.disposeTab(tabId);
-      if (group.tabs.length > 1) {
-        group.tabs = group.tabs.filter((t) => t.id !== tabId);
+      const remaining = group.tabs.filter((t) => t.id !== tabId);
+      if (remaining.length > 0) {
+        group.tabs = remaining;
         if (group.activeTabId === tabId) {
-          group.activeTabId = group.tabs[group.tabs.length - 1].id;
+          group.activeTabId = remaining[remaining.length - 1].id;
         }
       } else {
         // Last tab in the region → drop the region from its workspace.
         const newTree = removeGroup(tree, group.id);
         if (newTree === null) {
-          // The workspace now renders nothing and leaves the mounted set, so
-          // every pane in it goes off screen at once — the one way tabs can
-          // disappear without anything closing them.
           noteTopology('workspace emptied by an exit', `ws=${wsLabel(key)}`);
         }
         this.workspaces = { ...this.workspaces, [key]: newTree };
