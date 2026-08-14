@@ -305,6 +305,19 @@ Ending the process is the only handover. It costs ~250ms to respawn plus
 ~200–750ms to `thread/resume` (upper end measured on a 7 166-line rollout),
 paid once per turn against a model call that runs for seconds to minutes.
 
+**This is a Codex-specific constraint, not a general one — do not "fix" the
+other adapters for it.** Measured on this machine (August 2026) by starting a
+conversation through each adapter and then continuing it from a second client:
+
+| Agent | Second client continuing the phone's conversation | Verdict |
+|---|---|---|
+| **Codex** | `thread/resume` from another app-server | refused while the bridge held it → **needed the release above** |
+| **Claude Code** | `claude -p --resume <sessionId>` from the same cwd | works, and appends to the SAME `<sessionId>.jsonl`, so the turn converges back to the phone. Nothing to hold: the adapter spawns one process per turn |
+| **OpenCode** | its own `opencode serve` (the desktop app's model) | works with the bridge's server still running: it lists the session, reads it, and posts a new turn into it. The store is shared, not owned by a process |
+
+pi, Zero, Grok and Antigravity ship no desktop app; their continuity is the
+per-CLI session flag in the *Wired agents* table.
+
 Two consequences worth knowing:
 
 - **The other direction is a real conflict.** If the Codex app has the
