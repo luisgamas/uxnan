@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 649, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 657, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -86,8 +86,11 @@ push validation (FOR-HUMAN).
   `shell:false`, parses the native stream, and emits structured
   `stream/content/block` events (command / diff / tool) plus
   `stream/thinking/delta` (reasoning). Most spawn the CLI over stdio; the
-  server-based adapters run a long-lived local process instead — **Codex**
-  JSON-RPC over `codex app-server` stdio, **Zero** and **Grok** JSON-RPC over the
+  server-based adapters run a local server process instead — **Codex**
+  JSON-RPC over `codex app-server` stdio (one process per turn: Codex holds a
+  single writer per thread, so the bridge lets go between turns and the same
+  conversation opens in the Codex app — see
+  [`docs/agents.md`](docs/agents.md)), **Zero** and **Grok** JSON-RPC over the
   Agent Client Protocol (`zero acp` / `grok agent stdio`, NDJSON over stdio —
   reusing the Codex NDJSON transport, with **real `session/request_permission`
   approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No
@@ -254,18 +257,11 @@ push validation (FOR-HUMAN).
       `accessMode` is mapped to a permission ruleset and passed on `POST /session`
       (`opencode-adapter.ts` `#rulesetFor`), so it governs an OpenCode thread from its
       first turn. A mid-thread access-mode change does NOT recreate the session, so
-      the new posture only applies to threads started after the change (same shape as
-      the Codex caveat below). Resolve by confirming whether `opencode serve` accepts
-      a per-turn permission override (or `PATCH /session/{id}`), or recreate the
-      session when the mode changes.
-- [ ] **Codex access-mode — mid-thread per-turn re-apply.** The thread's
-      `accessMode` is mapped to `(approvalPolicy, sandbox)` and sent on
-      `thread/start` (`codex-adapter.ts` `#effectiveMode`), so it governs a Codex
-      thread from its first turn. A mid-thread access-mode change does NOT re-issue
-      `thread/start`, so the new posture only applies to threads started after the
-      change. Resolve by confirming (against a live `codex app-server`) whether
-      `turn/start` accepts an approval/sandbox override per turn, or restart the
-      app-server thread when the mode changes.
+      the new posture only applies to threads started after the change. Resolve by
+      confirming whether `opencode serve` accepts a per-turn permission override
+      (or `PATCH /session/{id}`), or recreate the session when the mode changes.
+      (Codex no longer has this caveat: every turn re-attaches with
+      `thread/resume`, which carries the current posture.)
 - [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
       session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
       app-server already remembers `approved_for_session`); a per-turn allow-list so
