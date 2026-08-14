@@ -873,6 +873,12 @@ user-facing `docs/remote-hosts.md`.
 - [ ] Show the host's inventory **in the UI** — the launcher already filters by
       it, but nothing yet shows what a machine has, what it is missing and the
       command to install it (a per-host doctor view, below).
+- [ ] **Let the classified shell drive the probes too.** `browse.rs` and
+      `inventory.rs` still try POSIX and fall back to PowerShell on every call,
+      which works but pays a wasted round trip on a Windows host and leaves a
+      second place that decides what a host runs. Now that `ssh::shellkind`
+      answers that on connect, both should take the answer — one code path for
+      "which shell", instead of two that can drift.
 - [ ] **A channel budget.** OpenSSH's `MaxSessions` defaults to **10**, and every
       remote terminal, inventory probe, directory listing and git call is a
       channel on the one connection. Nothing counts them today, so the eleventh
