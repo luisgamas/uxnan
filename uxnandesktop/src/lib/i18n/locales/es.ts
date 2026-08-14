@@ -2189,6 +2189,8 @@ export const es: Record<MessageKey, string> = {
   "hosts.pickFolderTruncated": "Solo se muestran las primeras carpetas; esta tiene mas.",
 
   "project.onHost": "En {host}",
+  "fileTree.awaitingHost": "Esperando a que el host se conecte...",
+  "files.remoteReadOnly": "Este archivo vive en otra maquina — guardar alli aun no esta disponible.",
   "remote.branchNotRead": "rama sin leer",
   "remote.panelTitle": "Este proyecto vive en {host}",
   "remote.panelBody": "Archivos, cambios, historial y GitHub se leen en esta maquina, asi que no pueden describir una carpeta de otra. Leerlos por SSH llega en una fase posterior; una terminal en el host ya funciona.",

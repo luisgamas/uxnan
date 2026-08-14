@@ -53,6 +53,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+- **A file on a host opens without a git error, and cannot be half-saved.**
+  Opening one showed an empty "Changes" view and raised `git error: cannot change
+  to …` over it, because the editor asked *this* machine's git about a path on
+  another. The Changes view is no longer offered for a remote file (there is no
+  remote diff yet) and no local git is run for it. Saving is refused outright and
+  says why: writing went through the local filesystem, which for a host's path
+  either fails or — the reason this is a guard and not a `catch` — writes a file
+  of that name **here** while the editor reports success. Writing over SFTP is
+  next.
+- **A file tree waits for its host instead of showing an error.** Open the app
+  before connecting and the panel said "connect to this host before reading its
+  files" and kept saying it until you switched projects and back — nothing
+  retried, because the failed root never entered the loaded set. It now says it
+  is waiting, and fills itself in the moment that host connects.
+- **Toasts wear the shell's surface.** They used sonner's `richColors`: a
+  saturated, full-bleed card per type, in a different design language from the
+  rest of the app — the widest, loudest thing on screen for what is usually one
+  line. They are now the same elevated surface as a popover (neutral background,
+  quiet hairline, the dialog shadow, 13px text), with the **icon** carrying the
+  type instead of the background.
 - **A host's project shows its real branch and how dirty it is.** Git has to be
   *run*, so this one does go through the host's shell — the one it reported when
   it connected, with every argument quoted for it. Branch, change count and

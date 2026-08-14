@@ -677,6 +677,20 @@ Validado en vivo contra un `sshd` real sobre un checkout de verdad: rama
 `feat/desktop-remote-ssh-hosts`, 9 ficheros sucios, y una carpeta que no es
 repositorio contestando `isRepo: false`.
 
+**Un fichero remoto es de solo lectura, y se dice.** Guardar pasa por el
+filesystem local: con la ruta de un host eso falla — o, peor, escribe un fichero
+con ese nombre **aqui** mientras el editor informa de exito. Por eso es una
+guarda y no un `catch`. La vista *Cambios* tampoco se ofrece (no hay diff remoto
+todavia) y no se ejecuta git local para ese fichero, que es lo que sacaba un
+error rojo encima de un archivo abierto correctamente.
+
+**"El host no esta conectado" es un estado, no un fallo.** Al abrir la app antes
+de conectar, el arbol se quedaba con el error hasta cambiar de proyecto y volver:
+nada reintentaba, porque la raiz fallida nunca entraba en el conjunto cargado.
+Ahora el backend lo distingue (`AppError::NotConnected`, codigo `NOT_CONNECTED`),
+el panel dice que espera, y al conectar el host el arbol se rellena solo
+(`fileTree.retryForHost`).
+
 ## 5.11 Lo que queda de la fase 3
 
 Tres piezas, en orden de valor y de riesgo:
@@ -706,7 +720,7 @@ Tres piezas, en orden de valor y de riesgo:
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
-| Ficheros | **Funciona** por SFTP (§5.10): listar y abrir. Sin busqueda, sin marcado de ignorados y sin refresco automatico |
+| Ficheros | **Funciona** por SFTP (§5.10): listar y abrir, **de solo lectura**. Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Cambios / Historial / GitHub | **No disponible**: el diff, el staging y el historial leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
 | Rama y estado git de la fila | **No disponible**: sin git remoto no hay rama que mostrar. Fase 3 |

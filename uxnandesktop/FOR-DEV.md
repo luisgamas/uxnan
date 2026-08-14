@@ -31,7 +31,7 @@ has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 682 Rust tests (646 unit + 36
 integration), of which 22 are ignored probes that need something real to talk to
 (19 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,111 passing frontend Vitest tests across two
+real-scheduler probe) + 1,113 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -907,7 +907,7 @@ user-facing `docs/remote-hosts.md`.
       agnostic and needs nothing installed on the host. What is left, in order:
       **diff, staging and history** (the branch and change count already come
       from `ssh/git.rs` — what is left is per-file diffs, the index and commit,
-      which is what the Changes/History tabs need), **writing files** over SFTP
+      which is what the Changes/History tabs need), **writing files** over SFTP (a remote file is read-only today, and says so rather than writing a copy on this machine)
       with the `02a` §2.9 fencing, **searching** a host's tree (the affordance is
       hidden today rather than offered broken, because it walks this filesystem),
       and then the pieces none of that covers: watching for changes and bulk
@@ -1373,7 +1373,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 682 Rust + 1,111 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 682 Rust + 1,113 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

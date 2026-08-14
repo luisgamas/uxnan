@@ -26,6 +26,7 @@ import type {
   SshHostDraft,
   SshHostInventory,
 } from "$lib/types";
+import { fileTree } from "$lib/state/fileTree.svelte";
 import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
@@ -181,6 +182,9 @@ class HostsStore {
           if (report.shell) {
             this.shells = { ...this.shells, [hostId]: report.shell };
           }
+          // A tree that came up before this host did is waiting on it — fill it
+          // in now rather than making the user switch projects to trigger it.
+          fileTree.retryForHost(hostId);
           this.pendingKey = null;
           this.pendingCredential = null;
           void this.loadInventory(hostId);

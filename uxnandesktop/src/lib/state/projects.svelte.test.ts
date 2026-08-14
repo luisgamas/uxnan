@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { deferred, installFakeBackend } from '../../test/tauri';
+import { until } from '../../test/render';
 import { projects } from '$lib/state/projects.svelte';
 import { app } from '$lib/state/app.svelte';
 import { hosts } from '$lib/state/hosts.svelte';
@@ -392,6 +393,39 @@ describe('a project that lives on a host', () => {
     await projects.refreshStatuses([REMOTE_PATH]);
 
     expect(projects.status(REMOTE_PATH)).toBeUndefined();
+  });
+
+  it('waits for a host instead of showing an error, and fills in when it connects', async () => {
+    // Reported from the app: the panel opened before the host was connected and
+    // kept its red line until the user switched projects and came back. Nothing
+    // retried, because the root never made it into the loaded set.
+    let connected = false;
+    installFakeBackend({
+      ssh_fs_list: () => {
+        if (!connected) throw { code: 'NOT_CONNECTED', message: 'h1 is not connected' };
+        return [{ name: 'src', path: `${REMOTE_PATH}/src`, isDir: true, ignored: false }];
+      },
+      fs_set_watch: () => undefined,
+    });
+
+    projects.setActiveWorktree(REMOTE_PATH);
+    fileTree.setRoot(REMOTE_PATH, projects.activeWorktreeTarget);
+    await fileTree.loadDir(REMOTE_PATH);
+
+    // A state, not a fault: nothing red, and the panel says what it is waiting on.
+    expect(fileTree.awaitingHost).toBe(true);
+    expect(fileTree.error).toBeNull();
+
+    connected = true;
+    fileTree.retryForHost('h1');
+    await until(() => fileTree.awaitingHost === false, { label: 'the retry' });
+    await until(() => (fileTree.childrenByDir[REMOTE_PATH] ?? []).length > 0, {
+      label: 'the listing',
+    });
+
+    // A different host connecting must not disturb this tree.
+    fileTree.retryForHost('h2');
+    expect(fileTree.awaitingHost).toBe(false);
   });
 
   it('offers no local path for the file and git layers to read', () => {

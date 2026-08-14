@@ -10,8 +10,9 @@
 
 import { fsWriteFile, gitDiffHead } from "$lib/api";
 import { readFileOn } from "$lib/fsRouter";
-import { LOCAL_TARGET, type TargetId } from "$lib/target";
+import { isLocalTarget, LOCAL_TARGET, type TargetId } from "$lib/target";
 import { git } from "$lib/state/git.svelte";
+import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -95,9 +96,21 @@ export class FileEditorState {
     this.rel = this.worktree
       ? relativeTo(newPath, this.worktree)
       : (newPath.split("/").pop() ?? newPath);
-    if (this.worktree && !this.binary && !this.tooLarge) {
-      this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
+    if (!this.binary && !this.tooLarge) {
+      this.headDiff = await this.diffAgainstHead();
     }
+  }
+
+  /** The file's diff against HEAD, or empty when there is nothing to ask.
+   *
+   *  Git runs on **this** machine, so a file that lives on a host is not asked at
+   *  all: pointing local git at a remote path fails, and the failure surfaces as
+   *  an error toast over a file that opened perfectly well. Remote diffs are the
+   *  next piece of phase 3 (`02g` §5.11); until then no diff is the honest
+   *  answer, and the Changes view is not offered for those files. */
+  private async diffAgainstHead(): Promise<string> {
+    if (!this.worktree || !isLocalTarget(this.target)) return "";
+    return gitDiffHead(this.worktree, this.rel).catch(() => "");
   }
 
   /** Read the file content + its `git diff HEAD` from disk, resetting dirty /
@@ -117,7 +130,7 @@ export class FileEditorState {
       this.baseline = r.content;
       this.content = r.content;
       if (!r.binary && !r.tooLarge && this.worktree) {
-        this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
+        this.headDiff = await this.diffAgainstHead();
       }
       this.rev++;
     } catch (e) {
@@ -137,9 +150,27 @@ export class FileEditorState {
     else void this.load();
   }
 
+  /** Whether this file can be written from here.
+   *
+   *  A file on a host is **read-only for now**: writing goes through the local
+   *  filesystem, and handing it a host's path either fails or — the reason this
+   *  is a guard and not a `catch` — writes a file of that name on *this* machine
+   *  while the editor reports success. Writing over SFTP is the next piece of
+   *  phase 3 (`02g` §5.11). */
+  get readOnly(): boolean {
+    return !isLocalTarget(this.target);
+  }
+
   /** Persist `content` to disk, then refresh the gutter + the right-panel status
    *  so the change indicators update immediately (not just on the watcher). */
   async save(content: string): Promise<void> {
+    if (this.readOnly) {
+      // Refused before anything is written, and said in the pane rather than
+      // swallowed: an editor that silently does not save is worse than one that
+      // will not.
+      this.error = i18n.t("files.remoteReadOnly");
+      return;
+    }
     this.saving = true;
     this.error = null;
     try {
@@ -149,8 +180,10 @@ export class FileEditorState {
       this.dirty = false;
       this.externallyChanged = false;
       if (this.worktree) {
-        this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
-        if (git.path === this.worktree) void git.refresh();
+        this.headDiff = await this.diffAgainstHead();
+        // The git panel reads this machine too, so a save on a host has nothing
+        // to refresh here.
+        if (isLocalTarget(this.target) && git.path === this.worktree) void git.refresh();
       }
     } catch (e) {
       this.error = msg(e);

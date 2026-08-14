@@ -44,7 +44,10 @@
     !(isImg && !isSvg) && !fileState.binary && !fileState.tooLarge && !fileState.error,
   );
   const canPreview = $derived(previewKind !== null);
-  const canChanges = $derived(tab.worktree !== null);
+  // Changes reads git on *this* machine, so a file on a host does not offer it —
+  // the view would be empty and the attempt raises an error over a file that
+  // opened fine. Remote diffs are the next piece of phase 3.
+  const canChanges = $derived(tab.worktree !== null && !fileState.readOnly);
 
   interface ViewSpec {
     view: FileView;

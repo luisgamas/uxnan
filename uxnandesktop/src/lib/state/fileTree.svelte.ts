@@ -19,7 +19,7 @@ import {
 import { terminals } from "$lib/state/terminals.svelte";
 import type { ContentFileMatch, FsChangedEvent, FsEntry, SearchFilters } from "$lib/types";
 import { listDirOn } from "$lib/fsRouter";
-import { isLocalTarget, LOCAL_TARGET, type TargetId } from "$lib/target";
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
@@ -41,6 +41,12 @@ function parentOf(path: string): string {
   return i > 0 ? path.slice(0, i) : path;
 }
 
+/** Whether a failure is "that host is not connected yet" — a state, not a fault.
+ *  Matched on the backend's own code so the wording can change freely. */
+function isNotConnected(e: unknown): boolean {
+  return !!e && typeof e === "object" && "code" in e && (e as { code: unknown }).code === "NOT_CONNECTED";
+}
+
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
     ? String((e as { message: unknown }).message)
@@ -52,6 +58,9 @@ class FileTreeStore {
   /** The machine the root lives on. Every listing and read in this tree goes
    *  there — see `setRoot`. */
   target = $state<TargetId>(LOCAL_TARGET);
+  /** The tree is on a host that has no session yet. Not an error — the panel
+   *  says it is waiting, and `retryForHost` fills it in when the host connects. */
+  awaitingHost = $state(false);
 
   /** Whether searching this tree is possible.
    *
@@ -214,7 +223,13 @@ class FileTreeStore {
       this.childrenByDir = { ...this.childrenByDir, [dir]: entries };
       this.error = null;
     } catch (e) {
-      this.error = msg(e);
+      // "The host is not connected yet" is not a failure to read about: it is
+      // the ordinary state between starting the app and connecting. The tree
+      // says so plainly and retries by itself once the host is up
+      // (`retryForHost`), instead of leaving a red line the user has to clear by
+      // switching projects and back.
+      this.awaitingHost = isNotConnected(e);
+      this.error = this.awaitingHost ? null : msg(e);
     } finally {
       const s = new Set(this.loadingDir);
       s.delete(dir);
@@ -232,6 +247,22 @@ class FileTreeStore {
       void this.loadDir(entry.path);
     }
     this.expanded = next;
+  }
+
+  /** Reload this tree once its host is up.
+   *
+   *  Called when a host connects. The first listing after a cold start fails —
+   *  there is no session yet — and nothing else would ever retry it: the root is
+   *  not in `childrenByDir`, so a plain refresh has nothing to reload, which is
+   *  why the panel stayed on its message until the workspace changed and came
+   *  back. */
+  retryForHost(hostId: string): void {
+    if (sshHostId(this.target) !== hostId) return;
+    this.awaitingHost = false;
+    this.error = null;
+    const root = this.root;
+    if (root) void this.loadDir(root, true);
+    for (const dir of Object.keys(this.childrenByDir)) void this.loadDir(dir, true);
   }
 
   /** Reload every already-loaded directory (keeps the expansion state); also

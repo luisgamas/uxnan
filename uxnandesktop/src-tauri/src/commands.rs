@@ -1373,8 +1373,8 @@ async fn sftp_for(
     }
     let sessions = state.ssh_sessions.read().await;
     let Some(conn) = sessions.get(host_id) else {
-        return Err(CommandError::from(AppError::Invalid(
-            "connect to this host before reading its files".to_string(),
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
         )));
     };
     let session = std::sync::Arc::new(ssh::sftp::open(conn).await.map_err(CommandError::from)?);

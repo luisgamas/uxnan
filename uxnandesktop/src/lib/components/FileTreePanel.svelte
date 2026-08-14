@@ -791,7 +791,11 @@
   {#if !root}
     <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
   {:else}
-    {#if fileTree.error}
+    {#if fileTree.awaitingHost}
+      <!-- Not an error: the app opened before the host was connected. It fills
+           itself in the moment the host comes up (`retryForHost`). -->
+      <p class={cn("px-3 py-1.5", text.meta)}>{i18n.t("fileTree.awaitingHost")}</p>
+    {:else if fileTree.error}
       <p class={cn("px-3 py-1.5 text-destructive", text.body)}>{fileTree.error}</p>
     {/if}
 
