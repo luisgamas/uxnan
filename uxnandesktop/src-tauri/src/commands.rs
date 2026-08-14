@@ -1093,12 +1093,18 @@ pub struct SshConnectReport {
     pub path: Option<String>,
     /// What was offered and refused, in order, so the message can name it.
     pub attempted: Vec<String>,
+    /// Which shell this host starts (`posix` | `cmd` | `powershell` |
+    /// `unknown`), for `connected`. The interface needs it to quote an agent's
+    /// command line for the shell that will actually receive it — quoting for
+    /// *this* machine's shell is how a launch lands in a dead pane.
+    pub shell: Option<String>,
 }
 
 impl SshConnectReport {
     fn of(status: &str) -> Self {
         Self {
             status: status.to_string(),
+            shell: None,
             generation: None,
             method: None,
             fingerprint: None,
@@ -1180,6 +1186,17 @@ pub async fn ssh_host_connect(
             let mut report = SshConnectReport::of("connected");
             report.generation = Some(connection.generation());
             report.method = Some(method);
+            // Ask now, once, which shell this machine starts. Everything that
+            // later types into it — a terminal's `cd`, an agent's quoted command
+            // line — needs the answer, and asking here means no caller has to
+            // guess while it waits (`ssh::shellkind`).
+            let shell = ssh::shellkind::classify(&connection).await;
+            state
+                .ssh_shells
+                .write()
+                .await
+                .insert(host_id.clone(), shell);
+            report.shell = Some(shell.as_str().to_string());
             state
                 .ssh_sessions
                 .write()

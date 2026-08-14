@@ -79,7 +79,8 @@
   } = $props();
 
   const profiles = $derived(app.terminalProfiles);
-  const launchable = $derived(app.launchableAgents);
+  // The agents on this row's machine — a worktree on a host runs its CLIs.
+  const launchable = $derived(app.launchableAgentsOn(projects.targetForPath(path)));
   // The owning project, for the GitHub submenu: its main-worktree path is what
   // the inline view is scoped to (same value the project card passes). A non-git
   // folder has no GitHub to offer.

@@ -45,6 +45,19 @@ pub enum ShellKind {
     Unknown,
 }
 
+impl ShellKind {
+    /// The wire name the interface reads. Kept in one place so the frontend's
+    /// union and this enum cannot drift apart.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShellKind::Posix => "posix",
+            ShellKind::Cmd => "cmd",
+            ShellKind::PowerShell => "powershell",
+            ShellKind::Unknown => "unknown",
+        }
+    }
+}
+
 /// The probe: one line every family accepts, whose *answer* differs per family.
 ///
 /// - a POSIX shell expands `$0` to its own name and leaves `%COMSPEC%` alone;

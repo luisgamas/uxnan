@@ -19,7 +19,13 @@ import {
   sshHostsConnected,
   sshHostsList,
 } from "$lib/api";
-import type { SshConfigAlias, SshHost, SshHostDraft, SshHostInventory } from "$lib/types";
+import type {
+  RemoteShellKind,
+  SshConfigAlias,
+  SshHost,
+  SshHostDraft,
+  SshHostInventory,
+} from "$lib/types";
 import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
@@ -53,6 +59,11 @@ class HostsStore {
   /** Host ids with an operation in flight, so their row can show it. */
   busy = $state<string[]>([]);
   error = $state<string | null>(null);
+
+  /** Which shell each connected host starts, keyed by host id. Read from the
+   *  connect report — an agent's command line is quoted for *that* shell, and
+   *  the terminal's `cd` is written in it. Absent until a host is connected. */
+  shells = $state<Record<string, RemoteShellKind>>({});
 
   /** What each connected host reported about itself, keyed by host id. Asked
    *  once per connection: it costs a remote command, and nothing about a
@@ -167,6 +178,9 @@ class HostsStore {
       switch (report.status) {
         case "connected":
           this.connected = await sshHostsConnected();
+          if (report.shell) {
+            this.shells = { ...this.shells, [hostId]: report.shell };
+          }
           this.pendingKey = null;
           this.pendingCredential = null;
           void this.loadInventory(hostId);
@@ -260,11 +274,23 @@ class HostsStore {
     }
   }
 
+  /** Which shell a host starts, or `undefined` when it is not connected or its
+   *  answer was not recognisable. `undefined` means **do not assume** — never a
+   *  default. The `unknown` wire value is deliberately collapsed into it so a
+   *  caller cannot accidentally quote for a shell nobody identified. */
+  shellOf(hostId: string): "posix" | "cmd" | "powershell" | undefined {
+    const kind = this.shells[hostId];
+    return kind === undefined || kind === "unknown" ? undefined : kind;
+  }
+
   async disconnect(hostId: string): Promise<void> {
     this.error = null;
     try {
       await sshHostDisconnect(hostId);
       this.connected = await sshHostsConnected();
+      // A reconnect asks both again: the machine may be configured differently.
+      const { [hostId]: _shell, ...shells } = this.shells;
+      this.shells = shells;
       const { [hostId]: _dropped, ...rest } = this.inventories;
       this.inventories = rest;
     } catch (e) {

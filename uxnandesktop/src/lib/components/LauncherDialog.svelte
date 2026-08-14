@@ -43,7 +43,8 @@
 
   const isGit = $derived(repo.isGit !== false);
   const profiles = $derived(app.terminalProfiles);
-  const launchable = $derived(app.launchableAgents);
+  // The agents on the machine this dialog launches into.
+  const launchable = $derived(app.launchableAgentsOn(projects.targetForPath(repo.path)));
   const browserEnabled = $derived(app.settings.browser?.enabled ?? true);
 
   // --- Target (where to run) ------------------------------------------------

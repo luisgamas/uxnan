@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { deferred, installFakeBackend } from '../../test/tauri';
 import { projects } from '$lib/state/projects.svelte';
 import { app } from '$lib/state/app.svelte';
+import { hosts } from '$lib/state/hosts.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
 import { LOCAL_TARGET } from '$lib/target';
 import type { WorktreeEntry } from '$lib/types';
@@ -287,6 +288,48 @@ describe('a project that lives on a host', () => {
     expect(terminals.findTab(second)).toBeDefined();
     expect(terminals.workspaceRoot(GLOBAL_WORKSPACE)).not.toBeNull();
     expect(terminals.terminalCount(GLOBAL_WORKSPACE)).toBe(1);
+  });
+
+  it("quotes an agent's command line for the host's shell, not this machine's", () => {
+    // The same class of bug as the `cd` that killed every terminal on a
+    // PowerShell host: the launch used to quote for *this* machine's shell
+    // (`currentOS()`), so a Windows desktop driving a POSIX host produced
+    // cmd-style quoting and any argument with a space landed in a dead pane.
+    hosts.shells = { h1: 'posix' };
+    app.settings.agentProfiles = [
+      { id: 'ag', name: 'Claude', command: 'claude', args: ['-p', 'hello world'], env: [] },
+    ];
+
+    app.launchAgent(app.launchableAgents[0], {
+      cwd: REMOTE_PATH,
+      workspace: `ssh:h1::${REMOTE_PATH}`,
+      target: 'ssh:h1',
+    });
+
+    const id = terminals.activePtyId();
+    const tab = id ? terminals.findTab(id) : undefined;
+    const run = tab?.kind === 'terminal' ? (tab.runCommand ?? '') : '';
+    expect(run).toContain("'hello world'");
+    expect(run).not.toContain('"hello world"');
+  });
+
+  it('offers only the agents the host reported', () => {
+    // A host runs its own CLIs. Offering this machine's list invites launching
+    // something that is not installed there.
+    app.settings.agentProfiles = [
+      { id: 'a', name: 'Claude', command: 'claude', args: [], env: [] },
+      { id: 'b', name: 'Codex', command: 'codex', args: [], env: [] },
+    ];
+    hosts.inventories = {
+      h1: { os: 'linux', home: '/home/dev', git: 'git 2.44', multiplexer: '', shell: 'posix', agents: { claude: '2.1' } },
+    };
+
+    expect(app.launchableAgentsOn('ssh:h1').map((a) => a.id)).toEqual(['a']);
+    // Locally, nothing is filtered.
+    expect(app.launchableAgentsOn(undefined).map((a) => a.id)).toEqual(['a', 'b']);
+    // A host nobody has asked yet claims nothing.
+    hosts.inventories = {};
+    expect(app.launchableAgentsOn('ssh:h1').map((a) => a.id)).toEqual(['a', 'b']);
   });
 
   it('offers no local path for the file and git layers to read', () => {

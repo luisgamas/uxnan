@@ -690,6 +690,9 @@ export interface SshHostProbe {
   storedFingerprint?: string | null;
 }
 
+/** Which shell a host's `sshd` starts (mirror of Rust `ssh::shellkind::ShellKind`). */
+export type RemoteShellKind = "posix" | "cmd" | "powershell" | "unknown";
+
 /** One directory listing from a host (mirror of Rust `RemoteListing`).
  *
  *  A `DirListing` plus `truncated`: the host answers in the local browser's own
@@ -733,6 +736,11 @@ export interface SshConnectReport {
   generation?: number | null;
   /** Which credential worked, so the UI can say how you got in. */
   method?: string | null;
+  /** Which shell that machine starts, for `connected`. Asked on connect, never
+   *  assumed: an agent's command line has to be quoted for the shell that will
+   *  receive it, and quoting for *this* machine's shell lands the agent in a
+   *  dead pane. `unknown` when the host's answer was not recognisable. */
+  shell?: RemoteShellKind | null;
   fingerprint?: string | null;
   storedFingerprint?: string | null;
   /** For `needsPassphrase`: which key file needs one. */

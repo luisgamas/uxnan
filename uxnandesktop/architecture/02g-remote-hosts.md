@@ -581,6 +581,20 @@ entrega a mitad de turno no hacian nada por SSH, en silencio.
 modo que tras reiniciar toda pestaña remota volvia como local con la ruta de otra
 maquina, y arrancaba aqui.
 
+**El lanzamiento tambien pregunta.** La linea de comandos de un agente se
+*teclea* en una shell, asi que hay que entrecomillarla con la sintaxis de la que
+la va a recibir. Se hacia con la de **esta** maquina (`currentOS()`), de modo que
+un escritorio Windows contra un host POSIX producia comillas de `cmd` y cualquier
+argumento con un espacio aterrizaba en un panel muerto — la misma clase de error
+que el `cd`. Ahora manda la respuesta del host (§5.7); si no se reconocio, se cae
+al SO que declaro su inventario, nunca a un valor por defecto. Una pestaña remota
+tampoco guarda ya una shell local que jamas usara.
+
+**El lanzador ofrece los agentes del host.** La lista configurada describe esta
+maquina; el host tiene los suyos, que es la razon de trabajar alli. Con
+inventario, se filtra; sin inventario **no se filtra nada**, porque no haberlo
+preguntado no es lo mismo que no tenerlos (`agentAvailability.ts`).
+
 **Cerrar una pestaña no puede llevarse a su vecina.** Dos rutas reaccionan al
 mismo cierre —la que lo inicia y la que atiende el evento de salida que ese
 cierre produce— y ambas tocan el mismo grupo. La segunda decidia con un contador
@@ -620,7 +634,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
-| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **En curso** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9). Falta el lanzador filtrado por inventario |
+| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales y mostrar el inventario en la UI |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
 | 3 | Archivos, git y worktrees remotos | Pendiente |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |

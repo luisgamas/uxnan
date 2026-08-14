@@ -31,7 +31,7 @@ has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 671 Rust tests (635 unit + 36
 integration), of which 22 are ignored probes that need something real to talk to
 (17 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,097 passing frontend Vitest tests across two
+real-scheduler probe) + 1,104 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -791,15 +791,25 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 **Goal:** connect to a remote machine over SSH and run agents *there* — the UI
 stays local, the work happens on the host with its CLIs and its credentials.
 
-**Landed:** execution-target identity. Every repo/worktree carries a `target`
-(`local` today), workspaces key on `(target, path)` (`src/lib/pathid.ts` →
-`workspaceKey`), persistence is at schema v2, and the fencing guard
-(`src-tauri/src/target.rs` → `check`) refuses a mutation aimed at a machine other
-than the one its caller prepared it for. The user's own SSH configuration is
-readable too: `ssh/config.rs` enumerates `Host` aliases (following `Include`)
-and resolves one through `ssh -G` instead of reimplementing OpenSSH precedence —
-commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
-§2.9 and `architecture/02g-remote-hosts.md`; user-facing `docs/remote-hosts.md`.
+**Landed — phases 0 and 1.** Execution-target identity (every repo/worktree
+carries a `target`, workspaces key on `(target, path)`, schema v2, and
+`target::check` refuses a mutation aimed at another machine); the user's own SSH
+configuration read through `ssh -G`; host-key verification with its four
+verdicts and TOFU; authentication (agent → key → password); one connection with
+N channels and a generation each; the host inventory; a remote terminal;
+browsing a host's folders and registering one as a project; **using** that
+project (its workspace keys on the machine, its terminals open there in its
+folder, and the panels that read this machine stand down and say so); and the
+launcher filtered by what the host reported.
+
+**The rule this phase paid for:** nothing may assume the host's environment. The
+shell a host starts is *asked* (`ssh/shellkind.rs`) and everything typed into it
+— a terminal's `cd`, an agent's quoted command line — follows that answer; an
+unrecognisable answer types nothing rather than guessing. Assuming cmd killed
+every project terminal on a PowerShell host, twice.
+
+Specs: `architecture/02a` §2.9 and `architecture/02g-remote-hosts.md`;
+user-facing `docs/remote-hosts.md`.
 
 ### Backend (Rust)
 - [ ] **Transport gate — do this before any UI.** Five things to prove; failing
@@ -860,11 +870,9 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       coming *back* after a drop — retry with backoff, and typed errors the UI
       can tell apart (unreachable / refused / auth / timeout) rather than one
       failure string.
-- [ ] Show the inventory in the UI and filter the launcher by it (the probe
-      itself is done and proven live (`ssh/inventory.rs`, `ssh_host_inventory`):
-      one command with delimited output, POSIX with a login shell or PowerShell
-      with `-NoProfile`, reporting OS, home, git, multiplexer and the agent CLIs
-      with versions).
+- [ ] Show the host's inventory **in the UI** — the launcher already filters by
+      it, but nothing yet shows what a machine has, what it is missing and the
+      command to install it (a per-host doctor view, below).
 - [ ] **A channel budget.** OpenSSH's `MaxSessions` defaults to **10**, and every
       remote terminal, inventory probe, directory listing and git call is a
       channel on the one connection. Nothing counts them today, so the eleventh
@@ -916,16 +924,10 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       second one. Decide whether a live session id may be claimed twice at all,
       or whether a restored tab must ask first. Until then, treat "open the same
       workspace in two windows" as unsupported rather than as working.
-- [ ] Launcher filtered by the host's inventory (the data is there,
-      `ssh_host_inventory`; the launcher still offers this machine's agents).
 - [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
       glance rather than only by what its prompt says.
 - [ ] A doctor view per host: the inventory in full, with what is missing and the
       per-host command cost (§5.3) — it has a fix on the user's side.
-- [ ] **`shellKind` must take the target's platform, not `currentOS()`**
-      (`src/lib/state/app.svelte.ts`). Agent launch quotes its command for the
-      *local* shell today, so a Windows desktop driving a Linux host would quote
-      cmd-style and land the agent in a dead pane.
 - [ ] i18n: `en.ts` + `es.ts` in the same change. There is **no key-parity test
       between locales today** — add one with this section.
 
@@ -1362,7 +1364,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 671 Rust + 1,097 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 671 Rust + 1,104 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

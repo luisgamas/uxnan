@@ -53,6 +53,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+- **An agent launched on a host is quoted for that host's shell.** The command
+  line is typed into a shell, and which shell it is decided the quoting — but the
+  code asked *this* machine (`currentOS()`), so a Windows desktop driving a POSIX
+  host produced cmd-style quotes and any argument with a space or a quote landed
+  in a dead pane. The machine's own answer, taken when it connected, decides now;
+  an unrecognisable one falls back to what that host's inventory says it runs
+  rather than to a default. A remote tab also stops recording a local shell it
+  never used.
+- **The launcher offers the agents the host actually has.** The configured list
+  describes this machine, and a host has its own CLIs — which is the reason for
+  running the work there. A host that has reported its inventory now filters the
+  list; one that has not been asked yet changes nothing, because absence of an
+  inventory is not absence of agents.
 - **Closing one terminal no longer closes its neighbour.** Two terminals in a
   workspace, close one, both disappear — while the survivor's shell went on
   running on the far machine, which is what made it look like the backend
