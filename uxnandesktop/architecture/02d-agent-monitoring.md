@@ -116,9 +116,11 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   **Endpoint file:** el servidor escribe `endpoint.env`/`endpoint.cmd` (url+token
   vivos) al arrancar e inyecta `UXNAN_ENDPOINT_FILE`; cada reporter lo prefiere,
   así una terminal que sobrevive a un reinicio del ADE alcanza al servidor vivo.
-  **Settings → Agents → Hooks** expone un botón **Install** por agente (mergea de
-  forma idempotente, marcando lo gestionado por el nombre del script/relay);
-  Uninstall es su reverso. Así los estados precisos funcionan out-of-the-box.
+  **Settings → Agents → Hooks** expone un **switch por agente** — una fila de
+  ajustes por CLI, agrupadas en «en este equipo» y el resto — que instala
+  (mergeando de forma idempotente, marcando lo gestionado por el nombre del
+  script/relay) o desinstala, su reverso. Así los estados precisos funcionan
+  out-of-the-box.
 - **Seguridad del servidor local (defensa en profundidad):** el servidor liga
   solo a `127.0.0.1` (loopback) con puerto efímero y exige el **token por
   lanzamiento** (nunca escrito a disco). Sobre esa base: (a) el token se compara
@@ -583,6 +585,8 @@ El archivo de Claude vive en `<app-data>/mcp/claude-<puerto>.json` y lleva el pu
 **Por que se sustituyo la escritura en la config global de usuario:** era una unica entrada, persistente y compartida, con dos fallos observados. (1) Fuera de uxnan no era inocua: Codex valida `bearer_token_env_var` al arrancar y aborta la fase MCP con *«Environment variable UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set»* en **cada** ejecucion. (2) La entrada llevaba el puerto de una instancia, asi que una **segunda** ventana de uxnan la sobrescribia y rompia los agentes de la primera desde dentro. Al arrancar, el ADE hace un **barrido de limpieza** (solo eliminacion, `sweep_legacy`) que borra esa entrada de las siete configs de usuario que versiones anteriores pudieron escribir.
 
 **Ajustes (Settings → Browser):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable.
+
+**Fila por agente (misma forma que la lista de Hooks, §1.1):** cada agente del catalogo es una fila `AgentSettingsRow` con su marca, su nombre y su interruptor. Donde Hooks muestra el archivo de config que escribe, esta lista muestra `McpAgentInfo.mechanism` — el flag o la variable que recibe ese lanzamiento (`--mcp-config <archivo>`, `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`) — porque aqui no hay ningun archivo de config que mostrar: ese es justamente el punto.
 
 Solo se auto-configura un CLI cuando existe un mecanismo por lanzamiento **verificado contra el CLI real**; Grok, Qwen Code, Droid y MiMo Code no lo tienen hoy (detalle y receta para anadir uno en `docs/browser.md`).
 

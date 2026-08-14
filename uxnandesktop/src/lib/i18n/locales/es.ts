@@ -1431,15 +1431,13 @@ export const es: Record<MessageKey, string> = {
     "Instala un plugin en `~/.config/amp/plugins/`, que Amp descubre solo. La API de plugins de Amp es propia; su `agent.end` dice si el turno terminó o murió, así que reporta un `blocked` real.",
   "hooks.desc.omp":
     "OMP ejecuta el runtime de agente de Pi bajo su propia carpeta, así que carga exactamente la misma extensión de estado desde `~/.omp/agent/extensions/` — reportando como OMP y no como Pi.",
-  "hooks.agentListLabel": "Agentes",
   "hooks.groupInstalled": "En este equipo",
   "hooks.groupOthers": "Otros agentes",
   "hooks.notOnThisMachine":
-    "Este CLI no se encontró en tu equipo. Instalar su reporter ahora no molesta: empezará a reportar el día que instales el agente.",
+    "Estos CLI no se encontraron en tu equipo. Instalar un reporter ahora no molesta: empezará a reportar el día que instales el agente.",
   "hooks.statusInstalled": "Instalado en {path}",
-  "hooks.statusInstalledShort": "Instalado",
-  "hooks.statusNotInstalled": "No instalado",
-  "hooks.enableToManage": "Activa «Instalar hooks de agentes» para gestionar este agente.",
+  "hooks.enableToManage":
+    "Activa «Instalar hooks de agentes» para configurarlos uno a uno.",
   "hooks.statusUnavailable":
     "La configuración no se puede escribir (léela manualmente para obtener el comando a pegar).",
   "hooks.statusMissing":
@@ -1447,8 +1445,7 @@ export const es: Record<MessageKey, string> = {
   "hooks.autoInstall": "Instalar hooks de agentes",
   "hooks.autoInstallDesc":
     "Permite que los agentes reporten su estado preciso. Se instalan automáticamente al inicio; desactiva para quitarlos y mantenerlos desactivados.",
-  "hooks.install": "Instalar",
-  "hooks.uninstall": "Desinstalar",
+  "hooks.toggleAria": "Instalar el reporter de {agent}",
   "hooks.installing": "Instalando…",
   "hooks.uninstalling": "Desinstalando…",
   "hooks.showConfig": "Mostrar configuración",
@@ -1723,7 +1720,8 @@ export const es: Record<MessageKey, string> = {
     "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex).",
   "browser.mcpAgents": "Agentes",
   "browser.mcpAgentsDesc":
-    "Qué agentes reciben las herramientas del navegador cuando uxnan los lanza. Los demás se pueden cablear a mano abajo.",
+    "Qué agentes reciben las herramientas del navegador cuando uxnan los lanza, y qué recibe cada lanzamiento. Los demás se pueden cablear a mano abajo.",
+  "browser.mcpAgentAria": "Configurar las herramientas del navegador para {agent}",
   "browser.mcpSnippet": "Config manual",
   "browser.mcpSnippetDesc":
     "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba). Esa vive en tu propia config, así que se queda ahí hasta que la quites.",

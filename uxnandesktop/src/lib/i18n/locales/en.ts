@@ -1426,23 +1426,19 @@ export const en = {
     "Installs a plugin into `~/.config/amp/plugins/`, which Amp auto-discovers. Amp's plugin API is its own; its `agent.end` says whether the turn finished or died, so it reports a real `blocked`.",
   "hooks.desc.omp":
     "OMP runs Pi's agent runtime under its own home, so it loads the very same status extension from `~/.omp/agent/extensions/` — reporting as OMP rather than as Pi.",
-  "hooks.agentListLabel": "Agents",
   "hooks.groupInstalled": "On this machine",
   "hooks.groupOthers": "Other agents",
   "hooks.notOnThisMachine":
-    "This CLI wasn’t found on your machine. Installing its reporter now is harmless — it starts reporting the day you install the agent.",
+    "These CLIs weren’t found on your machine. Installing a reporter now is harmless — it starts reporting the day you install the agent.",
   "hooks.statusInstalled": "Installed at {path}",
-  "hooks.statusInstalledShort": "Installed",
-  "hooks.statusNotInstalled": "Not installed",
-  "hooks.enableToManage": "Turn on Install agent hooks to manage this agent.",
+  "hooks.enableToManage": "Turn on Install agent hooks to wire agents one by one.",
   "hooks.statusUnavailable":
     "Config is not writable (read it manually for the command to paste).",
   "hooks.statusMissing": "Config file not found yet — install will create it.",
   "hooks.autoInstall": "Install agent hooks",
   "hooks.autoInstallDesc":
     "Lets agents report precise states. Installed automatically on startup; turn off to remove and keep it off.",
-  "hooks.install": "Install",
-  "hooks.uninstall": "Uninstall",
+  "hooks.toggleAria": "Install the reporter for {agent}",
   "hooks.installing": "Installing…",
   "hooks.uninstalling": "Uninstalling…",
   "hooks.showConfig": "Show config",
@@ -1714,7 +1710,8 @@ export const en = {
     "Skip the CLI's “trust this folder?” prompt for app-launched agents where supported (currently Codex).",
   "browser.mcpAgents": "Agents",
   "browser.mcpAgentsDesc":
-    "Which agents get the browser tools when uxnan launches them. Others can be wired by hand below.",
+    "Which agents get the browser tools when uxnan launches them, and what each launch is given. Others can be wired by hand below.",
+  "browser.mcpAgentAria": "Set up the browser tools for {agent}",
   "browser.mcpSnippet": "Manual config",
   "browser.mcpSnippetDesc":
     "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above). That one lives in your own config, so it stays there until you remove it.",

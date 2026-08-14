@@ -151,7 +151,7 @@ CSRF / DNS-rebinding.
 | --- | --- | --- |
 | **Let agents drive the browser** | Master switch for exposing the `browser_*` tools to the agents uxnan launches. Off → nothing is registered (the `/mcp` endpoint still exists for manual wiring). | On |
 | **Frictionless launch** | Skip the CLI's "trust this folder?" prompt where supported — currently Codex, via a per-folder `trust_level` seed in its config. Turn off to keep the native prompt. | On |
-| **Per-agent** | Toggle registration per agent. | All on |
+| **Agents** | One row per supported agent — its mark, **what its launch is given** (`--mcp-config <file>`, `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`) and a switch. The hooks list shows the config file it writes; this one has none to show, which is the point. | All on |
 | **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one uxnan doesn't auto-configure. That config is yours: it lives in your files and keeps working outside uxnan while the app runs, until you remove it. | — |
 
 ### Which agents are auto-configured, and why not the rest

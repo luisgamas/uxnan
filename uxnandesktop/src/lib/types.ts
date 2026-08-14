@@ -615,6 +615,10 @@ export interface McpAgentInfo {
   commands: string[];
   /** Which per-launch mechanism carries the registration. */
   via: McpLaunchVia;
+  /** What this launch adds — the flag or the environment variable — shown under
+   *  the agent's name in Settings → Browser, where the hooks list shows the
+   *  config file it writes. This list writes no config file. */
+  mechanism: string;
   /** Arguments to append to this launch's command line. Empty for `env` agents
    *  and while the hook server isn't listening yet. */
   args: string[];

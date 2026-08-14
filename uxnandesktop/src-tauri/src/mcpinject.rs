@@ -145,6 +145,11 @@ pub struct AgentInfo {
     pub label: String,
     pub commands: Vec<String>,
     pub via: LaunchVia,
+    /// What this launch actually adds — the flag or the environment variable —
+    /// shown mono under the agent's name in Settings, the way the hooks list
+    /// shows the config file it writes. This list has no config file to show:
+    /// that is the point.
+    pub mechanism: String,
     /// Ready-to-append arguments for this launch (endpoint already substituted).
     /// Empty when the server isn't listening yet or the agent is env-based.
     pub args: Vec<String>,
@@ -161,12 +166,27 @@ pub fn agent_infos(endpoint: Option<&str>, claude_config: Option<&str>) -> Vec<A
             label: a.label.to_string(),
             commands: a.commands.iter().map(|c| c.to_string()).collect(),
             via: a.via,
+            mechanism: launch_mechanism(a.id, claude_config),
             args: match endpoint {
                 Some(e) => launch_args(a.id, e, claude_config),
                 None => Vec::new(),
             },
         })
         .collect()
+}
+
+/// One line naming how `agent_id` is pointed at the server, for the Settings
+/// row: the flag it is launched with, or the variable set on its terminal.
+fn launch_mechanism(agent_id: &str, claude_config: Option<&str>) -> String {
+    match agent_id {
+        "claude" => match claude_config {
+            Some(p) if !p.is_empty() => format!("--mcp-config {p}"),
+            _ => "--mcp-config".to_string(),
+        },
+        "codex" => format!("-c mcp_servers.{SERVER_NAME}.*"),
+        "opencode" => OPENCODE_CONFIG_ENV.to_string(),
+        _ => String::new(),
+    }
 }
 
 /// Turn the hook server's `…/hook` URL into its `…/mcp` sibling (the MCP endpoint).
@@ -682,6 +702,34 @@ mod tests {
         assert_eq!(claude.args, vec!["--mcp-config", "cfg.json"]);
         let opencode = warm.iter().find(|a| a.id == "opencode").unwrap();
         assert!(opencode.args.is_empty()); // env-based
+    }
+
+    #[test]
+    fn every_agent_row_says_how_it_is_wired() {
+        // Each Settings row shows this line under the agent's name — the
+        // per-launch answer to the question the hooks list answers with a
+        // config path. An empty one would leave the row claiming a name and
+        // explaining nothing.
+        for infos in [
+            agent_infos(None, None),
+            agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json")),
+        ] {
+            for (info, agent) in infos.iter().zip(AGENTS) {
+                assert_eq!(info.id, agent.id);
+                assert_eq!(info.label, agent.label);
+                assert!(
+                    !info.mechanism.is_empty(),
+                    "{} says nothing about how it is wired",
+                    agent.id
+                );
+            }
+        }
+        // The file Claude is launched with is named once it exists.
+        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"));
+        let claude = warm.iter().find(|a| a.id == "claude").unwrap();
+        assert_eq!(claude.mechanism, "--mcp-config cfg.json");
+        let opencode = warm.iter().find(|a| a.id == "opencode").unwrap();
+        assert_eq!(opencode.mechanism, OPENCODE_CONFIG_ENV);
     }
 
     // --- Upgrade cleanup ----------------------------------------------------

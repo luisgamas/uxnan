@@ -20,6 +20,7 @@ const CATALOG: McpAgentInfo[] = [
     label: "Claude Code",
     commands: ["claude"],
     via: "args",
+    mechanism: "--mcp-config C:\\Users\\a b\\AppData\\uxnan\\mcp\\claude-63345.json",
     args: ["--mcp-config", "C:\\Users\\a b\\AppData\\uxnan\\mcp\\claude-63345.json"],
   },
   {
@@ -27,6 +28,7 @@ const CATALOG: McpAgentInfo[] = [
     label: "Codex",
     commands: ["codex"],
     via: "args",
+    mechanism: "-c mcp_servers.uxnan-browser.*",
     args: [
       "-c",
       "mcp_servers.uxnan-browser.url=http://127.0.0.1:63345/mcp",
@@ -34,7 +36,14 @@ const CATALOG: McpAgentInfo[] = [
       "mcp_servers.uxnan-browser.bearer_token_env_var=UXNAN_MCP_TOKEN",
     ],
   },
-  { id: "opencode", label: "OpenCode", commands: ["opencode"], via: "env", args: [] },
+  {
+    id: "opencode",
+    label: "OpenCode",
+    commands: ["opencode"],
+    via: "env",
+    mechanism: "OPENCODE_CONFIG_CONTENT",
+    args: [],
+  },
 ];
 
 const ON: BrowserSettings = {

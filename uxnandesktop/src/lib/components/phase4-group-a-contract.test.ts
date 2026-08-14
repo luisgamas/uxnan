@@ -9,13 +9,25 @@ describe('phase-four settings group A contracts', () => {
     expect(settings).toContain('row.settingsNav');
     expect(settings).toContain('max-w-full shrink-0 justify-start gap-1 overflow-x-auto');
     expect(settings).not.toContain('"flex h-8 items-center gap-2 rounded-md px-2 text-left');
+    // The browser-MCP agents are settings rows, not a wrapped grid of bare
+    // switches: one row per agent, its switch on the right like every other
+    // setting — the same shape the hooks list uses.
+    expect(settings).not.toContain('flex flex-wrap gap-x-6 gap-y-2.5');
+    expect(settings).toContain('i18n.t("browser.mcpAgentAria"');
+    expect(settings).toContain('<AgentSettingsRow');
   });
 
-  it('keeps hooks usable at narrow widths with standard controls', () => {
+  it('lists hook agents in the shared settings surfaces, with no nav rail of its own', () => {
     const hooks = source('AgentHooksPanel.svelte');
-    expect(hooks).toContain('flex min-w-0 flex-col gap-4 md:flex-row');
-    expect(hooks).toContain('w-full min-w-0 overflow-y-auto md:w-44');
-    expect(hooks).toContain('row.settingsNav');
+    expect(hooks).toContain('panel.settingsBody');
+    expect(hooks).toContain('<SettingsRow');
+    // Both agent lists go through the same row component, so the browser and
+    // hooks lists cannot drift apart into two different shapes again.
+    expect(hooks).toContain('<AgentSettingsRow');
+    // A rail here nested a second navigation surface inside a pane that already
+    // has one, and hid the per-agent state the panel exists to show.
+    expect(hooks).not.toContain('row.settingsNav');
+    expect(hooks).not.toContain('md:w-44');
     expect(hooks).not.toContain('size="xs"');
   });
 
