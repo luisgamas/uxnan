@@ -30,6 +30,25 @@ describe("phase-five dialog density contracts", () => {
     expect(confirm).toContain("pb-0 pr-0");
   });
 
+  it("lets the action band be narrower than its own buttons", () => {
+    // `dialog.content` is a grid with one `auto` track, so the track grows to
+    // the widest item's min-content — and a row of actions is that item. Without
+    // this, three Spanish labels (370px) pushed the 384px unsaved-changes dialog
+    // to a 410px band, 26px of grey hanging past its rounded corner. Measured in
+    // a browser against the built stylesheet, not reasoned about.
+    expect(source("../design.ts")).toContain(
+      'footer: "-mx-5 min-w-0 rounded-b-xl border-t bg-muted/50 px-5 py-3"',
+    );
+  });
+
+  it("gives a three-answer prompt the width three answers need", () => {
+    // Its actions measure 370px; `small` offers 344px of inset. The prompt that
+    // asks whether to save, discard or cancel is the one dialog in the app with
+    // three actions, so it is the one that cannot use the confirmation width.
+    const saveDiscard = source("SaveDiscardDialog.svelte");
+    expect(saveDiscard).toContain('<Dialog.Content size="medium">');
+  });
+
   it("centralizes the draggable tab label width", () => {
     const terminal = source("TerminalArea.svelte");
     expect(terminal.match(/tab\.terminalLabel/g)?.length).toBe(3);

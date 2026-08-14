@@ -493,6 +493,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A dialog's action band no longer hangs past the dialog.** The content area
+  is a grid whose single track grows to the widest thing in it — and that is the
+  row of buttons, so the unsaved-changes prompt's three Spanish labels (370px)
+  stretched the band to 410px inside a 384px dialog, leaving 26px of grey
+  sticking out past the rounded corner. The band is now allowed to be narrower
+  than its own buttons, in the shared token rather than at one call site, so
+  every dialog in the app is covered by the same fix. That prompt also moves to
+  the medium width: three actions need 370px and the confirmation width offers
+  344. Measured in a browser against the built stylesheet — reading the CSS gave
+  the wrong answer twice.
+- **Three dialogs stop printing their title against the top edge.** Remove
+  worktree, close-several-worktrees and import-pets opened with a plain row
+  instead of `Dialog.Header`, and the dialog's top inset lives in that header —
+  so they had no top padding at all. The pets dialog also had its buttons in a
+  bare row rather than the shared footer, which is why it had no bottom padding
+  either; both ends are now the same as every other dialog.
 - **A downloaded update no longer hides the "Check now" button.**
   Settings → Updates now shows two independent buttons instead of one that
   morphs: *Check now* is always there, and the phase action (*Download* /

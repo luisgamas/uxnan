@@ -111,7 +111,17 @@ export const dialog = {
   sectioned: "gap-0 p-0",
   header: "pb-4 pt-5 pr-8",
   body: "py-4",
-  footer: "-mx-5 rounded-b-xl border-t bg-muted/50 px-5 py-3",
+  /** The action band: full-bleed (`-mx-5` cancels the content's `px-5`), a top
+   *  hairline and its own inset for the buttons.
+   *
+   *  `min-w-0` is load-bearing, not tidiness. `dialog.content` is a grid whose
+   *  single track is `auto`, so the track grows to the widest item's
+   *  min-content — and a row of actions is exactly that item. Measured against
+   *  the built stylesheet: three Spanish labels need 370px, which pushed the
+   *  384px unsaved-changes dialog's band to 410px and left 26px of grey
+   *  hanging past its rounded corner. `min-w-0` lets the band be narrower than
+   *  its buttons, so the dialog's width stays the dialog's decision. */
+  footer: "-mx-5 min-w-0 rounded-b-xl border-t bg-muted/50 px-5 py-3",
   /** Footer surface shared by sectioned dialogs, including hint-only palettes. */
   footerSurface: "min-h-14 border-t border-border/60 bg-muted/30 px-5 py-3",
   smallWidth: "sm:max-w-sm",

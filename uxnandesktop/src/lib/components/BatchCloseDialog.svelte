@@ -57,7 +57,10 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content size="medium" class="flex min-w-0 flex-col" showCloseButton={false}>
-    <div class="flex min-w-0 gap-3">
+    <!-- `Dialog.Header` for its `pt-5`: `dialog.content` has no vertical padding,
+         so a dialog opening with a plain row starts against the top edge. `pb-0`
+         (the grid's own gap spaces the list below) and `pr-0` (no close button). -->
+    <Dialog.Header class="flex-row items-start gap-3 pb-0 pr-0">
       <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10">
         <Icon icon={CircleCheckIcon} class={cn(icon.button, "text-sky-500")} />
       </div>
@@ -69,7 +72,7 @@
           {i18n.t("batch.subtitle")}
         </Dialog.Description>
       </div>
-    </div>
+    </Dialog.Header>
 
     {#if plan.close.length > 0}
       <div class="scrollbar-sleek flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border border-border/60 p-2">
