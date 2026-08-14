@@ -782,6 +782,15 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       mobile UI (`uxnanmobile/FOR-DEV.md`).
 
 ### Frontend (Svelte)
+- [ ] **Launching a dev build must not resume the everyday session's agents.**
+      Half-fixed: a debug build now has its own profile, so it restores its own
+      tabs rather than the installed app's — which is what made a second agent
+      attach to a conversation already in progress. What is *not* settled is the
+      general case: two uxnan windows (or a wake, or a restore) can each
+      relaunch a tab holding the same agent session id, and nothing stops the
+      second one. Decide whether a live session id may be claimed twice at all,
+      or whether a restored tab must ask first. Until then, treat "open the same
+      workspace in two windows" as unsupported rather than as working.
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
       trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
 

@@ -31,10 +31,39 @@ pub fn override_dir() -> Option<PathBuf> {
     parse_override(std::env::var_os(DATA_DIR_ENV).as_deref().map(Path::new))
 }
 
+/// Suffix a **development** build appends to the profile directory.
+pub const DEV_SUFFIX: &str = "-dev";
+
 /// The directory the app should use: the override when it is usable, else the
-/// platform default the caller resolved.
+/// platform default — with a separate profile for development builds.
+///
+/// A dev build must not share a profile with the installed app. They are the
+/// same product but not the same *code*: a build that predates a feature does
+/// not know its fields, and serde drops what it cannot name — so every save
+/// from the older one silently deletes the newer one's data. That is not
+/// theoretical. Running the installed app alongside a dev build of the remote-
+/// hosts branch erased the registered SSH hosts and every project living on
+/// one, repeatedly, and each time it looked like the app losing its own
+/// settings.
+///
+/// Two dev builds still share `<default>-dev`; [`DATA_DIR_ENV`] separates those.
 pub fn resolve(platform_default: PathBuf) -> PathBuf {
-    override_dir().unwrap_or(platform_default)
+    if let Some(dir) = override_dir() {
+        return dir;
+    }
+    if cfg!(debug_assertions) {
+        return dev_profile(platform_default);
+    }
+    platform_default
+}
+
+/// `<dir>` → `<dir>-dev`, keeping it beside the real profile rather than inside
+/// it (a nested profile would be swept by anything that walks the real one).
+fn dev_profile(dir: PathBuf) -> PathBuf {
+    let Some(name) = dir.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+        return dir;
+    };
+    dir.with_file_name(format!("{name}{DEV_SUFFIX}"))
 }
 
 /// Pure half of [`override_dir`], so the rules are testable without touching
@@ -50,6 +79,22 @@ fn parse_override(raw: Option<&Path>) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dev_build_gets_its_own_profile() {
+        // The whole point: an installed app and a dev build must never write the
+        // same state file, because the older of the two deletes fields it does
+        // not know about.
+        let real = PathBuf::from("/home/u/.local/share/dev.luisgamas.uxnandesktop");
+        let dev = dev_profile(real.clone());
+        assert_ne!(dev, real);
+        assert_eq!(
+            dev.file_name().unwrap().to_string_lossy(),
+            format!("dev.luisgamas.uxnandesktop{DEV_SUFFIX}")
+        );
+        // Beside it, not inside it.
+        assert_eq!(dev.parent(), real.parent());
+    }
 
     #[test]
     fn unset_means_no_override() {
@@ -88,6 +133,13 @@ mod tests {
         } else {
             "/home/example/.local/share/dev.luisgamas.uxnandesktop"
         });
-        assert_eq!(resolve(fallback.clone()), fallback);
+        // ...except in a development build, which deliberately lives beside
+        // it so it cannot overwrite the installed app's state.
+        let expected = if cfg!(debug_assertions) {
+            dev_profile(fallback.clone())
+        } else {
+            fallback.clone()
+        };
+        assert_eq!(resolve(fallback), expected);
     }
 }

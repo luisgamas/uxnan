@@ -525,6 +525,14 @@ Electron") pasa de objetivo declarado a contrato medible. Vive en
   rutas relativas (dependerían del directorio de trabajo, así que el mismo comando
   podría apuntar a dos perfiles distintos). Un `env::var_os` al arranque; no altera
   nada de lo medido.
+- **Una build de depuración usa su propio perfil** (`<default>-dev`, mismo
+  `datadir.rs`), y el override sigue mandando por encima. No es orden: son el
+  mismo producto pero no el mismo *código*, y serde descarta los campos que no
+  sabe nombrar — así que cada guardado de la build más vieja borra los datos de la
+  nueva. Compartir perfil entre la app instalada y una build de desarrollo de la
+  rama de hosts remotos borró los hosts SSH y los proyectos que viven en ellos una
+  y otra vez, y cada vez parecía que la app perdía sus propios ajustes. Dos builds
+  de desarrollo siguen compartiendo `-dev`; para separarlas está `UXNAN_DATA_DIR`.
 - **Fixtures locales, offline y deterministas**: repositorio Git generado cuyo hash
   de commit es función de sus argumentos (autor, committer y ambas fechas fijados,
   PRNG con semilla), agente sustituto que reproduce la *forma* de la carga de un

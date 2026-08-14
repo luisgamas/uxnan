@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A debug build no longer shares its data with the installed app.** It writes
+  to a `…-dev` profile beside the real one. They are the same product but not
+  the same code, and serde drops fields it cannot name — so every save from the
+  older build silently deleted the newer one's data. Running the installed app
+  alongside a dev build of this branch erased the registered hosts and every
+  project living on one, repeatedly, and each time it read as the app losing its
+  own settings. A dev build now starts empty, and launching it no longer
+  relaunches the agents of your everyday session.
 - **A project can live on another machine.** A connected host offers *Add
   project*: walk its folders from its own home, and the folder you are in becomes
   a project. It appears in the left panel like any other, with a small badge
