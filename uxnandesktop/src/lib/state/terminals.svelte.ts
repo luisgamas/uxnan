@@ -916,7 +916,10 @@ class TerminalStore {
       for (const tab of allTabs(tree)) {
         if (tab.kind !== 'file') continue;
         if (!this.fileStates.has(tab.id)) {
-          this.fileStates.set(tab.id, new FileEditorState(tab.path, tab.worktree));
+          this.fileStates.set(
+            tab.id,
+            new FileEditorState(tab.path, tab.worktree, keyTarget(key)),
+          );
         }
         if (tab.view === 'changes') this.ensureDiff(tab);
       }
@@ -1078,7 +1081,7 @@ class TerminalStore {
       view: defaultFileView(absPath),
       staged: false,
     };
-    this.fileStates.set(id, new FileEditorState(absPath, worktree));
+    this.fileStates.set(id, new FileEditorState(absPath, worktree, keyTarget(this.activeWorkspace)));
     this.insertTab(tab, opts?.groupId);
     return id;
   }

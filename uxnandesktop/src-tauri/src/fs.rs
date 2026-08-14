@@ -17,7 +17,7 @@ use crate::error::AppError;
 /// Largest file the editor will open (2 MiB). Past this we refuse to load the
 /// content (so the webview never chokes on a giant/minified file) and the UI
 /// shows a "too large to edit" notice instead.
-const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
+pub(crate) const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Largest image/PDF the preview will inline as a `data:` URL (25 MiB). Past
 /// this we refuse rather than base64-encode a huge blob into the webview.

@@ -71,12 +71,21 @@
   );
   const worktreeName = $derived(root ? (root.split("/").pop() ?? root) : "");
 
-  // Keep the shared tree store pointed at the active worktree.
+  // Keep the shared tree store pointed at the active worktree — and at the
+  // machine it lives on, because every listing and read in the tree has to go
+  // where the root came from.
   $effect(() => {
-    fileTree.setRoot(root);
+    fileTree.setRoot(root, projects.activeWorktreeTarget);
   });
 
   let searching = $state(false);
+  // A host's tree cannot be searched yet (`fileTree.searchable`): the search
+  // walks this filesystem, so offering it there would answer "no matches" for
+  // every query. Closing it when the workspace changes machine keeps a stale
+  // search box from hanging over a tree it cannot search.
+  $effect(() => {
+    if (!fileTree.searchable && searching) searching = false;
+  });
   function toggleSearch(): void {
     searching = !searching;
     // Closing search drops both queries but keeps the filters and match modes, so
@@ -562,20 +571,24 @@
       {#if root}
         <!-- The tooltip is a hover affordance only; each icon button also carries its
              own `aria-label`, so the toolbar is usable by name (screen reader, tests). -->
-        <TooltipSimple title={i18n.t("fileTree.search")}>
-          {#snippet children(tp)}
-            <Button
-              variant="ghost"
-              size="icon"
-              class={iconButton.xs}
-              {...tp}
-              aria-label={i18n.t("fileTree.search")}
-              onclick={toggleSearch}
-            >
-              <Icon icon={SearchIcon} class={icon.action} />
-            </Button>
-          {/snippet}
-        </TooltipSimple>
+        {#if fileTree.searchable}
+          <!-- Not offered on a host: the search walks *this* filesystem, so it
+               would answer "no matches" for every query there. -->
+          <TooltipSimple title={i18n.t("fileTree.search")}>
+            {#snippet children(tp)}
+              <Button
+                variant="ghost"
+                size="icon"
+                class={iconButton.xs}
+                {...tp}
+                aria-label={i18n.t("fileTree.search")}
+                onclick={toggleSearch}
+              >
+                <Icon icon={SearchIcon} class={icon.action} />
+              </Button>
+            {/snippet}
+          </TooltipSimple>
+        {/if}
         <TooltipSimple title={i18n.t("fileTree.collapseAll")}>
           {#snippet children(tp)}
             <Button

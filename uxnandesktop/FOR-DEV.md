@@ -28,10 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 671 Rust tests (635 unit + 36
+always wins). 673 Rust tests (637 unit + 36
 integration), of which 22 are ignored probes that need something real to talk to
-(17 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,104 passing frontend Vitest tests across two
+(18 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
+real-scheduler probe) + 1,108 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -902,13 +902,15 @@ user-facing `docs/remote-hosts.md`.
       needs a keepalive or a transport-level signal.
 
 ### Frontend (Svelte)
-- [ ] **A remote project has no files, git or GitHub yet.** Selecting one works
-      — the workspace is keyed by its machine and its terminals open on the host,
-      in the project's folder — but the right panel's four tabs are read with
-      this machine's filesystem and git, so they stand down and say so
-      (`RemoteWorkspaceNotice`), and the row shows no branch. Making those layers
-      target-aware is phase 3 (`architecture/02g-remote-hosts.md` §7); until then
-      a remote project is a place to run agents, not to read code.
+- [ ] **A remote project has files, but not git.** Listing and opening work over
+      SFTP (`ssh/sftp.rs`, `src/lib/fsRouter.ts`) — a subsystem, so it is shell-
+      agnostic and needs nothing installed on the host. What is left, in order:
+      **git over `exec`** (`git -C <path> …`, quoted from the shell the host
+      reported — that gives the row's branch and the Changes/History tabs),
+      **writing files** over SFTP with the `02a` §2.9 fencing, and then the
+      pieces neither covers: watching for changes, bulk operations, and search
+      (today the search affordance is hidden on a host rather than offered
+      broken, because it walks this filesystem). Spec: `02g` §5.10–§5.11.
 - [ ] **Stop talking to the host's shell at all (phase 3).** Placing a terminal
       in a directory, reading files and running git are all done today by
       *typing* into whatever shell the host's sshd starts. `ssh::shellkind`
@@ -1370,7 +1372,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 671 Rust + 1,104 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 673 Rust + 1,108 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

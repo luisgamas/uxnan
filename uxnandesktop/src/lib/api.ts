@@ -586,6 +586,19 @@ export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteLi
   return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
 }
 
+/** List a directory on a host, for the file tree. Over SFTP — a subsystem, so it
+ *  works the same whatever shell that machine starts, with nothing installed
+ *  there. Shapes are the local layer's own, so the tree renders either machine. */
+export function sshFsList(hostId: string, path: string): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>('ssh_fs_list', { hostId, path });
+}
+
+/** Read a text file on a host, for the editor. Same guards as the local reader:
+ *  binary and over-cap files come back flagged rather than mangled. */
+export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
+  return invoke<FileContent>('ssh_fs_read', { hostId, path });
+}
+
 /** Register a folder that lives on a host as a project. The path is stored the
  *  way that machine spells it; identity is the pair `(host, path)`, so the same
  *  absolute path on two machines is two projects. */

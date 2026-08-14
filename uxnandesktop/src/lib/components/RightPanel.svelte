@@ -115,29 +115,36 @@
       </Tabs.Trigger>
     {/if}
   </Tabs.List>
-  {#if projects.activeIsRemote}
-    <!-- Every tab in this panel reads this machine's filesystem and git, so on a
-         project that lives on a host all four answer the same thing: not from
-         here. Said once, in place of the panes, rather than four times over —
-         and the tab strip stays so the panel does not appear to have lost it. -->
-    <div class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+  <!-- Files works on a host: it goes over SFTP, a subsystem, so it behaves the
+       same whatever shell that machine starts. The other three read this
+       machine's git, so on a remote project they stand down and say which
+       machine the project is on — said once, in place of the pane, rather than
+       three times over. -->
+  <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+    <FileTreePanel />
+  </Tabs.Content>
+  <Tabs.Content value="changes" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+    {#if projects.activeIsRemote}
       <RemoteWorkspaceNotice />
-    </div>
-  {:else}
-    <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-      <FileTreePanel />
-    </Tabs.Content>
-    <Tabs.Content value="changes" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+    {:else}
       <ChangesPanel />
-    </Tabs.Content>
-    <Tabs.Content value="history" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-      <HistoryPanel />
-    </Tabs.Content>
-    {#if showGithub}
-      <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <GithubPanel />
-      </Tabs.Content>
     {/if}
+  </Tabs.Content>
+  <Tabs.Content value="history" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+    {#if projects.activeIsRemote}
+      <RemoteWorkspaceNotice />
+    {:else}
+      <HistoryPanel />
+    {/if}
+  </Tabs.Content>
+  {#if showGithub}
+    <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+      {#if projects.activeIsRemote}
+        <RemoteWorkspaceNotice />
+      {:else}
+        <GithubPanel />
+      {/if}
+    </Tabs.Content>
   {/if}
   </Tabs.Root>
 </div>

@@ -5,6 +5,7 @@ import { projects } from '$lib/state/projects.svelte';
 import { app } from '$lib/state/app.svelte';
 import { hosts } from '$lib/state/hosts.svelte';
 import { terminals, GLOBAL_WORKSPACE } from '$lib/state/terminals.svelte';
+import { fileTree } from '$lib/state/fileTree.svelte';
 import { LOCAL_TARGET } from '$lib/target';
 import type { WorktreeEntry } from '$lib/types';
 
@@ -330,6 +331,35 @@ describe('a project that lives on a host', () => {
     // A host nobody has asked yet claims nothing.
     hosts.inventories = {};
     expect(app.launchableAgentsOn('ssh:h1').map((a) => a.id)).toEqual(['a', 'b']);
+  });
+
+  it("lists a host's folder in the file tree, and does not offer a search it cannot run", async () => {
+    // Phase 3's first slice: Files works on a host because it goes over SFTP —
+    // a subsystem, so the same code path serves cmd, PowerShell, WSL and Git
+    // Bash. Search does not, and is therefore not offered rather than offered
+    // broken (it walks *this* filesystem and would answer "no matches").
+    const backend = installFakeBackend({
+      ssh_fs_list: () => [
+        { name: 'src', path: `${REMOTE_PATH}/src`, isDir: true, ignored: false },
+        { name: 'README.md', path: `${REMOTE_PATH}/README.md`, isDir: false, ignored: false },
+      ],
+      fs_set_watch: () => undefined,
+    });
+
+    projects.setActiveWorktree(REMOTE_PATH);
+    fileTree.setRoot(REMOTE_PATH, projects.activeWorktreeTarget);
+    await fileTree.loadDir(REMOTE_PATH);
+
+    expect(backend.lastCallTo('ssh_fs_list')?.args).toEqual({
+      hostId: 'h1',
+      path: REMOTE_PATH,
+    });
+    expect(backend.lastCallTo('fs_list_dir')).toBeUndefined();
+    expect(fileTree.searchable).toBe(false);
+
+    // …and a local workspace is unchanged.
+    fileTree.setRoot(MAIN.path, 'local');
+    expect(fileTree.searchable).toBe(true);
   });
 
   it('offers no local path for the file and git layers to read', () => {

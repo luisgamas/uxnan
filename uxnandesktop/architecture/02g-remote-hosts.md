@@ -612,6 +612,58 @@ y la interfaz escribe su lado de la misma bifurcacion. Una pestaña que desapare
 tiene tres causas indistinguibles una vez cerrada; solo el registro las separa.
 Solo ids, nunca rutas ni salida.
 
+## 5.10 Ficheros del host — IMPLEMENTADO (fase 3, primera parte)
+
+`src-tauri/src/ssh/sftp.rs`. **Los ficheros van por SFTP, no por comandos.** Es la
+consecuencia directa de la leccion de §5.7: cualquier cosa con forma de comando
+depende de la shell que ese `sshd` arranque, y su dueño la cambia cuando quiere.
+SFTP es un **subsistema** —un programa que el servidor ejecuta, con protocolo
+binario— asi que listar un directorio o leer un fichero se comporta igual con
+cmd, PowerShell, WSL o Git Bash, y **no hace falta instalar nada en el host**.
+Nada que entrecomillar, nada que parsear, ninguna shell a la que culpar.
+
+**Misma forma que en local.** Devuelve los tipos del layer local (`FsEntry`,
+`FileContent`), de modo que el arbol de ficheros y el editor dibujan los ficheros
+de un host con los componentes que ya existen — el mismo criterio que el selector
+de carpetas. Una sesion SFTP por host, abierta al primer uso: es un canal sobre la
+conexion que ya esta autenticada (§5.3), asi que mantenerla no cuesta nada y
+reabrirla por listado costaria un viaje por carpeta.
+
+**Un solo sitio decide a que maquina se lee** (`src/lib/fsRouter.ts`): ruta +
+maquina, y el enrutado sale de ahi. La alternativa —que cada punto de uso
+pregunte "¿esto es remoto?"— es exactamente la forma que ya nos costo un fallo.
+
+**Lo que no hace, y se dice:**
+
+| | Estado |
+|---|---|
+| Listar y abrir ficheros | **Funciona** |
+| Marcar ignorados por git (`ignored`) | **No**: solo git puede responderlo, y git remoto es su propia pieza. Un arbol que no atenua nada es honesto; uno que adivina esta mal en silencio |
+| Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
+| Refresco automatico | **No**: el watcher es local. El boton de refrescar es la recarga |
+| Escribir / renombrar / borrar | **Pendiente** (SFTP lo soporta; falta el paso de escritura y su fencing) |
+
+Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
+rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
+leidos de un `Cargo.toml` que es el fichero de verdad.
+
+## 5.11 Lo que queda de la fase 3
+
+Tres piezas, en orden de valor y de riesgo:
+
+1. **Git del host** (`git -C <ruta> ...` por `exec`). Aqui si hay shell de por
+   medio, pero ya no se adivina: §5.7 dice cual es, y el entrecomillado sale de
+   esa respuesta. Da rama, estado y diff — es decir, la fila del proyecto y las
+   pestañas Cambios/Historial.
+2. **Escritura de ficheros** por SFTP, con el fencing de `02a` §2.9 (una escritura
+   preparada para un host no puede ejecutarse contra otro).
+3. **Un ayudante propio en el host** para lo que ni SFTP ni `exec` cubren bien:
+   observar cambios, operaciones masivas rapidas y —lo importante— colocar una
+   terminal en un directorio **como parametro**, no como texto tecleado. Es el
+   camino que toman los clientes remotos maduros y el que hace desaparecer la
+   pregunta "¿que shell tiene esta maquina?". Decision pendiente: que exige
+   instalado, como se despliega y versiona, y que pasa en un host sin runtime.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
@@ -623,7 +675,8 @@ Solo ids, nunca rutas ni salida.
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
-| Ficheros / Cambios / Historial / GitHub | **No disponible**: se leen en local. El panel lo dice y ofrece la terminal. Fase 3 |
+| Ficheros | **Funciona** por SFTP (§5.10): listar y abrir. Sin busqueda, sin marcado de ignorados y sin refresco automatico |
+| Cambios / Historial / GitHub | **No disponible**: leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
 | Rama y estado git de la fila | **No disponible**: sin git remoto no hay rama que mostrar. Fase 3 |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
@@ -636,7 +689,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales y mostrar el inventario en la UI |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | Pendiente |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP hechos (§5.10); git, escritura y el ayudante en el host, pendientes (§5.11) |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

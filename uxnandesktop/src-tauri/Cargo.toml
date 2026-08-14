@@ -109,6 +109,11 @@ globset = "0.4"
 # tree via rustls/reqwest, so it adds no new build toolchain. It sets this
 # crate's MSRV — see `rust-version` above.
 russh = "0.62.6"
+# SFTP over the same connection. A *subsystem*, not a shell — it behaves
+# identically whatever shell a host starts (cmd, PowerShell, WSL, Git Bash) and
+# needs nothing installed there, which is why remote files go through it rather
+# than through commands typed at a prompt. Apache-2.0, pure Rust, ~54 KiB.
+russh-sftp = "2.4.0"
 # SHA-1, for exactly one thing: reading OpenSSH's hashed `known_hosts` entries
 # (`|1|salt|hmac`), whose lookup keys are HMAC-SHA1 by that file format's own
 # definition. Not a security primitive here — the host key itself is compared

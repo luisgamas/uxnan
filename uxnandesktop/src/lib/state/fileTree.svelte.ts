@@ -18,6 +18,8 @@ import {
 } from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
 import type { ContentFileMatch, FsChangedEvent, FsEntry, SearchFilters } from "$lib/types";
+import { listDirOn } from "$lib/fsRouter";
+import { isLocalTarget, LOCAL_TARGET, type TargetId } from "$lib/target";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
@@ -47,6 +49,20 @@ const msg = (e: unknown) =>
 class FileTreeStore {
   /** Active worktree root (forward-slash, no trailing slash), or null. */
   root = $state<string | null>(null);
+  /** The machine the root lives on. Every listing and read in this tree goes
+   *  there — see `setRoot`. */
+  target = $state<TargetId>(LOCAL_TARGET);
+
+  /** Whether searching this tree is possible.
+   *
+   *  Both searches walk **this** filesystem (`fs_search_*`). Pointed at a host
+   *  they would find nothing and report it as "no matches" — a lie the user
+   *  cannot tell from an empty result. Searching a host needs its own
+   *  implementation (phase 3 continues), so until then the affordance is not
+   *  offered rather than offered broken. */
+  get searchable(): boolean {
+    return isLocalTarget(this.target);
+  }
   /** Lazily-loaded children keyed by directory path. */
   childrenByDir = $state<Record<string, FsEntry[]>>({});
   /** Set of expanded directory paths. */
@@ -140,10 +156,15 @@ class FileTreeStore {
    *  root is unchanged, so remounting the tab keeps the expanded state. The
    *  backend filesystem watcher is aimed centrally (in `+page.svelte`) so it
    *  follows the active worktree regardless of which panel/tab is open. */
-  setRoot(root: string | null): void {
+  setRoot(root: string | null, target: TargetId = LOCAL_TARGET): void {
     void this.startListening();
-    if (root === this.root) return;
+    if (root === this.root && target === this.target) return;
     this.root = root;
+    // Which machine this tree is of. Held beside the root because every listing
+    // and every file read has to go to the same place the root came from —
+    // asking per call site is how one of them ends up reading this filesystem
+    // for a project that lives on a host.
+    this.target = target;
     this.childrenByDir = {};
     this.expanded = new Set();
     this.error = null;
@@ -189,7 +210,7 @@ class FileTreeStore {
     if (this.childrenByDir[dir] && !force) return;
     this.loadingDir = new Set(this.loadingDir).add(dir);
     try {
-      const entries = await fsListDir(dir);
+      const entries = await listDirOn(this.target, dir);
       this.childrenByDir = { ...this.childrenByDir, [dir]: entries };
       this.error = null;
     } catch (e) {

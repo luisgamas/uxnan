@@ -65,6 +65,15 @@ pub struct AppState {
     /// cmd, PowerShell, WSL and Git Bash as they please, and guessing wrong
     /// killed every project terminal on a PowerShell machine. Dropped with the
     /// session, because a reconnect may find a different configuration.
+    /// One SFTP session per connected host, opened on first use. It is a channel
+    /// on the connection that host already has, so keeping it costs nothing while
+    /// re-opening one per listing would cost a round trip each time. Dropped with
+    /// the session.
+    pub ssh_sftp: Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, std::sync::Arc<russh_sftp::client::SftpSession>>,
+        >,
+    >,
     pub ssh_shells:
         Arc<RwLock<std::collections::HashMap<String, crate::ssh::shellkind::ShellKind>>>,
     /// Host keys seen during a probe, kept between "we asked" and "the user
@@ -136,6 +145,7 @@ impl AppState {
             ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            ssh_sftp: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),

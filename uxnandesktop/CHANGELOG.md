@@ -53,6 +53,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+- **A project on a host now has its files.** The Files tab lists and opens them
+  over **SFTP** — an SSH subsystem, so the same code path serves a host running
+  cmd, PowerShell, WSL or Git Bash, and nothing has to be installed there. It is
+  the same tree and the same editor as for a local project, because the host
+  answers in the local layer's own shapes. What it does not do is said rather
+  than faked: no git-ignored dimming (only git can answer that), no search (it
+  walks *this* filesystem, so it would answer "no matches" to everything — the
+  action is not offered instead of offered broken), no automatic refresh, and no
+  writing yet. Changes, History and GitHub still stand down on a host and say so.
 - **An agent launched on a host is quoted for that host's shell.** The command
   line is typed into a shell, and which shell it is decided the quoting — but the
   code asked *this* machine (`currentOS()`), so a Windows desktop driving a POSIX

@@ -8,7 +8,9 @@
 // CodeMirror document itself lives in `FileEditor.svelte`. All FS/git access
 // goes through `$lib/api`.
 
-import { fsReadFile, fsWriteFile, gitDiffHead } from "$lib/api";
+import { fsWriteFile, gitDiffHead } from "$lib/api";
+import { readFileOn } from "$lib/fsRouter";
+import { LOCAL_TARGET, type TargetId } from "$lib/target";
 import { git } from "$lib/state/git.svelte";
 
 const msg = (e: unknown) =>
@@ -61,9 +63,14 @@ export class FileEditorState {
   reveal = $state<{ line: number; seq: number } | null>(null);
   private revealSeq = 0;
 
-  constructor(absPath: string, worktree: string | null) {
+  /** The machine this file lives on. A file tab is opened from a tree that
+   *  already knows it, and a read has to go where the path came from. */
+  readonly target: TargetId;
+
+  constructor(absPath: string, worktree: string | null, target: TargetId = LOCAL_TARGET) {
     this.path = absPath;
     this.worktree = worktree;
+    this.target = target;
     this.rel = worktree ? relativeTo(absPath, worktree) : (absPath.split("/").pop() ?? absPath);
     void this.load();
   }
@@ -104,7 +111,7 @@ export class FileEditorState {
     this.externallyChanged = false;
     this.headDiff = "";
     try {
-      const r = await fsReadFile(this.path);
+      const r = await readFileOn(this.target, this.path);
       this.binary = r.binary;
       this.tooLarge = r.tooLarge;
       this.baseline = r.content;

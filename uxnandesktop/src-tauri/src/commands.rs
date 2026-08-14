@@ -1330,6 +1330,64 @@ pub async fn ssh_repo_add(
     Ok(repo)
 }
 
+/// The SFTP session for a host, opening one on first use.
+///
+/// Held per host because it is a channel on a connection that already exists:
+/// keeping it costs nothing, and re-opening one per listing would put a round
+/// trip in front of every folder the user expands.
+async fn sftp_for(
+    state: &AppState,
+    host_id: &str,
+) -> Result<std::sync::Arc<russh_sftp::client::SftpSession>, CommandError> {
+    if let Some(session) = state.ssh_sftp.lock().await.get(host_id).cloned() {
+        return Ok(session);
+    }
+    let sessions = state.ssh_sessions.read().await;
+    let Some(conn) = sessions.get(host_id) else {
+        return Err(CommandError::from(AppError::Invalid(
+            "connect to this host before reading its files".to_string(),
+        )));
+    };
+    let session = std::sync::Arc::new(ssh::sftp::open(conn).await.map_err(CommandError::from)?);
+    state
+        .ssh_sftp
+        .lock()
+        .await
+        .insert(host_id.to_string(), std::sync::Arc::clone(&session));
+    Ok(session)
+}
+
+/// List a directory on a host, for the file tree.
+///
+/// Over SFTP rather than a shell command, deliberately: it is a subsystem, so it
+/// behaves the same whatever shell that machine starts and needs nothing
+/// installed there (`ssh::sftp`).
+#[tauri::command]
+pub async fn ssh_fs_list(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
+    let sftp = sftp_for(&state, &host_id).await?;
+    ssh::sftp::list_dir(&sftp, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Read a text file on a host, for the editor. Same guards as the local reader:
+/// binary and over-cap files come back flagged rather than mangled.
+#[tauri::command]
+pub async fn ssh_fs_read(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<crate::fs::FileContent, CommandError> {
+    let sftp = sftp_for(&state, &host_id).await?;
+    ssh::sftp::read_file(&sftp, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Drop a host's session. Idempotent — disconnecting one that is not connected
 /// answers `false` rather than failing.
 #[tauri::command]
@@ -1343,6 +1401,7 @@ pub async fn ssh_host_disconnect(
     // A reconnect may find the machine configured differently, so the shell is
     // learned again rather than remembered across sessions.
     state.ssh_shells.write().await.remove(&host_id);
+    state.ssh_sftp.lock().await.remove(&host_id);
     Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
 }
 
