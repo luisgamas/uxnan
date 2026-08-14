@@ -161,8 +161,9 @@ available today are:
   DevTools) to preview and debug what your agents build — `localhost` dev servers
   and any site — and to open the links they create. Links route by a policy you
   choose (in-app · system browser · ask); when allowed, agents open URLs in it
-  automatically — and, via an injected **browser-control MCP server**, discover
-  `browser_*` tools to preview and test what they build with no setup. See
+  automatically — and, through a **browser-control MCP server** registered on each
+  agent uxnan launches (and only there — your agent configs are never touched),
+  discover `browser_*` tools to preview and test what they build with no setup. See
   [the integrated browser](./docs/browser.md).
 - **Quick commands.** Program shell commands you run often and launch them from a
   top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.

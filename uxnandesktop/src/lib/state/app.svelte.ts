@@ -36,6 +36,7 @@ import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
+import { loadMcpLaunch, syncMcpLaunchSettings } from "$lib/mcpLaunch";
 import { ownedSession } from "$lib/agentSessionId";
 import { modelFromArgs } from "$lib/agentModel";
 import { currentOS } from "$lib/platform";
@@ -342,6 +343,12 @@ class AppStore {
       // Re-attach the orchestration engine to its durable runs (spec 02d §3).
       orchestrationRun.hydrate(data.orchestrationRuns ?? null);
       this.syncAgentCommands();
+      // Browser MCP: mirror the settings that gate it, and warm the per-launch
+      // catalog so the first agent launched already carries its registration
+      // (`$lib/mcpLaunch`). Best-effort — a cold catalog only means the launch
+      // reloads it, never that it fails.
+      syncMcpLaunchSettings(this.settings.browser);
+      void loadMcpLaunch();
       // Check hook health in the background (drives the status-bar indicator).
       void this.refreshHooksStatus();
     } catch (err) {
@@ -416,6 +423,10 @@ class AppStore {
 
   /** Persist the current settings snapshot to disk. */
   async persistSettings(): Promise<void> {
+    // Keep the launch-time MCP gate in step with the settings being written
+    // (master switch / per-agent toggles), so the next agent launched honors
+    // them without waiting for a reload.
+    syncMcpLaunchSettings(this.settings.browser);
     try {
       await updateSettings($state.snapshot(this.settings));
     } catch (err) {

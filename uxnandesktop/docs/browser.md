@@ -98,101 +98,102 @@ They map onto the same in-app browser and the same link policy as a clicked link
 (Page inspection/interaction — snapshot/click/type — is a planned follow-up; see
 `FOR-DEV.md`.)
 
-### How it connects
+### How it connects — and why it stays inside uxnan
 
 The ADE runs a tiny MCP server at **`/mcp`** on the same local hook server the agent
 monitor already uses (`127.0.0.1`, ephemeral port, `Authorization: Bearer <token>`).
-When enabled, the ADE writes the agent CLI's **own user-global** MCP config (in
-`~/.claude.json`, `~/.codex/config.toml`,
-`~/.config/opencode/opencode.json`, and the other paths below) so it finds that server on launch — **never a
-file in your project folder.** User-global config isn't project-approval-gated, so no
-CLI shows an "approve this MCP server?" prompt. The bearer **token is never written
-to a file** — the config references the `UXNAN_MCP_TOKEN` environment variable, which
-the ADE injects into the terminal it spawns.
 
-That env-scoping is deliberate: **the injected config only works inside a terminal
-uxnan launched.** The same agent run in another IDE/terminal reads the same config
-file but has no `UXNAN_MCP_TOKEN`, so it can't authenticate — the server simply
-doesn't load for it (it won't hijack your in-app browser). The worst case outside
-uxnan is a harmless, non-connecting entry, which uxnan removes on exit.
+The server is registered **per launch**: uxnan points the agent at it *in the process
+it spawns*, and **writes nothing** to `~/.claude.json`, `~/.codex/config.toml`,
+`~/.config/opencode/opencode.json` or any other config file you keep. So an agent you
+start anywhere else — another terminal, another IDE, a CI box — never sees the server
+at all: it can't discover it, can't try to reach it, and can't warn you that it is
+broken. Nothing is left behind when uxnan exits either, cleanly or not.
+
+| Agent | How it's pointed at the server |
+| --- | --- |
+| Claude Code | `--mcp-config <file>` — a config uxnan owns, in its own app-data folder |
+| Codex | `-c mcp_servers.uxnan-browser.url=… -c mcp_servers.uxnan-browser.bearer_token_env_var=UXNAN_MCP_TOKEN` |
+| OpenCode | `OPENCODE_CONFIG_CONTENT` on the terminal — merged over your own config, which is left untouched |
+
+The **token is never written to a file**: each form references the
+`UXNAN_MCP_TOKEN` environment variable, which uxnan injects into the terminal it
+spawns, so the credential only ever exists inside a process uxnan started. Claude's
+file is named after that window's port (`claude-<port>.json`), so two uxnan windows
+open at once can never hand each other's agents the wrong endpoint.
+
+You do see those flags on the launch line in the terminal — that is the whole
+mechanism, in plain sight, and the agent's full-screen UI covers it a moment later.
+
+**Agents you type yourself.** Because the registration rides on the command uxnan
+types, an agent you start by hand in a uxnan terminal doesn't get the tools — with
+one exception: OpenCode's registration is an environment variable, so it covers
+every terminal uxnan spawns, typed by hand or not. Start the agent from uxnan (the
+launcher, a project or worktree row, an automation) and it is always registered.
+That is the trade for the guarantee: the only way an agent can be registered
+*everywhere* is a config file that follows you out of the app.
 
 The `/mcp` endpoint is guarded exactly like the hook routes: the bearer token is
 compared in constant time, and a **loopback `Host`/`Origin` gate** rejects (`403`)
 any non-loopback caller before the token check, so a web page can't reach it via
 CSRF / DNS-rebinding.
 
+> **Upgrading from an older version?** Versions before this one wrote the server into
+> each CLI's user-global config, where it outlived the app — which is why agents run
+> outside uxnan started reporting a broken `uxnan-browser` server (Codex says
+> *"Environment variable UXNAN_MCP_TOKEN … is not set"* and aborts its MCP startup).
+> uxnan now removes that entry, once, at startup, from all seven config files it used
+> to write. Nothing else in those files is touched.
+
 ### Settings → Browser → Agent browser MCP
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| **Agent browser MCP** | Master switch for exposing the `browser_*` tools to agents. Off → no MCP config is injected (the `/mcp` endpoint still exists for manual wiring). | On |
-| **Setup mode** | `Managed` registers the server in each CLI's **user-global** config only — never your project folder, so nothing lands in your files and no "approve this MCP server?" prompt appears (hand-typed agents pick it up too). `Global` is the same user-global config but leaves the CLIs' own trust prompts intact. `Off` injects nothing. | Managed |
-| **Frictionless launch** | (Managed only) Skip the CLI's "trust this folder?" prompt where supported — currently Codex via a per-folder `trust_level` seed. Turn off to keep the native prompt. | On |
-| **Per-agent** | Toggle injection per agent. | All on |
-| **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one the ADE doesn't auto-configure yet. | — |
+| **Let agents drive the browser** | Master switch for exposing the `browser_*` tools to the agents uxnan launches. Off → nothing is registered (the `/mcp` endpoint still exists for manual wiring). | On |
+| **Frictionless launch** | Skip the CLI's "trust this folder?" prompt where supported — currently Codex, via a per-folder `trust_level` seed in its config. Turn off to keep the native prompt. | On |
+| **Per-agent** | Toggle registration per agent. | All on |
+| **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one uxnan doesn't auto-configure. That config is yours: it lives in your files and keeps working outside uxnan while the app runs, until you remove it. | — |
 
-> The legacy **Workspace** mode (project-scoped config files in the working
-> directory) was removed — it was the only thing that put files in your project and
-> triggered per-project approval prompts. A saved `Workspace` choice becomes
-> `Managed`.
+### Which agents are auto-configured, and why not the rest
 
-### Where each agent's config is written
+An agent is auto-configured only when its CLI offers a **per-launch** way in — a flag
+or an environment variable — verified against the real CLI. Today that is **Claude
+Code**, **Codex** and **OpenCode** (the table above).
 
-The ADE writes each CLI's native config in its **user-global** location (never the
-project folder). The token is always referenced via `UXNAN_MCP_TOKEN` (never inlined):
+The others are not, each for a concrete reason:
 
-| Agent | User-global file | Shape |
-| --- | --- | --- |
-| Claude Code | `~/.claude.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
-| Codex | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
-| OpenCode | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
-| Grok | `~/.grok/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `headers` |
-| Qwen Code | `~/.qwen/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, trust, headers}` |
-| Droid | `~/.factory/mcp.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
-| MiMo Code | `~/.config/mimocode/mimocode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
-
-Merges are non-destructive (your other keys/servers are preserved), and uxnan removes
-its own entry on exit. Grok's entry authenticates with
-`Authorization = "Bearer ${UXNAN_MCP_TOKEN}"` — Grok expands `${VAR}` in `url`,
-`headers` and `env` at load time, so the token still never lands in a file.
-
-**Why the rest of the wired agents are not on this list.** The rule that keeps the
-browser tools *uxnan-only* is that the token lives in the environment, never in a
-file: outside uxnan there is no `UXNAN_MCP_TOKEN`, so the server is unusable even
-in the window between an unclean exit and the next launch (which is the only time
-the entry outlives the app). An agent that cannot reference an environment
-variable in its headers can only be supported by writing the live token into a
-file the user keeps — so it isn't:
-
+- **Grok** — no MCP-config flag in `grok -h`; its only external config channel
+  (`GROK_MANAGED_CONFIG`) is a signed enterprise envelope, not a per-launch override.
+- **Qwen Code**, **Droid**, **MiMo Code** — config-file-only integrations; no
+  per-launch flag or env verified.
 - **Cursor** expands `${env:VAR}` for stdio servers but **not in the headers of a
-  remote one**, so the literal `${env:UXNAN_MCP_TOKEN}` would be sent as the
-  credential.
-- **GitHub Copilot** documents header values for its CLI as literal strings.
-- **Antigravity**'s remote MCP transport is SSE with only a `serverUrl` and no
-  header field, and uxnan's endpoint speaks Streamable HTTP rather than SSE.
-- **Goose** keeps its extensions in YAML and **Kilo Code** in JSONC; uxnan
-  vendors no writer for either, and rewriting them with a plain JSON writer would
-  throw away the user's comments and formatting.
+  remote one**; **GitHub Copilot** documents header values as literal strings;
+  **Antigravity**'s remote MCP transport is SSE with only a `serverUrl` and no header
+  field, while uxnan's endpoint speaks Streamable HTTP; **Goose** keeps extensions in
+  YAML and **Kilo Code** in JSONC.
 
-Any of them can still be wired by hand from the copy-paste snippet in Settings.
-
-Antigravity support needs a change on one side or the other; the detail is in
-[`FOR-DEV.md`](../FOR-DEV.md).
+All of them still get the `$BROWSER` shim and the `curl` route above, and any of them
+can be wired by hand from the copy-paste snippet in Settings — that config is the
+user's own, so removing it is their call too.
 
 ### Adding another agent
 
-The injector is a small registry, so wiring a new CLI (e.g. `agy`/Antigravity,
-Cursor's `cursor-agent`, Grok, amp, Pi, …) is three edits in `src-tauri/src/mcpinject.rs`:
+The registry is small, so wiring a new CLI is one row plus one arm in
+`src-tauri/src/mcpinject.rs`:
 
-1. Add a row to **`AGENTS`** — its stable id and label.
-2. Add a match arm to **`config_path`** — where its **user-global** MCP config file
-   lives, relative to `$HOME`.
-3. Add its server shape to **`json_entry`** (JSON configs) or handle it in
-   **`write_entry`** (a non-JSON format, like Codex's TOML). Reference the token via
-   the CLI's own env-expansion syntax so it's never written to the file.
+1. **Find a per-launch mechanism and prove it.** Run the CLI against a throwaway MCP
+   server and confirm it connects with the right `Authorization` header without
+   touching any config file. A flag (`--mcp-config`-style), a repeatable config
+   override (Codex's `-c`) or a merged-config env var (OpenCode's
+   `OPENCODE_CONFIG_CONTENT`) all qualify; writing to the user's config does not.
+2. Add a row to **`AGENTS`** — id, label, the executable names it is recognized by,
+   and whether it is registered through `Args` or `Env`.
+3. Add its arm to **`launch_args`** (flags) or **`launch_env`** (variables),
+   referencing the token through the CLI's own env-expansion syntax so it never lands
+   in a file or in an argument.
 
-Then add the agent's id to the frontend's per-agent toggle list. Nothing else
-changes — injection, merging and cleanup are format-driven.
+The frontend needs no change: the per-agent toggles and the launch path both read the
+registry from the backend.
 
 ## Dialogs and menus over the browser
 

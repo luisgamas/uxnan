@@ -93,7 +93,7 @@ the run's shared "blackboard", and detects completion — then opens the next st
 > **Interactive vs Headless — which to use?** Interactive keeps a human-visible agent
 > in the loop and reuses an agent you already launched, but its captured output is only
 > the short hook **summary** — and it's real content *only* when the agent reports via
-> MCP, which **Claude / Codex / OpenCode** can do (with MCP injection on).
+> MCP, which **Claude / Codex / OpenCode** can do (with the browser MCP on).
 > An interactive **Pi** or any other agent has no way to hand its answer back, so
 > `{{steps.sX.output}}` from it will be **empty**. Headless is for robust **chaining**:
 > it captures the complete answer and verifies completion by exit code, at the cost of
@@ -176,7 +176,7 @@ advances **while the app is open**; a background engine is a future hardening st
 
 ## Structured reports over MCP (interactive steps)
 
-The ADE injects an **orchestration MCP tool** into each agent it launches (alongside
+The ADE registers an **orchestration MCP tool** with each agent it launches (alongside
 the browser tools — see [browser](./browser.md)): `orchestration_report_result`. When
 an interactive step's agent calls it (passing its `UXNAN_AGENT_ID`), the run captures
 that **structured result verbatim** as the step's output — better than the coarse hook
@@ -187,10 +187,10 @@ remains the fallback when the agent doesn't report.
 To make the common case work without you knowing the tool exists, the ADE **appends a
 short nudge to an interactive step's prompt** asking the agent to report its result —
 but **only** when the step's output actually feeds a later step *and* the agent
-genuinely has the tool (MCP injection is on and it's one of the injected agents:
-Claude Code / Codex / OpenCode). For any other agent it never mentions MCP,
-so no CLI is ever told to use a tool it doesn't have. (Injection is Settings →
-Browser.) For robust chaining regardless, prefer a **headless** step.
+genuinely has the tool (the browser MCP is on and it's one of the agents uxnan
+registers it with: Claude Code / Codex / OpenCode). For any other agent it never
+mentions MCP, so no CLI is ever told to use a tool it doesn't have. (The switch is
+Settings → Browser.) For robust chaining regardless, prefer a **headless** step.
 
 ---
 
@@ -268,5 +268,5 @@ scenarios below map to Stages E1–E3 of the plan.
 - [Agent launch & configuration](./agent-launch.md) — register agents, per-agent env,
   the launch shell, auto-launch on worktree create.
 - [Agent hooks — precise states](./agent-hooks.md) — make interactive completion exact.
-- [Browser](./browser.md) — the injected MCP channel the orchestration tools ride on.
+- [Browser](./browser.md) — the per-launch MCP channel the orchestration tools ride on.
 - Spec: [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md) §3.

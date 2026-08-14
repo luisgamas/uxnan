@@ -94,6 +94,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Agents launched outside uxnan no longer complain about uxnan's browser MCP
+  server.** Until now the integrated browser was exposed to agents by writing a
+  `uxnan-browser` entry into each CLI's own user-global config
+  (`~/.claude.json`, `~/.codex/config.toml`, …). That entry outlived the app, so
+  a Codex started in any other terminal read it, found no `UXNAN_MCP_TOKEN`, and
+  aborted its whole MCP startup with a warning about a server the user never
+  configured — for a browser that isn't even there.
+
+  The server is now registered **per launch**, inside the process uxnan spawns,
+  and **nothing is written to any config the user keeps**: Claude Code gets
+  `--mcp-config` pointing at a file in uxnan's own app-data folder, Codex gets
+  `-c mcp_servers.…` overrides, and OpenCode gets `OPENCODE_CONFIG_CONTENT` on
+  its terminal (merged over its own config, which is left untouched). The token
+  is still only ever named, never written. Agents launched inside uxnan discover
+  the `browser_*` tools exactly as before; agents launched anywhere else never
+  see the server at all, and an unclean exit leaves nothing behind either.
+
+  On first start, uxnan **removes** the entry it used to write, from all seven
+  agent configs it ever wrote to — including Grok, Qwen Code, Droid and MiMo
+  Code, which are no longer auto-configured (they offer no per-launch mechanism
+  today; see `docs/browser.md`). Nothing else in those files is touched.
+
+- **A second uxnan window no longer breaks the first one's browser tools.** The
+  old shared entry carried one window's port, so whichever window started last
+  overwrote it and the other window's agents were left authenticating against
+  the wrong app. Each window now registers its own endpoint at launch time.
+
+- **Settings → Browser drops the MCP "Setup mode" selector.** With registration
+  scoped to the launch, `Managed` and `Global` no longer differ — the master
+  switch, the per-agent toggles and *Frictionless launch* say everything there
+  is to say. A saved mode is ignored on load.
+
 - **The cleanup no longer offers a live worktree's own directories for
   deletion.** A worktree placed straight in the managed root — by hand, or
   through the create dialog's custom location — was read as a *group* folder, so
