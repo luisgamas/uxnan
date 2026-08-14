@@ -157,16 +157,37 @@ pub fn run() {
                 }
             });
 
+            // Upgrade cleanup: versions before the per-launch MCP registration
+            // wrote a `uxnan-browser` server into each CLI's user-global config,
+            // where it outlived the app and made agents launched *outside* uxnan
+            // report a broken MCP server. Remove any that are still there (and any
+            // stale per-window launch config). Removal-only and best-effort.
+            let mcp_sweep_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    crate::mcpinject::sweep_legacy(&mcp_sweep_handle);
+                })
+                .await;
+            });
+
             // Start the local agent hook server (Layer 1). On success, publish its
             // url + token (+ the endpoint-file path it writes to `<data>/hooks/`)
             // so `pty_create` can inject them into every terminal.
             let hook_handle = app.handle().clone();
             let hooks_dir = data_dir.join("hooks");
             let hooks_dir_for_server = hooks_dir.clone();
+            let mcp_config_handle = hook_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let token = uuid::Uuid::new_v4().to_string();
                 match crate::hooks::start(hook_handle, token, hooks_dir_for_server).await {
-                    Ok(info) => *hook_slot.write().await = Some(info),
+                    Ok(info) => {
+                        // Write Claude Code's per-launch MCP config for this
+                        // window now that the endpoint is known, so it is on disk
+                        // before the first agent is launched (`mcpinject.rs`).
+                        let endpoint = crate::mcpinject::mcp_endpoint(&info.url);
+                        crate::mcpinject::ensure_claude_config(&mcp_config_handle, &endpoint);
+                        *hook_slot.write().await = Some(info);
+                    }
                     Err(err) => {
                         let message = format!("agent hook server failed to start: {err}");
                         crate::diagnostics::log(
@@ -522,10 +543,11 @@ pub fn run() {
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
                 }
-                // Remove any MCP config files we injected into workspaces / global
-                // config so nothing stale is left behind (best-effort; see
-                // `mcpinject.rs`).
-                crate::mcpinject::cleanup(app_handle);
+                // The browser MCP needs no teardown: it is registered per launch,
+                // inside the process uxnan spawns, and never in a config file the
+                // user keeps — so an unclean exit leaves nothing behind either
+                // (see `mcpinject.rs`).
+                //
                 // Last: disarm the session marker. Reaching this point is what
                 // makes the next launch report a *clean* previous session, so it
                 // runs after the other teardown rather than before it.

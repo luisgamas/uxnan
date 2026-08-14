@@ -575,16 +575,6 @@ export type SortMode =
  *  the OS browser; `ask` prompts per link. */
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
-/** How the browser-control MCP server is injected into agents (mirror of Rust
- *  `McpInjection`). `managed` (default) registers it in each CLI's **user-global**
- *  config only — never the project folder — so no files land in the user's project
- *  and there's no "approve this MCP server?" prompt; with `frictionFree` on,
- *  app-launched agents also skip the CLIs' folder-trust prompt. `global` is the same
- *  user-global config but leaves native trust prompts intact. `off` injects nothing
- *  (wire it by hand from the copy-paste snippet). The legacy `workspace` mode
- *  (project-scoped files) was removed; a persisted `workspace` maps to `managed`. */
-export type McpInjection = "off" | "managed" | "global";
-
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
   /** Master switch. Off → every link goes to the OS browser, no agent shim. */
@@ -597,38 +587,52 @@ export interface BrowserSettings {
   terminalLinks: boolean;
   /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
   homepage: string;
-  /** Expose the browser-control MCP server to agents so they discover the
-   *  `browser_*` tools automatically. Default on. */
+  /** Expose the browser-control MCP server to the agents the ADE launches, so
+   *  they discover the `browser_*` tools automatically. The server is registered
+   *  **per launch** (flags/env on the process uxnan spawns), never in a config
+   *  file the user keeps. Default on. */
   mcpEnabled: boolean;
-  /** How the MCP server is injected into agents. Default `managed`. */
-  mcpInjection: McpInjection;
-  /** Frictionless agent setup. When on (default) and injection is `managed`,
-   *  app-launched Codex sessions skip its workspace/folder-trust prompt via a
-   *  per-folder `trust_level` seed.
-   *  Applies only in `managed` mode. Default on. */
+  /** Frictionless agent setup. When on (default), app-launched Codex sessions
+   *  skip its workspace/folder-trust prompt via a per-folder `trust_level` seed.
+   *  Default on. */
   frictionFree: boolean;
-  /** Agent ids (`claude`/`codex`/`opencode`/`pi`) to skip when injecting
-   *  the MCP config. Empty = all supported agents. */
+  /** Agent ids (`claude`/`codex`/`opencode`) to skip when registering the MCP
+   *  server at launch. Empty = all supported agents. */
   mcpDisabledAgents: string[];
 }
 
-/** One agent the ADE can auto-configure for the browser MCP server (mirror of Rust
- *  `mcpinject::AgentInfo`). */
+/** How a CLI is pointed at the MCP server for one launch (mirror of Rust
+ *  `mcpinject::LaunchVia`): extra `args` on the command uxnan types, or extra
+ *  `env` on the terminal it spawns. */
+export type McpLaunchVia = "args" | "env";
+
+/** One agent the ADE registers the browser MCP server with, per launch (mirror of
+ *  Rust `mcpinject::AgentInfo`). */
 export interface McpAgentInfo {
   id: string;
   label: string;
-  /** User-global config file this agent's server entry is written into, shown
-   *  under its name in Settings → Browser. Empty when home can't be resolved. */
-  configPath: string;
+  /** Executable names this agent is recognized by (basename, no extension). */
+  commands: string[];
+  /** Which per-launch mechanism carries the registration. */
+  via: McpLaunchVia;
+  /** What this launch adds — the flag or the environment variable — shown under
+   *  the agent's name in Settings → Browser, where the hooks list shows the
+   *  config file it writes. This list writes no config file. */
+  mechanism: string;
+  /** Arguments to append to this launch's command line. Empty for `env` agents
+   *  and while the hook server isn't listening yet. */
+  args: string[];
 }
 
-/** Runtime MCP coordinates for the Settings panel (mirror of Rust `McpInfo`). */
+/** Runtime MCP coordinates: the live endpoint + token for the Settings snippet,
+ *  and the per-launch agent catalog the launch path appends from (mirror of Rust
+ *  `McpInfo`). */
 export interface McpInfo {
   /** Live `/mcp` endpoint, or null until the hook server is listening. */
   endpoint: string | null;
   /** Local loopback token for the copy-paste snippet, or null. */
   token: string | null;
-  /** Env var the injected configs read the token from (`UXNAN_MCP_TOKEN`). */
+  /** Env var the launch registration reads the token from (`UXNAN_MCP_TOKEN`). */
   tokenEnv: string;
   /** MCP server name agents register us under (`uxnan-browser`). */
   serverName: string;
@@ -1472,7 +1476,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     terminalLinks: true,
     homepage: "",
     mcpEnabled: true,
-    mcpInjection: "managed",
     frictionFree: true,
     mcpDisabledAgents: [],
   },

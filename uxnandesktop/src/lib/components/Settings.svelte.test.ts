@@ -2,8 +2,13 @@
  * Settings → Browser. The per-agent MCP toggles are the browser half of the
  * "one row per agent" language Settings → Hooks uses, and they render from the
  * backend's own catalog (`mcp_info`), so what is tested here is that contract:
- * every agent the backend offers gets a row with its config file and a switch,
- * and the switch writes the agent's id into `mcpDisabledAgents`.
+ * every agent the backend offers gets a row saying how its launch is wired, plus
+ * a switch that writes the agent's id into `mcpDisabledAgents`.
+ *
+ * Where the hooks list shows the config file it writes, this one shows the flag
+ * or environment variable the launch is given — the server is registered per
+ * launch and no config file of the user's is touched, so a path here would be a
+ * claim about something that does not exist.
  *
  * They used to be a wrapped grid of bare switches inside a single settings row,
  * with no test at all — a shape that could disappear without anything noticing.
@@ -23,8 +28,22 @@ function browserCommands() {
       tokenEnv: 'UXNAN_MCP_TOKEN',
       serverName: 'uxnan-browser',
       agents: [
-        { id: 'claude', label: 'Claude Code', configPath: '/home/u/.claude.json' },
-        { id: 'codex', label: 'Codex', configPath: '/home/u/.codex/config.toml' },
+        {
+          id: 'claude',
+          label: 'Claude Code',
+          commands: ['claude'],
+          via: 'args',
+          mechanism: '--mcp-config /data/mcp/claude-5599.json',
+          args: ['--mcp-config', '/data/mcp/claude-5599.json'],
+        },
+        {
+          id: 'codex',
+          label: 'Codex',
+          commands: ['codex'],
+          via: 'args',
+          mechanism: '-c mcp_servers.uxnan-browser.*',
+          args: ['-c', 'mcp_servers.uxnan-browser.url=http://127.0.0.1:5599/mcp'],
+        },
       ],
     }),
     save_settings: () => undefined,
@@ -39,13 +58,13 @@ describe('Settings → Browser', () => {
     document.body.style.pointerEvents = '';
   });
 
-  it('lists every agent the backend offers, with the file its entry lands in', async () => {
+  it('lists every agent the backend offers, with how its launch is wired', async () => {
     const { screen } = mountWithProviders(Settings, { commands: browserCommands() });
     await until(() => screen.queryAllByText('Claude Code').length > 0, { label: 'agent rows' });
     expect(screen.getByText('Codex')).toBeInTheDocument();
-    // The path is the row's own metadata, not something only the docs know.
-    expect(screen.getByText('/home/u/.claude.json')).toBeInTheDocument();
-    expect(screen.getByText('/home/u/.codex/config.toml')).toBeInTheDocument();
+    // The mechanism is the row's own metadata, not something only the docs know.
+    expect(screen.getByText('--mcp-config /data/mcp/claude-5599.json')).toBeInTheDocument();
+    expect(screen.getByText('-c mcp_servers.uxnan-browser.*')).toBeInTheDocument();
   });
 
   it("turns one agent's injection off without touching the others", async () => {

@@ -86,7 +86,9 @@ A settings row that stands for an *entity* rather than a preference — an agent
 **Hooks** or in **Browser → Agents** — is still a `SettingsRow` underneath, via
 the shared `AgentSettingsRow`: `SettingsRow`'s `leading` snippet carries the mark
 (an `AgentLogo` at `icon.brand`), `meta` carries the lines under the description
-(the config path in `font-mono`, an exceptional-state note), and the control on
+in `font-mono` — the config path a hook writes, or, in Browser, which writes no
+config at all, what that launch is given — plus an exceptional-state note, and
+the control on
 the right stays the ordinary `Switch`, with per-agent extras behind a disclosure
 that opens *under* the row. Both agent lists go through that one component on
 purpose, so they cannot drift into two different shapes. Group such lists under a

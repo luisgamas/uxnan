@@ -1704,27 +1704,17 @@ export const en = {
   "browser.mcpHeading": "Agent browser MCP",
   "browser.mcpEnabled": "Let agents drive the browser",
   "browser.mcpEnabledDesc":
-    "Expose the browser as MCP tools so launched agents discover and drive it automatically — no setup, no docs.",
-  "browser.mcpInjection": "Setup mode",
-  "browser.mcpInjectionDesc":
-    "How agents receive the tools. The token stays in the terminal's environment — never written to a file.",
-  "browser.mcpModeManaged": "Managed (recommended)",
-  "browser.mcpModeManagedDesc":
-    "Register the server in each agent's user-global config — never your project folder, so nothing shows up in your files and no approval prompt appears. Hand-typed agents pick it up too.",
-  "browser.mcpModeGlobal": "Global config only",
-  "browser.mcpModeGlobalDesc":
-    "Same user-global config as Managed, but with the frictionless trust-skip off — the CLIs keep their own folder-trust prompts.",
-  "browser.mcpModeOff": "Manual only",
-  "browser.mcpModeOffDesc": "Don't inject anything — wire an agent by hand from the snippet below.",
+    "Expose the browser as MCP tools so agents launched here discover and drive it automatically — no setup, no docs. Set up per launch, so agents you run outside uxnan never see it.",
   "browser.frictionFree": "Frictionless launch",
   "browser.frictionFreeDesc":
-    "Skip the CLI's “trust this folder?” prompt for app-launched agents where supported (currently Codex). Managed mode only.",
+    "Skip the CLI's “trust this folder?” prompt for app-launched agents where supported (currently Codex).",
   "browser.mcpAgents": "Agents",
-  "browser.mcpAgentsDesc": "Which agents get the browser tools set up automatically.",
+  "browser.mcpAgentsDesc":
+    "Which agents get the browser tools when uxnan launches them, and what each launch is given. Others can be wired by hand below.",
   "browser.mcpAgentAria": "Set up the browser tools for {agent}",
   "browser.mcpSnippet": "Manual config",
   "browser.mcpSnippetDesc":
-    "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above).",
+    "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above). That one lives in your own config, so it stays there until you remove it.",
   "browser.mcpCopy": "Copy",
   "browser.mcpCopied": "Copied",
   "browser.mcpWaiting": "Available once the app's local server is running.",

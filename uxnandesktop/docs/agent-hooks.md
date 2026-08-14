@@ -264,12 +264,11 @@ turn never showed its check. Now the environment wins and the file is only tried
 when the environment's server does not answer, so both windows work at once and
 an agent that outlived a restart is still rescued.
 
-One thing genuinely does not survive two windows: the **browser MCP** entry in
-each CLI's config holds a URL, and a config file has no per-window environment to
-read it from, so the last window to start owns it. A window whose entry was
-overwritten simply gets no browser tools (the token is per-window, so a
-cross-window call is refused rather than misrouted). Closing a window no longer
-deletes the other's entry, so reopening it restores its own.
+The **browser MCP** used to fail across two windows for the same reason — one
+shared entry in each CLI's config, holding one window's URL, so the window that
+started last owned it and the other's agents got nothing. It no longer does: the
+server is registered **per launch**, on the process each window spawns, so every
+agent talks to the window that launched it (see [browser](./browser.md)).
 
 ---
 

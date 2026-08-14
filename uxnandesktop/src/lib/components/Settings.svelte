@@ -48,7 +48,6 @@
     InstallPolicy,
     BrowserSettings,
     BrowserLinkPolicy,
-    McpInjection,
     McpInfo,
   } from "$lib/types";
   import { mcpInfo } from "$lib/api";
@@ -611,7 +610,6 @@
     terminalLinks: true,
     homepage: "",
     mcpEnabled: true,
-    mcpInjection: "managed",
     frictionFree: true,
     mcpDisabledAgents: [],
   };
@@ -704,18 +702,6 @@
   $effect(() => {
     if (app.settingsSection === "browser" && !mcpLoaded) void loadMcp();
   });
-  const MCP_MODES: { value: McpInjection; labelKey: MessageKey; descKey: MessageKey }[] = [
-    { value: "managed", labelKey: "browser.mcpModeManaged", descKey: "browser.mcpModeManagedDesc" },
-    { value: "global", labelKey: "browser.mcpModeGlobal", descKey: "browser.mcpModeGlobalDesc" },
-    { value: "off", labelKey: "browser.mcpModeOff", descKey: "browser.mcpModeOffDesc" },
-  ];
-  const mcpModeGroups = $derived<ComboGroup[]>([
-    { items: MCP_MODES.map((m) => ({ value: m.value, label: i18n.t(m.labelKey) })) },
-  ]);
-  // Helper text under the injection row tracks the selected mode.
-  const mcpModeDesc = $derived(
-    i18n.t(MCP_MODES.find((m) => m.value === br.mcpInjection)?.descKey ?? "browser.mcpInjectionDesc"),
-  );
   function mcpAgentOn(id: string): boolean {
     return !(br.mcpDisabledAgents ?? []).includes(id);
   }
@@ -1622,24 +1608,11 @@
                     {/snippet}
                   </SettingsRow>
 
-                  <SettingsRow label={i18n.t("browser.mcpInjection")} description={mcpModeDesc}>
-                    {#snippet control()}
-                      <Combobox
-                        value={br.mcpInjection}
-                        groups={mcpModeGroups}
-                        disabled={!br.enabled || !br.mcpEnabled}
-                        triggerClass={field.selectStandard}
-                        searchPlaceholder={i18n.t("common.search")}
-                        onChange={(v) => { setBr({ mcpInjection: v as McpInjection }); persistNow(); }}
-                      />
-                    {/snippet}
-                  </SettingsRow>
-
                   <SettingsRow label={i18n.t("browser.frictionFree")} description={i18n.t("browser.frictionFreeDesc")}>
                     {#snippet control()}
                       <Switch
                         checked={br.frictionFree}
-                        disabled={!br.enabled || !br.mcpEnabled || br.mcpInjection !== "managed"}
+                        disabled={!br.enabled || !br.mcpEnabled}
                         onCheckedChange={(c) => { setBr({ frictionFree: c }); persistNow(); }}
                       />
                     {/snippet}
@@ -1649,9 +1622,11 @@
                 </div>
               </div>
 
-              <!-- Which agents get wired, one row each: the agent's mark and the
-                   config file its entry lands in, with the switch on the right —
-                   the same shape Settings → Hooks lists its agents in. -->
+              <!-- Which agents get wired, one row each: the agent's mark and what
+                   its launch is given (a flag, or a variable on its terminal),
+                   with the switch on the right — the same shape Settings → Hooks
+                   lists its agents in. Nothing is written to their configs, so
+                   the row names the mechanism where hooks name a file. -->
               {#if mcpData && mcpData.agents.length > 0}
                 <div class="space-y-2">
                   <div class="px-1">
@@ -1664,12 +1639,12 @@
                         <AgentSettingsRow
                           logo={backendAgentLogo(agent.id)}
                           name={agent.label}
-                          path={agent.configPath}
+                          path={agent.mechanism}
                         >
                           {#snippet control()}
                             <Switch
                               checked={mcpAgentOn(agent.id)}
-                              disabled={!br.enabled || !br.mcpEnabled || br.mcpInjection === "off"}
+                              disabled={!br.enabled || !br.mcpEnabled}
                               aria-label={i18n.t("browser.mcpAgentAria", { agent: agent.label })}
                               onCheckedChange={(c) => toggleMcpAgent(agent.id, c)}
                             />

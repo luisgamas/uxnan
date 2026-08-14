@@ -1714,27 +1714,17 @@ export const es: Record<MessageKey, string> = {
   "browser.mcpHeading": "MCP de navegador para agentes",
   "browser.mcpEnabled": "Deja que los agentes usen el navegador",
   "browser.mcpEnabledDesc":
-    "Expón el navegador como herramientas MCP para que los agentes que lances lo descubran y lo usen solos — sin configurar, sin documentación.",
-  "browser.mcpInjection": "Modo de configuración",
-  "browser.mcpInjectionDesc":
-    "Cómo reciben las herramientas los agentes. El token queda en el entorno de la terminal — nunca se escribe en un archivo.",
-  "browser.mcpModeManaged": "Gestionado (recomendado)",
-  "browser.mcpModeManagedDesc":
-    "Registra el servidor en la config global de usuario de cada agente — nunca en la carpeta de tu proyecto, así no aparece nada en tus archivos ni sale ningún aviso de aprobación. Los agentes tecleados a mano también lo reciben.",
-  "browser.mcpModeGlobal": "Solo config global",
-  "browser.mcpModeGlobalDesc":
-    "La misma config global de usuario que Gestionado, pero sin el salto de confianza — los CLI conservan sus propios avisos de confianza de carpeta.",
-  "browser.mcpModeOff": "Solo manual",
-  "browser.mcpModeOffDesc": "No inyectar nada — cablea un agente a mano con el snippet de abajo.",
+    "Expón el navegador como herramientas MCP para que los agentes que lances aquí lo descubran y lo usen solos — sin configurar, sin documentación. Se configura en cada lanzamiento, así que los agentes que uses fuera de uxnan nunca lo ven.",
   "browser.frictionFree": "Lanzamiento sin fricción",
   "browser.frictionFreeDesc":
-    "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex). Solo en modo Gestionado.",
+    "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex).",
   "browser.mcpAgents": "Agentes",
-  "browser.mcpAgentsDesc": "Qué agentes reciben las herramientas del navegador automáticamente.",
+  "browser.mcpAgentsDesc":
+    "Qué agentes reciben las herramientas del navegador cuando uxnan los lanza, y qué recibe cada lanzamiento. Los demás se pueden cablear a mano abajo.",
   "browser.mcpAgentAria": "Configurar las herramientas del navegador para {agent}",
   "browser.mcpSnippet": "Config manual",
   "browser.mcpSnippetDesc":
-    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba).",
+    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba). Esa vive en tu propia config, así que se queda ahí hasta que la quites.",
   "browser.mcpCopy": "Copiar",
   "browser.mcpCopied": "Copiado",
   "browser.mcpWaiting": "Disponible cuando el servidor local de la app esté corriendo.",

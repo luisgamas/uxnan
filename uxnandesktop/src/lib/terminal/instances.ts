@@ -33,6 +33,7 @@ import { LigaturesAddon } from '@xterm/addon-ligatures';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { WebglAddon } from '@xterm/addon-webgl';
 import { openUrl } from '$lib/api';
+import { ensureMcpLaunch, withMcpLaunch } from '$lib/mcpLaunch';
 import { agentMonitor } from '$lib/state/agentMonitor.svelte';
 import { KeyboardProtocol } from '$lib/terminal/keyboardProtocol';
 import { DEFAULT_TERMINAL_SCROLLBACK, SNAPSHOT_SCROLLBACK } from '$lib/terminal/scrollback';
@@ -413,7 +414,14 @@ async function nudgeRepaint(inst: TerminalInstance, cols: number, rows: number):
 }
 
 /** Debounced one-shot typing of the agent launch command, once the PTY is ready
- *  and the shell's profile output has gone quiet. */
+ *  and the shell's profile output has gone quiet.
+ *
+ *  This is also where uxnan's browser MCP server is registered with the agent:
+ *  the command line gets that CLI's per-launch flags appended
+ *  (`$lib/mcpLaunch`), so the `browser_*` tools exist for this process and
+ *  nowhere else. Doing it here instead of at each call site covers a fresh
+ *  launch, a resumed session and a woken tab with one transform, and leaves
+ *  every non-agent command untouched. */
 export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_QUIET_MS): void {
   const { runCommand, runCommandExecute = true } = inst.spec;
   if (!runCommand || !inst.ptyReady || inst.spawnFailed || inst.launched) return;
@@ -421,10 +429,12 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
   inst.launchTimer = setTimeout(async () => {
     inst.launchTimer = undefined;
     try {
+      await ensureMcpLaunch();
+      const command = withMcpLaunch(runCommand, inst.spec.shell);
       // Auto-run appends Enter; "type only" leaves the line for the user to run.
       await invoke('pty_write', {
         id: inst.id,
-        data: runCommandExecute ? `${runCommand}\r` : runCommand,
+        data: runCommandExecute ? `${command}\r` : command,
       });
       inst.launched = true;
     } catch {

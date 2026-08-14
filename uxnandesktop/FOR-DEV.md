@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 589 passing Rust tests (560 unit + 29
+always wins). 587 passing Rust tests (558 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,056 passing frontend Vitest tests (+7 skipped) across two
+probe) + 1,063 passing frontend Vitest tests (+7 skipped) across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -746,26 +746,47 @@ clickable terminal links** (`@xterm/addon-web-links`).
 **discoverable** to agents as MCP tools, not just via the `/browser` curl. `mcp.rs`
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
-`mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/
-OpenCode) into its **user-global** config only (never the project dir) referencing
-the `UXNAN_MCP_TOKEN` env (token never in a file), merging without clobbering and
-cleaning up on exit. `BrowserSettings.mcp*`
-(enabled / injection mode `off|managed|global` / `friction_free` / disabled-agents)
-+ `mcp_info` command. **Frictionless** (managed + `friction_free`): app-launched
+`mcpinject.rs` registers that server **per launch, in the process uxnan spawns**,
+and writes to **no config file the user keeps** — Claude via `--mcp-config
+<app-data>/mcp/claude-<port>.json`, Codex via `-c mcp_servers.…` overrides,
+OpenCode via `OPENCODE_CONFIG_CONTENT` merged over its own config; every form
+names the `UXNAN_MCP_TOKEN` env var, so the token never lands in a file or an
+argument. The frontend appends the flag-based ones at the single point where a
+launch command is typed (`$lib/mcpLaunch` ← `terminal/instances.ts`), which covers
+a fresh launch, a resumed session and a woken tab alike. `BrowserSettings.mcp*`
+(enabled / `friction_free` / disabled-agents) + `mcp_info` command (endpoint,
+token, per-agent launch args). **Frictionless** (`friction_free`): app-launched
 agents skip the CLI folder-trust prompt — Codex via
-`codex_trust::ensure_project_trust` seeding
-`[projects."<cwd>"].trust_level`. The legacy project-scoped `workspace` mode was
-removed. See `docs/browser.md` → *Agent browser MCP*.
+`codex_trust::ensure_project_trust` seeding `[projects."<cwd>"].trust_level`, the
+one thing here that still touches the user's own config. A startup
+`sweep_legacy` removes the user-global entry older versions wrote into all seven
+CLI configs. See `docs/browser.md` → *Agent browser MCP*.
+
+**Trade accepted:** an agent **typed by hand** in a uxnan terminal no longer gets
+the tools (OpenCode excepted — its registration is an env var, so it covers every
+terminal uxnan spawns). Registering an agent *everywhere* requires a config file
+that follows the user out of the app, which is exactly what caused the bug below.
+
+**Why it changed (the bug it fixes):** the user-global entry outlived the app, so
+agents launched **outside** uxnan discovered a server they could never reach and
+said so — Codex aborts its whole MCP startup with *"Environment variable
+UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set"*. The same shared entry
+carried one window's port, so a **second** uxnan window silently broke the first
+window's agents.
 
 Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` §1.6
 the browser MCP; user guide in `docs/browser.md`.
 
 ### Still pending
-- [ ] **Browser MCP — add more agents.** The injector is a registry: to support a new
-      CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp, Pi), add a row to
-      `mcpinject::AGENTS` + a match arm in `config_path` (its config file path) and
-      `write_entry`/`json_entry` (its MCP-server shape). Recipe + the per-agent table
-      in `docs/browser.md` → *Adding another agent*.
+- [ ] **Browser MCP — add more agents.** Only CLIs with a **verified per-launch**
+      mechanism are auto-configured (Claude Code, Codex, OpenCode). Grok has no
+      MCP-config flag (`grok -h`) and only a signed enterprise `GROK_MANAGED_CONFIG`;
+      Qwen Code, Droid and MiMo Code are config-file-only integrations today. Adding
+      one = prove a per-launch flag/env against the real CLI (a throwaway MCP server
+      is enough), then a row in `mcpinject::AGENTS` + an arm in `launch_args` /
+      `launch_env`. Never re-introduce writing into a config the user keeps: that is
+      what made agents outside uxnan report a broken server. Recipe in
+      `docs/browser.md` → *Adding another agent*.
 - [ ] **Browser MCP — interaction tools (control-only for now).** The tool surface is
       navigation-only. Page inspection/interaction (`browser_snapshot`,
       `browser_evaluate`, `browser_click`, `browser_type`) needs a JS return-channel
@@ -1020,18 +1041,18 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       the choice drives the one-shot launch but isn't recorded on the worktree).
 
 **Integrated developer browser**
-- [ ] **Antigravity (`agy`) as a browser-MCP agent — blocked on both sides.** Its
-      remote MCP transport is **SSE with only a `serverUrl`** (no `headers` field,
-      per its own bundled `agy-customizations` guide), so there is nowhere to put
-      the bearer token that every other injected config carries; and uxnan's
-      endpoint is **Streamable HTTP**, whose `GET /mcp` deliberately answers 405
-      (`mcp.rs`). Either `agy` grows header support (then it is one row in
-      `mcpinject::AGENTS` + a `config_path`/`write_entry` arm, writing
-      `~/.gemini/config/mcp_config.json`), or we publish a small **stdio** MCP
-      proxy it can launch with `command` + `env` — which keeps the token out of the
-      file but adds a binary to build, sign and ship for one agent. Do **not**
-      "solve" it by putting the token in the `serverUrl`: that breaks the module's
-      documented posture and still leaves the transport mismatch.
+- [ ] **Antigravity (`agy`) as a browser-MCP agent — blocked on three counts now.**
+      Its remote MCP transport is **SSE with only a `serverUrl`** (no `headers`
+      field, per its own bundled `agy-customizations` guide), so there is nowhere to
+      put the bearer token; uxnan's endpoint is **Streamable HTTP**, whose
+      `GET /mcp` deliberately answers 405 (`mcp.rs`); and it has no **per-launch**
+      config channel at all, which is now the entry requirement (`mcpinject.rs`) —
+      writing `~/.gemini/config/mcp_config.json` is exactly the persistent-entry
+      pattern that was removed. Unblocking it means `agy` growing header support
+      *and* a launch flag/env, or a small **stdio** MCP proxy it can launch with
+      `command` + `env` — which keeps the token out of files but adds a binary to
+      build, sign and ship for one agent. Do **not** "solve" it by putting the token
+      in the `serverUrl`.
 
 **Providers (usage statistics)**
 - [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
@@ -1231,7 +1252,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 589 Rust + 1,056 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 587 Rust + 1,063 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

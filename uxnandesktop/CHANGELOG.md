@@ -94,6 +94,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Agents launched outside uxnan no longer complain about uxnan's browser MCP
+  server.** Until now the integrated browser was exposed to agents by writing a
+  `uxnan-browser` entry into each CLI's own user-global config
+  (`~/.claude.json`, `~/.codex/config.toml`, …). That entry outlived the app, so
+  a Codex started in any other terminal read it, found no `UXNAN_MCP_TOKEN`, and
+  aborted its whole MCP startup with a warning about a server the user never
+  configured — for a browser that isn't even there.
+
+  The server is now registered **per launch**, inside the process uxnan spawns,
+  and **nothing is written to any config the user keeps**: Claude Code gets
+  `--mcp-config` pointing at a file in uxnan's own app-data folder, Codex gets
+  `-c mcp_servers.…` overrides, and OpenCode gets `OPENCODE_CONFIG_CONTENT` on
+  its terminal (merged over its own config, which is left untouched). The token
+  is still only ever named, never written. Agents launched inside uxnan discover
+  the `browser_*` tools exactly as before; agents launched anywhere else never
+  see the server at all, and an unclean exit leaves nothing behind either.
+
+  On first start, uxnan **removes** the entry it used to write, from all seven
+  agent configs it ever wrote to — including Grok, Qwen Code, Droid and MiMo
+  Code, which are no longer auto-configured (they offer no per-launch mechanism
+  today; see `docs/browser.md`). Nothing else in those files is touched.
+
+- **A second uxnan window no longer breaks the first one's browser tools.** The
+  old shared entry carried one window's port, so whichever window started last
+  overwrote it and the other window's agents were left authenticating against
+  the wrong app. Each window now registers its own endpoint at launch time.
+
+- **Settings → Browser drops the MCP "Setup mode" selector.** With registration
+  scoped to the launch, `Managed` and `Global` no longer differ — the master
+  switch, the per-agent toggles and *Frictionless launch* say everything there
+  is to say. A saved mode is ignored on load.
+
 - **The cleanup no longer offers a live worktree's own directories for
   deletion.** A worktree placed straight in the managed root — by hand, or
   through the create dialog's custom location — was read as a *group* folder, so
@@ -260,9 +292,12 @@ nothing is a no-op).
   this machine stay first and open; the rest fold into a collapsed **Other
   agents** group. Each row's chevron discloses the config path and the exact
   bytes the ADE writes — fetched only for the row you open, as before.
-- **Browser → Agents shows where each agent's MCP entry is written**, the same
-  metadata the hooks list shows: `mcp_info` now returns each agent's user-global
-  config file (`McpAgentInfo.configPath`).
+- **Browser → Agents shows how each agent is wired**, in the slot where the hooks
+  list shows the config file it writes: `mcp_info` returns what that launch is
+  given (`McpAgentInfo.mechanism` — `--mcp-config <file>`,
+  `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`). There is no
+  config file to name here, and that is the point — see the browser MCP fix
+  above.
 
 - **Where a worktree goes is decided in one place.** It used to be computed in
   the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
