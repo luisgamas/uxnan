@@ -854,19 +854,17 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
 - [ ] Surface a dropped session. A connection that dies is only noticed when the
       next command on it fails; the UI has no event to react to, and
       `ssh_hosts_connected` will happily list a corpse.
-- [ ] Connection manager: one connection, N channels, a connection generation
-      (feeds the fencing above), reconnect ladder, typed error classification.
-- [ ] Wire host-key verification into the live connection. The decision logic is
-      done and tested (`ssh/hostkey.rs`: trusted / unknown / changed / revoked,
-      hashed entries, `@cert-authority` skipped, bracket form for non-default
-      ports, fingerprints cross-checked against the SSH library's own); what is
-      left is calling it from the client's callback and surfacing the TOFU
-      confirmation in the UI. There is no "ignore host key" mode, ever.
-- [ ] Show the inventory in the UI and filter the launcher by it. The probe
+- [ ] A **reconnect ladder**. One connection with N channels and a generation
+      per connection is in place (`ssh/conn.rs`), and so is host-key
+      verification with its TOFU confirmation in the UI; what is missing is
+      coming *back* after a drop — retry with backoff, and typed errors the UI
+      can tell apart (unreachable / refused / auth / timeout) rather than one
+      failure string.
+- [ ] Show the inventory in the UI and filter the launcher by it (the probe
       itself is done and proven live (`ssh/inventory.rs`, `ssh_host_inventory`):
       one command with delimited output, POSIX with a login shell or PowerShell
       with `-NoProfile`, reporting OS, home, git, multiplexer and the agent CLIs
-      with versions.
+      with versions).
 - [ ] **A channel budget.** OpenSSH's `MaxSessions` defaults to **10**, and every
       remote terminal, inventory probe, directory listing and git call is a
       channel on the one connection. Nothing counts them today, so the eleventh
@@ -928,8 +926,6 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       (`src/lib/state/app.svelte.ts`). Agent launch quotes its command for the
       *local* shell today, so a Windows desktop driving a Linux host would quote
       cmd-style and land the agent in a dead pane.
-- [ ] Thread `target` through terminal tabs (`terminals.create`, `launchAgent`)
-      so a tab knows which machine its shell lives on.
 - [ ] i18n: `en.ts` + `es.ts` in the same change. There is **no key-parity test
       between locales today** — add one with this section.
 
