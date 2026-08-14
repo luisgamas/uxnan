@@ -831,7 +831,11 @@ en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vist
   SQL/Go), números de línea, historial y el **medianil de cambios git** (líneas
   añadidas resaltadas + *peek* de líneas eliminadas bajo demanda, derivado de
   `git_diff_head` → `parseHeadDiff`). **Guardado**: botón **Guardar** en la cabecera
-  de la pestaña o **Ctrl/Cmd+S** (`fs_write_file`, atómico temp+rename). Indicador de
+  de la pestaña o **Ctrl/Cmd+S**. En local, `fs_write_file` (atómico temp+rename);
+  en un fichero **de un host**, `ssh_fs_write` → SFTP, escrito **en el sitio** y con
+  fencing de destino, porque el renombrado atómico no existe sobre SFTP v3 y un
+  temporal perdería permisos y dueño (medido, `02g` §5.10). Quién decide la máquina
+  es `src/lib/fsRouter.ts`, el único sitio que lo hace. Indicador de
   cambios sin guardar. No disponible para imágenes ráster (binarias) ni archivos
   > 2 MiB (`fs_read_file` reporta `binary` / `tooLarge`).
 - **Vista previa** — **multimodal**:
@@ -882,6 +886,7 @@ en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vist
 | `fs_read_file(path)` | Lee un archivo de texto para el editor (flags `binary` / `tooLarge`). |
 | `fs_read_data_url(path)` | Reads a local image or PDF into a preview `data:<mime>;base64,…` URL (extension + signature sniffing, 25 MiB cap, all other formats rejected). |
 | `fs_write_file(path, content)` | Sobrescribe un archivo (atómico: temp + rename). |
+| `ssh_fs_list` / `ssh_fs_read` / `ssh_fs_write` | Los mismos tres sobre un host, por SFTP (`02g` §5.10). `ssh_fs_write` escribe en el sitio y lleva `TargetExpectation`. |
 | `git_diff_head(path, file)` | Diff working-tree-vs-`HEAD` de un archivo, para el medianil del editor. |
 | `reveal_path(path)` | Revela una ruta en el explorador de archivos del SO (plugin opener). |
 | `editors_detect()` | Detecta los editores/IDEs GUI instalados (sonda `which` en el `PATH` **+** un escaneo por SO de rutas de instalación —Windows: `Program Files`/perfil; macOS: `.app` en `/Applications`), para los menús **«Abrir con»**. |

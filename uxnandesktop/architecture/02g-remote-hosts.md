@@ -94,7 +94,16 @@ conexion alguna.
 | §5.0 | handshake, veredicto de clave, generacion de conexion | implementado |
 | §5.1 | la decision sobre `known_hosts` | implementado |
 | §5.2 | autenticacion (agente, llave, contrasena) | implementado |
-| §5.3 | comandos como canales, y su coste medido | implementado |
+| §5.3 | comandos como canales, su coste medido, el candado y que shell se usa | implementado |
+| §5.4 | registro de hosts y lapidas | implementado |
+| §5.5 | sesiones vivas y su superficie de comandos | implementado |
+| §5.6 | inventario del host | implementado |
+| §5.7 | terminal remota, keepalive y caidas | implementado |
+| §5.8 | explorar carpetas, por SFTP | implementado |
+| §5.9 | un proyecto que vive en el host | implementado |
+| §5.10 | ficheros del host: listar, abrir y guardar | implementado |
+| §5.10b | rama y estado de git en el host | implementado |
+| §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
 
@@ -126,9 +135,9 @@ coinciden con las de `ssh-keygen -lf`. El host remoto se elige con la variable
 `UXNAN_SSH_TEST_HOST=<host[:puerto]>`, de modo que la prueba no depende de
 ninguna maquina concreta.
 
-Falta: autenticacion.
+La autenticacion es el paso siguiente y vive aparte, en §5.2.
 
-## 5.1 Verificacion de host key — LOGICA IMPLEMENTADA
+## 5.1 Verificacion de host key — IMPLEMENTADO
 
 `src-tauri/src/ssh/hostkey.rs`. Es la unica decision de esta capa que no tiene
 valor por defecto seguro: equivocarse no es una funcion rota, es un
@@ -158,7 +167,8 @@ silencio. La huella `SHA256:…` se contrasta en tests contra la que calcula la
 propia libreria, porque si divergiera, la que se ensena al usuario para comparar
 no valdria nada.
 
-Falta: llamarla desde el callback del cliente y la confirmacion TOFU en la UI.
+Cableado: el callback del cliente la consulta en cada handshake, y la confirmacion
+TOFU vive en Ajustes -> Hosts.
 
 ## 5.2 Autenticacion — IMPLEMENTADA
 
@@ -335,7 +345,7 @@ Corolarios:
   entonces, no adoptada ahora: complica el enmarcado de la salida y aun no hay
   un caso que lo pague.
 
-## 5.4 Registro de hosts y lapidas — LOGICA IMPLEMENTADA
+## 5.4 Registro de hosts y lapidas — IMPLEMENTADO
 
 `src-tauri/src/ssh/registry.rs`, funciones puras sobre los vectores de ajustes
 (`AppSettings::ssh_hosts` y `removed_ssh_hosts`): la parte que puede perder datos
@@ -369,7 +379,8 @@ host escrito a mano; actualizar un host conserva su id y si necesitaba prompt;
 borrar dos veces no acumula lapidas; el numero de lapidas esta acotado y se poda
 por antiguedad.
 
-Falta: la superficie de comandos Tauri que la UI llama.
+Cableado: `ssh_hosts_list` / `_add` / `_remove` / `_probe` / `_trust`, y la pantalla
+Ajustes -> Hosts que los llama.
 
 ## 5.5 Sesion viva por host — IMPLEMENTADO
 
@@ -390,10 +401,19 @@ que el usuario este delante. El valor solo se aprende conectando, asi que
 perderlo significa volver a preguntar por un host que ya sabiamos callado.
 
 Comandos: `ssh_host_connect` (con `password` opcional, usado para ese intento y
-nunca guardado), `ssh_host_disconnect`, `ssh_hosts_connected`.
+nunca guardado), `ssh_host_disconnect`, `ssh_hosts_connected` —que responde
+`{hostId, generation}` por sesion, porque el frontend necesita la generacion para
+poder marcar una mutacion (`02a` §2.9)— y `ssh_hosts_resumable`.
 
-Pendiente y anotado: reconectar al arrancar, y notificar una sesion caida — hoy
-solo se nota cuando falla el siguiente comando.
+**Reconectar al arrancar esta hecho** y lo decide el backend
+(`ssh_hosts_resumable`): vuelven solos los hosts que no piden nada **y** cuya
+clave ya esta en `known_hosts`, porque alcanzar uno desconocido solo puede acabar
+en el dialogo de confianza — al lanzar la app y sin que nadie lo pida. Un host que
+queda fuera no esta rechazado: conecta en cuanto el usuario lo pide.
+
+Pendiente y anotado: **avisar a la interfaz** cuando una sesion se cae. Hoy se
+entera al preguntar; el keepalive (§5.7) lo detecta en ~2 min, pero nadie emite
+un evento.
 
 ## 5.6 Inventario del host — IMPLEMENTADO
 
@@ -409,35 +429,42 @@ sirven ademas para lo otro que pasa de verdad: un perfil remoto que imprime — 
 que **falla**, como el de PowerShell sin consola — no puede confundirse con una
 respuesta. Misma tecnica que `path_env.rs` en local.
 
-**Dos shells**, porque un host no siempre es POSIX. Se intenta primero un script
-POSIX con **login shell** (`sh -lc`) —sin `-l`, el PATH es el no interactivo,
-donde nvm/mise/fnm no existen, que es la razon numero uno por la que un CLI
-remoto parece no estar instalado— y, si no vuelve el marcador, uno de PowerShell
-con **`-NoProfile -NonInteractive`**.
+**Se pregunta en la shell que el host reporto** (§5.3), no probando una y cayendo
+a la otra. La POSIX va con **login shell** (`sh -lc`) — sin `-l` el PATH es el no
+interactivo, donde nvm/mise/fnm no existen, que es la razon numero uno por la que
+un CLI remoto parece no estar instalado. La de PowerShell va con `-NoProfile
+-NonInteractive`.
 
-Con esas dos ramas se cubren las cuatro familias que el usuario tiene: **Linux y
-macOS** por la POSIX; **Windows** por la de PowerShell; **WSL** por la POSIX
-tambien, sea porque el `sshd` de la distro escucha en su propio puerto o porque
-el shell del host es `bash`. La rama no se elige por lo que el host *dice ser*
-sino por **cual contesta**: un Windows cuyo `sshd` lanza `bash` responde el sondeo
-POSIX y se trata como tal, que es exactamente lo correcto.
+Con eso se cubren las cuatro familias que el usuario tiene: **Linux y macOS** por
+la POSIX; **Windows** por la de PowerShell; **WSL** por la POSIX tambien, sea
+porque el `sshd` de la distro escucha en su propio puerto o porque el shell del
+host es `bash`. Y no se elige por lo que el host *dice ser*: un Windows cuyo
+`sshd` lanza `bash` se clasifica como POSIX al conectar y se trata como tal.
+Cuando la shell **no se pudo nombrar** —y solo entonces— se prueban las dos, que
+es lo que antes se hacia siempre.
 
-**El script de PowerShell viaja en `-EncodedCommand`** (base64 de UTF-16LE), en
-`ssh::powershell_command`. El comando que se envia lo interpreta *el shell que ese
-`sshd` arranca* —`cmd`, `powershell`, `pwsh` o uno POSIX—, y cada uno trata
-comillas y contrabarras a su manera: escapar a mano funciona en la maquina donde
-se probo y produce basura en la siguiente. No es hipotetico — costo un listado que
-volvia con una ruta de **una sola contrabarra** y cero entradas. El base64 no tiene
-comillas, ni contrabarras, ni espacios: al shell exterior no le queda nada que
-reinterpretar.
+**El script de PowerShell viaja en base64** (UTF-16LE). El comando que se envia lo
+interpreta *el shell que ese `sshd` arranca* —`cmd`, `powershell`, `pwsh` o uno
+POSIX—, y cada uno trata comillas y contrabarras a su manera: escapar a mano
+funciona en la maquina donde se probo y produce basura en la siguiente. No es
+hipotetico — costo un listado que volvia con una ruta de **una sola contrabarra**
+y cero entradas. El base64 no tiene comillas, ni contrabarras, ni espacios: al
+shell exterior no le queda nada que reinterpretar.
+
+Que lo decodifica depende de quien contesta, y es donde se dejo de nombrar una
+shell (§5.3): en un host **PowerShell** el propio script se decodifica en linea
+(`ssh::powershell_inline`) y corre en *esa* PowerShell, la version que sea; solo
+en un host **cmd** hay que nombrar interprete, y ahi se pide `pwsh` primero y
+Windows PowerShell como reserva (`ssh::powershell_command`).
 
 Los nombres de CLI se sanean antes de entrar en la linea de comandos remota. Hoy
 vienen del catalogo propio; "hoy" es la palabra que deja de ser cierta tras un
 refactor, y ese string acaba en un shell ajeno.
 
-**Medido en vivo** contra el `sshd` de una maquina Windows: inventario completo
-en **1.46 s incluyendo el intento POSIX fallido**, frente a los 2.1 s que costaba
-un solo `echo` por el shell con perfil. Saltarse el perfil paga con creces el
+**Medido en vivo** contra el `sshd` de una maquina Windows: 1.46 s cuando aun se
+pagaba el intento POSIX fallido, y **1.6 s** ahora que se pregunta directamente en
+la shell reportada — frente a los 2.1 s que costaba un solo `echo` por el shell
+con perfil. Saltarse el perfil paga con creces el
 viaje extra.
 
 ## 5.7 Terminal remota — IMPLEMENTADO
@@ -596,15 +623,19 @@ rapido, lanzador) queda correcto sin tocarlos uno a uno — y uno nuevo lo estar
 por omision, que es lo unico que aguanta el paso del tiempo. La ruta del proyecto
 viaja como `cwd`: en el host esa carpeta si existe.
 
-**Lo que se lee en local se apaga, no se falsea.** Ficheros, cambios, historial y
-GitHub se resuelven con el filesystem y el git de esta maquina. Con un espacio
-remoto activo, `activeLocalPath` es `null` y esas capas no corren: el panel
-derecho dice en que maquina vive el proyecto y que si funciona hoy. El modo de
-fallo que sustituye es peor que un panel vacio — una carpeta del mismo nombre
-**aqui** contesta a todas esas preguntas, con aplomo y sobre otro repositorio.
-Por el mismo motivo `worktree_list` devuelve **un** espacio sin rama para un
-proyecto remoto en vez de ejecutar git local, y la fila no dice `(detached)`:
-decirlo seria afirmar algo sobre un repositorio que esta maquina no ha abierto.
+**Lo que se lee en local se apaga, no se falsea.** Cambios, historial y GitHub
+siguen resolviendose con el git de esta maquina, asi que con un espacio remoto
+activo `activeLocalPath` es `null` y esas capas no corren: el panel derecho dice
+en que maquina vive el proyecto y que si funciona hoy. El modo de fallo que
+sustituye es peor que un panel vacio — una carpeta del mismo nombre **aqui**
+contesta a todas esas preguntas, con aplomo y sobre otro repositorio.
+
+Ficheros y rama **ya no estan en esa lista**: van por SFTP (§5.10) y por git en el
+host (§5.10b). `worktree_list` sigue devolviendo **un** espacio para un proyecto
+remoto —no hay worktrees remotos todavia— pero su rama ahora se lee alli, y
+cuando el host no puede contestar la fila dice "rama sin leer" en vez de
+`(detached)`: eso ultimo seria afirmar algo sobre un repositorio que nadie
+abrio.
 
 **El contador de terminales y los agentes de la tarjeta comparan claves**, no
 rutas. Comparando rutas, un proyecto del host contaba cero.
@@ -858,12 +889,31 @@ Validado en vivo contra un `sshd` real sobre un checkout de verdad: rama
 `feat/desktop-remote-ssh-hosts`, 9 ficheros sucios, y una carpeta que no es
 repositorio contestando `isRepo: false`.
 
-**Un fichero remoto es de solo lectura, y se dice.** Guardar pasa por el
-filesystem local: con la ruta de un host eso falla — o, peor, escribe un fichero
-con ese nombre **aqui** mientras el editor informa de exito. Por eso es una
-guarda y no un `catch`. La vista *Cambios* tampoco se ofrece (no hay diff remoto
-todavia) y no se ejecuta git local para ese fichero, que es lo que sacaba un
-error rojo encima de un archivo abierto correctamente.
+**Un fichero remoto se guarda en su maquina, o no se guarda.** Guardar pasaba por
+el filesystem local: con la ruta de un host eso falla — o, peor, escribe un
+fichero con ese nombre **aqui** mientras el editor informa de exito. Por eso fue
+una guarda y no un `catch`, y por eso ahora el guardado va por SFTP con su
+fencing (§5.10 → *Guardar*). Lo que si sigue sin ofrecerse para un fichero remoto
+es la vista *Cambios* —no hay diff remoto todavia (§5.11)— y no se ejecuta git
+local para el, que es lo que sacaba un error rojo encima de un archivo abierto
+correctamente. Mientras su host esta desconectado el editor lo dice y se niega,
+en vez de fallar al final de un viaje de ida y vuelta.
+
+**Y cuando el host se va, el arbol lo suelta.** Un directorio ya cargado no se
+vuelve a listar (`loadDir` sale antes), asi que tras desconectar el panel seguia
+enseñando las carpetas de esa maquina: sin aviso, sin pista, un arbol que era en
+realidad un recuerdo. `fileTree.hostWentAway` es la contraparte de
+`retryForHost` y lo devuelve al mismo estado que un arranque en frio. Se llama
+desde el unico sitio que ve el conjunto vivo completo de sesiones, para que una
+conexion que termine sola entre por el mismo camino que una que cierre el
+usuario.
+
+Ese hueco existia desde antes y **no se veia**: al arrancar nadie conectaba el
+host, asi que el primer listado fallaba y el mensaje de "esperando" tapaba la
+falta. Al reconectar los hosts solos al arrancar (§5.4b) el mensaje dejo de
+aparecer y el hueco quedo a la vista. Leccion anotada: **cuando un cambio quita
+un estado de la interfaz, hay que buscar que otra cosa dependia de que ese estado
+ocurriera.**
 
 **"El host no esta conectado" es un estado, no un fallo.** Al abrir la app antes
 de conectar, el arbol se quedaba con el error hasta cambiar de proyecto y volver:
@@ -876,19 +926,60 @@ el panel dice que espera, y al conectar el host el arbol se rellena solo
 
 Tres piezas, en orden de valor y de riesgo:
 
-1. **Diff y staging remotos.** La rama y el recuento ya vienen (§5.10b); faltan
-   el diff por fichero, el area de staging y el commit, que es lo que llenaria
-   las pestañas Cambios e Historial en vez del aviso actual.
-2. **Escritura de ficheros** por SFTP, con el fencing de `02a` §2.9 (una escritura
-   preparada para un host no puede ejecutarse contra otro).
-3. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la busqueda
-   recorre este filesystem.
-4. **Un ayudante propio en el host** para lo que ni SFTP ni `exec` cubren bien:
-   observar cambios, operaciones masivas rapidas y —lo importante— colocar una
-   terminal en un directorio **como parametro**, no como texto tecleado. Es el
-   camino que toman los clientes remotos maduros y el que hace desaparecer la
-   pregunta "¿que shell tiene esta maquina?". Decision pendiente: que exige
-   instalado, como se despliega y versiona, y que pasa en un host sin runtime.
+1. **Cambios e Historial remotos.** La rama y el recuento ya vienen (§5.10b);
+   faltan el diff por fichero, el area de staging, el commit y el log — lo que
+   llenaria las pestañas en vez del aviso actual. Tres puntos duros, ya
+   identificados leyendo el layer local:
+   - `git apply` (staging por hunks) recibe el parche **por stdin**, y
+     `Connection::exec` no tiene stdin. Solucion sin ayudante: subir el parche
+     por SFTP a un temporal del host y `git apply <fichero>`.
+   - El **mensaje de commit** es texto libre multilinea; entrecomillarlo para
+     tres dialectos es justo el error que este layer evita. Misma solucion:
+     escribirlo por SFTP y `git commit -F <fichero>`.
+   - El **diff de imagenes** mueve bytes binarios, y `exec` devuelve
+     `String::from_utf8_lossy`. El lado del working tree sale por SFTP; los
+     blobs, por base64 en el host.
+2. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la
+   busqueda recorre este filesystem.
+3. **Operaciones de fichero desde el arbol** (crear, renombrar, borrar). Guardar
+   ya funciona (§5.10); el menu contextual sigue siendo local.
+
+**Y una restriccion que no se negocia:** el watcher de git local sondea cada 3 s
+(`lib.rs`). A ~2 s por `exec` (§5.3) eso saturaria el canal para siempre, asi que
+un proyecto remoto **no tendra sondeo**: se refresca al abrir la pestaña, al
+actuar y con el boton. Se dice en la interfaz en vez de fingir un directo que no
+existe.
+
+### La decision sobre el ayudante en el host: NO se construye
+
+Estaba anotado como decision pendiente y aqui queda tomada, con lo medido.
+
+**Que hacen los maduros.** Zed sube un binario `remote_server` a `~/.zed_server`
+atado a la version exacta del cliente, y multiplexa con `ControlMaster` — que el
+OpenSSH de Windows no implementa, o sea que su transporte no es copiable aqui.
+VS Code instala su servidor y paga el precio en compatibilidad: desde la 1.99
+exige **glibc ≥ 2.28**, y **Alpine/musl no esta soportado**; los sistemas viejos
+necesitan un sysroot y `patchelf`.
+
+**Por que aqui no hace falta.** Cada pieza que salio de la shell le quito su
+razon de ser: los ficheros van por SFTP (§5.10), el explorador tambien (§5.8) y
+la sonda pregunta en la shell que el host reporto (§5.3). Lo unico que queda con
+forma de shell es git — y el panel de Cambios **pide el diff por fichero al
+seleccionarlo**, no todos de golpe, asi que su forma natural son comandos
+sueltos: ~2 s al abrir la pestaña y ~2 s por fichero abierto. Lento, no roto. Los
+dos casos que parecian imposibles (stdin y binarios) los resuelve el SFTP que ya
+esta abierto.
+
+**Que coste tendria.** Un binario por arquitectura, versionado con la app, y una
+clase de fallo nueva —"no pude instalar el servidor en tu maquina"— que hoy no
+existe. Justo en la parte que mas se le pide a esta funcion: que sea facil.
+
+**Que reabriria la decision.** Que Cambios, ya construido sobre `exec`, se sienta
+lento en un host real. Entonces la conversacion deja de ser "¿ayudante si o no?"
+y pasa a ser "estos N segundos por clic valen un binario que desplegar", que es
+una pregunta que se responde con un numero. Mientras tanto la alternativa mas
+barata sigue anotada: **mantener un canal de shell abierto** y escribirle los
+comandos (§5.3), que quita el arranque de shell sin desplegar nada.
 
 ## 6. Que funciona y que no en un contexto remoto
 
@@ -904,7 +995,7 @@ Tres piezas, en orden de valor y de riesgo:
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Cambios / Historial / GitHub | **No disponible**: el diff, el staging y el historial leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
-| Rama y estado git de la fila | **No disponible**: sin git remoto no hay rama que mostrar. Fase 3 |
+| Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
 marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
@@ -914,9 +1005,9 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
-| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales y mostrar el inventario en la UI |
+| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales (`MaxSessions`) y mostrar el inventario en la UI. Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**) y rama/estado de git (§5.10b) hechos; diff/staging, busqueda, operaciones de fichero y el ayudante en el host, pendientes (§5.11) |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8) y rama/estado de git (§5.10b) hechos; pendientes: Cambios/Historial, busqueda y operaciones de fichero (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

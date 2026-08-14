@@ -840,7 +840,7 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 **Goal:** connect to a remote machine over SSH and run agents *there* — the UI
 stays local, the work happens on the host with its CLIs and its credentials.
 
-**Landed — phases 0 and 1.** Execution-target identity (every repo/worktree
+**Landed — phases 0 and 1, and half of phase 3.** Execution-target identity (every repo/worktree
 carries a `target`, workspaces key on `(target, path)`, schema v2, and
 `target::check` refuses a mutation aimed at another machine); the user's own SSH
 configuration read through `ssh -G`; host-key verification with its four
@@ -915,6 +915,16 @@ user-facing `docs/remote-hosts.md`.
       project on a connected host (`ssh/sftp.rs`), with "not connected" reported
       as unknown rather than missing — the disconnected state has its own
       indicator already.
+**Landed from phase 3:** files over SFTP — listing, opening and **saving** (in
+place and fenced, because atomic rename does not exist over SFTP v3); the folder
+picker moved off the host's shell onto SFTP (336 ms → 6.6 ms on loopback, and it
+was paying for two failed shell starts per click on a Windows host); the branch
+and change count read by running git *on* the host; a keepalive so a quiet host
+is not reaped and a dead one is noticed in ~2 min; and silent, known-key hosts
+reconnecting at startup. The host-side helper is **decided against** — the
+reasoning, with the measurements that removed its justification, is in
+`architecture/02g-remote-hosts.md` §5.11.
+
 - [ ] **Push a dropped session to the UI.** `ssh_hosts_connected` no longer
       lists a corpse (it filters on the transport) and a keepalive now notices a
       dead host in ~2 minutes instead of 5 — but the frontend still only finds
@@ -931,8 +941,9 @@ user-facing `docs/remote-hosts.md`.
       it, but nothing yet shows what a machine has, what it is missing and the
       command to install it (a per-host doctor view, below).
 - [ ] **A channel budget.** OpenSSH's `MaxSessions` defaults to **10**, and every
-      remote terminal, inventory probe, directory listing and git call is a
-      channel on the one connection. Nothing counts them today, so the eleventh
+      remote terminal, inventory probe and git call is a channel on the one
+      connection (directory listings no longer are — they ride the single SFTP
+      session). Nothing counts them today, so the eleventh
       is refused by the host with an error that will read as "it broke". Needs a
       cap with a queue, or at least an honest message naming the limit.
 - [ ] **Orphans on the far side.** Closing a remote terminal ends its channel;

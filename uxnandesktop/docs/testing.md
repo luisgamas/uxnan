@@ -61,10 +61,12 @@ prove the guard refuses everything else; procedure in
 [`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **743 backend tests**
 in total, 708 of which run everywhere; the other 35 are ignored probes that need
 something real to talk to (26 live SSH probes against a real `sshd` — one of
-which idles for five minutes to prove the keepalive — the 7 supervised live
-GitHub tests, the real-scheduler probe).
+which idles for five minutes to prove the keepalive — one pwsh preflight that
+runs the generated PowerShell script through a real `pwsh`, the 7 supervised live
+GitHub tests, and the real-scheduler probe). The remaining 36 are the integration
+tests in `tests/`.
 
-The 679 passing unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 679 passing unit tests (707 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen

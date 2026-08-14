@@ -1,9 +1,11 @@
 # Remote hosts over SSH
 
-> **Status: under construction.** Reading your SSH configuration works today.
-> Connecting, running agents on a host and everything built on top of that is
-> still being implemented — this page says which is which, and is updated with
-> the change that lands each piece.
+> **Status: usable, with gaps that are named.** Connecting, terminals, running an
+> agent, browsing folders, adding a project, and the Files tab — listing, opening
+> and **saving** — all work on a host today. What does not: Changes, History and
+> GitHub (they still read this machine's git), searching a host's tree, and
+> creating/renaming/deleting from the tree. This page says which is which, and is
+> updated by the change that lands each piece.
 
 ## The idea
 
@@ -100,8 +102,9 @@ app records the *path* to a key, never the key.
 
 ## Host keys — the rules the app connects under
 
-Not reachable from the UI yet, but the connection and the decision behind it are
-implemented and verified against a real SSH server. The rules:
+The confirmation is in the app (Settings → Hosts asks you before trusting a key
+it has never seen), and the decision behind it is verified against a real SSH
+server. The rules:
 
 - **A key already in `known_hosts`** → connects.
 - **A host you have never seen** → the app asks you, showing the `SHA256:…`
@@ -145,9 +148,11 @@ and that the file declaring it is reachable from your main config through
 
 ## Which machines this works with
 
-**Linux, macOS, Windows and WSL.** The app drives a host through two shell
-dialects and picks between them by *which one answers*, never by what the host
-claims to be:
+**Linux, macOS, Windows and WSL.** Most of what the app does on a host needs no
+shell at all — files, the folder picker and the tree go over **SFTP**, a
+subsystem, so they behave identically everywhere. What genuinely needs a shell
+(git, and asking what is installed) is sent in the dialect **the host itself
+reported** when it connected, never in one guessed from what it claims to be:
 
 | Host | How it is driven |
 |---|---|
@@ -165,10 +170,15 @@ again. If the reply is not recognisable, uxnan types nothing and the terminal
 simply opens where your shell starts, which is the honest outcome rather than a
 terminal that dies on syntax.
 
-The PowerShell branch is base64-encoded on purpose. Whatever your `sshd` is
+The PowerShell script is base64-encoded on purpose. Whatever your `sshd` is
 configured to launch — `cmd`, `powershell`, `pwsh` — sees the command first, and
-each treats quotes and backslashes differently; an encoded command leaves it
-nothing to reinterpret. To read one back while debugging:
+each treats quotes and backslashes differently; an encoded payload leaves it
+nothing to reinterpret.
+
+**It never names a shell for you.** If your host starts PowerShell, the script
+runs in *that* PowerShell, whichever version you have — the app does not start a
+second one. Only a host running `cmd` needs an interpreter named, and there it
+asks for `pwsh` first and falls back to Windows PowerShell. To read one back while debugging:
 
 ```powershell
 [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('<the base64>'))
@@ -186,6 +196,9 @@ the other machine. Two differences, both real rather than cosmetic:
   filesystem watch — the refresh button is the reload.
 - **A very large folder comes back cut**, and the picker says so rather than
   quietly showing the first few hundred entries.
+- **A host with the `sftp` subsystem disabled cannot be browsed.** The file tree
+  already required it, so such a host was of little use anyway; it is said here
+  rather than discovered.
 
 The project is registered against the host it lives on, so the same absolute path
 on two machines is two different projects, and mutations verify they are acting on
@@ -201,7 +214,7 @@ Select it in the left panel and:
 | **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. Gaps that remain: no search (it walks *this* filesystem, so the action is hidden rather than offered broken), no git-ignored dimming, no automatic refresh — the refresh button is the reload — and creating, renaming or deleting from the tree is still local-only. The Changes view is not offered on a host because there is no remote diff yet. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
 | **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
 | **Changes, History, GitHub** | **Not available.** The diff, staging and history still read this machine's git, so the panel says which host the project lives on instead of describing the wrong repository. |
-| **Branch on the row** | **Not shown**, for the same reason: nothing has read git there. It says "not read yet" rather than "(detached)", which would be a claim about a repository this machine has never opened. |
+| **Automatic refresh** | **No.** The watcher that keeps a local project's panels live polls every 3 seconds, and one remote command costs about two — so a host's panels refresh when you open them, when you act, and on the refresh button. Said out loud rather than faked. |
 
 The card carries the host's name, and its terminal count includes the terminals
 open on that machine.
@@ -230,6 +243,9 @@ working. So:
   file.)
 - **Terminals** whose channel ended say so in the tab; they restart when their
   host connects again.
+- **The file tree empties itself** and says it is waiting, instead of leaving the
+  folders of a machine that is no longer there on screen. It fills back in when
+  the host returns.
 - **A host that goes away is noticed in about two minutes.** uxnan asks each
   connected host every 30 seconds whether it is still there and gives up after
   three unanswered asks — the same thing mature SSH clients do, and the reason a
@@ -248,10 +264,15 @@ working. So:
 
 ## What is coming
 
-In order: connecting (host registry, authentication, host-key verification,
-reconnect), the host inventory that reports which agents are actually there, the
-remote terminal and launching an agent on it. Then precise agent status, remote
-files/git/worktrees, forwarded ports with preview, and session continuity.
+In order: **Changes and History** on a host (per-file diff, staging, commit and
+the log), **searching** a host's tree, and **creating, renaming and deleting**
+from it. Then precise agent status on a host (it needs a reverse tunnel and
+reporters installed there), forwarded ports with preview, and session continuity.
+
+Two things deliberately *not* coming: a helper program installed on your machines
+— every piece that moved off the shell removed its reason to exist, and it would
+add a class of failure ("could not install the server on your host") that this
+does not have today — and any mode that skips host-key verification.
 
 Architecture: [`architecture/02g-remote-hosts.md`](../architecture/02g-remote-hosts.md).
 Execution-target identity and mutation fencing:

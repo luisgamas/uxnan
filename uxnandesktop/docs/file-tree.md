@@ -9,6 +9,14 @@ The tree state lives in `src/lib/state/fileTree.svelte.ts`, so it survives
 switching tabs; the filesystem watcher (`fswatch.rs` → the `fs:changed` event)
 reloads whichever loaded folders actually changed.
 
+**On a project that lives on an SSH host**, the same tree reads and saves over
+SFTP (`$lib/fsRouter`), and three of the things above do not apply: rows are not
+colored and nothing is dimmed (both come from git *here*), there is no watcher —
+the refresh button is the reload — and search is hidden rather than offered
+broken, because it walks this filesystem. If the host disconnects the tree
+empties itself and says it is waiting, instead of leaving another machine's
+folders on screen. See [`remote-hosts.md`](remote-hosts.md).
+
 ## Search
 
 The magnifier opens a search bar for **file names**, and below it two sections

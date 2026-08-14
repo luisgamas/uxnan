@@ -51,13 +51,22 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 
 Later phases add the runtime modules that are all present today — `pty.rs`,
 `git.rs` / `gitfast.rs`, `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
-`fs.rs` / `fswatch.rs`, `power.rs`, `pets.rs` and `which.rs`. The full file-by-file layout is
+`fs.rs` / `fswatch.rs`, `power.rs`, `pets.rs` and `which.rs` — plus the whole
+**`ssh/`** subsystem behind remote hosts (`conn`, `auth`, `hostkey`, `config`,
+`registry`, `inventory`, `shellkind`, `pty`, `browse`, `sftp`, `git`), which is
+what `target.rs` above exists for: a path stopped being an identity the moment a
+second machine could hold one. The full file-by-file layout is
 in [`../README.md`](../README.md); remaining work is in [`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## Frontend (`src/`)
 
 - `lib/types.ts` — TS mirror of the Rust model (Serde emits `camelCase`).
 - `lib/api.ts` — typed wrappers over the Tauri commands.
+- `lib/fsRouter.ts` — the one place that decides *which machine* a file read or
+  write goes to (local filesystem vs a host's SFTP session).
+- `lib/state/hosts.svelte.ts` + `lib/state/sessions.svelte.ts` — the registered
+  SSH hosts and which of them have a live session (with its generation, which
+  every mutation carries).
 - `lib/state/app.svelte.ts` — global reactive store (Svelte 5 runes).
 - `routes/+layout.svelte` — global styles, store hydration, theme sync.
 - `routes/+page.svelte` — the three-panel shell (left/center/right + resize).

@@ -69,6 +69,16 @@ change-review layer, and any CLI agent works inside it without modification.
 The application is **alpha-functional as a standalone app**. The capabilities
 available today are:
 
+- **A project can live on another machine.** Register an SSH host (from your own
+  `~/.ssh/config`, or by hand), browse its folders and add one as a project. Its
+  terminals open **there**, with that machine's CLIs and credentials; its files
+  are listed, opened and saved over SFTP — a subsystem, so it behaves the same
+  whatever shell the host runs — and its branch and change count are read by
+  running git on the host. Host keys are verified with a confirmation you have to
+  give; no key or password is ever stored. Changes, History and GitHub still read
+  *this* machine's git, so on a host they stand down and say so rather than
+  answering about a folder of the same name here
+  ([`docs/remote-hosts.md`](./docs/remote-hosts.md)).
 - **Parallel, isolated agents.** Every task gets its own git worktree, its own
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
@@ -301,7 +311,8 @@ The full product/engineering specification is in
 
 ```
 uxnandesktop/
-├── architecture/          # Spec (source of truth) — Phase 0-5+S status; Phase 6 pending
+├── architecture/          # Spec (source of truth) — Phase 0-5+S status; Phase 6 pending;
+│                          # remote hosts over SSH in 02g (phases 0-1 done, 3 half done)
 ├── docs/                  # Task-focused docs (install, build, test, i18n, hooks, ...)
 ├── src/                   # SvelteKit frontend (SPA)
 │   ├── app.css            # Tailwind v4 + shadcn-svelte tokens
@@ -324,6 +335,9 @@ uxnandesktop/
 │       ├── pty.rs         # portable-pty manager
 │       ├── git.rs         # git CLI wrapper (worktrees, branches, status, commit)
 │       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
+│       ├── target.rs      # execution-target identity (local / ssh:<host>) + fencing
+│       ├── ssh/           # remote hosts: conn, auth, hostkey, config, registry,
+│       │                  # inventory, shellkind, pty, browse, sftp, git
 │       ├── hooks.rs       # axum HTTP hook server (Layer 1 agent monitoring)
 │       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
 │       ├── procscan.rs    # foreground-job agent detection (Layer 3)
