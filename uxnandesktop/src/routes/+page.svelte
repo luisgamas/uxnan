@@ -149,8 +149,13 @@
   // file-tree panel, so it follows the worktree even when the right panel/Files
   // tab is closed — the center file/diff tabs depend on it for external-change
   // detection). Emits `fs:changed`, consumed by the file tree + open tabs.
+  //
+  // All three of these read `activeLocalPath`, not the raw path: on a workspace
+  // that lives on a host there is nothing here to watch, no git to run and no
+  // repository to resolve — and a folder of the same name on *this* machine
+  // would answer all three wrongly rather than not at all.
   $effect(() => {
-    void fsSetWatch(projects.activeWorktreePath).catch(() => {});
+    void fsSetWatch(projects.activeLocalPath).catch(() => {});
   });
 
   // Load the active worktree's git status here too — at the always-mounted shell,
@@ -164,7 +169,7 @@
     void git.startListening();
   });
   $effect(() => {
-    void git.load(projects.activeWorktreePath);
+    void git.load(projects.activeLocalPath);
   });
 
   // GitHub integration: read sign-in status once the backend is ready, load the
@@ -176,7 +181,7 @@
   });
   $effect(() => {
     void github.available;
-    void github.loadContext(projects.activeWorktreePath);
+    void github.loadContext(projects.activeLocalPath);
   });
   $effect(() => {
     // Restart the poll when the interval setting or the resource-mode policy

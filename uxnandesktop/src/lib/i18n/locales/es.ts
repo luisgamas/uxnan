@@ -2186,12 +2186,12 @@ export const es: Record<MessageKey, string> = {
   "hosts.addProject": "Anadir proyecto",
   "hosts.pickFolderTitle": "Una carpeta en {host}",
   "hosts.pickFolderBody": "Navega hasta la carpeta y anadela. Cada paso le pregunta a la maquina, asi que tarda un momento.",
-  "hosts.pickFolderUp": "Subir una carpeta",
-  "hosts.pickFolderEmpty": "No hay carpetas aqui.",
-  "hosts.pickFolderLoading": "Preguntando al host...",
   "hosts.pickFolderTruncated": "Solo se muestran las primeras carpetas; esta tiene mas.",
-  "hosts.pickFolderAdd": "Anadir esta carpeta",
 
   "project.onHost": "En {host}",
+  "remote.branchNotRead": "sin leer aun",
+  "remote.panelTitle": "Este proyecto vive en {host}",
+  "remote.panelBody": "Archivos, cambios, historial y GitHub se leen en esta maquina, asi que no pueden describir una carpeta de otra. Leerlos por SSH llega en una fase posterior; una terminal en el host ya funciona.",
+  "remote.panelOpenTerminal": "Abrir una terminal alli",
 
 };

@@ -2187,13 +2187,13 @@ export const en = {
   "hosts.addProject": "Add project",
   "hosts.pickFolderTitle": "A folder on {host}",
   "hosts.pickFolderBody": "Walk to the folder and add it. Every step asks the machine, so it takes a moment.",
-  "hosts.pickFolderUp": "Up one folder",
-  "hosts.pickFolderEmpty": "No folders here.",
-  "hosts.pickFolderLoading": "Asking the host...",
   "hosts.pickFolderTruncated": "Only the first folders are shown; this one has more.",
-  "hosts.pickFolderAdd": "Add this folder",
 
   "project.onHost": "On {host}",
+  "remote.branchNotRead": "not read yet",
+  "remote.panelTitle": "This project lives on {host}",
+  "remote.panelBody": "Files, changes, history and GitHub are read on this machine, so they cannot describe a folder on another one. Reading them over SSH comes in a later phase; a terminal on the host works today.",
+  "remote.panelOpenTerminal": "Open a terminal there",
 
 } as const;
 

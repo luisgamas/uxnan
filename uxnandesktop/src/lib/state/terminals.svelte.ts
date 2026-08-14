@@ -14,10 +14,12 @@
 import { tick } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { fsRename, termBuffersSet } from '$lib/api';
+import { diagnosticsLog, fsRename, termBuffersSet } from '$lib/api';
 import { inheritedCwd } from '$lib/terminalCwd';
+import { keyTarget, parseWorkspaceKey } from '$lib/pathid';
+import { LOCAL_TARGET } from '$lib/target';
 import { registerFlush } from '$lib/state/flushRegistry';
-import { disposeInstance, serializeInstance } from '$lib/terminal/instances';
+import { disposeInstance, serializeInstance, setParkedExitHandler } from '$lib/terminal/instances';
 import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
 import { renewPendingSession } from '$lib/agentSessionId';
 import { conversationTitles } from '$lib/state/conversationTitles.svelte';
@@ -248,6 +250,41 @@ function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TerminalTa
   };
 }
 
+/** Record what the interface decided to do with a terminal that lives on another
+ *  machine, on the same timeline as the backend's own SSH lifecycle lines.
+ *
+ *  Only remote tabs, and only the rare decisions (close / a reported exit): it
+ *  is the fork that matters — "uxnan closed this tab" and "the host said this
+ *  terminal ended" look identical once the pane is gone, and a report of two
+ *  tabs closing together cannot be diagnosed without knowing which one happened.
+ */
+function noteRemoteTab(tab: GroupTab | undefined, what: string): void {
+  if (tab?.kind !== 'terminal' || !tab.target || tab.target === 'local') return;
+  void diagnosticsLog('info', 'terminals', `${what}: tab ${tab.id} on ${tab.target}`).catch(
+    () => {},
+  );
+}
+
+/** A workspace key, short enough to read in a log and specific enough to tell
+ *  two of them apart: the machine plus the folder's own name. */
+function wsLabel(key: string): string {
+  if (!key) return 'global';
+  const { target, path } = parseWorkspaceKey(key);
+  const name = path.replace(/[\/]+$/, '').split(/[\/]/).pop() || path;
+  return `${target}/${name}`;
+}
+
+/** The shape of the thing a close acts on, recorded because the report it
+ *  serves — "I closed one tab and two disappeared" — is about topology, and the
+ *  close itself already proved innocent: the sibling's PTY was never touched.
+ *  Which workspace, which region, how many tabs before and after, and whether
+ *  the workspace was left with nothing to render (it then stops being mounted,
+ *  and every pane in it goes away at once — visually indistinguishable from its
+ *  tabs closing). */
+function noteTopology(what: string, detail: string): void {
+  void diagnosticsLog('info', 'terminals', `${what}: ${detail}`).catch(() => {});
+}
+
 function newGroup(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TabGroup {
   const tab = newTab(opts);
   return { kind: 'group', id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
@@ -402,6 +439,9 @@ function serializeTab(t: GroupTab): SavedTab {
       cwd: t.cwd,
       shell: t.shell,
       args: t.args,
+      // The machine, or the tab comes back as a local shell pointed at a folder
+      // on another one.
+      target: t.target,
       sid: t.sid,
       asleep: t.asleep || undefined,
       agentSession: t.agentSession,
@@ -475,6 +515,7 @@ function buildTab(t: SavedTab): GroupTab {
     cwd: t.cwd,
     shell: t.shell,
     args: t.args,
+    target: t.target,
     asleep: t.asleep,
     agentSession: session,
     ...(resume ? { runCommand: resume, runCommandExecute: session?.live !== false } : {}),
@@ -627,6 +668,7 @@ class TerminalStore {
     if (!this.mountedKeys.includes(key)) {
       this.mountedKeys = [...this.mountedKeys, key];
     }
+    if (switching) noteTopology('workspace switch', `${wsLabel(this.activeWorkspace)} -> ${wsLabel(key)}`);
     this.activeWorkspace = key;
     if (switching) this.wakeWorkspace(key);
   }
@@ -958,10 +1000,36 @@ class TerminalStore {
    *  target workspace's folder (see [`cwdFor`]). */
   create(opts?: NewTabOptions): string {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
-    const cwd = this.cwdFor(opts?.cwd, opts?.workspace ?? this.activeWorkspace, opts?.target);
-    const tab = newTab({ ...opts, cwd });
+    const workspace = opts?.workspace ?? this.activeWorkspace;
+    const target = opts?.target ?? this.inheritedTarget(workspace, opts?.groupId);
+    const cwd = this.cwdFor(opts?.cwd, workspace, target);
+    const tab = newTab({ ...opts, cwd, target });
     this.insertTab(tab, opts?.groupId);
     return tab.id;
+  }
+
+  /** Which machine a new terminal opens on when the caller does not say.
+   *
+   *  A project workspace names its machine in its own key, and that wins: a
+   *  terminal opened in a project on a host belongs on that host, wherever the
+   *  click came from.
+   *
+   *  The Global space names none — it is the one space that holds terminals from
+   *  several machines at once (a host's own terminal lands there). So it falls
+   *  back to **the tab you are looking at**: press `+` beside a terminal on a
+   *  host and you get another one there, which is the only reading of "+" that
+   *  is not a surprise. Without this, the `+` in the terminal area opened a
+   *  local shell next to a remote one and left the user staring at this PC's
+   *  home directory. */
+  private inheritedTarget(workspace: string, groupId?: string): string {
+    const fromWorkspace = keyTarget(workspace);
+    if (fromWorkspace !== LOCAL_TARGET) return fromWorkspace;
+    if (workspace !== GLOBAL_WORKSPACE) return fromWorkspace;
+    const root = this.workspaces[workspace];
+    if (!root) return fromWorkspace;
+    const group = findGroup(root, groupId ?? this.activeGroupId) ?? firstGroup(root);
+    const active = group?.tabs.find((t) => t.id === group.activeTabId);
+    return active?.kind === 'terminal' ? (active.target ?? LOCAL_TARGET) : LOCAL_TARGET;
   }
 
   /** Insert an already-built tab into a region (the target region, the active
@@ -1310,6 +1378,13 @@ class TerminalStore {
     if (!tab) return;
     if (!(await this.confirmDirty(tab))) return;
     if (tab.kind === 'terminal') {
+      noteRemoteTab(tab, 'closing a tab the user closed');
+      noteTopology(
+        'closing',
+        `ws=${wsLabel(this.activeWorkspace)} region=${groupId.slice(0, 8)} ` +
+          `tabsHere=${group.tabs.length} regions=${[...groups(this.root)].length} ` +
+          `otherWorkspaces=${this.openWorkspaceKeys.filter((k) => k !== this.activeWorkspace).map(wsLabel).join(',') || 'none'}`,
+      );
       try {
         await invoke('pty_close', { id: tabId });
       } catch {
@@ -1356,6 +1431,11 @@ class TerminalStore {
 
   handleShellExit(tabId: string): void {
     const tab = this.findTab(tabId);
+    // A sleeping workspace closed its own PTYs on purpose; the exits that
+    // follow are that act finishing, not shells dying. Acting on them would
+    // delete every asleep tab the moment the workspace went to sleep.
+    if (tab?.kind === 'terminal' && tab.asleep) return;
+    noteRemoteTab(tab, 'the shell reported an exit');
     // A shell that never started keeps its tab, whatever it was hosting: the
     // pane holds the reason it failed, and closing it is how that reason turns
     // into a tab that flashes and vanishes. (Seen with a remote terminal whose
@@ -1423,6 +1503,12 @@ class TerminalStore {
       } else {
         // Last tab in the region → drop the region from its workspace.
         const newTree = removeGroup(tree, group.id);
+        if (newTree === null) {
+          // The workspace now renders nothing and leaves the mounted set, so
+          // every pane in it goes off screen at once — the one way tabs can
+          // disappear without anything closing them.
+          noteTopology('workspace emptied by an exit', `ws=${wsLabel(key)}`);
+        }
         this.workspaces = { ...this.workspaces, [key]: newTree };
         if (newTree) {
           const ag = this.activeGroups[key];
@@ -1564,9 +1650,11 @@ class TerminalStore {
     const group = findGroup(this.root, groupId);
     if (!group) return;
     // The new pane inherits the active workspace's folder when no cwd is given,
-    // so a split in a project opens in that project (not the PC home).
-    const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace, opts?.target);
-    const fresh = newGroup({ ...opts, cwd });
+    // so a split in a project opens in that project (not the PC home) — and on
+    // the same machine, so splitting a host's terminal stays on that host.
+    const target = opts?.target ?? this.inheritedTarget(this.activeWorkspace, groupId);
+    const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace, target);
+    const fresh = newGroup({ ...opts, cwd, target });
     this.root = replaceGroup(this.root, groupId, {
       kind: 'split',
       dir,
@@ -1760,6 +1848,11 @@ class TerminalStore {
   private collapseGroup(groupId: string): void {
     if (!this.root) return;
     const newRoot = removeGroup(this.root, groupId);
+    if (newRoot === null) {
+      // The workspace now renders nothing — and drops out of the mounted set,
+      // taking every pane in it off screen in one go.
+      noteTopology('workspace emptied', `ws=${wsLabel(this.activeWorkspace)}`);
+    }
     // `null` means the last region closed → the workspace becomes empty.
     this.root = newRoot;
     if (newRoot === null) {
@@ -1804,3 +1897,7 @@ class TerminalStore {
 
 /** Singleton terminal store shared across the app. */
 export const terminals = new TerminalStore();
+
+// A PTY that ends while its pane is parked reaches the model here, at once,
+// instead of waiting to be replayed when that tab is next adopted.
+setParkedExitHandler((id) => terminals.handleShellExit(id));

@@ -24,6 +24,10 @@ const END: &str = "__UXNAN_LS_END__";
 const MAX_ENTRIES: usize = 500;
 
 /// A directory on a host.
+///
+/// Deliberately the same shape as the local [`crate::browse::DirEntry`], so one
+/// picker renders either machine: a folder on a host should look and behave like
+/// a folder here, git badge included.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteDir {
@@ -31,9 +35,13 @@ pub struct RemoteDir {
     pub name: String,
     /// Absolute path on that machine, which is what gets registered.
     pub path: String,
+    /// Whether it holds a `.git` — answered by the host inside the same command,
+    /// because a per-folder round trip would cost seconds each.
+    pub is_repo: bool,
 }
 
-/// What a listing produced.
+/// What a listing produced. Mirrors [`crate::browse::DirListing`] field for
+/// field, plus [`RemoteListing::truncated`], which only a remote listing needs.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteListing {
@@ -42,7 +50,9 @@ pub struct RemoteListing {
     /// The parent, or `None` at the root — so a picker knows whether "up" exists
     /// without having to parse paths for two different operating systems.
     pub parent: Option<String>,
-    pub dirs: Vec<RemoteDir>,
+    /// Whether the listed directory is itself a repository.
+    pub is_repo: bool,
+    pub entries: Vec<RemoteDir>,
     /// True when the listing was cut at [`MAX_ENTRIES`]. Said out loud, because
     /// a picker that silently shows 500 of 3,000 folders is a picker that
     /// cannot find the one you want and will not tell you why.
@@ -93,13 +103,19 @@ fn posix_script(path: &str) -> String {
     } else {
         posix_quote(path)
     };
+    // `-e` rather than `-d` for `.git`: in a worktree or a submodule it is a
+    // file, and calling those "not a repository" would leave the git panels of a
+    // real checkout permanently empty.
     format!(
         "sh -lc 'd={target}; \
          cd \"$d\" 2>/dev/null || exit 1; \
          echo {BEGIN}; \
          printf \"path=%s\\n\" \"$(pwd)\"; \
          printf \"parent=%s\\n\" \"$(dirname \"$(pwd)\")\"; \
-         for e in */; do [ -d \"$e\" ] && printf \"dir=%s\\n\" \"${{e%/}}\"; done; \
+         [ -e .git ] && echo self=repo; \
+         for e in */; do n=\"${{e%/}}\"; [ -d \"$n\" ] || continue; \
+         if [ -e \"$n/.git\" ]; then printf \"repo=%s\\n\" \"$n\"; \
+         else printf \"dir=%s\\n\" \"$n\"; fi; done; \
          echo {END}'"
     )
 }
@@ -110,18 +126,25 @@ fn powershell_script(path: &str) -> String {
     } else {
         powershell_quote(path)
     };
-    format!(
-        "powershell -NoProfile -NonInteractive -Command \"\
-         $d = {target}; \
-         if (-not (Test-Path -LiteralPath $d)) {{ exit 1 }}; \
-         $i = Get-Item -LiteralPath $d; \
-         Write-Output '{BEGIN}'; \
-         Write-Output \\\"path=$($i.FullName)\\\"; \
-         if ($i.Parent) {{ Write-Output \\\"parent=$($i.Parent.FullName)\\\" }}; \
-         Get-ChildItem -LiteralPath $d -Directory -Force -ErrorAction SilentlyContinue | \
-         ForEach-Object {{ Write-Output \\\"dir=$($_.Name)\\\" }}; \
-         Write-Output '{END}'\""
-    )
+    // Written as an ordinary script and encoded on the way out: the outer shell
+    // is whatever that host's sshd launches, and hand-escaping for one of them
+    // breaks on the next (see `super::powershell_command`).
+    super::powershell_command(&format!(
+        "$d = {target}
+         if (-not (Test-Path -LiteralPath $d)) {{ exit 1 }}
+         $i = Get-Item -LiteralPath $d -Force
+         Write-Output '{BEGIN}'
+         Write-Output \"path=$($i.FullName)\"
+         if ($i.Parent) {{ Write-Output \"parent=$($i.Parent.FullName)\" }}
+         if (Test-Path -LiteralPath (Join-Path $i.FullName '.git')) {{ Write-Output 'self=repo' }}
+         Get-ChildItem -LiteralPath $d -Directory -Force -ErrorAction SilentlyContinue |
+             Where-Object {{ -not $_.Name.StartsWith('.') }} |
+             ForEach-Object {{
+                 $k = if (Test-Path -LiteralPath (Join-Path $_.FullName '.git')) {{ 'repo' }} else {{ 'dir' }}
+                 Write-Output \"$k=$($_.Name)\"
+             }}
+         Write-Output '{END}'"
+    ))
 }
 
 /// Whether a folder on the host is a git repository.
@@ -131,19 +154,20 @@ fn powershell_script(path: &str) -> String {
 /// permanently empty. A failure to ask is answered `false` — a project that
 /// works minus its branches beats refusing to add it.
 pub async fn is_git_repo(conn: &Connection, path: &str) -> bool {
-    let quoted_posix = posix_quote(path);
-    let quoted_ps = powershell_quote(path);
     let posix = format!(
-        "sh -lc 'cd {quoted_posix} 2>/dev/null && git rev-parse --is-inside-work-tree 2>/dev/null'"
+        "sh -lc 'cd {} 2>/dev/null && git rev-parse --is-inside-work-tree 2>/dev/null'",
+        posix_quote(path)
     );
     if let Ok(out) = conn.exec(&posix).await {
         if out.stdout.contains("true") {
             return true;
         }
     }
-    let windows = format!(
-        "powershell -NoProfile -NonInteractive -Command \"Set-Location -LiteralPath {quoted_ps};          git rev-parse --is-inside-work-tree 2>$null\""
-    );
+    let windows = super::powershell_command(&format!(
+        "Set-Location -LiteralPath {}
+         git rev-parse --is-inside-work-tree 2>$null",
+        powershell_quote(path)
+    ));
     matches!(conn.exec(&windows).await, Ok(out) if out.stdout.contains("true"))
 }
 
@@ -156,7 +180,8 @@ fn between_markers(stdout: &str) -> Option<&str> {
 fn parse(body: &str) -> Result<RemoteListing, AppError> {
     let mut path = String::new();
     let mut parent = None;
-    let mut names: Vec<String> = Vec::new();
+    let mut is_repo = false;
+    let mut names: Vec<(String, bool)> = Vec::new();
     let mut truncated = false;
 
     for line in body.lines() {
@@ -167,14 +192,16 @@ fn parse(body: &str) -> Result<RemoteListing, AppError> {
         if value.is_empty() {
             continue;
         }
-        match key.trim() {
+        let key = key.trim();
+        match key {
             "path" => path = value.to_string(),
             "parent" => parent = Some(value.to_string()),
-            "dir" => {
+            "self" => is_repo = value == "repo",
+            "dir" | "repo" => {
                 if names.len() >= MAX_ENTRIES {
                     truncated = true;
                 } else {
-                    names.push(value.to_string());
+                    names.push((value.to_string(), key == "repo"));
                 }
             }
             _ => {}
@@ -194,24 +221,26 @@ fn parse(body: &str) -> Result<RemoteListing, AppError> {
 
     // Case-insensitive, because the two operating systems disagree about whether
     // `Documents` sorts near `documents` and the user does not care.
-    names.sort_by_key(|n| n.to_lowercase());
+    names.sort_by_key(|(n, _)| n.to_lowercase());
     let separator = if path.contains('\\') && !path.starts_with('/') {
         '\\'
     } else {
         '/'
     };
-    let dirs = names
+    let entries = names
         .into_iter()
-        .map(|name| RemoteDir {
+        .map(|(name, is_repo)| RemoteDir {
             path: join(&path, &name, separator),
             name,
+            is_repo,
         })
         .collect();
 
     Ok(RemoteListing {
         path,
         parent,
-        dirs,
+        is_repo,
+        entries,
         truncated,
     })
 }
@@ -264,23 +293,33 @@ mod tests {
         println!(
             "live: {} has {} folders (truncated={}), parent={:?}",
             home.path,
-            home.dirs.len(),
+            home.entries.len(),
             home.truncated,
             home.parent
         );
         assert!(home.parent.is_some(), "a home directory has a parent");
+        // Repo detection is only worth anything if it survives a real host's
+        // filesystem, so say what it found rather than trusting the parser.
+        println!(
+            "live: repos here: {:?}",
+            home.entries
+                .iter()
+                .filter(|d| d.is_repo)
+                .map(|d| d.name.as_str())
+                .collect::<Vec<_>>()
+        );
 
         // Walking into a child must produce a listing of *that* folder — the
         // paths we hand back have to be openable on the host, not merely
         // plausible on this one.
-        if let Some(child) = home.dirs.first() {
+        if let Some(child) = home.entries.first() {
             let inside = list_dirs(&conn, &child.path).await.expect("a subfolder");
             let normalize = |p: &str| p.replace([std::path::MAIN_SEPARATOR, '\\'], "/");
             assert_eq!(normalize(&inside.path), normalize(&child.path));
             println!(
                 "live: walked into {} ({} folders)",
                 inside.path,
-                inside.dirs.len()
+                inside.entries.len()
             );
         }
     }
@@ -292,7 +331,10 @@ mod tests {
         assert_eq!(out.path, "/home/dev");
         assert_eq!(out.parent.as_deref(), Some("/home"));
         assert_eq!(
-            out.dirs.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(),
+            out.entries
+                .iter()
+                .map(|d| d.path.as_str())
+                .collect::<Vec<_>>(),
             ["/home/dev/code", "/home/dev/Documents"]
         );
         assert!(!out.truncated);
@@ -305,7 +347,33 @@ mod tests {
         // produce paths that host cannot open.
         let body = "path=C:\\Users\\dev\nparent=C:\\Users\ndir=code\n";
         let out = parse(body).unwrap();
-        assert_eq!(out.dirs[0].path, "C:\\Users\\dev\\code");
+        assert_eq!(out.entries[0].path, "C:\\Users\\dev\\code");
+    }
+
+    #[test]
+    fn a_repository_is_flagged_wherever_it_appears() {
+        // Both halves matter: the badge on a row is what tells the user which of
+        // fifty folders is the project, and `self` is what the "add this folder"
+        // action is about to register.
+        let body = "path=/home/dev\nself=repo\nrepo=uxnan\ndir=notes\n";
+        let out = parse(body).unwrap();
+        assert!(out.is_repo, "the listed folder said it holds a .git");
+        assert_eq!(
+            out.entries
+                .iter()
+                .map(|d| (d.name.as_str(), d.is_repo))
+                .collect::<Vec<_>>(),
+            [("notes", false), ("uxnan", true)]
+        );
+    }
+
+    #[test]
+    fn a_folder_that_never_mentions_git_is_not_a_repository() {
+        // The absence of a marker is "no", not "unknown": an older host, a shell
+        // that dropped the line, anything — none of them may invent a repo.
+        let out = parse("path=/x\ndir=a\n").unwrap();
+        assert!(!out.is_repo);
+        assert!(!out.entries[0].is_repo);
     }
 
     #[test]
@@ -313,7 +381,10 @@ mod tests {
         let body = "path=/x\ndir=zeta\ndir=Alpha\ndir=beta\n";
         let out = parse(body).unwrap();
         assert_eq!(
-            out.dirs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(),
+            out.entries
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect::<Vec<_>>(),
             ["Alpha", "beta", "zeta"]
         );
     }
@@ -324,7 +395,7 @@ mod tests {
         // does nothing.
         let out = parse("path=/\nparent=/\ndir=home\n").unwrap();
         assert_eq!(out.parent, None);
-        assert_eq!(out.dirs[0].path, "/home");
+        assert_eq!(out.entries[0].path, "/home");
     }
 
     #[test]
@@ -341,7 +412,7 @@ mod tests {
             body.push_str(&format!("dir=d{i}\n"));
         }
         let out = parse(&body).unwrap();
-        assert_eq!(out.dirs.len(), MAX_ENTRIES);
+        assert_eq!(out.entries.len(), MAX_ENTRIES);
         assert!(out.truncated, "a cut listing must admit it was cut");
     }
 
@@ -362,6 +433,8 @@ mod tests {
         // Only the host knows, and hardcoding `/home/<user>` would be wrong on
         // macOS, on Windows, and for any user with a moved home.
         assert!(posix_script("").contains("$HOME"));
-        assert!(powershell_script("").contains("$env:USERPROFILE"));
+        // Encoded on the wire, so read it back to see what PowerShell will run.
+        let windows = super::super::decode_powershell_command(&powershell_script(""));
+        assert!(windows.contains("$env:USERPROFILE"), "{windows}");
     }
 }

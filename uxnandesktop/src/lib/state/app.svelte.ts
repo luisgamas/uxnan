@@ -561,8 +561,10 @@ class AppStore {
     cwd?: string;
     title?: string;
     profileId?: string;
-    /** Workspace to open in (worktree path, or "" for Global). */
+    /** Workspace to open in (its workspace key, or "" for Global). */
     workspace?: string;
+    /** Machine to open it on. Omitted, the workspace's own machine is used. */
+    target?: string;
   }): void {
     // A terminal is being shown → leave the inline GitHub view (it replaces the
     // center pane, so a new terminal would otherwise open hidden behind it). This
@@ -578,6 +580,7 @@ class AppStore {
       shell: command || undefined,
       args: command ? profile?.args : undefined,
       workspace: opts?.workspace,
+      target: opts?.target,
     });
   }
 
@@ -674,7 +677,7 @@ class AppStore {
    *  resolve. No-op for an agent with a blank command. */
   launchAgent(
     agent: AgentProfile,
-    opts: { cwd?: string; workspace?: string; title?: string },
+    opts: { cwd?: string; workspace?: string; title?: string; target?: string },
   ): void {
     const command = agent.command.trim();
     if (!command) return;
@@ -745,6 +748,7 @@ class AppStore {
           }
         : undefined,
       workspace: opts.workspace,
+      target: opts.target,
     });
   }
 

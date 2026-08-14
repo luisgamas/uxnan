@@ -355,6 +355,22 @@ donde nvm/mise/fnm no existen, que es la razon numero uno por la que un CLI
 remoto parece no estar instalado— y, si no vuelve el marcador, uno de PowerShell
 con **`-NoProfile -NonInteractive`**.
 
+Con esas dos ramas se cubren las cuatro familias que el usuario tiene: **Linux y
+macOS** por la POSIX; **Windows** por la de PowerShell; **WSL** por la POSIX
+tambien, sea porque el `sshd` de la distro escucha en su propio puerto o porque
+el shell del host es `bash`. La rama no se elige por lo que el host *dice ser*
+sino por **cual contesta**: un Windows cuyo `sshd` lanza `bash` responde el sondeo
+POSIX y se trata como tal, que es exactamente lo correcto.
+
+**El script de PowerShell viaja en `-EncodedCommand`** (base64 de UTF-16LE), en
+`ssh::powershell_command`. El comando que se envia lo interpreta *el shell que ese
+`sshd` arranca* —`cmd`, `powershell`, `pwsh` o uno POSIX—, y cada uno trata
+comillas y contrabarras a su manera: escapar a mano funciona en la maquina donde
+se probo y produce basura en la siguiente. No es hipotetico — costo un listado que
+volvia con una ruta de **una sola contrabarra** y cero entradas. El base64 no tiene
+comillas, ni contrabarras, ni espacios: al shell exterior no le queda nada que
+reinterpretar.
+
 Los nombres de CLI se sanean antes de entrar en la linea de comandos remota. Hoy
 vienen del catalogo propio; "hoy" es la palabra que deja de ser cierta tras un
 refactor, y ese string acaba en un shell ajeno.
@@ -429,14 +445,105 @@ miente.
 **Si la carpeta es un repositorio git se le pregunta al host.** Solo el puede
 responder, y adivinar mal dejaria un repositorio real con sus paneles de git
 vacios para siempre. Si la pregunta falla se responde "no": un proyecto que
-funciona menos sus ramas es mejor que negarse a añadirlo.
+funciona menos sus ramas es mejor que negarse a añadirlo. La pregunta va **dentro
+del mismo comando** y para **cada carpeta del listado** (`repo=` frente a `dir=`),
+no una llamada por carpeta: con §5.3 sobre la mesa, cincuenta carpetas serian
+cincuenta viajes de segundos cada uno.
+
+**El listado vuelve con la forma del listado local** (`DirListing`: `path`,
+`parent`, `isRepo`, `entries[]`) mas `truncated`. No es cosmetico: es lo que
+permite que el selector de carpetas del host **sea el mismo componente** que el de
+proyectos (`DirectoryBrowser`), con su barra de direccion, su navegacion por
+teclado, sus insignias de repositorio y su boton "Añadir" por fila. Un segundo
+explorador escrito aparte se separaria del primero en una release, y el usuario
+tendria que aprender dos.
+
+Lo que si es distinto, y por eso se parametriza en vez de fingirse: **no hay
+watcher**. El explorador local observa el directorio abierto y se refresca solo;
+pedirle eso a un host seria mantener un proceso vivo alli por cada dialogo
+abierto. En remoto el boton de refrescar *es* la recarga.
 
 Comandos: `ssh_browse_dirs` y `ssh_repo_add`. Este ultimo registra el proyecto con
 `target = ssh:<hostId>` y la ruta **tal como la escribe el host**; la identidad es
 el par, asi que la misma ruta absoluta en dos maquinas son dos proyectos.
 
-Validado en vivo: listar el home de una maquina Windows (63 carpetas) y entrar en
-una de ellas, comprobando que la ruta devuelta es la que el host abre.
+Validado en vivo contra un `sshd` real: listar el home de una maquina Windows y
+entrar en una de sus carpetas comprobando que la ruta devuelta es la que el host
+abre, y listar un directorio de repositorios verificando que **marca como
+repositorio exactamente los que lo son**.
+
+## 5.9 Un proyecto del host seleccionado — IMPLEMENTADO
+
+Añadir el proyecto era la mitad; la otra es que **seleccionarlo signifique la
+maquina correcta** en todo lo que pasa despues.
+
+**La clave de espacio de trabajo es el par `(maquina, ruta)`** — `workspaceKey`
+en `pathid.ts`, definido en la fase 0 y **conectado aqui**. Los espacios locales
+conservan su clave historica (la ruta pelada), asi que nada persistido se
+reescribe; uno remoto se prefija con su destino. Sin eso, dos proyectos con la
+misma ruta absoluta en dos maquinas comparten un espacio, y —lo grave— el shell
+que se abre para el remoto nace aqui. Es exactamente lo que pasaba: la terminal
+abria en el home de **esta** PC.
+
+**La terminal hereda la maquina del espacio, no del sitio que la abre.**
+`terminals.create()` toma el destino de la clave cuando quien llama no lo dice,
+de modo que cada punto de entrada (clic en la tarjeta, `+`, split, comando
+rapido, lanzador) queda correcto sin tocarlos uno a uno — y uno nuevo lo estara
+por omision, que es lo unico que aguanta el paso del tiempo. La ruta del proyecto
+viaja como `cwd`: en el host esa carpeta si existe.
+
+**Lo que se lee en local se apaga, no se falsea.** Ficheros, cambios, historial y
+GitHub se resuelven con el filesystem y el git de esta maquina. Con un espacio
+remoto activo, `activeLocalPath` es `null` y esas capas no corren: el panel
+derecho dice en que maquina vive el proyecto y que si funciona hoy. El modo de
+fallo que sustituye es peor que un panel vacio — una carpeta del mismo nombre
+**aqui** contesta a todas esas preguntas, con aplomo y sobre otro repositorio.
+Por el mismo motivo `worktree_list` devuelve **un** espacio sin rama para un
+proyecto remoto en vez de ejecutar git local, y la fila no dice `(detached)`:
+decirlo seria afirmar algo sobre un repositorio que esta maquina no ha abierto.
+
+**El contador de terminales y los agentes de la tarjeta comparan claves**, no
+rutas. Comparando rutas, un proyecto del host contaba cero.
+
+**El espacio Global es el unico mixto**, y su clave no nombra maquina: ahi
+conviven la terminal propia de un host y las locales. Una terminal nueva en
+Global hereda la maquina de **la pestaña que estas mirando** — pulsar `+` al lado
+de una terminal de un host y obtener una shell de esta PC es la unica lectura
+sorprendente de `+`. Dentro de un proyecto manda el proyecto, siempre.
+
+**Ruta o clave, indistinto en la entrada.** Los puntos de entrada de seleccion y
+lanzamiento (`setActiveWorktree`, `openTerminalAt`, `launchAgentAt`) aceptan una
+ruta de worktree **o** una clave de espacio, y normalizan. No es indulgencia: la
+barra de pestañas sostiene la clave del espacio que muestra y la barra lateral
+sostiene la ruta, y en local ambas son la misma cadena — asi que pasar la que no
+era resultaba invisible hasta que un proyecto en un host las hizo distintas, y
+entonces *todas* las opciones del `+` abrian una shell aqui, con la clave como
+cwd.
+
+**Teclear el lanzamiento espera a que el host hable.** El comando del agente se
+*escribe* en la shell, y el canal SSH se abre segundos antes de que la shell
+remota termine de arrancar: teclear entonces parte el comando — la cabeza se la
+come una shell que aun no esta, y la cola (incluido el id de sesion que uxnan
+acaba de acuñar) aparece **dentro de la TUI del agente**. Una terminal remota
+espera a haber recibido algo (`launchTiming.ts`), con una ventana de silencio mas
+ancha que la local porque un viaje de ida y vuelta ya cuesta mas que ella; una
+shell que no dice nada se teclea igualmente pasado un limite, porque un agente
+que nunca arranca es peor que uno que arranca pronto.
+
+**`pty_paste_submit` tambien tiene rama remota.** Le faltaba mientras
+`pty_write`, `pty_resize` y `pty_close` si la tenian, asi que escribia al gestor
+local —que no conoce ese id— y el motor de runs, la difusion de orquestacion y la
+entrega a mitad de turno no hacian nada por SSH, en silencio.
+
+**La maquina de una pestaña se persiste.** El layout guardado no la llevaba, de
+modo que tras reiniciar toda pestaña remota volvia como local con la ruta de otra
+maquina, y arrancaba aqui.
+
+**Ciclo de vida al log.** Las terminales remotas escriben abrir, cerrar y **por
+que** terminaron (lo cerro uxnan / el host cerro el canal / se cayo la conexion),
+y la interfaz escribe su lado de la misma bifurcacion. Una pestaña que desaparece
+tiene tres causas indistinguibles una vez cerrada; solo el registro las separa.
+Solo ids, nunca rutas ni salida.
 
 ## 6. Que funciona y que no en un contexto remoto
 
@@ -446,6 +553,12 @@ una de ellas, comprobando que la ruta devuelta es la que el host abre.
 | Capa 1 — hooks HTTP | Requiere tunel inverso + instalar los reporters en el host. Fase posterior |
 | Capa 3 — deteccion de proceso | Requiere sondeo remoto de procesos. Fase posterior |
 
+| Panel sobre un proyecto remoto | Hoy |
+|---|---|
+| Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
+| Ficheros / Cambios / Historial / GitHub | **No disponible**: se leen en local. El panel lo dice y ofrece la terminal. Fase 3 |
+| Rama y estado git de la fila | **No disponible**: sin git remoto no hay rama que mostrar. Fase 3 |
+
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
 marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 
@@ -454,7 +567,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
-| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **En curso** — configuracion SSH hecha |
+| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **En curso** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9). Falta el lanzador filtrado por inventario |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
 | 3 | Archivos, git y worktrees remotos | Pendiente |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |

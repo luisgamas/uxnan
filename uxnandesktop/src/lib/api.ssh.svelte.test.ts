@@ -234,7 +234,8 @@ describe("ssh browse API", () => {
       ssh_browse_dirs: () => ({
         path: "C:\Users\dev",
         parent: "C:\Users",
-        dirs: [{ name: "code", path: "C:\Users\dev\code" }],
+        isRepo: false,
+        entries: [{ name: "code", path: "C:\Users\dev\code", isRepo: true }],
         truncated: false,
       }),
       ssh_repo_add: () => ({
@@ -257,8 +258,20 @@ describe("ssh browse API", () => {
   it("returns the host's own spelling of a path", async () => {
     const listing = await sshBrowseDirs("h1", "");
     expect(listing.path).toBe("C:\Users\dev");
-    expect(listing.dirs[0].path).toBe("C:\Users\dev\code");
+    expect(listing.entries[0].path).toBe("C:\Users\dev\code");
     expect(listing.parent).toBe("C:\Users");
+  });
+
+  it("comes back in the local browser's shape, so one picker renders both", async () => {
+    // The remote picker hands this straight to `DirectoryBrowser`. A renamed or
+    // missing field would not fail to compile there — it would render an empty
+    // folder, which is exactly the bug that looks like "the host has nothing".
+    const listing = await sshBrowseDirs("h1", "");
+    expect(listing.entries[0]).toEqual({
+      name: "code",
+      path: "C:\Users\dev\code",
+      isRepo: true,
+    });
   });
 
   it("registers a project with the host it lives on", async () => {

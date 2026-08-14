@@ -143,6 +143,57 @@ first. The app deliberately does not guess a hostname from the alias.
 and that the file declaring it is reachable from your main config through
 `Include`. Only `Host` and `Include` lines are scanned.
 
+## Which machines this works with
+
+**Linux, macOS, Windows and WSL.** The app drives a host through two shell
+dialects and picks between them by *which one answers*, never by what the host
+claims to be:
+
+| Host | How it is driven |
+|---|---|
+| Linux, macOS | a POSIX login shell (`sh -lc`) — `-l` matters, because without it the PATH is the non-interactive one and nvm/mise/fnm are missing, which is the most common reason a CLI that is installed looks like it is not |
+| Windows | PowerShell with `-NoProfile -NonInteractive`, sent as `-EncodedCommand` |
+| WSL | the POSIX branch, whether you reach the distro's own `sshd` or the Windows host launches `bash` |
+| Windows with a POSIX shell configured in `sshd` | answers the POSIX probe and is treated as POSIX — which is correct |
+
+The PowerShell branch is base64-encoded on purpose. Whatever your `sshd` is
+configured to launch — `cmd`, `powershell`, `pwsh` — sees the command first, and
+each treats quotes and backslashes differently; an encoded command leaves it
+nothing to reinterpret. To read one back while debugging:
+
+```powershell
+[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('<the base64>'))
+```
+
+## Adding a project that lives on a host
+
+Settings → **Hosts** → the host → **Add a project**. The picker is the one you
+already use for local projects — address bar, ↑/↓ navigation, repository badges,
+a per-row **Add**, `Ctrl`/`⌘`+`Enter` to add the folder you are in — pointed at
+the other machine. Two differences, both real rather than cosmetic:
+
+- **Every step asks the host**, so navigating costs a moment, and there is no
+  filesystem watch: the refresh button is the reload.
+- **A very large folder comes back cut**, and the picker says so rather than
+  quietly showing the first few hundred entries.
+
+The project is registered against the host it lives on, so the same absolute path
+on two machines is two different projects, and mutations verify they are acting on
+the machine you meant.
+
+### What a host's project does, and does not, do yet
+
+Select it in the left panel and:
+
+| | |
+|---|---|
+| **Terminals** | Open on the host, in the project's folder — a channel on the connection that host already has. Splits and further terminals stay there too. |
+| **Files, Changes, History, GitHub** | **Not available.** They are read with this machine's filesystem and git, so the right panel says which host the project lives on instead of showing you a folder that isn't the one you picked. Reading them over SSH is a later phase. |
+| **Branch on the row** | **Not shown**, for the same reason: nothing has read git there. It says "not read yet" rather than "(detached)", which would be a claim about a repository this machine has never opened. |
+
+The card carries the host's name, and its terminal count includes the terminals
+open on that machine.
+
 ## Not planned
 
 - **Containers and devcontainers** as a feature of their own. An environment you

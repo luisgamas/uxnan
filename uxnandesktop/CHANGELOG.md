@@ -7,14 +7,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
-- **A debug build no longer shares its data with the installed app.** It writes
-  to a `…-dev` profile beside the real one. They are the same product but not
-  the same code, and serde drops fields it cannot name — so every save from the
-  older build silently deleted the newer one's data. Running the installed app
-  alongside a dev build of this branch erased the registered hosts and every
-  project living on one, repeatedly, and each time it read as the app losing its
-  own settings. A dev build now starts empty, and launching it no longer
-  relaunches the agents of your everyday session.
 - **A project can live on another machine.** A connected host offers *Add
   project*: walk its folders from its own home, and the folder you are in becomes
   a project. It appears in the left panel like any other, with a small badge
@@ -31,6 +23,99 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   it. Whether the folder is a git repository is asked of the host too — only it
   can answer, and guessing wrong would leave a real repository with permanently
   empty git panels.
+- **Selecting a host's project now means that machine, everywhere.** Clicking one
+  opened a terminal *here*, in this PC's home, and filled the right panel with an
+  i/o error and a branch of "(detached)" — every layer had been handed a path
+  with no machine attached to it. A workspace is now keyed by the pair (machine,
+  folder), and a terminal takes its machine from the workspace it opens in, so
+  every entry point — the card, `+`, a split, a quick command, the launcher — is
+  right without each having to remember. The shell lands in the project's folder
+  on the host, where that folder exists.
+- **A project on a host says what it cannot show, instead of showing the wrong
+  thing.** Files, changes, history and GitHub are read with this machine's
+  filesystem and git; on a host they now stand down and the panel names the
+  machine the project lives on, offering the terminal that does work. Same for
+  the row: no branch is claimed, because none has been read — and the worst case
+  was never an empty panel but a folder of the same name *here* answering
+  confidently for someone else's repository. Reading git and files over SSH is a
+  later phase.
+- **A worktree row's indicators end at the panel's right edge.** Completion, pin,
+  unread, terminals, git status and PR trailed the branch name into the middle of
+  the row. A worktree row has no hover actions competing for that edge — unlike
+  the project header, whose indicators stay beside its name so the actions still
+  have their place — so the name now takes the free width and the indicators sit
+  where the eye looks for them, at any panel width.
+- **A debug build no longer shares its data with the installed app.** It writes
+  to a `…-dev` profile beside the real one. They are the same product but not
+  the same code, and serde drops fields it cannot name — so every save from the
+  older build silently deleted the newer one's data. Running the installed app
+  alongside a dev build of this branch erased the registered hosts and every
+  project living on one, repeatedly, and each time it read as the app losing its
+  own settings. A dev build now starts empty, and launching it no longer
+  relaunches the agents of your everyday session.
+- **An agent launched on a host stops leaving uxnan's session id in its TUI.**
+  The launch command is typed into the shell, and an SSH channel opens seconds
+  before the remote shell has finished starting — so the front of the command
+  was eaten and the tail, session id included, arrived inside the agent's own
+  input box. A terminal on a host is now given until it has actually said
+  something (and a wider quiet window once it has), while a shell that stays
+  silent is still typed into rather than left dead.
+- **Paste-and-submit works on a host.** It had no remote branch while every
+  other PTY command had one, so it wrote to the local manager, which does not
+  know a remote id: the run engine, the orchestration broadcast and mid-turn
+  delivery each silently did nothing over SSH.
+- **A terminal remembers which machine it was on across a restart.** The saved
+  layout never carried it, so every remote tab came back as a local shell
+  holding another machine's path — and started here, in the home directory,
+  looking like the tab you left.
+- **Every option in the terminal area's `+` opens where the workspace is.** The
+  menu hands over the key of the workspace it is showing, and for a local project
+  a key and a path are the same string — so passing one where the other was
+  expected was invisible until a project on a host made them differ. Then no
+  project matched, the machine fell back to local and the cwd was a string no
+  filesystem has, which is why every entry in that menu — terminals, profiles,
+  agents — landed in this PC's home. Those entry points now take either form.
+- **A terminal that ends in a background workspace says so when it happens.** Its
+  pane is parked, so the exit was held and replayed the next time that tab was
+  adopted — which is to say, as you clicked something else. A tab that had been
+  dead for minutes then closed in the same breath as the one you actually closed,
+  which reads exactly like closing one tab closing two. The model now hears the
+  exit at once. Exits a *sleeping* workspace causes are still ignored: it closed
+  those PTYs on purpose, and acting on them would delete every asleep tab.
+- **`+` in the terminal area opens on the machine you are looking at.** The
+  Global space is the one place terminals from several machines share, so its
+  workspace names none: pressing `+` beside a terminal on a host opened a shell
+  on this PC, in this PC's home. A new terminal there now inherits the machine of
+  the active tab; inside a project, the project's own machine still decides. The
+  same rule covers a split.
+- **The machine of the active workspace is derived, never stored.** A second copy
+  of a fact the workspace key already carries is a second thing to keep in sync,
+  and that drift is how a panel ends up reading this filesystem for a project on
+  a host.
+- **Remote terminals record their lifecycle in the app's log.** Opened, closed,
+  and *why* one ended — uxnan closed it, the host ended the channel, or the
+  connection went away and took every terminal with it. Those three look
+  identical once the pane is gone, which is exactly the state a report of "one
+  tab closed and took the other with it" leaves you in. Ids and host ids only,
+  never a path or a byte of output; the interface logs its own side of the same
+  fork, so the record says which one decided.
+- **Browsing a host uses the picker you already know.** The host answers in the
+  local browser's own shape, so choosing a folder over there is the same surface
+  as choosing one here: address bar, ↑/↓ navigation, repository badges, a per-row
+  *Add*, `Ctrl`/`⌘`+`Enter` for the folder you are in. Which folders are
+  repositories now arrives *with* the listing — flagged by the host inside the
+  same command, so fifty folders cost one round trip instead of fifty. What is
+  genuinely different is said rather than faked: a host is not watched for
+  changes (the refresh button is the reload), and a cut listing still admits it.
+- **A folder on a Windows host lists correctly whatever its `sshd` launches.**
+  The PowerShell the app sends is interpreted first by the shell that host is
+  configured to start — `cmd`, `powershell`, `pwsh` — and each treats quotes and
+  backslashes differently, so hand-escaping worked on the machine it was written
+  against and produced garbage on the next one: a listing came back with a path
+  of a single backslash and no folders at all. Those scripts now travel
+  base64-encoded (`-EncodedCommand`), which contains no quotes, backslashes or
+  spaces for an outer shell to reinterpret. Hidden dot-folders are skipped there
+  too, matching what the local browser shows.
 - **A terminal only inherits a folder from its own machine.** Opening a terminal
   on a host while a *local* project was the active workspace handed the remote
   shell a local path; it tried to `cd` somewhere that does not exist there and

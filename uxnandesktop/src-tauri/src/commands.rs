@@ -762,15 +762,31 @@ pub async fn pty_paste_submit(
     text: String,
 ) -> Result<(), CommandError> {
     let multiline = text.contains('\n') || text.contains('\r');
-    state
-        .pty
-        .write(&id, &pty_submit_payload(&text))
-        .map_err(CommandError::from)?;
+    let payload = pty_submit_payload(&text);
     let delay = if multiline {
         BRACKETED_SUBMIT_DELAY_MS
     } else {
         PASTE_SUBMIT_DELAY_MS
     };
+    // A terminal on a host takes the same two writes, on its own channel. This
+    // branch was missing while `pty_write`, `pty_resize` and `pty_close` all had
+    // one, so every paste-and-submit aimed at a remote agent went to the local
+    // manager, which does not know that id: the run engine, the orchestration
+    // broadcast and mid-turn delivery each silently did nothing over SSH.
+    if state.ssh_pty.owns(&id).await {
+        state
+            .ssh_pty
+            .write(&id, payload.as_bytes())
+            .await
+            .map_err(CommandError::from)?;
+        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+        return state
+            .ssh_pty
+            .write(&id, b"\r")
+            .await
+            .map_err(CommandError::from);
+    }
+    state.pty.write(&id, &payload).map_err(CommandError::from)?;
     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
     state.pty.write(&id, "\r").map_err(CommandError::from)?;
     Ok(())
@@ -1754,15 +1770,46 @@ pub async fn worktree_remove(
 }
 
 /// List a repo's worktrees (ADE-created and ones made externally by agents).
+///
+/// A project on another machine reports **one** workspace — its own folder, with
+/// no branch — and no local git runs. Running it would be worse than useless: the
+/// path belongs to the host, so at best git fails, and at worst a folder with the
+/// same absolute path *does* exist here and the sidebar would show this machine's
+/// branches for someone else's repository. Reading git over SSH is phase 3; until
+/// then the interface says "not available here" rather than filling the gap with
+/// local data (`architecture/02g-remote-hosts.md` §6).
 #[tauri::command]
 pub async fn worktree_list(
     state: State<'_, AppState>,
     repo_id: String,
 ) -> Result<Vec<WorktreeEntry>, CommandError> {
-    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let (repo_path, target) = repo_location_of(&state, &repo_id).await?;
+    if let Some(entries) = worktrees_without_git(&target, &repo_path) {
+        return Ok(entries);
+    }
     git::list_worktrees(&repo_path)
         .await
         .map_err(CommandError::from)
+}
+
+/// The worktree list for a project this machine's git cannot answer for: one
+/// entry, the project's own folder, and **no branch**. `None` means "local — go
+/// ask git".
+///
+/// Split out so the decision is testable on its own, because the invariant is
+/// easy to break and expensive when broken: a project on a host must never
+/// report a branch, or the sidebar would put this machine's answer on another
+/// machine's repository.
+fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<WorktreeEntry>> {
+    if target.is_local() {
+        return None;
+    }
+    Some(vec![WorktreeEntry {
+        path: repo_path.to_string(),
+        branch: None,
+        head: None,
+        is_main: true,
+    }])
 }
 
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
@@ -3239,7 +3286,7 @@ mod tests {
     use super::{
         bracketed_paste, fs_path_exists, issue_link_permission_denied, preserve_backend_owned,
         pty_submit_payload, read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner,
-        term_buffers_path,
+        term_buffers_path, worktrees_without_git, TargetId,
     };
     use crate::model::{AppSettings, SshHost, SshHostTombstone};
 
@@ -3260,6 +3307,28 @@ mod tests {
             source: Default::default(),
             needs_prompt: false,
         }
+    }
+
+    #[test]
+    fn a_project_on_a_host_reports_one_workspace_and_no_branch() {
+        // Local git must not be run against a path that belongs to another
+        // machine: at best it fails, and at worst a folder with the same
+        // absolute path exists here and answers for the wrong repository.
+        let entries =
+            worktrees_without_git(&TargetId::parse("ssh:h1").unwrap(), r"C:\Users\dev\code")
+                .expect("a remote project answers without git");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, r"C:\Users\dev\code");
+        assert!(entries[0].is_main);
+        assert!(entries[0].branch.is_none(), "no branch may be invented");
+        assert!(entries[0].head.is_none());
+    }
+
+    #[test]
+    fn a_local_project_is_still_asked_of_git() {
+        // The guard must be exactly "not local", not "always synthetic" — every
+        // local project depends on the real worktree list.
+        assert!(worktrees_without_git(&TargetId::Local, r"C:\code\uxnan").is_none());
     }
 
     #[test]

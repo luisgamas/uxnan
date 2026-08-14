@@ -14,7 +14,7 @@
   import { github } from "$lib/state/github.svelte";
   import type { GithubSection } from "$lib/state/app.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
-  import { samePath } from "$lib/pathid";
+  import { sameWorkspace } from "$lib/pathid";
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
@@ -23,7 +23,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { hosts } from "$lib/state/hosts.svelte";
-  import { sshHostId } from "$lib/target";
+  import { sshHostId, targetOf } from "$lib/target";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
@@ -91,13 +91,19 @@
   }
 
   // Live-space aggregate for the collapsed card: terminals open across this
-  // project's workspaces (main + every worktree). Keys are matched by path
-  // identity, and each workspace key counts once.
+  // project's workspaces (main + every worktree), each key counted once.
+  //
+  // Matched as workspace *keys*, not paths: a project on a host keys its
+  // terminals under that machine, so a bare-path comparison would count none.
+  const workspaceKeys = $derived(
+    [repo.path, ...projects.worktreesOf(repo.id).map((w) => w.path)].map((p) =>
+      projects.workspaceFor(p, targetOf(repo.target)),
+    ),
+  );
   const termCount = $derived.by(() => {
-    const paths = [repo.path, ...projects.worktreesOf(repo.id).map((w) => w.path)];
     let n = 0;
     for (const key of terminals.openWorkspaceKeys) {
-      if (paths.some((p) => samePath(p, key))) n += terminals.terminalCount(key);
+      if (workspaceKeys.some((k) => sameWorkspace(k, key))) n += terminals.terminalCount(key);
     }
     return n;
   });
@@ -107,7 +113,6 @@
   // closed card used to be just a name, with no way to tell it holds eight
   // worktrees and three working agents until you opened it.
   const projectAgents = $derived.by(() => {
-    const paths = [repo.path, ...projects.worktreesOf(repo.id).map((w) => w.path)];
     const seen = new Set<string>();
     const out: {
       id: string;
@@ -117,7 +122,7 @@
       stale: boolean;
     }[] = [];
     for (const key of terminals.openWorkspaceKeys) {
-      if (!paths.some((p) => samePath(p, key))) continue;
+      if (!workspaceKeys.some((k) => sameWorkspace(k, key))) continue;
       for (const t of terminals.agentTabs(key)) {
         if (seen.has(t.id)) continue;
         seen.add(t.id);

@@ -126,23 +126,22 @@ fn powershell_script(agent_commands: &[String]) -> String {
     let mut probes = String::new();
     for name in agent_commands.iter().filter_map(|c| safe_command(c)) {
         probes.push_str(&format!(
-            "$c = Get-Command {name} -ErrorAction SilentlyContinue; \
-             if ($c) {{ $v = (& {name} --version 2>$null | Select-Object -First 1); \
-             Write-Output \\\"agent.{name}=$v\\\" }}; "
+            "$c = Get-Command {name} -ErrorAction SilentlyContinue
+             if ($c) {{ $v = (& {name} --version 2>$null | Select-Object -First 1)
+                        Write-Output \"agent.{name}=$v\" }}
+"
         ));
     }
-    // `-NoProfile` is the point: the user's profile is what makes each remote
-    // command cost seconds, and on a non-interactive session it often fails
-    // outright. We need none of it to answer these questions.
-    format!(
-        "powershell -NoProfile -NonInteractive -Command \"\
-         Write-Output '{BEGIN}'; \
-         Write-Output \\\"os=windows\\\"; \
-         Write-Output \\\"home=$env:USERPROFILE\\\"; \
-         $g = (git --version 2>$null); Write-Output \\\"git=$g\\\"; \
-         {probes} \
-         Write-Output '{END}'\""
-    )
+    // Encoded rather than hand-quoted: the outer shell differs per host, and
+    // escaping for one of them silently corrupts the script on another.
+    super::powershell_command(&format!(
+        "Write-Output '{BEGIN}'
+         Write-Output \"os=windows\"
+         Write-Output \"home=$env:USERPROFILE\"
+         $g = (git --version 2>$null); Write-Output \"git=$g\"
+         {probes}
+         Write-Output '{END}'"
+    ))
 }
 
 /// The payload between the markers, or `None` when the host never emitted them.
@@ -304,8 +303,13 @@ mod tests {
         let script = posix_script(&["claude".into(), "evil; rm -rf /".into()]);
         assert!(script.contains("claude"));
         assert!(!script.contains("rm -rf"));
-        let script = powershell_script(&["claude".into(), "evil; rm -rf /".into()]);
-        assert!(!script.contains("rm -rf"));
+        // The encoded form hides the text, so decode it back to check.
+        let decoded = super::super::decode_powershell_command(&powershell_script(&[
+            "claude".into(),
+            "evil; rm -rf /".into(),
+        ]));
+        assert!(decoded.contains("claude"), "{decoded}");
+        assert!(!decoded.contains("rm -rf"), "{decoded}");
     }
 
     #[test]
@@ -323,5 +327,7 @@ mod tests {
         let script = powershell_script(&[]);
         assert!(script.contains("-NoProfile"), "{script}");
         assert!(script.contains("-NonInteractive"), "{script}");
+        // And nothing an outer shell could reinterpret on the way there.
+        assert!(!script.contains('"'), "{script}");
     }
 }

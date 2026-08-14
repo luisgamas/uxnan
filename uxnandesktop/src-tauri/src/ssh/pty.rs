@@ -73,6 +73,18 @@ pub struct RemotePtyManager {
     sessions: Mutex<HashMap<String, RemotePty>>,
 }
 
+/// Remote terminals write their lifecycle to the diagnostics log — opened,
+/// closed, and *why* one ended.
+///
+/// It exists because a tab that vanishes has three possible causes that look
+/// identical from the outside: uxnan closed it, the host ended the channel, or
+/// the connection went away and took every terminal on it. Only the record tells
+/// them apart, and a user reproducing the problem should not have to guess. Ids
+/// and host ids only — never a path, never a byte of output.
+fn log(message: &str) {
+    crate::diagnostics::log(crate::diagnostics::Level::Info, "ssh-pty", message);
+}
+
 impl RemotePtyManager {
     /// Open a PTY on `conn` and start pumping its output.
     ///
@@ -140,10 +152,16 @@ impl RemotePtyManager {
             },
         );
 
+        log(&format!("terminal {} opened on {host_id}", spec.id));
+
         // The one owner. It waits for remote output and for local commands at
         // the same time, so neither can starve the other.
+        let log_id = spec.id.clone();
         tokio::spawn(async move {
             let mut closing = false;
+            // Why this terminal ended, for the log: a tab that disappears has
+            // exactly three possible causes, and only the record separates them.
+            let mut reason = "the host ended the channel";
             loop {
                 let command = tokio::select! {
                     msg = channel.wait() => {
@@ -164,6 +182,7 @@ impl RemotePtyManager {
                 match command {
                     Some(PtyCommand::Write(bytes)) => {
                         if channel.data(&bytes[..]).await.is_err() {
+                            reason = "the channel refused a write";
                             break;
                         }
                     }
@@ -172,6 +191,7 @@ impl RemotePtyManager {
                     }
                     Some(PtyCommand::Close) => {
                         closing = true;
+                        reason = "uxnan closed it";
                         break;
                     }
                     None => {}
@@ -184,6 +204,7 @@ impl RemotePtyManager {
                 let _ = channel.eof().await;
                 let _ = channel.close().await;
             }
+            log(&format!("terminal {log_id} ended: {reason}"));
             on_exit();
         });
 
@@ -207,6 +228,7 @@ impl RemotePtyManager {
         let Some(session) = self.sessions.lock().await.remove(id) else {
             return Ok(());
         };
+        log(&format!("closing terminal {id} on {}", session.host_id));
         // The task may already be gone (the host dropped the connection); that
         // is the outcome we wanted anyway, so it is not an error.
         let _ = session.tx.send(PtyCommand::Close).await;
@@ -233,6 +255,12 @@ impl RemotePtyManager {
                 .map(|(id, _)| id.clone())
                 .collect()
         };
+        if !doomed.is_empty() {
+            log(&format!(
+                "{host_id} disconnected: ending {} terminal(s)",
+                doomed.len()
+            ));
+        }
         for id in doomed {
             let _ = self.close(&id).await;
         }
@@ -392,6 +420,113 @@ mod tests {
         assert!(manager.owns("t1").await);
         manager.close("t1").await.expect("close");
         assert!(!manager.owns("t1").await, "close must drop the session");
+    }
+
+    /// Two terminals on one host: closing one must leave the other alive.
+    ///
+    /// Reported from the app — one tab closed took the other with it. They share
+    /// a connection but not a channel, and nothing about closing one may reach
+    /// the other; a shared session that dies together is the bug this pins.
+    #[tokio::test]
+    #[ignore = "needs a local sshd that authorizes a key in the agent"]
+    async fn closing_one_terminal_leaves_the_other_running() {
+        use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
+        use crate::ssh::conn::{connect, Endpoint, Handshake};
+        use crate::ssh::hostkey;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let user = std::env::var("UXNAN_SSH_TEST_USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .expect("a username");
+        let endpoint = Endpoint::new("127.0.0.1", 22);
+        let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+            panic!("expected an unknown host");
+        };
+        let trusted = hostkey::trust_line("127.0.0.1", 22, &key);
+        let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+            panic!("the recorded key should verify");
+        };
+        match authenticate(&mut conn, &user, &[Credential::Agent])
+            .await
+            .unwrap()
+        {
+            AuthOutcome::Success { .. } => {}
+            other => panic!("authenticate with the agent first: {other:?}"),
+        }
+
+        let manager = RemotePtyManager::default();
+        let survivor_out = std::sync::Arc::new(Mutex::new(Vec::<u8>::new()));
+        let survivor_exited = std::sync::Arc::new(AtomicBool::new(false));
+
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .expect("a home directory");
+        // With a cwd the manager `exec`s a shell rather than requesting one —
+        // the path a project terminal takes, and a different channel setup, so
+        // the pair is driven exactly as the app drives it.
+        let mut first = spec(Some(&home), None);
+        first.id = "keep".into();
+        let sink = std::sync::Arc::clone(&survivor_out);
+        let flag = std::sync::Arc::clone(&survivor_exited);
+        manager
+            .create(
+                "h1",
+                &conn,
+                first,
+                move |bytes| {
+                    if let Ok(mut buf) = sink.try_lock() {
+                        buf.extend_from_slice(bytes);
+                    }
+                },
+                move || flag.store(true, Ordering::SeqCst),
+            )
+            .await
+            .expect("the first terminal");
+
+        let mut second = spec(Some(&home), None);
+        second.id = "doomed".into();
+        manager
+            .create("h1", &conn, second, |_| {}, || {})
+            .await
+            .expect("the second terminal");
+
+        manager.close("doomed").await.expect("close");
+        assert!(!manager.owns("doomed").await);
+        assert!(manager.owns("keep").await, "the other session must survive");
+
+        // Owning the session is not the same as it still working: prove the
+        // survivor still reaches its shell.
+        manager
+            .write("keep", b"echo uxnan-still-here\r")
+            .await
+            .expect("write to the survivor");
+        let mut seen = String::new();
+        for _ in 0..60 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            seen = String::from_utf8_lossy(&survivor_out.lock().await.clone()).to_string();
+            if seen.contains("uxnan-still-here") {
+                break;
+            }
+        }
+        assert!(
+            seen.contains("uxnan-still-here"),
+            "the surviving terminal must still answer; got {seen:?}"
+        );
+        // Settle before judging: a teardown that reaches the other channel a
+        // moment later would look identical to none at all if this asserted the
+        // instant the echo came back.
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        assert!(
+            !survivor_exited.load(Ordering::SeqCst),
+            "the surviving terminal must not have reported an exit"
+        );
+        assert!(
+            manager.owns("keep").await,
+            "the survivor must still be held"
+        );
+        println!("live: closed one terminal, the other still answered");
+
+        manager.close("keep").await.expect("close");
     }
 
     /// What a dropped connection does to a terminal running on it.

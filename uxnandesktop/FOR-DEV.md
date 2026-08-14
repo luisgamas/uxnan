@@ -28,9 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 646 Rust tests (601 unit + 29
-integration; +7 ignored supervised live GitHub tests, +1 ignored live `ssh -G`
-probe, +1 ignored real-scheduler probe) + 1,072 passing frontend Vitest tests across two
+always wins). 662 Rust tests (626 unit + 36
+integration), of which 22 are ignored probes that need something real to talk to
+(15 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
+real-scheduler probe) + 1,096 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -782,15 +783,6 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       mobile UI (`uxnanmobile/FOR-DEV.md`).
 
 ### Frontend (Svelte)
-- [ ] **Launching a dev build must not resume the everyday session's agents.**
-      Half-fixed: a debug build now has its own profile, so it restores its own
-      tabs rather than the installed app's — which is what made a second agent
-      attach to a conversation already in progress. What is *not* settled is the
-      general case: two uxnan windows (or a wake, or a restore) can each
-      relaunch a tab holding the same agent session id, and nothing stops the
-      second one. Decide whether a live session id may be claimed twice at all,
-      or whether a restored tab must ask first. Until then, treat "open the same
-      workspace in two windows" as unsupported rather than as working.
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
       trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
 
@@ -898,11 +890,42 @@ commands `ssh_config_hosts` / `ssh_config_resolve`. Specs: `architecture/02a`
       needs a keepalive or a transport-level signal.
 
 ### Frontend (Svelte)
-- [ ] **A remote project cannot be opened yet.** It appears in the left panel
-      with its host badge, but selecting it drives the local git/file layers at a
-      path that does not exist here — the panels will be empty or wrong. Those
-      layers are target-blind and that is the next phase; until then a remote
-      project is somewhere to open a *terminal*, not a workspace.
+- [ ] **A remote project has no files, git or GitHub yet.** Selecting one works
+      — the workspace is keyed by its machine and its terminals open on the host,
+      in the project's folder — but the right panel's four tabs are read with
+      this machine's filesystem and git, so they stand down and say so
+      (`RemoteWorkspaceNotice`), and the row shows no branch. Making those layers
+      target-aware is phase 3 (`architecture/02g-remote-hosts.md` §7); until then
+      a remote project is a place to run agents, not to read code.
+- [ ] **Launching a dev build must not resume the everyday session's agents.**
+      Half-fixed: a debug build now has its own profile, so it restores its own
+      tabs rather than the installed app's — which is what made a second agent
+      attach to a conversation already in progress. What is *not* settled is the
+      general case: two uxnan windows (or a wake, or a restore) can each
+      relaunch a tab holding the same agent session id, and nothing stops the
+      second one. Decide whether a live session id may be claimed twice at all,
+      or whether a restored tab must ask first. Until then, treat "open the same
+      workspace in two windows" as unsupported rather than as working.
+- [ ] **Reported: closing one remote tab closed two.** Not reproduced here, and
+      two causes that produce exactly that appearance are now fixed: an agent
+      launched from the terminal area's `+` got a workspace key as its cwd (so
+      its shell died on the spot while its tab looked fine), and an exit in a
+      parked pane was held until that tab was next adopted — i.e. delivered as
+      the user closed its sibling. If it survives both, the remaining suspect is
+      the pane layer — but a fourth possibility now outranks it: the two builds
+      were sharing one profile (fixed above), so the *other* app rewrote the
+      state file mid-test, and the remote project and its host vanished from
+      under the tabs. That is consistent with the logs, which show the sibling's
+      PTY alive and untouched while its tab left the screen. Re-test on the
+      separate profile before hunting further. The
+      backend is exonerated by a live test that opens two terminals on one host,
+      closes one and proves the other still answers
+      (`closing_one_terminal_leaves_the_other_running`, both the requested-shell
+      and the `exec`-with-cwd paths). Both sides now log the fork the diagnosis
+      needs — `ssh-pty` records opened/closed/**why** a terminal ended, and the
+      frontend records when *it* decided to close a remote tab — so the next
+      reproduction says whether the UI closed the second tab or the host ended
+      its channel. Ask for `<app data>/logs/` after it happens again.
 - [ ] Launcher filtered by the host's inventory (the data is there,
       `ssh_host_inventory`; the launcher still offers this machine's agents).
 - [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
@@ -1351,7 +1374,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 646 Rust + 1,072 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 662 Rust + 1,096 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

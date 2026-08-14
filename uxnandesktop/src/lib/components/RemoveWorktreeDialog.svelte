@@ -50,12 +50,15 @@
 
   const label = $derived(row.branch ?? i18n.t("worktree.detached"));
   const status = $derived(projects.status(row.path));
+  /** The workspace key for this row — the pair (machine, path), which is what
+   *  terminals are filed under. */
+  const wsKey = $derived(projects.workspaceFor(row.path));
   const defaults = $derived(
     removalDefaults({
       completion: projects.completion(row),
       dirty: status?.dirty ?? 0,
       ahead: status?.ahead ?? 0,
-      liveAgents: terminals.agentTabs(row.path).filter((t) => !t.exited).length,
+      liveAgents: terminals.agentTabs(wsKey).filter((t) => !t.exited).length,
       hasBranch: !!row.branch,
     }),
   );

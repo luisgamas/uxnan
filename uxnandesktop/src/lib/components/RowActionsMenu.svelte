@@ -89,11 +89,14 @@
       ? (projects.mainWorktree(repo.id)?.path ?? repo.path)
       : null,
   );
+  /** The workspace key for this row — the pair (machine, path), which is what
+   *  terminals are filed under. */
+  const wsKey = $derived(projects.workspaceFor(path));
   // Agents currently running in this workspace (for the "Active agents" submenu).
-  const activeAgents = $derived(terminals.agentTabs(path));
+  const activeAgents = $derived(terminals.agentTabs(wsKey));
   // Live-space state for the sleep/wake item.
-  const termCount = $derived(terminals.terminalCount(path));
-  const asleep = $derived(terminals.isWorkspaceAsleep(path));
+  const termCount = $derived(terminals.terminalCount(wsKey));
+  const asleep = $derived(terminals.isWorkspaceAsleep(wsKey));
 
   function profileLabel(name: string): string {
     return name.trim() || i18n.t("terminal.unnamedProfile");
@@ -158,7 +161,7 @@
             class={text.menu}
             onclick={() => {
               projects.setActiveWorktree(path);
-              terminals.revealTab(path, t.id);
+              terminals.revealTab(wsKey, t.id);
             }}
           >
             {#if d}
@@ -174,7 +177,7 @@
   <ContextMenu.Separator />
 
   {#if asleep}
-    <ContextMenu.Item class={text.menu} onclick={() => terminals.wakeWorkspace(path)}>
+    <ContextMenu.Item class={text.menu} onclick={() => terminals.wakeWorkspace(wsKey)}>
       <Icon icon={SunIcon} />
       {i18n.t("workspace.wake")}
     </ContextMenu.Item>

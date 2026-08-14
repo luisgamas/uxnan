@@ -7,7 +7,9 @@
   import ChangesPanel from "./ChangesPanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
   import GithubPanel from "./GithubPanel.svelte";
+  import RemoteWorkspaceNotice from "./RemoteWorkspaceNotice.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { projects } from "$lib/state/projects.svelte";
   import { rightPanel } from "$lib/state/rightPanel.svelte";
   import { i18n } from "$lib/i18n";
   import { divider, focus, icon, shell, tab as tabStyle } from "$lib/design";
@@ -113,19 +115,29 @@
       </Tabs.Trigger>
     {/if}
   </Tabs.List>
-  <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-    <FileTreePanel />
-  </Tabs.Content>
-  <Tabs.Content value="changes" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-    <ChangesPanel />
-  </Tabs.Content>
-  <Tabs.Content value="history" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-    <HistoryPanel />
-  </Tabs.Content>
-  {#if showGithub}
-    <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-      <GithubPanel />
+  {#if projects.activeIsRemote}
+    <!-- Every tab in this panel reads this machine's filesystem and git, so on a
+         project that lives on a host all four answer the same thing: not from
+         here. Said once, in place of the panes, rather than four times over —
+         and the tab strip stays so the panel does not appear to have lost it. -->
+    <div class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <RemoteWorkspaceNotice />
+    </div>
+  {:else}
+    <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <FileTreePanel />
     </Tabs.Content>
+    <Tabs.Content value="changes" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <ChangesPanel />
+    </Tabs.Content>
+    <Tabs.Content value="history" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <HistoryPanel />
+    </Tabs.Content>
+    {#if showGithub}
+      <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <GithubPanel />
+      </Tabs.Content>
+    {/if}
   {/if}
   </Tabs.Root>
 </div>

@@ -690,19 +690,12 @@ export interface SshHostProbe {
   storedFingerprint?: string | null;
 }
 
-/** A directory on a host (mirror of Rust `RemoteDir`). */
-export interface SshRemoteDir {
-  name: string;
-  /** Absolute path **as that machine spells it** — what gets registered. */
-  path: string;
-}
-
-/** One directory listing from a host (mirror of Rust `RemoteListing`). */
-export interface SshRemoteListing {
-  path: string;
-  /** `null` at a root, so "up" is only offered where it goes somewhere. */
-  parent: string | null;
-  dirs: SshRemoteDir[];
+/** One directory listing from a host (mirror of Rust `RemoteListing`).
+ *
+ *  A `DirListing` plus `truncated`: the host answers in the local browser's own
+ *  shape — paths spelled as *that* machine spells them — so one component browses
+ *  either machine and a remote folder looks like a folder. */
+export interface SshRemoteListing extends DirListing {
   /** The listing was cut. Say so: a picker quietly showing part of a folder is
    *  one that cannot find what you want and will not admit why. */
   truncated: boolean;
@@ -1286,6 +1279,11 @@ export type SavedTab =
       cwd?: string;
       shell?: string;
       args?: string[];
+      /** The machine this terminal ran on (`ssh:<hostId>`); absent = this one.
+       *  Without it a restored remote tab came back as a local shell holding
+       *  another machine's path — it then started here, in the home directory,
+       *  looking like the same tab and being nothing of the sort. */
+      target?: string;
       /** Stable id surviving restarts — keys the tab's scrollback snapshot in
        *  the terminal-buffers sidecar. */
       sid?: string;

@@ -1,7 +1,10 @@
 <script lang="ts">
   // Reusable in-app folder browser — the shared core behind the "Add project"
-  // picker (DirectoryPicker) and the "new-worktree location" picker
-  // (FolderSelectDialog). It owns the file-manager surface (a parent-up button, an
+  // picker (DirectoryPicker), the "new-worktree location" picker
+  // (FolderSelectDialog) and the host folder picker (RemoteFolderPicker), which
+  // swaps the `list` source for a machine reached over SSH rather than growing a
+  // second browser that would drift from this one. It owns the file-manager
+  // surface (a parent-up button, an
   // editable path field, a manual refresh, and the sub-folder list with keyboard
   // navigation) plus a **live filesystem watch**: as the user navigates, the
   // backend watches that one directory (`browse_set_watch` → `browse:changed`), so
@@ -41,6 +44,15 @@
     /** Hide the built-in address bar when a parent dialog supplies one unified
      * input for navigation and another source such as a remote repository. */
     showLocationBar = true,
+    /** Where the listings come from. Defaults to this machine; a host passes its
+     *  own lister so a remote folder is browsed with the same surface, keyboard
+     *  handling and empty states as a local one. An omitted target means "home",
+     *  which only the machine being browsed can resolve. */
+    list = browseDirs,
+    /** Whether that source can push change events. Only the local filesystem is
+     *  watched: a host is polled by the refresh button, and asking it to watch a
+     *  directory would mean holding a process open on it per open dialog. */
+    watchable = true,
     /** Primary action (Mod+Enter) — the consumer's footer button. */
     onPrimary,
     /** Bindable out: the dialog-level keydown handler, so the consumer can wire it
@@ -59,6 +71,8 @@
     busy?: boolean;
     listClass?: string;
     showLocationBar?: boolean;
+    list?: (target?: string) => Promise<DirListing>;
+    watchable?: boolean;
     onPrimary?: () => void;
     keydownHandler?: ((e: KeyboardEvent) => void) | undefined;
     navigateHandler?: ((target?: string) => Promise<void>) | undefined;
@@ -90,6 +104,7 @@
   /** Point the backend watch at `dir` (or clear it), tracking the normalized form
    *  so incoming events can be matched to the directory we're actually showing. */
   async function watch(dir: string | null): Promise<void> {
+    if (!watchable) return;
     watched = dir ? norm(dir) : null;
     try {
       await browseSetWatch(dir);
@@ -104,7 +119,7 @@
     loading = true;
     error = null;
     try {
-      const result = await browseDirs(target);
+      const result = await list(target);
       listing = result;
       path = result.path;
       if (!preserve) {
@@ -155,7 +170,7 @@
 
   // Live refresh: re-list when the directory we're showing reports a change.
   $effect(() => {
-    if (unlisten) return;
+    if (!watchable || unlisten) return;
     let cancelled = false;
     void listen<BrowseChangedEvent>("browse:changed", (e) => {
       if (watched && norm(e.payload.path) === watched && listing) {
