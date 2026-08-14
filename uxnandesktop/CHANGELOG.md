@@ -519,6 +519,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A project on a host no longer wears a "folder is missing" warning.** The
+  check ran `is_dir` on *this* machine against the other machine's path, so a
+  perfectly healthy remote project was marked as gone — while its neighbour on a
+  second host escaped only because that host happened to be this same PC, which
+  made the warning look selective rather than wrong. This machine's filesystem
+  cannot answer for another one, so it no longer tries; asking the host itself is
+  recorded as the follow-up.
+- **Project cards can be dragged again.** Their identity region — the icon and
+  the name, which is the whole card — is a button so the keyboard can reach it,
+  and the reorder gesture refuses to start on a control, so pressing anywhere a
+  user would press did nothing. (The worktree rows underneath dragged fine,
+  which is what made it look like the cards had lost the feature.) A control that
+  *is* its row can now be marked as that row's drag handle; a row's action
+  buttons still stay buttons.
+
 - **Adding a second host no longer freezes the app.** Connecting one while
   another was busy left Settings spinning, and removing it spun too. The cause
   was not SSH being slow: the registry of live sessions was held **across** the

@@ -58,13 +58,13 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **742 backend tests**
-in total, 708 of which run everywhere; the other 34 are ignored probes that need
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **744 backend tests**
+in total, 710 of which run everywhere; the other 34 are ignored probes that need
 something real to talk to (26 live SSH probes against a real `sshd` — one of
 which idles for five minutes to prove the keepalive — the 7 supervised live
 GitHub tests, the real-scheduler probe).
 
-The 679 passing unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 681 passing unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -165,7 +165,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,168 passing tests** across both
+ships in every build and is never shown). **1,170 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

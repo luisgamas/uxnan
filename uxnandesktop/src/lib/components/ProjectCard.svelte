@@ -260,6 +260,7 @@
          siblings, so the project control never contains nested buttons. -->
     <button
       type="button"
+      data-drag-handle
       class={cn("flex min-w-0 flex-1 items-center gap-2 bg-transparent text-left", focus.ring)}
       aria-label={repo.name}
       onclick={onHeaderActivate}

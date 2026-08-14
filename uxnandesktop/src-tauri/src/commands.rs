@@ -2175,21 +2175,38 @@ pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
 /// why the app only *marks* such a project and stops spending work on it —
 /// polling git and `gh` against a path that is not there produces nothing but
 /// errors — and never removes it. Removing stays the user's call.
+///
+/// **A project on a host is never reported here.** This asks *this* machine's
+/// filesystem, and a host's absolute path is not a question it can answer: the
+/// folder is on the other machine. Asked anyway, it marked a perfectly healthy
+/// remote project as missing — and marked its neighbour as fine only because
+/// that host happened to be this same machine, which is worse, because the
+/// warning then looks selective rather than broken. Reporting a host's folder
+/// as gone needs asking the host (`FOR-DEV.md`).
 #[tauri::command]
 pub async fn repos_missing(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
-    let repos: Vec<(String, String)> = state
+    let repos: Vec<(String, TargetId, String)> = state
         .data
         .read()
         .await
         .repos
         .iter()
-        .map(|r| (r.id.clone(), r.path.clone()))
+        .map(|r| (r.id.clone(), r.target.clone(), r.path.clone()))
         .collect();
     Ok(repos
         .into_iter()
-        .filter(|(_, path)| !std::path::Path::new(path).is_dir())
-        .map(|(id, _)| id)
+        .filter(|(_, target, path)| missing_locally(target, path))
+        .map(|(id, _, _)| id)
         .collect())
+}
+
+/// Whether *this* machine can say the folder is not there.
+///
+/// Only ever true for a local project: for any other target the honest answer
+/// is "not mine to say", and `false` is what carries that — the app marks
+/// nothing rather than inventing a verdict from the wrong filesystem.
+fn missing_locally(target: &TargetId, path: &str) -> bool {
+    target.is_local() && !std::path::Path::new(path).is_dir()
 }
 
 /// A project still carrying worktree bookkeeping for folders that are gone.
@@ -4004,9 +4021,9 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, fs_path_exists, issue_link_permission_denied, preserve_backend_owned,
-        pty_submit_payload, read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner,
-        term_buffers_path, worktrees_without_git, TargetId,
+        bracketed_paste, fs_path_exists, issue_link_permission_denied, missing_locally,
+        preserve_backend_owned, pty_submit_payload, read_term_buffers, rect_on_any_monitor,
+        reorder_by_ids, resting_corner, term_buffers_path, worktrees_without_git, TargetId,
     };
     use crate::model::{AppSettings, SshHost, SshHostTombstone};
 
@@ -4027,6 +4044,41 @@ mod tests {
             source: Default::default(),
             needs_prompt: false,
         }
+    }
+
+    #[test]
+    fn a_hosts_project_is_never_called_missing_from_here() {
+        // Reported from the app: a healthy project on a host wore the "its
+        // folder is gone" warning, because the check ran `is_dir` on *this*
+        // machine against the other machine's path. The neighbour on a second
+        // host escaped it only because that host was this same PC — so the
+        // warning looked selective instead of simply wrong.
+        let remote = TargetId::parse("ssh:h1").unwrap();
+        assert!(
+            !missing_locally(&remote, r"C:\Users\gamas\code\nothing-here"),
+            "this filesystem cannot answer for another machine"
+        );
+        // Even a path that does exist here is not evidence about the host.
+        let here = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert!(!missing_locally(&remote, &here));
+    }
+
+    #[test]
+    fn a_local_project_that_is_gone_is_still_reported() {
+        // The feature itself must keep working for the projects it is about.
+        let local = TargetId::Local;
+        let here = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert!(!missing_locally(&local, &here), "a folder that is there");
+        assert!(missing_locally(
+            &local,
+            &format!("{here}/definitely-not-here-9f2")
+        ));
     }
 
     #[test]

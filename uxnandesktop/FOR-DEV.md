@@ -28,10 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 742 Rust tests (706 unit + 36
+always wins). 744 Rust tests (708 unit + 36
 integration), of which 34 are ignored probes that need something real to talk to
 (26 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,168 passing frontend Vitest tests across two
+real-scheduler probe) + 1,170 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -906,6 +906,15 @@ user-facing `docs/remote-hosts.md`.
          `ssh-keygen -lf` byte for byte. Point any host at it with
          `UXNAN_SSH_TEST_HOST=<host[:port]>`.
       5. Idle cost of an open connection, measured with `npm run bench`.
+- [ ] **Say when a *host's* project folder is gone.** `repos_missing` now only
+      answers for local projects — this machine's filesystem cannot speak for
+      another one, and asking it anyway put a "folder is missing" warning on a
+      perfectly healthy remote project. So a host's project is never marked,
+      which is honest but incomplete: a folder really deleted on the host looks
+      fine until something fails. Asking the host is one SFTP `stat` per remote
+      project on a connected host (`ssh/sftp.rs`), with "not connected" reported
+      as unknown rather than missing — the disconnected state has its own
+      indicator already.
 - [ ] **Push a dropped session to the UI.** `ssh_hosts_connected` no longer
       lists a corpse (it filters on the transport) and a keepalive now notices a
       dead host in ~2 minutes instead of 5 — but the frontend still only finds
@@ -1416,7 +1425,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 742 Rust + 1,168 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 744 Rust + 1,170 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

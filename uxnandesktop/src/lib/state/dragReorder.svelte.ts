@@ -18,7 +18,9 @@ export interface DragReorderOptions {
   keys: () => string[];
   /** Called with the new key order when a drag completes over a valid slot. */
   onCommit: (orderedKeys: string[]) => void;
-  /** Elements matching this selector never start a drag (buttons, links, …). */
+  /** Elements matching this selector never start a drag (buttons, links, …).
+   *  A control that *is* the row — the whole identity region of a project card
+   *  is a button, for the keyboard — opts back in with `data-drag-handle`. */
   ignoreSelector?: string;
 }
 
@@ -44,7 +46,13 @@ export function createDragReorder(opts: DragReorderOptions) {
 
   function pointerDown(e: PointerEvent, key: string) {
     if (e.button !== 0) return; // left button only
-    if ((e.target as HTMLElement).closest(ignore)) return; // let controls work
+    // Controls inside a row keep working — except one marked as the row's own
+    // drag handle. A project card's identity region is a `<button>` (it has to
+    // be reachable from the keyboard), and without this exemption pressing the
+    // project's name or icon — which is the whole card — could never start a
+    // drag, so the cards simply could not be reordered by hand.
+    const blocker = (e.target as HTMLElement).closest(ignore);
+    if (blocker && !blocker.hasAttribute("data-drag-handle")) return;
     drag = {
       key,
       pointerId: e.pointerId,
