@@ -24,7 +24,12 @@
     TERMINAL_TEMPLATES,
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
-  import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
+  import {
+    AGENT_CATALOG,
+    agentLogoKey,
+    backendAgentLogo,
+    type CatalogAgent,
+  } from "$lib/agentCatalog";
   import { activatableUsageProviders, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
   import { statusMeta } from "$lib/usageFormat";
   import { detectAgents, usageDetect, revealPath } from "$lib/api";
@@ -64,6 +69,7 @@
   import ResourceModeSection from "./ResourceModeSection.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
+  import AgentSettingsRow from "./AgentSettingsRow.svelte";
   import { TERMINAL_SCROLLBACK_PRESETS } from "$lib/terminal/scrollback";
   import {
     SHORTCUT_GROUPS,
@@ -1639,49 +1645,68 @@
                     {/snippet}
                   </SettingsRow>
 
-                  {#if mcpData && mcpData.agents.length > 0}
-                    <SettingsRow label={i18n.t("browser.mcpAgents")} description={i18n.t("browser.mcpAgentsDesc")}>
-                      {#snippet children()}
-                        <div class="flex flex-wrap gap-x-6 gap-y-2.5">
-                          {#each mcpData?.agents ?? [] as agent (agent.id)}
-                            <label class="flex items-center gap-2 text-[13px]">
-                              <Switch
-                                checked={mcpAgentOn(agent.id)}
-                                disabled={!br.enabled || !br.mcpEnabled || br.mcpInjection === "off"}
-                                onCheckedChange={(c) => toggleMcpAgent(agent.id, c)}
-                              />
-                              <span class="text-foreground/80">{agent.label}</span>
-                            </label>
-                          {/each}
-                        </div>
-                      {/snippet}
-                    </SettingsRow>
-                  {/if}
-
-                  <SettingsRow label={i18n.t("browser.mcpSnippet")} description={i18n.t("browser.mcpSnippetDesc")}>
-                    {#snippet children()}
-                      {#if mcpSnippet}
-                        <div class="relative mt-1 w-full">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            class="absolute right-1.5 top-1.5 gap-1 px-1.5 text-[11px]"
-                            onclick={copyMcpSnippet}
-                          >
-                            {#if mcpCopied}
-                              <Icon icon={CheckIcon} class="size-3" />{i18n.t("browser.mcpCopied")}
-                            {:else}
-                              <Icon icon={CopyIcon} class="size-3" />{i18n.t("browser.mcpCopy")}
-                            {/if}
-                          </Button>
-                          <pre class="scrollbar-sleek overflow-x-auto rounded-lg border border-border/50 bg-muted/40 p-3 pr-16 font-mono text-[11px] leading-relaxed text-foreground/80">{mcpSnippet}</pre>
-                        </div>
-                      {:else}
-                        <span class="text-[12px] text-muted-foreground">{i18n.t("browser.mcpWaiting")}</span>
-                      {/if}
-                    {/snippet}
-                  </SettingsRow>
                 </div>
+                </div>
+              </div>
+
+              <!-- Which agents get wired, one row each: the agent's mark and the
+                   config file its entry lands in, with the switch on the right —
+                   the same shape Settings → Hooks lists its agents in. -->
+              {#if mcpData && mcpData.agents.length > 0}
+                <div class="space-y-2">
+                  <div class="px-1">
+                    <span class={text.section}>{i18n.t("browser.mcpAgents")}</span>
+                    <p class={cn("mt-1", text.meta)}>{i18n.t("browser.mcpAgentsDesc")}</p>
+                  </div>
+                  <div class={panel.settingsBody}>
+                    <div class="divide-y divide-border/60">
+                      {#each mcpData?.agents ?? [] as agent (agent.id)}
+                        <AgentSettingsRow
+                          logo={backendAgentLogo(agent.id)}
+                          name={agent.label}
+                          path={agent.configPath}
+                        >
+                          {#snippet control()}
+                            <Switch
+                              checked={mcpAgentOn(agent.id)}
+                              disabled={!br.enabled || !br.mcpEnabled || br.mcpInjection === "off"}
+                              aria-label={i18n.t("browser.mcpAgentAria", { agent: agent.label })}
+                              onCheckedChange={(c) => toggleMcpAgent(agent.id, c)}
+                            />
+                          {/snippet}
+                        </AgentSettingsRow>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+              {/if}
+
+              <!-- Manual wiring, for an agent the ADE doesn't configure itself. -->
+              <div class="space-y-2">
+                <div class="px-1">
+                  <span class={text.section}>{i18n.t("browser.mcpSnippet")}</span>
+                  <p class={cn("mt-1", text.meta)}>{i18n.t("browser.mcpSnippetDesc")}</p>
+                </div>
+                <div class={panel.settingsBody}>
+                  {#if mcpSnippet}
+                    <div class="relative">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="absolute right-1.5 top-1.5 gap-1 px-1.5 text-[11px]"
+                        onclick={copyMcpSnippet}
+                      >
+                        {#if mcpCopied}
+                          <Icon icon={CheckIcon} class="size-3" />{i18n.t("browser.mcpCopied")}
+                        {:else}
+                          <Icon icon={CopyIcon} class="size-3" />{i18n.t("browser.mcpCopy")}
+                        {/if}
+                      </Button>
+                      <pre class="scrollbar-sleek overflow-x-auto rounded-lg border border-border/50 bg-muted/40 p-3 pr-16 font-mono text-[11px] leading-relaxed text-foreground/80">{mcpSnippet}</pre>
+                    </div>
+                  {:else}
+                    <span class="text-[12px] text-muted-foreground">{i18n.t("browser.mcpWaiting")}</span>
+                  {/if}
                 </div>
               </div>
             </div>

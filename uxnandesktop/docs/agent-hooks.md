@@ -51,9 +51,8 @@ for it is answer enough.
 > **TL;DR.** Open **Settings → Agents → Hooks**:
 > - The agents on your machine are listed first and are **already installed**
 >   (auto on startup). The **Install agent hooks** switch turns them off (and
->   keeps them off next launch) or back on; each agent also has its own
->   Install/Uninstall and a **Show config** disclosure with the exact bytes the
->   ADE writes.
+>   keeps them off next launch) or back on; each agent also has its own switch
+>   and a chevron disclosing the exact bytes the ADE writes.
 > - **Anything else** → use the **generic wrapper** as the agent's launch
 >   command (full step-by-step per OS below).
 
@@ -385,11 +384,16 @@ The per-agent notes below are what each CLI made us learn the hard way:
 
 In **Settings → Agents → Hooks**, a master **Install agent hooks** switch installs
 / removes every agent and persists the choice (`AppSettings.autoInstallHooks`).
-The pane lists the agents on this machine first and everything else after; each
-one has its own **Install** / **Uninstall**, an honest status badge, the path its
-reporter is written to, and a **Show config** disclosure rendering the exact
-bytes the ADE writes (for OpenCode and Pi — whose reporter *is* a file — its
-source).
+Below it the agents are listed as ordinary settings rows — the agent's mark and
+name, one line on what its reporter reports, and a **switch on the right** that
+installs or removes it (installing needs the master switch on; removing never
+does, so you can always clean up). The agents **on this machine** are listed
+first and open; everything else sits in a collapsed **Other agents** group,
+which you can still install into — a reporter written today starts reporting the
+day you install that CLI. Each row's **chevron** discloses the path its reporter
+is written to and the exact bytes the ADE writes (for OpenCode and Pi — whose
+reporter *is* a file — its source). An agent whose config can't be written keeps
+its switch off and disabled, with the reason under its name.
 
 **Verify.** Launch Claude Code in any terminal. The tab should show a colored
 dot from a precise state (working while it's thinking / using a tool, waiting
@@ -518,8 +522,8 @@ profile.
 
 ## Uninstall / revert
 
-- **Claude Code** — **Settings → Agents → Hooks** → **Uninstall**. Removes
-  only the ADE-managed `hooks` block; your own `hooks` survive.
+- **Claude Code** — **Settings → Agents → Hooks** → turn its row's switch off.
+  Removes only the ADE-managed `hooks` block; your own `hooks` survive.
 - **Generic wrapper** — delete the custom agent profile you added in
   **Settings → Agents**. There's nothing on disk to remove (the wrapper
   scripts themselves stay, in case you want to wire another agent later).
@@ -687,10 +691,10 @@ reported the literal `"agent"`, which the server now rejects outright.
 **Tab still shows the gray `idle` dot with a Webhook icon next to it.**
 The hook isn't installed (or isn't being invoked) for that agent.
 
-- **Claude Code:** confirm **Settings → Agents → Hooks** says *Installed at …*.
-  If it says *Not installed*, click **Install**. If it says *Installed*, the
-  block was merged but Claude Code might be running an older session — quit
-  and restart Claude Code so it re-reads `~/.claude/settings.json`.
+- **Claude Code:** confirm its row's switch in **Settings → Agents → Hooks** is
+  on. If it's off, turn it on. If it's already on, the block was merged but
+  Claude Code might be running an older session — quit and restart Claude Code
+  so it re-reads `~/.claude/settings.json`.
 - **Wrapper (custom agent):** open the agent profile in **Settings →
   Agents** and confirm **Command** is the wrapper script's absolute path and
   **Arguments** matches the wrapper's signature for your OS (Bash / cmd:
@@ -756,8 +760,9 @@ generated on every launch.
 
 ## See also
 
-- **UI:** Settings → Agents → Hooks (install / uninstall Claude Code,
-  inspect the rendered JSON, copy the wrapper script for your platform).
+- **UI:** Settings → Agents → Hooks (one switch per agent to install or remove
+  its reporter, inspect the rendered JSON, copy the wrapper script for your
+  platform).
 - [Agent launch & configuration](./agent-launch.md) — register agents, env vars,
   the launch shell, auto-launch.
 - [Multi-agent orchestration](./orchestration.md) — precise hook states make its

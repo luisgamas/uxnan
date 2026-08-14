@@ -244,6 +244,26 @@ nothing is a no-op).
 
 ### Changed
 
+- **The two agent lists in Settings read like the rest of Settings.** **Hooks**
+  and **Browser → Agents** each invented their own shape — Hooks nested a
+  master–detail card with a navigation rail of its own inside a pane that already
+  has one, and the browser MCP agents were a wrapped grid of unlabelled switches
+  inside a single row. Both are now ordinary settings rows: the agent's mark and
+  name on the left, one line of context under it, and the switch on the right,
+  grouped under section labels above the usual body band. Nothing moved out of
+  reach — every agent's state is readable at a glance again instead of one
+  selection at a time. Both lists render through one shared `AgentSettingsRow`
+  (itself a `SettingsRow`), so they can't drift apart into two shapes again.
+- **A hook is installed per agent by its row's switch**, replacing the
+  Install/Uninstall button pair and the status badge (installing still needs the
+  master **Install agent hooks** switch on; removing never does). The agents on
+  this machine stay first and open; the rest fold into a collapsed **Other
+  agents** group. Each row's chevron discloses the config path and the exact
+  bytes the ADE writes — fetched only for the row you open, as before.
+- **Browser → Agents shows where each agent's MCP entry is written**, the same
+  metadata the hooks list shows: `mcp_info` now returns each agent's user-global
+  config file (`McpAgentInfo.configPath`).
+
 - **Where a worktree goes is decided in one place.** It used to be computed in
   the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
   copy that had already drifted into a different folder name for the same

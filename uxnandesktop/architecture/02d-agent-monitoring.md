@@ -116,9 +116,11 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   **Endpoint file:** el servidor escribe `endpoint.env`/`endpoint.cmd` (url+token
   vivos) al arrancar e inyecta `UXNAN_ENDPOINT_FILE`; cada reporter lo prefiere,
   así una terminal que sobrevive a un reinicio del ADE alcanza al servidor vivo.
-  **Settings → Agents → Hooks** expone un botón **Install** por agente (mergea de
-  forma idempotente, marcando lo gestionado por el nombre del script/relay);
-  Uninstall es su reverso. Así los estados precisos funcionan out-of-the-box.
+  **Settings → Agents → Hooks** expone un **switch por agente** — una fila de
+  ajustes por CLI, agrupadas en «en este equipo» y el resto — que instala
+  (mergeando de forma idempotente, marcando lo gestionado por el nombre del
+  script/relay) o desinstala, su reverso. Así los estados precisos funcionan
+  out-of-the-box.
 - **Seguridad del servidor local (defensa en profundidad):** el servidor liga
   solo a `127.0.0.1` (loopback) con puerto efímero y exige el **token por
   lanzamiento** (nunca escrito a disco). Sobre esa base: (a) el token se compara
@@ -570,7 +572,7 @@ El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un 
 
 **Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). Los agentes reciben la configuracion MCP de su propio CLI apuntando a `/mcp`, pero el **token nunca se escribe en un archivo**: cada config lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente. Consecuencia de diseno: la config inyectada **solo funciona dentro de una terminal lanzada por uxnan** — un agente ejecutado en otro entorno lee el mismo archivo pero no tiene la variable, no autentica y el servidor simplemente no carga para el (no puede secuestrar el navegador in-app).
 
-**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, OpenCode, Grok) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.grok/config.toml`) — nunca en el directorio del proyecto. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
+**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, OpenCode, Grok, Qwen Code, Droid, MiMo Code — la tabla completa de rutas esta en `docs/browser.md`) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.grok/config.toml`, …) — nunca en el directorio del proyecto. Esa ruta viaja al frontend en `McpAgentInfo.configPath`, para que **Settings → Browser → Agents** muestre bajo cada agente el archivo donde aterriza su entrada, igual que la lista de Hooks. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
 
 - **`managed`** (default): la escritura global-de-usuario descrita arriba, mas — cuando **`friction_free`** esta activo — la supresion del aviso de confianza de carpeta de Codex para agentes lanzados por la app mediante una semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `config.toml` (respeta una decision explicita del usuario).
 - **`global`**: identica escritura global-de-usuario, pero sin la supresion de confianza (los CLI conservan sus avisos nativos).

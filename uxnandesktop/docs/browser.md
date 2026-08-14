@@ -128,7 +128,7 @@ CSRF / DNS-rebinding.
 | **Agent browser MCP** | Master switch for exposing the `browser_*` tools to agents. Off → no MCP config is injected (the `/mcp` endpoint still exists for manual wiring). | On |
 | **Setup mode** | `Managed` registers the server in each CLI's **user-global** config only — never your project folder, so nothing lands in your files and no "approve this MCP server?" prompt appears (hand-typed agents pick it up too). `Global` is the same user-global config but leaves the CLIs' own trust prompts intact. `Off` injects nothing. | Managed |
 | **Frictionless launch** | (Managed only) Skip the CLI's "trust this folder?" prompt where supported — currently Codex via a per-folder `trust_level` seed. Turn off to keep the native prompt. | On |
-| **Per-agent** | Toggle injection per agent. | All on |
+| **Agents** | One row per supported agent — its mark, its user-global config file, and a switch that turns injection on or off for it. | All on |
 | **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one the ADE doesn't auto-configure yet. | — |
 
 > The legacy **Workspace** mode (project-scoped config files in the working

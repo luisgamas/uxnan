@@ -82,6 +82,18 @@ canonical `panel.settingsBody` band, `SettingsRow` consumes `row.settings`, and
 editor/list callers compose the named `row.*`, `field.*`, `tab.*`, and `control.*`
 roles. A pixel-equivalent local class is not a substitute for the shared role.
 
+A settings row that stands for an *entity* rather than a preference — an agent in
+**Hooks** or in **Browser → Agents** — is still a `SettingsRow` underneath, via
+the shared `AgentSettingsRow`: `SettingsRow`'s `leading` snippet carries the mark
+(an `AgentLogo` at `icon.brand`), `meta` carries the lines under the description
+(the config path in `font-mono`, an exceptional-state note), and the control on
+the right stays the ordinary `Switch`, with per-agent extras behind a disclosure
+that opens *under* the row. Both agent lists go through that one component on
+purpose, so they cannot drift into two different shapes. Group such lists under a
+`text.section` label outside the band, the way the settings panes already group
+`panel.settingsBody` bands — never inside a nav rail or a card of its own, which
+would nest a second navigation surface in a pane that already has one.
+
 ```svelte
 <Button size="default">Run</Button>       <!-- 36px standard -->
 <Button size="sm">Filter</Button>         <!-- 32px compact -->
