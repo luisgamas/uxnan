@@ -822,6 +822,15 @@ export interface SshRemoteListing extends DirListing {
   truncated: boolean;
 }
 
+/** One live session on a host (mirror of Rust `SshHostSession`). */
+export interface SshHostSession {
+  hostId: string;
+  /** Which incarnation of the connection this is. It travels back with every
+   *  mutation the app prepares, so a save prepared against one connection cannot
+   *  execute against its replacement. */
+  generation: number;
+}
+
 /** What a host reported about itself (mirror of Rust `HostInventory`). */
 export interface SshHostInventory {
   os: string;

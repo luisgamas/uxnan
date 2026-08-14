@@ -418,9 +418,24 @@ encontro un test en vivo que exigia que saltara el evento de salida — fallo la
 primera vez que se escribio. Por eso existe `close_host`, y por eso se llama
 **antes** de quitar la sesion, mientras todavia hay por donde despedirse.
 
-Queda un hueco, anotado en `FOR-DEV.md` en vez de disimulado: una caida **de
-red** (no iniciada por el usuario) solo se nota cuando expira el timeout de
-inactividad de la conexion.
+**Un host callado no es un host caido.** Los dos timers de `conn.rs` mentian en
+las dos direcciones: sin keepalive, una conexion en la que nadie tecleaba se
+**segaba a los 5 minutos** —una sesion SSH no lleva nada mientras una shell
+espera en su prompt— y una que si se habia caido tardaba esos mismos 5 minutos en
+notarse, con sus terminales aparentando estar vivas contra una maquina ausente.
+Ahora se pregunta cada **30 s** y se toleran **3** sin respuesta
+(`KEEPALIVE_INTERVAL` / `KEEPALIVE_MAX_MISSED`), que es donde aterrizan los
+clientes maduros: OpenSSH trae `ServerAliveInterval` **apagado**, y la guia para
+editores con sesiones largas es 30–60 s con 3–5 fallos. Tambien evita que un NAT
+o un firewall corte una conexion ociosa por su cuenta. Un host vivo responde
+—eso reinicia ambos timers— y uno muerto se reporta en ~2 minutos.
+
+Lo comprueba un test en vivo que **se queda quieto mas de esos 5 minutos** y
+despues usa la conexion; sin el keepalive falla. Esta `--ignored` por lo que
+cuesta, y hay que correrlo cuando se toque cualquiera de los dos timers.
+
+Queda un hueco, anotado en `FOR-DEV.md` en vez de disimulado: cuando la conexion
+se cae, el frontend no recibe **evento**; se entera al preguntar.
 
 Validado en vivo contra un `sshd` real: abrir, escribir un comando, leer su eco,
 redimensionar y cerrar; crear dos veces el mismo id no abre dos terminales; y
@@ -668,6 +683,44 @@ una sesion muerta: la suelta —con su shell y su sesion de ficheros— y vuelve
 conectar. Si no, la app decia "conectado" mientras nada funcionaba y pulsar
 Conectar no arreglaba nada, porque el atajo de "ya hay sesion" respondia primero.
 
+### Guardar: en el sitio, porque el reemplazo atomico no existe aqui
+
+`RemoteFiles::write_file`. En local se escribe a un temporal y se renombra
+encima — atomico. **Sobre SFTP eso no se puede**, y no es opinion: medido contra
+un `sshd` real, en este orden.
+
+| Medicion | Resultado |
+|---|---|
+| `SSH_FXP_RENAME` sobre una ruta **que ya existe** | **Falla** (`Status: Failure`) |
+| `write()` de la libreria (abre solo con `WRITE`) | Escribir `SHORT` sobre un fichero mas largo dejo `SHORTCONTENT-0123456789` |
+| `WRITE \| CREATE \| TRUNCATE` | Correcto, incluido acortar y vaciar |
+| `fsync@openssh.com` | Soportado por este servidor |
+
+El rename que **sobrescribe** es la extension `posix-rename@openssh.com`, que la
+libreria cliente no implementa (y que en OpenSSH para Windows fue durante años
+un `unlink`+`rename`, o sea tampoco atomico). Asi que "temporal y renombra"
+fallaria en **todos** los guardados salvo el primero.
+
+Y el plan B —borrar el destino y luego renombrar— cambia un fichero truncado por
+uno **inexistente**, que es el fallo peor: tras una escritura mala el editor
+sigue teniendo el texto, tras un borrado malo no lo tiene nadie. Un temporal
+ademas **pierde permisos y dueño** del destino, porque lo que sobrevive es el
+temporal.
+
+Por eso se escribe **en el sitio**: `WRITE | CREATE | TRUNCATE`, escribir, pedir
+`fsync` (best effort: un host sin la extension no es motivo para fallar un
+guardado que ya acepto), cerrar, y **preguntar el tamaño al host**. Ese ultimo
+paso es el unico que detecta un guardado que almaceno menos bytes de los que se
+enviaron — el editor no puede notarlo solo, y seguiria mostrando texto que el
+host no tiene. Conserva el fichero tal cual: modo, dueño, enlaces duros y a
+donde apunta un symlink.
+
+**Fenced** (`02a` §2.9): `ssh_fs_write` verifica maquina y generacion **antes**
+de abrir, porque abrir ya trunca. La generacion viaja al frontend en
+`ssh_hosts_connected` —no solo en el informe de conexion— porque la ventana se
+recarga mucho mas a menudo de lo que se conecta un host, y sin eso cada guardado
+posterior a una recarga llevaria una expectativa que no emitio nadie.
+
 **Lo que no hace, y se dice:**
 
 | | Estado |
@@ -676,7 +729,8 @@ Conectar no arreglaba nada, porque el atajo de "ya hay sesion" respondia primero
 | Marcar ignorados por git (`ignored`) | **No**: solo git puede responderlo, y git remoto es su propia pieza. Un arbol que no atenua nada es honesto; uno que adivina esta mal en silencio |
 | Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
 | Refresco automatico | **No**: el watcher es local. El boton de refrescar es la recarga |
-| Escribir / renombrar / borrar | **Pendiente** (SFTP lo soporta; falta el paso de escritura y su fencing) |
+| Guardar un fichero | **Funciona** — en el sitio y con fencing (arriba) |
+| Renombrar / borrar / crear desde el arbol | **Pendiente**: el menu contextual sigue siendo local |
 
 Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
 rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
@@ -758,7 +812,7 @@ Tres piezas, en orden de valor y de riesgo:
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
-| Ficheros | **Funciona** por SFTP (§5.10): listar y abrir, **de solo lectura**. Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
+| Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Cambios / Historial / GitHub | **No disponible**: el diff, el staging y el historial leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
 | Rama y estado git de la fila | **No disponible**: sin git remoto no hay rama que mostrar. Fase 3 |
@@ -773,7 +827,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales y mostrar el inventario en la UI |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10) y rama/estado de git (§5.10b) hechos; diff/staging, escritura, busqueda y el ayudante en el host, pendientes (§5.11) |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**) y rama/estado de git (§5.10b) hechos; diff/staging, busqueda, operaciones de fichero y el ayudante en el host, pendientes (§5.11) |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

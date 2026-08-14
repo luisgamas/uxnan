@@ -58,6 +58,14 @@ class HostsStore {
   hosts = $state<SshHost[]>([]);
   /** Host ids with a live session. */
   connected = $state<string[]>([]);
+  /** Which incarnation each connected host's connection is, keyed by host id.
+   *
+   *  Kept because a **mutation carries it**: a save prepared against one
+   *  connection must not execute against its replacement (`$lib/target`). It is
+   *  read from the connected list rather than only from a connect report,
+   *  because the window is reloaded far more often than a host is connected —
+   *  after a reload the app would otherwise send a generation nobody issued. */
+  generations = $state<Record<string, number>>({});
   /** Host ids with an operation in flight, so their row can show it. */
   busy = $state<string[]>([]);
   error = $state<string | null>(null);
@@ -100,10 +108,45 @@ class HostsStore {
   async load(): Promise<void> {
     try {
       this.hosts = await sshHostsList();
-      this.connected = await sshHostsConnected();
+      await this.refreshSessions();
     } catch (e) {
       this.error = msg(e);
     }
+  }
+
+  /** Re-read which hosts are up and which incarnation each one is. */
+  private async refreshSessions(): Promise<void> {
+    const sessions = await sshHostsConnected();
+    this.connected = sessions.map((s) => s.hostId);
+    this.generations = Object.fromEntries(sessions.map((s) => [s.hostId, s.generation]));
+  }
+
+  /** The connection generation for a host, or `undefined` when it is not
+   *  connected. A caller that cannot name the incarnation must not prepare a
+   *  mutation — `undefined` is the signal to refuse, never to send a zero. */
+  generationOf(hostId: string): number | undefined {
+    return this.generations[hostId];
+  }
+
+  /** Bring back the hosts that can be reached without asking the user anything.
+   *
+   *  Called once at startup. Two rules decide who is in:
+   *
+   *  - **A host that needed a prompt is left alone.** `needsPrompt` records that
+   *    the machine asked for a password or a key passphrase last time, and a
+   *    stack of credential dialogs at launch is not a greeting — those connect
+   *    when the user asks.
+   *  - **A host already connected is left alone**, so a reload does not reopen
+   *    what the backend never dropped.
+   *
+   *  Failures are deliberately quiet: an unreachable host at startup is an
+   *  ordinary state (laptop closed, VPN not up yet), and the panels that need it
+   *  already say they are waiting. `connect` records its own error for the
+   *  Settings row. */
+  async resume(): Promise<void> {
+    await this.load();
+    const silent = this.hosts.filter((h) => !h.needsPrompt && !this.isConnected(h.id));
+    await Promise.all(silent.map((h) => this.connect(h.id)));
   }
 
   /** The `Host` aliases in the user's SSH config, for the import list. */
@@ -179,7 +222,7 @@ class HostsStore {
       const label = this.labelOf(hostId);
       switch (report.status) {
         case "connected":
-          this.connected = await sshHostsConnected();
+          await this.refreshSessions();
           if (report.shell) {
             this.shells = { ...this.shells, [hostId]: report.shell };
           }
@@ -294,7 +337,7 @@ class HostsStore {
     this.error = null;
     try {
       await sshHostDisconnect(hostId);
-      this.connected = await sshHostsConnected();
+      await this.refreshSessions();
       // A reconnect asks both again: the machine may be configured differently.
       const { [hostId]: _shell, ...shells } = this.shells;
       this.shells = shells;

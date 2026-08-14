@@ -355,6 +355,11 @@ class AppStore {
       void loadMcpLaunch();
       // Check hook health in the background (drives the status-bar indicator).
       void this.refreshHooksStatus();
+      // Bring the registered hosts back up, in the background. Until now this
+      // only happened when Settings → Hosts was opened, so after a restart a
+      // project on a host had a panel, a terminal and a save button that all
+      // needed a session nobody had asked for (`hosts.resume`).
+      void hosts.resume();
     } catch (err) {
       this.backend = "error";
       this.errorMessage = err instanceof Error ? err.message : String(err);

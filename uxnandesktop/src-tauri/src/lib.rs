@@ -431,6 +431,7 @@ pub fn run() {
             commands::ssh_git_status,
             commands::ssh_fs_list,
             commands::ssh_fs_read,
+            commands::ssh_fs_write,
             commands::ssh_repo_add,
             commands::browse_dirs,
             commands::fs_list_dir,

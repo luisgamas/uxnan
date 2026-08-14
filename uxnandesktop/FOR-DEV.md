@@ -28,10 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 736 Rust tests (700 unit + 36
-integration), of which 31 are ignored probes that need something real to talk to
-(23 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,156 passing frontend Vitest tests across two
+always wins). 738 Rust tests (702 unit + 36
+integration), of which 33 are ignored probes that need something real to talk to
+(25 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
+real-scheduler probe) + 1,167 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -906,13 +906,12 @@ user-facing `docs/remote-hosts.md`.
          `ssh-keygen -lf` byte for byte. Point any host at it with
          `UXNAN_SSH_TEST_HOST=<host[:port]>`.
       5. Idle cost of an open connection, measured with `npm run bench`.
-- [ ] Reconnect on startup for hosts that need no prompt. `needs_prompt` is
-      recorded at connect time and persisted; nothing reads it yet, so every
-      launch starts with no sessions. The partitioning is the point — silent
-      hosts come back on their own, the rest wait for the user.
-- [ ] Surface a dropped session. A connection that dies is only noticed when the
-      next command on it fails; the UI has no event to react to, and
-      `ssh_hosts_connected` will happily list a corpse.
+- [ ] **Push a dropped session to the UI.** `ssh_hosts_connected` no longer
+      lists a corpse (it filters on the transport) and a keepalive now notices a
+      dead host in ~2 minutes instead of 5 — but the frontend still only finds
+      out by asking. There is no event, so a host that drops while its panel is
+      open keeps looking connected until something is clicked. Needs an emit on
+      the connection ending, and the UI reacting to it.
 - [ ] A **reconnect ladder**. One connection with N channels and a generation
       per connection is in place (`ssh/conn.rs`), and so is host-key
       verification with its TOFU confirmation in the UI; what is missing is
@@ -943,16 +942,6 @@ user-facing `docs/remote-hosts.md`.
       whose parent was a terminal we opened. Whatever it becomes, it belongs
       beside the existing orphan sweep rather than as a second popup — the user
       should not have to learn two places to ask "what is still running".
-- [ ] Notice a host that dropped *by itself*, **while it is dropping**. Once the
-      transport is actually closed the app no longer lies about it — a closed
-      connection stops counting as connected (`ssh_hosts_connected`) and Connect
-      reconnects instead of short-circuiting — but *reaching* that point still
-      waits for the connection's inactivity timeout (`INACTIVITY_TIMEOUT`, 300 s)
-      or for something to try to use it. Until then a tab looks alive against a
-      machine that is gone. What is missing is a keepalive
-      (`russh::client::Config::keepalive_interval`, which also stops an idle host
-      being reaped for being quiet) or another transport-level signal, plus
-      telling the UI without it having to ask.
 
 ### Frontend (Svelte)
 - [ ] **A remote project has files, but not git.** Listing and opening work over
@@ -960,11 +949,12 @@ user-facing `docs/remote-hosts.md`.
       agnostic and needs nothing installed on the host. What is left, in order:
       **diff, staging and history** (the branch and change count already come
       from `ssh/git.rs` — what is left is per-file diffs, the index and commit,
-      which is what the Changes/History tabs need), **writing files** over SFTP (a remote file is read-only today, and says so rather than writing a copy on this machine)
-      with the `02a` §2.9 fencing, **searching** a host's tree (the affordance is
-      hidden today rather than offered broken, because it walks this filesystem),
-      and then the pieces none of that covers: watching for changes and bulk
-      operations. Spec: `02g` §5.10–§5.11.
+      which is what the Changes/History tabs need), **searching** a host's tree
+      (the affordance is hidden today rather than offered broken, because it
+      walks this filesystem), and then the pieces none of that covers: watching
+      for changes, and file operations beyond saving — create, rename, delete and
+      the tree's context menu are still local-only. Saving a file **works**, in
+      place and fenced (`02g` §5.10). Spec: `02g` §5.10–§5.11.
 - [ ] **Stop talking to the host's shell at all (phase 3).** Placing a terminal
       in a directory, reading files and running git are all done today by
       *typing* into whatever shell the host's sshd starts. `ssh::shellkind`
@@ -1426,7 +1416,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 736 Rust + 1,156 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 738 Rust + 1,167 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -36,10 +36,27 @@ use crate::error::AppError;
 /// surfaced as an error the user can retry than as a UI that hangs.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Drops the connection when neither side has spoken for this long. The upper
-/// layers keep it alive while a session is in use; this only reaps forgotten
-/// ones so an idle host costs nothing.
+/// Drops the connection when neither side has spoken for this long — the
+/// backstop behind the keepalive below, not the way a dead host is noticed.
 const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// How often to ask a silent host whether it is still there, and how many
+/// unanswered asks end the connection.
+///
+/// Without this the two timers above lied in both directions. A host nobody had
+/// typed at for five minutes was **reaped for being quiet** — an SSH connection
+/// carries nothing while a shell sits at its prompt — and a host that had really
+/// gone away was not noticed until that same five minutes had passed, so its
+/// terminals sat there looking alive against a machine that was gone.
+///
+/// 30 seconds with three tolerated misses is what mature clients settle on
+/// (OpenSSH ships `ServerAliveInterval` **off**, and the guidance for editors
+/// driving long-lived sessions is 30–60s with 3–5 misses). It also keeps a NAT
+/// or firewall from dropping an idle connection out from under us, which is the
+/// same reason those clients turn it on. A live host answers each one, which
+/// resets both timers; a dead one is reported in ~two minutes instead of five.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const KEEPALIVE_MAX_MISSED: usize = 3;
 
 /// Monotonic connection counter. Never reset, never reused: a generation
 /// identifies one *incarnation* of a connection for the lifetime of the process,
@@ -231,6 +248,8 @@ pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake,
 
     let config = Arc::new(client::Config {
         inactivity_timeout: Some(INACTIVITY_TIMEOUT),
+        keepalive_interval: Some(KEEPALIVE_INTERVAL),
+        keepalive_max: KEEPALIVE_MAX_MISSED,
         ..Default::default()
     });
 
@@ -319,6 +338,54 @@ mod tests {
     /// `cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml -- --ignored ssh::conn`
     mod live {
         use super::*;
+
+        /// A connection nobody types at must still be there five minutes later.
+        ///
+        /// This is the one test that actually proves the keepalive, and it costs
+        /// what it measures: it sits idle for longer than `INACTIVITY_TIMEOUT`
+        /// and then uses the connection. Without `KEEPALIVE_INTERVAL` it fails —
+        /// an SSH connection carries nothing while a shell sits at its prompt,
+        /// so the inactivity timer reaped a host whose only crime was being
+        /// quiet. Ignored by default for the obvious reason; run it whenever
+        /// either timer is touched.
+        #[tokio::test]
+        #[ignore = "needs a local sshd, and idles for five minutes on purpose"]
+        async fn an_idle_connection_outlives_the_inactivity_timeout() {
+            use crate::ssh::auth::{authenticate, AuthOutcome, Credential};
+
+            let user = std::env::var("UXNAN_SSH_TEST_USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .expect("a username");
+            let endpoint = Endpoint::new("127.0.0.1", LOCAL_SSHD);
+            let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+                panic!("expected an unknown host");
+            };
+            let trusted = super::super::hostkey::trust_line("127.0.0.1", LOCAL_SSHD, &key);
+            let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+                panic!("the recorded key should verify");
+            };
+            match authenticate(&mut conn, &user, &[Credential::Agent])
+                .await
+                .unwrap()
+            {
+                AuthOutcome::Success { .. } => {}
+                other => panic!("authenticate with the agent first: {other:?}"),
+            }
+
+            let idle = INACTIVITY_TIMEOUT + Duration::from_secs(20);
+            println!("live: idling {idle:?} with no traffic at all");
+            tokio::time::sleep(idle).await;
+
+            assert!(
+                !conn.handle().is_closed(),
+                "the connection was reaped while idle; the keepalive is not doing its job"
+            );
+            conn.handle()
+                .channel_open_session()
+                .await
+                .expect("an idle connection still opens channels");
+            println!("live: still usable after {idle:?}");
+        }
 
         #[tokio::test]
         #[ignore = "needs a local sshd; run explicitly with --ignored"]

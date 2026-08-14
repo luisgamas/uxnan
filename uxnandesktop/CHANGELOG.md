@@ -7,6 +7,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A file on a host can be saved.** The editor writes it back over SFTP, so it
+  works whatever shell that machine runs and needs nothing installed there. It
+  writes **in place** rather than to a temp file that is renamed over the
+  original, and that is not a shortcut: measured against a real `sshd`, renaming
+  onto a path that already exists is *refused* by SFTP v3 — the atomic-overwrite
+  rename is an OpenSSH extension the client library does not implement — so the
+  usual strategy would fail on every save after the first. Its fallback (delete,
+  then rename) trades a truncated file for a missing one, which is the worse
+  loss: after a bad write the editor still holds your text, after a bad delete
+  nobody does. Writing in place also keeps the file's permissions, owner and
+  hard links, which a temp file silently replaces with its own.
+
+  Two guards come with it. The save is **fenced**: it names the machine and the
+  connection it was prepared for, and the backend refuses it before opening the
+  file when that no longer matches — the same absolute path usually exists on
+  both machines, so a misrouted save is the one that looks like success. And
+  after writing, the host is asked how big the file ended up: a save that stored
+  fewer bytes than were sent is reported instead of leaving the editor showing
+  text the host does not have. Saving is refused, with the host named, while
+  that host is disconnected.
+- **Hosts come back on their own at startup.** A host that let uxnan in without
+  asking for anything is reconnected when the app starts, so a project on it has
+  its files, its branch and its terminal without opening Settings first. A host
+  that asked for a password or a passphrase last time is deliberately left for
+  the user to connect: a stack of credential prompts at launch is not a greeting.
+
 - **A project can live on another machine.** A connected host offers *Add
   project*: walk its folders from its own home, and the folder you are in becomes
   a project. It appears in the left panel like any other, with a small badge
@@ -492,6 +518,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   layout.
 
 ### Fixed
+
+- **A host is no longer dropped for being quiet.** An SSH connection carries
+  nothing while a shell sits at its prompt, so a host nobody had typed at was
+  reaped after five minutes of silence — and a host that had really gone away
+  took those same five minutes to be noticed, with its terminals looking alive
+  against a machine that was not there. uxnan now asks every 30 seconds and
+  gives up after three unanswered asks, which is where mature SSH clients land
+  (OpenSSH ships this **off**; the guidance for editors holding long sessions is
+  30–60s with 3–5 misses). It also keeps a NAT or firewall from closing an idle
+  connection. Proven by a test that idles longer than the old timeout and then
+  uses the connection.
 
 - **A dialog's action band no longer hangs past the dialog.** The content area
   is a grid whose single track grows to the widest thing in it — and that is the

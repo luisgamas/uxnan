@@ -8,10 +8,11 @@
 // CodeMirror document itself lives in `FileEditor.svelte`. All FS/git access
 // goes through `$lib/api`.
 
-import { fsWriteFile, gitDiffHead } from "$lib/api";
-import { readFileOn } from "$lib/fsRouter";
-import { isLocalTarget, LOCAL_TARGET, type TargetId } from "$lib/target";
+import { gitDiffHead } from "$lib/api";
+import { readFileOn, writeFileOn } from "$lib/fsRouter";
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 import { git } from "$lib/state/git.svelte";
+import { hosts } from "$lib/state/hosts.svelte";
 import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
@@ -150,31 +151,32 @@ export class FileEditorState {
     else void this.load();
   }
 
-  /** Whether this file can be written from here.
+  /** Whether this file cannot be written from here.
    *
-   *  A file on a host is **read-only for now**: writing goes through the local
-   *  filesystem, and handing it a host's path either fails or — the reason this
-   *  is a guard and not a `catch` — writes a file of that name on *this* machine
-   *  while the editor reports success. Writing over SFTP is the next piece of
-   *  phase 3 (`02g` §5.11). */
+   *  A file on a host is writable (over SFTP) **while that host is connected**.
+   *  Without a live session there is nothing to write through, and the
+   *  connection generation a save has to carry does not exist — so the editor
+   *  says so up front instead of failing at the end of a round trip. */
   get readOnly(): boolean {
-    return !isLocalTarget(this.target);
+    const host = sshHostId(this.target);
+    return host !== null && hosts.generationOf(host) === undefined;
   }
 
   /** Persist `content` to disk, then refresh the gutter + the right-panel status
    *  so the change indicators update immediately (not just on the watcher). */
   async save(content: string): Promise<void> {
-    if (this.readOnly) {
+    const host = sshHostId(this.target);
+    if (host !== null && hosts.generationOf(host) === undefined) {
       // Refused before anything is written, and said in the pane rather than
       // swallowed: an editor that silently does not save is worse than one that
       // will not.
-      this.error = i18n.t("files.remoteReadOnly");
+      this.error = i18n.t("files.hostDisconnected", { host: hosts.labelOf(host) });
       return;
     }
     this.saving = true;
     this.error = null;
     try {
-      await fsWriteFile(this.path, content);
+      await writeFileOn(this.target, this.path, content, host ? hosts.generationOf(host) : undefined);
       this.baseline = content;
       this.content = content;
       this.dirty = false;

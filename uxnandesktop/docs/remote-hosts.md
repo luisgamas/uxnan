@@ -197,13 +197,23 @@ Select it in the left panel and:
 | | |
 |---|---|
 | **Terminals** | Open on the host, in the project's folder — a channel on the connection that host already has. Splits and further terminals stay there too. |
-| **Files** | **Works.** The tree lists and opens files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. Three honest gaps: no search (it walks *this* filesystem, so the action is hidden rather than offered broken), no git-ignored dimming, no automatic refresh — the refresh button is the reload. **Read-only for now**: saving is refused with a reason rather than writing a copy on this machine, and the Changes view is not offered because there is no remote diff yet. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
+| **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. Gaps that remain: no search (it walks *this* filesystem, so the action is hidden rather than offered broken), no git-ignored dimming, no automatic refresh — the refresh button is the reload — and creating, renaming or deleting from the tree is still local-only. The Changes view is not offered on a host because there is no remote diff yet. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
 | **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
 | **Changes, History, GitHub** | **Not available.** The diff, staging and history still read this machine's git, so the panel says which host the project lives on instead of describing the wrong repository. |
 | **Branch on the row** | **Not shown**, for the same reason: nothing has read git there. It says "not read yet" rather than "(detached)", which would be a claim about a repository this machine has never opened. |
 
 The card carries the host's name, and its terminal count includes the terminals
 open on that machine.
+
+### At startup
+
+Hosts that let uxnan in **without asking for anything** are reconnected on their
+own when the app starts, so a project on one of them has its files, its branch
+and its terminal without you opening Settings first. A host that asked for a
+password or a key passphrase last time is *not* reconnected automatically — a
+stack of credential prompts at launch is not a greeting; connect it when you want
+it. Nothing is stored either way: the prompt lives in memory for that attempt
+only.
 
 ### When something on the host goes away
 
@@ -219,6 +229,11 @@ working. So:
   file.)
 - **Terminals** whose channel ended say so in the tab; they restart when their
   host connects again.
+- **A host that goes away is noticed in about two minutes.** uxnan asks each
+  connected host every 30 seconds whether it is still there and gives up after
+  three unanswered asks — the same thing mature SSH clients do, and the reason a
+  connection nobody is typing at no longer gets dropped for being quiet (it used
+  to be reaped after five minutes of silence).
 
 ## Not planned
 

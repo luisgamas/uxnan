@@ -39,6 +39,7 @@ import type {
   SshHostAdded,
   SshHostDraft,
   SshHostProbe,
+  SshHostSession,
   SshRemoteListing,
   SshResolvedHost,
   GitIdentity,
@@ -693,6 +694,19 @@ export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
   return invoke<FileContent>('ssh_fs_read', { hostId, path });
 }
 
+/** Save a text file on a host. Fenced: `expect` names the machine the caller
+ *  prepared the save for, and the backend refuses the write outright when that
+ *  no longer matches — the same absolute path usually exists on both machines,
+ *  so a misrouted save is the one that looks like success. */
+export function sshFsWrite(
+  hostId: string,
+  path: string,
+  content: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_fs_write', { hostId, path, content, expect: expect ?? null });
+}
+
 /** Register a folder that lives on a host as a project. The path is stored the
  *  way that machine spells it; identity is the pair `(host, path)`, so the same
  *  absolute path on two machines is two projects. */
@@ -707,8 +721,8 @@ export function sshHostDisconnect(hostId: string): Promise<boolean> {
 
 /** The host ids with a live session, so the UI can show what is connected
  *  without reaching out to anything. */
-export function sshHostsConnected(): Promise<string[]> {
-  return invoke<string[]>('ssh_hosts_connected');
+export function sshHostsConnected(): Promise<SshHostSession[]> {
+  return invoke<SshHostSession[]>('ssh_hosts_connected');
 }
 
 // --- Filesystem: file tree + editor ----------------------------------------

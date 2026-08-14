@@ -1553,6 +1553,47 @@ pub async fn ssh_fs_list(
     .await
 }
 
+/// Save a text file on a host, for the editor.
+///
+/// **Fenced** (`02a` §2.9), because this is a mutation: the expectation the
+/// caller prepared has to name the machine the write would actually land on. A
+/// save is the one operation where being pointed at the wrong host is silent —
+/// the same absolute path very often exists on both machines, and the editor
+/// would report success either way.
+///
+/// The **connection generation** is checked too, but note what it does and does
+/// not buy here: for a process or a worktree, a reconnect invalidates the world
+/// the caller saw. For an absolute path on a host, it does not — the file is the
+/// same file. It is checked because the contract says a stale expectation is
+/// stale; the value that matters in this command is the target id.
+#[tauri::command]
+pub async fn ssh_fs_write(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    content: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    // Refuse before anything is opened: `write_file` truncates to open, so a
+    // check that ran afterwards would have already destroyed the file.
+    let generation = {
+        let sessions = state.ssh_sessions.read().await;
+        let Some(conn) = sessions.get(&host_id) else {
+            return Err(CommandError::from(AppError::NotConnected(host_id.clone())));
+        };
+        conn.generation()
+    };
+    target::check(expect.as_ref(), &TargetId::Ssh(host_id.clone()), generation)
+        .map_err(CommandError::from)?;
+
+    let file = path.as_str();
+    let text = content.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.write_file(file, text).await
+    })
+    .await
+}
+
 /// Read a text file on a host, for the editor. Same guards as the local reader:
 /// binary and over-cap files come back flagged rather than mangled.
 #[tauri::command]
@@ -1585,21 +1626,39 @@ pub async fn ssh_host_disconnect(
     Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
 }
 
-/// The host ids with a live session, so the UI can show which are connected
-/// without probing anything.
+/// One live session, as the UI needs to know it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostSession {
+    pub host_id: String,
+    /// Which incarnation of the connection this is. The frontend sends it back
+    /// with every mutation it prepares (`target::TargetExpectation`), so a call
+    /// made against one connection cannot execute against its replacement. It is
+    /// reported here, and not only by `ssh_host_connect`, because the app is
+    /// restarted and reloaded far more often than a host is connected — without
+    /// it, every save after a reload would carry a generation of nobody's.
+    pub generation: u64,
+}
+
+/// The hosts with a live session, and which incarnation each one is.
 ///
 /// "Live" is checked, not assumed: a connection whose transport has ended is
 /// still in the map until something tries to use it, and listing it would have
 /// the app claim a host is connected while every panel on it fails.
 #[tauri::command]
-pub async fn ssh_hosts_connected(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+pub async fn ssh_hosts_connected(
+    state: State<'_, AppState>,
+) -> Result<Vec<SshHostSession>, CommandError> {
     Ok(state
         .ssh_sessions
         .read()
         .await
         .iter()
         .filter(|(_, conn)| !conn.handle().is_closed())
-        .map(|(id, _)| id.clone())
+        .map(|(host_id, conn)| SshHostSession {
+            host_id: host_id.clone(),
+            generation: conn.generation(),
+        })
         .collect())
 }
 

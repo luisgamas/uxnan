@@ -2255,7 +2255,7 @@ export const en = {
 
   "project.onHost": "On {host}",
   "fileTree.awaitingHost": "Waiting for this host to connect...",
-  "files.remoteReadOnly": "This file lives on another machine — saving there is not available yet.",
+  "files.hostDisconnected": "{host} is not connected — reconnect it to save this file there.",
   "remote.branchNotRead": "branch not read",
   "remote.panelTitle": "This project lives on {host}",
   "remote.panelBody": "Files, changes, history and GitHub are read on this machine, so they cannot describe a folder on another one. Reading them over SSH comes in a later phase; a terminal on the host works today.",
