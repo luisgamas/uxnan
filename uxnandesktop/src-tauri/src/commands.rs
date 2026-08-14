@@ -1129,12 +1129,50 @@ pub async fn ssh_host_connect(
     host_id: String,
     password: Option<String>,
 ) -> Result<SshConnectReport, CommandError> {
-    if let Some(existing) = state.ssh_sessions.read().await.get(&host_id) {
-        let mut report = SshConnectReport::of("connected");
-        report.generation = Some(existing.generation());
-        return Ok(report);
+    // An existing session is only worth keeping while its transport is up. One
+    // that has ended answers nothing and can open no channel, so reporting it as
+    // connected would leave the user pressing Connect on a host that is already
+    // "connected" and still broken. Let it go instead, and reach the machine
+    // again below — with everything that was learned from the old connection.
+    // `Some(Some(generation))` is a session still up; `Some(None)`, one that has
+    // ended; `None`, a host with no session at all.
+    let existing = {
+        let sessions = state.ssh_sessions.read().await;
+        sessions
+            .get(&host_id)
+            .map(|conn| (!conn.handle().is_closed()).then(|| conn.generation()))
+    };
+    match existing {
+        Some(Some(generation)) => {
+            let mut report = SshConnectReport::of("connected");
+            report.generation = Some(generation);
+            return Ok(report);
+        }
+        Some(None) => {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh",
+                &format!("the connection to {host_id} had ended; connecting again"),
+            );
+            // Everything learned from that connection went with it: its shell,
+            // and the file session that was a channel on it.
+            state.ssh_sessions.write().await.remove(&host_id);
+            state.ssh_shells.write().await.remove(&host_id);
+            state.ssh_sftp.lock().await.remove(&host_id);
+        }
+        None => {}
     }
+    connect_fresh(state, host_id, password).await
+}
 
+/// Reach a host that has no live session, from the host key to the shell it
+/// starts. Split out of [`ssh_host_connect`] so both the first connection and a
+/// replacement for one that ended take exactly the same path.
+async fn connect_fresh(
+    state: State<'_, AppState>,
+    host_id: String,
+    password: Option<String>,
+) -> Result<SshConnectReport, CommandError> {
     let host = find_ssh_host(&state, &host_id).await?;
     let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
     let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
@@ -1359,17 +1397,37 @@ pub async fn ssh_git_status(
     Ok(ssh::git::status(conn, shell, &path).await)
 }
 
-/// The SFTP session for a host, opening one on first use.
+/// The file session for a host, opening one on first use.
 ///
 /// Held per host because it is a channel on a connection that already exists:
 /// keeping it costs nothing, and re-opening one per listing would put a round
 /// trip in front of every folder the user expands.
+///
+/// A cached session is only handed out while its transport is still there
+/// ([`ssh::sftp::RemoteFiles::usable`]). That check is what keeps the first click
+/// after a host ends the channel from waiting out a ten-second timeout before
+/// anything can be done about it.
 async fn sftp_for(
     state: &AppState,
     host_id: &str,
-) -> Result<std::sync::Arc<russh_sftp::client::SftpSession>, CommandError> {
-    if let Some(session) = state.ssh_sftp.lock().await.get(host_id).cloned() {
-        return Ok(session);
+) -> Result<std::sync::Arc<ssh::sftp::RemoteFiles>, CommandError> {
+    {
+        let mut cached = state.ssh_sftp.lock().await;
+        match cached.get(host_id) {
+            Some(session) if session.usable() => return Ok(std::sync::Arc::clone(session)),
+            Some(_) => {
+                cached.remove(host_id);
+                // Logged because this is the ordinary recovery, and a file panel
+                // that hesitates for a moment should be explainable from the log
+                // rather than from another screenshot. Host ids only.
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh-files",
+                    &format!("the file session on {host_id} had ended; opening another"),
+                );
+            }
+            None => {}
+        }
     }
     let sessions = state.ssh_sessions.read().await;
     let Some(conn) = sessions.get(host_id) else {
@@ -1377,6 +1435,14 @@ async fn sftp_for(
             host_id.to_string(),
         )));
     };
+    // A connection whose transport has ended cannot carry another channel, and
+    // saying so is the difference between the panel waiting for its host and the
+    // panel showing the user a sentence about a channel they never asked for.
+    if conn.handle().is_closed() {
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
+        )));
+    }
     let session = std::sync::Arc::new(ssh::sftp::open(conn).await.map_err(CommandError::from)?);
     state
         .ssh_sftp
@@ -1384,6 +1450,63 @@ async fn sftp_for(
         .await
         .insert(host_id.to_string(), std::sync::Arc::clone(&session));
     Ok(session)
+}
+
+/// Run one file operation on a host, on a session that is allowed to have died.
+///
+/// The cached session is a channel, and a channel ends on its own schedule — the
+/// host's `sftp-server` exits, or it is closed under us — while the connection
+/// carries on. That is not hypothetical: it left the file panel reading
+/// `session closed` on every folder, permanently, next to terminals on the same
+/// host that were perfectly happy, because each terminal opens its own channel
+/// and this one was cached forever.
+///
+/// So a session that turns out to be gone is dropped and the work is done once
+/// more on a fresh one. Only that failure is retried ([`ssh::sftp::SftpFailure`]):
+/// what the *host* answered — no such path, no permission — is the user's to
+/// see, and asking a second time would only make them wait for the same no.
+///
+/// The retry covers the gap [`sftp_for`] cannot: a session that was fine when it
+/// was handed out and ended while the request was in the air.
+async fn with_sftp<T, F, Fut>(
+    state: &AppState,
+    host_id: &str,
+    operation: F,
+) -> Result<T, CommandError>
+where
+    F: Fn(std::sync::Arc<ssh::sftp::RemoteFiles>) -> Fut,
+    Fut: std::future::Future<Output = Result<T, ssh::sftp::SftpFailure>>,
+{
+    let session = sftp_for(state, host_id).await?;
+    match operation(std::sync::Arc::clone(&session)).await {
+        Ok(value) => return Ok(value),
+        Err(ssh::sftp::SftpFailure::Refused(error)) => return Err(CommandError::from(error)),
+        Err(ssh::sftp::SftpFailure::Gone(message)) => {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh-files",
+                &format!("the file session on {host_id} had ended ({message}); opening another"),
+            );
+        }
+    }
+
+    // Drop *this* session, not whatever is cached now: another call may already
+    // have replaced it, and evicting that one would send both of us round again.
+    {
+        let mut cached = state.ssh_sftp.lock().await;
+        if cached
+            .get(host_id)
+            .is_some_and(|current| std::sync::Arc::ptr_eq(current, &session))
+        {
+            cached.remove(host_id);
+        }
+    }
+    drop(session);
+
+    let fresh = sftp_for(state, host_id).await?;
+    operation(fresh)
+        .await
+        .map_err(|failure| CommandError::from(AppError::from(failure)))
 }
 
 /// List a directory on a host, for the file tree.
@@ -1397,10 +1520,11 @@ pub async fn ssh_fs_list(
     host_id: String,
     path: String,
 ) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
-    let sftp = sftp_for(&state, &host_id).await?;
-    ssh::sftp::list_dir(&sftp, &path)
-        .await
-        .map_err(CommandError::from)
+    let dir = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.list_dir(dir).await
+    })
+    .await
 }
 
 /// Read a text file on a host, for the editor. Same guards as the local reader:
@@ -1411,10 +1535,11 @@ pub async fn ssh_fs_read(
     host_id: String,
     path: String,
 ) -> Result<crate::fs::FileContent, CommandError> {
-    let sftp = sftp_for(&state, &host_id).await?;
-    ssh::sftp::read_file(&sftp, &path)
-        .await
-        .map_err(CommandError::from)
+    let file = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.read_file(file).await
+    })
+    .await
 }
 
 /// Drop a host's session. Idempotent — disconnecting one that is not connected
@@ -1436,9 +1561,20 @@ pub async fn ssh_host_disconnect(
 
 /// The host ids with a live session, so the UI can show which are connected
 /// without probing anything.
+///
+/// "Live" is checked, not assumed: a connection whose transport has ended is
+/// still in the map until something tries to use it, and listing it would have
+/// the app claim a host is connected while every panel on it fails.
 #[tauri::command]
 pub async fn ssh_hosts_connected(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
-    Ok(state.ssh_sessions.read().await.keys().cloned().collect())
+    Ok(state
+        .ssh_sessions
+        .read()
+        .await
+        .iter()
+        .filter(|(_, conn)| !conn.handle().is_closed())
+        .map(|(id, _)| id.clone())
+        .collect())
 }
 
 /// Record whether a host asked for something interactive. Persisted because the
@@ -3670,5 +3806,156 @@ mod tests {
         let mut items = vec![Item { id: "a" }, Item { id: "b" }];
         reorder_by_ids(&mut items, &[], |i| i.id);
         assert_eq!(ids(&items), vec!["a", "b"]);
+    }
+
+    /// The file panel's recovery, end to end against this machine's sshd.
+    ///
+    /// The reported failure was a host whose terminals worked while every folder
+    /// answered `session closed`, so the test builds exactly that state — a live
+    /// connection with a dead file session cached on it — and asks for a listing.
+    ///
+    /// It has to be live: what makes a session unusable is its channel ending,
+    /// and no fake can produce the library's own behavior when it does.
+    mod remote_files {
+        use super::super::with_sftp;
+        use crate::persistence::PersistenceManager;
+        use crate::ssh;
+        use crate::state::AppState;
+        use std::sync::Arc;
+
+        const HOST: &str = "live-host";
+
+        /// A connected host in an otherwise empty app.
+        async fn state_with_a_live_host() -> (tempfile::TempDir, AppState) {
+            use ssh::auth::{authenticate, AuthOutcome, Credential};
+            use ssh::conn::{connect, Endpoint, Handshake};
+
+            let user = std::env::var("UXNAN_SSH_TEST_USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .expect("a username");
+            let endpoint = Endpoint::new("127.0.0.1", 22);
+            let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+                panic!("expected an unknown host");
+            };
+            let trusted = ssh::hostkey::trust_line("127.0.0.1", 22, &key);
+            let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+                panic!("the recorded key should verify");
+            };
+            match authenticate(&mut conn, &user, &[Credential::Agent])
+                .await
+                .unwrap()
+            {
+                AuthOutcome::Success { .. } => {}
+                other => panic!("authenticate with the agent first: {other:?}"),
+            }
+
+            let dir = tempfile::tempdir().unwrap();
+            let state = AppState::new(PersistenceManager::new(dir.path()), Default::default());
+            state
+                .ssh_sessions
+                .write()
+                .await
+                .insert(HOST.to_string(), conn);
+            (dir, state)
+        }
+
+        fn here() -> String {
+            std::env::current_dir()
+                .expect("cwd")
+                .to_string_lossy()
+                .replace('\\', "/")
+        }
+
+        /// Cache a session that has ended, and list a folder on it.
+        async fn cache_a_dead_session(state: &AppState) -> Arc<ssh::sftp::RemoteFiles> {
+            let dead = {
+                let sessions = state.ssh_sessions.read().await;
+                Arc::new(
+                    ssh::sftp::open(sessions.get(HOST).unwrap())
+                        .await
+                        .expect("an SFTP session"),
+                )
+            };
+            dead.close().await;
+            state
+                .ssh_sftp
+                .lock()
+                .await
+                .insert(HOST.to_string(), Arc::clone(&dead));
+            dead
+        }
+
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn a_dead_file_session_is_replaced_rather_than_reported() {
+            let (_dir, state) = state_with_a_live_host().await;
+            let listed = here();
+            // Borrowed, not moved: the operation is run twice, so it has to be
+            // callable twice — the same reason the commands pass a `&str`.
+            let dir = listed.as_str();
+
+            let dead = cache_a_dead_session(&state).await;
+
+            let entries = with_sftp(&state, HOST, |session| async move {
+                session.list_dir(dir).await
+            })
+            .await
+            .expect("the listing recovers on a new session");
+            assert!(!entries.is_empty(), "a source directory is not empty");
+
+            // And the dead one is gone from the cache, or the next call would
+            // pay for the same discovery all over again.
+            let cached = state.ssh_sftp.lock().await;
+            let current = cached.get(HOST).expect("a session is cached again");
+            assert!(
+                !Arc::ptr_eq(current, &dead),
+                "the replacement must be cached, not the corpse"
+            );
+        }
+
+        /// The same recovery, one step later: a session that still *claims* to be
+        /// usable and is not — which is what a host leaves behind when it ends a
+        /// channel between two clicks, and the only case the check in `sftp_for`
+        /// cannot catch before the request goes out.
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn a_session_that_dies_unnoticed_is_retried_not_reported() {
+            let (_dir, state) = state_with_a_live_host().await;
+            let listed = here();
+            let dir = listed.as_str();
+
+            let dead = cache_a_dead_session(&state).await;
+            dead.pretend_usable();
+
+            let entries = with_sftp(&state, HOST, |session| async move {
+                session.list_dir(dir).await
+            })
+            .await
+            .expect("the retry lists it");
+            assert!(!entries.is_empty(), "a source directory is not empty");
+        }
+
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn what_the_host_refuses_is_reported_on_the_first_ask() {
+            let (_dir, state) = state_with_a_live_host().await;
+            let absent = format!("{}/no-such-folder-9d2f", here());
+            let missing = absent.as_str();
+
+            let error = with_sftp(&state, HOST, |session| async move {
+                session.list_dir(missing).await
+            })
+            .await
+            .expect_err("a folder that is not there cannot be listed");
+            println!("live: refused with {}", error.message);
+
+            // The session it used is still cached: the host answered, so there
+            // was nothing wrong with the channel and nothing to open again.
+            let cached = state.ssh_sftp.lock().await;
+            assert!(
+                cached.contains_key(HOST),
+                "a refusal must not throw away a working session"
+            );
+        }
     }
 }

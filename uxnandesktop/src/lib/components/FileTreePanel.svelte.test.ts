@@ -233,3 +233,32 @@ describe("FileTreePanel — the tree follows the open file", () => {
     expect(isMarked(panelRow)).toBe(true);
   });
 });
+
+describe("FileTreePanel — a tree that could not be read", () => {
+  it("does not call a folder empty when the listing failed", async () => {
+    // Reported from the app: a host whose file session had died showed the
+    // backend's error in red *and* "This folder is empty." underneath — two
+    // claims, one of which nobody had checked.
+    const { screen } = mountPanel({
+      fs_list_dir: () => {
+        throw new Error("could not list C:/code on that host: session closed");
+      },
+    });
+
+    expect(await screen.findByText(/session closed/)).toBeInTheDocument();
+    expect(screen.queryByText("This folder is empty.")).toBeNull();
+  });
+
+  it("says it is waiting for the host, and nothing else, until it connects", async () => {
+    const { screen } = mountPanel({
+      fs_list_dir: () => {
+        throw { code: "NOT_CONNECTED", message: "host-1 is not connected" };
+      },
+    });
+
+    expect(await screen.findByText("Waiting for this host to connect...")).toBeInTheDocument();
+    expect(screen.queryByText("This folder is empty.")).toBeNull();
+    // Not connected is a state, not a fault: no red line for it.
+    expect(screen.queryByText(/not connected/)).toBeNull();
+  });
+});

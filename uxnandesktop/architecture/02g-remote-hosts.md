@@ -633,6 +633,41 @@ reabrirla por listado costaria un viaje por carpeta.
 maquina, y el enrutado sale de ahi. La alternativa —que cada punto de uso
 pregunte "¿esto es remoto?"— es exactamente la forma que ya nos costo un fallo.
 
+### Una sesion de ficheros no dura mas que su canal
+
+Cachear la sesion es correcto; **darla por viva, no**. Una sesion SFTP es un
+canal, y un canal termina por su cuenta —el `sftp-server` del host sale, o el
+canal se cierra debajo— mientras la conexion sigue perfectamente. Con la sesion
+cacheada para siempre eso dejaba el panel de ficheros contestando lo mismo a cada
+carpeta, de forma permanente, **al lado de terminales del mismo host que
+funcionaban** (cada terminal abre su propio canal). Reportado desde la app, con
+captura: el arbol en rojo y `pwsh` respondiendo a dos paneles de distancia.
+
+Lo que se hace, y por que asi:
+
+1. **Se observa el transporte, no el texto del error.** `WatchedStream` envuelve
+   el stream del canal y marca el final en cuanto llega EOF (o el cierre del lado
+   de escritura). No es un detalle de estilo: **medido en vivo**, la peticion que
+   estaba en vuelo cuando la sesion muere no recibe `session closed`, no recibe
+   *nada*, y falla diez segundos despues como un `Timeout` corriente. Clasificar
+   por el texto del error habria leido eso como "host lento" y habria dejado el
+   panel roto igual. La primera version de este arreglo se escribio *leyendo* la
+   libreria y era incorrecta; el test contra un `sshd` real lo dijo.
+2. **La sesion cacheada solo se entrega si sigue usable** (`sftp_for`), asi que
+   el primer clic despues de que el host cierre el canal ni siquiera paga ese
+   timeout.
+3. **Y aun asi se reintenta una vez** (`commands::with_sftp`), porque entre
+   comprobar y pedir cabe justo el caso que provoco el fallo. Solo se reintenta
+   lo que es del canal: lo que **contesta el host** —no existe, sin permiso— es
+   suyo y se muestra tal cual; preguntarlo dos veces solo haria esperar el doble
+   para el mismo no.
+
+**Una conexion cerrada deja de contar como conectada.** `ssh_hosts_connected`
+filtra por transporte vivo y `ssh_host_connect` ya no devuelve "conectado" por
+una sesion muerta: la suelta —con su shell y su sesion de ficheros— y vuelve a
+conectar. Si no, la app decia "conectado" mientras nada funcionaba y pulsar
+Conectar no arreglaba nada, porque el atajo de "ya hay sesion" respondia primero.
+
 **Lo que no hace, y se dice:**
 
 | | Estado |
@@ -645,7 +680,10 @@ pregunte "¿esto es remoto?"— es exactamente la forma que ya nos costo un fall
 
 Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
 rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
-leidos de un `Cargo.toml` que es el fichero de verdad.
+leidos de un `Cargo.toml` que es el fichero de verdad. Y la recuperacion, tambien
+en vivo: una sesion muerta en la cache se sustituye y el listado sale igual, una
+que muere sin que nadie lo note se reintenta, y un "no existe" se reporta a la
+primera sin tocar la sesion que iba bien.
 
 ## 5.10b Git del host — IMPLEMENTADO (fase 3, segunda parte)
 

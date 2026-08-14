@@ -917,9 +917,15 @@
         </div>
       {/if}
     {:else if treeRows.length === 0}
-      <p class={cn("p-3", text.meta)}>
-        {fileTree.loadingDir.has(root) ? i18n.t("common.loading") : i18n.t("fileTree.empty")}
-      </p>
+      <!-- "Empty" is a fact about a folder that was read. When the read failed —
+           or has not happened yet because the host is still coming up — the line
+           above already says so, and adding "this folder is empty" under it
+           states something nobody checked. -->
+      {#if !fileTree.error && !fileTree.awaitingHost}
+        <p class={cn("p-3", text.meta)}>
+          {fileTree.loadingDir.has(root) ? i18n.t("common.loading") : i18n.t("fileTree.empty")}
+        </p>
+      {/if}
     {:else}
       <div bind:this={treeEl} class="uxnan-scroll flex min-h-0 flex-1 flex-col overflow-auto px-1 py-1">
         <div class="shrink-0">

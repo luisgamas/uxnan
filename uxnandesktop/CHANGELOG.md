@@ -74,33 +74,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   restarts itself, like the file tree beside it. Only terminals that *failed to
   start* are touched: one the user closed, or whose shell exited on its own, is
   left exactly as it is.
-- **A file on a host opens without a git error, and cannot be half-saved.**
-  Opening one showed an empty "Changes" view and raised `git error: cannot change
-  to …` over it, because the editor asked *this* machine's git about a path on
-  another. The Changes view is no longer offered for a remote file (there is no
-  remote diff yet) and no local git is run for it. Saving is refused outright and
-  says why: writing went through the local filesystem, which for a host's path
-  either fails or — the reason this is a guard and not a `catch` — writes a file
-  of that name **here** while the editor reports success. Writing over SFTP is
-  next.
-- **A file tree waits for its host instead of showing an error.** Open the app
-  before connecting and the panel said "connect to this host before reading its
-  files" and kept saying it until you switched projects and back — nothing
-  retried, because the failed root never entered the loaded set. It now says it
-  is waiting, and fills itself in the moment that host connects.
-- **A terminal that could not reach its host starts when the host connects.** It
-  writes the reason into the pane and stays — deliberately, so the reason can be
-  read — but once the host was up that pane held an explanation of a condition
-  that had passed, and the only way out was to close it and open another. It now
-  restarts itself, like the file tree beside it. Only terminals that *failed to
-  start* are touched: one the user closed, or whose shell exited on its own, is
-  left exactly as it is.
-- **The unsaved-changes prompt matches every other dialog.** Closing a file with
-  edits opened a dialog composed differently from the rest — a header reserving
-  room for a close button that is not there, and three actions crowded into the
-  narrowest dialog width. It now uses the same shape as every confirmation in the
-  app: hero icon, title and description in their own roles, and the shared footer
-  bar.
+- **The file panel survives the host ending its file channel.** A connection
+  carries one channel per terminal and one for files; when the host ended the
+  file one, every folder answered `could not list … : session closed` — for good,
+  and next to terminals on the same host that were perfectly fine, because that
+  session was cached and never questioned. It is now replaced the next time it is
+  used, and the app knows it is gone by watching the channel itself rather than
+  by reading the error: measured against a real `sshd`, the request in flight
+  when a session dies is not refused, it is simply never answered and comes back
+  ten seconds later as a plain timeout — which reads as "slow host" and would
+  have left the panel just as broken. What the *host* answers — no such path, no
+  permission — is still reported at once, unretried. And a tree that could not be
+  read no longer adds "This folder is empty." underneath the reason: nobody
+  looked in that folder.
+- **A connection that has ended stops claiming to be connected.** Connect
+  returned "already connected" for a session whose transport was gone, so a host
+  could sit there looking connected while nothing on it worked and pressing
+  Connect changed nothing. A dead session is now let go — with the shell and the
+  file session that belonged to it — and the host is reached again.
 - **A host's project shows its real branch and how dirty it is.** Git has to be
   *run*, so this one does go through the host's shell — the one it reported when
   it connected, with every argument quoted for it. Branch, change count and
