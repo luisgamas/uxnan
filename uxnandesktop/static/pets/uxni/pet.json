@@ -1,7 +1,7 @@
 {
   "id": "uxni",
   "displayName": "Uxni",
-  "description": "Asistente chibi que muestra con claridad el estado de los agentes de IA.",
+  "description": "Chibi assistant that shows the state of your AI agents at a glance.",
   "spriteVersionNumber": 2,
   "spritesheetPath": "spritesheet.webp"
 }

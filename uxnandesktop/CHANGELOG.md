@@ -356,6 +356,91 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   process starts — when that no longer matches, with an error naming both sides.
   A call that carries no target can only ever act locally.
 
+- **Cloned repositories land in `~/uxnan/repos`.** They used to go directly into
+  `~/uxnan`, which left the worktree root as just another folder among the
+  projects — a repository literally named `worktrees` would have collided with
+  it, and the folder needed explaining. `repos/` and `worktrees/` explain
+  themselves. Only the suggested destination changes: the field is editable, and
+  clones already on disk are not moved.
+- **New worktrees land in a folder uxnan manages, grouped by project.** The
+  default is now `~/uxnan/worktrees/<project>/<branch>` — beside the folder the
+  clone flow already writes to — instead of a `<project>--<branch>` sibling
+  dropped next to the repository. **Settings → Git → Worktree location** offers
+  the three layouts (managed, beside the project, a folder you choose), and a
+  project can override the root from its own settings when it belongs on another
+  volume or needs a shorter path. Nothing is migrated: worktrees already on disk
+  are read from `git worktree list` and keep working exactly where they are, so
+  only creation changes.
+- **Branch names are folded into folder names that are valid everywhere.**
+  Beyond the `/` → `-` flattening, the characters Windows rejects are dropped,
+  the trailing dots and spaces it silently strips are trimmed, its reserved
+  device names (`CON`, `NUL`, `COM1`, …) are escaped, and a long branch is capped
+  on a word boundary. A destination that is already taken takes the next free
+  `-2` / `-3` suffix rather than failing in git.
+- **Settings → Git also shows the identity commits are authored with** — name,
+  email, `init.defaultBranch` and the installed git version, read from git's own
+  global/system configuration (never from an open repository, which can override
+  it for itself). An identity that is not set says so, with the reason it
+  matters: git refuses to commit without one.
+- **A worktree of a WSL repository stays inside the distro**, under the same
+  `~/uxnan/worktrees` layout on the Linux filesystem — never on the Windows side
+  of the 9P share, where it would be slow and lose file modes.
+
+- **Settings → Git → Cleanup empties the managed folder safely.** It lists what
+  the backend can *prove* is disposable — folders git no longer owns (the
+  repository is gone, or the worktree was removed elsewhere), clean checkouts
+  whose branch landed or whose remote branch is gone, and those whose repository
+  is **no longer a project in uxnan** — removing a project touches nothing on
+  disk, so its worktrees stay behind, and without that category they would be
+  invisible here forever, being neither orphaned (git still owns them) nor
+  finished (the branch may never have landed). All with sizes, so the question
+  "is this worth reclaiming?" has an answer on screen.
+
+  It covers **cloned repositories** too — the ones in `~/uxnan/repos` that are no
+  longer projects — but the bar there is deliberately higher, because a worktree
+  is a second checkout of history while a clone *is* the history. One is offered
+  only when it can be proved that deleting it loses nothing: no uncommitted
+  changes, no linked worktrees, no stashes, a remote to fetch from, and **no
+  commit on any local branch missing from every remote**. Fail any of those and
+  it is listed blocked, naming the gate — "3 commits are on no remote" is worth
+  saying out loud far more than it is worth hiding. A count git could not read
+  is treated as unsafe, never as zero. Anything with
+  uncommitted work is listed **blocked**, never hidden.
+
+  The folder needed this precisely because it is out of sight: the sibling
+  folders it replaced sat next to the repository and annoyed you into pruning
+  them. A one-time status-bar nudge appears once the folder holds 12+ checkouts,
+  counting folders rather than measuring bytes — walking every checkout's
+  `node_modules` at startup to answer that would cost more than the feature is
+  worth.
+
+  Every limit is a safety property: it only ever looks inside the managed roots,
+  so a worktree beside its repository is never listed and never touched; nothing
+  is automatic; and every path is re-verified against a fresh scan at removal
+  time rather than trusted from the caller, so a stale list cannot delete the
+  wrong folder. A removed folder is moved aside first and deleted in the
+  background (a `node_modules` delete is tens of seconds of otherwise-frozen
+  UI), and a run interrupted mid-delete is swept at the next startup — matching
+  only the names this app generates.
+
+- **A second pet ships with the app: Nox.** Settings → Pets → Your pets now
+  offers two companions instead of one — **Uxni**, the mascot, still the default,
+  and **Nox**, a compact anime-styled urban hoodie character. Both are uxnan's
+  own artwork in the ordinary v2 pack format (8 × 11 frames of 192 × 208, rows
+  0–8 one animation each, rows 9–10 the 16 look poses), so neither is
+  special-cased: they animate, react and get replaced by an import exactly like
+  any community pack, and the provenance rule is unchanged — uxnan bundles only
+  pets it owns.
+- **Which pets ship is now a list, not a constant.** `src/lib/pets/bundled.ts`
+  declares `BUILTIN_PET_IDS`; the library loads each of them, and one whose
+  manifest can't be read no longer takes the rest of the shipped library down
+  with it. Adding another pet is a folder in `static/pets/` plus its id in that
+  list — no other code. New `tests/bundled-pets.test.mjs` holds the two halves
+  together: art that was never listed (packaged into every build and never
+  shown), an id with no art behind it, a manifest whose `id` disagrees with its
+  folder, a sheet path that isn't a bare file name, and a sheet whose pixels
+  don't divide exactly into the format's 192 × 208 cell all fail the suite.
+
 ### Changed
 
 - **Building from source now needs Rust 1.85** (was 1.77.2). The floor comes
@@ -369,6 +454,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   stored repo and worktree, and a document written by a newer build is refused
   rather than half-understood (an older build would otherwise ignore an unknown
   target field and treat a remote project's path as one of its own).
+
+- **The two agent lists in Settings read like the rest of Settings.** **Hooks**
+  and **Browser → Agents** each invented their own shape — Hooks nested a
+  master–detail card with a navigation rail of its own inside a pane that already
+  has one, and the browser MCP agents were a wrapped grid of unlabelled switches
+  inside a single row. Both are now ordinary settings rows: the agent's mark and
+  name on the left, one line of context under it, and the switch on the right,
+  grouped under section labels above the usual body band. Nothing moved out of
+  reach — every agent's state is readable at a glance again instead of one
+  selection at a time. Both lists render through one shared `AgentSettingsRow`
+  (itself a `SettingsRow`), so they can't drift apart into two shapes again.
+- **A hook is installed per agent by its row's switch**, replacing the
+  Install/Uninstall button pair and the status badge (installing still needs the
+  master **Install agent hooks** switch on; removing never does). The agents on
+  this machine stay first and open; the rest fold into a collapsed **Other
+  agents** group. Each row's chevron discloses the config path and the exact
+  bytes the ADE writes — fetched only for the row you open, as before.
+- **Browser → Agents shows how each agent is wired**, in the slot where the hooks
+  list shows the config file it writes: `mcp_info` returns what that launch is
+  given (`McpAgentInfo.mechanism` — `--mcp-config <file>`,
+  `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`). There is no
+  config file to name here, and that is the point — see the browser MCP fix
+  above.
+
+- **Where a worktree goes is decided in one place.** It used to be computed in
+  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
+  copy that had already drifted into a different folder name for the same
+  repository and branch. The layout now lives only in
+  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
+  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
+- **The PR and issue worktree flows use the same location and the same reuse
+  check.** Both used to build the sibling path themselves, and the issue flow
+  decided "this was already checked out" by testing whether that exact folder
+  existed. It now asks git which worktree is on the branch, so a re-run finds the
+  existing checkout wherever it lives — including one created under the old
+  layout.
 
 ### Fixed
 
@@ -413,6 +534,152 @@ including the channel-switch and "release pulled" cases) + 2 Rust
 (`updater.rs` — discarding frees the bytes and reports the version; discarding
 nothing is a no-op).
 
+- **Agents launched outside uxnan no longer complain about uxnan's browser MCP
+  server.** Until now the integrated browser was exposed to agents by writing a
+  `uxnan-browser` entry into each CLI's own user-global config
+  (`~/.claude.json`, `~/.codex/config.toml`, …). That entry outlived the app, so
+  a Codex started in any other terminal read it, found no `UXNAN_MCP_TOKEN`, and
+  aborted its whole MCP startup with a warning about a server the user never
+  configured — for a browser that isn't even there.
+
+  The server is now registered **per launch**, inside the process uxnan spawns,
+  and **nothing is written to any config the user keeps**: Claude Code gets
+  `--mcp-config` pointing at a file in uxnan's own app-data folder, Codex gets
+  `-c mcp_servers.…` overrides, and OpenCode gets `OPENCODE_CONFIG_CONTENT` on
+  its terminal (merged over its own config, which is left untouched). The token
+  is still only ever named, never written. Agents launched inside uxnan discover
+  the `browser_*` tools exactly as before; agents launched anywhere else never
+  see the server at all, and an unclean exit leaves nothing behind either.
+
+  On first start, uxnan **removes** the entry it used to write, from all seven
+  agent configs it ever wrote to — including Grok, Qwen Code, Droid and MiMo
+  Code, which are no longer auto-configured (they offer no per-launch mechanism
+  today; see `docs/browser.md`). Nothing else in those files is touched.
+
+- **A second uxnan window no longer breaks the first one's browser tools.** The
+  old shared entry carried one window's port, so whichever window started last
+  overwrote it and the other window's agents were left authenticating against
+  the wrong app. Each window now registers its own endpoint at launch time.
+
+- **Settings → Browser drops the MCP "Setup mode" selector.** With registration
+  scoped to the launch, `Managed` and `Global` no longer differ — the master
+  switch, the per-agent toggles and *Frictionless launch* say everything there
+  is to say. A saved mode is ignored on load.
+
+- **The cleanup no longer offers a live worktree's own directories for
+  deletion.** A worktree placed straight in the managed root — by hand, or
+  through the create dialog's custom location — was read as a *group* folder, so
+  the scan descended into it and listed `bridge`, `shared`, `uxnandesktop` and
+  the rest of the project's directories as abandoned worktrees. Pre-selected,
+  365 MB, one click from gone.
+
+  Two independent faults, either of which alone would have stopped it: the scan
+  descended into a directory that is itself a git work tree, and `classify` read
+  "this folder has no marker" as proof the repository was gone. Both are fixed:
+  a work tree in the root is classified as the one worktree it is and never
+  descended into, and no marker at all now proves nothing and reports nothing.
+  Only a marker *naming a repository that is gone* still means orphaned.
+
+- **A worktree with a terminal running in it is never offered.** Whatever git
+  says about its branch, an agent works by writing files, and between two writes
+  the checkout is momentarily clean — so "clean right now" was never enough on
+  its own. Live PTY working directories are now checked first, including a
+  terminal open in a subfolder, and removal refuses on the same ground.
+
+- **A cleaned-up project no longer leaves a marker that renames the next one.**
+  Removing the last worktree of a project left its group folder holding just
+  `.uxnan-repo`, and that marker outlived the repository it named. Cloning the
+  same project again read the stale claim as "another project owns this name"
+  and hung a hash suffix on a name that was free — `skills` became
+  `skills-bd229bab`, with the new worktrees inside it.
+
+  Two fixes, because there were two faults: an empty group is now pruned (on
+  removal and at startup, and only when it holds nothing but the marker), and a
+  marker whose repository no longer exists is treated as litter rather than a
+  claim — the name is reclaimed and the marker rewritten. A marker naming a
+  repository that *does* still exist keeps its group, as before.
+
+- **Both cleanup actions are `sm`**, the size every other action inside a
+  settings section uses (25 of the 45 buttons there). The default height is for
+  dialog and editor footers — all seven of its uses in Settings are in one — so
+  a taller primary action next to the scan button was the odd one out, not the
+  correction it looked like.
+- **Each cleanup list has a select-all**, which reaches only the rows the safety
+  rules allow removing — a held-back one is never picked up by it — and stays
+  within its own list. It shows a mixed state when only some are selected.
+- **Settings → Git → Cleanup lists worktrees and repositories separately.**
+  They are different things with different risk, and mixing them made "what am I
+  about to delete?" harder to answer than it needed to be. Which list a row
+  belongs to is stated by the backend rather than guessed from its reason —
+  both kinds can be held back by uncommitted changes.
+
+- **A project whose folder is not on disk is marked, and stops being polled.**
+  It used to stay in the sidebar looking normal while every background pass
+  asked git and `gh` about a path that is not there — an endless stream of
+  failed spawns (`os error 267`) for as long as the app ran. It now carries a
+  warning explaining the state, the worktree reconcile and the GitHub badge poll
+  skip it, and **nothing is removed**: an unmounted drive, an offline share and
+  a cloud placeholder all look exactly like a deleted project, so acting on that
+  guess would turn a temporary absence into a permanent loss. Removing stays in
+  the project's own ⋯ menu.
+- **Settings → Git → Git bookkeeping** offers to forget worktrees git still
+  lists whose folders are gone. `git worktree list` keeps reporting a worktree
+  after its directory is deleted, so the sidebar showed checkouts that were not
+  there and opening one failed. Pruning removes **records, never files** — the
+  directories it forgets are already missing — which is why it sits apart from
+  the cleanup rather than among things that delete work. Never automatic, for
+  the same reason as above.
+
+- **Status-bar highlights no longer spill out of the status bar.** The backend
+  and providers buttons were the standard 32px icon action inside a 28px bar, so
+  their hover fill crossed the hairline above and ran past the window edge below
+  — and even the 28px panel toggles overflowed by half a pixel, because the bar's
+  `border-t` lives inside its own 28px box and left 27px for them.
+
+  The bar now follows the app bar's anatomy, which had this right all along: the
+  hairline is painted as an overlay instead of a border, so a control gets the
+  full 28px, and every control is square and full-height
+  (`shell.statusBarAction` / `shell.statusBarItem`) instead of a rounded pill
+  floating inside the band. Highlights fill the bar from seam to bottom edge, the
+  way the window controls and the app-bar actions already did.
+
+- **The "needs you" pill is a badge again, not a 28px control.** It carried a
+  control height, so an 11px counter sat inside an orange lozenge nearly as tall
+  as the row that holds it; it now takes the same padding as every other count
+  badge and hugs its contents.
+
+- **The pill takes a bell — the general notification for the whole tree.** It
+  totals `waiting` *and* `blocked` worktrees, so neither state's own glyph would
+  be true of the whole count.
+
+- **The waiting agent state keeps its question *bubble*.** At the size these are
+  drawn, `done` and `blocked` are already two rings; a "?" inside a third ring
+  made the one state that is about *you* the hardest of the three to pick out —
+  and it silently contradicted the glyph table in `architecture/02d`.
+
+- **An agent's brand mark now outranks its state glyph.** Both sat at 12px in
+  the agent and worktree rows, so the logo was too small to identify and neither
+  led the row; the mark moves to a new 16px `icon.brand` role and the state
+  glyph to 14px. Who is running reads first, how it is doing reads second.
+
+- **Unread reads the same on a project row and a worktree row.** Both now use
+  the notification bubble; the worktree rows had been left on the old red dot,
+  so the same signal was drawn two ways depending on where it appeared.
+
+- **The destructive confirmation dialog no longer floats over 32px of dead
+  space.** Its header holds the dialog's whole content, so it was adding a
+  bottom padding meant to separate it from a following section *on top of* the
+  content grid's own gap, plus a right inset reserving room for a close button
+  this dialog does not show — which also wrapped the description early. The
+  footer goes back to the one shared action band the rest of the dialogs use.
+
+- **A check that re-reports the version already staged no longer re-downloads
+  it.** The updater compares against the *running* build, so every check kept
+  offering the version sitting in memory — and each one (including the automatic
+  6-hourly one) downloaded the same installer again. `checkOutcome` now decides
+  between keeping the staged download, superseding it when the channel offers a
+  genuinely different version (dropping any armed install-when-idle, since the
+  backend rejects stale bytes), and the plain up-to-date / available cases.
 ## [0.0.39] - 2026-08-12
 
 ### Removed

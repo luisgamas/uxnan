@@ -167,6 +167,10 @@ export const es: Record<MessageKey, string> = {
   "projectSettings.desc": "Personaliza cómo se muestra este proyecto; su carpeta en disco no se modifica.",
   "projectSettings.name": "Nombre visible",
   "projectSettings.nameDesc": "Solo se muestra en la tarjeta; la carpeta en disco conserva su nombre real.",
+  "projectSettings.worktreeRoot": "Carpeta de worktrees",
+  "projectSettings.worktreeRootPlaceholder": "Usar el ajuste global",
+  "projectSettings.worktreeRootDesc":
+    "Dónde van los worktrees nuevos de este proyecto. Vacío = Ajustes → Git.",
   "projectSettings.namePlaceholder": "Nombre del proyecto",
   "projectSettings.changeIcon": "Cambiar icono",
   "projectSettings.iconTitle": "Icono del proyecto",
@@ -257,7 +261,7 @@ export const es: Record<MessageKey, string> = {
   "newWorktree.inUse": "en uso",
   "newWorktree.location": "Ubicación (opcional)",
   "newWorktree.locationPlaceholder": "Carpeta del worktree personalizada…",
-  "newWorktree.locationDesc": "Por defecto, una carpeta junto al repositorio.",
+  "newWorktree.locationDesc": "Por defecto, la ubicación fijada en Ajustes → Git.",
   "newWorktree.resetLocation": "Volver a automática",
   "newWorktree.browse": "Explorar…",
   "newWorktree.browseTitle": "Elegir una ubicación",
@@ -533,7 +537,7 @@ export const es: Record<MessageKey, string> = {
   "pets.importEmptyFolder":
     "Una mascota es una carpeta con un pet.json (o avatar.json) y su imagen de sprites. Elige una carpeta así, o una carpeta que contenga varias.",
   "pets.provenanceNotice":
-    "uxnan incluye una mascota propia. Cualquier otra la importas tú desde Codex o desde un paquete de la comunidad: ese arte pertenece a sus autores, y uxnan ni lo incluye ni lo redistribuye.",
+    "Las mascotas que incluye uxnan son propias. Cualquier otra la importas tú desde Codex o desde un paquete de la comunidad: ese arte pertenece a sus autores, y uxnan ni lo incluye ni lo redistribuye.",
   "pets.importAttribution":
     "Estas mascotas provienen de una carpeta de tu computadora. Su arte sigue siendo propiedad de quien lo creó; importarlas solo lo copia dentro de uxnan para tu uso personal.",
   "pets.originCodex": "Importada desde Codex",
@@ -696,6 +700,81 @@ export const es: Record<MessageKey, string> = {
   "settings.browserDesc":
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",
   "settings.openWith": "Abrir con",
+  "settings.git": "Git",
+  "project.missingTooltip": "La carpeta de este proyecto no está en el disco ahora mismo. uxnan dejó de sondearla y no ha cambiado nada — reconecta la unidad, o quita el proyecto desde su menú ⋯.",
+  "settings.gitIdentity": "Identidad",
+  "settings.gitIdentityDesc": "Con qué autoría se firman los commits. Se lee de la configuración global de git.",
+  "settings.gitIdentityName": "Nombre",
+  "settings.gitIdentityEmail": "Correo",
+  "settings.gitIdentityUnset": "Sin definir",
+  "settings.gitIdentityHint":
+    "Sin nombre y correo, git se niega a hacer commit. Defínelos con git config --global user.name / user.email.",
+  "settings.gitDefaultBranch": "Rama por defecto",
+  "settings.gitDefaultBranchDesc": "El nombre de rama con el que arranca un repositorio recién creado.",
+  "settings.gitVersion": "Versión de Git",
+  "settings.gitMissing": "No encontrado",
+  "settings.worktreeLocation": "Ubicación de los worktrees",
+  "settings.worktreeLocationDesc":
+    "Dónde se crean los worktrees nuevos. Los que ya existen se quedan donde están.",
+  "settings.worktreeLayout": "Disposición",
+  "settings.worktreeMode.managed": "Carpeta gestionada",
+  "settings.worktreeMode.managedExample": "~/uxnan/worktrees/<proyecto>/<rama>",
+  "settings.worktreeMode.sibling": "Junto al proyecto",
+  "settings.worktreeMode.siblingExample": "<repositorio>/../<proyecto>--<rama>",
+  "settings.worktreeMode.custom": "Carpeta propia",
+  "settings.worktreeMode.customExample": "<tu carpeta>/<proyecto>/<rama>",
+  "settings.staleWorktrees": "Registro de git",
+  "settings.staleWorktreesDesc":
+    "Worktrees que git sigue listando y cuyas carpetas ya no están. Olvidarlos borra registros, nunca archivos.",
+  "settings.staleWorktreesCountOne": "1 worktree que ya no existe",
+  "settings.staleWorktreesCountOther": "{n} worktrees que ya no existen",
+  "settings.staleWorktreesPrune": "Olvidarlos",
+  "settings.worktreeCleanup": "Limpieza",
+  "settings.worktreeCleanupDesc":
+    "Worktrees dentro de la carpeta gestionada que se pueden quitar.",
+  "settings.worktreeCleanupScan": "Buscar worktrees viejos",
+  "settings.worktreeCleanupNotice": "{count} worktrees",
+  "settings.worktreeCleanupNoticeHint":
+    "La carpeta gestionada de worktrees se está llenando. Abre Ajustes → Git para ver qué se puede quitar.",
+  "settings.worktreeCleanupNoticeDismiss": "No volver a avisar",
+  "settings.worktreeCleanupIdle":
+    "Todavía no se ha buscado nada. Solo se mira la carpeta gestionada, y no se borra nada hasta que tú lo marques.",
+  "settings.worktreeCleanupEmpty":
+    "Nada que limpiar: en la carpeta gestionada solo hay trabajo vivo.",
+  "settings.worktreeCleanupSelectAll.worktree": "Marcar todos los worktrees que se pueden quitar",
+  "settings.worktreeCleanupSelectAll.clone": "Marcar todos los repositorios que se pueden quitar",
+  "settings.worktreeCleanupScope.worktree": "Worktrees",
+  "settings.worktreeCleanupScope.clone": "Repositorios clonados",
+  "settings.worktreeCleanupBucket.orphaned": "Git ya no los reconoce",
+  "settings.worktreeCleanupBucket.finished": "Trabajo terminado",
+  "settings.worktreeCleanupBucket.unregistered": "Ya no es un proyecto de uxnan",
+  "settings.worktreeCleanupBucket.clone": "Todo empujado",
+  "settings.worktreeCleanupBucket.blocked": "Retenidos",
+  "settings.worktreeCleanupReason.repoGone": "su repositorio ya no está en el disco",
+  "settings.worktreeCleanupReason.notAWorktree": "git ya no conoce esta carpeta",
+  "settings.worktreeCleanupReason.merged": "la rama se fusionó con su base",
+  "settings.worktreeCleanupReason.branchGone": "la rama ya no está en origin",
+  "settings.worktreeCleanupReason.projectRemoved": "quitaste el proyecto de uxnan",
+  "settings.worktreeCleanupReason.cloneFullyPushed":
+    "no es un proyecto, y todos sus commits ya están en su remoto",
+  "settings.worktreeCleanupReason.unpushedCommitsOne": "1 commit no está en ningún remoto",
+  "settings.worktreeCleanupReason.unpushedCommitsOther": "{n} commits no están en ningún remoto",
+  "settings.worktreeCleanupReason.hasStashes": "tiene stashes, que no viven en ningún otro sitio",
+  "settings.worktreeCleanupReason.noRemote": "no tiene remoto del que volver a traerlo",
+  "settings.worktreeCleanupReason.inUse": "ahora mismo hay una terminal corriendo dentro",
+  "settings.worktreeCleanupReason.hasWorktreesOne": "1 worktree sigue apuntando aquí",
+  "settings.worktreeCleanupReason.hasWorktreesOther": "{n} worktrees siguen apuntando aquí",
+  "settings.worktreeCleanupReason.uncommittedChangesOne": "1 archivo sin commitear",
+  "settings.worktreeCleanupReason.uncommittedChangesOther": "{n} archivos sin commitear",
+  "settings.worktreeCleanupSelected": "{count} marcados · {size}",
+  "settings.worktreeCleanupRemove": "Limpiar",
+  "settings.worktreeCleanupDoneOne": "1 worktree eliminado",
+  "settings.worktreeCleanupDoneOther": "{n} worktrees eliminados",
+  "settings.worktreeCleanupRefused": "{name} se conservó: {reason}",
+  "settings.worktreeRoot": "Carpeta de worktrees",
+  "settings.worktreeRootPlaceholder": "Ruta absoluta…",
+  "settings.worktreeRootDesc":
+    "Una ruta absoluta. Un proyecto puede sobrescribirla desde sus propios ajustes.",
   "settings.github": "GitHub",
   // Abrir con (editores/IDEs externos)
   "openWith.label": "Abrir con",
@@ -1353,15 +1432,13 @@ export const es: Record<MessageKey, string> = {
     "Instala un plugin en `~/.config/amp/plugins/`, que Amp descubre solo. La API de plugins de Amp es propia; su `agent.end` dice si el turno terminó o murió, así que reporta un `blocked` real.",
   "hooks.desc.omp":
     "OMP ejecuta el runtime de agente de Pi bajo su propia carpeta, así que carga exactamente la misma extensión de estado desde `~/.omp/agent/extensions/` — reportando como OMP y no como Pi.",
-  "hooks.agentListLabel": "Agentes",
   "hooks.groupInstalled": "En este equipo",
   "hooks.groupOthers": "Otros agentes",
   "hooks.notOnThisMachine":
-    "Este CLI no se encontró en tu equipo. Instalar su reporter ahora no molesta: empezará a reportar el día que instales el agente.",
+    "Estos CLI no se encontraron en tu equipo. Instalar un reporter ahora no molesta: empezará a reportar el día que instales el agente.",
   "hooks.statusInstalled": "Instalado en {path}",
-  "hooks.statusInstalledShort": "Instalado",
-  "hooks.statusNotInstalled": "No instalado",
-  "hooks.enableToManage": "Activa «Instalar hooks de agentes» para gestionar este agente.",
+  "hooks.enableToManage":
+    "Activa «Instalar hooks de agentes» para configurarlos uno a uno.",
   "hooks.statusUnavailable":
     "La configuración no se puede escribir (léela manualmente para obtener el comando a pegar).",
   "hooks.statusMissing":
@@ -1369,8 +1446,7 @@ export const es: Record<MessageKey, string> = {
   "hooks.autoInstall": "Instalar hooks de agentes",
   "hooks.autoInstallDesc":
     "Permite que los agentes reporten su estado preciso. Se instalan automáticamente al inicio; desactiva para quitarlos y mantenerlos desactivados.",
-  "hooks.install": "Instalar",
-  "hooks.uninstall": "Desinstalar",
+  "hooks.toggleAria": "Instalar el reporter de {agent}",
   "hooks.installing": "Instalando…",
   "hooks.uninstalling": "Desinstalando…",
   "hooks.showConfig": "Mostrar configuración",
@@ -1639,26 +1715,17 @@ export const es: Record<MessageKey, string> = {
   "browser.mcpHeading": "MCP de navegador para agentes",
   "browser.mcpEnabled": "Deja que los agentes usen el navegador",
   "browser.mcpEnabledDesc":
-    "Expón el navegador como herramientas MCP para que los agentes que lances lo descubran y lo usen solos — sin configurar, sin documentación.",
-  "browser.mcpInjection": "Modo de configuración",
-  "browser.mcpInjectionDesc":
-    "Cómo reciben las herramientas los agentes. El token queda en el entorno de la terminal — nunca se escribe en un archivo.",
-  "browser.mcpModeManaged": "Gestionado (recomendado)",
-  "browser.mcpModeManagedDesc":
-    "Registra el servidor en la config global de usuario de cada agente — nunca en la carpeta de tu proyecto, así no aparece nada en tus archivos ni sale ningún aviso de aprobación. Los agentes tecleados a mano también lo reciben.",
-  "browser.mcpModeGlobal": "Solo config global",
-  "browser.mcpModeGlobalDesc":
-    "La misma config global de usuario que Gestionado, pero sin el salto de confianza — los CLI conservan sus propios avisos de confianza de carpeta.",
-  "browser.mcpModeOff": "Solo manual",
-  "browser.mcpModeOffDesc": "No inyectar nada — cablea un agente a mano con el snippet de abajo.",
+    "Expón el navegador como herramientas MCP para que los agentes que lances aquí lo descubran y lo usen solos — sin configurar, sin documentación. Se configura en cada lanzamiento, así que los agentes que uses fuera de uxnan nunca lo ven.",
   "browser.frictionFree": "Lanzamiento sin fricción",
   "browser.frictionFreeDesc":
-    "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex). Solo en modo Gestionado.",
+    "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex).",
   "browser.mcpAgents": "Agentes",
-  "browser.mcpAgentsDesc": "Qué agentes reciben las herramientas del navegador automáticamente.",
+  "browser.mcpAgentsDesc":
+    "Qué agentes reciben las herramientas del navegador cuando uxnan los lanza, y qué recibe cada lanzamiento. Los demás se pueden cablear a mano abajo.",
+  "browser.mcpAgentAria": "Configurar las herramientas del navegador para {agent}",
   "browser.mcpSnippet": "Config manual",
   "browser.mcpSnippetDesc":
-    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba).",
+    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba). Esa vive en tu propia config, así que se queda ahí hasta que la quites.",
   "browser.mcpCopy": "Copiar",
   "browser.mcpCopied": "Copiado",
   "browser.mcpWaiting": "Disponible cuando el servidor local de la app esté corriendo.",

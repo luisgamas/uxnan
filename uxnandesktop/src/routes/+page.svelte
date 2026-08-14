@@ -16,7 +16,7 @@
   import { runAppAction } from "$lib/keyactions";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
-  import { control, divider, focus, icon as iconSize, iconButton, shell } from "$lib/design";
+  import { focus, icon as iconSize, shell } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
@@ -43,6 +43,7 @@
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
   import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
+  import WorktreeCleanupNotice from "$lib/components/WorktreeCleanupNotice.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
   import { initSessionRecoveryToast } from "$lib/sessionRecoveryToast.svelte";
@@ -385,12 +386,12 @@
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
     <!-- Region: Status bar — breadcrumb (left) · backend + panel toggles (right). -->
     <footer
-      class={cn(shell.statusBar, divider.top)}
+      class={shell.statusBar}
     >
       <!-- Active workspace breadcrumb -->
       <TooltipSimple title={i18n.t("terminal.context")}>
         {#snippet children(props)}
-          <div {...props} class="inline-flex min-w-0 items-center gap-1">
+          <div {...props} class="inline-flex min-w-0 items-center gap-1 pr-2">
             <Icon icon={LayersIcon} class={cn(iconSize.decorative, "shrink-0")} />
             {#if ctx.repo}
               <span class="truncate">{ctx.repo}</span>
@@ -408,7 +409,7 @@
           {#snippet children(props)}
             <span
               {...props}
-              class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+              class={cn(shell.statusBarItem, "text-amber-600 dark:text-amber-400")}
             >
               <Icon icon={TriangleAlertIcon} class={iconSize.decorative} />
               {i18n.t("status.untested", { os: osLabel() })}
@@ -421,7 +422,11 @@
           {#snippet children(props)}
             <button
               {...props}
-              class={cn(control.dense, "inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400", focus.ring)}
+              class={cn(
+                shell.statusBarItem,
+                "text-amber-600 hover:bg-accent hover:text-amber-500 dark:text-amber-400",
+                focus.ring,
+              )}
               aria-label={i18n.t("status.hooksIssue")}
               onclick={() => app.openSettings("hooks")}
             >
@@ -440,12 +445,12 @@
             <button
               {...props}
               class={cn(
-                control.dense,
-                "inline-flex items-center gap-1 rounded px-1 transition-colors",
+                shell.statusBarItem,
+                "transition-colors",
                 focus.ring,
                 orchestrationAttention
-                  ? "text-foreground ring-1 ring-primary/40 bg-primary/5"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-primary/10 text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               aria-label={i18n.t("orchestration.open")}
               onclick={openOrchestration}
@@ -460,6 +465,10 @@
         </TooltipSimple>
       {/if}
 
+      <!-- One-time nudge when the managed worktree folder has collected enough
+           checkouts to be worth a look (hidden otherwise, and once dismissed) -->
+      <WorktreeCleanupNotice />
+
       <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
       <UsageStatusButton />
 
@@ -473,8 +482,7 @@
           <button
             {...props}
             class={cn(
-              iconButton.xs,
-              "flex items-center justify-center rounded",
+              shell.statusBarAction,
               focus.ring,
               app.settings.leftSidebarOpen
                 ? "bg-accent text-foreground"
@@ -493,8 +501,7 @@
           <button
             {...props}
             class={cn(
-              iconButton.xs,
-              "flex items-center justify-center rounded",
+              shell.statusBarAction,
               focus.ring,
               app.settings.rightSidebarOpen
                 ? "bg-accent text-foreground"
@@ -514,8 +521,7 @@
             <button
               {...props}
               class={cn(
-                iconButton.xs,
-                "flex items-center justify-center rounded",
+                shell.statusBarAction,
                 focus.ring,
                 app.browserOpen
                   ? "bg-accent text-foreground"

@@ -344,6 +344,7 @@ mod tests {
             icon: None,
             branch_icons: std::collections::HashMap::new(),
             worktree_order: vec![],
+            worktree_root: None,
         });
         mgr.save(&data).unwrap();
 

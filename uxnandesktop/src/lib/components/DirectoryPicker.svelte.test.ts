@@ -6,7 +6,9 @@ import type { RepoData, WorktreeEntry } from '$lib/types';
 import DirectoryPicker from './DirectoryPicker.svelte';
 
 const ROOT = 'C:/projects';
-const CLONED = `${ROOT}/uxnan/sample`;
+// Clones are suggested under `<home>/uxnan/repos`, beside the worktree root,
+// so a repository named `worktrees` cannot collide with it.
+const CLONED = `${ROOT}/uxnan/repos/sample`;
 
 beforeEach(() => {
   app.repos = [];

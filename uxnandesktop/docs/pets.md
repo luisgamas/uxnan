@@ -208,8 +208,30 @@ A pet is a folder with a manifest and one spritesheet:
 ```
 
 `<app-data>` is the ADE's per-user data directory (the same folder as
-`state.json`). The pet bundled with uxnan is not stored there — it ships inside
-the app under `static/pets/`.
+`state.json`). The pets bundled with uxnan are not stored there — they ship
+inside the app under `static/pets/<id>/`, one folder each, and are listed by id
+in `src/lib/pets/bundled.ts`.
+
+### What ships in the box
+
+Two pets, both uxnan's own artwork, in the same v2 format any other pack uses
+(8 × 11 frames of 192 × 208):
+
+| Pet | Folder | Looks like |
+|---|---|---|
+| **Uxni** (default) | `static/pets/uxni/` | The uxnan mascot — a chibi assistant |
+| **Nox** | `static/pets/nox/` | A compact anime-styled urban hoodie character |
+
+Pick either in **Settings → Pets → Your pets**; the choice is remembered in
+`activePetId`, and until one is made the default is Uxni. Neither is special-cased
+anywhere: they load, animate and get replaced exactly like an imported pack.
+
+**Adding another one is two steps and no code:** drop its folder in
+`static/pets/`, then add its id to `BUILTIN_PET_IDS` in
+`src/lib/pets/bundled.ts`. `tests/bundled-pets.test.mjs` holds the two halves
+together — it fails on art that was never listed (packaged into the build and
+never shown), on an id with no art behind it, and on a sheet whose pixels don't
+divide into the format's cell.
 
 ---
 
@@ -314,10 +336,10 @@ Anything uxnan adds to the format is optional and ignored by other readers.
 Either way you get a list of what was found and import them individually or all
 at once. A pet whose id already exists is offered as **Replace**.
 
-**Importing a pack with the bundled pet's id replaces it.** The library holds one
+**Importing a pack with a bundled pet's id replaces it.** The library holds one
 entry per id and an imported pet wins over the bundled one, so installing a pack
-called `uxni` is how you swap the mascot for your own — no duplicate entry, and
-no need to delete anything first.
+called `uxni` (or `nox`) is how you swap that mascot for your own — no duplicate
+entry, and no need to delete anything first.
 
 ### Why "Import from Codex" often finds nothing
 
@@ -455,5 +477,7 @@ root layout.
 | Desktop window commands | `src-tauri/src/commands.rs` (`pet_window_*`, `pet_focus_main`) |
 | Desktop window capability | `src-tauri/capabilities/pet.json` |
 | Settings section | `src/lib/components/PetsSettings.svelte` |
-| Bundled pet | `static/pets/uxni/` |
+| Bundled pets (art) | `static/pets/uxni/`, `static/pets/nox/` |
+| Bundled pets (the list) | `src/lib/pets/bundled.ts` |
+| Bundled-pack integrity test | `tests/bundled-pets.test.mjs` |
 

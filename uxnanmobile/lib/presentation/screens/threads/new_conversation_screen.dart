@@ -112,9 +112,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   /// directory points at the new checkout.
   bool _useWorktree = false;
 
-  /// Forwarded as `managed` so the bridge can later own the worktree location;
-  /// today the phone still derives an explicit sibling path (see
-  /// [_worktreePath]).
+  /// Forwarded as `managed`, which is what lets the bridge own the location and
+  /// record the worktree as one uxnan placed.
   bool _worktreeManaged = false;
 
   /// Absolute working dir chosen via the folder browser (overrides the default
@@ -126,19 +125,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     _model.dispose();
     _worktreeBranch.dispose();
     super.dispose();
-  }
-
-  /// Derives a sibling worktree path from the repo [cwd] and [branch]. The
-  /// bridge requires an explicit path (no managed worktrees yet); this keeps it
-  /// next to the repo as `<repo>-<branch>` with unsafe chars folded to `-`.
-  static String _worktreePath(String cwd, String branch) {
-    final sep = cwd.contains(r'\') ? r'\' : '/';
-    final trimmed = cwd.replaceAll(RegExp(r'[\\/]+$'), '');
-    final idx = trimmed.lastIndexOf(RegExp(r'[\\/]'));
-    final parent = idx < 0 ? '' : trimmed.substring(0, idx);
-    final repo = idx < 0 ? trimmed : trimmed.substring(idx + 1);
-    final slug = branch.replaceAll(RegExp('[^A-Za-z0-9._-]+'), '-');
-    return parent.isEmpty ? '$repo-$slug' : '$parent$sep$repo-$slug';
   }
 
   void _selectAgent(AgentDescriptor agent) {
@@ -182,11 +168,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       // the created checkout so the agent never touches the base working tree.
       String? createdWorktree;
       if (_useWorktree && branch.isNotEmpty) {
+        // Let the bridge place it whenever it can: it groups a repository's
+        // checkouts the same way the desktop does, so the same project does not
+        // end up split across two folder schemes. Only an older bridge, which
+        // requires a `path`, gets the derived one.
+        final managedByBridge =
+            ref.read(bridgeSupportsManagedWorktreesProvider);
         final result = await ref.read(gitActionManagerProvider).createWorktree(
               GitWorktreeParams(
                 cwd: workingCwd,
                 branch: branch,
-                path: _worktreePath(workingCwd, branch),
+                path: managedByBridge
+                    ? null
+                    : managedWorktreePath(workingCwd, branch),
                 managed: _worktreeManaged,
               ),
             );

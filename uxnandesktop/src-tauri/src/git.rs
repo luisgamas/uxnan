@@ -203,6 +203,67 @@ pub async fn is_git_repo(path: &str) -> bool {
     )
 }
 
+/// The git identity commits are authored with, plus the two facts that decide
+/// what a fresh worktree starts from and what the CLI can do (spec `02c` §2.1).
+/// Every field is optional: an unset identity is a real, reportable state — it
+/// is what makes `git commit` fail — and a missing `git` binary must not turn
+/// the settings pane into an error.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GitIdentity {
+    /// `user.name`.
+    pub name: Option<String>,
+    /// `user.email`.
+    pub email: Option<String>,
+    /// `init.defaultBranch` — what `git init` names the first branch.
+    pub default_branch: Option<String>,
+    /// The `git --version` number, e.g. `2.45.1`. `None` = git is not on PATH.
+    pub version: Option<String>,
+}
+
+/// Read a git config value, or `None` when it isn't set (`git config --get`
+/// exits 1 for a missing key, which the [`git`] helper reports as an error).
+async fn config_value(cwd: &str, args: &[&str]) -> Option<String> {
+    let mut argv = vec!["config", "--get"];
+    argv.extend_from_slice(args);
+    let out = git(cwd, &argv).await.ok()?;
+    let value = out.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// The **global** value of `key`, falling back to whatever git resolves from
+/// `cwd` when nothing is set globally — that covers a system-level identity
+/// (`/etc/gitconfig`, or a corporate install) without reporting a repository's
+/// own override as if it applied everywhere.
+async fn global_or_effective(cwd: &str, key: &str) -> Option<String> {
+    if let Some(value) = config_value(cwd, &["--global", key]).await {
+        return Some(value);
+    }
+    config_value(cwd, &["--system", key]).await
+}
+
+/// The identity git will author with outside any particular repository, for
+/// Settings → Git. `cwd` only anchors the process (the home directory); the
+/// values themselves come from the global/system config, never from a repo.
+pub async fn identity(cwd: &str) -> GitIdentity {
+    GitIdentity {
+        name: global_or_effective(cwd, "user.name").await,
+        email: global_or_effective(cwd, "user.email").await,
+        default_branch: global_or_effective(cwd, "init.defaultBranch").await,
+        version: git(cwd, &["--version"])
+            .await
+            .ok()
+            .and_then(|out| parse_git_version(&out)),
+    }
+}
+
+/// Pull the number out of `git version 2.45.1.windows.1` → `2.45.1.windows.1`.
+/// Pure so it's unit-tested; returns `None` for output that isn't a version line.
+fn parse_git_version(output: &str) -> Option<String> {
+    let rest = output.trim().strip_prefix("git version ")?.trim();
+    (!rest.is_empty()).then(|| rest.to_string())
+}
+
 /// Human-friendly name for a repo path (its final path component).
 pub fn repo_name(path: &str) -> String {
     Path::new(path)
@@ -296,6 +357,86 @@ pub async fn add_worktree_existing(
     git(repo_path, &["worktree", "add", worktree_path, branch])
         .await
         .map(|_| ())
+}
+
+/// A git config value, or `None` when the key is unset (`--get` exits 1, which
+/// [`git`] reports as an error). Reads whatever git resolves from `repo_path`,
+/// repository config included — unlike [`identity`], which asks about the
+/// machine.
+pub async fn config_get(repo_path: &str, key: &str) -> Option<String> {
+    let out = git(repo_path, &["config", "--get", key]).await.ok()?;
+    let value = out.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// Whether a ref exists (`refs/heads/…`, `refs/remotes/origin/…`, a tag).
+pub async fn ref_exists(repo_path: &str, reference: &str) -> bool {
+    git(repo_path, &["rev-parse", "--verify", "--quiet", reference])
+        .await
+        .is_ok()
+}
+
+/// Worktrees git still lists whose directory is gone from disk.
+///
+/// `git worktree list` keeps reporting a worktree after its folder is deleted —
+/// the bookkeeping in `.git/worktrees/` outlives it until someone prunes. So the
+/// sidebar shows checkouts that are not there, and opening one fails.
+///
+/// The repository's own main worktree is never included: if *that* is missing,
+/// the whole repository is, which is a different problem with a different
+/// answer (see `repos_missing`).
+pub async fn stale_worktrees(repo_path: &str) -> Vec<String> {
+    list_worktrees(repo_path)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| !e.is_main && !Path::new(&e.path).is_dir())
+        .map(|e| e.path)
+        .collect()
+}
+
+/// The main worktree of the repository `path` belongs to, or `None` when git
+/// cannot say. Used to place a worktree that sits somewhere the app did not put
+/// it — a hand-made one, or one from the dialog's custom location.
+pub async fn main_worktree_of(path: &str) -> Option<String> {
+    list_worktrees(path)
+        .await
+        .ok()?
+        .into_iter()
+        .find(|e| e.is_main)
+        .map(|e| e.path)
+}
+
+/// Whether the repository has any remote configured. A repository with none has
+/// nowhere else its history exists, which is what makes deleting its folder
+/// unconditional data loss.
+pub async fn has_remote(repo_path: &str) -> bool {
+    matches!(git(repo_path, &["remote"]).await, Ok(out) if !out.trim().is_empty())
+}
+
+/// How many commits on local branches exist on **no** remote — the number that
+/// decides whether deleting a clone loses work.
+///
+/// `git rev-list --branches --not --remotes --count`: everything reachable from
+/// a local branch, minus everything reachable from any remote-tracking ref.
+/// `None` when git could not answer, which callers must treat as "unknown", not
+/// as zero — a count we failed to read is not proof that there is nothing to
+/// lose.
+pub async fn unpushed_commits(repo_path: &str) -> Option<u32> {
+    let out = git(
+        repo_path,
+        &["rev-list", "--branches", "--not", "--remotes", "--count"],
+    )
+    .await
+    .ok()?;
+    out.trim().parse().ok()
+}
+
+/// Drop the admin entries of worktrees whose directories are gone
+/// (`git worktree prune`). Best-effort: a repository that cannot be pruned is
+/// not worth failing a cleanup that already removed the folders.
+pub async fn prune_worktrees(repo_path: &str) {
+    let _ = git(repo_path, &["worktree", "prune"]).await;
 }
 
 /// Whether a local branch named `branch` exists (`refs/heads/<branch>`).
@@ -398,24 +539,11 @@ fn split_host_owner(host_and_path: &str) -> Option<RemoteOwner> {
     })
 }
 
-/// Where a new worktree for `branch` is created: a sibling of the repo named
-/// `<repo>--<branch>` (branch separators flattened so it's a valid folder).
-///
-/// The path is returned with forward slashes so it matches what `git worktree
-/// list` reports (git normalizes to `/` even on Windows). Keeping one canonical
-/// form means the frontend's per-worktree workspace keys line up — otherwise a
-/// freshly-created worktree's backslash path wouldn't match its list entry, and
-/// e.g. an auto-launched agent would open in an invisible workspace.
-pub fn worktree_path_for(repo_path: &str, branch: &str) -> String {
-    let repo = Path::new(repo_path);
-    let parent = repo.parent().unwrap_or(repo);
-    let name = repo_name(repo_path);
-    let safe_branch = branch.replace(['/', '\\'], "-");
-    parent
-        .join(format!("{name}--{safe_branch}"))
-        .to_string_lossy()
-        .replace('\\', "/")
-}
+// Where a new worktree lands is decided by `worktreeloc.rs`, which owns both
+// layouts (the managed root and the legacy sibling) and the settings that pick
+// between them. It is deliberately not duplicated here: the app used to compute
+// this path in three places — Rust, the Svelte dialog and the phone — and they
+// had already drifted apart into three different folder names.
 
 /// Normalize a path for comparison only: forward slashes, no trailing slash, and
 /// lowercased on Windows (its filesystem is case-insensitive). Pure so it's
@@ -1594,11 +1722,68 @@ mod tests {
         assert!(parse_worktree_porcelain("").is_empty());
     }
 
+    #[tokio::test]
+    async fn stale_worktrees_are_the_ones_git_lists_but_disk_does_not_have() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+
+        let alive = crate::worktreeloc::sibling_path(&repo_path, "alive");
+        let gone = crate::worktreeloc::sibling_path(&repo_path, "gone");
+        add_worktree(&repo_path, "alive", &alive, Some("main"))
+            .await
+            .unwrap();
+        add_worktree(&repo_path, "gone", &gone, Some("main"))
+            .await
+            .unwrap();
+        assert!(stale_worktrees(&repo_path).await.is_empty());
+
+        // Deleted from outside the app — git keeps listing it until pruned,
+        // which is exactly why the sidebar showed checkouts that are not there.
+        std::fs::remove_dir_all(&gone).unwrap();
+        assert_eq!(stale_worktrees(&repo_path).await, vec![gone.clone()]);
+
+        // The main worktree is never reported: if THAT is gone the whole
+        // repository is, which is a different problem.
+        assert!(!stale_worktrees(&repo_path).await.contains(&repo_path));
+
+        prune_worktrees(&repo_path).await;
+        assert!(stale_worktrees(&repo_path).await.is_empty());
+        // Pruning touched records, not files: the live worktree is untouched.
+        assert!(std::path::Path::new(&alive).is_dir());
+    }
+
     #[test]
-    fn worktree_path_flattens_branch_separators() {
-        let p = worktree_path_for("/home/u/myrepo", "feature/login");
-        assert!(p.ends_with("myrepo--feature-login"));
-        assert!(p.contains("/home/u") || p.contains("\\home\\u"));
+    fn parses_the_git_version_line() {
+        assert_eq!(
+            parse_git_version("git version 2.45.1.windows.1\n").as_deref(),
+            Some("2.45.1.windows.1")
+        );
+        assert_eq!(
+            parse_git_version("git version 2.45.1").as_deref(),
+            Some("2.45.1")
+        );
+        // Anything that isn't a version line reports "unknown", not a bogus value.
+        assert_eq!(parse_git_version(""), None);
+        assert_eq!(parse_git_version("command not found"), None);
+        assert_eq!(parse_git_version("git version "), None);
+    }
+
+    #[tokio::test]
+    async fn identity_reads_the_configured_author_and_version() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
+        init_repo(&repo_path).await;
+
+        // `init_repo` sets the author LOCALLY. The identity is deliberately read
+        // from the global/system config, so a repo's own override must not show
+        // up here — otherwise the pane would report an identity the user does
+        // not actually have anywhere else.
+        let id = identity(&repo_path).await;
+        assert_ne!(id.name.as_deref(), Some("Uxnan Test"));
+        assert_ne!(id.email.as_deref(), Some("test@uxnan.dev"));
+        // git is on PATH in every environment that runs these tests.
+        assert!(id.version.is_some(), "no git version reported");
     }
 
     #[test]
@@ -1642,19 +1827,6 @@ mod tests {
         // Garbage / empty return None rather than a bogus owner.
         assert!(parse_remote_owner("").is_none());
         assert!(parse_remote_owner("not-a-url").is_none());
-    }
-
-    #[test]
-    fn worktree_path_for_stays_under_wsl_unc_prefix() {
-        // A WSL repo's worktree must remain a sibling under the same UNC share so
-        // the path keeps parsing as WSL (and routes through wsl.exe).
-        let p = worktree_path_for("//wsl.localhost/Ubuntu/home/u/myrepo", "feature/login");
-        assert!(p.ends_with("myrepo--feature-login"), "got {p}");
-        assert!(p.contains("wsl.localhost/Ubuntu/home/u"), "got {p}");
-        assert!(
-            crate::wsl::parse(&p).is_some(),
-            "result should still parse as WSL"
-        );
     }
 
     #[test]
@@ -1853,12 +2025,12 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_keeps_branch_by_default() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // A feature worktree — even a fully-merged branch stays untouched when no
         // cleanup is opted into: removing a worktree removes only the worktree.
-        let wt = worktree_path_for(&repo_path, "feature");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "feature");
         add_worktree(&repo_path, "feature", &wt, Some("main"))
             .await
             .unwrap();
@@ -1884,11 +2056,11 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_deletes_squash_merged_branch_when_requested() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // A feature worktree with its own commit.
-        let wt = worktree_path_for(&repo_path, "feature");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "feature");
         add_worktree(&repo_path, "feature", &wt, Some("main"))
             .await
             .unwrap();
@@ -1919,10 +2091,10 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_keeps_unmerged_branch_unless_forced() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "wip");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "wip");
         add_worktree(&repo_path, "wip", &wt, Some("main"))
             .await
             .unwrap();
@@ -1949,10 +2121,10 @@ mod tests {
     #[tokio::test]
     async fn branch_integrated_sees_a_merged_branch() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "feature");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "feature");
         add_worktree(&repo_path, "feature", &wt, Some("main"))
             .await
             .unwrap();
@@ -1977,10 +2149,10 @@ mod tests {
         // The case plain ancestry misses: the base carries the same net diff as a
         // single commit, so no commit of the branch is an ancestor of it.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "squashed");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "squashed");
         add_worktree(&repo_path, "squashed", &wt, Some("main"))
             .await
             .unwrap();
@@ -2006,10 +2178,10 @@ mod tests {
         // yes about it. It showed the "landed" chip next to genuinely merged
         // branches.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "untouched");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "untouched");
         add_worktree(&repo_path, "untouched", &wt, Some("main"))
             .await
             .unwrap();
@@ -2032,10 +2204,10 @@ mod tests {
         // the same commit. One did the work, the other never started. Only the
         // reflog — which records where each branch began — tells them apart.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "did-the-work");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "did-the-work");
         add_worktree(&repo_path, "did-the-work", &wt, Some("main"))
             .await
             .unwrap();
@@ -2069,10 +2241,10 @@ mod tests {
         // ancestry says yes — and the batch close would then have offered to
         // delete the workspace that had just been set up.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "brand-new");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "brand-new");
         add_worktree(&repo_path, "brand-new", &wt, Some("main"))
             .await
             .unwrap();
@@ -2101,7 +2273,7 @@ mod tests {
     async fn branch_integrated_never_reports_the_base_itself() {
         // Guard against inviting the user to close the branch everything lands on.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         assert!(!branch_integrated(&repo_path, "main").await);
@@ -2122,10 +2294,10 @@ mod tests {
         // ("cannot delete branch ... checked out at ...") and the contract under
         // test is the reporting, not the cause.
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "side");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "side");
         add_worktree(&repo_path, "side", &wt, Some("main"))
             .await
             .unwrap();
@@ -2156,10 +2328,10 @@ mod tests {
     #[tokio::test]
     async fn remove_worktree_force_deletes_unmerged_local_branch() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
-        let wt = worktree_path_for(&repo_path, "wip");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "wip");
         add_worktree(&repo_path, "wip", &wt, Some("main"))
             .await
             .unwrap();
@@ -2203,7 +2375,7 @@ mod tests {
         // A local branch that isn't checked out anywhere yet.
         run_git(&repo_path, &["branch", "existing"]).await;
 
-        let wt = worktree_path_for(&repo_path, "existing");
+        let wt = crate::worktreeloc::sibling_path(&repo_path, "existing");
         add_worktree_from_existing(&repo_path, "existing", &wt)
             .await
             .unwrap();
@@ -2233,7 +2405,7 @@ mod tests {
     #[tokio::test]
     async fn image_diff_reports_old_and_new_for_working_change() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // Commit an "image" file (arbitrary bytes — image_diff treats it opaquely).
@@ -2256,7 +2428,7 @@ mod tests {
     #[tokio::test]
     async fn image_diff_has_no_old_for_untracked_added_file() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         // A brand-new, never-committed image → no old side, new from disk.
         std::fs::write(format!("{repo_path}/new.png"), [7u8, 7, 7]).unwrap();
@@ -2295,7 +2467,7 @@ mod tests {
     #[tokio::test]
     async fn stage_and_unstage_file_roundtrip() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
@@ -2323,7 +2495,7 @@ mod tests {
     #[tokio::test]
     async fn stage_all_and_unstage_all() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
@@ -2364,7 +2536,7 @@ mod tests {
     #[tokio::test]
     async fn discard_tracked_file_restores_head() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nedited\n").unwrap();
@@ -2387,7 +2559,7 @@ mod tests {
     #[tokio::test]
     async fn discard_untracked_file_deletes_it() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         let junk = format!("{repo_path}/junk.txt");
@@ -2412,7 +2584,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_stage_hunk() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         commit_multiline_file(&repo_path).await;
 
@@ -2439,7 +2611,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_unstage_hunk() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         commit_multiline_file(&repo_path).await;
 
@@ -2465,7 +2637,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_discard_hunk() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
         commit_multiline_file(&repo_path).await;
 
@@ -2491,7 +2663,7 @@ mod tests {
     #[tokio::test]
     async fn apply_patch_invalid_patch_errors() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         match apply_patch(&repo_path, "not a patch\n", false, false).await {
@@ -2505,7 +2677,7 @@ mod tests {
     #[tokio::test]
     async fn commit_creates_commit_with_message() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nchange\n").unwrap();
@@ -2530,7 +2702,7 @@ mod tests {
     #[tokio::test]
     async fn commit_amend_rewrites_head() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nfirst\n").unwrap();
@@ -2560,7 +2732,7 @@ mod tests {
     #[tokio::test]
     async fn commit_sign_off_appends_trailer() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         std::fs::write(format!("{repo_path}/README.md"), "base\nsigned\n").unwrap();
@@ -2579,7 +2751,7 @@ mod tests {
     #[tokio::test]
     async fn commit_nothing_staged_errors() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        let repo_path = crate::worktreeloc::canonical_temp(repo.path());
         init_repo(&repo_path).await;
 
         // Nothing staged (and no amend) → git commit fails, surfaced as an error.

@@ -22,7 +22,7 @@
 
   interface Props {
     pet: Pet;
-    /** Spritesheet URL (a static path for the bundled pet, else a data URL). */
+    /** Spritesheet URL (a static path for a bundled pet, else a data URL). */
     sheet: string;
     /** Animation name to play; falls back through the pack's own chain. */
     animation: string;

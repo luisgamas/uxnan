@@ -124,12 +124,10 @@ pub struct AppState {
     /// `browser.rs`). A plain `std::sync::Mutex` so the sync `on_navigation`
     /// closure can update it without an async context. `None` = never opened.
     pub browser_url: Arc<std::sync::Mutex<Option<String>>>,
-    /// Dedup keys for MCP config injection (`mcpinject.rs`), so a workspace's (or
-    /// the global) config is written at most once per session (`ws:<cwd>` /
-    /// `global`).
+    /// Dedup keys for the per-launch MCP preparation (`mcpinject.rs`) — today the
+    /// Codex per-folder trust seed, keyed `codextrust:<cwd>` so it is seeded at
+    /// most once per working directory per session.
     pub mcp_prepared: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
-    /// MCP config files we wrote, recorded so they're undone on exit (best-effort).
-    pub mcp_written: Arc<std::sync::Mutex<Vec<crate::mcpinject::Written>>>,
     /// Local resource observability: the PTY-link registry, the adaptive
     /// sampler's leases and the aggregated circular buffer (`resources.rs`).
     /// Parked (no timer, no OS handle) unless a consumer subscribes.
@@ -159,7 +157,6 @@ impl AppState {
             staged_update: Arc::new(RwLock::new(None)),
             browser_url: Arc::new(std::sync::Mutex::new(None)),
             mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
-            mcp_written: Arc::new(std::sync::Mutex::new(Vec::new())),
             resources,
         }
     }

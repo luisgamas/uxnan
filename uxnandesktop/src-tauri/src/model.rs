@@ -102,6 +102,12 @@ pub struct RepoData {
     /// so the list self-heals. Empty (the default) → the git listing order.
     #[serde(default)]
     pub worktree_order: Vec<String>,
+    /// Per-project override of the managed worktree root, for a repository that
+    /// belongs somewhere else than the rest (another volume, a path short enough
+    /// for a deep dependency tree on Windows). `None` (the default) → the global
+    /// setting. Ignored in `sibling` mode, which has no root.
+    #[serde(default)]
+    pub worktree_root: Option<String>,
 }
 
 /// An independent git worktree — the ADE's fundamental unit of isolation.
@@ -626,6 +632,52 @@ pub struct AppSettings {
     /// (`src/lib/resources/policy.ts`); this struct only keeps the shape.
     #[serde(default)]
     pub resource_mode: ResourceModeSettings,
+    /// Where new worktrees are created (Settings → Git → Worktree location).
+    /// All fields default, so state written before this existed loads unchanged
+    /// — and lands on the managed root, which only affects worktrees created
+    /// from then on: the ones already on disk are read from `git worktree list`
+    /// and keep working wherever they are.
+    #[serde(default)]
+    pub worktrees: WorktreeSettings,
+}
+
+/// Where the ADE puts a new worktree (spec `02c` §2.1). The layout itself lives
+/// in `worktreeloc.rs`; this is only the user's choice of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WorktreeLocationMode {
+    /// `<root>/<repo>/<branch>` under a root the app manages — by default
+    /// `<home>/uxnan/worktrees`, beside the folder the clone flow already writes
+    /// to. Groups a repository's checkouts instead of scattering them, and is
+    /// the same layout the bridge gives the phone.
+    #[default]
+    Managed,
+    /// `<parent>/<repo>--<branch>`, the layout the app used before the managed
+    /// root existed. Kept for anyone whose tooling expects the sibling folders.
+    Sibling,
+    /// `<custom-root>/<repo>/<branch>` — the managed layout under a root the
+    /// user names (another drive, a shorter path, a folder outside a synced
+    /// home).
+    Custom,
+}
+
+/// Worktree placement settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeSettings {
+    /// Which layout new worktrees use.
+    #[serde(default)]
+    pub location: WorktreeLocationMode,
+    /// Root for [`WorktreeLocationMode::Custom`]; ignored by the other modes.
+    /// `None`/empty falls back to the default managed root rather than failing,
+    /// so a half-configured setting never blocks creating a worktree.
+    #[serde(default)]
+    pub root: Option<String>,
+    /// The user dismissed the status-bar nudge about the managed folder filling
+    /// up. Set once and kept: a reminder that comes back after being waved away
+    /// is nagging, and the cleanup section is always there to open on purpose.
+    #[serde(default)]
+    pub cleanup_notice_dismissed: bool,
 }
 
 /// Local resource observability (CPU / memory / process attribution for uxnan,
@@ -939,34 +991,6 @@ pub enum BrowserLinkPolicy {
     Ask,
 }
 
-/// How the browser-control MCP server (spec `02d` §1.6) is made discoverable to the
-/// CLI agents the ADE launches (see `mcpinject.rs`). `Managed` is the default: it
-/// registers the server in each CLI's **user-global** config only — never the
-/// project working directory. User-global config is not project-approval-gated for
-/// any supported CLI, so there is no "approve this MCP server?" prompt and nothing
-/// lands in the user's project folder (which they'd notice and delete). Hand-typed
-/// agents in any folder still pick the server up, because every CLI reads its
-/// user-global config too. With the frictionless setting on
-/// ([`BrowserSettings::friction_free`]), app-launched agents additionally receive
-/// first-party trust-skip flags so the CLI never prompts to trust the folder (see
-/// `mcpinject.rs`). `Global` writes the same user-global config but leaves the CLIs'
-/// own trust prompts intact. `Off` injects nothing — the user can wire it manually
-/// from the copy-paste snippet in Settings → Browser.
-///
-/// The legacy `Workspace` mode (a project-scoped config in the working directory)
-/// was **removed**: it was the sole source of both the project-dir files and the
-/// project-approval prompts, and user-global config covers hand-typed agents just as
-/// well. A persisted `"workspace"` value deserializes to `Managed` via the alias.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum McpInjection {
-    Off,
-    #[default]
-    #[serde(alias = "workspace")]
-    Managed,
-    Global,
-}
-
 /// Integrated **developer** browser (Settings → Browser). A lightweight in-app
 /// webview tab for previewing/debugging the systems agents build and opening the
 /// links agents produce — deliberately not a general-purpose browser. The webview
@@ -993,26 +1017,21 @@ pub struct BrowserSettings {
     /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
     #[serde(default)]
     pub homepage: String,
-    /// Expose the browser-control MCP server (spec `02d` §1.6) to agents, so they
-    /// discover the `browser_*` tools automatically. When off, no MCP config is
-    /// injected (the `/mcp` endpoint still exists for manual wiring). Default on.
+    /// Expose the browser-control MCP server (spec `02d` §1.6) to the agents the
+    /// ADE launches, so they discover the `browser_*` tools automatically. The
+    /// server is registered **per launch** — in the process uxnan spawns, never
+    /// in a config file the user keeps (see `mcpinject.rs`). When off, nothing is
+    /// registered (the `/mcp` endpoint still exists for manual wiring). Default on.
     #[serde(default = "default_true")]
     pub mcp_enabled: bool,
-    /// How the MCP server is injected into agents (see [`McpInjection`]). Default
-    /// `managed`.
-    #[serde(default)]
-    pub mcp_injection: McpInjection,
-    /// Frictionless agent setup. When on (default) and injection mode is `managed`,
-    /// app-launched agents receive first-party trust-skip flags so the CLI never
-    /// prompts to trust the workspace/folder on launch, and per-folder trust is
-    /// pre-seeded where the CLI supports it (e.g. Codex
-    /// `projects."<cwd>".trust_level`). Turn off to keep the CLIs' native trust
-    /// prompts. Applies only in `managed` mode.
+    /// Frictionless agent setup. When on (default), app-launched agents skip the
+    /// CLI's folder-trust prompt where the CLI supports being told so ahead of
+    /// time (today Codex, via a per-folder `projects."<cwd>".trust_level` seed).
+    /// Turn off to keep the CLIs' native trust prompts.
     #[serde(default = "default_true")]
     pub friction_free: bool,
-    /// Agent ids (`claude`, `codex`, `opencode`, `pi`, …) to skip when
-    /// injecting the MCP config. Empty = every supported agent gets it. Default
-    /// empty.
+    /// Agent ids (`claude`, `codex`, `opencode`) to skip when registering the MCP
+    /// server at launch. Empty = every supported agent gets it. Default empty.
     #[serde(default)]
     pub mcp_disabled_agents: Vec<String>,
 }
@@ -1026,7 +1045,6 @@ impl Default for BrowserSettings {
             terminal_links: true,
             homepage: String::new(),
             mcp_enabled: true,
-            mcp_injection: McpInjection::default(),
             friction_free: true,
             mcp_disabled_agents: Vec::new(),
         }
@@ -1036,8 +1054,8 @@ impl Default for BrowserSettings {
 /// Sprite-animated companions that mirror agent state (`pets.rs`).
 ///
 /// Deliberately opt-in: `enabled` is false by default, so a user who never asks
-/// for a pet never gets one. The bundled pet is uxnan's own; every other pet is
-/// imported by the user from a folder they already have (typically
+/// for a pet never gets one. The bundled pets are uxnan's own; every other pet
+/// is imported by the user from a folder they already have (typically
 /// `~/.codex/pets`), and its artwork stays its author's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1249,6 +1267,7 @@ impl Default for AppSettings {
             profile: None,
             resources: ResourceSettings::default(),
             resource_mode: ResourceModeSettings::default(),
+            worktrees: WorktreeSettings::default(),
         }
     }
 }

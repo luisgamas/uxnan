@@ -97,6 +97,19 @@ test('bridge/status advertises the message-queue feature', async () => {
   await rmrf(baseDir);
 });
 
+test('bridge/status advertises that it places worktrees itself', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  const res = await bridge.router.dispatch(makeRequest('6b', 'bridge/status'));
+  assert.ok('result' in res);
+  // Without this flag a client has to keep deriving its own worktree path — and
+  // the phone's derivation had drifted into a different folder name from the
+  // desktop's for the same repository and branch.
+  const features = (res.result as { features?: { managedWorktrees?: boolean } }).features;
+  assert.equal(features?.managedWorktrees, true);
+  await bridge.stop();
+  await rmrf(baseDir);
+});
+
 test('bridge/removeTrustedDevice revokes trust and is idempotent', async () => {
   const { bridge, baseDir } = await bootBridge();
   await bridge.context.trustStore.upsert({

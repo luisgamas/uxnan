@@ -52,6 +52,10 @@ struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: SharedChild,
+    /// Where the shell was started. Kept so the app can answer "is anything
+    /// running in this folder?" — the worktree cleanup must never offer to
+    /// delete a checkout an agent is working in.
+    cwd: String,
 }
 
 /// Owns all live PTY sessions for the app, keyed by frontend-chosen id.
@@ -104,7 +108,8 @@ impl PtyManager {
         for (key, value) in &spec.env {
             cmd.env(key, value);
         }
-        cmd.cwd(spec.cwd.unwrap_or_else(default_cwd));
+        let cwd = spec.cwd.unwrap_or_else(default_cwd);
+        cmd.cwd(cwd.clone());
 
         // FOR-DEV: Windows redirection-guard structural fix (alternative to the
         // shipped detection). On Windows this child inherits the app's
@@ -173,6 +178,7 @@ impl PtyManager {
                 master: pair.master,
                 writer,
                 child,
+                cwd,
             },
         );
         Ok(true)
@@ -250,6 +256,18 @@ impl PtyManager {
             .unwrap()
             .get(id)
             .and_then(|s| s.child.lock().unwrap().process_id())
+    }
+
+    /// The working directories of every live session, normalized to forward
+    /// slashes. What makes "an agent is working in there" a fact the cleanup can
+    /// check instead of a risk it takes.
+    pub fn live_cwds(&self) -> Vec<String> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .values()
+            .map(|s| s.cwd.replace('\\', "/"))
+            .collect()
     }
 
     /// Number of live sessions (used by tests).

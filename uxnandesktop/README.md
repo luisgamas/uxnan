@@ -73,9 +73,15 @@ available today are:
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
   stash` / `git checkout` cycle. Create a worktree on a **new branch** (with an
-  auto-name generator) or by **checking out any existing local or remote branch**,
-  and optionally pick a **custom location** — the automatic sibling folder is used
-  otherwise. Add projects from a local folder or by cloning a pasted GitHub
+  auto-name generator) or by **checking out any existing local or remote branch**.
+  New worktrees are grouped by project under a folder uxnan manages
+  (`~/uxnan/worktrees/<project>/<branch>`); **Settings → Git** switches that to a
+  folder beside the repository or to one you choose, per app or per project, and
+  the create dialog can still override it for a single worktree. Existing
+  worktrees are never moved, and **Settings → Git → Cleanup** empties that folder
+  safely: it lists only what it can prove is disposable, shows what has unsaved
+  work as blocked rather than hiding it, and never looks outside the folder it
+  manages. Add projects from a local folder or by cloning a pasted GitHub
   repository reference (full history, with file objects transferred on demand),
   then use the project-card **+** launcher to start from a
   new/existing branch, a pull request, or an issue and open the selected terminals,
@@ -155,8 +161,9 @@ available today are:
   DevTools) to preview and debug what your agents build — `localhost` dev servers
   and any site — and to open the links they create. Links route by a policy you
   choose (in-app · system browser · ask); when allowed, agents open URLs in it
-  automatically — and, via an injected **browser-control MCP server**, discover
-  `browser_*` tools to preview and test what they build with no setup. See
+  automatically — and, through a **browser-control MCP server** registered on each
+  agent uxnan launches (and only there — your agent configs are never touched),
+  discover `browser_*` tools to preview and test what they build with no setup. See
   [the integrated browser](./docs/browser.md).
 - **Quick commands.** Program shell commands you run often and launch them from a
   top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.
@@ -180,7 +187,8 @@ available today are:
   runs whichever way you carry it, and floats over the whole desktop in its own
   always-on-top window by default (or stays a layer inside the app if you
   prefer).
-  uxnan bundles its own; you can import more from `~/.codex/pets` or any folder
+  uxnan bundles two of its own — **Uxni** and **Nox** — and you can import more
+  from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).
 - **Personalization and internationalization.** Full custom theming with design
@@ -270,6 +278,7 @@ Detailed docs live in [`docs/`](./docs/):
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
 [remote hosts over SSH](./docs/remote-hosts.md) ·
+[worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·
 [file viewer](./docs/file-viewer.md) ·
 [provider usage statistics](./docs/providers.md) ·

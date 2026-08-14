@@ -40,6 +40,7 @@
   import type { RepoData } from "$lib/types";
   import type { DisplayStatus } from "$lib/state/agentDisplay";
   import { Icon } from "$lib/components/ui/icon";
+  import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
   import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
   import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
@@ -58,6 +59,9 @@
   import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
+  // A message with a notification dot: unread is *new output waiting to be
+  // read*, distinct from the waiting glyph, which is *a question for you*.
+  import MessageNotificationIcon from "@hugeicons/core-free-icons/MessageNotification01Icon";
 
   let {
     repo,
@@ -287,16 +291,26 @@
         {/snippet}
       </TooltipSimple>
     {/if}
+    {#if projects.isMissing(repo.id)}
+      <!-- Its folder is not there right now. Said, not acted on: an unmounted
+           drive and a deleted project look identical from here. -->
+      <TooltipSimple title={i18n.t("project.missingTooltip")}>
+        {#snippet children(tp2)}
+          <span {...tp2} class="shrink-0 text-amber-600 dark:text-amber-400">
+            <Icon icon={AlertIcon} class={icon.decorative} />
+          </span>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
     {#if projects.isProjectPinned(repo.id)}
       <Icon icon={PinIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
     {/if}
     {#if hasUnread}
       <TooltipSimple title={i18n.t("monitor.unread")}>
         {#snippet children(tp2)}
-          <span
-            {...tp2}
-            class="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/15"
-          ></span>
+          <span {...tp2} class="inline-flex shrink-0 text-red-500">
+            <Icon icon={MessageNotificationIcon} class={icon.decorative} />
+          </span>
         {/snippet}
       </TooltipSimple>
     {/if}

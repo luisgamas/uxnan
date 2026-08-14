@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.22-alpha.20260813] - 20260813
+### Added — the bridge places worktrees itself, where the desktop places them
+
+`git/createWorktree` no longer requires a `path`. Without one it resolves the
+location from the new `worktrees` config — by default the managed root
+`<home>/uxnan/worktrees/<repo>/<branch>`, the same layout
+`uxnandesktop/src-tauri/src/worktreeloc.rs` produces — and advertises
+`features.managedWorktrees` on `bridge/status` so a client can ask instead of
+guessing from a version string. A client that still sends a path gets exactly
+that path, unchanged.
+
+The point is that both apps place worktrees for the **same** repositories. The
+phone derived `<parent>/<repo>-<branch>` and the desktop `<parent>/<repo>--<branch>`
+with different sanitizing, so one project's checkouts were split across two
+schemes depending on which app created them. The layout now exists once per
+runtime, driven by one shared table of cases:
+`src/git/worktree-location.ts` here, `worktreeloc.rs` there — including the
+digest that disambiguates two projects with the same folder name, which both
+sides pin to the same value.
+
+What the resolver guarantees: the group is measured from the repository's
+**main** worktree (so creating one from inside another does not nest), branch
+names are folded into folder names valid on every OS (Windows-invalid
+characters, trailing dots and spaces, reserved device names, length capped on a
+word boundary), a taken destination takes the next free `-2`/`-3` suffix, and a
+second project of the same name gets its own group.
+
+`managed-worktrees.json` — declared since the daemon's first state layout and
+never written — now records the worktrees the bridge placed, so a later cleanup
+can tell them from checkouts that were already on disk. Only the ones it located
+itself are recorded: a client-supplied path is the client's own arrangement.
+
+### Configuration
+
+- **`worktrees`** — `{ location: 'managed' | 'sibling' | 'custom', root?: string }`.
+  Default `{ location: 'managed' }`. `sibling` reproduces the pre-managed
+  `<repo>--<branch>`; `custom` puts the managed layout under `root`.
+
 ## [0.0.21-alpha.20260812] - 2026-08-12
 
 ### Fixed — a tool step could be announced after the sentence that followed it

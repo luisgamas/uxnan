@@ -116,9 +116,11 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   **Endpoint file:** el servidor escribe `endpoint.env`/`endpoint.cmd` (url+token
   vivos) al arrancar e inyecta `UXNAN_ENDPOINT_FILE`; cada reporter lo prefiere,
   así una terminal que sobrevive a un reinicio del ADE alcanza al servidor vivo.
-  **Settings → Agents → Hooks** expone un botón **Install** por agente (mergea de
-  forma idempotente, marcando lo gestionado por el nombre del script/relay);
-  Uninstall es su reverso. Así los estados precisos funcionan out-of-the-box.
+  **Settings → Agents → Hooks** expone un **switch por agente** — una fila de
+  ajustes por CLI, agrupadas en «en este equipo» y el resto — que instala
+  (mergeando de forma idempotente, marcando lo gestionado por el nombre del
+  script/relay) o desinstala, su reverso. Así los estados precisos funcionan
+  out-of-the-box.
 - **Seguridad del servidor local (defensa en profundidad):** el servidor liga
   solo a `127.0.0.1` (loopback) con puerto efímero y exige el **token por
   lanzamiento** (nunca escrito a disco). Sobre esa base: (a) el token se compara
@@ -568,17 +570,25 @@ El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un 
 
 **Superficie de herramientas (solo control):** `browser_open`, `browser_navigate`, `browser_reload`, `browser_back`, `browser_forward`, `browser_status`. Reusan los mismos caminos del navegador (`browser::route_url` + comandos de ventana) y respetan la misma politica de enlaces que un enlace clicado. La inspeccion/interaccion de pagina (snapshot/evaluate/click/type) queda como fase posterior (requiere un canal de retorno JS desde la `WebviewWindow`).
 
-**Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). Los agentes reciben la configuracion MCP de su propio CLI apuntando a `/mcp`, pero el **token nunca se escribe en un archivo**: cada config lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente. Consecuencia de diseno: la config inyectada **solo funciona dentro de una terminal lanzada por uxnan** — un agente ejecutado en otro entorno lee el mismo archivo pero no tiene la variable, no autentica y el servidor simplemente no carga para el (no puede secuestrar el navegador in-app).
+**Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). El **token nunca se escribe en un archivo**: toda registracion lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente.
 
-**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, OpenCode, Grok) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.grok/config.toml`) — nunca en el directorio del proyecto. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
+**Registracion por lanzamiento (`mcpinject.rs`) — invariante de diseno:** el servidor se registra **en el proceso que lanza uxnan y solo para ese lanzamiento**; el ADE **no escribe nada** en la config de ningun CLI (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, …). Un agente arrancado fuera de uxnan no descubre el servidor, no intenta conectarse y **no puede avisar de que esta caido**.
 
-- **`managed`** (default): la escritura global-de-usuario descrita arriba, mas — cuando **`friction_free`** esta activo — la supresion del aviso de confianza de carpeta de Codex para agentes lanzados por la app mediante una semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `config.toml` (respeta una decision explicita del usuario).
-- **`global`**: identica escritura global-de-usuario, pero sin la supresion de confianza (los CLI conservan sus avisos nativos).
-- **`off`**: no inyecta nada (el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable de Settings).
+| Agente | Mecanismo | Forma |
+|---|---|---|
+| Claude Code | flag de lanzamiento | `--mcp-config <archivo propio del ADE>` (expande `${UXNAN_MCP_TOKEN}` del entorno) |
+| Codex | flags de lanzamiento | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN` |
+| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; expande `{env:UXNAN_MCP_TOKEN}`) |
 
-> El modo `workspace` (config con alcance de proyecto en el directorio de trabajo) **fue eliminado**: era la unica fuente de los archivos en la carpeta del proyecto y de los avisos de aprobacion por-proyecto. Un valor persistido `"workspace"` se migra a `managed`.
+El archivo de Claude vive en `<app-data>/mcp/claude-<puerto>.json` y lleva el puerto de **esa** ventana, de modo que dos ventanas de uxnan abiertas nunca se pisan el endpoint. Los flags se anaden en el unico punto donde el frontend teclea un comando de lanzamiento (`$lib/mcpLaunch` desde `terminal/instances.ts`), asi que cubre por igual un lanzamiento nuevo, una sesion reanudada y una pestana despertada.
 
-El merge preserva el resto de la configuracion del usuario (JSON via `serde_json`, TOML de Codex via `toml_edit`). El registro es extensible: agregar un agente nuevo (p. ej. `agy`/Antigravity, Cursor, Grok, amp, Pi) es una fila en `AGENTS` + un brazo en `config_path`/`write_entry` (receta en `docs/browser.md`).
+**Por que se sustituyo la escritura en la config global de usuario:** era una unica entrada, persistente y compartida, con dos fallos observados. (1) Fuera de uxnan no era inocua: Codex valida `bearer_token_env_var` al arrancar y aborta la fase MCP con *«Environment variable UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set»* en **cada** ejecucion. (2) La entrada llevaba el puerto de una instancia, asi que una **segunda** ventana de uxnan la sobrescribia y rompia los agentes de la primera desde dentro. Al arrancar, el ADE hace un **barrido de limpieza** (solo eliminacion, `sweep_legacy`) que borra esa entrada de las siete configs de usuario que versiones anteriores pudieron escribir.
+
+**Ajustes (Settings → Browser):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable.
+
+**Fila por agente (misma forma que la lista de Hooks, §1.1):** cada agente del catalogo es una fila `AgentSettingsRow` con su marca, su nombre y su interruptor. Donde Hooks muestra el archivo de config que escribe, esta lista muestra `McpAgentInfo.mechanism` — el flag o la variable que recibe ese lanzamiento (`--mcp-config <archivo>`, `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`) — porque aqui no hay ningun archivo de config que mostrar: ese es justamente el punto.
+
+Solo se auto-configura un CLI cuando existe un mecanismo por lanzamiento **verificado contra el CLI real**; Grok, Qwen Code, Droid y MiMo Code no lo tienen hoy (detalle y receta para anadir uno en `docs/browser.md`).
 
 ---
 
@@ -627,7 +637,7 @@ Todos los campos son opcionales (una hoja suelta ya anima, con rejilla convencio
 
 **Tamano.** La escala ofrecida es 96 / 144 / 200 / 260 px (por defecto 144), medida sobre la **celda** del sprite — que un pack generado llena casi por completo (~6 px de margen arriba y abajo). Una escala anterior que terminaba en 160 dejaba incluso el maximo por debajo de la mascota de escritorio de referencia en su ajuste *medio* (~200 px). El tamano dibujado se ajusta a esa escala, para que el selector y la mascota nunca discrepen.
 
-**Arte.** La mascota incluida es **Uxni**, un pack v2 en el mismo formato que cualquier otro (`static/pets/uxni/`): hoja de 8 x 11 cuadros — filas 0-8 con una animacion de estado por fila, filas 9-10 con las 16 poses de mirada. No se genera ni se dibuja en codigo — se reemplaza cambiando los archivos de esa carpeta.
+**Arte.** Las mascotas incluidas son **Uxni** (la predeterminada) y **Nox**, packs v2 en el mismo formato que cualquier otro (`static/pets/<id>/`): hoja de 8 x 11 cuadros — filas 0-8 con una animacion de estado por fila, filas 9-10 con las 16 poses de mirada. No se generan ni se dibujan en codigo — se reemplazan cambiando los archivos de esa carpeta. Que packs se incluyen lo declara `src/lib/pets/bundled.ts` (una lista de ids); ninguno recibe trato especial en el renderer.
 
 **Los estados caducan, no se espejan.** Una mascota que refleja `working` literalmente corre sin pausa lo que dure la tarea: se lee como un spinner y tapa los estados que si requieren a la persona. Cada estado tiene una **vida util** medida desde que el agente **entro** en el (un hook que dispara en cada llamada a herramienta no puede renovarla): **ocupado 3 min**, **te-necesita / bloqueado / listo 30 min**. Misma idea que el `RUNNING_LIFETIME` de la implementacion de referencia.
 
@@ -815,16 +825,16 @@ agentes** corriendo **o** cuando existe alguna corrida):
 
 ### 3.7 Canal cooperativo agente→ADE (tools MCP de orquestacion)
 
-- El ADE inyecta a cada agente lanzado (junto a las tools del navegador, §1.6) las
-  tools MCP `orchestration_report_result` / `orchestration_report_progress`. El
+- El ADE registra en cada agente que lanza (junto a las tools del navegador, §1.6)
+  las tools MCP `orchestration_report_result` / `orchestration_report_progress`. El
   agente pasa su `UXNAN_AGENT_ID`; el handler en `mcp.rs` emite un evento
   `agent:orchestration` que el motor frontend atribuye al paso interactivo en curso
   (backend tonto; el modelo de corrida vive 100% en TS). Esto da **salida
   estructurada** de agentes interactivos, mejor que el `summary` grueso. Para que el
   caso comun funcione sin que el usuario conozca la tool, el motor **anexa un
   recordatorio corto al prompt** de un paso interactivo — pero **solo** cuando ese
-  paso alimenta a otro *y* el agente realmente tiene la tool (inyeccion MCP activa y
-  es uno de los agentes inyectados: claude/codex/opencode). Para cualquier
+  paso alimenta a otro *y* el agente realmente tiene la tool (registracion MCP activa
+  y es uno de los agentes registrados: claude/codex/opencode). Para cualquier
   otro agente no se menciona MCP, asi que ningun CLI recibe la instruccion de usar
   una tool que no tiene.
 

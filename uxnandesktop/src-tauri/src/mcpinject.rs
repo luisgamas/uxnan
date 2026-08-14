@@ -1,70 +1,67 @@
-//! MCP config injection — makes the browser MCP server (`mcp.rs`) **discoverable**
-//! to the CLI agents the ADE launches, so they get the `browser_*` tools with zero
-//! setup and zero documentation.
+//! Per-launch MCP registration — makes the browser MCP server (`mcp.rs`)
+//! **discoverable** to the CLI agents the ADE launches, so they get the
+//! `browser_*` (and orchestration) tools with zero setup and zero documentation,
+//! **and only inside uxnan**.
 //!
-//! ## The idea
-//! `mcp.rs` serves the tools; this module writes each agent CLI's own native MCP
-//! config so the agent finds that server on startup. The endpoint is the local
-//! hook server's `/mcp` route; the **token is never written to a file** — every
-//! config references the `UXNAN_MCP_TOKEN` environment variable (injected into the
-//! agent's terminal in `commands.rs`), so the secret stays in the process env.
+//! ## The rule this module exists to keep
+//! The server is registered **in the process uxnan spawns, for that launch
+//! only** — never in a config file the user keeps. Nothing is written to
+//! `~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`
+//! or any other CLI config, so an agent started anywhere else (another terminal,
+//! another IDE, a CI box) has no idea the server exists: it cannot discover it,
+//! cannot try to reach it, and cannot warn the user about it.
 //!
-//! ## Modes (see [`crate::model::McpInjection`])
-//! - **Managed** (default): write into each CLI's **user-global** config only —
-//!   never the project working directory. User-global config is not
-//!   project-approval-gated, so there's no "approve this MCP server?" prompt and
-//!   nothing lands in the user's project folder. Hand-typed agents in any folder
-//!   still discover the server (every CLI reads its user config). When
-//!   [`crate::model::BrowserSettings::friction_free`] is on, app-launched agents
-//!   also get first-party trust-skip flags/seeds (see [`launch_args`] and the Codex
-//!   per-folder trust seed in [`prepare`]).
-//! - **Global**: identical user-global config write, but the frictionless
-//!   trust-skip is not applied (the CLIs' own trust prompts stay intact).
-//! - **Off**: inject nothing (the user can wire it by hand — the Settings panel
-//!   shows a copy-paste snippet).
+//! That is the bug this replaced. The previous design wrote the server into each
+//! CLI's **user-global** config and relied on the token living in the
+//! environment to make it useless elsewhere. "Useless" turned out to be loud:
+//! Codex validates `bearer_token_env_var` at startup and aborts the whole MCP
+//! phase with *"Environment variable UXNAN_MCP_TOKEN for MCP server
+//! 'uxnan-browser' is not set"* — on every run outside uxnan. And because the
+//! entry carried one instance's port, a **second** uxnan window overwrote it and
+//! broke the first window's agents from the inside.
 //!
-//! The legacy **Workspace** mode (a project-scoped config in the working directory)
-//! was removed: it was the sole source of both the project-dir files and the
-//! project-approval prompts.
+//! ## How each CLI is pointed at the server (all measured, not assumed)
 //!
-//! ## Per-agent config (this is the extension point)
-//! Each supported agent is one [`McpAgent`] row in [`AGENTS`]. To support a **new**
-//! agent (e.g. Cursor, amp), add a row and a match arm in [`config_path`] +
-//! [`write_entry`] describing where its user-global MCP config lives and its
-//! shape — nothing else changes. Current rows:
+//! | Agent | Mechanism | Shape |
+//! |-------|-----------|-------|
+//! | Claude Code | launch flag | `--mcp-config <uxnan-owned file>` (`${UXNAN_MCP_TOKEN}` expanded from the env at load) |
+//! | Codex | launch flags | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN` |
+//! | OpenCode | launch env | `OPENCODE_CONFIG_CONTENT` (merged over the user's config; `{env:UXNAN_MCP_TOKEN}` expanded at load) |
 //!
-//! | Agent | User-global file | Shape |
-//! |-------|------------------|-------|
-//! | Claude Code | `~/.claude.json` | `mcpServers.<n> {type:http,url,headers}` |
-//! | Codex | `~/.codex/config.toml` | `[mcp_servers.<n>] url + bearer_token_env_var` |
-//! | OpenCode | `~/.config/opencode/opencode.json` | `mcp.<n> {type:remote,url,headers,enabled}` |
-//! | Grok | `~/.grok/config.toml` | `[mcp_servers.<n>] url + headers` (`${VAR}` expanded) |
-//! | Qwen Code | `~/.qwen/settings.json` | `mcpServers.<n> {httpUrl,trust,headers}` (Gemini's shape, which it forked) |
-//! | Droid | `~/.factory/mcp.json` | `mcpServers.<n> {type:http,url,headers}` (`${VAR}` expanded) |
-//! | MiMo Code | `~/.config/mimocode/mimocode.json` | `mcp.<n> {type:remote,url,headers,enabled}` (OpenCode's shape, which it forked) |
+//! The token is still never written to a file: Claude's file names the
+//! environment variable, Codex reads it by name, OpenCode expands it at load.
+//! `commands.rs` injects `UXNAN_MCP_TOKEN` into the terminal it spawns, so the
+//! credential only ever exists in a process uxnan started.
 //!
-//! ## Why some agents are not offered
-//! **The bearer token is never written to a file.** Every row above references
-//! `UXNAN_MCP_TOKEN` in the agent's own expansion syntax, which is also what makes
-//! the server useless outside uxnan: no variable, no credential, no connection —
-//! and the config itself is removed on exit. An agent that cannot express that
-//! reference cannot be supported without leaving a live secret in a file the user
-//! keeps, so it is left out and said so:
+//! Codex's flag values are deliberately quote-free (`key=value` with a bare URL):
+//! Codex parses the value as TOML and falls back to the raw string when that
+//! fails, so the arguments survive `cmd.exe`, PowerShell and POSIX quoting
+//! untouched.
 //!
-//! - **Cursor** — `~/.cursor/mcp.json` takes remote servers with headers, but
-//!   `${env:VAR}` is **not expanded in headers for remote servers** (it is for
-//!   stdio ones), so the literal string would be sent as the credential.
-//! - **GitHub Copilot** — `~/.copilot/mcp-config.json` documents header values as
-//!   literal strings; no environment reference is specified for the CLI.
-//! - **Antigravity** — its remote MCP transport is SSE with only a `serverUrl`
-//!   (no header field), and our endpoint is Streamable HTTP rather than SSE.
-//! - **Goose** — keeps extensions in YAML (`~/.config/goose/config.yaml`), and no
-//!   YAML writer is vendored; merging into a user's YAML by hand is how comments
-//!   and formatting get destroyed.
-//! - **Kilo Code** — its config is JSONC; parsing it with a JSON reader would
-//!   throw away the user's comments on write.
+//! ## Why the other wired CLIs are not on that list
+//! An agent is auto-configured only when a **per-launch** mechanism exists and
+//! has been verified against the real CLI:
 //!
-//! See `FOR-DEV.md` → *Integrated developer browser*.
+//! - **Grok** — `grok -h` has no MCP-config flag, and its only external config
+//!   channel (`GROK_MANAGED_CONFIG`) is a signed enterprise envelope, not a
+//!   per-launch override.
+//! - **Qwen Code**, **Droid**, **MiMo Code** — no verified per-launch flag or
+//!   env; each is a config-file-only integration today.
+//! - **Cursor**, **GitHub Copilot**, **Antigravity**, **Goose**, **Kilo Code** —
+//!   same, plus the transport/expansion limits recorded in `docs/browser.md`.
+//!
+//! Any of them can still be wired by hand from the copy-paste snippet in
+//! Settings → Browser (that config is the user's own, so it is their call), and
+//! every agent keeps the `$BROWSER` shim + `/browser` route regardless.
+//!
+//! ## Upgrade cleanup
+//! [`sweep_legacy`] runs once at startup and removes the `uxnan-browser` entry a
+//! previous version may have left in any of those seven user-global configs. It
+//! is removal-only: it never adds anything, never rewrites a file that doesn't
+//! name our server, and leaves everything else in the file untouched.
+//!
+//! See `FOR-DEV.md` → *Integrated developer browser* and `docs/browser.md` →
+//! *Agent browser MCP*.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -72,92 +69,124 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-use crate::model::McpInjection;
 use crate::state::AppState;
 
-/// The MCP server name every agent config registers us under (its tools appear
+/// The MCP server name every launch registers us under (its tools appear
 /// prefixed with this, e.g. `mcp__uxnan-browser__browser_open`).
 pub const SERVER_NAME: &str = "uxnan-browser";
 /// Environment variable the injected configs read the bearer token from, so the
 /// token itself is never written to a config file.
 pub const TOKEN_ENV: &str = "UXNAN_MCP_TOKEN";
+/// OpenCode's "extra config, merged over the files" environment variable — how
+/// OpenCode (and only OpenCode) is pointed at the server for one launch.
+pub const OPENCODE_CONFIG_ENV: &str = "OPENCODE_CONFIG_CONTENT";
 
-/// One agent the ADE can auto-configure to reach the browser MCP server.
+/// Files older than this in `<app-data>/mcp/` are pruned at startup. They are
+/// only ever Claude launch configs from an instance that no longer exists; the
+/// live one rewrites its own on every terminal it spawns, so pruning can never
+/// leave a running window without a config.
+const STALE_CONFIG_SECS: u64 = 7 * 24 * 60 * 60;
+
+/// How a CLI is pointed at the server for a single launch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LaunchVia {
+    /// Extra arguments appended to the command uxnan types into the terminal.
+    Args,
+    /// Extra environment variables set on the terminal uxnan spawns.
+    Env,
+}
+
+/// One agent the ADE can auto-configure for the browser MCP server.
 #[derive(Debug, Clone, Copy)]
 pub struct McpAgent {
     /// Stable id used in `mcpDisabledAgents` + the Settings toggles.
     pub id: &'static str,
     /// Human-readable name for the UI.
     pub label: &'static str,
+    /// Executable names this agent is recognized by, so the frontend can match
+    /// the command it is about to type (basename, extension stripped).
+    pub commands: &'static [&'static str],
+    /// Which per-launch mechanism carries the registration.
+    pub via: LaunchVia,
 }
 
-/// Serializable view of a supported agent for the Settings → Browser panel (the
-/// per-agent injection toggles + the "which agents" list in the copy-paste help).
+/// The agents we currently know how to register **per launch**. Adding one means
+/// proving its CLI accepts a per-launch flag or env (see the module docs) and
+/// then adding a row here plus an arm in [`launch_args`] / [`launch_env`].
+pub const AGENTS: &[McpAgent] = &[
+    McpAgent {
+        id: "claude",
+        label: "Claude Code",
+        commands: &["claude"],
+        via: LaunchVia::Args,
+    },
+    McpAgent {
+        id: "codex",
+        label: "Codex",
+        commands: &["codex"],
+        via: LaunchVia::Args,
+    },
+    McpAgent {
+        id: "opencode",
+        label: "OpenCode",
+        commands: &["opencode"],
+        via: LaunchVia::Env,
+    },
+];
+
+/// Serializable view of a supported agent for the frontend: the Settings →
+/// Browser toggles **and** the launch path, which appends `args` to the command
+/// it types (empty for env-based agents).
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfo {
     pub id: String,
     pub label: String,
+    pub commands: Vec<String>,
+    pub via: LaunchVia,
+    /// What this launch actually adds — the flag or the environment variable —
+    /// shown mono under the agent's name in Settings, the way the hooks list
+    /// shows the config file it writes. This list has no config file to show:
+    /// that is the point.
+    pub mechanism: String,
+    /// Ready-to-append arguments for this launch (endpoint already substituted).
+    /// Empty when the server isn't listening yet or the agent is env-based.
+    pub args: Vec<String>,
 }
 
-/// The supported-agent catalog for the frontend (Settings panel + docs).
-pub fn agent_infos() -> Vec<AgentInfo> {
+/// The supported-agent catalog for the frontend. `endpoint`/`claude_config` are
+/// `None` before the hook server is listening — the catalog is still returned
+/// (so Settings can render its toggles), just with no launch arguments.
+pub fn agent_infos(endpoint: Option<&str>, claude_config: Option<&str>) -> Vec<AgentInfo> {
     AGENTS
         .iter()
         .map(|a| AgentInfo {
             id: a.id.to_string(),
             label: a.label.to_string(),
+            commands: a.commands.iter().map(|c| c.to_string()).collect(),
+            via: a.via,
+            mechanism: launch_mechanism(a.id, claude_config),
+            args: match endpoint {
+                Some(e) => launch_args(a.id, e, claude_config),
+                None => Vec::new(),
+            },
         })
         .collect()
 }
 
-/// The agents we currently know how to configure. Add a row here (plus a match arm
-/// in [`config_path`] and [`write_entry`]) to support a new agent.
-pub const AGENTS: &[McpAgent] = &[
-    McpAgent {
-        id: "claude",
-        label: "Claude Code",
-    },
-    McpAgent {
-        id: "codex",
-        label: "Codex",
-    },
-    McpAgent {
-        id: "opencode",
-        label: "OpenCode",
-    },
-    McpAgent {
-        id: "grok",
-        label: "Grok",
-    },
-    McpAgent {
-        id: "qwen",
-        label: "Qwen Code",
-    },
-    McpAgent {
-        id: "droid",
-        label: "Droid",
-    },
-    McpAgent {
-        id: "mimo",
-        label: "MiMo Code",
-    },
-];
-
-/// A config file we wrote, recorded so it can be undone on exit.
-#[derive(Debug, Clone)]
-pub struct Written {
-    /// Absolute path of the config file.
-    pub path: PathBuf,
-    /// Agent id (selects the cleanup format).
-    pub agent: String,
-    /// True if we created the file (so cleanup may delete it when left empty).
-    pub created: bool,
-    /// The endpoint we wrote. Cleanup checks the file still names it before
-    /// removing anything: a SECOND uxnan window overwrites the same entry with
-    /// its own port, and the first one exiting must not take the live window's
-    /// config with it.
-    pub endpoint: String,
+/// One line naming how `agent_id` is pointed at the server, for the Settings
+/// row: the flag it is launched with, or the variable set on its terminal.
+fn launch_mechanism(agent_id: &str, claude_config: Option<&str>) -> String {
+    match agent_id {
+        "claude" => match claude_config {
+            Some(p) if !p.is_empty() => format!("--mcp-config {p}"),
+            _ => "--mcp-config".to_string(),
+        },
+        "codex" => format!("-c mcp_servers.{SERVER_NAME}.*"),
+        "opencode" => OPENCODE_CONFIG_ENV.to_string(),
+        _ => String::new(),
+    }
 }
 
 /// Turn the hook server's `…/hook` URL into its `…/mcp` sibling (the MCP endpoint).
@@ -165,88 +194,269 @@ pub fn mcp_endpoint(hook_url: &str) -> String {
     hook_url.replacen("/hook", "/mcp", 1)
 }
 
-/// The user-global MCP config file path for `agent`, given the user's `home`.
-/// `None` for an unknown agent. (Project-scoped paths were removed with the
-/// `Workspace` mode — see the module docs.)
-fn config_path(agent: &str, home: &Path) -> Option<PathBuf> {
-    match agent {
-        "claude" => Some(home.join(".claude.json")),
-        "codex" => Some(home.join(".codex").join("config.toml")),
-        "opencode" => Some(home.join(".config").join("opencode").join("opencode.json")),
-        "grok" => Some(home.join(".grok").join("config.toml")),
-        // Qwen Code descends from the Gemini CLI and kept its settings file.
-        "qwen" => Some(home.join(".qwen").join("settings.json")),
-        // Droid keeps MCP in a file of its own, beside its settings.
-        "droid" => Some(home.join(".factory").join("mcp.json")),
-        // MiMo Code is a fork of OpenCode with its own config name.
-        "mimo" => Some(home.join(".config").join("mimocode").join("mimocode.json")),
-        _ => None,
-    }
+/// The loopback port an `http://127.0.0.1:<port>/mcp` endpoint names, as a
+/// string. `"0"` when it can't be read — the caller only uses it to keep one
+/// window's launch config from colliding with another's.
+fn endpoint_port(endpoint: &str) -> String {
+    endpoint
+        .rsplit_once(':')
+        .and_then(|(_, tail)| {
+            let digits: String = tail.chars().take_while(|c| c.is_ascii_digit()).collect();
+            (!digits.is_empty()).then_some(digits)
+        })
+        .unwrap_or_else(|| "0".to_string())
 }
 
-/// Whether `agent` keeps its MCP config in TOML (Codex, Grok) rather than JSON —
-/// the two branches differ in how a file is parsed, merged and undone.
-fn is_toml_agent(agent: &str) -> bool {
-    matches!(agent, "codex" | "grok")
-}
+// --- Per-launch registration ------------------------------------------------
 
-/// The JSON entry (server definition) for a JSON-config agent. `None` for the
-/// TOML agents (handled separately).
-fn json_entry(agent: &str, endpoint: &str) -> Option<(Vec<&'static str>, Value)> {
-    // Token is referenced by env, never inlined — each CLI's own expansion syntax.
-    let bearer_dollar = format!("Bearer ${{{TOKEN_ENV}}}"); // ${UXNAN_MCP_TOKEN}
-    let bearer_brace = format!("Bearer {{env:{TOKEN_ENV}}}"); // {env:UXNAN_MCP_TOKEN}
-    match agent {
-        "claude" => Some((
-            vec!["mcpServers", SERVER_NAME],
-            json!({ "type": "http", "url": endpoint, "headers": { "Authorization": bearer_dollar } }),
-        )),
-        // MiMo Code is a fork of OpenCode, config shape included.
-        "opencode" | "mimo" => Some((
-            vec!["mcp", SERVER_NAME],
-            json!({ "type": "remote", "url": endpoint, "enabled": true, "headers": { "Authorization": bearer_brace } }),
-        )),
-        // Qwen Code inherited Gemini's settings shape, `trust` included.
-        "qwen" => Some((
-            vec!["mcpServers", SERVER_NAME],
-            json!({ "httpUrl": endpoint, "trust": true, "headers": { "Authorization": bearer_dollar } }),
-        )),
-        // Droid expands `${VAR}` in header values and, when the variable is
-        // unset, fails the connection naming it — which is exactly the behavior
-        // we want outside uxnan: no token in the file, and no silent attempt.
-        "droid" => Some((
-            vec!["mcpServers", SERVER_NAME],
-            json!({ "type": "http", "url": endpoint, "headers": { "Authorization": bearer_dollar } }),
-        )),
-        _ => None,
-    }
-}
-
-// --- File format helpers (pure, unit-tested) -------------------------------
-
-/// Set a nested key in a JSON document (creating intermediate objects), returning
-/// the updated document. Overwrites only the leaf at `pointer` — the user's other
-/// keys are preserved.
-fn json_set(mut doc: Value, pointer: &[&str], entry: Value) -> Value {
-    if !doc.is_object() {
-        doc = json!({});
-    }
-    fn set(node: &mut Value, pointer: &[&str], entry: Value) {
-        match pointer {
-            [] => {}
-            [last] => {
-                node[*last] = entry;
+/// Arguments to append to the command line for `agent_id`, or empty when the
+/// agent is registered through the environment instead (see [`launch_env`]).
+///
+/// Claude takes a config **file** rather than an inline JSON string on purpose:
+/// the same argument then survives `cmd.exe`, PowerShell and POSIX quoting, and
+/// the file lives in uxnan's own data directory — never in the user's project
+/// and never in a config any other agent reads.
+pub fn launch_args(agent_id: &str, endpoint: &str, claude_config: Option<&str>) -> Vec<String> {
+    match agent_id {
+        "claude" => match claude_config {
+            Some(path) if !path.is_empty() => {
+                vec!["--mcp-config".to_string(), path.to_string()]
             }
-            [head, rest @ ..] => {
-                if !node[*head].is_object() {
-                    node[*head] = json!({});
+            _ => Vec::new(),
+        },
+        // Values are deliberately unquoted: Codex parses each `-c` value as TOML
+        // and falls back to the literal string, so a bare URL and a bare
+        // variable name need no shell quoting at all.
+        "codex" => vec![
+            "-c".to_string(),
+            format!("mcp_servers.{SERVER_NAME}.url={endpoint}"),
+            "-c".to_string(),
+            format!("mcp_servers.{SERVER_NAME}.bearer_token_env_var={TOKEN_ENV}"),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+/// Environment variables to set on a terminal so an env-registered agent finds
+/// the server. Only OpenCode today: `OPENCODE_CONFIG_CONTENT` is **merged over**
+/// the config files it already loads, so the user's providers, agents and their
+/// own MCP servers are untouched — and it expands `{env:VAR}`, so the token
+/// stays in the environment.
+pub fn launch_env(agent_id: &str, endpoint: &str) -> Vec<(String, String)> {
+    match agent_id {
+        "opencode" => vec![(
+            OPENCODE_CONFIG_ENV.to_string(),
+            json!({
+                "mcp": {
+                    SERVER_NAME: {
+                        "type": "remote",
+                        "url": endpoint,
+                        "enabled": true,
+                        "headers": { "Authorization": format!("Bearer {{env:{TOKEN_ENV}}}") }
+                    }
                 }
-                set(&mut node[*head], rest, entry);
+            })
+            .to_string(),
+        )],
+        _ => Vec::new(),
+    }
+}
+
+/// Every env-based registration for the agents that aren't disabled — what
+/// `pty_create` adds to the terminal's environment.
+pub fn launch_env_all(endpoint: &str, disabled: &HashSet<&str>) -> Vec<(String, String)> {
+    AGENTS
+        .iter()
+        .filter(|a| a.via == LaunchVia::Env && !disabled.contains(a.id))
+        .flat_map(|a| launch_env(a.id, endpoint))
+        .collect()
+}
+
+/// The MCP config file Claude Code is launched with, for the window that owns
+/// `endpoint`. Named after the loopback port so two uxnan windows can never
+/// hand each other's agents the wrong endpoint (the failure the old user-global
+/// entry had). Lives in uxnan's app-data directory.
+pub fn claude_config_path(app: &AppHandle, endpoint: &str) -> Option<PathBuf> {
+    let dir = app.path().app_data_dir().ok()?.join("mcp");
+    Some(dir.join(format!("claude-{}.json", endpoint_port(endpoint))))
+}
+
+/// The contents of that file: a standard `mcpServers` entry naming the token's
+/// environment variable (Claude expands `${VAR}` when it loads the config), so
+/// the file itself holds no secret.
+fn claude_config_json(endpoint: &str) -> String {
+    let doc = json!({
+        "mcpServers": {
+            SERVER_NAME: {
+                "type": "http",
+                "url": endpoint,
+                "headers": { "Authorization": format!("Bearer ${{{TOKEN_ENV}}}") }
             }
         }
+    });
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&doc).unwrap_or_else(|_| doc.to_string())
+    )
+}
+
+/// Write (or refresh) the Claude launch config and return its path as a string.
+/// Idempotent and best-effort: identical content is left alone, and a failure
+/// just means Claude launches without the browser tools this time.
+pub fn ensure_claude_config(app: &AppHandle, endpoint: &str) -> Option<String> {
+    let path = claude_config_path(app, endpoint)?;
+    let wanted = claude_config_json(endpoint);
+    let fresh = std::fs::read_to_string(&path)
+        .map(|current| current == wanted)
+        .unwrap_or(false);
+    if !fresh {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        crate::agent_hooks::write_json_atomic(&path, &wanted).ok()?;
     }
-    set(&mut doc, pointer, entry);
-    doc
+    Some(path.to_string_lossy().to_string())
+}
+
+/// Drop Claude launch configs left by instances that are long gone. Safe by
+/// construction: every live window rewrites its own file on every terminal it
+/// spawns, so a pruned file is recreated before it could ever be read.
+fn prune_stale_configs(app: &AppHandle) {
+    let Ok(dir) = app.path().app_data_dir().map(|d| d.join("mcp")) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with("claude-") && name.ends_with(".json")) {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|t| {
+                t.elapsed()
+                    .map(|age| age.as_secs() > STALE_CONFIG_SECS)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        if stale {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Prepare everything a terminal needs before an agent starts in it: the Claude
+/// launch config for this window, and — when the user asked for a frictionless
+/// launch — Codex's per-folder trust seed for `cwd`.
+///
+/// The trust seed is the one thing here that still touches the user's own config
+/// (`~/.codex/config.toml`): it records a decision *about their folder* that
+/// outlives the launch by design, it is silent, and it is opt-out in Settings →
+/// Browser. It is deduplicated per `cwd`. Called from `pty_create`.
+pub async fn prepare(app: &AppHandle, cwd: &str) {
+    let (enabled, friction_free, disabled) = {
+        let state = app.state::<AppState>();
+        let data = state.data.read().await;
+        let b = &data.settings.browser;
+        (
+            b.enabled && b.mcp_enabled,
+            b.friction_free,
+            b.mcp_disabled_agents.clone(),
+        )
+    };
+    if !enabled {
+        return;
+    }
+    let endpoint = {
+        let state = app.state::<AppState>();
+        let hook = state.hook.read().await.clone();
+        match hook {
+            Some(h) => mcp_endpoint(&h.url),
+            None => return,
+        }
+    };
+    let disabled: HashSet<&str> = disabled.iter().map(String::as_str).collect();
+
+    // Claude's launch config — refreshed per terminal so it is always there when
+    // the command is typed, whatever else pruned or replaced it.
+    if !disabled.contains("claude") {
+        ensure_claude_config(app, &endpoint);
+    }
+
+    // Frictionless: pre-seed Codex per-folder trust so Codex doesn't prompt to
+    // trust this working directory when launched here. Best-effort: a
+    // path-format mismatch just leaves Codex's normal prompt.
+    if friction_free && !disabled.contains("codex") && !cwd.trim().is_empty() {
+        let seed = {
+            let state = app.state::<AppState>();
+            let mut prepared = state.mcp_prepared.lock().unwrap();
+            prepared.insert(format!("codextrust:{cwd}"))
+        };
+        if seed {
+            let Ok(home) = app.path().home_dir() else {
+                return;
+            };
+            let cfg = home.join(".codex").join("config.toml");
+            let _ = crate::codex_trust::ensure_project_trust(&cfg, Path::new(cwd));
+        }
+    }
+}
+
+// --- Upgrade cleanup: user-global entries written by older versions ---------
+
+/// A user-global config an older uxnan may have written our server into, and the
+/// format it is written in.
+struct LegacyConfig {
+    path: PathBuf,
+    format: LegacyFormat,
+}
+
+enum LegacyFormat {
+    /// JSON, our entry at `<pointer>.<SERVER_NAME>`.
+    Json(&'static [&'static str]),
+    /// TOML, our entry at `[mcp_servers.<SERVER_NAME>]`.
+    Toml,
+}
+
+/// Every user-global config a previous version could have written, relative to
+/// `home`. Kept complete on purpose: the sweep must reach machines that ran the
+/// old build with any of these CLIs installed, even the ones no longer
+/// auto-configured.
+fn legacy_configs(home: &Path) -> Vec<LegacyConfig> {
+    vec![
+        LegacyConfig {
+            path: home.join(".claude.json"),
+            format: LegacyFormat::Json(&["mcpServers"]),
+        },
+        LegacyConfig {
+            path: home.join(".codex").join("config.toml"),
+            format: LegacyFormat::Toml,
+        },
+        LegacyConfig {
+            path: home.join(".config").join("opencode").join("opencode.json"),
+            format: LegacyFormat::Json(&["mcp"]),
+        },
+        LegacyConfig {
+            path: home.join(".grok").join("config.toml"),
+            format: LegacyFormat::Toml,
+        },
+        LegacyConfig {
+            path: home.join(".qwen").join("settings.json"),
+            format: LegacyFormat::Json(&["mcpServers"]),
+        },
+        LegacyConfig {
+            path: home.join(".factory").join("mcp.json"),
+            format: LegacyFormat::Json(&["mcpServers"]),
+        },
+        LegacyConfig {
+            path: home.join(".config").join("mimocode").join("mimocode.json"),
+            format: LegacyFormat::Json(&["mcp"]),
+        },
+    ]
 }
 
 /// Remove a nested key from a JSON document, pruning now-empty parent objects.
@@ -281,265 +491,89 @@ fn json_remove(mut doc: Value, pointer: &[&str]) -> Value {
     doc
 }
 
-/// Merge (or remove) our Codex server in a `config.toml`, preserving the user's
-/// other settings and formatting. `endpoint = Some` inserts; `None` removes.
-fn toml_mcp(agent: &str, existing: &str, endpoint: Option<&str>) -> String {
-    let mut doc = existing
-        .parse::<toml_edit::DocumentMut>()
-        .unwrap_or_default();
-    match endpoint {
-        Some(url) => {
-            // Ensure `mcp_servers` is a real (header) table, then add our server as
-            // a `[mcp_servers.<name>]` sub-table. Existing servers/keys are kept.
-            if !doc
-                .get("mcp_servers")
-                .map(|i| i.is_table())
-                .unwrap_or(false)
-            {
-                doc["mcp_servers"] = toml_edit::Item::Table(toml_edit::Table::new());
-            }
-            let mut entry = toml_edit::Table::new();
-            entry["url"] = toml_edit::value(url);
-            if agent == "grok" {
-                // Grok has no `bearer_token_env_var`, but it *does* expand `${VAR}`
-                // in `url`, `headers` and `env` at load time — so the header can
-                // name the variable and the token still never lands in the file.
-                let mut headers = toml_edit::InlineTable::new();
-                headers.insert(
-                    "Authorization",
-                    toml_edit::Value::from(format!("Bearer ${{{TOKEN_ENV}}}")),
-                );
-                entry["headers"] = toml_edit::value(headers);
-            } else {
-                entry["bearer_token_env_var"] = toml_edit::value(TOKEN_ENV);
-            }
-            if let Some(servers) = doc["mcp_servers"].as_table_mut() {
-                servers.insert(SERVER_NAME, toml_edit::Item::Table(entry));
-            }
-        }
-        None => {
-            // Remove our entry whether `mcp_servers` is a header table or an inline
-            // table, pruning it if it becomes empty.
-            let emptied = if let Some(t) = doc.get_mut("mcp_servers").and_then(|i| i.as_table_mut())
-            {
-                t.remove(SERVER_NAME);
-                t.is_empty()
-            } else if let Some(t) = doc
-                .get_mut("mcp_servers")
-                .and_then(|i| i.as_inline_table_mut())
-            {
-                t.remove(SERVER_NAME);
-                t.is_empty()
-            } else {
-                false
-            };
-            if emptied {
-                doc.as_table_mut().remove("mcp_servers");
-            }
-        }
-    }
-    doc.to_string()
-}
-
-/// True if `text` parses as valid TOML, so [`toml_mcp`] can merge into it
-/// without discarding the user's content. Gates the TOML config writes (Codex
-/// and Grok) on parse success: a malformed `config.toml` is left untouched rather
-/// than rebuilt from an empty document (which would clobber the user's settings).
-/// Mirrors the JSON branch's parse-failure skip semantics.
-fn toml_parses(text: &str) -> bool {
-    text.parse::<toml_edit::DocumentMut>().is_ok()
-}
-
-// --- Injection + cleanup ---------------------------------------------------
-
-/// Write `agent`'s user-global config so it points at the browser MCP server,
-/// recording the write for later cleanup. Merges into an existing file (never
-/// clobbers other keys). Writes are atomic (sibling temp + rename + rolling
-/// `.bak`). If an existing config can't be read or parsed, the agent is
-/// skipped — the file is never overwritten with a stub. Best-effort: I/O errors
-/// are ignored (a failed injection just means that agent won't see the tools).
-fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let existed = path.exists();
-
-    if is_toml_agent(agent) {
-        // File missing → start from an empty document. File present but
-        // unreadable or unparseable → skip (never rebuild from an empty doc,
-        // which would discard the user's TOML).
-        let existing = if !existed {
-            String::new()
-        } else {
-            match std::fs::read_to_string(path) {
-                Ok(s) if toml_parses(&s) => s,
-                _ => return None,
-            }
-        };
-        let merged = toml_mcp(agent, &existing, Some(endpoint));
-        crate::agent_hooks::write_text_atomic(path, &merged).ok()?;
+/// Strip our `[mcp_servers.<SERVER_NAME>]` entry from a `config.toml`, keeping
+/// the user's other settings, servers, comments and formatting.
+fn toml_without_entry(existing: &str) -> Option<String> {
+    let mut doc = existing.parse::<toml_edit::DocumentMut>().ok()?;
+    let emptied = if let Some(t) = doc.get_mut("mcp_servers").and_then(|i| i.as_table_mut()) {
+        t.remove(SERVER_NAME);
+        t.is_empty()
+    } else if let Some(t) = doc
+        .get_mut("mcp_servers")
+        .and_then(|i| i.as_inline_table_mut())
+    {
+        t.remove(SERVER_NAME);
+        t.is_empty()
     } else {
-        let (pointer, entry) = json_entry(agent, endpoint)?;
-        // File missing → start from `{}`. File present but unreadable or
-        // unparseable → skip (never overwrite with a one-key stub).
-        let current: Value = if !existed {
-            json!({})
-        } else {
-            match std::fs::read_to_string(path) {
-                Ok(s) => match serde_json::from_str(&s) {
-                    Ok(v) => v,
-                    Err(_) => return None,
-                },
-                Err(_) => return None,
+        false
+    };
+    if emptied {
+        doc.as_table_mut().remove("mcp_servers");
+    }
+    Some(doc.to_string())
+}
+
+/// Remove our server entry from one legacy config. Returns true when the file
+/// was actually rewritten. Never creates a file, never touches one that doesn't
+/// name our server, and leaves an unreadable or unparseable file exactly as it
+/// is (rewriting it from a stub is how a user loses their settings).
+fn sweep_one(cfg: &LegacyConfig) -> bool {
+    let Ok(text) = std::fs::read_to_string(&cfg.path) else {
+        return false;
+    };
+    if !text.contains(SERVER_NAME) {
+        return false; // fast path: nothing of ours in here
+    }
+    match cfg.format {
+        LegacyFormat::Toml => {
+            let Some(stripped) = toml_without_entry(&text) else {
+                return false; // unparseable → leave untouched
+            };
+            if stripped == text {
+                return false;
             }
-        };
-        let merged = json_set(current, &pointer, entry);
-        let text = format!("{}\n", serde_json::to_string_pretty(&merged).ok()?);
-        crate::agent_hooks::write_json_atomic(path, &text).ok()?;
-    }
-
-    Some(Written {
-        path: path.to_path_buf(),
-        agent: agent.to_string(),
-        created: !existed,
-        endpoint: endpoint.to_string(),
-    })
-}
-
-/// Undo one injected config: remove our server entry, deleting the file only if we
-/// created it and it's now empty. Writes are atomic (sibling temp + rename +
-/// rolling `.bak`). If the file can't be read or parsed, it is left untouched
-/// (never overwritten). Best-effort.
-fn undo_entry(w: &Written) {
-    let Ok(text) = std::fs::read_to_string(&w.path) else {
-        return; // unreadable → do nothing
-    };
-    // Only undo an entry that is still OURS. With two uxnan windows open, the
-    // second one rewrites this same entry with its own port; the first one
-    // exiting would otherwise delete the live window's config and leave its
-    // agents with no browser tools. The endpoint carries the port, so it
-    // identifies the writer.
-    if !w.endpoint.is_empty() && !text.contains(&w.endpoint) {
-        return;
-    }
-    if is_toml_agent(&w.agent) {
-        if !toml_parses(&text) {
-            return; // unparseable → leave untouched
+            crate::agent_hooks::write_text_atomic(&cfg.path, &stripped).is_ok()
         }
-        let stripped = toml_mcp(&w.agent, &text, None);
-        if w.created && stripped.trim().is_empty() {
-            let _ = std::fs::remove_file(&w.path);
-        } else {
-            let _ = crate::agent_hooks::write_text_atomic(&w.path, &stripped);
-        }
-        return;
-    }
-    let Some((pointer, _)) = json_entry(&w.agent, "") else {
-        return;
-    };
-    let doc: Value = match serde_json::from_str(&text) {
-        Ok(v) => v,
-        Err(_) => return, // unparseable → leave untouched
-    };
-    let stripped = json_remove(doc, &pointer);
-    let empty = stripped.as_object().map(|o| o.is_empty()).unwrap_or(false);
-    if w.created && empty {
-        let _ = std::fs::remove_file(&w.path);
-    } else if let Ok(s) = serde_json::to_string_pretty(&stripped) {
-        let _ = crate::agent_hooks::write_json_atomic(&w.path, &format!("{s}\n"));
-    }
-}
-
-/// Ensure every enabled agent's **user-global** config points at the browser MCP
-/// server. The config write is deduplicated on `"global"` so it runs once per
-/// session; the frictionless Codex per-folder trust seed is deduplicated per `cwd`
-/// (it varies by working directory). Called from `pty_create` before an agent
-/// starts.
-pub async fn prepare(app: &AppHandle, cwd: &str) {
-    let (enabled, mode, friction_free, disabled) = {
-        let state = app.state::<AppState>();
-        let data = state.data.read().await;
-        let b = &data.settings.browser;
-        (
-            b.mcp_enabled,
-            b.mcp_injection,
-            b.friction_free,
-            b.mcp_disabled_agents.clone(),
-        )
-    };
-    if !enabled || mode == McpInjection::Off {
-        return;
-    }
-    let endpoint = {
-        let state = app.state::<AppState>();
-        let hook = state.hook.read().await.clone();
-        match hook {
-            Some(h) => mcp_endpoint(&h.url),
-            None => return,
-        }
-    };
-    let home = match app.path().home_dir() {
-        Ok(h) => h,
-        Err(_) => return,
-    };
-    let disabled: HashSet<&str> = disabled.iter().map(String::as_str).collect();
-
-    // Frictionless (managed mode only): pre-seed Codex per-folder trust so Codex
-    // doesn't prompt to trust this working directory when launched here. Per-cwd,
-    // so it's deduped on the cwd — independent of the once-per-session config write
-    // below. Best-effort: a path-format mismatch just leaves Codex's normal prompt.
-    if mode == McpInjection::Managed
-        && friction_free
-        && !disabled.contains("codex")
-        && !cwd.trim().is_empty()
-    {
-        let seed = {
-            let state = app.state::<AppState>();
-            let mut prepared = state.mcp_prepared.lock().unwrap();
-            prepared.insert(format!("codextrust:{cwd}"))
-        };
-        if seed {
-            let cfg = home.join(".codex").join("config.toml");
-            let _ = crate::codex_trust::ensure_project_trust(&cfg, Path::new(cwd));
-        }
-    }
-
-    // User-global MCP config write — once per session.
-    {
-        let state = app.state::<AppState>();
-        let mut prepared = state.mcp_prepared.lock().unwrap();
-        if !prepared.insert("global".to_string()) {
-            return; // already written this session
-        }
-    }
-    let mut writes = Vec::new();
-    for agent in AGENTS {
-        if disabled.contains(agent.id) {
-            continue;
-        }
-        if let Some(path) = config_path(agent.id, &home) {
-            if let Some(w) = write_entry(agent.id, &path, &endpoint) {
-                writes.push(w);
+        LegacyFormat::Json(parent) => {
+            let Ok(doc) = serde_json::from_str::<Value>(&text) else {
+                return false; // unparseable → leave untouched
+            };
+            let mut pointer: Vec<&str> = parent.to_vec();
+            pointer.push(SERVER_NAME);
+            let stripped = json_remove(doc.clone(), &pointer);
+            if stripped == doc {
+                return false; // our name appeared elsewhere; nothing to remove
             }
+            let Ok(s) = serde_json::to_string_pretty(&stripped) else {
+                return false;
+            };
+            crate::agent_hooks::write_json_atomic(&cfg.path, &format!("{s}\n")).is_ok()
         }
-    }
-    if !writes.is_empty() {
-        let state = app.state::<AppState>();
-        state.mcp_written.lock().unwrap().extend(writes);
     }
 }
 
-/// Remove every injected config (called on app exit). Best-effort so shutdown is
-/// never blocked; leftover entries are harmless (a stale local endpoint just fails
-/// to connect) and are overwritten with the live one next launch.
-pub fn cleanup(app: &AppHandle) {
-    let state = app.state::<AppState>();
-    let written = {
-        let mut guard = state.mcp_written.lock().unwrap();
-        std::mem::take(&mut *guard)
+/// Remove every user-global `uxnan-browser` entry an older version wrote under
+/// `home`, returning how many files were cleaned. Pure filesystem work, so it is
+/// unit-tested against a temporary home.
+pub fn sweep_legacy_at(home: &Path) -> usize {
+    legacy_configs(home).iter().filter(|c| sweep_one(c)).count()
+}
+
+/// Startup cleanup: drop the user-global entries older versions left behind and
+/// prune stale per-window launch configs. Best-effort and silent when there is
+/// nothing to do.
+pub fn sweep_legacy(app: &AppHandle) {
+    prune_stale_configs(app);
+    let Ok(home) = app.path().home_dir() else {
+        return;
     };
-    for w in &written {
-        undo_entry(w);
+    let cleaned = sweep_legacy_at(&home);
+    if cleaned > 0 {
+        crate::diagnostics::log(
+            crate::diagnostics::Level::Info,
+            "mcp",
+            &format!("removed a stale {SERVER_NAME} entry from {cleaned} agent config file(s)"),
+        );
     }
 }
 
@@ -556,294 +590,259 @@ mod tests {
     }
 
     #[test]
-    fn json_set_creates_nested_and_preserves_siblings() {
-        let doc = json!({ "existing": { "keep": true } });
-        let out = json_set(doc, &["mcpServers", "uxnan-browser"], json!({ "url": "x" }));
-        assert_eq!(out["existing"]["keep"], true);
-        assert_eq!(out["mcpServers"]["uxnan-browser"]["url"], "x");
+    fn endpoint_port_is_read_for_the_per_window_file_name() {
+        assert_eq!(endpoint_port("http://127.0.0.1:5123/mcp"), "5123");
+        assert_eq!(endpoint_port("http://127.0.0.1:5123"), "5123");
+        assert_eq!(endpoint_port("nonsense"), "0");
     }
 
     #[test]
-    fn json_remove_prunes_empty_parents_but_keeps_others() {
-        let doc = json!({ "mcpServers": { "uxnan-browser": { "url": "x" } }, "other": 1 });
-        let out = json_remove(doc, &["mcpServers", "uxnan-browser"]);
-        assert!(out.get("mcpServers").is_none()); // pruned (was only child)
-        assert_eq!(out["other"], 1);
-
-        let doc2 = json!({ "mcpServers": { "uxnan-browser": {}, "keep": {} } });
-        let out2 = json_remove(doc2, &["mcpServers", "uxnan-browser"]);
-        assert!(out2["mcpServers"].get("uxnan-browser").is_none());
-        assert!(out2["mcpServers"].get("keep").is_some()); // sibling stays
-    }
-
-    #[test]
-    fn json_entry_never_inlines_the_token() {
-        // Every offered agent, so a newly added row cannot skip the rule: the
-        // token is referenced through the environment, never written to a file
-        // the user keeps. It is also what makes the server useless outside
-        // uxnan — no variable, no credential, no connection.
-        for agent in AGENTS.iter().filter(|a| !is_toml_agent(a.id)) {
-            let (_, entry) = json_entry(agent.id, "http://x/mcp")
-                .unwrap_or_else(|| panic!("{} is offered but has no JSON entry", agent.id));
-            let s = entry.to_string();
-            assert!(s.contains("Authorization"), "{} sends no auth", agent.id);
-            assert!(
-                s.contains("UXNAN_MCP_TOKEN"),
-                "{} does not reference the token env var",
-                agent.id
-            );
-            assert!(
-                !s.contains("Bearer secret"),
-                "{} looks like it inlines a secret",
-                agent.id
-            );
-        }
-    }
-
-    #[test]
-    fn every_offered_agent_has_a_user_global_config_path() {
-        // An agent in the list with no path would be offered in Settings and
-        // then silently do nothing.
-        let home = Path::new("/home/u");
+    fn every_offered_agent_has_a_per_launch_mechanism() {
+        // A row with neither args nor env would show a Settings toggle that
+        // silently does nothing — the exact class of bug this module replaced.
+        let cfg = Some("C:/data/mcp/claude-1.json");
         for agent in AGENTS {
-            let path = config_path(agent.id, home)
-                .unwrap_or_else(|| panic!("{} is offered but has no config path", agent.id));
+            let args = launch_args(agent.id, "http://127.0.0.1:9/mcp", cfg);
+            let env = launch_env(agent.id, "http://127.0.0.1:9/mcp");
+            match agent.via {
+                LaunchVia::Args => assert!(!args.is_empty(), "{} has no launch args", agent.id),
+                LaunchVia::Env => assert!(!env.is_empty(), "{} has no launch env", agent.id),
+            }
             assert!(
-                path.starts_with(home),
-                "{} writes outside the user's home: {}",
-                agent.id,
-                path.display()
+                !agent.commands.is_empty(),
+                "{} matches no command",
+                agent.id
             );
         }
     }
 
     #[test]
-    fn toml_codex_inserts_and_removes_without_clobbering() {
-        let existing = "model = \"o3\"\n\n[some.other]\nk = 1\n";
-        let with = toml_mcp("codex", existing, Some("http://127.0.0.1:9/mcp"));
-        // Verify the structure by re-parsing (robust to header formatting).
-        let doc = with.parse::<toml_edit::DocumentMut>().unwrap();
-        assert_eq!(
-            doc["mcp_servers"][SERVER_NAME]["url"].as_str(),
-            Some("http://127.0.0.1:9/mcp")
-        );
-        assert_eq!(
-            doc["mcp_servers"][SERVER_NAME]["bearer_token_env_var"].as_str(),
-            Some("UXNAN_MCP_TOKEN")
-        );
-        assert!(with.contains("model = \"o3\"")); // user's settings preserved
-        assert!(with.contains("[some.other]"));
-
-        let without = toml_mcp("codex", &with, None);
-        assert!(!without.contains("uxnan-browser"));
-        assert!(without.contains("model = \"o3\"")); // still preserved
-    }
-
-    #[test]
-    fn config_path_maps_each_agent_to_user_global() {
-        let home = Path::new("/home/u");
-        assert_eq!(
-            config_path("claude", home).unwrap(),
-            home.join(".claude.json")
-        );
-        assert_eq!(
-            config_path("codex", home).unwrap(),
-            home.join(".codex").join("config.toml")
-        );
-        assert_eq!(
-            config_path("opencode", home).unwrap(),
-            home.join(".config").join("opencode").join("opencode.json")
-        );
-        assert!(config_path("unknown", home).is_none());
-    }
-
-    // --- Regression tests: atomic + never-clobber writes --------------------
-    //
-    // Injecting our MCP entry rewrites a config file the *agent* owns, so the
-    // bar is that nothing else in it can be lost: unrelated top-level keys and
-    // sibling servers survive, and a failed write never leaves a truncated file
-    // behind.
-
-    #[test]
-    fn write_entry_preserves_unrelated_keys() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("claude.json");
-        let seed = r#"{
-  "topLevel": "keep-me",
-  "mcpServers": {
-    "existing": { "url": "http://x" }
-  }
-}"#;
-        std::fs::write(&path, seed).unwrap();
-
-        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp");
-        let w = w.expect("valid existing config should be merged");
-        assert!(!w.created); // file already existed
-
-        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(doc["topLevel"], "keep-me"); // unrelated top-level key kept
-        assert_eq!(doc["mcpServers"]["existing"]["url"], "http://x"); // sibling server kept
-        assert_eq!(
-            doc["mcpServers"][SERVER_NAME]["url"],
-            "http://127.0.0.1:9/mcp"
-        ); // injected
-    }
-
-    #[test]
-    fn write_entry_skips_unparseable_json() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("claude.json");
-        let broken = "{ \"unterminated\":"; // truncated object → invalid JSON
-        std::fs::write(&path, broken).unwrap();
-
-        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp");
-        assert!(
-            w.is_none(),
-            "unparseable config must be skipped, not stubbed"
-        );
-
-        // File bytes left untouched (never overwritten).
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
-    }
-
-    #[test]
-    fn write_entry_skips_unreadable_existing() {
-        // Cross-platform stand-in for "file exists but read fails": a directory
-        // at the path makes `read_to_string` error while `exists()` is true.
-        // (Permission-based unreadability is POSIX-flaky; this avoids it.)
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("claude.json");
-        std::fs::create_dir(&path).unwrap();
-
-        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp");
-        assert!(w.is_none(), "exists-but-unreadable config must be skipped");
-        assert!(path.is_dir(), "no file should be written over the entry");
-    }
-
-    #[test]
-    fn undo_entry_leaves_another_windows_config_alone() {
-        // Two uxnan windows write this same entry; the second one's port is what
-        // the file holds. The first window exiting must not delete the live
-        // window's config — that would leave its agents with no browser tools
-        // and no way back until the next launch.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("claude.json");
-        let live = json!({
-            "mcpServers": {
-                SERVER_NAME: { "type": "http", "url": "http://127.0.0.1:2222/mcp" },
-                "someone-elses": { "url": "http://example/mcp" }
+    fn nothing_carries_the_token_itself() {
+        // The token is always referenced by the name of an environment variable
+        // uxnan sets on the terminal it spawns — never written into a file or a
+        // command line, which is what keeps the server unusable outside uxnan.
+        let secret = "s3cret-token-value";
+        let endpoint = "http://127.0.0.1:9/mcp";
+        let mut all = claude_config_json(endpoint);
+        for agent in AGENTS {
+            all.push_str(&launch_args(agent.id, endpoint, Some("cfg.json")).join(" "));
+            for (k, v) in launch_env(agent.id, endpoint) {
+                all.push_str(&k);
+                all.push_str(&v);
             }
-        });
-        std::fs::write(&path, live.to_string()).unwrap();
+        }
+        assert!(!all.contains(secret));
+        assert!(all.contains(TOKEN_ENV), "nothing names the token variable");
+    }
 
-        undo_entry(&Written {
-            path: path.clone(),
-            agent: "claude".to_string(),
-            created: false,
-            // The FIRST window's endpoint — no longer what the file names.
-            endpoint: "http://127.0.0.1:1111/mcp".to_string(),
-        });
-
-        let after: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    #[test]
+    fn codex_args_need_no_shell_quoting() {
+        // Codex parses each `-c` value as TOML and falls back to the literal
+        // string, so we pass bare values: no quotes, no spaces, nothing for
+        // cmd.exe / PowerShell / sh to mangle on the way in.
+        let args = launch_args("codex", "http://127.0.0.1:63345/mcp", None);
         assert_eq!(
-            after["mcpServers"][SERVER_NAME]["url"],
-            json!("http://127.0.0.1:2222/mcp"),
-            "the live window's entry was removed by another window's cleanup"
+            args,
+            vec![
+                "-c".to_string(),
+                "mcp_servers.uxnan-browser.url=http://127.0.0.1:63345/mcp".to_string(),
+                "-c".to_string(),
+                "mcp_servers.uxnan-browser.bearer_token_env_var=UXNAN_MCP_TOKEN".to_string(),
+            ]
         );
-
-        // …and the window that DID write it still cleans up after itself.
-        undo_entry(&Written {
-            path: path.clone(),
-            agent: "claude".to_string(),
-            created: false,
-            endpoint: "http://127.0.0.1:2222/mcp".to_string(),
-        });
-        let after: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(after["mcpServers"].get(SERVER_NAME).is_none());
-        assert!(after["mcpServers"].get("someone-elses").is_some());
+        for a in &args {
+            assert!(
+                !a.contains(' ') && !a.contains('"') && !a.contains('\''),
+                "{a} would need shell quoting"
+            );
+        }
     }
 
     #[test]
-    fn undo_entry_leaves_unparseable_file_alone() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("claude.json");
-        let broken = "{ \"unterminated\":"; // invalid JSON
-        std::fs::write(&path, broken).unwrap();
-
-        let w = Written {
-            path: path.clone(),
-            agent: "claude".to_string(),
-            created: false,
-            endpoint: String::new(),
-        };
-        undo_entry(&w);
-
-        // Bytes unchanged — never overwritten with a stub.
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    fn claude_args_are_empty_without_a_config_file() {
+        // No file → no flag, rather than a flag pointing at nothing (which is a
+        // hard startup error in Claude Code).
+        assert!(launch_args("claude", "http://127.0.0.1:9/mcp", None).is_empty());
+        assert_eq!(
+            launch_args("claude", "http://127.0.0.1:9/mcp", Some("/tmp/c.json")),
+            vec!["--mcp-config".to_string(), "/tmp/c.json".to_string()]
+        );
     }
 
     #[test]
-    fn write_entry_creates_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("claude.json");
-        assert!(!path.exists());
+    fn opencode_env_is_a_merge_over_the_users_config() {
+        let env = launch_env("opencode", "http://127.0.0.1:9/mcp");
+        assert_eq!(env.len(), 1);
+        assert_eq!(env[0].0, OPENCODE_CONFIG_ENV);
+        let doc: Value = serde_json::from_str(&env[0].1).unwrap();
+        // Only our server — anything else in the value would replace a key of
+        // the user's own config, since OpenCode merges this over the files.
+        assert_eq!(doc.as_object().unwrap().len(), 1);
+        assert_eq!(doc["mcp"][SERVER_NAME]["type"], "remote");
+        assert_eq!(doc["mcp"][SERVER_NAME]["url"], "http://127.0.0.1:9/mcp");
+        assert_eq!(doc["mcp"][SERVER_NAME]["enabled"], true);
+    }
 
-        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp")
-            .expect("a missing config should be created");
-        assert!(w.created); // we created it
-        assert!(path.exists());
+    #[test]
+    fn launch_env_all_skips_disabled_agents() {
+        let none: HashSet<&str> = HashSet::new();
+        assert_eq!(launch_env_all("http://x/mcp", &none).len(), 1);
+        let off: HashSet<&str> = ["opencode"].into_iter().collect();
+        assert!(launch_env_all("http://x/mcp", &off).is_empty());
+    }
 
-        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    #[test]
+    fn agent_infos_carry_args_only_once_the_server_is_up() {
+        let cold = agent_infos(None, None);
+        assert_eq!(cold.len(), AGENTS.len());
+        assert!(cold.iter().all(|a| a.args.is_empty()));
+
+        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"));
+        let claude = warm.iter().find(|a| a.id == "claude").unwrap();
+        assert_eq!(claude.args, vec!["--mcp-config", "cfg.json"]);
+        let opencode = warm.iter().find(|a| a.id == "opencode").unwrap();
+        assert!(opencode.args.is_empty()); // env-based
+    }
+
+    #[test]
+    fn every_agent_row_says_how_it_is_wired() {
+        // Each Settings row shows this line under the agent's name — the
+        // per-launch answer to the question the hooks list answers with a
+        // config path. An empty one would leave the row claiming a name and
+        // explaining nothing.
+        for infos in [
+            agent_infos(None, None),
+            agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json")),
+        ] {
+            for (info, agent) in infos.iter().zip(AGENTS) {
+                assert_eq!(info.id, agent.id);
+                assert_eq!(info.label, agent.label);
+                assert!(
+                    !info.mechanism.is_empty(),
+                    "{} says nothing about how it is wired",
+                    agent.id
+                );
+            }
+        }
+        // The file Claude is launched with is named once it exists.
+        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"));
+        let claude = warm.iter().find(|a| a.id == "claude").unwrap();
+        assert_eq!(claude.mechanism, "--mcp-config cfg.json");
+        let opencode = warm.iter().find(|a| a.id == "opencode").unwrap();
+        assert_eq!(opencode.mechanism, OPENCODE_CONFIG_ENV);
+    }
+
+    // --- Upgrade cleanup ----------------------------------------------------
+
+    #[test]
+    fn sweep_removes_our_entry_and_keeps_everything_else() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+
+        // Claude: our entry beside the user's own server and unrelated keys.
+        std::fs::write(
+            home.join(".claude.json"),
+            json!({
+                "topLevel": "keep-me",
+                "mcpServers": {
+                    SERVER_NAME: { "type": "http", "url": "http://127.0.0.1:1/mcp" },
+                    "someone-elses": { "url": "http://example/mcp" }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        // Codex: our table beside the user's settings.
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        std::fs::write(
+            home.join(".codex").join("config.toml"),
+            "model = \"o3\"\n\n[mcp_servers.uxnan-browser]\nurl = \"http://127.0.0.1:1/mcp\"\nbearer_token_env_var = \"UXNAN_MCP_TOKEN\"\n\n[some.other]\nk = 1\n",
+        )
+        .unwrap();
+
+        assert_eq!(sweep_legacy_at(home), 2);
+
+        let claude: Value =
+            serde_json::from_str(&std::fs::read_to_string(home.join(".claude.json")).unwrap())
+                .unwrap();
+        assert!(claude["mcpServers"].get(SERVER_NAME).is_none());
+        assert!(claude["mcpServers"].get("someone-elses").is_some());
+        assert_eq!(claude["topLevel"], "keep-me");
+
+        let codex = std::fs::read_to_string(home.join(".codex").join("config.toml")).unwrap();
+        assert!(!codex.contains(SERVER_NAME));
+        assert!(codex.contains("model = \"o3\""));
+        assert!(codex.contains("[some.other]"));
+
+        // Idempotent: a second pass finds nothing left to clean.
+        assert_eq!(sweep_legacy_at(home), 0);
+    }
+
+    #[test]
+    fn sweep_leaves_unparseable_and_unrelated_files_alone() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+
+        let broken = "{ \"unterminated\": \"uxnan-browser\"";
+        std::fs::write(home.join(".claude.json"), broken).unwrap();
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        let sane = "model = \"o3\"\n";
+        std::fs::write(home.join(".codex").join("config.toml"), sane).unwrap();
+
+        assert_eq!(sweep_legacy_at(home), 0);
+        assert_eq!(
+            std::fs::read_to_string(home.join(".claude.json")).unwrap(),
+            broken
+        );
+        assert_eq!(
+            std::fs::read_to_string(home.join(".codex").join("config.toml")).unwrap(),
+            sane
+        );
+    }
+
+    #[test]
+    fn sweep_covers_the_agents_we_no_longer_configure() {
+        // Grok/Qwen/Droid/MiMo are not auto-configured any more, so the only way
+        // their old entry ever disappears is this sweep.
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        std::fs::create_dir_all(home.join(".grok")).unwrap();
+        std::fs::write(
+            home.join(".grok").join("config.toml"),
+            "[mcp_servers.uxnan-browser]\nurl = \"http://127.0.0.1:1/mcp\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(home.join(".factory")).unwrap();
+        std::fs::write(
+            home.join(".factory").join("mcp.json"),
+            json!({ "mcpServers": { SERVER_NAME: { "url": "http://127.0.0.1:1/mcp" } } })
+                .to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(sweep_legacy_at(home), 2);
+        let grok = std::fs::read_to_string(home.join(".grok").join("config.toml")).unwrap();
+        assert!(!grok.contains(SERVER_NAME));
+        let droid: Value = serde_json::from_str(
+            &std::fs::read_to_string(home.join(".factory").join("mcp.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(droid.get("mcpServers").is_none()); // emptied parent pruned
+    }
+
+    #[test]
+    fn claude_config_names_the_env_var_and_the_endpoint() {
+        let text = claude_config_json("http://127.0.0.1:63345/mcp");
+        let doc: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(doc["mcpServers"][SERVER_NAME]["type"], "http");
         assert_eq!(
             doc["mcpServers"][SERVER_NAME]["url"],
-            "http://127.0.0.1:9/mcp"
+            "http://127.0.0.1:63345/mcp"
         );
-    }
-
-    #[test]
-    fn write_entry_codex_preserves_unrelated_tables_and_cleans_up() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        let seed = "model = \"o3\"\n\n[some.other]\nk = 1\n";
-        std::fs::write(&path, seed).unwrap();
-
-        let w = write_entry("codex", &path, "http://127.0.0.1:9/mcp")
-            .expect("valid codex config should be merged");
-        assert!(!w.created);
-
-        let after = std::fs::read_to_string(&path).unwrap();
-        let doc = after.parse::<toml_edit::DocumentMut>().unwrap();
-        assert_eq!(doc["model"].as_str(), Some("o3")); // user's settings preserved
-        assert_eq!(doc["some"]["other"]["k"].as_integer(), Some(1)); // unrelated table kept
         assert_eq!(
-            doc["mcp_servers"][SERVER_NAME]["url"].as_str(),
-            Some("http://127.0.0.1:9/mcp")
-        ); // injected
-
-        // Cleanup removes only our entry; user's settings survive.
-        undo_entry(&w);
-        let cleaned = std::fs::read_to_string(&path).unwrap();
-        let cdoc = cleaned.parse::<toml_edit::DocumentMut>().unwrap();
-        let mcp_gone = cdoc
-            .get("mcp_servers")
-            .and_then(|m| m.as_table())
-            .map(|t| t.is_empty())
-            .unwrap_or(true);
-        assert!(mcp_gone, "our mcp_servers entry must be removed");
-        assert_eq!(cdoc["model"].as_str(), Some("o3"));
-        assert_eq!(cdoc["some"]["other"]["k"].as_integer(), Some(1));
-    }
-
-    #[test]
-    fn write_entry_codex_skips_unparseable_toml() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config.toml");
-        let broken = "model = \"unterminated\n"; // invalid TOML (unterminated string)
-        std::fs::write(&path, broken).unwrap();
-
-        let w = write_entry("codex", &path, "http://127.0.0.1:9/mcp");
-        assert!(w.is_none(), "unparseable codex config must be skipped");
-
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken); // bytes unchanged
+            doc["mcpServers"][SERVER_NAME]["headers"]["Authorization"],
+            "Bearer ${UXNAN_MCP_TOKEN}"
+        );
     }
 }

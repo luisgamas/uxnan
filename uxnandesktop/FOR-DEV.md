@@ -28,10 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 691 Rust tests (655 unit + 36
+always wins). 736 Rust tests (700 unit + 36
 integration), of which 31 are ignored probes that need something real to talk to
 (23 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,115 passing frontend Vitest tests across two
+real-scheduler probe) + 1,156 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -66,7 +66,32 @@ started.**
   through `wsl.exe`. **Creation** offers two modes — a **new branch** from a base
   (with a friendly auto-name generator) or **checking out any existing local /
   remote branch** into an isolated worktree — plus an **optional custom location**
-  (editable path + an in-app folder browser). **Removal is worktree-only by
+  (editable path + an in-app folder browser). **Where a new worktree lands** is
+  decided once, in `src-tauri/src/worktreeloc.rs`: by default the managed root
+  `~/uxnan/worktrees/<project>/<branch>`, switchable in **Settings → Git** to the
+  legacy `<project>--<branch>` sibling or to a root of the user's own, and
+  overridable per project. Branch names are folded into folder names valid on
+  every OS, a taken destination takes the next free suffix, the group is always
+  measured from the repository's **main** worktree, and a WSL repo's worktrees
+  stay inside the distro. Existing worktrees are never moved. **Cleanup**
+  (Settings → Git) lists what the backend can prove is disposable — folders git
+  no longer owns, clean checkouts whose branch landed or whose remote branch is
+  gone, and those belonging to a repository the user removed from the app (which
+  touches nothing on disk, so its worktrees stay behind) — with uncommitted work
+  shown **blocked** rather than hidden. It also covers the **cloned
+  repositories** in `~/uxnan/repos` that are no longer projects, but only when
+  every commit is already on a remote — a clone *is* the history, so the bar is
+  "this can be cloned again and nothing is lost", with unpushed commits, stashes,
+  a missing remote or live worktrees each blocking it by name. It only
+  ever looks inside the managed roots, re-verifies every path against a fresh
+  scan at removal time, and moves a folder aside before deleting it in the
+  background (a `node_modules` delete is tens of seconds). A one-time status-bar
+  nudge appears once the folder holds 12+ checkouts. A project whose folder is
+  **not on disk right now** is marked and stops being polled (git and `gh`
+  against a missing path produce nothing but errors) but is never removed — an
+  unmounted drive looks identical — and **Settings → Git → Git bookkeeping**
+  offers to forget worktrees git still lists whose folders are gone, which
+  removes records, never files. **Removal is worktree-only by
   default**: the branch is kept unless the user opts into **deleting the local
   branch** (safe `-d`, with a force for unmerged work and the squash-merge
   safety net preserved) and/or the **remote branch** on `origin`. The **in-app
@@ -532,15 +557,18 @@ leaving it alone.
   frames of 192 × 208 by default, `fallback` chains), so community packs load
   unmodified; import from `~/.codex/pets` or any folder is a **validating copy**
   (manifest + referenced sheet only, traversal-checked ids, bare-filename sheet path,
-  ≤ 24 MiB, image sniff, bounded grid). uxnan bundles **only its own pet** and says
+  ≤ 24 MiB, image sniff, bounded grid). uxnan bundles **only its own pets** —
+  **Uxni** (the default) and **Nox** — and says
   so in the library + import dialog; each imported pet records its origin. Renderer
   wakes only on frame boundaries, parks while hidden, one still frame under
   `prefers-reduced-motion`, and loads nothing until enabled. Backend
   `src-tauri/src/pets.rs` + `AppSettings.pets`; frontend `src/lib/pets/` +
   `state/pets.svelte.ts` + `PetSprite`/`PetLayer`/`PetsSettings`. See
-  [`docs/pets.md`](docs/pets.md). The bundled pet is a normal pack in
-  `static/pets/uxni/` (8 x 11 sheet, one animation per row) — swapped by replacing
-  the files, not regenerated. A generated pack declares neither `frame` nor
+  [`docs/pets.md`](docs/pets.md). The bundled pets are normal packs in
+  `static/pets/<id>/` (8 x 11 sheet, one animation per row) — swapped by replacing
+  the files, not regenerated — listed by id in `src/lib/pets/bundled.ts` and held
+  to the art actually on disk by `tests/bundled-pets.test.mjs` (art nobody listed
+  ships unseen; an id with no art leaves the library short). A generated pack declares neither `frame` nor
   `animations`, so both are recovered from the image — grid from its dimensions,
   animations from the conventional row order with its declared per-row frame counts (the
   reference map: `running` is the in-place row 7, not the travelling run on rows 1-2,
@@ -719,26 +747,47 @@ clickable terminal links** (`@xterm/addon-web-links`).
 **discoverable** to agents as MCP tools, not just via the `/browser` curl. `mcp.rs`
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
-`mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/
-OpenCode) into its **user-global** config only (never the project dir) referencing
-the `UXNAN_MCP_TOKEN` env (token never in a file), merging without clobbering and
-cleaning up on exit. `BrowserSettings.mcp*`
-(enabled / injection mode `off|managed|global` / `friction_free` / disabled-agents)
-+ `mcp_info` command. **Frictionless** (managed + `friction_free`): app-launched
+`mcpinject.rs` registers that server **per launch, in the process uxnan spawns**,
+and writes to **no config file the user keeps** — Claude via `--mcp-config
+<app-data>/mcp/claude-<port>.json`, Codex via `-c mcp_servers.…` overrides,
+OpenCode via `OPENCODE_CONFIG_CONTENT` merged over its own config; every form
+names the `UXNAN_MCP_TOKEN` env var, so the token never lands in a file or an
+argument. The frontend appends the flag-based ones at the single point where a
+launch command is typed (`$lib/mcpLaunch` ← `terminal/instances.ts`), which covers
+a fresh launch, a resumed session and a woken tab alike. `BrowserSettings.mcp*`
+(enabled / `friction_free` / disabled-agents) + `mcp_info` command (endpoint,
+token, per-agent launch args). **Frictionless** (`friction_free`): app-launched
 agents skip the CLI folder-trust prompt — Codex via
-`codex_trust::ensure_project_trust` seeding
-`[projects."<cwd>"].trust_level`. The legacy project-scoped `workspace` mode was
-removed. See `docs/browser.md` → *Agent browser MCP*.
+`codex_trust::ensure_project_trust` seeding `[projects."<cwd>"].trust_level`, the
+one thing here that still touches the user's own config. A startup
+`sweep_legacy` removes the user-global entry older versions wrote into all seven
+CLI configs. See `docs/browser.md` → *Agent browser MCP*.
+
+**Trade accepted:** an agent **typed by hand** in a uxnan terminal no longer gets
+the tools (OpenCode excepted — its registration is an env var, so it covers every
+terminal uxnan spawns). Registering an agent *everywhere* requires a config file
+that follows the user out of the app, which is exactly what caused the bug below.
+
+**Why it changed (the bug it fixes):** the user-global entry outlived the app, so
+agents launched **outside** uxnan discovered a server they could never reach and
+said so — Codex aborts its whole MCP startup with *"Environment variable
+UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set"*. The same shared entry
+carried one window's port, so a **second** uxnan window silently broke the first
+window's agents.
 
 Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` §1.6
 the browser MCP; user guide in `docs/browser.md`.
 
 ### Still pending
-- [ ] **Browser MCP — add more agents.** The injector is a registry: to support a new
-      CLI (e.g. `agy`/Antigravity, Cursor's `cursor-agent`, Grok, amp, Pi), add a row to
-      `mcpinject::AGENTS` + a match arm in `config_path` (its config file path) and
-      `write_entry`/`json_entry` (its MCP-server shape). Recipe + the per-agent table
-      in `docs/browser.md` → *Adding another agent*.
+- [ ] **Browser MCP — add more agents.** Only CLIs with a **verified per-launch**
+      mechanism are auto-configured (Claude Code, Codex, OpenCode). Grok has no
+      MCP-config flag (`grok -h`) and only a signed enterprise `GROK_MANAGED_CONFIG`;
+      Qwen Code, Droid and MiMo Code are config-file-only integrations today. Adding
+      one = prove a per-launch flag/env against the real CLI (a throwaway MCP server
+      is enough), then a row in `mcpinject::AGENTS` + an arm in `launch_args` /
+      `launch_env`. Never re-introduce writing into a config the user keeps: that is
+      what made agents outside uxnan report a broken server. Recipe in
+      `docs/browser.md` → *Adding another agent*.
 - [ ] **Browser MCP — interaction tools (control-only for now).** The tool surface is
       navigation-only. Page inspection/interaction (`browser_snapshot`,
       `browser_evaluate`, `browser_click`, `browser_type`) needs a JS return-channel
@@ -1166,18 +1215,18 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       the choice drives the one-shot launch but isn't recorded on the worktree).
 
 **Integrated developer browser**
-- [ ] **Antigravity (`agy`) as a browser-MCP agent — blocked on both sides.** Its
-      remote MCP transport is **SSE with only a `serverUrl`** (no `headers` field,
-      per its own bundled `agy-customizations` guide), so there is nowhere to put
-      the bearer token that every other injected config carries; and uxnan's
-      endpoint is **Streamable HTTP**, whose `GET /mcp` deliberately answers 405
-      (`mcp.rs`). Either `agy` grows header support (then it is one row in
-      `mcpinject::AGENTS` + a `config_path`/`write_entry` arm, writing
-      `~/.gemini/config/mcp_config.json`), or we publish a small **stdio** MCP
-      proxy it can launch with `command` + `env` — which keeps the token out of the
-      file but adds a binary to build, sign and ship for one agent. Do **not**
-      "solve" it by putting the token in the `serverUrl`: that breaks the module's
-      documented posture and still leaves the transport mismatch.
+- [ ] **Antigravity (`agy`) as a browser-MCP agent — blocked on three counts now.**
+      Its remote MCP transport is **SSE with only a `serverUrl`** (no `headers`
+      field, per its own bundled `agy-customizations` guide), so there is nowhere to
+      put the bearer token; uxnan's endpoint is **Streamable HTTP**, whose
+      `GET /mcp` deliberately answers 405 (`mcp.rs`); and it has no **per-launch**
+      config channel at all, which is now the entry requirement (`mcpinject.rs`) —
+      writing `~/.gemini/config/mcp_config.json` is exactly the persistent-entry
+      pattern that was removed. Unblocking it means `agy` growing header support
+      *and* a launch flag/env, or a small **stdio** MCP proxy it can launch with
+      `command` + `env` — which keeps the token out of files but adds a binary to
+      build, sign and ship for one agent. Do **not** "solve" it by putting the token
+      in the `serverUrl`.
 
 **Providers (usage statistics)**
 - [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
@@ -1377,7 +1426,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 691 Rust + 1,115 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 736 Rust + 1,156 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

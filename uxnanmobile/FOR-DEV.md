@@ -38,7 +38,8 @@ connected to live bridge data, validated on-device against a real bridge.
 - **Spaces: projects ▸ worktrees ▸ conversations, with per-folder git.** The
   conversation list is grouped by the folder work runs in, and a **repository**
   level appears over folders that `git/worktrees` relates to each other (never
-  guessed from path prefixes — worktrees are siblings on disk). Each level has
+  guessed from path prefixes — a worktree can live anywhere, and grouped ones
+  share a prefix across repositories). Each level has
   its own ordering (status / activity / created / name) through a routed
   cascading menu. Folder rows carry git indicators (uncommitted, ahead, behind)
   from `git/status` per cwd, throttled and only while visible; the breakdown
@@ -164,7 +165,12 @@ connected to live bridge data, validated on-device against a real bridge.
   **folder browser** (`workspace/browseDirs`) to root a thread anywhere. The
   full-screen Neural Expressive dialog compares agents in one dynamic-corner
   card group; selecting an agent expands only its capability chips and
-  collapses the previous selection.
+  collapses the previous selection. Starting one in a fresh worktree sends
+  **no path**: the bridge places the checkout under the folder it manages, the
+  same one the desktop uses, gated on `features.managedWorktrees`. Against an
+  older bridge (which requires a path) the phone derives one, now spelled the
+  way the desktop spells it — the two used to disagree, so one project's
+  worktrees ended up in two folder schemes.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
   of the selected row; editable highlighted text, selectable diffs,

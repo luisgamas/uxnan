@@ -41,6 +41,10 @@ import type {
   SshHostProbe,
   SshRemoteListing,
   SshResolvedHost,
+  GitIdentity,
+  StaleWorktrees,
+  WorktreeCleanupCandidate,
+  WorktreeCleanupOutcome,
   GithubStatus,
   ImportablePet,
   InstalledPet,
@@ -449,11 +453,90 @@ export function branchList(repoId: string): Promise<BranchList> {
   return invoke<BranchList>('branch_list', { repoId });
 }
 
+/** The git identity commits are authored with (Settings → Git), read from the
+ *  global/system config rather than any open repository. Never rejects: an unset
+ *  field comes back `null`, which is itself worth showing — an identity that is
+ *  not set is what makes `git commit` fail later. */
+export function gitIdentity(): Promise<GitIdentity> {
+  return invoke<GitIdentity>('git_identity');
+}
+
+/** Where a worktree for `branch` would land, under the settings that apply to
+ *  this project. Read-only, so the create dialog can show it while the user
+ *  types. Empty string for an empty branch.
+ *
+ *  The path is deliberately NOT recomputed in the frontend: the layout (managed
+ *  root, per-project override, branch sanitizing, WSL mirroring, collision
+ *  suffixes) lives once in the backend, and the last time this was mirrored here
+ *  the two copies drifted into different folder names. */
+export function worktreePreviewPath(repoId: string, branch: string): Promise<string> {
+  return invoke<string>('worktree_preview_path', { repoId, branch });
+}
+
+/** Registered projects whose folder is not on disk right now, by id.
+ *
+ *  NOT proof anything was deleted: an unmounted drive, an offline share and a
+ *  cloud placeholder all look identical to this. The app marks such a project
+ *  and stops polling it — asking git and `gh` about a path that is not there
+ *  produces nothing but errors — and never removes it on its own. */
+export function reposMissing(): Promise<string[]> {
+  return invoke<string[]>('repos_missing');
+}
+
+/** Projects whose git bookkeeping still lists worktrees that are gone.
+ *  `git worktree list` keeps reporting a worktree after its folder is deleted,
+ *  so the sidebar shows checkouts that are not there. */
+export function worktreeStaleScan(): Promise<StaleWorktrees[]> {
+  return invoke<StaleWorktrees[]>('worktree_stale_scan');
+}
+
+/** Drop a project's records for worktrees whose folders are gone
+ *  (`git worktree prune`). Removes **records, never files** — the directories
+ *  it forgets are already missing. Resolves to whatever is still stale. */
+export function worktreePrune(repoId: string): Promise<string[]> {
+  return invoke<string[]>('worktree_prune', { repoId });
+}
+
+/** How many worktree folders the managed roots hold. Directory counting only —
+ *  no git, and no size walk — because this is asked at startup to decide whether
+ *  the status bar mentions the folder at all. */
+export function worktreeCleanupCount(): Promise<number> {
+  return invoke<number>('worktree_cleanup_count');
+}
+
+/** Worktrees inside the managed folder that can be cleaned up, plus the ones
+ *  blocked by uncommitted work (listed, never removable). Read-only, and it only
+ *  ever looks inside the managed roots — a worktree beside its repository is
+ *  never listed and never touched. */
+export function worktreeCleanupScan(): Promise<WorktreeCleanupCandidate[]> {
+  return invoke<WorktreeCleanupCandidate[]>('worktree_cleanup_scan');
+}
+
+/** Size on disk of each path, in bytes, in the order asked. Separate from the
+ *  scan because walking a checkout's `node_modules` costs more than every git
+ *  query in the scan combined — the list appears first, the sizes fill in. */
+export function worktreeCleanupSizes(paths: string[]): Promise<number[]> {
+  return invoke<number[]>('worktree_cleanup_sizes', { paths });
+}
+
+/** Remove the given worktrees. Every path is re-verified against a fresh scan
+ *  (inside a managed root, still disposable, still clean), so a stale list can
+ *  never delete the wrong folder; refusals come back with their reason. */
+export function worktreeCleanupRemove(paths: string[]): Promise<WorktreeCleanupOutcome> {
+  return invoke<WorktreeCleanupOutcome>('worktree_cleanup_remove', { paths });
+}
+
+/** Set (or clear, with `null`) a project's own managed-worktree root, overriding
+ *  the global setting for that repository. Returns the updated repo. */
+export function repoSetWorktreeRoot(repoId: string, root: string | null): Promise<RepoData> {
+  return invoke<RepoData>('repo_set_worktree_root', { repoId, root });
+}
+
 /** Create a worktree in a repo. `fromExisting` checks out an existing local/
  *  remote branch (ignoring `base`); otherwise a new `branch` is created from
  *  `base` (omit `base` to let the backend resolve the default base). `path` is an
- *  optional custom worktree directory (absolute, not yet existing); omit it for
- *  the automatic sibling location. */
+ *  optional custom worktree directory for this one creation (absolute, not yet
+ *  existing); omit it to let the backend place it per the user's settings. */
 export function worktreeCreate(
   repoId: string,
   branch: string,

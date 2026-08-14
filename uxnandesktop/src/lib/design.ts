@@ -31,6 +31,11 @@ export const icon = {
   /** Purely-visual / informational: breadcrumb, leading item icons,
    *  status & running indicators (14px). */
   decorative: "size-3.5",
+  /** An agent's brand logo leading a row (16px). Deliberately a notch *above*
+   *  the 14px state glyph beside it: the mark answers "who is running" and the
+   *  glyph answers "how is it doing", so identity reads first at a glance —
+   *  without the 20px mark crowding the 12px text in a dense worktree row. */
+  brand: "size-4",
   /** An agent-state glyph — the Comet Trail matrix or a state icon — in a
    *  sidebar row, a context menu or a terminal tab (12px). Deliberately a notch
    *  under `decorative`: it sits beside 12-13px text and must not outweigh it. */
@@ -169,7 +174,19 @@ export const surface = {
 export const shell = {
   root: "bg-[var(--ux-shell)] text-foreground",
   sidebar: "bg-sidebar text-sidebar-foreground",
-  statusBar: "flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground",
+  /** One 28px status-bar box. Like `appBar`, it paints its hairline as an
+   *  overlay instead of a border: a `border-t` is inside the border-box, so it
+   *  would leave 27px for a 28px control and every highlight would spill past
+   *  the bar. Actions here fill the full height and sit flush, so the bar reads
+   *  as one band of controls rather than a row of floating pills. */
+  statusBar:
+    "relative flex h-7 shrink-0 items-center px-2 text-xs text-muted-foreground before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-px before:bg-border/60",
+  /** A square status-bar action — full bar height, no radius (the shape
+   *  `appBarAction` gives the top chrome). */
+  statusBarAction: "flex h-7 w-7 shrink-0 items-center justify-center rounded-none",
+  /** A text-bearing status-bar item (a count, a warning): same height and square
+   *  corners, with its own horizontal padding since the bar has no gap. */
+  statusBarItem: "flex h-7 shrink-0 items-center gap-1 rounded-none px-1.5",
   /** One 40px appbar box. Its overlay hairline stays visible above full-height actions. */
   appBar:
     "relative h-10 shrink-0 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:h-px after:bg-border/60",

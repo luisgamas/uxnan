@@ -1,7 +1,3 @@
-Las conversaciones ya no vuelven duplicadas. Si alguna te muestra un intercambio dos veces, se repara sola la próxima vez que la abras: no se pierde nada de lo que escribiste.
+Ajustes y Perfil ya responden al botón atrás de Android: vuelves a la pantalla anterior en vez de salir de la app.
 
-Las respuestas largas se mantienen fluidas hasta el final, en vez de ralentizarse al crecer.
-
-Abrir una segunda conversación en el mismo panel ahora muestra la que elegiste.
-
-El panel de conversaciones vacío te ofrece configurar la app, no la cámara.
+Una conversación con su propia copia del proyecto ahora se crea donde la coloca tu PC, en la misma carpeta que ya usa la app de escritorio, así las dos apps dejan de crear carpetas distintas para la misma rama.

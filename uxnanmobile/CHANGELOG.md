@@ -6,6 +6,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.21-alpha.20260813+20260813] - 20260813
+### Changed — the PC decides where a conversation's worktree goes
+
+Starting a conversation in a fresh worktree no longer sends a folder the phone
+made up. On a bridge that advertises `features.managedWorktrees`, the phone
+sends no path at all and the bridge places the checkout under the folder it
+manages (`~/uxnan/worktrees/<project>/<branch>` by default), which is exactly
+where the desktop app puts it.
+
+That is the fix, not a preference: the phone derived
+`<parent>/<repo>-<branch>` and the desktop `<parent>/<repo>--<branch>`, with
+different rules for turning a branch name into a folder name — so one project's
+worktrees ended up split across two folder schemes depending on which app made
+them. Against an older bridge, which still requires a path, the phone keeps
+deriving one, now spelled exactly the way the desktop spells it.
+
 ### Fixed — back from Settings returned to the launcher instead of the overview
 
 On a phone, opening Settings from the overview and pressing Android's back

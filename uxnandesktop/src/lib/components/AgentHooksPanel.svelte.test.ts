@@ -1,8 +1,8 @@
 /**
  * Settings → Agents → Hooks. The pane renders whatever the backend registry
  * returns, so what is tested here is that contract holding up: every agent the
- * backend reports gets a row, the ones on this machine lead, and install /
- * uninstall reach the generic commands with the right agent id.
+ * backend reports gets a row, the ones on this machine lead, and the row's
+ * switch reaches install / uninstall with the right agent id.
  *
  * It matters more than it looks: the list used to be a hard-coded tab strip, so
  * a newly wired agent existed in the backend and was invisible in the UI.
@@ -71,62 +71,68 @@ describe('AgentHooksPanel', () => {
     document.body.style.pointerEvents = '';
   });
 
-  it('lists every agent the backend reports, machine-first', async () => {
+  it('lists the agents on this machine, product-named, in their own group', async () => {
     const { screen } = mountWithProviders(AgentHooksPanel, { commands: baseCommands() });
-    await until(() => screen.queryAllByRole('button', { name: /Claude Code/ }).length > 0, {
-      label: 'agent list',
-    });
+    await until(() => screen.queryAllByText('Claude Code').length > 0, { label: 'agent list' });
     // Product names, not hook ids — `claude` is `claudecode` in the catalog.
-    expect(screen.getByRole('button', { name: /Claude Code/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Cursor/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Kimi/ })).toBeInTheDocument();
+    expect(screen.getByText('Claude Code')).toBeInTheDocument();
+    expect(screen.getByText('Cursor')).toBeInTheDocument();
     // The group headers tell "yours" from "the rest".
     expect(screen.getByText('On this machine')).toBeInTheDocument();
-    expect(screen.getByText('Other agents')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Other agents/ })).toBeInTheDocument();
   });
 
-  it('opens on an agent this machine actually has', async () => {
-    const { screen } = mountWithProviders(AgentHooksPanel, { commands: baseCommands() });
-    await until(() => screen.queryAllByText(/\.claude\/settings\.json/).length > 0, {
-      label: 'detail pane',
+  it('folds the agents this machine does not have, and opens them on demand', async () => {
+    const { screen, user } = mountWithProviders(AgentHooksPanel, { commands: baseCommands() });
+    await until(() => screen.queryAllByText('Claude Code').length > 0, { label: 'agent list' });
+    // Closed by default: the long tail must not push your own agents down.
+    // Queried by role, which is what the collapsed content is hidden from —
+    // Bits UI keeps it mounted and marks it `hidden` rather than unmounting.
+    expect(screen.queryByRole('switch', { name: /Kimi/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Other agents/ }));
+    await until(() => screen.queryAllByRole('switch', { name: /Kimi/ }).length > 0, {
+      label: 'others group',
     });
-    // The detail pane shows the selected agent's config path.
-    expect(screen.getByText('/home/u/.claude/settings.json')).toBeInTheDocument();
+    expect(screen.getByText(/weren’t found on your machine/)).toBeInTheDocument();
   });
 
-  it('installs the agent you selected, by id', async () => {
+  it("installs from the row's switch, by id", async () => {
     const { screen, backend, user } = mountWithProviders(AgentHooksPanel, {
       commands: baseCommands(),
     });
-    await until(() => screen.queryAllByRole('button', { name: /Cursor/ }).length > 0, {
+    await until(() => screen.queryAllByRole('switch', { name: /Cursor/ }).length > 0, {
       label: 'agent list',
     });
-    await user.click(screen.getByRole('button', { name: /Cursor/ }));
-    await user.click(screen.getByRole('button', { name: 'Install' }));
+    await user.click(screen.getByRole('switch', { name: 'Install the reporter for Cursor' }));
     await until(() => backend.called('install_agent_hooks'), { label: 'install' });
     expect(backend.lastCallTo('install_agent_hooks')?.args.agent).toBe('cursor');
   });
 
-  it('says when a listed agent is not on this machine', async () => {
-    const { screen, user } = mountWithProviders(AgentHooksPanel, { commands: baseCommands() });
-    await until(() => screen.queryAllByRole('button', { name: /Kimi/ }).length > 0, {
-      label: 'agent list',
-    });
-    await user.click(screen.getByRole('button', { name: /Kimi/ }));
-    expect(screen.getByText(/wasn’t found on your machine/)).toBeInTheDocument();
-  });
-
-  it('renders the config only when asked for it', async () => {
+  it('uninstalls when the switch of an installed agent is turned off', async () => {
     const { screen, backend, user } = mountWithProviders(AgentHooksPanel, {
       commands: baseCommands(),
     });
-    await until(() => screen.queryAllByRole('button', { name: /Claude Code/ }).length > 0, {
+    await until(() => screen.queryAllByRole('switch', { name: /Claude Code/ }).length > 0, {
       label: 'agent list',
     });
-    // Not one round-trip per agent up front…
+    await user.click(screen.getByRole('switch', { name: 'Install the reporter for Claude Code' }));
+    await until(() => backend.called('uninstall_agent_hooks'), { label: 'uninstall' });
+    expect(backend.lastCallTo('uninstall_agent_hooks')?.args.agent).toBe('claude');
+  });
+
+  it('renders the config, and its path, only when asked for it', async () => {
+    const { screen, backend, user } = mountWithProviders(AgentHooksPanel, {
+      commands: baseCommands(),
+    });
+    await until(() => screen.queryAllByText('Claude Code').length > 0, { label: 'agent list' });
+    // The file its reporter lands in is the row's own metadata, always visible…
+    expect(screen.getByText('/home/u/.claude/settings.json')).toBeInTheDocument();
+    // …but rendering the config is not one round-trip per agent up front.
     expect(backend.called('render_agent_hooks_config')).toBe(false);
-    await user.click(screen.getByRole('button', { name: /Show config/ }));
+    // The first row's disclosure is Claude Code's, the machine-first group.
+    await user.click(screen.getAllByRole('button', { name: 'Show config' })[0]);
     await until(() => backend.called('render_agent_hooks_config'), { label: 'config' });
     expect(backend.lastCallTo('render_agent_hooks_config')?.args.agent).toBe('claude');
+    await until(() => screen.queryAllByText(/"version": 1/).length > 0, { label: 'rendered' });
   });
 });

@@ -73,10 +73,12 @@ export interface GitWorktreeResult {
 /**
  * One entry of `git worktree list --porcelain`.
  *
- * A repository's worktrees are siblings on disk, not children — a checkout of
- * `repo` at `../repo-feature` is a peer directory with no path relationship to
- * its main worktree. That is precisely why a client cannot infer the hierarchy
- * from paths alone and has to be told.
+ * A worktree can live anywhere: beside its repository (`../repo-feature`),
+ * grouped under the folder uxnan manages (`~/uxnan/worktrees/<repo>/<branch>`),
+ * or wherever the user put it. None of those spellings is a child of the main
+ * worktree, and the grouped one shares a prefix with worktrees of OTHER
+ * repositories — which is precisely why a client cannot infer the hierarchy
+ * from paths and has to be told.
  */
 export interface GitWorktreeEntry {
   /** Absolute path of the worktree. */

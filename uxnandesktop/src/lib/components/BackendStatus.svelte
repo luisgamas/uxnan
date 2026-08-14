@@ -14,7 +14,7 @@
   import { github } from "$lib/state/github.svelte";
   import { resources } from "$lib/state/resources.svelte";
   import { cn } from "$lib/utils";
-  import { iconButton, overlay, text } from "$lib/design";
+  import { icon as iconSize, overlay, shell, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Icon } from "$lib/components/ui/icon";
@@ -124,13 +124,16 @@
       <Popover.Trigger
         bind:ref={triggerRef}
         {...tp}
-        class={cn("relative flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground", iconButton.action)}
+        class={cn(
+          shell.statusBarAction,
+          "relative text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        )}
         aria-label={triggerLabel}
       >
-        <Icon icon={ServerIcon} class={cn("size-3.5", backend.icon)} />
+        <Icon icon={ServerIcon} class={cn(iconSize.action, backend.icon)} />
         {#if unread > 0}
           <span
-            class="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-primary ring-1 ring-background"
+            class="absolute right-1 top-1 size-1.5 rounded-full bg-primary ring-1 ring-background"
             aria-hidden="true"
           ></span>
         {/if}

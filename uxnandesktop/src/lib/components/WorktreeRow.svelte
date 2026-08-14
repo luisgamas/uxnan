@@ -37,6 +37,9 @@
   import CircleSlashIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
   import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
   import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  // Unread is one signal drawn one way: keep this glyph and `ProjectCard`'s in
+  // step — a project row and a worktree row report the same thing.
+  import MessageNotificationIcon from "@hugeicons/core-free-icons/MessageNotification01Icon";
   import MoonIcon from "@hugeicons/core-free-icons/MoonIcon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
@@ -274,7 +277,7 @@
           {#if v}
             <div class="flex items-center gap-1.5">
               <AgentStatusIndicator status={v.status} stale={v.stale} />
-              <AgentLogo logo={t.agentIcon} class={cn(icon.status, "shrink-0")} />
+              <AgentLogo logo={t.agentIcon} class={cn(icon.brand, "shrink-0")} />
               <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{v.title}</span>
               {#if v.lastUpdate}
                 <span class={cn("shrink-0 tabular-nums", text.meta)}>
@@ -391,10 +394,9 @@
                   {#if hasUnread}
                     <TooltipSimple title={i18n.t("monitor.unread")}>
                       {#snippet children(tp2)}
-                        <span
-                          {...tp2}
-                          class="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/15"
-                        ></span>
+                        <span {...tp2} class="inline-flex shrink-0 text-red-500">
+                          <Icon icon={MessageNotificationIcon} class={icon.decorative} />
+                        </span>
                       {/snippet}
                     </TooltipSimple>
                   {/if}

@@ -76,10 +76,10 @@ const PICKUP_GRACE_MS = 6000;
  *  (mirrors the broadcast console's `MAX_HOLD_MS`). */
 const MAX_HOLD_MS = 12000;
 
-/** Agent routing types uxnan injects the orchestration MCP tools into (mirror of
- *  `mcpinject::AGENTS`). Only these can be nudged to call `orchestration_report_result`;
- *  for any other agent we never mention MCP, so a CLI is never told to use a tool
- *  it doesn't have. */
+/** Agent routing types uxnan registers the orchestration MCP tools with at launch
+ *  (mirror of `mcpinject::AGENTS`). Only these can be nudged to call
+ *  `orchestration_report_result`; for any other agent we never mention MCP, so a
+ *  CLI is never told to use a tool it doesn't have. */
 const INJECTABLE_MCP_TYPES: ReadonlySet<string> = new Set([
   "claude",
   "codex",
@@ -593,9 +593,7 @@ class OrchestrationRunStore {
     const feedsLater = run.steps.some((s) => s.id !== step.id && s.dependsOn.includes(step.id));
     if (!feedsLater) return text;
     const br = app.settings.browser;
-    if (!br || br.enabled === false || br.mcpEnabled === false || br.mcpInjection === "off") {
-      return text;
-    }
+    if (!br || br.enabled === false || br.mcpEnabled === false) return text;
     if (!INJECTABLE_MCP_TYPES.has(agent.type)) return text;
     if ((br.mcpDisabledAgents ?? []).includes(agent.type)) return text;
     const nudge = i18n.t("orchestration.autoReportNudge", { id: agent.tabId });

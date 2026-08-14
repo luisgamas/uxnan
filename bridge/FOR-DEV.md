@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 627, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 649, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -112,6 +112,17 @@ push validation (FOR-HUMAN).
 - **Cross-worktree file-link resolution** — `workspace/resolveFileLink` turns a
   path an agent cited into the viewer's `cwd + path`, picking the target's own
   Git root when the file lives outside the conversation's worktree.
+- **Managed worktree locations** — `git/createWorktree` no longer requires a
+  `path`: without one the bridge places the worktree itself
+  (`git/worktree-location.ts`), under the same layout the desktop resolves in
+  `worktreeloc.rs` — by default `<home>/uxnan/worktrees/<repo>/<branch>`,
+  switchable per install (`worktrees` config) to the legacy
+  `<repo>--<branch>` sibling or to a root of the operator's own. The group is
+  measured from the repository's **main** worktree, branch names are folded into
+  folder names valid on every OS, a taken destination takes the next free
+  suffix, and two projects sharing a folder name get separate groups (one pinned
+  digest, identical on both sides). Advertised as `features.managedWorktrees`;
+  the ones the bridge placed are recorded in `managed-worktrees.json`.
 - **Direct FCM push from the bridge** — primary path, persisted across restarts,
   per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
   (no creds = silent no-op; foreground local notifications still work).
