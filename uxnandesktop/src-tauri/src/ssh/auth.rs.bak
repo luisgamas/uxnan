@@ -14,7 +14,9 @@
 //! opaquely: "wrong key" and "I could not open your key" are different problems
 //! with different fixes.
 
+// FOR-DEV: no caller yet — the host registry drives this once it exists.
 // Remove with the same change that removes the marker in `conn.rs`.
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

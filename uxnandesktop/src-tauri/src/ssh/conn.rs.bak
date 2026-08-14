@@ -15,8 +15,12 @@
 //! cannot execute after it: same host, new connection, possibly a different
 //! working directory and certainly a different set of live processes.
 //!
-//! Authentication lives next door in [`super::auth`]: this module stops at the
-//! host-key decision, which is the one that must not be conflated with it.
+//! Authentication is deliberately *not* here yet — see `FOR-DEV.md`.
+
+// FOR-DEV: no caller yet; the host registry and the inventory probe are what
+// will use this. Landing it separately keeps the host-key decision reviewable
+// on its own. Remove this allow, and its FOR-DEV.md entry, once wired.
+#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -131,11 +135,6 @@ impl Connection {
         self.generation
     }
 
-    /// Where this connection is dialled. Nothing reads it yet — the reconnect
-    /// ladder (`FOR-DEV.md`) is what will, since coming back needs to know where
-    /// to go — and it is kept because it is this connection's *identity*, not a
-    /// feature waiting to be written.
-    #[allow(dead_code)]
     pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
     }

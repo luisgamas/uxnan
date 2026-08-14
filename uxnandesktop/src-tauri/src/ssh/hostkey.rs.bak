@@ -18,6 +18,14 @@
 //! recognized and matched with HMAC-SHA1 as OpenSSH specifies, so a user with a
 //! hashed file is not silently told every host is new.
 
+// FOR-DEV: this module has no caller yet — its caller is the SSH client's
+// host-key callback, which lands with the connection manager (`ssh/conn.rs`).
+// It is written and tested first on purpose: it is the one decision here that
+// must not be improvised while wiring a connection, and keeping it free of the
+// SSH library's types is what lets it be tested without one. Remove this
+// allow, and the matching entry in `FOR-DEV.md`, in the change that connects.
+#![allow(dead_code)]
+
 use base64::Engine;
 use sha2::{Digest, Sha256};
 

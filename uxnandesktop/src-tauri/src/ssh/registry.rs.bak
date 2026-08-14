@@ -24,6 +24,11 @@
 //! machine trips the host-key check first ([`super::hostkey`]), which refuses the
 //! connection outright.
 
+// FOR-DEV: no caller yet — the Tauri command surface for Settings -> Hosts is
+// what drives this. Landing the data logic first keeps the part that can lose a
+// user's projects reviewable on its own. Remove with the commands.
+#![allow(dead_code)]
+
 use crate::model::{SshHost, SshHostSource, SshHostTombstone};
 
 /// How many removed hosts to remember. Generous — a tombstone is a few dozen
@@ -138,6 +143,12 @@ impl SshHostTombstone {
             user: &self.user,
         }
     }
+}
+
+/// Find an already-registered host for this draft, if any.
+pub fn find_existing<'a>(hosts: &'a [SshHost], draft: &HostDraft) -> Option<&'a SshHost> {
+    let wanted = draft.machine_key();
+    hosts.iter().find(|h| h.machine_key().same(&wanted))
 }
 
 /// Add (or update) a host, recovering a removed one's id when it matches.
