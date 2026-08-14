@@ -519,6 +519,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A disconnected host's file tree stops pretending.** Disconnect a host and the
+  Files panel kept showing that machine's folders — no message, no hint, a tree
+  that was quietly a memory: a folder already loaded is never listed again, so
+  nothing ever noticed the session had gone. It now goes back to the same
+  "waiting for this host" state a cold start has, and fills itself in again when
+  the host returns. Handled where the whole live set is known, so a session that
+  ends on its own is caught by the same path as one the user closed.
+
 - **uxnan no longer names a shell for your host.** A terminal already asked the
   host's `sshd` for *a* shell and let that machine choose — but one thing still
   named one: the probe that asks what a host has installed ran `powershell`,

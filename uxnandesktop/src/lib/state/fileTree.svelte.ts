@@ -265,6 +265,28 @@ class FileTreeStore {
     for (const dir of Object.keys(this.childrenByDir)) void this.loadDir(dir, true);
   }
 
+  /** Forget this tree when its host goes away.
+   *
+   *  The counterpart of `retryForHost`, and the half that was missing: a loaded
+   *  folder is never listed again (`loadDir` returns early when it already has
+   *  the children), so after a disconnect the panel kept showing another
+   *  machine's files as if that machine were still there — no message, no hint,
+   *  just a tree that was quietly a memory. Every panel in this app is supposed
+   *  to say what it cannot know; this one was claiming the opposite.
+   *
+   *  It goes back to the same state a cold start has, so `retryForHost` fills it
+   *  in again when the host returns. */
+  hostWentAway(hostId: string): void {
+    if (sshHostId(this.target) !== hostId) return;
+    this.childrenByDir = {};
+    this.expanded = new Set();
+    this.selectedEntry = null;
+    this.draft = null;
+    this.renamingPath = null;
+    this.error = null;
+    this.awaitingHost = true;
+  }
+
   /** Reload every already-loaded directory (keeps the expansion state); also
    *  re-runs an active project-wide search so its results reflect disk changes. */
   refresh(): void {

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { installFakeBackend, type FakeBackend } from '../../test/tauri';
 import { hosts } from './hosts.svelte';
 import { sessions } from './sessions.svelte';
+import { fileTree } from './fileTree.svelte';
 
 function host(id: string, needsPrompt = false) {
   return {
@@ -44,6 +45,11 @@ beforeEach(() => {
       return { status: 'connected', generation: 3, attempted: [] };
     },
     ssh_host_inventory: () => ({ os: 'linux', home: '/home/dev', git: '2.4', multiplexer: '', agents: {}, shell: 'posix' }),
+    ssh_host_disconnect: (args) => {
+      connected = connected.filter((s) => s.hostId !== args.hostId);
+      return true;
+    },
+    ssh_fs_list: () => [],
   });
   hosts.hosts = [];
   hosts.connected = [];
@@ -88,5 +94,35 @@ describe('hosts.resume', () => {
     // is an expectation nobody issued.
     await hosts.resume();
     expect(hosts.generationOf('asks')).toBeUndefined();
+  });
+});
+
+describe('a host that goes away', () => {
+  it('sends its file tree back to waiting instead of leaving a memory on screen', async () => {
+    // A loaded folder is never listed again, so without this the panel kept
+    // showing the other machine's files after it was disconnected — no message,
+    // no hint, a tree that was quietly out of date.
+    connected = [{ hostId: 'already', generation: 9 }];
+    await hosts.load();
+    fileTree.setRoot('/code', 'ssh:already');
+    fileTree.childrenByDir = { '/code': [{ name: 'src', path: '/code/src', isDir: true, ignored: false }] };
+    fileTree.awaitingHost = false;
+
+    await hosts.disconnect('already');
+
+    expect(fileTree.awaitingHost).toBe(true);
+    expect(fileTree.childrenByDir).toEqual({});
+  });
+
+  it("leaves another host's tree alone", async () => {
+    connected = [{ hostId: 'already', generation: 9 }, { hostId: 'silent', generation: 2 }];
+    await hosts.load();
+    fileTree.setRoot('/code', 'ssh:silent');
+    fileTree.childrenByDir = { '/code': [] };
+    fileTree.awaitingHost = false;
+
+    await hosts.disconnect('already');
+
+    expect(fileTree.awaitingHost).toBe(false);
   });
 });

@@ -115,11 +115,19 @@ class HostsStore {
    *  the generation to fence a save, and reaching into this store for it is what
    *  tangled the module graph. */
   private async refreshSessions(): Promise<void> {
+    const before = new Set(this.connected);
     const live = await sshHostsConnected();
     sessions.replace(
       live.map((s) => ({ ...s, label: this.labelOf(s.hostId) })),
     );
     this.connected = sessions.connected;
+    // Anything that was up and is not any more: tell the panels living on it,
+    // here rather than in `disconnect`, because this is the one place that sees
+    // the whole live set — so a session that ended on its own is caught by the
+    // same path as one the user closed.
+    for (const hostId of before) {
+      if (!sessions.isConnected(hostId)) fileTree.hostWentAway(hostId);
+    }
   }
 
   /** The connection generation for a host, or `undefined` when it is not
