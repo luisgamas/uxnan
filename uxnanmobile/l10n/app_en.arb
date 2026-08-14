@@ -381,7 +381,7 @@
   "sessionInfoTitle": "Session info",
   "sessionInfoAgentSessionLabel": "Agent session ID",
   "sessionInfoUnavailable": "Not available yet",
-  "sessionInfoResumeHint": "Resume this conversation from the agent's CLI on your PC.",
+  "sessionInfoResumeHint": "Resume this conversation from the agent's CLI or desktop app on your PC, while it isn't running a turn here.",
   "sessionInfoCopied": "Copied to clipboard",
   "threadDeleteTitle": "Delete thread?",
   "threadDeleteBody": "This removes the conversation from this device.",

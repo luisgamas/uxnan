@@ -317,7 +317,7 @@
   "sessionInfoTitle": "Información de sesión",
   "sessionInfoAgentSessionLabel": "ID de sesión del agente",
   "sessionInfoUnavailable": "Aún no disponible",
-  "sessionInfoResumeHint": "Reanuda esta conversación desde la CLI del agente en tu PC.",
+  "sessionInfoResumeHint": "Reanuda esta conversación desde la CLI o la app de escritorio del agente en tu PC, mientras no esté ejecutando un turno aquí.",
   "sessionInfoCopied": "Copiado al portapapeles",
   "threadDeleteTitle": "¿Eliminar hilo?",
   "threadDeleteBody": "Esto quita la conversación de este dispositivo.",

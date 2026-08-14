@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- The conversation's **Session info** sheet no longer says the ids are only good
+  for the agent's CLI: they open the same conversation in the agent's **desktop
+  app** too, and it names the one condition that matters — the conversation must
+  not be running a turn on the phone at that moment. The hint was written when a
+  Codex conversation started here could not be opened anywhere else (fixed in
+  the bridge: it now hands the agent session back between turns).
 
 ## [0.0.21-alpha.20260813+20260813] - 20260813
 ### Changed — the PC decides where a conversation's worktree goes
