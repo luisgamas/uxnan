@@ -721,6 +721,11 @@ export function sshHostDisconnect(hostId: string): Promise<boolean> {
 
 /** The host ids with a live session, so the UI can show what is connected
  *  without reaching out to anything. */
+export function sshHostsResumable(): Promise<string[]> {
+  return invoke<string[]>('ssh_hosts_resumable');
+}
+
+/** The hosts with a live session, and which incarnation each one is. */
 export function sshHostsConnected(): Promise<SshHostSession[]> {
   return invoke<SshHostSession[]>('ssh_hosts_connected');
 }

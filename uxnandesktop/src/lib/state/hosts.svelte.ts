@@ -17,6 +17,7 @@ import {
   sshHostRemove,
   sshHostTrust,
   sshHostsConnected,
+  sshHostsResumable,
   sshHostsList,
 } from "$lib/api";
 import type {
@@ -27,6 +28,7 @@ import type {
   SshHostInventory,
 } from "$lib/types";
 import { fileTree } from "$lib/state/fileTree.svelte";
+import { sessions } from "$lib/state/sessions.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
 import { i18n } from "$lib/i18n";
 
@@ -58,14 +60,6 @@ class HostsStore {
   hosts = $state<SshHost[]>([]);
   /** Host ids with a live session. */
   connected = $state<string[]>([]);
-  /** Which incarnation each connected host's connection is, keyed by host id.
-   *
-   *  Kept because a **mutation carries it**: a save prepared against one
-   *  connection must not execute against its replacement (`$lib/target`). It is
-   *  read from the connected list rather than only from a connect report,
-   *  because the window is reloaded far more often than a host is connected —
-   *  after a reload the app would otherwise send a generation nobody issued. */
-  generations = $state<Record<string, number>>({});
   /** Host ids with an operation in flight, so their row can show it. */
   busy = $state<string[]>([]);
   error = $state<string | null>(null);
@@ -114,30 +108,38 @@ class HostsStore {
     }
   }
 
-  /** Re-read which hosts are up and which incarnation each one is. */
+  /** Re-read which hosts are up and which incarnation each one is.
+   *
+   *  The answer lands in the shared session registry (`$lib/state/sessions`),
+   *  which is where anything outside Settings reads it from — the editor needs
+   *  the generation to fence a save, and reaching into this store for it is what
+   *  tangled the module graph. */
   private async refreshSessions(): Promise<void> {
-    const sessions = await sshHostsConnected();
-    this.connected = sessions.map((s) => s.hostId);
-    this.generations = Object.fromEntries(sessions.map((s) => [s.hostId, s.generation]));
+    const live = await sshHostsConnected();
+    sessions.replace(
+      live.map((s) => ({ ...s, label: this.labelOf(s.hostId) })),
+    );
+    this.connected = sessions.connected;
   }
 
   /** The connection generation for a host, or `undefined` when it is not
    *  connected. A caller that cannot name the incarnation must not prepare a
    *  mutation — `undefined` is the signal to refuse, never to send a zero. */
   generationOf(hostId: string): number | undefined {
-    return this.generations[hostId];
+    return sessions.generationOf(hostId);
   }
 
   /** Bring back the hosts that can be reached without asking the user anything.
    *
-   *  Called once at startup. Two rules decide who is in:
+   *  Called once at startup. **The backend decides who qualifies**
+   *  (`ssh_hosts_resumable`), because the frontend cannot see the half that
+   *  matters: a host registered a moment ago is not marked as needing a prompt
+   *  either, and reaching one whose key is not on file can only end in the trust
+   *  dialog — on screen, unprompted, while the app is still opening. A host left
+   *  out is not refused; it connects the moment the user asks.
    *
-   *  - **A host that needed a prompt is left alone.** `needsPrompt` records that
-   *    the machine asked for a password or a key passphrase last time, and a
-   *    stack of credential dialogs at launch is not a greeting — those connect
-   *    when the user asks.
-   *  - **A host already connected is left alone**, so a reload does not reopen
-   *    what the backend never dropped.
+   *  One already connected is skipped too, so a reload does not reopen what the
+   *  backend never dropped.
    *
    *  Failures are deliberately quiet: an unreachable host at startup is an
    *  ordinary state (laptop closed, VPN not up yet), and the panels that need it
@@ -145,8 +147,15 @@ class HostsStore {
    *  Settings row. */
   async resume(): Promise<void> {
     await this.load();
-    const silent = this.hosts.filter((h) => !h.needsPrompt && !this.isConnected(h.id));
-    await Promise.all(silent.map((h) => this.connect(h.id)));
+    let resumable: string[];
+    try {
+      resumable = await sshHostsResumable();
+    } catch (e) {
+      this.error = msg(e);
+      return;
+    }
+    const silent = resumable.filter((id) => !this.isConnected(id));
+    await Promise.all(silent.map((id) => this.connect(id)));
   }
 
   /** The `Host` aliases in the user's SSH config, for the import list. */

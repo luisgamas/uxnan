@@ -426,6 +426,7 @@ pub fn run() {
             commands::ssh_host_connect,
             commands::ssh_host_disconnect,
             commands::ssh_hosts_connected,
+            commands::ssh_hosts_resumable,
             commands::ssh_host_inventory,
             commands::ssh_browse_dirs,
             commands::ssh_git_status,

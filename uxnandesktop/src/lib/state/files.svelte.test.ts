@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { installFakeBackend, type FakeBackend } from '../../test/tauri';
 import { FileEditorState } from './files.svelte';
-import { hosts } from './hosts.svelte';
+import { sessions } from './sessions.svelte';
 
 const REMOTE = 'C:/Users/gamas/app/main.rs';
 let backend: FakeBackend;
@@ -25,14 +25,12 @@ beforeEach(() => {
     ssh_fs_write: () => null,
     git_diff_head: () => '',
   });
-  hosts.connected = [];
-  hosts.generations = {};
+  sessions.replace([]);
 });
 
 describe('FileEditorState — saving on a host', () => {
   it('writes through the host, carrying the connection it was prepared for', async () => {
-    hosts.connected = ['h1'];
-    hosts.generations = { h1: 4 };
+    sessions.replace([{ hostId: 'h1', generation: 4, label: 'Workspace' }]);
     const state = new FileEditorState(REMOTE, null, 'ssh:h1');
 
     await state.save('edited');

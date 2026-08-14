@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { installFakeBackend, type FakeBackend } from '../../test/tauri';
 import { hosts } from './hosts.svelte';
+import { sessions } from './sessions.svelte';
 
 function host(id: string, needsPrompt = false) {
   return {
@@ -27,11 +28,16 @@ function host(id: string, needsPrompt = false) {
 
 let backend: FakeBackend;
 let connected: { hostId: string; generation: number }[];
+let resumable: string[];
 
 beforeEach(() => {
   connected = [];
+  resumable = ['silent', 'already'];
   backend = installFakeBackend({
     ssh_hosts_list: () => [host('silent'), host('asks', true), host('already')],
+    // The backend is the one that knows which hosts can be reached without a
+    // dialog — a host key it has never seen can only end in the trust prompt.
+    ssh_hosts_resumable: () => resumable,
     ssh_hosts_connected: () => connected,
     ssh_host_connect: (args) => {
       connected = [...connected, { hostId: String(args.hostId), generation: 3 }];
@@ -41,7 +47,7 @@ beforeEach(() => {
   });
   hosts.hosts = [];
   hosts.connected = [];
-  hosts.generations = {};
+  sessions.replace([]);
 });
 
 describe('hosts.resume', () => {
@@ -53,6 +59,17 @@ describe('hosts.resume', () => {
     // A machine that wanted a password last time would greet the user with a
     // stack of credential dialogs at launch. It connects when they ask.
     expect(asked).not.toContain('asks');
+  });
+
+  it('connects nobody the backend did not clear', async () => {
+    // Including the case the frontend cannot see: a host registered moments ago
+    // carries the same "did not need a prompt" as one that has connected for
+    // weeks, and reaching it would raise the trust dialog at launch.
+    resumable = [];
+
+    await hosts.resume();
+
+    expect(backend.callsTo('ssh_host_connect')).toHaveLength(0);
   });
 
   it('leaves a session the backend never dropped alone', async () => {

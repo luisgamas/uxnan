@@ -58,6 +58,16 @@ const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const KEEPALIVE_MAX_MISSED: usize = 3;
 
+/// How long one remote command may take before it is given up on.
+///
+/// Generous on purpose: a single `exec` costs ~2s on a real host (§5.3, the
+/// remote shell starts a profile for each one), and a git command on a large
+/// repository is slower still. What this rules out is not slowness but the
+/// command that **never returns** — a shell blocked on input, a wedged
+/// filesystem — which otherwise leaves the caller waiting for something that
+/// will never arrive.
+const EXEC_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Monotonic connection counter. Never reset, never reused: a generation
 /// identifies one *incarnation* of a connection for the lifetime of the process,
 /// which is exactly what fencing needs.
@@ -149,7 +159,24 @@ impl Connection {
     /// `stderr` is captured separately: a remote shell profile that prints noise
     /// (or fails outright, which is common on Windows over a non-interactive
     /// session) must not corrupt the output a caller is parsing.
+    ///
+    /// **Bounded by [`EXEC_TIMEOUT`].** Every one of these runs through a shell
+    /// on someone else's machine, and a shell can stop answering — a profile
+    /// that waits for input, a filesystem that hangs, a host that froze. Without
+    /// a cap the future simply never completes, and the caller waits forever for
+    /// a command that will never end.
     pub async fn exec(&self, command: &str) -> Result<CommandOutput, AppError> {
+        tokio::time::timeout(EXEC_TIMEOUT, self.exec_unbounded(command))
+            .await
+            .unwrap_or_else(|_| {
+                Err(AppError::Invalid(format!(
+                    "the host did not answer within {}s",
+                    EXEC_TIMEOUT.as_secs()
+                )))
+            })
+    }
+
+    async fn exec_unbounded(&self, command: &str) -> Result<CommandOutput, AppError> {
         let mut channel = self
             .handle
             .channel_open_session()

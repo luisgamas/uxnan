@@ -12,7 +12,7 @@ import { gitDiffHead } from "$lib/api";
 import { readFileOn, writeFileOn } from "$lib/fsRouter";
 import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 import { git } from "$lib/state/git.svelte";
-import { hosts } from "$lib/state/hosts.svelte";
+import { sessions } from "$lib/state/sessions.svelte";
 import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
@@ -159,24 +159,29 @@ export class FileEditorState {
    *  says so up front instead of failing at the end of a round trip. */
   get readOnly(): boolean {
     const host = sshHostId(this.target);
-    return host !== null && hosts.generationOf(host) === undefined;
+    return host !== null && sessions.generationOf(host) === undefined;
   }
 
   /** Persist `content` to disk, then refresh the gutter + the right-panel status
    *  so the change indicators update immediately (not just on the watcher). */
   async save(content: string): Promise<void> {
     const host = sshHostId(this.target);
-    if (host !== null && hosts.generationOf(host) === undefined) {
+    if (host !== null && sessions.generationOf(host) === undefined) {
       // Refused before anything is written, and said in the pane rather than
       // swallowed: an editor that silently does not save is worse than one that
       // will not.
-      this.error = i18n.t("files.hostDisconnected", { host: hosts.labelOf(host) });
+      this.error = i18n.t("files.hostDisconnected", { host: sessions.labelOf(host) });
       return;
     }
     this.saving = true;
     this.error = null;
     try {
-      await writeFileOn(this.target, this.path, content, host ? hosts.generationOf(host) : undefined);
+      await writeFileOn(
+        this.target,
+        this.path,
+        content,
+        host ? sessions.generationOf(host) : undefined,
+      );
       this.baseline = content;
       this.content = content;
       this.dirty = false;

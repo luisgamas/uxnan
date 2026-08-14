@@ -163,6 +163,33 @@ pub fn verify(known_hosts: &str, hostname: &str, port: u16, key: &PresentedKey) 
     }
 }
 
+/// Whether `known_hosts` has **any** entry for this host, whatever key it holds.
+///
+/// Not a verdict and never a substitute for [`verify`] — it answers a different
+/// question: *would reaching this host ask the user something?* A host with no
+/// entry can only end in the trust prompt, which is exactly what must not be
+/// raised on its own at startup. `@revoked` counts as an entry: it is a host we
+/// have an opinion about, and connecting reports that opinion without a prompt.
+pub fn is_known(known_hosts: &str, hostname: &str, port: u16) -> bool {
+    let pattern = host_pattern(hostname, port);
+    known_hosts.lines().any(|line| {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return false;
+        }
+        let rest = match line.strip_prefix('@') {
+            Some(tail) => match tail.split_once(char::is_whitespace) {
+                Some((_, r)) => r.trim_start(),
+                None => return false,
+            },
+            None => line,
+        };
+        rest.split_whitespace()
+            .next()
+            .is_some_and(|hosts| hosts_match(hosts, &pattern))
+    })
+}
+
 /// Whether a `known_hosts` host field (comma-separated patterns, possibly
 /// hashed) covers `pattern`.
 fn hosts_match(field: &str, pattern: &str) -> bool {
@@ -474,5 +501,35 @@ mod tests {
     fn a_missing_known_hosts_file_reads_as_empty() {
         let path = std::path::Path::new("C:/definitely/not/here/known_hosts");
         assert_eq!(read_known_hosts(path).unwrap(), "");
+    }
+
+    #[test]
+    fn a_host_with_no_entry_is_not_known() {
+        // The property startup depends on: reaching this host can only end in
+        // the trust prompt, so it must not be reconnected on its own.
+        let known = "example.com ssh-ed25519 AAAAC3Nz
+";
+        assert!(!is_known(known, "other.example", 22));
+        assert!(is_known(known, "example.com", 22));
+    }
+
+    #[test]
+    fn a_port_is_part_of_being_known() {
+        // Trusting a key on one port never trusts another, so "known" must
+        // follow the same rule — otherwise startup would connect to a port the
+        // user has never confirmed.
+        let known = "[example.com]:2222 ssh-ed25519 AAAAC3Nz
+";
+        assert!(is_known(known, "example.com", 2222));
+        assert!(!is_known(known, "example.com", 22));
+    }
+
+    #[test]
+    fn a_revoked_host_is_still_known() {
+        // There is an opinion on file, and connecting reports it without asking
+        // the user anything — which is the question `is_known` answers.
+        let known = "@revoked example.com ssh-ed25519 AAAAC3Nz
+";
+        assert!(is_known(known, "example.com", 22));
     }
 }

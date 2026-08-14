@@ -241,6 +241,32 @@ codigo significa comando matado o conexion caida, y llamar a eso exito seria
 mentir. El bucle de lectura tampoco corta en el exit status, porque puede llegar
 mas salida despues.
 
+### El registro de sesiones no se sostiene mientras se habla con el host
+
+`ssh_sessions` guarda **`Arc<Connection>`** y todo el mundo **clona y suelta el
+candado** antes de tocar la red (`commands::session_for`). No es estilo: es el
+fallo que congelo la app entera.
+
+`RwLock` de tokio es *justo* (write-preferring): "read locks are not granted
+until prior write locks". Sosteniendo el guard de lectura durante un viaje a la
+red —un `exec` de ~2 s (§5.3), un `git status`, abrir SFTP— pasaba esto:
+
+1. una lectura larga en curso sobre el host A,
+2. **conectar** un host B necesita la escritura → se encola,
+3. y desde ese momento **toda lectura posterior se encola detras de la
+   escritura**: la lista de conectados, los paneles git, el arbol de ficheros y
+   el propio dialogo de Ajustes.
+
+Reportado desde la app tal cual: agregar un segundo host y conectarlo dejo
+Ajustes girando, y borrarlo tambien. No era SSH lento; era un candado global
+sostenido sobre la red. Lo sujeta un test en vivo: con un comando en vuelo, la
+escritura entra en microsegundos.
+
+**Y ningun comando remoto dura para siempre** (`EXEC_TIMEOUT`, 60 s). Una shell
+ajena puede dejar de responder —un perfil esperando entrada, un filesystem
+colgado— y sin tope el llamador espera algo que no va a llegar. 60 s es generoso
+a proposito: lo que se descarta no es la lentitud, es el "nunca".
+
 ### Medicion, y la restriccion que impone
 
 Host Windows remoto a traves de un tailnet:

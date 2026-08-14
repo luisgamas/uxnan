@@ -483,8 +483,7 @@ pub async fn pty_create(
             })?
             .to_string();
 
-        let sessions = state.ssh_sessions.read().await;
-        let Some(conn) = sessions.get(&host_id) else {
+        let Some(conn) = session_for(&state, &host_id).await else {
             return Err(CommandError::from(AppError::Invalid(
                 "connect to this host before opening a terminal on it".to_string(),
             )));
@@ -499,7 +498,7 @@ pub async fn pty_create(
             match known {
                 Some(kind) => kind,
                 None => {
-                    let kind = crate::ssh::shellkind::classify(conn).await;
+                    let kind = crate::ssh::shellkind::classify(&conn).await;
                     state.ssh_shells.write().await.insert(host_id.clone(), kind);
                     kind
                 }
@@ -514,7 +513,7 @@ pub async fn pty_create(
             .ssh_pty
             .create(
                 &host_id,
-                conn,
+                &conn,
                 crate::ssh::pty::RemotePtySpec {
                     id: id.clone(),
                     cwd,
@@ -1261,7 +1260,7 @@ async fn connect_fresh(
                 .ssh_sessions
                 .write()
                 .await
-                .insert(host_id.clone(), connection);
+                .insert(host_id.clone(), std::sync::Arc::new(connection));
             // Remember that this host let us in without asking, so startup can
             // reconnect the silent ones and leave the rest until the user is here.
             set_needs_prompt(&state, &host_id, false).await?;
@@ -1299,13 +1298,12 @@ pub async fn ssh_host_inventory(
     host_id: String,
 ) -> Result<ssh::inventory::HostInventory, CommandError> {
     let commands = state.agent_commands.read().await.clone();
-    let sessions = state.ssh_sessions.read().await;
-    let Some(conn) = sessions.get(&host_id) else {
+    let Some(conn) = session_for(&state, &host_id).await else {
         return Err(CommandError::from(AppError::Invalid(
             "connect to this host before asking what it has".to_string(),
         )));
     };
-    ssh::inventory::probe(conn, &commands)
+    ssh::inventory::probe(&conn, &commands)
         .await
         .map_err(CommandError::from)
 }
@@ -1318,13 +1316,12 @@ pub async fn ssh_browse_dirs(
     host_id: String,
     path: String,
 ) -> Result<ssh::browse::RemoteListing, CommandError> {
-    let sessions = state.ssh_sessions.read().await;
-    let Some(conn) = sessions.get(&host_id) else {
+    let Some(conn) = session_for(&state, &host_id).await else {
         return Err(CommandError::from(AppError::Invalid(
             "connect to this host before browsing it".to_string(),
         )));
     };
-    ssh::browse::list_dirs(conn, &path)
+    ssh::browse::list_dirs(&conn, &path)
         .await
         .map_err(CommandError::from)
 }
@@ -1350,13 +1347,12 @@ pub async fn ssh_repo_add(
     // Ask the host whether this is a git repository, the same question the local
     // path asks — a plain folder is a valid project too, it just has no branches.
     let is_git = {
-        let sessions = state.ssh_sessions.read().await;
-        let Some(conn) = sessions.get(&host_id) else {
+        let Some(conn) = session_for(&state, &host_id).await else {
             return Err(CommandError::from(AppError::Invalid(
                 "connect to this host before adding a project on it".to_string(),
             )));
         };
-        ssh::browse::is_git_repo(conn, &path).await
+        ssh::browse::is_git_repo(&conn, &path).await
     };
 
     let mut data = state.data.write().await;
@@ -1414,13 +1410,12 @@ pub async fn ssh_git_status(
         .get(&host_id)
         .copied()
         .unwrap_or_default();
-    let sessions = state.ssh_sessions.read().await;
-    let Some(conn) = sessions.get(&host_id) else {
+    let Some(conn) = session_for(&state, &host_id).await else {
         return Err(CommandError::from(AppError::Invalid(
             "connect to this host before reading its git state".to_string(),
         )));
     };
-    Ok(ssh::git::status(conn, shell, &path).await)
+    Ok(ssh::git::status(&conn, shell, &path).await)
 }
 
 /// The file session for a host, opening one on first use.
@@ -1455,8 +1450,7 @@ async fn sftp_for(
             None => {}
         }
     }
-    let sessions = state.ssh_sessions.read().await;
-    let Some(conn) = sessions.get(host_id) else {
+    let Some(conn) = session_for(state, host_id).await else {
         return Err(CommandError::from(AppError::NotConnected(
             host_id.to_string(),
         )));
@@ -1469,7 +1463,7 @@ async fn sftp_for(
             host_id.to_string(),
         )));
     }
-    let session = std::sync::Arc::new(ssh::sftp::open(conn).await.map_err(CommandError::from)?);
+    let session = std::sync::Arc::new(ssh::sftp::open(&conn).await.map_err(CommandError::from)?);
     state
         .ssh_sftp
         .lock()
@@ -1551,6 +1545,22 @@ pub async fn ssh_fs_list(
         session.list_dir(dir).await
     })
     .await
+}
+
+/// A host's live connection, cloned out of the registry.
+///
+/// **The guard is released before this returns**, and that is the entire point.
+/// Everything here talks to another machine, `ssh_sessions` is a fair
+/// (write-preferring) lock, and one connect needs to write to it — so a caller
+/// that kept the guard while it waited on the network queued that write, and
+/// every later reader queued behind the write. One slow round trip then stalled
+/// the connected list, the git panels, the file tree and the Settings dialog at
+/// once. Reported from the app as "adding a second host froze it".
+async fn session_for(
+    state: &AppState,
+    host_id: &str,
+) -> Option<std::sync::Arc<ssh::conn::Connection>> {
+    state.ssh_sessions.read().await.get(host_id).cloned()
 }
 
 /// Save a text file on a host, for the editor.
@@ -1638,6 +1648,31 @@ pub struct SshHostSession {
     /// restarted and reloaded far more often than a host is connected — without
     /// it, every save after a reload would carry a generation of nobody's.
     pub generation: u64,
+}
+
+/// The hosts that can be brought back **without asking the user anything**.
+///
+/// Startup uses this instead of "every host that is not marked as needing a
+/// prompt", because that mark is only written once a host has been connected —
+/// a machine registered five seconds ago carries the same `false` as one that
+/// has let us in silently for weeks. The difference that matters is whether
+/// reaching it can raise a dialog, and there are exactly two ways it can:
+///
+/// - it asked for a password or a passphrase last time (`needs_prompt`), or
+/// - **its host key is not on file**, which can only end in the trust prompt.
+///
+/// Neither belongs on screen unprompted while the app is still opening. A host
+/// left out of this list is not refused — it connects the moment the user asks.
+#[tauri::command]
+pub async fn ssh_hosts_resumable(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    let hosts = state.data.read().await.settings.ssh_hosts.clone();
+    // Read the file once: this runs at startup, for every host at once.
+    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).unwrap_or_default();
+    Ok(hosts
+        .into_iter()
+        .filter(|h| !h.needs_prompt && ssh::hostkey::is_known(&known, &h.hostname, h.port))
+        .map(|h| h.id)
+        .collect())
 }
 
 /// The hosts with a live session, and which incarnation each one is.
@@ -2450,9 +2485,9 @@ pub async fn worktree_list(
             .get(host_id)
             .copied()
             .unwrap_or_default();
-        let sessions = state.ssh_sessions.read().await;
-        let branch = match sessions.get(host_id) {
-            Some(conn) => ssh::git::status(conn, shell, &repo_path).await.branch,
+        let conn = session_for(&state, host_id).await;
+        let branch = match conn {
+            Some(conn) => ssh::git::status(&conn, shell, &repo_path).await.branch,
             None => None,
         };
         return Ok(vec![WorktreeEntry {
@@ -4254,7 +4289,7 @@ mod tests {
                 .ssh_sessions
                 .write()
                 .await
-                .insert(HOST.to_string(), conn);
+                .insert(HOST.to_string(), Arc::new(conn));
             (dir, state)
         }
 
@@ -4282,6 +4317,48 @@ mod tests {
                 .await
                 .insert(HOST.to_string(), Arc::clone(&dead));
             dead
+        }
+
+        /// The freeze the user hit: adding a second host and connecting it left
+        /// Settings spinning, and removing it spun too.
+        ///
+        /// The cause was not SSH being slow — it was `ssh_sessions` being held
+        /// **across** the network. It is a fair lock, so the write a connect
+        /// needs queues behind the reader that is mid-round-trip, and every
+        /// later reader queues behind that write. This holds the invariant that
+        /// makes that impossible: after a caller has its connection, the lock is
+        /// free — including while it is actually talking to the host.
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn talking_to_a_host_never_holds_the_session_lock() {
+            let (_dir, state) = state_with_a_live_host().await;
+
+            let conn = super::super::session_for(&state, HOST)
+                .await
+                .expect("a session");
+            assert!(
+                state.ssh_sessions.try_write().is_ok(),
+                "the registry must be writable the moment a caller has its connection"
+            );
+
+            // And while a real command is in flight on that connection, a
+            // connect (which needs the write) must not have to wait for it.
+            let slow = tokio::spawn(async move {
+                // Any command will do: what matters is that it is a round trip.
+                let _ = conn.exec("cd .").await;
+            });
+            let start = std::time::Instant::now();
+            {
+                let mut sessions = state.ssh_sessions.write().await;
+                sessions.remove("nobody");
+            }
+            let waited = start.elapsed();
+            assert!(
+                waited < std::time::Duration::from_millis(500),
+                "a connect waited {waited:?} for an unrelated command to finish"
+            );
+            let _ = slow.await;
+            println!("live: the write took {waited:?} with a command in flight");
         }
 
         #[tokio::test]

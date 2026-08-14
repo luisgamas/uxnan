@@ -58,7 +58,17 @@ pub struct AppState {
     /// terminal, the inventory probe, git calls. That is the whole reason the
     /// SSH client is in-process: each of those is a channel here, not another
     /// handshake and another login.
-    pub ssh_sessions: Arc<RwLock<std::collections::HashMap<String, crate::ssh::conn::Connection>>>,
+    ///
+    /// **`Arc<Connection>`, so the lock is never held across the network.** A
+    /// caller clones the handle out and lets the guard go before it starts
+    /// talking to the host. Holding it instead froze the whole app: this is a
+    /// *fair* (write-preferring) lock, so the write that a connect needs queues
+    /// behind whatever reader is mid-round-trip — and every later reader queues
+    /// behind that write. With one exec costing ~2s on a real host, adding a
+    /// second host was enough to stall the connected list, the git panels, the
+    /// file tree and the remove dialog all at once.
+    pub ssh_sessions:
+        Arc<RwLock<std::collections::HashMap<String, Arc<crate::ssh::conn::Connection>>>>,
     /// One file session per connected host, opened on first use. It is a channel
     /// on the connection that host already has, so keeping it costs nothing while
     /// re-opening one per listing would cost a round trip each time. Dropped with

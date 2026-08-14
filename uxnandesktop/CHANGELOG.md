@@ -519,6 +519,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Adding a second host no longer freezes the app.** Connecting one while
+  another was busy left Settings spinning, and removing it spun too. The cause
+  was not SSH being slow: the registry of live sessions was held **across** the
+  network by nearly every remote call, and it is a fair lock — so the write a
+  connect needs queued behind whatever call was mid-round-trip, and every later
+  read queued behind that write. One ~2s remote command was enough to stall the
+  connected list, the git panels, the file tree and the Settings dialog at once.
+  Callers now take their connection and release the lock before they say a word
+  to the host, which a live test holds them to. A remote command also cannot run
+  forever any more: a host that stops answering fails after 60 seconds with a
+  message saying so, instead of leaving whatever asked waiting for good.
+- **A host is only reconnected at startup when reaching it asks nothing.** The
+  first version of this trusted "did not need a password last time" — which a
+  host registered five seconds ago also reports, because that mark is only
+  written once a host has been connected. Reaching one whose key is not on file
+  can only end in the trust prompt, so the app would have raised it by itself
+  while still opening. The backend now decides, and it checks both halves.
+
 - **A host is no longer dropped for being quiet.** An SSH connection carries
   nothing while a shell sits at its prompt, so a host nobody had typed at was
   reaped after five minutes of silence — and a host that had really gone away
