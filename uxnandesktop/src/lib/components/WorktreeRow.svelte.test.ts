@@ -61,12 +61,21 @@ describe('WorktreeRow', () => {
     expect(name.className).toContain('truncate');
   });
 
-  it('says a branch was never read rather than claiming the repo is detached', async () => {
-    // Nothing has read git on that machine. "(detached)" would be a statement
-    // about a repository this one has never opened.
+  it('says the branch was not read rather than claiming the repo is detached', async () => {
+    // Git *is* asked on the host now, so this wording is what a host that could
+    // not answer gets — no git there, not a repository, or a shell that could not
+    // be named. "(detached)" would be a statement about a repository nobody read.
     const { screen } = mountWithProviders(WorktreeRow, { props: { row: remoteRow } });
 
-    expect(await screen.findByText('not read yet')).toBeInTheDocument();
+    expect(await screen.findByText('branch not read')).toBeInTheDocument();
     expect(screen.queryByText('(detached)')).toBeNull();
+  });
+
+  it("shows a host's real branch when it answered", async () => {
+    const answered: Row = { ...remoteRow, branch: 'feat/login' };
+    const { screen } = mountWithProviders(WorktreeRow, { props: { row: answered } });
+
+    expect(await screen.findByText('feat/login')).toBeInTheDocument();
+    expect(screen.queryByText('branch not read')).toBeNull();
   });
 });

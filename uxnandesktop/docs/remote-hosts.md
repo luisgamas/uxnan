@@ -198,7 +198,8 @@ Select it in the left panel and:
 |---|---|
 | **Terminals** | Open on the host, in the project's folder — a channel on the connection that host already has. Splits and further terminals stay there too. |
 | **Files** | **Works.** The tree lists and opens files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. Three honest gaps: no search (it walks *this* filesystem, so the action is hidden rather than offered broken), no git-ignored dimming, no automatic refresh — the refresh button is the reload. Writing is not there yet. |
-| **Changes, History, GitHub** | **Not available.** They read this machine's git, so the panel says which host the project lives on instead of describing the wrong repository. Git over SSH is next. |
+| **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
+| **Changes, History, GitHub** | **Not available.** The diff, staging and history still read this machine's git, so the panel says which host the project lives on instead of describing the wrong repository. |
 | **Branch on the row** | **Not shown**, for the same reason: nothing has read git there. It says "not read yet" rather than "(detached)", which would be a claim about a repository this machine has never opened. |
 
 The card carries the host's name, and its terminal count includes the terminals

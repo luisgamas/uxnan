@@ -2190,7 +2190,7 @@ export const en = {
   "hosts.pickFolderTruncated": "Only the first folders are shown; this one has more.",
 
   "project.onHost": "On {host}",
-  "remote.branchNotRead": "not read yet",
+  "remote.branchNotRead": "branch not read",
   "remote.panelTitle": "This project lives on {host}",
   "remote.panelBody": "Files, changes, history and GitHub are read on this machine, so they cannot describe a folder on another one. Reading them over SSH comes in a later phase; a terminal on the host works today.",
   "remote.panelOpenTerminal": "Open a terminal there",

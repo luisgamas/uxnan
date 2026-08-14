@@ -362,6 +362,38 @@ describe('a project that lives on a host', () => {
     expect(fileTree.searchable).toBe(true);
   });
 
+  it("reads a host's git on the host, and never calls this machine's", async () => {
+    // Phase 3's second slice. Git has to be *run*, so it goes through the host's
+    // shell — the one it reported, with arguments quoted for it.
+    const backend = installFakeBackend({
+      ssh_git_status: () => ({ branch: 'main', dirty: 3, ahead: 1, behind: 0, isRepo: true }),
+      worktree_status: () => ({ dirty: 99, ahead: 99, behind: 99 }),
+    });
+
+    await projects.refreshStatuses([REMOTE_PATH]);
+
+    expect(backend.lastCallTo('ssh_git_status')?.args).toEqual({ hostId: 'h1', path: REMOTE_PATH });
+    expect(backend.lastCallTo('worktree_status')).toBeUndefined();
+    expect(projects.status(REMOTE_PATH)).toEqual({ dirty: 3, ahead: 1, behind: 0 });
+  });
+
+  it('leaves the badges alone when a host cannot answer about git', async () => {
+    // "Not a repository", "no git installed" and "the shell could not be named"
+    // all arrive as isRepo:false — and none of them means "no changes". Showing
+    // zeroes there would be the same lie as a made-up branch.
+    installFakeBackend({
+      ssh_git_status: () => ({ branch: null, dirty: 0, ahead: 0, behind: 0, isRepo: false }),
+    });
+    // Start from nothing known, so this asserts "never written" rather than
+    // "overwritten" — a status already read stays put on a transient failure,
+    // which is deliberate.
+    projects.statusByPath = {};
+
+    await projects.refreshStatuses([REMOTE_PATH]);
+
+    expect(projects.status(REMOTE_PATH)).toBeUndefined();
+  });
+
   it('offers no local path for the file and git layers to read', () => {
     // They run here. A remote workspace must resolve to null rather than to a
     // path this machine would happily — and wrongly — answer for.

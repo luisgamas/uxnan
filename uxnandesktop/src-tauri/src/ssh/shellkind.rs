@@ -152,6 +152,28 @@ pub fn cd_line(kind: ShellKind, path: &str) -> Option<String> {
     }
 }
 
+/// Quote one argument for a shell of this family.
+///
+/// Needed because git on a host is reached with `exec`, which hands the line to
+/// that machine's shell — the same shell whose identity everything else here
+/// asks for rather than assumes. A project path with a space, or a revision like
+/// `@{u}` (a hashtable literal to PowerShell), must arrive as written.
+pub fn quote_arg(kind: ShellKind, arg: &str) -> String {
+    match kind {
+        // Single quotes are fully literal; the only character that can end them
+        // is escaped by closing, escaping and reopening.
+        ShellKind::Posix => format!("'{}'", arg.replace('\'', r"'\''")),
+        // cmd has no real escaping: double-quote, and double an embedded quote so
+        // the argument parser on the other side recovers the literal value.
+        ShellKind::Cmd => format!("\"{}\"", arg.replace('"', "\"\"")),
+        // For a *native* command PowerShell splits a double-quoted argument the
+        // way the program expects; a backtick escapes an embedded quote.
+        ShellKind::PowerShell => format!("\"{}\"", arg.replace('"', "`\"")),
+        // Nothing is sent to a shell nobody named — the caller checks first.
+        ShellKind::Unknown => arg.to_string(),
+    }
+}
+
 /// The drive of a Windows path, when it has one (a UNC path does not).
 fn drive_letter(path: &str) -> Option<char> {
     let mut chars = path.chars();

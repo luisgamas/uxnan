@@ -32,6 +32,7 @@ import type {
   FileSearch,
   FsEntry,
   SshConfigAlias,
+  SshGitStatus,
   SshConnectReport,
   SshHostInventory,
   SshHost,
@@ -584,6 +585,16 @@ export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
  *  that machine's home — only it knows where that is. */
 export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteListing> {
   return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
+}
+
+/** A worktree's git state **on a host**: branch plus changed/ahead/behind.
+ *
+ *  Runs git there through the shell that machine reported, with every argument
+ *  quoted for it. `isRepo: false` covers "not a repository", "no git installed"
+ *  and "the shell could not be named" — all of which the UI must render as *not
+ *  read*, never as "no changes". */
+export function sshGitStatus(hostId: string, path: string): Promise<SshGitStatus> {
+  return invoke<SshGitStatus>('ssh_git_status', { hostId, path });
 }
 
 /** List a directory on a host, for the file tree. Over SFTP — a subsystem, so it

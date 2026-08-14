@@ -25,6 +25,7 @@ pub mod auth;
 pub mod browse;
 pub mod config;
 pub mod conn;
+pub mod git;
 pub mod hostkey;
 pub mod inventory;
 pub mod pty;

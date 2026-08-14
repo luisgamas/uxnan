@@ -68,11 +68,12 @@
    *  same name here. */
   const wsKey = $derived(projects.workspaceFor(row.path));
   /** Whether this row's project lives on another machine — where git is not read
-   *  yet, so the row must not describe a branch it has never looked at. */
+   *  read on the machine it lives on, and may not have been readable at all. */
   const remote = $derived(!isLocalTarget(app.repos.find((r) => r.id === row.repoId)?.target));
-  // A branch when git said so. On a host nothing has read git yet, and
-  // "(detached)" would be a claim about a repository this machine has never
-  // opened — so the row says that instead of inventing a state.
+  // A branch when git said so — and on a host git *is* asked now, on that
+  // machine. The remote wording therefore only appears when it could not answer
+  // (no git there, not a repository, a shell that could not be named), where
+  // "(detached)" would be a claim about a repository nobody read.
   const label = $derived(
     row.branch ?? i18n.t(remote ? "remote.branchNotRead" : "worktree.detached"),
   );

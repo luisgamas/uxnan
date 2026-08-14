@@ -690,6 +690,15 @@ export interface SshHostProbe {
   storedFingerprint?: string | null;
 }
 
+/** A worktree's git state on a host (mirror of Rust `ssh::git::RemoteGitStatus`).
+ *
+ *  `isRepo: false` is the honest catch-all — not a repository, no git installed,
+ *  or a shell that could not be named — and must never be rendered as "clean". */
+export interface SshGitStatus extends WorktreeStatus {
+  branch: string | null;
+  isRepo: boolean;
+}
+
 /** Which shell a host's `sshd` starts (mirror of Rust `ssh::shellkind::ShellKind`). */
 export type RemoteShellKind = "posix" | "cmd" | "powershell" | "unknown";
 

@@ -22,6 +22,7 @@ import {
   worktreeCreate,
   worktreeList,
   worktreeRemove,
+  sshGitStatus,
   worktreeStatus,
 } from "$lib/api";
 import type {
@@ -45,7 +46,14 @@ import {
   sameWorkspace,
   workspaceKey,
 } from "$lib/pathid";
-import { expectation, isLocalTarget, LOCAL_TARGET, targetOf, type TargetId } from "$lib/target";
+import {
+  expectation,
+  isLocalTarget,
+  LOCAL_TARGET,
+  sshHostId,
+  targetOf,
+  type TargetId,
+} from "$lib/target";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
@@ -715,9 +723,9 @@ class ProjectsStore {
               );
             if (!same) {
               this.worktreesByRepo = { ...this.worktreesByRepo, [repo.id]: list };
-              // Status is read with local git; on a host it would either fail or,
-              // worse, describe a same-named folder on *this* machine.
-              if (isLocalTarget(repo.target)) await this.refreshStatuses(list.map((w) => w.path));
+              // Reads git on whichever machine the worktree is on (see
+              // `refreshStatuses`), so a host's project gets real badges.
+              await this.refreshStatuses(list.map((w) => w.path));
             }
           } catch {
             // A repository can briefly be unavailable while an agent creates a
@@ -734,8 +742,7 @@ class ProjectsStore {
     try {
       const list = await worktreeList(repoId);
       this.worktreesByRepo = { ...this.worktreesByRepo, [repoId]: list };
-      const local = isLocalTarget(app.repos.find((r) => r.id === repoId)?.target);
-      if (refreshStatus && local) await this.refreshStatuses(list.map((w) => w.path));
+      if (refreshStatus) await this.refreshStatuses(list.map((w) => w.path));
     } catch (e) {
       this.error = msg(e);
       toastError(e);
@@ -749,6 +756,16 @@ class ProjectsStore {
     const entries = await Promise.all(
       paths.map(async (path) => {
         try {
+          // Whichever machine the worktree is on. Asking this one for a host's
+          // path is how a sidebar badge ends up describing the wrong folder.
+          const host = sshHostId(this.targetForPath(path));
+          if (host) {
+            const remote = await sshGitStatus(host, path);
+            // "Not a repository / no git / unnamed shell" is not "clean": leave
+            // the badges alone rather than showing zeroes that mean nothing.
+            if (!remote.isRepo) return null;
+            return [path, { dirty: remote.dirty, ahead: remote.ahead, behind: remote.behind }] as const;
+          }
           return [path, await worktreeStatus(path)] as const;
         } catch {
           return null;

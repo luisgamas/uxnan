@@ -647,17 +647,48 @@ Validado en vivo contra un `sshd` real: 14 entradas de un directorio de codigo,
 rutas absolutas y con barras hacia delante, directorios primero, y 7.924 bytes
 leidos de un `Cargo.toml` que es el fichero de verdad.
 
+## 5.10b Git del host — IMPLEMENTADO (fase 3, segunda parte)
+
+`src-tauri/src/ssh/git.rs`. A diferencia de los ficheros, git hay que
+**ejecutarlo**, asi que pasa por `exec` y por tanto por la shell de esa maquina —
+el unico punto de la fase 3 donde la shell interviene. La diferencia con los
+intentos anteriores es que no se supone: §5.7 la pregunto, y **cada argumento se
+entrecomilla para esa respuesta** (`quote_arg`). Una shell que no se pudo nombrar
+no recibe nada: la fila dice que la rama no se leyo, que es verdad.
+
+**Un comando, salida entre marcadores** (§5.3): rama, distancia con el upstream y
+recuento de cambios se piden juntos. `git -C <ruta>` en vez de un `cd`, porque no
+necesita sintaxis de shell mas alla del entrecomillado.
+
+**Dos cosas que el test en vivo enseño y los unitarios no podian:**
+
+1. **Encadenar con `&&` era un error.** Una rama sin upstream hace fallar
+   `rev-list`, y con `&&` eso se comia todo lo que venia detras —el marcador de
+   fin incluido—, asi que un checkout real volvia como "no es un repositorio". Se
+   secuencia sin condicion: `&` en cmd, `;` en POSIX y PowerShell.
+2. **La linea de distancia puede no existir.** Solo un par "<n> <n>" limpio se
+   toma como distancia; cualquier otra cosa sigue siendo un cambio.
+
+**`isRepo: false` es el cajon honesto**: no es repositorio, no hay git instalado,
+o la shell no se pudo nombrar. La UI **no** lo pinta como "sin cambios" — deja los
+badges como estaban, porque cero cambios y "no se pudo leer" no son lo mismo.
+
+Validado en vivo contra un `sshd` real sobre un checkout de verdad: rama
+`feat/desktop-remote-ssh-hosts`, 9 ficheros sucios, y una carpeta que no es
+repositorio contestando `isRepo: false`.
+
 ## 5.11 Lo que queda de la fase 3
 
 Tres piezas, en orden de valor y de riesgo:
 
-1. **Git del host** (`git -C <ruta> ...` por `exec`). Aqui si hay shell de por
-   medio, pero ya no se adivina: §5.7 dice cual es, y el entrecomillado sale de
-   esa respuesta. Da rama, estado y diff — es decir, la fila del proyecto y las
-   pestañas Cambios/Historial.
+1. **Diff y staging remotos.** La rama y el recuento ya vienen (§5.10b); faltan
+   el diff por fichero, el area de staging y el commit, que es lo que llenaria
+   las pestañas Cambios e Historial en vez del aviso actual.
 2. **Escritura de ficheros** por SFTP, con el fencing de `02a` §2.9 (una escritura
    preparada para un host no puede ejecutarse contra otro).
-3. **Un ayudante propio en el host** para lo que ni SFTP ni `exec` cubren bien:
+3. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la busqueda
+   recorre este filesystem.
+4. **Un ayudante propio en el host** para lo que ni SFTP ni `exec` cubren bien:
    observar cambios, operaciones masivas rapidas y —lo importante— colocar una
    terminal en un directorio **como parametro**, no como texto tecleado. Es el
    camino que toman los clientes remotos maduros y el que hace desaparecer la
@@ -676,7 +707,8 @@ Tres piezas, en orden de valor y de riesgo:
 |---|---|
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
 | Ficheros | **Funciona** por SFTP (§5.10): listar y abrir. Sin busqueda, sin marcado de ignorados y sin refresco automatico |
-| Cambios / Historial / GitHub | **No disponible**: leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
+| Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
+| Cambios / Historial / GitHub | **No disponible**: el diff, el staging y el historial leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
 | Rama y estado git de la fila | **No disponible**: sin git remoto no hay rama que mostrar. Fase 3 |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
@@ -689,7 +721,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales y mostrar el inventario en la UI |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP hechos (§5.10); git, escritura y el ayudante en el host, pendientes (§5.11) |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10) y rama/estado de git (§5.10b) hechos; diff/staging, escritura, busqueda y el ayudante en el host, pendientes (§5.11) |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

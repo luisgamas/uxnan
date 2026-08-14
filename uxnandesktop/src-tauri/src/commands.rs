@@ -1330,6 +1330,35 @@ pub async fn ssh_repo_add(
     Ok(repo)
 }
 
+/// A worktree's git state **on a host**: branch plus changed/ahead/behind.
+///
+/// Reached through `exec`, so it goes through that machine's shell — the one
+/// place remote git differs from remote files, which use a subsystem. The shell
+/// is the one the host reported when it connected, and every argument is quoted
+/// for it; an unnamed shell, a missing git or a plain folder all answer
+/// `isRepo: false`, which the UI must render as "not read" rather than "clean".
+#[tauri::command]
+pub async fn ssh_git_status(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<ssh::git::RemoteGitStatus, CommandError> {
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(&host_id)
+        .copied()
+        .unwrap_or_default();
+    let sessions = state.ssh_sessions.read().await;
+    let Some(conn) = sessions.get(&host_id) else {
+        return Err(CommandError::from(AppError::Invalid(
+            "connect to this host before reading its git state".to_string(),
+        )));
+    };
+    Ok(ssh::git::status(conn, shell, &path).await)
+}
+
 /// The SFTP session for a host, opening one on first use.
 ///
 /// Held per host because it is a channel on a connection that already exists:
@@ -1880,6 +1909,31 @@ pub async fn worktree_list(
     repo_id: String,
 ) -> Result<Vec<WorktreeEntry>, CommandError> {
     let (repo_path, target) = repo_location_of(&state, &repo_id).await?;
+    if let Some(host_id) = target.ssh_host_id() {
+        // Ask the host. Its shell was identified when it connected, so the
+        // arguments are quoted for the shell that will receive them; a host that
+        // could not be named, has no git, or holds a plain folder answers "not a
+        // repository" and the row says the branch was not read — never a branch
+        // this machine made up.
+        let shell = state
+            .ssh_shells
+            .read()
+            .await
+            .get(host_id)
+            .copied()
+            .unwrap_or_default();
+        let sessions = state.ssh_sessions.read().await;
+        let branch = match sessions.get(host_id) {
+            Some(conn) => ssh::git::status(conn, shell, &repo_path).await.branch,
+            None => None,
+        };
+        return Ok(vec![WorktreeEntry {
+            path: repo_path,
+            branch,
+            head: None,
+            is_main: true,
+        }]);
+    }
     if let Some(entries) = worktrees_without_git(&target, &repo_path) {
         return Ok(entries);
     }

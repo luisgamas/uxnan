@@ -53,6 +53,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+- **A host's project shows its real branch and how dirty it is.** Git has to be
+  *run*, so this one does go through the host's shell — the one it reported when
+  it connected, with every argument quoted for it. Branch, change count and
+  upstream distance come from git on that machine, in one command with delimited
+  output. When the host cannot answer — not a repository, no git installed, a
+  shell that could not be named — the badges are left alone rather than showing
+  zeroes, because "no changes" and "not read" are different answers. (Two things
+  only a live test could find: chaining with `&&` let a branch without an
+  upstream swallow the rest of the reply, and the distance line can be missing
+  entirely.)
 - **A project on a host now has its files.** The Files tab lists and opens them
   over **SFTP** — an SSH subsystem, so the same code path serves a host running
   cmd, PowerShell, WSL or Git Bash, and nothing has to be installed there. It is
