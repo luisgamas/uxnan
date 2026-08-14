@@ -27,6 +27,7 @@ import type {
   SshHostInventory,
 } from "$lib/types";
 import { fileTree } from "$lib/state/fileTree.svelte";
+import { terminals } from "$lib/state/terminals.svelte";
 import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
@@ -182,9 +183,11 @@ class HostsStore {
           if (report.shell) {
             this.shells = { ...this.shells, [hostId]: report.shell };
           }
-          // A tree that came up before this host did is waiting on it — fill it
-          // in now rather than making the user switch projects to trigger it.
+          // Anything that came up before this host did is waiting on it: the
+          // file tree fills itself in, and a terminal that could not start
+          // starts now. Neither should need the user to close it and try again.
           fileTree.retryForHost(hostId);
+          terminals.restartFailedOnHost(hostId);
           this.pendingKey = null;
           this.pendingCredential = null;
           void this.loadInventory(hostId);

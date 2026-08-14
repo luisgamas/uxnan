@@ -1477,6 +1477,29 @@ class TerminalStore {
    *  same xterm — so the scrollback the agent produced is still there above the
    *  new prompt. A resumable agent session is pre-typed (never auto-run): the
    *  user sees the command and decides. */
+  /** Bring back every terminal on `hostId` that never started because the host
+   *  was not connected yet.
+   *
+   *  A terminal opened before its host is up writes the reason into the pane and
+   *  stays there — deliberately, so the reason can be read. But once the host
+   *  connects, that pane is stale: it holds an explanation of a condition that no
+   *  longer applies, and the only way out was to close it and open another. The
+   *  file tree already fills itself in (`fileTree.retryForHost`); a terminal
+   *  should not be the one thing that still needs doing by hand.
+   *
+   *  Only tabs that **failed to start** are touched. A remote terminal the user
+   *  closed, or one whose shell exited on its own, is left exactly as it is. */
+  restartFailedOnHost(hostId: string): void {
+    const target = `ssh:${hostId}`;
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind !== 'terminal' || tab.target !== target) continue;
+      if (!tab.spawnFailed) continue;
+      tab.spawnFailed = false;
+      tab.exited = false;
+      void this.restartTab(tab.id);
+    }
+  }
+
   async restartTab(tabId: string): Promise<void> {
     const tab = this.findTab(tabId);
     if (tab?.kind !== 'terminal') return;

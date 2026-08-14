@@ -67,12 +67,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   files" and kept saying it until you switched projects and back — nothing
   retried, because the failed root never entered the loaded set. It now says it
   is waiting, and fills itself in the moment that host connects.
-- **Toasts wear the shell's surface.** They used sonner's `richColors`: a
-  saturated, full-bleed card per type, in a different design language from the
-  rest of the app — the widest, loudest thing on screen for what is usually one
-  line. They are now the same elevated surface as a popover (neutral background,
-  quiet hairline, the dialog shadow, 13px text), with the **icon** carrying the
-  type instead of the background.
+- **A terminal that could not reach its host starts when the host connects.** It
+  writes the reason into the pane and stays — deliberately, so the reason can be
+  read — but once the host was up that pane held an explanation of a condition
+  that had passed, and the only way out was to close it and open another. It now
+  restarts itself, like the file tree beside it. Only terminals that *failed to
+  start* are touched: one the user closed, or whose shell exited on its own, is
+  left exactly as it is.
+- **A file on a host opens without a git error, and cannot be half-saved.**
+  Opening one showed an empty "Changes" view and raised `git error: cannot change
+  to …` over it, because the editor asked *this* machine's git about a path on
+  another. The Changes view is no longer offered for a remote file (there is no
+  remote diff yet) and no local git is run for it. Saving is refused outright and
+  says why: writing went through the local filesystem, which for a host's path
+  either fails or — the reason this is a guard and not a `catch` — writes a file
+  of that name **here** while the editor reports success. Writing over SFTP is
+  next.
+- **A file tree waits for its host instead of showing an error.** Open the app
+  before connecting and the panel said "connect to this host before reading its
+  files" and kept saying it until you switched projects and back — nothing
+  retried, because the failed root never entered the loaded set. It now says it
+  is waiting, and fills itself in the moment that host connects.
+- **A terminal that could not reach its host starts when the host connects.** It
+  writes the reason into the pane and stays — deliberately, so the reason can be
+  read — but once the host was up that pane held an explanation of a condition
+  that had passed, and the only way out was to close it and open another. It now
+  restarts itself, like the file tree beside it. Only terminals that *failed to
+  start* are touched: one the user closed, or whose shell exited on its own, is
+  left exactly as it is.
+- **The unsaved-changes prompt matches every other dialog.** Closing a file with
+  edits opened a dialog composed differently from the rest — a header reserving
+  room for a close button that is not there, and three actions crowded into the
+  narrowest dialog width. It now uses the same shape as every confirmation in the
+  app: hero icon, title and description in their own roles, and the shared footer
+  bar.
 - **A host's project shows its real branch and how dirty it is.** Git has to be
   *run*, so this one does go through the host's shell — the one it reported when
   it connected, with every argument quoted for it. Branch, change count and

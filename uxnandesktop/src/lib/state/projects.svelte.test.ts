@@ -428,6 +428,33 @@ describe('a project that lives on a host', () => {
     expect(fileTree.awaitingHost).toBe(false);
   });
 
+  it('restarts a terminal that could not start until its host connected', () => {
+    // Reported: the tree filled itself in when the host connected, but the
+    // terminal kept its "connect first" message until the user closed it and
+    // opened another. Its pane held an explanation of a condition that had
+    // already passed.
+    terminals.setWorkspace(GLOBAL_WORKSPACE);
+    terminals.root = null;
+    const failed = terminals.create({ target: 'ssh:h1', title: 'workstation' });
+    const healthy = terminals.create({ target: 'ssh:h1', title: 'other' });
+    const elsewhere = terminals.create({ target: 'ssh:h2', title: 'another host' });
+    terminals.markSpawnFailed(failed);
+    terminals.markSpawnFailed(elsewhere);
+
+    terminals.restartFailedOnHost('h1');
+
+    const tab = (id: string) => {
+      const t = terminals.findTab(id);
+      return t?.kind === 'terminal' ? t : undefined;
+    };
+    // The one that failed is cleared for a fresh attempt…
+    expect(tab(failed)?.spawnFailed).toBe(false);
+    // …a terminal that was fine is not disturbed…
+    expect(tab(healthy)?.spawnFailed).toBeFalsy();
+    // …and another host's failure is none of this host's business.
+    expect(tab(elsewhere)?.spawnFailed).toBe(true);
+  });
+
   it('offers no local path for the file and git layers to read', () => {
     // They run here. A remote workspace must resolve to null rather than to a
     // path this machine would happily — and wrongly — answer for.
