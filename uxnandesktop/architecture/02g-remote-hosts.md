@@ -241,6 +241,40 @@ codigo significa comando matado o conexion caida, y llamar a eso exito seria
 mentir. El bucle de lectura tampoco corta en el exit status, porque puede llegar
 mas salida despues.
 
+### Ninguna shell se nombra por defecto
+
+Lo que la app **no** decide: cual shell arranca el host. La terminal pide
+`request_shell()` —"dame una shell"— y el `sshd` de esa maquina elige la suya
+(`DefaultShell` en Windows, la de login en POSIX). Lo unico que se escribe es el
+`cd`, en el dialecto que **el host reporto** al conectar (§5.7).
+
+Quedaba una excepcion, y era exactamente la que un usuario nota: la sonda de
+inventario ejecutaba `powershell -EncodedCommand …`, o sea **Windows PowerShell
+5.1 por nombre**. En una maquina cuyo dueño instalo pwsh 7 eso arrancaba un motor
+viejo *dentro* del que ya estaba corriendo. Ahora:
+
+| Shell del host | Como se le pregunta |
+|---|---|
+| POSIX | el script POSIX, como antes |
+| **PowerShell** | el script corre **en esa misma PowerShell**, sin nombrar interprete: el payload va en base64 y se decodifica en linea |
+| cmd | hay que nombrar uno: **`pwsh` primero**, y Windows PowerShell solo como reserva |
+| desconocida | se prueban los dos, que es lo que se hacia siempre — ahora solo aqui |
+
+Y como se toma la respuesta de §5.7 en vez de probar POSIX y caer a PowerShell,
+un host Windows **deja de pagar un comando fallido** antes del bueno: ~2 s menos
+por conexion.
+
+El `Invoke-Expression` de la forma en linea no es el `eval` que prohiben las
+reglas: la cadena la construye y codifica este proceso desde el catalogo propio,
+y cada nombre interpolado pasa antes por `safe_command`. Es literalmente lo que
+hace `-EncodedCommand`, escrito a mano porque no queremos arrancar otro
+interprete para conseguirlo.
+
+Verificado contra el `sshd` de esta maquina (que arranca `cmd`, asi que toma la
+via de `pwsh`) y, para la via de host-PowerShell, ejecutando el script generado
+en un `pwsh` real. Lo que falta confirmar en un host cuyo `DefaultShell` sea
+PowerShell es solo que `sshd` lo entrega intacto.
+
 ### El registro de sesiones no se sostiene mientras se habla con el host
 
 `ssh_sessions` guarda **`Arc<Connection>`** y todo el mundo **clona y suelta el

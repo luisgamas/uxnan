@@ -1298,12 +1298,22 @@ pub async fn ssh_host_inventory(
     host_id: String,
 ) -> Result<ssh::inventory::HostInventory, CommandError> {
     let commands = state.agent_commands.read().await.clone();
+    // The shell this host reported when it connected. The probe asks in that
+    // dialect instead of trying POSIX and falling back, which cost every Windows
+    // host a wasted round trip.
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(&host_id)
+        .copied()
+        .unwrap_or_default();
     let Some(conn) = session_for(&state, &host_id).await else {
         return Err(CommandError::from(AppError::Invalid(
             "connect to this host before asking what it has".to_string(),
         )));
     };
-    ssh::inventory::probe(&conn, &commands)
+    ssh::inventory::probe(&conn, &commands, shell)
         .await
         .map_err(CommandError::from)
 }

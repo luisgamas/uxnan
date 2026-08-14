@@ -33,7 +33,8 @@ pub mod registry;
 pub mod sftp;
 pub mod shellkind;
 
-/// Wrap a PowerShell script so no quoting survives to be misread.
+/// Base64 (UTF-16LE) of a PowerShell script — the payload both wrappers below
+/// carry.
 ///
 /// The command we send is interpreted by whatever shell that host's `sshd` is
 /// configured to launch — `cmd`, `powershell`, `pwsh`, or a POSIX shell — and
@@ -43,17 +44,52 @@ pub mod shellkind;
 /// listing came back with a path of a single backslash and no entries, because
 /// the escapes never reached PowerShell intact.
 ///
-/// `-EncodedCommand` takes base64 of UTF-16LE. It contains no quotes, no
-/// backslashes and no spaces, so an outer shell has nothing left to interpret,
-/// and the script inside can quote however it likes.
-pub fn powershell_command(script: &str) -> String {
+/// Base64 of UTF-16LE contains no quotes, no backslashes and no spaces, so an
+/// outer shell has nothing left to interpret and the script inside can quote
+/// however it likes.
+fn powershell_payload(script: &str) -> String {
     use base64::Engine;
     let utf16: Vec<u8> = script
         .encode_utf16()
         .flat_map(|unit| unit.to_le_bytes())
         .collect();
-    let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
-    format!("powershell -NoProfile -NonInteractive -EncodedCommand {encoded}")
+    base64::engine::general_purpose::STANDARD.encode(utf16)
+}
+
+/// Run a PowerShell script **in the PowerShell the host already started**.
+///
+/// Used when the host reported that its shell *is* PowerShell (`shellkind`), and
+/// it names no interpreter at all — which is the point. Naming one meant writing
+/// `powershell`, i.e. Windows PowerShell **5.1**, so a host running pwsh 7 had a
+/// second, older engine started inside the one it already had. The user's shell
+/// is the host's business, not ours.
+///
+/// It decodes the same payload the `-EncodedCommand` switch would have taken,
+/// with the same immunity to the outer quoting. `Invoke-Expression` here is not
+/// the eval the security rules forbid: the string is one this process built and
+/// encoded, from the app's own catalog, and every interpolated name has already
+/// been through `inventory::safe_command`. It is exactly what
+/// `-EncodedCommand` does, spelled out because we are not starting a new
+/// interpreter to do it.
+pub fn powershell_inline(script: &str) -> String {
+    let payload = powershell_payload(script);
+    format!(
+        "$s=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{payload}'));         Invoke-Expression $s"
+    )
+}
+
+/// Run a PowerShell script from a host whose shell is **not** PowerShell (cmd).
+///
+/// Here an interpreter has to be named, so it asks for **`pwsh` first** and only
+/// falls back to Windows PowerShell — the reverse of what this code did before,
+/// which always started 5.1 even on a machine whose owner had installed 7. The
+/// `||` costs nothing when `pwsh` is there, and cmd's "not recognized" complaint
+/// goes to stderr, which callers read separately from the output they parse.
+pub fn powershell_command(script: &str) -> String {
+    let payload = powershell_payload(script);
+    format!(
+        "pwsh -NoProfile -NonInteractive -EncodedCommand {payload} ||          powershell -NoProfile -NonInteractive -EncodedCommand {payload}"
+    )
 }
 
 /// Read an encoded command back into the script it carries.
@@ -64,10 +100,19 @@ pub fn powershell_command(script: &str) -> String {
 #[cfg(test)]
 pub fn decode_powershell_command(command: &str) -> String {
     use base64::Engine;
-    let encoded = command
-        .rsplit(' ')
-        .next()
-        .expect("an encoded command ends in its payload");
+    // Either shape: `… -EncodedCommand <payload>` (which repeats, so the last
+    // one is as good as the first) or the inline decoder's `'<payload>'`.
+    let encoded = match command.split_once("FromBase64String('") {
+        Some((_, rest)) => {
+            rest.split_once('\'')
+                .expect("the inline form quotes its payload")
+                .0
+        }
+        None => command
+            .rsplit(' ')
+            .next()
+            .expect("an encoded command ends in its payload"),
+    };
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(encoded)
         .expect("the payload is base64");
@@ -81,7 +126,7 @@ pub fn decode_powershell_command(command: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_powershell_command, powershell_command};
+    use super::{decode_powershell_command, powershell_command, powershell_inline};
 
     #[test]
     fn an_encoded_command_leaves_an_outer_shell_nothing_to_misread() {
@@ -124,5 +169,40 @@ mod tests {
         // frequently fails outright.
         let cmd = powershell_command("x");
         assert!(cmd.contains("-NoProfile") && cmd.contains("-NonInteractive"));
+    }
+
+    #[test]
+    fn a_named_interpreter_asks_for_pwsh_before_windows_powershell() {
+        // The reverse of what this used to do. A machine whose owner installed
+        // PowerShell 7 should not have 5.1 started inside it just because that
+        // is the name this code happened to know.
+        let cmd = powershell_command("x");
+        let pwsh = cmd.find("pwsh ").expect("pwsh is offered");
+        let legacy = cmd.find("powershell -").expect("5.1 is the fallback");
+        assert!(pwsh < legacy, "{cmd}");
+    }
+
+    #[test]
+    fn the_inline_form_names_no_interpreter_at_all() {
+        // For a host whose shell already *is* PowerShell: no second engine, no
+        // guess about which one is installed — it runs in the one the host
+        // started, whatever version that is.
+        let cmd = powershell_inline("Write-Output 'hi'");
+        assert!(!cmd.contains("pwsh"), "{cmd}");
+        assert!(!cmd.contains("powershell"), "{cmd}");
+        assert!(cmd.contains("FromBase64String"), "{cmd}");
+    }
+
+    #[test]
+    fn the_inline_form_still_survives_an_outer_shell() {
+        // Its only quoting is the pair around the payload, and the payload is
+        // base64 — so there is nothing inside for the outer layer to end early.
+        let script = "Write-Output \"it's a \\ test\"";
+        let cmd = powershell_inline(script);
+        assert!(!cmd.contains('"'), "{cmd}");
+        assert!(!cmd.contains('\\'), "{cmd}");
+        // Exactly the pair that wraps the payload, and nothing else.
+        assert_eq!(cmd.matches('\'').count(), 2, "{cmd}");
+        assert_eq!(decode_powershell_command(&cmd), script);
     }
 }

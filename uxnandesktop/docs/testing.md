@@ -58,13 +58,13 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **739 backend tests**
-in total, 705 of which run everywhere; the other 34 are ignored probes that need
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **743 backend tests**
+in total, 708 of which run everywhere; the other 35 are ignored probes that need
 something real to talk to (26 live SSH probes against a real `sshd` — one of
 which idles for five minutes to prove the keepalive — the 7 supervised live
 GitHub tests, the real-scheduler probe).
 
-The 676 passing unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 679 passing unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen

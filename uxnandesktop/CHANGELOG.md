@@ -519,6 +519,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **uxnan no longer names a shell for your host.** A terminal already asked the
+  host's `sshd` for *a* shell and let that machine choose — but one thing still
+  named one: the probe that asks what a host has installed ran `powershell`,
+  which is Windows PowerShell **5.1**. On a machine whose owner had installed
+  PowerShell 7, that started an older engine inside the one already running. Now
+  a host whose shell *is* PowerShell runs the script **in that PowerShell**,
+  whichever version it is, with no interpreter named at all; only a cmd host
+  needs one named, and there `pwsh` is asked for first with 5.1 as the fallback.
+  The probe also takes the shell the host reported when it connected instead of
+  trying POSIX and falling back, so a Windows host stops paying for a failed
+  command before the real one — about two seconds per connection.
+
 - **Browsing a host's folders is no longer slow.** The picker asked the host's
   *shell* to list a directory — and tried POSIX first, so a Windows host paid for
   **two** remote commands per click, each one starting a shell and its profile

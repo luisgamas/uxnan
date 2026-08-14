@@ -29,6 +29,7 @@
 use std::collections::HashMap;
 
 use super::conn::Connection;
+use super::shellkind::ShellKind;
 use crate::error::AppError;
 
 /// Wraps the payload so profile noise before or after it cannot be read as data.
@@ -61,23 +62,53 @@ pub struct HostInventory {
 pub async fn probe(
     conn: &Connection,
     agent_commands: &[String],
+    shell: ShellKind,
 ) -> Result<HostInventory, AppError> {
-    // POSIX first, then PowerShell. Each is one command; the second only runs
-    // when the first produced no marker, so a POSIX host pays a single round
-    // trip and a Windows host pays two.
-    let posix = conn.exec(&posix_script(agent_commands)).await?;
-    if let Some(body) = between_markers(&posix.stdout) {
-        return Ok(parse(body, "posix"));
-    }
-
-    let windows = conn.exec(&powershell_script(agent_commands)).await?;
-    if let Some(body) = between_markers(&windows.stdout) {
-        return Ok(parse(body, "powershell"));
+    // The host already said which shell it starts, back when it connected
+    // (`shellkind`). Taking that answer costs one round trip instead of two:
+    // this used to try POSIX first and fall back, so every Windows host paid for
+    // a failed command before the real one — ~2s each on a real host (§5.3).
+    match shell {
+        ShellKind::Posix => {
+            let out = conn.exec(&posix_script(agent_commands)).await?;
+            if let Some(body) = between_markers(&out.stdout) {
+                return Ok(parse(body, "posix"));
+            }
+        }
+        // Its shell *is* PowerShell, so the script runs in that one — no second
+        // interpreter started, and no assumption about which one is installed.
+        ShellKind::PowerShell => {
+            let out = conn
+                .exec(&super::powershell_inline(&powershell_body(agent_commands)))
+                .await?;
+            if let Some(body) = between_markers(&out.stdout) {
+                return Ok(parse(body, "powershell"));
+            }
+        }
+        // cmd cannot run the script itself, so one has to be named — `pwsh`
+        // first, Windows PowerShell only as the fallback.
+        ShellKind::Cmd => {
+            let out = conn.exec(&powershell_script(agent_commands)).await?;
+            if let Some(body) = between_markers(&out.stdout) {
+                return Ok(parse(body, "powershell"));
+            }
+        }
+        // Nobody could name it, so both are tried — the old behaviour, kept for
+        // the case it was written for instead of applied to every host.
+        ShellKind::Unknown => {
+            let posix = conn.exec(&posix_script(agent_commands)).await?;
+            if let Some(body) = between_markers(&posix.stdout) {
+                return Ok(parse(body, "posix"));
+            }
+            let windows = conn.exec(&powershell_script(agent_commands)).await?;
+            if let Some(body) = between_markers(&windows.stdout) {
+                return Ok(parse(body, "powershell"));
+            }
+        }
     }
 
     Err(AppError::Invalid(
-        "the host answered, but not in a shape this build understands — neither a \
-         POSIX shell nor PowerShell produced the expected output"
+        "the host answered, but not in a shape this build understands — neither a          POSIX shell nor PowerShell produced the expected output"
             .to_string(),
     ))
 }
@@ -122,7 +153,7 @@ fn posix_script(agent_commands: &[String]) -> String {
     )
 }
 
-fn powershell_script(agent_commands: &[String]) -> String {
+fn powershell_body(agent_commands: &[String]) -> String {
     let mut probes = String::new();
     for name in agent_commands.iter().filter_map(|c| safe_command(c)) {
         probes.push_str(&format!(
@@ -134,14 +165,19 @@ fn powershell_script(agent_commands: &[String]) -> String {
     }
     // Encoded rather than hand-quoted: the outer shell differs per host, and
     // escaping for one of them silently corrupts the script on another.
-    super::powershell_command(&format!(
+    format!(
         "Write-Output '{BEGIN}'
          Write-Output \"os=windows\"
          Write-Output \"home=$env:USERPROFILE\"
          $g = (git --version 2>$null); Write-Output \"git=$g\"
          {probes}
          Write-Output '{END}'"
-    ))
+    )
+}
+
+/// The same script, wrapped for a host whose shell cannot run it (cmd).
+fn powershell_script(agent_commands: &[String]) -> String {
+    super::powershell_command(&powershell_body(agent_commands))
 }
 
 /// The payload between the markers, or `None` when the host never emitted them.
@@ -190,6 +226,34 @@ mod tests {
     /// through the system agent, so it needs a key that host authorizes.
     ///
     /// `cargo test --manifest-path uxnandesktop/src-tauri/Cargo.toml -- --ignored inventory_live --nocapture`
+    /// The script a **PowerShell host** receives, run through a real PowerShell.
+    ///
+    /// That path cannot be exercised over this machine's `sshd` (it starts cmd),
+    /// so this checks the half that can go wrong on its own: whether the inline
+    /// form is valid PowerShell and produces the markers. What is left for a
+    /// real pwsh host to confirm is only that `sshd` passes it through intact.
+    #[test]
+    #[ignore = "needs pwsh on PATH"]
+    fn the_inline_script_is_valid_powershell() {
+        let inline = super::super::powershell_inline(&powershell_body(&["git".into()]));
+        let out = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &inline])
+            .output()
+            .expect("pwsh should be on PATH for this test");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            between_markers(&stdout).is_some(),
+            "no markers.
+stdout: {stdout}
+stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let inv = parse(between_markers(&stdout).unwrap(), "powershell");
+        assert_eq!(inv.os, "windows");
+        assert!(!inv.home.is_empty(), "the host's home must come back");
+        println!("inline via pwsh: home={} git={:?}", inv.home, inv.git);
+    }
+
     #[tokio::test]
     #[ignore = "needs a local sshd that authorizes a key in the agent"]
     async fn inventory_live_reports_what_this_machine_has() {
@@ -216,10 +280,19 @@ mod tests {
             other => panic!("authenticate with the agent first: {other:?}"),
         }
 
+        // Ask the host which shell it starts, exactly as the app does, and probe
+        // in that dialect — the test would otherwise prove a path the app no
+        // longer takes.
+        let shell = crate::ssh::shellkind::classify(&conn).await;
         let started = std::time::Instant::now();
-        let inv = probe(&conn, &["git".into(), "node".into(), "claude".into()])
-            .await
-            .expect("the host should answer");
+        let inv = probe(
+            &conn,
+            &["git".into(), "node".into(), "claude".into()],
+            shell,
+        )
+        .await
+        .expect("the host should answer");
+        println!("inventory: the host reported {shell:?}");
         println!(
             "inventory via {} in {} ms: os={} home={} git={:?} multiplexer={:?} agents={:?}",
             inv.shell,

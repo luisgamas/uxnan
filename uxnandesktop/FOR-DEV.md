@@ -28,10 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 739 Rust tests (703 unit + 36
-integration), of which 34 are ignored probes that need something real to talk to
-(26 live SSH probes against a real `sshd`, 7 supervised live GitHub tests, 1
-real-scheduler probe) + 1,170 passing frontend Vitest tests across two
+always wins). 743 Rust tests (707 unit + 36
+integration), of which 35 are ignored probes that need something real to talk to
+(26 live SSH probes against a real `sshd`, one pwsh preflight, 7 supervised live
+GitHub tests, 1 real-scheduler probe) + 1,170 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -930,12 +930,6 @@ user-facing `docs/remote-hosts.md`.
 - [ ] Show the host's inventory **in the UI** — the launcher already filters by
       it, but nothing yet shows what a machine has, what it is missing and the
       command to install it (a per-host doctor view, below).
-- [ ] **Let the classified shell drive the inventory probe too.** `inventory.rs`
-      still tries POSIX and falls back to PowerShell on every call,
-      which works but pays a wasted round trip on a Windows host and leaves a
-      second place that decides what a host runs. Now that `ssh::shellkind`
-      answers that on connect, both should take the answer — one code path for
-      "which shell", instead of two that can drift.
 - [ ] **A channel budget.** OpenSSH's `MaxSessions` defaults to **10**, and every
       remote terminal, inventory probe, directory listing and git call is a
       channel on the one connection. Nothing counts them today, so the eleventh
@@ -1425,7 +1419,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 739 Rust + 1,170 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 743 Rust + 1,170 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
