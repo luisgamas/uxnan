@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.43] - 20260815
 ### Added
 
 - **Cloned repositories land in `~/uxnan/repos`.** They used to go directly into

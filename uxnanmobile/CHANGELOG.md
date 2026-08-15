@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.22-alpha.20260815+20260815] - 20260815
 ### Changed — the model shows the name you read, not the id the CLI routes on
 The app bar's model pill showed the routing id the agent CLI needs
 (`gemini-3.7-flash-high`), truncated to fit — so the one place the active model
