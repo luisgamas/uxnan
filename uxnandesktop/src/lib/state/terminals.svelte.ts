@@ -14,10 +14,12 @@
 import { tick } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { diagnosticsLog, fsRename, termBuffersSet } from '$lib/api';
+import { diagnosticsLog, termBuffersSet } from '$lib/api';
+import { renameOn } from '$lib/fsRouter';
+import { sessions } from '$lib/state/sessions.svelte';
 import { inheritedCwd } from '$lib/terminalCwd';
 import { keyTarget, parseWorkspaceKey } from '$lib/pathid';
-import { LOCAL_TARGET } from '$lib/target';
+import { LOCAL_TARGET, sshHostId, type TargetId } from '$lib/target';
 import { registerFlush } from '$lib/state/flushRegistry';
 import { disposeInstance, serializeInstance, setParkedExitHandler } from '$lib/terminal/instances';
 import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
@@ -1777,17 +1779,28 @@ class TerminalStore {
    *  can surface it. Returns the new absolute path. */
   async renameFileTab(tabId: string, newName: string): Promise<string> {
     let target: FileTab | undefined;
+    // The workspace the tab lives in names its machine: renaming through *this*
+    // machine's filesystem would fail on a host's path, or — when that path
+    // happens to exist here too — rename the wrong file entirely.
+    let machine: TargetId = LOCAL_TARGET;
     for (const key of Object.keys(this.workspaces)) {
       const tree = this.workspaces[key];
       if (!tree) continue;
       const tab = groupOfTab(tree, tabId)?.tabs.find((x) => x.id === tabId);
       if (tab?.kind === 'file') {
         target = tab;
+        machine = keyTarget(key);
         break;
       }
     }
     if (!target) throw new Error('file tab not found');
-    const newPath = await fsRename(target.path, newName);
+    const host = sshHostId(machine);
+    const newPath = await renameOn(
+      machine,
+      target.path,
+      newName,
+      host === null ? undefined : sessions.generationOf(host),
+    );
     await this.fileStates.get(tabId)?.repoint(newPath);
     if (target.worktree) this.diffStates.get(tabId)?.repoint(relOf(newPath, target.worktree));
     target.path = newPath;

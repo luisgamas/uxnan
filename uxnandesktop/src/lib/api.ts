@@ -858,6 +858,58 @@ export function sshFsWrite(
   return invoke<void>('ssh_fs_write', { hostId, path, content, expect: expect ?? null });
 }
 
+/** Create an empty file on a host (the tree's "New File"). `path` is a bare name
+ *  or an intercalated relative path (`sub/dir/file.ts`), validated by the same
+ *  rules as locally — a name that could escape its folder never reaches the host.
+ *  Fenced like every mutation. */
+export function sshFsCreateFile(
+  hostId: string,
+  dir: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_create_file', { hostId, dir, path, expect: expect ?? null });
+}
+
+/** Create a folder on a host (the tree's "New Folder"). */
+export function sshFsCreateDir(
+  hostId: string,
+  dir: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_create_dir', { hostId, dir, path, expect: expect ?? null });
+}
+
+/** Rename an entry on a host, within its folder. Answers the new path. */
+export function sshFsRename(
+  hostId: string,
+  path: string,
+  newName: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_rename', { hostId, path, newName, expect: expect ?? null });
+}
+
+/** Delete a file or folder on a host — **permanently**. SSH has no trash, so
+ *  unlike the local delete this cannot be undone, and the dialog says so. */
+export function sshFsDelete(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_fs_delete', { hostId, path, expect: expect ?? null });
+}
+
+/** Copy a file next to itself on a host under a free "… copy" name. */
+export function sshFsDuplicate(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_duplicate', { hostId, path, expect: expect ?? null });
+}
+
 /** Register a folder that lives on a host as a project. The path is stored the
  *  way that machine spells it; identity is the pair `(host, path)`, so the same
  *  absolute path on two machines is two projects. */

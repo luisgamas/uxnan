@@ -1881,6 +1881,116 @@ pub async fn ssh_fs_write(
     .await
 }
 
+/// Everything the file tree can do to a host's disk, fenced.
+///
+/// One entry point rather than five, because they share the only part that
+/// matters: the check that this is still the machine, and the connection, the
+/// user was looking at. The same absolute path usually exists on both machines,
+/// so a misrouted create is confusing and a misrouted **delete** is the one that
+/// cannot be taken back.
+async fn fenced_files(
+    state: &AppState,
+    host_id: &str,
+    expect: Option<TargetExpectation>,
+) -> Result<std::sync::Arc<ssh::sftp::RemoteFiles>, CommandError> {
+    let generation = {
+        let sessions = state.ssh_sessions.read().await;
+        let Some(conn) = sessions.get(host_id) else {
+            return Err(CommandError::from(AppError::NotConnected(
+                host_id.to_string(),
+            )));
+        };
+        conn.generation()
+    };
+    target::check(
+        expect.as_ref(),
+        &TargetId::Ssh(host_id.to_string()),
+        generation,
+    )
+    .map_err(CommandError::from)?;
+    sftp_for(state, host_id).await
+}
+
+/// Create an empty file on a host (the tree's "New File"). `path` is a bare name
+/// or an intercalated relative path, validated by the same rules as locally.
+#[tauri::command]
+pub async fn ssh_fs_create_file(
+    state: State<'_, AppState>,
+    host_id: String,
+    dir: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .create_file(&dir, &path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Create a folder on a host (the tree's "New Folder").
+#[tauri::command]
+pub async fn ssh_fs_create_dir(
+    state: State<'_, AppState>,
+    host_id: String,
+    dir: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .create_dir(&dir, &path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Rename an entry on a host, within its folder.
+#[tauri::command]
+pub async fn ssh_fs_rename(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    new_name: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .rename(&path, &new_name)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Delete a file or folder on a host. **Permanent** — a host has no trash, and
+/// the caller is expected to have said so (see `ssh::sftp::RemoteFiles::delete`).
+#[tauri::command]
+pub async fn ssh_fs_delete(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .delete(&path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Copy a file next to itself on a host under a free "… copy" name.
+#[tauri::command]
+pub async fn ssh_fs_duplicate(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .duplicate(&path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
 /// Read a text file on a host, for the editor. Same guards as the local reader:
 /// binary and over-cap files come back flagged rather than mangled.
 #[tauri::command]

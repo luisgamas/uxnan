@@ -104,6 +104,7 @@ conexion alguna.
 | §5.10 | ficheros del host: listar, abrir y guardar | implementado |
 | §5.10b | rama y estado de git en el host | implementado |
 | §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
+| §5.10d | Crear/renombrar/duplicar/borrar en el host | `ssh/sftp.rs`, `fsRouter.ts` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1025,16 +1026,69 @@ app resuelve sola, es ruido sobre el que el usuario no puede actuar. Y cuando el
 host se va, la lista se vacia y las acciones se deshabilitan, pero el mensaje de
 commit a medio escribir se respeta.
 
+## 5.10d Operaciones de fichero en el host — IMPLEMENTADO (fase 3, cuarta parte)
+
+`src-tauri/src/ssh/sftp.rs` + `src/lib/fsRouter.ts`. Crear, renombrar, duplicar y
+borrar, en la maquina de la que es el arbol. Todo por SFTP: no hay ni una linea
+de shell aqui, asi que se comporta igual en cualquier host y no exige instalar
+nada.
+
+**Esto tapa un agujero, no solo añade una funcion.** Esos elementos del menu
+nunca estuvieron condicionados, asi que sobre un arbol remoto llamaban al
+filesystem **local** con la ruta de la otra maquina. Casi siempre fallaba — pero
+la ruta de un host Windows (`C:/Users/…`) puede existir tambien aqui, y entonces
+un renombrado o un borrado caian sobre el fichero equivocado en el ordenador
+equivocado. Misma clase que el guardado mal encaminado que ya cercamos (§5.10).
+
+**Los nombres los valida el validador local**, no un segundo escrito aqui
+(`crate::fs::split_new_entry_path`, `validate_bare_name`): que una ruta no pueda
+escapar de su carpeta importa exactamente igual en la maquina de otro, y dos
+validadores son dos oportunidades de discrepar sobre `..`.
+
+**"No debe existir" lo decide el servidor.** `OpenFlags::EXCLUDE` es el
+`SSH_FXF_EXCL` del protocolo: la comprobacion es atomica y del host. Mirar
+primero y crear despues seria una carrera que perderiamos contra el agente que
+esta trabajando en esa carpeta — que es justo la razon por la que alguien tiene
+ese arbol abierto.
+
+**Renombrar no puede pisar** (SFTP v3; la misma limitacion que hizo que guardar
+escriba en el sitio, §5.10), lo cual coincide con lo que el layer local quiere.
+El unico caso que cuesta es cambiar solo mayusculas/minusculas en un host cuyo
+filesystem las ignora, donde origen y destino **son el mismo fichero**: eso se
+hace en dos pasos, por un nombre que nada usa, y solo despues de que el intento
+directo haya fallado.
+
+**Borrar es permanente, y la interfaz lo dice.** El arbol local manda a la
+papelera del sistema (recuperable); SSH no ofrece nada asi, e inventar una
+papelera oculta en la maquina de otro seria una carpeta que creamos, nunca
+vaciamos y nunca mencionamos. Asi que se desenlaza — y el dialogo promete lo que
+va a pasar en vez de ofrecer "mover a la papelera". Una carpeta se recorre en
+anchura y se borra en orden inverso (el `rmdir` de SFTP solo quita carpetas
+vacias); un enlace simbolico se quita **como enlace**, nunca se entra en el, o se
+estaria borrando lo que apunta en otro sitio. La raiz del filesystem se rechaza
+antes de mandar nada.
+
+**Duplicar mueve bytes, no texto** — un duplicado que convirtiera un PNG en
+caracteres de reemplazo seria peor que no tener duplicado — y va **con tope**:
+SFTP v3 no tiene copia en el servidor, asi que el fichero entero cruza el enlace
+dos veces, y un elemento de menu no tiene por que arrastrar un gigabyte por la
+conexion de nadie.
+
+**Lo que solo puede hacer esta maquina ya no se ofrece** para una entrada remota:
+revelar en el explorador, abrir con un editor local, buscar (recorre este
+filesystem) y registrar como proyecto local. Y con el host desconectado, lo que
+cambia la maquina se deshabilita: se puede leer lo que ya se leyo, pero no
+mandarle nada.
+
 ## 5.11 Lo que queda de la fase 3
 
 Cambios e Historial ya estan (§5.10c), con las dos soluciones que se habian
 anotado aqui: parche y mensaje por SFTP, porque `exec` no tiene stdin. Quedan:
 
 1. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la
-   busqueda recorre este filesystem.
-2. **Operaciones de fichero desde el arbol** (crear, renombrar, borrar). Guardar
-   ya funciona (§5.10); el menu contextual sigue siendo local.
-3. **Diff de imagenes y borrador de commit con IA** en remoto — las dos piezas
+   busqueda recorre este filesystem. Es lo unico que queda del arbol: crear,
+   renombrar, duplicar y borrar ya funcionan alli (§5.10d).
+2. **Diff de imagenes y borrador de commit con IA** en remoto — las dos piezas
    que §5.10c deja fuera. El diff de imagenes mueve bytes binarios y `exec`
    devuelve `String::from_utf8_lossy`: el lado del working tree sale por SFTP y
    los blobs por base64 en el host. El borrador con IA necesita que el diff
@@ -1120,6 +1174,7 @@ primera vez.
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
+| Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
 | Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
@@ -1134,7 +1189,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales (`MaxSessions`) y mostrar el inventario en la UI. Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) y Cambios/Historial (§5.10c) hechos; pendientes: busqueda, operaciones de fichero, diff de imagenes y borrador con IA (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) Cambios/Historial (§5.10c) y las operaciones de fichero del arbol (§5.10d) hechos; pendientes: busqueda, diff de imagenes y borrador con IA (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

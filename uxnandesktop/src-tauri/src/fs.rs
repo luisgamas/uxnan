@@ -254,7 +254,7 @@ fn normalize(path: &Path) -> String {
 /// fragment that could move or escape the target folder. Trims, then rejects an
 /// empty name, any path separator, and the `.` / `..` specials. Returns the
 /// trimmed name so callers operate on the cleaned value.
-fn validate_bare_name(name: &str) -> Result<&str, AppError> {
+pub(crate) fn validate_bare_name(name: &str) -> Result<&str, AppError> {
     let name = name.trim();
     if name.is_empty() {
         return Err(AppError::Invalid("the name is empty".into()));
@@ -455,7 +455,7 @@ pub async fn rename_path(path: &str, new_name: &str) -> Result<String, AppError>
 /// `..`, no absolute/`\`-rooted segment). A single trailing `/` is tolerated
 /// (the caller may pass a folder path with a trailing separator). Returns at
 /// least one segment.
-fn split_new_entry_path(rel: &str) -> Result<Vec<&str>, AppError> {
+pub(crate) fn split_new_entry_path(rel: &str) -> Result<Vec<&str>, AppError> {
     let rel = rel.trim();
     let body = rel.strip_suffix('/').unwrap_or(rel);
     if body.is_empty() {

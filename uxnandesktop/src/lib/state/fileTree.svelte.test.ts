@@ -273,3 +273,65 @@ describe("waiting for a host", () => {
     expect(fileTree.awaitingHost).toBe(false);
   });
 });
+
+describe("changing a host's tree", () => {
+  it("sends every action to the host, fenced, and none to this machine", async () => {
+    // The hole this closes: the tree's actions called the local commands with
+    // whatever path the row carried. A host's path usually fails here — but a
+    // Windows host's `C:/Users/…/x.ts` can exist on *this* Windows machine too,
+    // and then a rename renames the wrong file, on the wrong computer.
+    const { sessions } = await import("./sessions.svelte");
+    sessions.replace([{ hostId: "h1", generation: 2, label: "gamas" }]);
+    backend.setCommands({
+      ssh_fs_list: () => [],
+      ssh_fs_create_file: () => "C:/app/new.ts",
+      ssh_fs_rename: () => "C:/app/renamed.ts",
+      ssh_fs_delete: () => null,
+    });
+    fileTree.setRoot("C:/app", "ssh:h1");
+    await settle();
+
+    await fileTree.createEntry("C:/app", "new.ts", "file");
+    expect(backend.lastCallTo("ssh_fs_create_file")?.args).toMatchObject({
+      hostId: "h1",
+      expect: { targetId: "ssh:h1", generation: 2 },
+    });
+
+    await fileTree.renameEntry(
+      { name: "new.ts", path: "C:/app/new.ts", isDir: false, ignored: false },
+      "renamed.ts",
+    );
+    expect(backend.lastCallTo("ssh_fs_rename")?.args).toMatchObject({ newName: "renamed.ts" });
+
+    await fileTree.deleteEntry({
+      name: "renamed.ts",
+      path: "C:/app/renamed.ts",
+      isDir: false,
+      ignored: false,
+    });
+    expect(backend.lastCallTo("ssh_fs_delete")).toBeDefined();
+
+    expect(backend.lastCallTo("fs_create_file")).toBeUndefined();
+    expect(backend.lastCallTo("fs_rename")).toBeUndefined();
+    expect(backend.lastCallTo("fs_delete")).toBeUndefined();
+  });
+
+  it("says what a delete there actually does, and stops offering it when the host drops", async () => {
+    const { sessions } = await import("./sessions.svelte");
+    sessions.replace([{ hostId: "h1", generation: 2, label: "gamas" }]);
+    backend.setCommands({ ssh_fs_list: () => [] });
+    fileTree.setRoot("C:/app", "ssh:h1");
+    await settle();
+
+    // A host has no trash: the dialog reads this to promise the right thing.
+    expect(fileTree.deletesToTrash).toBe(false);
+    expect(fileTree.mutable).toBe(true);
+
+    sessions.replace([]);
+    expect(fileTree.mutable).toBe(false);
+
+    fileTree.setRoot(ROOT);
+    expect(fileTree.deletesToTrash).toBe(true);
+    expect(fileTree.mutable).toBe(true);
+  });
+});

@@ -28,6 +28,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A host's file tree can be changed, not just read.** New file, new folder,
+  rename, duplicate and delete all run on the machine the tree is of, over SFTP —
+  so they behave the same whatever shell that host starts and need nothing
+  installed there. Names are validated by the same rules as locally (a name that
+  could escape its folder never reaches the host), and "must not already exist"
+  is the *server's* own check rather than a look-then-create that would race the
+  agent working in that folder. Every one of them carries the machine and
+  connection it was prepared for, and a host that dropped can still be read but
+  not changed — those actions stand down instead of failing.
+
+  **Deleting on a host is permanent, and the dialog says so.** The local delete
+  moves an entry to the OS trash and can be undone; SSH has no trash, and
+  inventing a hidden one on someone else's machine would be a folder we create,
+  never empty and never mention. Same button, different promise — and the
+  promise is what the user is agreeing to.
+
+  This also closes a hole rather than only adding a feature: those menu items
+  were never gated, so on a host's tree they called *this* machine's filesystem
+  with that machine's path. Usually it just failed — but a Windows host's
+  `C:/Users/…` path can exist here too, and then a rename or a delete would have
+  hit the wrong file on the wrong computer. The actions only this machine can
+  carry out (reveal in the file manager, open with a local editor, search,
+  register as a local project) are no longer offered for a host's entry.
+
 - **Changes and History now work for a project that lives on another machine.**
   Both tabs used to stand down with a notice, because the diff, the index and the
   log were read through this machine's git. They now run git **on the host**,

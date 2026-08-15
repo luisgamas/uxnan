@@ -6,19 +6,18 @@
 // access goes through `$lib/api`.
 
 import { listen } from "@tauri-apps/api/event";
-import {
-  fsCreateDir,
-  fsCreateFile,
-  fsDelete,
-  fsDuplicate,
-  fsListDir,
-  fsRename,
-  fsSearchContent,
-  fsSearchFiles,
-} from "$lib/api";
+import { fsSearchContent, fsSearchFiles } from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
 import type { ContentFileMatch, FsChangedEvent, FsEntry, SearchFilters } from "$lib/types";
-import { listDirOn } from "$lib/fsRouter";
+import {
+  createDirOn,
+  createFileOn,
+  deleteOn,
+  duplicateOn,
+  listDirOn,
+  renameOn,
+} from "$lib/fsRouter";
+import { sessions } from "$lib/state/sessions.svelte";
 import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
@@ -61,6 +60,28 @@ class FileTreeStore {
   /** The tree is on a host that has no session yet. Not an error — the panel
    *  says it is waiting, and `retryForHost` fills it in when the host connects. */
   awaitingHost = $state(false);
+
+  /** The connection this tree's mutations must run against, or `undefined` when
+   *  it is not a host's (local) or the host is not connected — which the router
+   *  turns into a refusal rather than a mutation sent with a zero. */
+  private get generation(): number | undefined {
+    const host = sshHostId(this.target);
+    return host === null ? undefined : sessions.generationOf(host);
+  }
+
+  /** Whether this tree can be changed at all: local always, a host only while it
+   *  is connected. The context menu reads it — offering "Delete" for a machine
+   *  nothing can be sent to is an action that can only fail. */
+  get mutable(): boolean {
+    const host = sshHostId(this.target);
+    return host === null || sessions.generationOf(host) !== undefined;
+  }
+
+  /** Whether deleting here is recoverable. Local goes to the OS trash; a host
+   *  has no trash, so there it is permanent — the confirm dialog says which. */
+  get deletesToTrash(): boolean {
+    return isLocalTarget(this.target);
+  }
 
   /** Whether searching this tree is possible.
    *
@@ -490,7 +511,10 @@ class FileTreeStore {
    *  and select the leaf. Returns the new absolute path; throws so the caller can
    *  surface the backend error inline. */
   async createEntry(dir: string, rel: string, kind: "file" | "folder"): Promise<string> {
-    const path = kind === "folder" ? await fsCreateDir(dir, rel) : await fsCreateFile(dir, rel);
+    const path =
+      kind === "folder"
+        ? await createDirOn(this.target, dir, rel, this.generation)
+        : await createFileOn(this.target, dir, rel, this.generation);
     await this.revealNewEntry(dir, path);
     this.selectedEntry = {
       name: path.split("/").pop() ?? path,
@@ -544,7 +568,7 @@ class FileTreeStore {
   /** Rename an entry (bare name, same folder) and re-point any open tabs. Reloads
    *  the parent so the new name shows. Returns the new path; throws on failure. */
   async renameEntry(entry: FsEntry, newName: string): Promise<string> {
-    const newPath = await fsRename(entry.path, newName);
+    const newPath = await renameOn(this.target, entry.path, newName, this.generation);
     await terminals.repathTabs(entry.path, newPath);
     // A renamed folder's children now live under a different path — drop the stale
     // expansion + cached listing so the reload rebuilds them under the new path.
@@ -556,7 +580,7 @@ class FileTreeStore {
   /** Move an entry to the OS trash, closing any open tabs under it and reloading
    *  the parent folder. Throws on failure so the confirm dialog shows the error. */
   async deleteEntry(entry: FsEntry): Promise<void> {
-    await fsDelete(entry.path);
+    await deleteOn(this.target, entry.path, this.generation);
     terminals.closeTabsUnder(entry.path);
     if (entry.isDir) this.forgetSubtree(entry.path);
     await this.loadDir(parentOf(entry.path), true);
@@ -565,7 +589,7 @@ class FileTreeStore {
   /** Duplicate a file next to itself ("… copy"), reloading its folder. Returns the
    *  new path. */
   async duplicateEntry(entry: FsEntry): Promise<string> {
-    const newPath = await fsDuplicate(entry.path);
+    const newPath = await duplicateOn(this.target, entry.path, this.generation);
     await this.loadDir(parentOf(entry.path), true);
     return newPath;
   }

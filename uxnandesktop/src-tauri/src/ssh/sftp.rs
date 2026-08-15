@@ -299,6 +299,50 @@ fn strip_sftp_drive_root(path: &str) -> String {
     }
 }
 
+/// Largest file the tree will copy over the connection for a "Duplicate".
+///
+/// SFTP v3 has no server-side copy, so every byte crosses the link twice. The
+/// cap is generous for source files and small enough that a menu item cannot
+/// quietly pull a video through someone's uplink.
+const MAX_DUPLICATE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// How many "… copy N" names to try before giving up rather than asking the host
+/// forever.
+const MAX_COPY_ATTEMPTS: u32 = 100;
+
+/// The `n`-th duplicate name for `file_name`: `name copy.ext`, `name copy 2.ext`,
+/// … — the local layer's sequence, so the same file duplicated on either machine
+/// ends up called the same thing. A leading-dot file (`.env`) has no extension.
+fn copy_name(file_name: &str, n: u32) -> String {
+    let dot = file_name.rfind('.').filter(|&i| i > 0);
+    let (stem, ext) = match dot {
+        Some(i) => (&file_name[..i], &file_name[i..]),
+        None => (file_name, ""),
+    };
+    if n <= 1 {
+        format!("{stem} copy{ext}")
+    } else {
+        format!("{stem} copy {n}{ext}")
+    }
+}
+
+/// The folder a path is in, or `None` when it names a filesystem root — which is
+/// what keeps a delete from being aimed at one.
+fn parent_of(path: &str) -> Option<String> {
+    let normalized = normalize(path);
+    let cut = normalized.rfind('/')?;
+    if cut == 0 {
+        // `/etc` → `/`, a real folder; `/` itself has no parent.
+        return (normalized.len() > 1).then(|| "/".to_string());
+    }
+    let parent = &normalized[..cut];
+    // `C:` alone is a drive root, not a folder inside one.
+    if parent.len() == 2 && parent.ends_with(':') {
+        return None;
+    }
+    Some(parent.to_string())
+}
+
 /// Join a directory and a child name in the normalized form.
 fn join(dir: &str, name: &str) -> String {
     let base = normalize(dir);
@@ -431,6 +475,295 @@ impl RemoteFiles {
             ))));
         }
         Ok(())
+    }
+
+    /// Create an empty file at `rel` inside `dir`, answering its path.
+    ///
+    /// `rel` may be an intercalated path (`sub/dir/leaf.ts`), the same as the
+    /// local tree's: the parent segments are created as folders. The names are
+    /// validated by the **local** validator (`crate::fs::split_new_entry_path`),
+    /// not a second one written here — a path that cannot escape its folder is
+    /// exactly as important on someone else's machine, and two validators is two
+    /// chances to disagree about `..`.
+    ///
+    /// `EXCLUDE` is SFTP's own "fail if it exists", so the *server* decides,
+    /// atomically. Checking first and creating after would be a race we would
+    /// lose to the agent working in that folder — which is the entire reason
+    /// somebody has this tree open.
+    pub async fn create_file(&self, dir: &str, rel: &str) -> Result<String, SftpFailure> {
+        use russh_sftp::protocol::OpenFlags;
+
+        let (parent, leaf) = self.prepare_new_entry(dir, rel).await?;
+        let target = join(&parent, leaf);
+        let handle = self
+            .session
+            .open_with_flags(
+                target.clone(),
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+            )
+            .await
+            .map_err(|e| self.failed(&format!("could not create {target} on that host"), e))?;
+        if let Err(e) = handle.close().await {
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "the host did not finish creating {target}: {e}"
+            ))));
+        }
+        Ok(target)
+    }
+
+    /// Create a folder at `rel` inside `dir` (intercalated parents included).
+    pub async fn create_dir(&self, dir: &str, rel: &str) -> Result<String, SftpFailure> {
+        let (parent, leaf) = self.prepare_new_entry(dir, rel).await?;
+        let target = join(&parent, leaf);
+        // The leaf is the one segment that must not already exist: `mkdir` fails
+        // on the server when it does, which is the answer we want.
+        self.session
+            .create_dir(target.clone())
+            .await
+            .map_err(|e| self.failed(&format!("could not create {target} on that host"), e))?;
+        Ok(target)
+    }
+
+    /// Validate `rel`, make sure `dir` is a directory on the host, create the
+    /// intermediate folders, and answer `(parent, leaf)`.
+    async fn prepare_new_entry<'a>(
+        &self,
+        dir: &str,
+        rel: &'a str,
+    ) -> Result<(String, &'a str), SftpFailure> {
+        let segments = crate::fs::split_new_entry_path(rel).map_err(SftpFailure::Refused)?;
+        let base = normalize(dir);
+        let meta = self
+            .session
+            .metadata(base.clone())
+            .await
+            .map_err(|e| self.failed(&format!("{base} is not there on that host"), e))?;
+        if !meta.is_dir() {
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "{base} is not a folder on that host"
+            ))));
+        }
+        let (leaf, parents) = segments.split_last().expect("at least one segment");
+        let mut parent = base;
+        for segment in parents {
+            parent = join(&parent, segment);
+            // Already there is fine for an intermediate folder — the point of an
+            // intercalated path is to fill in what is missing, not to insist that
+            // nothing exists.
+            if !self.exists(&parent).await? {
+                self.session.create_dir(parent.clone()).await.map_err(|e| {
+                    self.failed(&format!("could not create {parent} on that host"), e)
+                })?;
+            }
+        }
+        Ok((parent, leaf))
+    }
+
+    /// Rename an entry within its folder, answering the new path.
+    ///
+    /// **SFTP v3 cannot rename onto an existing path** (the atomic-overwrite
+    /// rename is an OpenSSH extension this client does not implement — the same
+    /// protocol fact that made saving write in place). That matches what the
+    /// local layer wants anyway: refuse to clobber a sibling. The one case it
+    /// costs us is a rename that only changes case on a host whose filesystem
+    /// ignores case, where the old and new path are the *same* file — so that
+    /// one is done in two steps, through a name nothing else uses, and only
+    /// after the direct attempt has failed.
+    pub async fn rename(&self, path: &str, new_name: &str) -> Result<String, SftpFailure> {
+        let source = normalize(path);
+        let name = crate::fs::validate_bare_name(new_name).map_err(SftpFailure::Refused)?;
+        let parent = parent_of(&source).ok_or_else(|| {
+            SftpFailure::Refused(AppError::Invalid(format!("{source} has no parent folder")))
+        })?;
+        let target = join(&parent, name);
+        if target == source {
+            return Ok(target);
+        }
+        let case_only = target.eq_ignore_ascii_case(&source);
+        // Only for a genuinely different name: on a case-only rename the target
+        // *is* the source on a case-insensitive host, so this would refuse it.
+        if !case_only && self.exists(&target).await? {
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "\"{name}\" already exists in this folder on that host"
+            ))));
+        }
+        match self.session.rename(source.clone(), target.clone()).await {
+            Ok(()) => Ok(target),
+            Err(direct) if case_only => {
+                // A case-insensitive host refused it because the two names are
+                // one file. Go through a third name; if the second step fails
+                // the entry keeps that name, so it is one nothing collides with
+                // and it is reported rather than left silent.
+                let scratch = format!("{target}.uxnan-rename");
+                self.session
+                    .rename(source.clone(), scratch.clone())
+                    .await
+                    .map_err(|_| {
+                        self.failed(&format!("could not rename {source} on that host"), direct)
+                    })?;
+                self.session
+                    .rename(scratch.clone(), target.clone())
+                    .await
+                    .map_err(|e| {
+                        self.failed(
+                            &format!("{source} is now called {scratch} on that host — the rename could not be finished"),
+                            e,
+                        )
+                    })?;
+                Ok(target)
+            }
+            Err(e) => Err(self.failed(&format!("could not rename {source} on that host"), e)),
+        }
+    }
+
+    /// Delete a file or folder on the host — **permanently**.
+    ///
+    /// There is no trash here. The local tree moves an entry to the Recycle Bin
+    /// (recoverable by design); SSH offers no such thing, and inventing one — a
+    /// hidden `.uxnan-trash` on someone else's machine — would be a folder we
+    /// create, never empty, and never mention. So this unlinks, and the dialog
+    /// that calls it says which of the two it is about to do.
+    ///
+    /// A folder is walked depth-first, because SFTP's `rmdir` only removes an
+    /// empty one. Symlinked directories are unlinked, never descended into: the
+    /// listing distinguishes them, and following one would delete whatever it
+    /// points at somewhere else entirely.
+    pub async fn delete(&self, path: &str) -> Result<(), SftpFailure> {
+        let target = normalize(path);
+        if parent_of(&target).is_none() {
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "refusing to delete {target}, which is the root of that host's filesystem"
+            ))));
+        }
+        // `symlink_metadata` rather than `metadata`: a symlink to a directory
+        // must be removed as the link it is.
+        let meta = self
+            .session
+            .symlink_metadata(target.clone())
+            .await
+            .map_err(|e| self.failed(&format!("{target} is not there on that host"), e))?;
+        if meta.is_dir() {
+            self.delete_dir(&target).await
+        } else {
+            self.session
+                .remove_file(target.clone())
+                .await
+                .map_err(|e| self.failed(&format!("could not delete {target} on that host"), e))
+        }
+    }
+
+    /// Empty a folder and remove it. Iterative rather than recursive: an `async
+    /// fn` that calls itself needs boxing, and a deep tree would grow the stack
+    /// for no reason.
+    async fn delete_dir(&self, root: &str) -> Result<(), SftpFailure> {
+        // Every folder found, deepest last, so they can be removed in reverse.
+        let mut folders = vec![root.to_string()];
+        let mut queue = vec![root.to_string()];
+        while let Some(dir) = queue.pop() {
+            let entries = self
+                .session
+                .read_dir(dir.clone())
+                .await
+                .map_err(|e| self.failed(&format!("could not read {dir} on that host"), e))?;
+            for entry in entries {
+                let child = join(&dir, entry.file_name().as_str());
+                // A symlink is removed as a file whatever it points at.
+                if entry.file_type().is_dir() {
+                    folders.push(child.clone());
+                    queue.push(child);
+                } else {
+                    self.session.remove_file(child.clone()).await.map_err(|e| {
+                        self.failed(&format!("could not delete {child} on that host"), e)
+                    })?;
+                }
+            }
+        }
+        for dir in folders.iter().rev() {
+            self.session.remove_dir(dir.clone()).await.map_err(|e| {
+                self.failed(
+                    &format!("could not delete the folder {dir} on that host"),
+                    e,
+                )
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Copy a file next to itself under a free "… copy" name, answering it.
+    ///
+    /// Bytes, not text: the local layer copies the file whatever is in it, and a
+    /// duplicate that mangled a PNG into replacement characters would be worse
+    /// than no duplicate at all. The whole file goes through this machine (SFTP
+    /// has no server-side copy in v3), so it is capped — a host is reached over
+    /// a link the user may be paying for, and silently pulling a gigabyte
+    /// through it is not a menu item's business.
+    pub async fn duplicate(&self, path: &str) -> Result<String, SftpFailure> {
+        use russh_sftp::protocol::OpenFlags;
+        use tokio::io::AsyncWriteExt;
+
+        let source = normalize(path);
+        let meta = self
+            .session
+            .metadata(source.clone())
+            .await
+            .map_err(|e| self.failed(&format!("{source} is not there on that host"), e))?;
+        if meta.is_dir() {
+            return Err(SftpFailure::Refused(AppError::Invalid(
+                "duplicating a folder on a host is not supported".to_string(),
+            )));
+        }
+        if meta.size.unwrap_or(0) > MAX_DUPLICATE_BYTES {
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "{source} is larger than {} MB, so it is not copied over the connection",
+                MAX_DUPLICATE_BYTES / (1024 * 1024)
+            ))));
+        }
+        let parent = parent_of(&source).ok_or_else(|| {
+            SftpFailure::Refused(AppError::Invalid(format!("{source} has no parent folder")))
+        })?;
+        let name = source.rsplit('/').next().unwrap_or(&source);
+
+        // The free name is found by asking the host, one candidate at a time —
+        // the same sequence the local layer produces, so a folder that is
+        // duplicated on both machines ends up with the same names.
+        let mut candidate = String::new();
+        for n in 1..=MAX_COPY_ATTEMPTS {
+            candidate = join(&parent, &copy_name(name, n));
+            if !self.exists(&candidate).await? {
+                break;
+            }
+            if n == MAX_COPY_ATTEMPTS {
+                return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                    "there are already {MAX_COPY_ATTEMPTS} copies of {name} in that folder"
+                ))));
+            }
+        }
+
+        let bytes = self
+            .session
+            .read(source.clone())
+            .await
+            .map_err(|e| self.failed(&format!("could not read {source} on that host"), e))?;
+        let mut handle = self
+            .session
+            .open_with_flags(
+                candidate.clone(),
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::EXCLUDE,
+            )
+            .await
+            .map_err(|e| self.failed(&format!("could not create {candidate} on that host"), e))?;
+        if let Err(e) = handle.write_all(&bytes).await {
+            let _ = handle.close().await;
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "{candidate} was created on that host but the copy failed partway                  ({e}); the file there is incomplete"
+            ))));
+        }
+        if let Err(e) = handle.close().await {
+            return Err(SftpFailure::Refused(AppError::Invalid(format!(
+                "the host did not finish writing {candidate}: {e}"
+            ))));
+        }
+        Ok(candidate)
     }
 
     /// The user's home directory on the host, in the app's forward-slash form.

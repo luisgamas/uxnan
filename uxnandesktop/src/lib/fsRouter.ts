@@ -10,7 +10,24 @@
 // and the git panels each answered that question separately, and one of them
 // answered it wrong.
 
-import { fsListDir, fsReadFile, fsWriteFile, sshFsList, sshFsRead, sshFsWrite } from "$lib/api";
+import {
+  fsCreateDir,
+  fsCreateFile,
+  fsDelete,
+  fsDuplicate,
+  fsListDir,
+  fsReadFile,
+  fsRename,
+  fsWriteFile,
+  sshFsCreateDir,
+  sshFsCreateFile,
+  sshFsDelete,
+  sshFsDuplicate,
+  sshFsList,
+  sshFsRead,
+  sshFsRename,
+  sshFsWrite,
+} from "$lib/api";
 import { expectation, sshHostId, type TargetId } from "$lib/target";
 import type { FileContent, FsEntry } from "$lib/types";
 
@@ -51,4 +68,78 @@ export function writeFileOn(
     );
   }
   return sshFsWrite(host, path, content, expectation(target, generation));
+}
+
+/** A mutation on another machine needs the connection it was prepared against.
+ *  Thrown rather than defaulted, for the reason `writeFileOn` gives: sending a
+ *  zero is an expectation nobody issued. */
+function fence(target: TargetId | undefined | null, host: string, generation?: number) {
+  if (generation === undefined) {
+    throw new Error(`no live connection to ${host} to act against`);
+  }
+  return expectation(target, generation);
+}
+
+/** Create an empty file inside `dir` on the machine `target` names. `rel` may be
+ *  an intercalated path (`sub/leaf.ts`); its parent folders are created. */
+export async function createFileOn(
+  target: TargetId | undefined | null,
+  dir: string,
+  rel: string,
+  generation?: number,
+): Promise<string> {
+  const host = sshHostId(target);
+  if (!host) return fsCreateFile(dir, rel);
+  return sshFsCreateFile(host, dir, rel, fence(target, host, generation));
+}
+
+/** Create a folder inside `dir` on the machine `target` names. */
+export async function createDirOn(
+  target: TargetId | undefined | null,
+  dir: string,
+  rel: string,
+  generation?: number,
+): Promise<string> {
+  const host = sshHostId(target);
+  if (!host) return fsCreateDir(dir, rel);
+  return sshFsCreateDir(host, dir, rel, fence(target, host, generation));
+}
+
+/** Rename an entry within its folder on the machine `target` names. */
+export async function renameOn(
+  target: TargetId | undefined | null,
+  path: string,
+  newName: string,
+  generation?: number,
+): Promise<string> {
+  const host = sshHostId(target);
+  if (!host) return fsRename(path, newName);
+  return sshFsRename(host, path, newName, fence(target, host, generation));
+}
+
+/** Delete an entry on the machine `target` names.
+ *
+ *  **The two machines do different things here, and the caller has to say so.**
+ *  Locally this moves the entry to the OS trash, which is recoverable; a host
+ *  has no trash, so there it is an unlink and nothing brings it back. The
+ *  confirm dialog reads the target for exactly this reason. */
+export async function deleteOn(
+  target: TargetId | undefined | null,
+  path: string,
+  generation?: number,
+): Promise<void> {
+  const host = sshHostId(target);
+  if (!host) return fsDelete(path);
+  return sshFsDelete(host, path, fence(target, host, generation));
+}
+
+/** Copy a file next to itself under a free "… copy" name. */
+export async function duplicateOn(
+  target: TargetId | undefined | null,
+  path: string,
+  generation?: number,
+): Promise<string> {
+  const host = sshHostId(target);
+  if (!host) return fsDuplicate(path);
+  return sshFsDuplicate(host, path, fence(target, host, generation));
 }

@@ -492,3 +492,99 @@ async fn posix_host_stages_commits_and_discards() {
 
     let _ = conn.exec(&format!("rm -rf {repo}")).await;
 }
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_creates_renames_duplicates_and_deletes() {
+    let (conn, _) = host_or_skip!();
+    let files = super::sftp::open(&conn).await.expect("an SFTP session");
+    let home = files.home().await.expect("the host's home");
+
+    // Its own folder: these tests remove things, and the fixture the read tests
+    // assert on has to survive them.
+    let base = format!("{home}/tree-ops");
+    let _ = conn.exec(&format!("rm -rf {base}")).await;
+    conn.exec(&format!("mkdir -p {base}"))
+        .await
+        .expect("a folder to work in");
+
+    // A bare name, and an intercalated path whose parents do not exist yet.
+    let file = files
+        .create_file(&base, "notes.md")
+        .await
+        .expect("a new file");
+    assert_eq!(file, format!("{base}/notes.md"));
+    let nested = files
+        .create_file(&base, "src/deep/main.rs")
+        .await
+        .expect("an intercalated file");
+    assert_eq!(nested, format!("{base}/src/deep/main.rs"));
+    assert!(files.exists(&format!("{base}/src/deep")).await.unwrap());
+
+    let folder = files
+        .create_dir(&base, "assets/icons")
+        .await
+        .expect("a new folder");
+    assert_eq!(folder, format!("{base}/assets/icons"));
+
+    // The server refuses the second one — `EXCLUDE` is SFTP's own "must not
+    // exist", so nothing here has to look first and lose the race.
+    assert!(files.create_file(&base, "notes.md").await.is_err());
+    assert!(files.create_dir(&base, "assets/icons").await.is_err());
+
+    // A name that could escape the folder never reaches the host.
+    assert!(files.create_file(&base, "../escape.txt").await.is_err());
+    assert!(files.create_file(&base, "  ").await.is_err());
+
+    // Rename, and the refusal to land on a sibling that is already there.
+    files
+        .write_file(&file, "hello\n")
+        .await
+        .expect("something to move");
+    let renamed = files.rename(&file, "README.md").await.expect("a rename");
+    assert_eq!(renamed, format!("{base}/README.md"));
+    assert_eq!(files.read_file(&renamed).await.unwrap().content, "hello\n");
+    files
+        .create_file(&base, "taken.md")
+        .await
+        .expect("a sibling");
+    assert!(files.rename(&renamed, "taken.md").await.is_err());
+    // A case-only rename is a real rename on a case-sensitive host, and the
+    // two-step path is what covers the hosts where it is not.
+    let cased = files
+        .rename(&renamed, "readme.md")
+        .await
+        .expect("a case-only rename");
+    assert_eq!(cased, format!("{base}/readme.md"));
+    assert_eq!(files.read_file(&cased).await.unwrap().content, "hello\n");
+
+    // Duplicate: byte for byte, under the local layer's own naming sequence.
+    let copy = files.duplicate(&cased).await.expect("a duplicate");
+    assert_eq!(copy, format!("{base}/readme copy.md"));
+    assert_eq!(files.read_file(&copy).await.unwrap().content, "hello\n");
+    let second = files.duplicate(&cased).await.expect("a second duplicate");
+    assert_eq!(second, format!("{base}/readme copy 2.md"));
+    assert!(files.duplicate(&base).await.is_err(), "a folder is refused");
+
+    // Delete: a file, then a folder that is not empty — `rmdir` alone cannot,
+    // so this is the walk.
+    files.delete(&copy).await.expect("delete a file");
+    assert!(!files.exists(&copy).await.unwrap());
+    files
+        .delete(&format!("{base}/src"))
+        .await
+        .expect("delete a tree");
+    assert!(!files.exists(&format!("{base}/src")).await.unwrap());
+    assert!(!files
+        .exists(&format!("{base}/src/deep/main.rs"))
+        .await
+        .unwrap());
+
+    // What is gone is gone: no trash on a host, which is why the dialog says so.
+    assert!(files.delete(&format!("{base}/nothing-here")).await.is_err());
+    // And a filesystem root is refused before anything is sent.
+    assert!(files.delete("/").await.is_err());
+
+    files.delete(&base).await.expect("clean up");
+    assert!(!files.exists(&base).await.unwrap());
+}

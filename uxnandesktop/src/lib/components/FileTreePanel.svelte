@@ -26,6 +26,8 @@
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { fileTree } from "$lib/state/fileTree.svelte";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import { sshHostId } from "$lib/target";
   import { revealPath } from "$lib/api";
   import { dropPathsIntoTerminal } from "$lib/terminal/terminalDrop";
   import { cn } from "$lib/utils";
@@ -375,6 +377,14 @@
   function cancelRename(): void {
     fileTree.renamingPath = null;
   }
+  /** The machine's own name, for the delete dialog. A notice that names the
+   *  computer beats one that says "the host" — and the id is the honest
+   *  fallback when it has no label. */
+  const hostLabel = $derived.by(() => {
+    const id = sshHostId(fileTree.target);
+    return id ? sessions.labelOf(id) : "";
+  });
+
   function openDelete(entry: FsEntry): void {
     deleteTarget = entry;
     deleteError = null;
@@ -1041,17 +1051,30 @@
   </div>
 {/if}
 
-<!-- Delete confirm, mounted once (rename + create are inline in the tree). -->
+<!-- Delete confirm, mounted once (rename + create are inline in the tree).
+     The two machines do different things, so the dialog says which: locally the
+     entry goes to the OS trash and can be brought back; a host has no trash, so
+     there it is gone. Same button, different promise — and the promise is the
+     part the user is agreeing to. -->
 <ConfirmDialog
   bind:open={deleteOpen}
   danger
-  title={i18n.t("fileTree.deleteTitle")}
+  title={fileTree.deletesToTrash
+    ? i18n.t("fileTree.deleteTitle")
+    : i18n.t("fileTree.deleteTitleHost", { host: hostLabel })}
   description={deleteTarget
-    ? i18n.t(deleteTarget.isDir ? "fileTree.deleteFolderDesc" : "fileTree.deleteFileDesc", {
-        name: deleteTarget.name,
-      })
+    ? fileTree.deletesToTrash
+      ? i18n.t(deleteTarget.isDir ? "fileTree.deleteFolderDesc" : "fileTree.deleteFileDesc", {
+          name: deleteTarget.name,
+        })
+      : i18n.t(
+          deleteTarget.isDir ? "fileTree.deleteFolderDescHost" : "fileTree.deleteFileDescHost",
+          { name: deleteTarget.name, host: hostLabel },
+        )
     : ""}
-  confirmLabel={i18n.t("fileTree.deleteConfirm")}
+  confirmLabel={fileTree.deletesToTrash
+    ? i18n.t("fileTree.deleteConfirm")
+    : i18n.t("fileTree.deleteConfirmHost")}
   error={deleteError}
   onconfirm={doDelete}
 />
