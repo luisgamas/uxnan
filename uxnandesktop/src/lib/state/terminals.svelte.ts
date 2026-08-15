@@ -20,6 +20,7 @@ import { sessions } from '$lib/state/sessions.svelte';
 import { inheritedCwd } from '$lib/terminalCwd';
 import { keyTarget, parseWorkspaceKey } from '$lib/pathid';
 import { LOCAL_TARGET, sshHostId, type TargetId } from '$lib/target';
+import { registerExternalChangeNotifier } from '$lib/state/externalChangeRegistry';
 import { registerFlush } from '$lib/state/flushRegistry';
 import { disposeInstance, serializeInstance, setParkedExitHandler } from '$lib/terminal/instances';
 import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
@@ -113,6 +114,12 @@ export type FileView = 'edit' | 'preview' | 'changes';
 /** A file tab. Its live state — the editor (`fileState`) and, lazily, the working
  *  diff (`fileDiffState`) — lives in the store's per-tab registries, both keyed by
  *  this tab's `id`, so closing the tab frees both. */
+/** A worktree root in the one spelling every comparison here uses: forward
+ *  slashes, no trailing separator. */
+function normalizeRoot(path: string): string {
+  return path.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
 export interface FileTab extends BaseTab {
   kind: 'file';
   /** Absolute, forward-slash path of the open file. */
@@ -882,6 +889,10 @@ class TerminalStore {
     // Capture every live terminal's scrollback when the window closes, so the
     // next boot can replay it under the restored layout.
     registerFlush('terminal-buffers', () => this.flushSnapshots());
+    // Our own writes on a host reach the open tabs through here: there is no
+    // watcher on that machine, and the publisher cannot import this store
+    // without closing a cycle (`externalChangeRegistry`).
+    registerExternalChangeNotifier((root, target) => this.noteExternalChangeUnder(root, target));
     const ws: Record<string, AreaNode | null> = {};
     const ag: Record<string, string> = {};
     if (saved?.workspaces) {
@@ -964,6 +975,38 @@ class TerminalStore {
     for (const st of this.diffStates.values()) {
       const root = st.worktree.replace(/\\/g, '/').replace(/\/+$/, '');
       if (set.has(`${root}/${st.file}`)) st.noteExternalChange();
+    }
+  }
+
+  /** Files under `root` on `target` changed, and the app is the one that changed
+   *  them — reload the tabs showing them.
+   *
+   *  Locally nobody calls this: the backend watcher sees the write and emits
+   *  `fs:changed`, which is the same path an edit from *outside* the app takes.
+   *  A host has no watcher (polling one every 3 s over SSH would be a shell
+   *  start on someone else's machine, `02g` §5.11), so the app tells itself what
+   *  it just did — which needs no watcher at all, because it knows.
+   *
+   *  This covers our own actions only. A file that changes on the host for any
+   *  other reason — an agent working in that folder, a `git pull` in a terminal
+   *  there — is still only noticed when something asks, and the panels say so.
+   *
+   *  A tab with unsaved edits is **flagged**, never overwritten
+   *  (`FileEditorState.noteExternalChange`). */
+  noteExternalChangeUnder(root: string, target: TargetId): void {
+    const base = normalizeRoot(root);
+    const prefix = `${base}/`;
+    for (const st of this.fileStates.values()) {
+      // The machine matters as much as the path: the same absolute path on two
+      // machines is two different files, and reloading the wrong one would
+      // replace what the user is looking at with another computer's bytes.
+      if (st.target === target && (st.path === base || st.path.startsWith(prefix))) {
+        st.noteExternalChange();
+      }
+    }
+    for (const st of this.diffStates.values()) {
+      const wt = normalizeRoot(st.worktree);
+      if (st.target === target && wt === base) st.noteExternalChange();
     }
   }
 

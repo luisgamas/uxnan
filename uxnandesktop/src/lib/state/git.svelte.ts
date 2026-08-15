@@ -35,6 +35,7 @@ import {
 } from "$lib/gitRouter";
 import { sessions } from "$lib/state/sessions.svelte";
 import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
+import { noteExternalChange } from "$lib/state/externalChangeRegistry";
 import { projects } from "$lib/state/projects.svelte";
 import { history } from "$lib/state/history.svelte";
 import { app } from "$lib/state/app.svelte";
@@ -337,7 +338,27 @@ class GitStore {
     return this.op({ kind: "unstage", file: "*" }, (p, t, g) => unstageAllOn(t, p, g));
   }
   discard(file: string, untracked: boolean): Promise<void> {
-    return this.op({ kind: "discard", file }, (p, t, g) => discardOn(t, p, file, untracked, g));
+    return this.op({ kind: "discard", file }, async (p, t, g) => {
+      await discardOn(t, p, file, untracked, g);
+      // This one rewrites the file itself. Locally the backend watcher sees that
+      // and every open tab reloads; a host has none, so the app says what it
+      // just did — otherwise the editor goes on showing the change that was
+      // thrown away, which is the worst kind of stale: it looks like the discard
+      // did not work.
+      this.noteWorkingTreeChanged(p, t);
+    });
+  }
+
+  /** Tell the open tabs that files under this worktree changed **because of
+   *  something we did**.
+   *
+   *  Only for a host: locally the watcher emits `fs:changed` and doing both
+   *  would reload twice. And only after an action that touches the working
+   *  tree — staging moves the index, not the file, and flagging a dirty buffer
+   *  as "changed elsewhere" for that would be a lie. */
+  private noteWorkingTreeChanged(path: string, target: TargetId): void {
+    if (isLocalTarget(target)) return;
+    noteExternalChange(path, target);
   }
 
   /** Reload the status if the panel is currently showing `path` (used by a diff
@@ -437,6 +458,8 @@ class GitStore {
     this.error = null;
     try {
       await syncOn(this.target, path, action, this.generation);
+      // A pull rewrites files; a push does not. Same reasoning as `discard`.
+      if (action === "pull") this.noteWorkingTreeChanged(path, this.target);
       history.refreshIfLoaded(path);
       await this.refresh();
       void github.refreshContext();
@@ -628,6 +651,11 @@ export class DiffViewerState {
       const cached = action !== "discard";
       const reverse = action !== "stage";
       await applyOn(this.target, this.worktree, patch, cached, reverse, this.generation);
+      // `cached` patches the index; without it the file on disk changed, so an
+      // editor tab on a host has to be told (there is no watcher there).
+      if (!cached && !isLocalTarget(this.target)) {
+        noteExternalChange(this.worktree, this.target);
+      }
       git.refreshIfWatching(this.worktree, this.target);
       await this.reload();
       if (this.diff.trim().length === 0) this.onEmpty();

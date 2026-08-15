@@ -32,7 +32,7 @@ always wins). 771 Rust tests (735 unit + 36
 integration), of which 46 are ignored probes that need something real to talk to
 (37 live SSH probes — 26 against a real `sshd` and 11 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,212 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,213 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1435,7 +1435,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 771 Rust + 1,212 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 771 Rust + 1,213 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

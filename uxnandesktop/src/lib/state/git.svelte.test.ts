@@ -135,6 +135,36 @@ describe("the git panel on a host", () => {
     expect(git.error).not.toBeNull();
   });
 
+  it("tells the open tabs what it just threw away on the host", async () => {
+    // Reported from the app: discarding a change left the editor showing the
+    // change, until the tab was closed and reopened. Locally the backend watcher
+    // sees the file being rewritten and every tab reloads; a host has no
+    // watcher, so the app has to say what it did — which needs no watcher,
+    // because it knows.
+    const { registerExternalChangeNotifier } = await import("./externalChangeRegistry");
+    const told: { root: string; target: string }[] = [];
+    registerExternalChangeNotifier((root, target) => told.push({ root, target }));
+    backend.setCommands({ ssh_git_discard: () => null });
+
+    await git.load("C:/Users/gamas/app", "ssh:h1");
+    await git.discard("remote.rs", false);
+    expect(told).toEqual([{ root: "C:/Users/gamas/app", target: "ssh:h1" }]);
+
+    // Staging moves the index, not the file: flagging a half-written buffer as
+    // "changed elsewhere" for that would be a lie.
+    told.length = 0;
+    await git.stage("remote.rs");
+    expect(told).toEqual([]);
+
+    // And locally nothing is announced — the watcher already does it, and doing
+    // both would reload every tab twice.
+    told.length = 0;
+    backend.setCommands({ git_discard: () => null });
+    await git.load("/home/dev/app", "local");
+    await git.discard("main.rs", false);
+    expect(told).toEqual([]);
+  });
+
   it("says so when the host could not read the folder as a repository", async () => {
     backend.setCommands({
       ssh_git_review: () => ({

@@ -1206,6 +1206,32 @@ se planta. Un CLI que exija confiar en una carpeta antes de hacer nada fallara
 ahi en vez de colgarse (la ejecucion esta acotada por `GENERATE_TIMEOUT`) y el
 boton lo dice.
 
+### Lo que hacemos nosotros no necesita watcher
+
+Reportado: descartar un cambio dejaba el editor mostrando el cambio hasta cerrar
+y reabrir la pestaña. El panel estaba bien; el centro, obsoleto.
+
+En local nadie llama a nada: el watcher del backend ve la escritura y emite
+`fs:changed`, que es el mismo camino que toma una edicion hecha **fuera** de la
+app. En un host no hay watcher —sondear uno por SSH seria un arranque de shell
+cada pocos segundos en la maquina de otro (§5.11)— y de ahi la pestaña quieta.
+
+Pero ese caso **no necesitaba watcher**: la app hizo el cambio y sabe cual. Ahora
+lo dice ella misma tras las acciones que reescriben el arbol de trabajo
+(descartar, descartar un hunk, `pull`), y **no** tras las que solo mueven el
+indice (preparar/quitar): marcar un buffer a medio escribir como "cambiado
+fuera" por un `git add` seria mentir. Un buffer sucio se **señala**, nunca se
+sobrescribe.
+
+El anuncio va por un registro hoja (`externalChangeRegistry`), porque el emisor
+—el store de git— no puede importar el de terminales sin cerrar el ciclo
+`git → terminals → files → git`. Mismo patron que `flushRegistry` y que el
+registro de sesiones.
+
+Lo que sigue necesitando preguntar es un cambio que haga **otro** en el host: un
+agente trabajando en esa carpeta, un `git` en una terminal de alli. Eso si es el
+precio de no tener ayudante, y esta dicho en la interfaz.
+
 ### La linea del marcador se tira entera, no solo sus saltos
 
 Reportado desde un host Windows real cuando el contenedor Linux llevaba dias en

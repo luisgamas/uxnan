@@ -7,6 +7,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Discarding a change on a host now updates the file you have open.** The
+  panel was right and the editor was stale: the change came back the moment the
+  tab was closed and reopened. Locally the backend watcher sees the file being
+  rewritten and every tab reloads — a host has no watcher, so nothing said
+  anything. It does not need one for this: the app made the change and knows
+  exactly what it did, so it now says so directly (after a discard, a discarded
+  hunk and a pull — not after staging, which moves the index and not the file).
+  A tab with unsaved edits is flagged rather than overwritten, as it already was.
+  What still needs asking is a change made on the host by something *else* — an
+  agent working in that folder, a `git` command in a terminal there — which is
+  the no-watcher decision, stated in the panel.
+
 - **Staging, discarding and the line counts worked on Linux hosts and silently
   did not on Windows ones.** The review answer is read between markers, and the
   marker's *line* was not being dropped — only its newlines. `cmd` separates
