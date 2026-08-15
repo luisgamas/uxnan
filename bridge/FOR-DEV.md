@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 657, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 659, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -307,8 +307,9 @@ push validation (FOR-HUMAN).
 
 - [ ] **Name conversations on Zero.** `IAgentAdapter.generateTitle` is wired for
       all seven active agents and **verified live on six**: Claude Code
-      (`haiku`), Codex (`gpt-5.4-mini`, `codex exec --ephemeral -s read-only
-      -o <file>`), OpenCode, pi, Antigravity and Grok. Zero's `zero exec
+      (`haiku`), Codex (`gpt-5.6-luna` at `low` effort, `codex exec --ephemeral
+      -s read-only -o <file>`), OpenCode, pi, Antigravity
+      (`gemini-3.6-flash-low`) and Grok. Zero's `zero exec
       <prompt>` form is confirmed **in Zero's own source** (its eval harness
       drives itself that way), but has never run: Zero is not installed here and
       the account has no credits. Run it once and drop this item.

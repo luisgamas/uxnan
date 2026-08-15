@@ -123,11 +123,25 @@ import {
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 
 /**
- * Model used to name a conversation: the `mini` tier, never the thread's own.
+ * Model used to name a conversation: the cheapest one, never the thread's own.
  * Writing a six-word title is not work for the expensive model, and it must not
  * eat that model's quota. Verified against the account's real `model/list`.
+ *
+ * `gpt-5.6-luna` ("fast and affordable") beats the `mini` tier on **both**
+ * halves of the bill, measured rather than assumed: $0.20/$1.20 per 1M tokens
+ * against `gpt-5.4-mini`'s $0.75/$4.50, and naming the same conversation cost
+ * 13.4k tokens on Luna against 18.3k on mini — roughly 5× cheaper per title.
  */
-const CODEX_TITLE_MODEL = 'gpt-5.4-mini';
+const CODEX_TITLE_MODEL = 'gpt-5.6-luna';
+
+/**
+ * Reasoning effort for that one-shot. Luna defaults to `medium`, and a title is
+ * the least reasoning-hungry task there is — the tokens a thinking tier would
+ * spend here are exactly the ones that could make a cheap model cost more than
+ * an expensive one. `-c` takes a config override; the key is validated, so a
+ * typo fails the run loudly instead of silently naming on the default tier.
+ */
+const CODEX_TITLE_REASONING = ['-c', 'model_reasoning_effort=low'];
 
 const CODEX_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -646,6 +660,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       '--skip-git-repo-check',
       '-m',
       CODEX_TITLE_MODEL,
+      ...CODEX_TITLE_REASONING,
       '-o',
       outFile,
       prompt,

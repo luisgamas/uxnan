@@ -4,6 +4,28 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed — naming a conversation stops spending the working model's quota
+
+Two fixes to the same idea: a six-word title must run on the cheapest model the
+agent offers, never the one the user is working with.
+
+- **Antigravity named on the account's frontier model.** The adapter passed no
+  `--model` at all, so every title ran on `agy`'s default — while both the spec
+  and the desktop app said it named on the cheap flash tier. It now passes
+  `gemini-3.6-flash-low`, which is what they always claimed.
+- **Codex names on `gpt-5.6-luna` instead of `gpt-5.4-mini`.** Luna is cheaper
+  on both halves of the bill ($0.20/$1.20 per 1M tokens against $0.75/$4.50)
+  and, measured on a real title, also spent fewer tokens (13.4k vs 18.3k) —
+  about 5× cheaper per name. Its reasoning effort is pinned to `low` (`-c
+  model_reasoning_effort=low`) because Luna defaults to `medium`, and thinking
+  tokens are exactly what would undo the saving on a task this small.
+
+The other five agents were audited in the same pass and were already correct:
+Claude Code names on `haiku`, and OpenCode, pi, Grok and Zero route through many
+providers, so they run on their own default rather than a pinned id that a
+different provider set would reject. The desktop app pins the same ids for its
+terminal-tab titles and moves with this change.
+
 ### Fixed — a Codex conversation started on the phone now opens in the Codex app
 
 Starting a conversation on Codex from the phone made it **unopenable everywhere

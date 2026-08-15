@@ -56,6 +56,21 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 /** Hard cap on the `agy models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
 
+/**
+ * Model used to name a conversation: the cheapest tier `agy models` reports,
+ * never the thread's own — a six-word title must not spend the quota of the
+ * model the user is working with.
+ *
+ * `flash` is the cheap family and `-low` its cheapest reasoning tier (the id
+ * carries the tier, see {@link parseAntigravityModelList}). Hand-kept, like
+ * every pinned id here: it is verified against a real `agy models`, and it has
+ * a **twin in the desktop app** (`uxnandesktop/src-tauri/src/convtitle.rs` →
+ * `title_model`) that must move with it. If Antigravity ever retires this id,
+ * naming degrades to "no title" (the run is best-effort), never to a broken
+ * conversation.
+ */
+const ANTIGRAVITY_TITLE_MODEL = 'gemini-3.6-flash-low';
+
 const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   // `agy --mode plan` gives a real read-only planning mode.
   planMode: true,
@@ -325,11 +340,25 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   /**
    * Name a conversation with a one-shot `agy -p`, without `--conversation`, so
    * it never joins the conversation this thread resumes.
+   *
+   * On {@link ANTIGRAVITY_TITLE_MODEL}, not the thread's model: this ran on the
+   * account's default (the frontier tier) while both the spec and the desktop
+   * app said it named on the cheap flash tier — so every title quietly spent
+   * the quota of the model the user is actually working with.
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const cwd = options.cwd ?? this.#defaultCwd;
-    const args = ['--output-format', 'text', '--add-dir', cwd, '-p', prompt];
+    const args = [
+      '--output-format',
+      'text',
+      '--model',
+      ANTIGRAVITY_TITLE_MODEL,
+      '--add-dir',
+      cwd,
+      '-p',
+      prompt,
+    ];
     const raw = await runTitleOneShot(() =>
       this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
     );

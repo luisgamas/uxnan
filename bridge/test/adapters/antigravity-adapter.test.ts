@@ -237,3 +237,19 @@ test('AntigravityAdapter.listModels spawns `agy models` and parses the output', 
     ['Gemini 3.5 Flash (Medium)', 'Claude Sonnet 4.6 (Thinking)'],
   );
 });
+
+test('AntigravityAdapter names a conversation on the cheap flash tier', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+
+  const titling = adapter.generateTitle({ userText: 'hi', assistantText: 'ok', cwd: '/p' });
+  last().feed(['Fix the model list']);
+  assert.equal(await titling, 'Fix the model list');
+
+  const args = last().args;
+  // It used to pass no model at all, so a six-word title ran on the account's
+  // default (frontier) tier — the very quota the user is working with.
+  assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.6-flash-low');
+  // And it must never join the conversation the thread resumes.
+  assert.equal(args.includes('--conversation'), false);
+});

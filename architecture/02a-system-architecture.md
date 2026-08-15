@@ -2330,7 +2330,7 @@ de su propia CLI y elegida para no dejar rastro en la conversacion que nombra:
 | Agente | Invocacion | Modelo |
 |---|---|---|
 | Claude Code | `-p`, sin `--resume` | `haiku` |
-| Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.4-mini` |
+| Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` con `-c model_reasoning_effort=low` |
 | OpenCode | `opencode run` (sin flags de sesion) | por defecto de la CLI |
 | pi | `pi -p --no-session` | por defecto de la CLI |
 | Antigravity | `agy -p` (sin `--conversation`) | `gemini-3.6-flash-low` |
