@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentsFor, agentsMissingFrom, commandKey } from './agentAvailability';
+import { agentsFor, agentsMissingFrom, commandKey, hostAgents } from './agentAvailability';
 
 const AGENTS = [
   { id: 'a', command: 'claude' },
@@ -43,5 +43,38 @@ describe('agentsFor', () => {
     expect(commandKey('/usr/local/bin/claude')).toBe('claude');
     expect(commandKey('C:\\Program Files\\tools\\Claude.CMD')).toBe('claude');
     expect(commandKey('  codex.exe  ')).toBe('codex');
+  });
+});
+
+describe('hostAgents', () => {
+  const catalog = [
+    { id: 'claudecode', name: 'Claude Code', command: 'claude', logo: 'claudecode' },
+    { id: 'codex', name: 'Codex', command: 'codex', logo: 'codex' },
+  ];
+
+  it('names and badges what the host reported, with its version', () => {
+    // The inventory is keyed by the command the host was asked about, not by
+    // catalog id — that mapping is the whole job here.
+    const out = hostAgents(catalog, { agents: { claude: '2.1.233 (Claude Code)' } });
+    expect(out).toEqual([
+      { key: 'claude', name: 'Claude Code', logo: 'claudecode', version: '2.1.233 (Claude Code)' },
+    ]);
+  });
+
+  it('still lists a command the catalog has never heard of', () => {
+    // It is installed on that machine. Dropping it would under-report the host,
+    // which is the one thing this list must not do.
+    const out = hostAgents(catalog, { agents: { mycli: '0.1' } });
+    expect(out.map((a) => a.name)).toEqual(['mycli']);
+  });
+
+  it('sorts by name so the strip does not reshuffle between reads', () => {
+    const out = hostAgents(catalog, { agents: { codex: '1', claude: '2' } });
+    expect(out.map((a) => a.name)).toEqual(['Claude Code', 'Codex']);
+  });
+
+  it('has nothing to show for a host that has not answered yet', () => {
+    // Distinct from "answered, and has none" — the caller renders neither.
+    expect(hostAgents(catalog, undefined)).toEqual([]);
   });
 });

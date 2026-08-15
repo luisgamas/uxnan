@@ -19,6 +19,10 @@
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import RemoteFolderPicker from "$lib/components/RemoteFolderPicker.svelte";
+  import * as Popover from "$lib/components/ui/popover";
+  import AgentLogo from "$lib/components/AgentLogo.svelte";
+  import { hostAgents } from "$lib/agentAvailability";
+  import { AGENT_CATALOG } from "$lib/agentCatalog";
   import { Icon } from "$lib/components/ui/icon";
   import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import KeyIcon from "@hugeicons/core-free-icons/Key01Icon";
@@ -31,7 +35,7 @@
   import type { SshHost } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { focus, icon, panel, text } from "$lib/design";
+  import { focus, icon, overlay, panel, row, text } from "$lib/design";
 
   let addOpen = $state(false);
   let importOpen = $state(false);
@@ -89,11 +93,10 @@
     if (importOpen && hosts.configAliases.length === 0) void hosts.loadConfigAliases();
   });
 
-  /** Agent ids the host reported, sorted so the line does not reshuffle
-   *  between renders. */
-  function agentNames(inventory: { agents: Record<string, string> }): string[] {
-    return Object.keys(inventory.agents).sort();
-  }
+  /** How many logos fit beside the row's three buttons before the rest collapse
+   *  into `+N`. A fixed cap rather than a measured one: this row is a fixed
+   *  width in a settings pane, and the popover carries the full list anyway. */
+  const VISIBLE_AGENTS = 5;
 
   /** Open a terminal that lives on this host and go to it. The settings screen
    *  closes, because the point of the button is the terminal, not the setting. */
@@ -155,19 +158,85 @@
               {host.user}@{host.hostname}{host.port === 22 ? "" : `:${host.port}`}
             </p>
             {#if inventory}
+              {@const found = hostAgents(AGENT_CATALOG, inventory)}
               <!-- What the machine itself reported. Only shown once it has
-                   answered, so an empty line never reads as "nothing there". -->
-              <p class={cn(text.meta, "truncate")}>
-                {[
-                  inventory.os,
-                  agentNames(inventory).length > 0
-                    ? i18n.t("hosts.agentsFound", { agents: agentNames(inventory).join(", ") })
-                    : i18n.t("hosts.agentsNone"),
-                  inventory.multiplexer || i18n.t("hosts.noMultiplexer"),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
+                   answered, so an empty line never reads as "nothing there".
+                   The agents are **logos**, not names: a row this size fits
+                   three names before truncating, and a truncated list of names
+                   is worse than no list — it looks like the host has three. The
+                   rest collapse into `+N`, and the whole strip opens a popover
+                   with every one of them, its version, and what else the machine
+                   reported. Same shape the sidebar uses for running agents. -->
+              <div class="flex min-w-0 items-center gap-2">
+                {#if found.length > 0}
+                  <Popover.Root>
+                    <Popover.Trigger
+                      class={cn(
+                        row.agentAvatarStrip,
+                        focus.ring,
+                        "flex-none gap-0.5 rounded-md px-0.5 hover:bg-foreground/[0.05]",
+                      )}
+                      aria-label={i18n.t("hosts.agentsPopoverTitle", { host: host.label })}
+                    >
+                      {#each found.slice(0, VISIBLE_AGENTS) as agent (agent.key)}
+                        <AgentLogo logo={agent.logo} class={icon.decorative} />
+                      {/each}
+                      {#if found.length > VISIBLE_AGENTS}
+                        <span class={cn(row.agentOverflow, "size-auto px-1")}>
+                          +{found.length - VISIBLE_AGENTS}
+                        </span>
+                      {/if}
+                    </Popover.Trigger>
+                    <!-- `status` width and `padding="none"`: the widest role the
+                         overlay tokens define, because the values here are a
+                         host's own version strings and some are long
+                         (`0.2.112 (9bbd559437) [stable]`). Narrower, the name
+                         truncates to make room for them — which loses the half
+                         the reader is scanning for. -->
+                    <Popover.Content width="status" padding="none" align="start">
+                      <div class="border-b border-border/60 px-3 py-2.5">
+                        <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
+                        <p class={cn(text.meta, "truncate")}>
+                          {[inventory.os, inventory.multiplexer || i18n.t("hosts.noMultiplexer")]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <!-- Versions are the reason this popover is worth opening:
+                           they were read on that machine and are shown nowhere
+                           else. `overlay.item` is the shared 36px row and
+                           `overlay.dataRow` the label/value grid that keeps a
+                           4-unit gutter between them, so a long version can never
+                           run into the name it belongs to. -->
+                      <ul class={cn(overlay.menuCompactViewport, "py-1")}>
+                        {#each found as agent (agent.key)}
+                          <li class={cn(overlay.item, "flex items-center gap-2.5")}>
+                            <AgentLogo logo={agent.logo} class={cn(icon.brand, "shrink-0")} />
+                            <span class={cn(overlay.dataRow, "min-w-0 flex-1")}>
+                              <span class="truncate" title={agent.name}>{agent.name}</span>
+                              {#if agent.version}
+                                <span
+                                  class={cn(text.meta, "truncate font-mono")}
+                                  title={agent.version}
+                                >{agent.version}</span>
+                              {/if}
+                            </span>
+                          </li>
+                        {/each}
+                      </ul>
+                    </Popover.Content>
+                  </Popover.Root>
+                {/if}
+                <p class={cn(text.meta, "min-w-0 truncate")}>
+                  {[
+                    inventory.os,
+                    found.length === 0 ? i18n.t("hosts.agentsNone") : "",
+                    inventory.multiplexer || i18n.t("hosts.noMultiplexer"),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
             {/if}
           </div>
           {#if connected}

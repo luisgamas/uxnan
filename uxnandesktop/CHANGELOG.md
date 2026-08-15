@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Settings → Hosts shows what a machine has, as logos.** The agents a host
+  reported used to be a comma-joined list of names under its address; that row
+  fits about three before truncating, and a truncated list reads as "this host
+  has three agents". They are now brand logos — the same strip the sidebar uses
+  for running agents, `+N` and all — and clicking them opens the full picture:
+  every agent, **the version that machine reported**, the OS and the multiplexer.
+  The versions were being read all along and shown nowhere. A command the
+  catalog does not know still appears under its own name, because it is installed
+  there and dropping it would under-report the host.
+
 - **A file on a host can be saved.** The editor writes it back over SFTP, so it
   works whatever shell that machine runs and needs nothing installed there. It
   writes **in place** rather than to a temp file that is renamed over the

@@ -53,3 +53,46 @@ export function agentsMissingFrom<T extends LaunchableAgent>(
   const present = new Set(Object.keys(inventory.agents).map(commandKey));
   return agents.filter((a) => !present.has(commandKey(a.command)));
 }
+
+/** One agent a host reported, ready to render. */
+export interface HostAgent {
+  /** The command as the inventory reported it, folded (`claude`). */
+  key: string;
+  /** The product's real name when the catalog knows it; the command otherwise. */
+  name: string;
+  /** Logo key for `AgentLogo`'s fallback chain. */
+  logo: string;
+  /** What that machine answered to `--version`, verbatim. Can be empty. */
+  version: string;
+}
+
+/** What a host has, as a list worth showing.
+ *
+ *  The inventory is keyed by **command** (`claude`, `agy`), which is what the
+ *  host was asked about — not by catalog id — so the names and logos are looked
+ *  up through `commandKey`. A command the catalog does not know is still listed:
+ *  it is installed there, and dropping it would under-report the machine. It
+ *  simply shows under its own name, and `AgentLogo`'s chain ends at the generic
+ *  glyph.
+ *
+ *  Sorted by display name so the strip does not reshuffle between two reads of
+ *  the same machine. */
+export function hostAgents<T extends LaunchableAgent & { name?: string; logo?: string }>(
+  catalog: readonly T[],
+  inventory: { agents: Record<string, string> } | undefined | null,
+): HostAgent[] {
+  if (!inventory) return [];
+  const known = new Map(catalog.map((a) => [commandKey(a.command), a]));
+  return Object.entries(inventory.agents)
+    .map(([command, version]) => {
+      const key = commandKey(command);
+      const match = known.get(key);
+      return {
+        key,
+        name: match?.name ?? command,
+        logo: match?.logo ?? match?.id ?? key,
+        version: version ?? "",
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}

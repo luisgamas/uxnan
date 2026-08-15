@@ -2237,7 +2237,7 @@ export const en = {
   "hosts.errRefused": "{host}: authentication was refused.",
   "hosts.errNoMethod": "{host}: accepts none of the ways we can identify you.",
 
-  "hosts.agentsFound": "agents: {agents}",
+  "hosts.agentsPopoverTitle": "Agents on {host}",
   "hosts.agentsNone": "no agents found",
   "hosts.noMultiplexer": "no multiplexer",
   "hosts.fieldIdentity": "Key file",

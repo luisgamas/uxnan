@@ -2239,7 +2239,7 @@ export const es: Record<MessageKey, string> = {
   "hosts.errRefused": "{host}: la autenticación fue rechazada.",
   "hosts.errNoMethod": "{host}: no acepta ninguna forma con la que podamos identificarte.",
 
-  "hosts.agentsFound": "agentes: {agents}",
+  "hosts.agentsPopoverTitle": "Agentes en {host}",
   "hosts.agentsNone": "sin agentes",
   "hosts.noMultiplexer": "sin multiplexor",
   "hosts.fieldIdentity": "Fichero de llave",
