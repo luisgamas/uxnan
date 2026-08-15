@@ -235,3 +235,41 @@ describe("revealFile", () => {
     expect([...fileTree.expanded]).toEqual([]);
   });
 });
+
+describe("waiting for a host", () => {
+  it("stops waiting the moment the tree is pointed at a local project", async () => {
+    // Reported with a screenshot: "waiting for this host to connect" sitting
+    // above a **local** project's folders — which had listed perfectly well.
+    // The flag survived the switch: `setRoot` cleared the error and everything
+    // else, but not this, so a host that was down kept a line on screen over a
+    // tree that has nothing to do with it.
+    backend.setCommands({
+      ssh_fs_list: () => {
+        throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
+      },
+    });
+    fileTree.setRoot("C:/on/host", "ssh:h1");
+    await settle();
+    expect(fileTree.awaitingHost).toBe(true);
+
+    fileTree.setRoot(ROOT);
+    expect(fileTree.awaitingHost).toBe(false);
+  });
+
+  it("stops waiting as soon as a listing succeeds", async () => {
+    // The other half: a tree that just listed is not waiting for anything,
+    // whatever it was doing a moment ago.
+    backend.setCommands({
+      ssh_fs_list: () => {
+        throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
+      },
+    });
+    fileTree.setRoot("C:/on/host", "ssh:h1");
+    await settle();
+    expect(fileTree.awaitingHost).toBe(true);
+
+    backend.setCommands({ ssh_fs_list: () => [] });
+    await fileTree.loadDir("C:/on/host", true);
+    expect(fileTree.awaitingHost).toBe(false);
+  });
+});

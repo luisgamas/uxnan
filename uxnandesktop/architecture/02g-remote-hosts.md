@@ -999,6 +999,14 @@ manda cuando habla de esa misma ruta (el unico caso que la ruta sola no resuelve
 la misma ruta absoluta registrada en dos maquinas). Ademas el estado "esperando"
 es imposible en local por construccion, no solo por lo que diga el error.
 
+Ese mensaje tenia **una segunda causa** con el mismo sintoma: el flag sobrevivia
+al cambio de proyecto —`setRoot` limpiaba el error y todo lo demas, pero no el—,
+asi que un host que habia estado caido dejaba su linea encima de las carpetas de
+un proyecto local que se habian listado perfectamente. Se limpia al cambiar de
+raiz y en cuanto un listado funciona: un arbol que acaba de listar no espera a
+nadie. Leccion, la misma de siempre en esta funcionalidad: **cuando un estado se
+pone, hay que decir tambien cuando se quita.**
+
 **Sin watcher, y dicho.** El sondeo de 3 s es el git de esta maquina; hacerlo
 contra un host seria un arranque de shell cada tres segundos en el ordenador de
 otro, por worktree. En remoto el boton de refrescar **es** la actualizacion y su

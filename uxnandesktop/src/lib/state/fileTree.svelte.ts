@@ -177,6 +177,11 @@ class FileTreeStore {
     this.childrenByDir = {};
     this.expanded = new Set();
     this.error = null;
+    // Whatever the previous tree was waiting for is not this tree's business.
+    // Left behind, it put "waiting for this host to connect" above a local
+    // project's folders — which had listed perfectly well — because this reset
+    // cleared the error and everything else but not this flag.
+    this.awaitingHost = false;
     this.query = "";
     this.searchScope = null;
     this.contentQuery = "";
@@ -222,6 +227,9 @@ class FileTreeStore {
       const entries = await listDirOn(this.target, dir);
       this.childrenByDir = { ...this.childrenByDir, [dir]: entries };
       this.error = null;
+      // A tree that just listed is not waiting for anything, whatever it was
+      // doing a moment ago — including the host coming back on its own.
+      this.awaitingHost = false;
     } catch (e) {
       // "The host is not connected yet" is not a failure to read about: it is
       // the ordinary state between starting the app and connecting. The tree

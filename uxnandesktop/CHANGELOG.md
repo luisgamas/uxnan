@@ -20,7 +20,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   about that same path — the one case a path alone cannot resolve, the same
   absolute path registered on two machines. The message is also ruled out
   structurally: a local worktree has no host to wait for, whatever a failure
-  claims.
+  claims. A second cause had the same symptom and is fixed too: the flag
+  survived being pointed at another project — the reset cleared the error and
+  everything else, but not this — so a host that had been down left its line
+  above a local project's folders, which had listed perfectly well. It now
+  clears when the tree changes root and whenever a listing succeeds.
 
 ### Added
 
