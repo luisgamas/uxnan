@@ -981,6 +981,36 @@ una pregunta que se responde con un numero. Mientras tanto la alternativa mas
 barata sigue anotada: **mantener un canal de shell abierto** y escribirle los
 comandos (§5.3), que quita el arranque de shell sin desplegar nada.
 
+## 5.12 Como se prueba esto contra un host de verdad — IMPLEMENTADO
+
+Hasta ahora **todas** las pruebas en vivo hablaban con el `sshd` de la maquina que
+las ejecuta, que en este proyecto siempre ha sido Windows con `cmd`. La mitad
+POSIX de esta capa —la clasificacion de `shellkind`, el script `sh -lc` del
+inventario, el `;` del script de git, las rutas SFTP que arrancan en `/`— no se
+habia ejecutado **nunca**. "Funciona en cualquier SO" era una afirmacion sin
+nada detras.
+
+`docker/ssh-test-host/` es un host Linux de verdad: Debian, `sshd`, `git`, un
+usuario con contraseña, un repositorio con un fichero sucio y una carpeta que
+**no** es repositorio, para que la insignia del selector tenga caso negativo.
+Escucha **solo en 127.0.0.1** y su contraseña es publica a proposito: no guarda
+nada.
+
+`npm run test:ssh:linux` lo levanta y corre las cinco pruebas que recorren el
+stack entero en esa maquina: autenticacion por contraseña, la clasificacion de
+shell, el inventario, SFTP (listar, leer, guardar y **acortar**), el explorador
+con su insignia, y `git status` remoto incluido el caso sin upstream. Primera
+ejecucion, todas en verde: `os=linux`, `home=/home/uxnan`, `git 2.39.5`,
+`shell=posix`, rama `main`.
+
+La contraseña, y no una llave, es deliberada: no hay material que generar,
+distribuir ni limpiar, y de paso ejercita el camino que toma un usuario la
+primera vez.
+
+**Lo que sigue sin cubrirse, y se dice:** un host **macOS**, y un host
+**Windows** como extremo remoto — el PowerShell generado se ejecuta contra un
+`pwsh` local (§5.3), que no es lo mismo que un `sshd` lanzandolo.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |

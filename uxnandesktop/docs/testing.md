@@ -58,13 +58,48 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **743 backend tests**
-in total, 708 of which run everywhere; the other 35 are ignored probes that need
-something real to talk to (26 live SSH probes against a real `sshd` — one of
-which idles for five minutes to prove the keepalive — one pwsh preflight that
-runs the generated PowerShell script through a real `pwsh`, the 7 supervised live
-GitHub tests, and the real-scheduler probe). The remaining 36 are the integration
-tests in `tests/`.
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **748 backend tests**
+in total, 708 of which run everywhere; the other 40 are ignored probes that need
+something real to talk to (31 live SSH probes — 26 against a real `sshd`, one of
+which idles for five minutes to prove the keepalive, plus **5 against a Linux
+host in a container**; see below — one pwsh preflight that runs the generated
+PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
+the real-scheduler probe). The remaining 36 are the integration tests in
+`tests/`.
+
+### A Linux host, in a container
+
+Every other live SSH test talks to the `sshd` of the machine running it — which
+on this project has always been Windows, with `cmd`. So the POSIX half of the
+remote layer (`shellkind`'s classification, the inventory's `sh -lc` script, the
+git script's `;` sequencing, SFTP paths rooted at `/`) had never executed
+anywhere, and "it works on any OS" was a claim with nothing behind it.
+
+```powershell
+cd uxnandesktop
+npm run test:ssh:linux      # builds + starts the container, then runs the suite
+npm run ssh:host:down       # when you are done
+```
+
+`docker/ssh-test-host/` is the host: Debian, `sshd`, `git`, a user with a
+password, a small git repository with a dirty file, and a folder that is *not* a
+repository so the picker's badge has a negative case. It binds **127.0.0.1
+only** and the password is public on purpose — it holds nothing.
+
+The five tests walk the whole stack on that machine: password authentication,
+the shell classification, the inventory probe, SFTP (list, read, save, and
+shortening a file), the folder picker with its repository badge, and remote
+`git status` including the no-upstream case. They are `#[ignore]` like every
+other live probe, and they **skip with a message** when the environment is not
+set, so a developer without Docker sees a reason rather than a failure.
+
+CI runs them on `ubuntu-latest`, but only when the change touches the SSH layer
+or the fixture — a container build on every unrelated UI change is how a lane
+gets ignored.
+
+**Still not covered:** a macOS host, and a *Windows* host as the remote end (the
+generated PowerShell is exercised against a local `pwsh`, which is not the same
+thing as an `sshd` launching it).
 
 The 679 passing unit tests (707 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data

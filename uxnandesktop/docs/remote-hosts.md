@@ -148,8 +148,13 @@ and that the file declaring it is reachable from your main config through
 
 ## Which machines this works with
 
-**Linux, macOS, Windows and WSL.** Most of what the app does on a host needs no
-shell at all — files, the folder picker and the tree go over **SFTP**, a
+**Linux, macOS, Windows and WSL.** Linux is the one that is *checked*: the test
+suite drives the whole remote stack against a real `sshd` in a container on every
+change to this layer (`docs/testing.md`). Windows is what this is developed
+against day to day. macOS should work — it takes the same POSIX path Linux does —
+but nobody has run it, and this page will say so until someone has.
+
+Most of what the app does on a host needs no shell at all — files, the folder picker and the tree go over **SFTP**, a
 subsystem, so they behave identically everywhere. What genuinely needs a shell
 (git, and asking what is installed) is sent in the dialect **the host itself
 reported** when it connected, never in one guessed from what it claims to be:

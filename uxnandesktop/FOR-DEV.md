@@ -28,9 +28,10 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 743 Rust tests (707 unit + 36
-integration), of which 35 are ignored probes that need something real to talk to
-(26 live SSH probes against a real `sshd`, one pwsh preflight, 7 supervised live
+always wins). 748 Rust tests (712 unit + 36
+integration), of which 40 are ignored probes that need something real to talk to
+(31 live SSH probes — 26 against a real `sshd` and 5 against a **Linux host in a
+container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,172 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
@@ -925,6 +926,22 @@ reconnecting at startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
 `architecture/02g-remote-hosts.md` §5.11.
 
+- [ ] **A host that is not Linux or Windows has still never been driven.** The
+      remote stack now runs against a real Linux `sshd` in CI
+      (`npm run test:ssh:linux`, `docs/testing.md`), and Windows is what it is
+      developed against. **macOS** takes the same POSIX path Linux does, so it
+      *should* work — nobody has run it. A second container cannot answer this
+      one; it needs a real machine or a hosted runner.
+- [ ] **A Windows machine as the *remote* end is only half-covered.** The
+      generated PowerShell is executed against a local `pwsh` (the preflight
+      test), which proves the script is valid but not that an `sshd` hands it
+      through intact. Windows containers on a Linux runner cannot do this; a
+      `windows-latest` runner with OpenSSH Server enabled could.
+- [ ] **An in-process SSH server for wire-level tests.** `russh::server` would
+      let the protocol-shaped assertions (SFTP behaviour, a channel that dies
+      mid-request, a server that answers slowly) run with no Docker and no
+      network, leaving the container for what only a real `sshd` can show. Today
+      those cases are covered by the live suite or not at all.
 - [ ] **Push a dropped session to the UI.** `ssh_hosts_connected` no longer
       lists a corpse (it filters on the transport) and a keepalive now notices a
       dead host in ~2 minutes instead of 5 — but the frontend still only finds
@@ -1430,7 +1447,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 743 Rust + 1,172 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 748 Rust + 1,179 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

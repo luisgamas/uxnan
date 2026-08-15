@@ -32,6 +32,59 @@ jobs:
     with:
       os-list: '["ubuntu-latest", "windows-latest", "macos-14"]'
 
+  # The remote-hosts feature is driven by a real `sshd` in a container, on Linux.
+  # Every other live SSH test runs against the `sshd` of the machine doing the
+  # testing — which for this project has always been Windows — so the POSIX
+  # branches of `shellkind`, of the inventory probe and of the remote git script
+  # had never actually executed anywhere. Ubuntu runners ship Docker, so this
+  # costs one short job and turns "it works on any OS" into something checked.
+  linux-ssh-host:
+    name: live SSH against a Linux host
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only when the SSH layer or its fixture changed: the suite needs a container
+    # build, and paying for it on an unrelated UI change would teach people to
+    # ignore it.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Are the SSH layer or its fixture in this change?
+        id: touched
+        run: |
+          base='${{ github.event.pull_request.base.sha || github.event.before }}'
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$base" '${{ github.sha }}'              | grep -Eq '^uxnandesktop/(src-tauri/src/ssh/|docker/ssh-test-host/|scripts/(ssh-test-host|run-linux-ssh-tests)\.mjs)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.touched.outputs.run == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.touched.outputs.run == 'true'
+        with:
+          workspaces: uxnandesktop/src-tauri
+      # The Tauri crate needs the same system libraries the verify workflow
+      # installs; without them `cargo test` cannot even link.
+      - name: System dependencies
+        if: steps.touched.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Bring up the Linux SSH host and run the live suite
+        if: steps.touched.outputs.run == 'true'
+        working-directory: uxnandesktop
+        run: npm run test:ssh:linux
+      - name: What the host said, if it failed
+        if: failure() && steps.touched.outputs.run == 'true'
+        run: docker logs uxnan-ssh-test-host || true
+      - name: Stop the host
+        if: always() && steps.touched.outputs.run == 'true'
+        working-directory: uxnandesktop
+        run: npm run ssh:host:down || true
+
   pr-comment-on-failure:
     needs: verify
     if: failure() && github.event_name == 'pull_request'

@@ -32,6 +32,11 @@ pub mod pty;
 pub mod registry;
 pub mod sftp;
 pub mod shellkind;
+// The live suite that runs this whole stack against a Linux host in a container
+// (`docker/ssh-test-host/`). Test-only: it exists to cover the POSIX branches
+// that the machine running the tests — Windows — can never reach.
+#[cfg(test)]
+mod testhost;
 
 /// Base64 (UTF-16LE) of a PowerShell script — the payload both wrappers below
 /// carry.

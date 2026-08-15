@@ -7,6 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The remote-hosts feature is now tested against a real Linux host.** Every
+  live SSH test until now talked to the `sshd` of the machine running it — which
+  has always been Windows — so the POSIX half of the remote layer had never
+  actually executed: the shell classification, the inventory's `sh -lc` script,
+  the git script's sequencing, SFTP paths rooted at `/`. "Works on any OS" was a
+  claim with nothing behind it. `npm run test:ssh:linux` now builds a small
+  Debian container with `sshd`, `git` and a repository to read, and walks the
+  whole stack on it: password authentication, shell classification, inventory,
+  SFTP (list, read, save, shorten), the folder picker with its repository badge,
+  and remote `git status` including the no-upstream case. CI runs it whenever the
+  SSH layer or the fixture changes. Still uncovered, and said out loud: a macOS
+  host, and a Windows machine as the *remote* end.
+
 - **Settings → Hosts shows what a machine has, as logos.** The agents a host
   reported used to be a comma-joined list of names under its address; that row
   fits about three before truncating, and a truncated list reads as "this host
