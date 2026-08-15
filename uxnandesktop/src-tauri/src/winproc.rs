@@ -14,6 +14,10 @@
 //! Use [`command`] instead of `tokio::process::Command::new` for any child the
 //! app spawns. PTY-hosted shells are unaffected: they run under ConPTY, which is
 //! already windowless. The flag is a no-op off Windows.
+//!
+//! It is also where a child is stripped of the terminal identity this process may
+//! have inherited ([`crate::launchenv`]) — a one-shot agent run is not the agent
+//! of the terminal the app was launched from, and must never report as one.
 
 use std::ffi::OsStr;
 
@@ -24,15 +28,14 @@ use tokio::process::Command;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Build a [`tokio::process::Command`] for `program` that never pops a console
-/// window on Windows. Behaves exactly like `Command::new(program)` everywhere
-/// else.
+/// window on Windows, and that does not carry this process's inherited terminal
+/// identity (see [`crate::launchenv`]). Behaves like `Command::new(program)`
+/// otherwise; a caller that means to pass its own coordinates sets them itself.
 pub fn command<S: AsRef<OsStr>>(program: S) -> Command {
-    #[cfg(windows)]
     let mut cmd = Command::new(program);
-    #[cfg(not(windows))]
-    let cmd = Command::new(program);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
+    crate::launchenv::scrub_command(&mut cmd);
     cmd
 }
 
@@ -47,5 +50,24 @@ mod tests {
         // Windows the `creation_flags` call must also compile and not panic.
         let cmd = command("git");
         assert_eq!(cmd.as_std().get_program(), OsStr::new("git"));
+    }
+
+    #[test]
+    fn every_child_is_stripped_of_inherited_terminal_identity() {
+        // The one spawn helper every child goes through is also the one place
+        // that guarantees none of them can impersonate a terminal (`launchenv`).
+        let cmd = command("git");
+        let removed: Vec<String> = cmd
+            .as_std()
+            .get_envs()
+            .filter(|(_, v)| v.is_none())
+            .map(|(k, _)| k.to_string_lossy().into_owned())
+            .collect();
+        for key in crate::launchenv::PER_TERMINAL_KEYS {
+            assert!(
+                removed.contains(&key.to_string()),
+                "{key} survives the spawn"
+            );
+        }
     }
 }

@@ -39,7 +39,8 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`updater.rs`, `which.rs`, `pets.rs`, `datadir.rs`); **integration** tests go in
+`launchenv.rs`, `updater.rs`, `which.rs`, `pets.rs`, `datadir.rs`);
+**integration** tests go in
 `src-tauri/tests/` and may use only the crate's public surface, which is what
 keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
@@ -48,7 +49,10 @@ instead of panicking, nothing written outside its own root, and a path with
 spaces and non-ASCII characters; `resources_processes.rs` (3 tests) drives the
 resource monitor against **real spawned process trees** — live attribution, the
 start-time probe agreeing with the full table read, and the orphan flow (owner
-closed, child survives, cleared when it ends); `github_cli.rs` (12 tests) drives the
+closed, child survives, cleared when it ends); `launch_env.rs` (1 test) proves a
+**real spawned child** cannot see the terminal identity this process inherited —
+it dumps the child's environment before and after the scrub, so the first half
+proves the leak exists and the second proves it is closed; `github_cli.rs` (13 tests) drives the
 **production GitHub layer through real child processes** — a scripted stand-in
 `gh` on `PATH` answers with the shapes recorded in
 `tests/fixtures/github/mutation-outcomes.json` (each with its provenance), so
@@ -58,13 +62,13 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **776 backend tests**
-in total, 730 of which run everywhere; the other 46 are ignored probes that need
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **782 backend tests**
+in total, 736 of which run everywhere; the other 46 are ignored probes that need
 something real to talk to (37 live SSH probes — 26 against a real `sshd`, one of
 which idles for five minutes to prove the keepalive, plus **11 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
 PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
-the real-scheduler probe). The remaining 36 are the integration tests in
+the real-scheduler probe). The remaining 37 are the integration tests in
 `tests/`.
 
 ### A Linux host, in a container
@@ -124,7 +128,7 @@ gets ignored.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 701 passing unit tests (740 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 706 passing unit tests (745 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -146,8 +150,11 @@ parsing, path-traversal refusal, and the import copy staying scoped to the
 manifest + its spritesheet), and the resource monitor (`resources.rs`: cadence
 resolution, pid+start-time attribution, CPU/I-O delta honesty, buffer bounds,
 orphan detection, the configurable history budget's clamp/trim, and the export
-sanitizer's golden + schema-allow-list tests), plus the resource-mode settings
-block (defaults, back-compat, camelCase round trip).
+sanitizer's golden + schema-allow-list tests), the resource-mode settings
+block (defaults, back-compat, camelCase round trip), and the per-terminal
+identity scrub (`launchenv.rs`: every key `pty_create` injects is on the list,
+the overrides a human sets are not, a spawned command carries none of them, and
+an explicit value still wins over the scrub).
 
 ## Frontend (Svelte / TypeScript)
 

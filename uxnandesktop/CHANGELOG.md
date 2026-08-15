@@ -4,6 +4,26 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An agent nobody launched no longer appears on a terminal.** The coordinates
+  the ADE injects into every terminal it spawns (`UXNAN_AGENT_ID` + the hook
+  server's url/token, and the browser / MCP endpoints) identify **one terminal of
+  one launch**, but environment variables are inherited by the whole process tree
+  — so an app started *from inside a uxnan terminal*, which is exactly what
+  `npm run tauri dev` is, picked up the installed app's hook server and the id of
+  the terminal it was launched from. Every CLI it then ran headless (an AI commit
+  message, a conversation title, an automation step) inherited them too and its
+  own hook reported to the *other* app claiming to be that terminal: a phantom
+  agent card on a terminal that had only ever run a dev server, counted in its
+  unread and needs-you badges, with a provider session stamped on the tab that a
+  later restore would have tried to resume. Those keys are now dropped from the
+  app's own environment at startup and from every child it spawns, so a one-shot
+  run reports as what it is — nothing. Overrides a human sets on purpose
+  (`UXNAN_DATA_DIR`, `UXNAN_SHELL`) are untouched. The **bridge** carried the
+  same leak from the other direction — a `uxnan-bridge start` run inside an ADE
+  terminal handed that terminal's identity to every agent CLI it spawned — and
+  is fixed in the same change (`bridge/CHANGELOG.md`).
 
 ### Fixed
 

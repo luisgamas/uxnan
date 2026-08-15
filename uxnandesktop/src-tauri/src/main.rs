@@ -2,6 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // First thing, before any thread exists: drop the terminal identity this
+    // process may have inherited. Launched from inside a uxnan terminal (which is
+    // what `npm run tauri dev` is), the app would otherwise hand every CLI it
+    // spawns that terminal's `UXNAN_AGENT_ID` + the other app's hook coordinates,
+    // and those runs would report as an agent the user never launched. See
+    // `launchenv`.
+    uxnan_desktop_lib::launchenv::scrub_process();
+
     // Automations must fire while the app is closed, so the binary has a second
     // life as a headless runner: with `--automation-run <id>` it executes that
     // automation on a plain Tokio runtime and exits, never building a window or a

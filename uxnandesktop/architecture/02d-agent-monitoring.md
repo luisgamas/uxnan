@@ -116,6 +116,21 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   **Endpoint file:** el servidor escribe `endpoint.env`/`endpoint.cmd` (url+token
   vivos) al arrancar e inyecta `UXNAN_ENDPOINT_FILE`; cada reporter lo prefiere,
   así una terminal que sobrevive a un reinicio del ADE alcanza al servidor vivo.
+  **Identidad por terminal, jamás heredada (invariante):** `UXNAN_AGENT_ID` +
+  las coordenadas del servidor (y los endpoints de browser/MCP) identifican **una
+  terminal de un lanzamiento**, pero las variables de entorno bajan por todo el
+  árbol de procesos. Un ADE arrancado *desde* una terminal de otro ADE — que es
+  literalmente `npm run tauri dev` — heredaba el servidor de hooks del otro y el
+  id de esa terminal, y se los pasaba a cada CLI que ejecuta en headless
+  (`agentrun`: mensaje de commit IA, título de conversación, paso de
+  automatización), cuyo propio hook reportaba al **otro** ADE haciéndose pasar
+  por esa terminal: tarjeta de un agente que nadie lanzó, con su sesión estampada
+  en el tab y un `resume` esperando a la siguiente restauración. Por eso el
+  proceso se limpia de esas claves al arrancar y cada hijo que spawnea también
+  (`launchenv.rs`, aplicado en `winproc::command`): una ejecución one-shot no
+  pertenece a ninguna terminal y no debe reportar como si lo fuera. Los overrides
+  que un humano fija a propósito (`UXNAN_DATA_DIR`, `UXNAN_SHELL`) quedan fuera
+  de la lista.
   **Settings → Agents → Hooks** expone un **switch por agente** — una fila de
   ajustes por CLI, agrupadas en «en este equipo» y el resto — que instala
   (mergeando de forma idempotente, marcando lo gestionado por el nombre del
