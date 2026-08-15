@@ -565,6 +565,7 @@ export class AgentManager {
     }
 
     const agentText = await this.#resolveTurnText(adapter, turn, turnId);
+    await this.#restoreAgentSession(threadId, agentId, adapter);
 
     await adapter.sendTurn({
       threadId,
@@ -689,6 +690,24 @@ export class AgentManager {
           titleSource: 'agent',
         } satisfies ThreadRenamedParams),
       );
+      // Then mirror the name onto the agent's own session when its CLI keeps
+      // one, so the same conversation is recognizable in that agent's client
+      // rather than untitled (Codex today). After the notification, never
+      // before it: this can spawn a process, and the phone should not wait for
+      // that to see the new name. Optional adapter capability, read through a
+      // structural type like `nativeSessionId`, and never fatal.
+      const nameable = adapter as unknown as {
+        setNativeTitle?(threadId: string, title: string): Promise<void>;
+      };
+      if (nameable.setNativeTitle) {
+        try {
+          await nameable.setNativeTitle(threadId, updated.title);
+        } catch (err) {
+          this.#options.logger.warn(
+            `could not mirror the name of thread ${threadId} onto ${agentId}: ${String(err)}`,
+          );
+        }
+      }
     } catch (err) {
       this.#options.logger.warn(`could not name thread ${threadId}: ${String(err)}`);
     }
@@ -1389,6 +1408,41 @@ export class AgentManager {
     } catch (err) {
       this.#options.logger.warn(
         `persist agent session failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * The mirror of {@link AgentManager.#persistAgentSession}: hand the persisted
+   * native session id back to the adapter before a turn runs, so a conversation
+   * continues in the SAME agent session after the bridge restarts instead of
+   * silently starting a new one (the phone would keep its history — read off
+   * the agent's own transcript — while the agent had lost the context).
+   *
+   * Optional adapter capability (`adoptNativeSession`), read structurally like
+   * `nativeSessionId`; an adapter that already knows the thread ignores it. The
+   * id is only offered when the stored session belongs to the SAME agent — a
+   * thread switched to another agent must not inherit the previous one's id.
+   */
+  async #restoreAgentSession(
+    threadId: string,
+    agentId: AgentId,
+    adapter: IAgentAdapter,
+  ): Promise<void> {
+    const adoptable = adapter as unknown as {
+      adoptNativeSession?(threadId: string, sessionId: string): void;
+      nativeSessionId?(threadId: string): string | undefined;
+    };
+    if (!adoptable.adoptNativeSession) return;
+    if (adoptable.nativeSessionId?.(threadId)) return; // already live in this process
+    try {
+      const source = await this.#options.store.getHistorySource(threadId);
+      if (!source.agentSessionId || source.agentId !== agentId) return;
+      adoptable.adoptNativeSession(threadId, source.agentSessionId);
+    } catch (err) {
+      // Best-effort: without it the turn simply starts a new agent session.
+      this.#options.logger.warn(
+        `restore agent session failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

@@ -1595,7 +1595,7 @@ abstract class AppLocalizations {
   /// No description provided for @sessionInfoResumeHint.
   ///
   /// In en, this message translates to:
-  /// **'Resume this conversation from the agent\'s CLI on your PC.'**
+  /// **'Resume this conversation from the agent\'s CLI or desktop app on your PC, while it isn\'t running a turn here.'**
   String get sessionInfoResumeHint;
 
   /// No description provided for @sessionInfoCopied.

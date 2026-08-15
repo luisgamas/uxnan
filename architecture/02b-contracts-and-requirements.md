@@ -564,7 +564,8 @@ concreto depende del adaptador:
 - **Claude Code** — `--settings` inyecta un hook `PreToolUse` que
   hace `POST /agent-hook/approval` a la LAN server del bridge; el
   bridge reenvía al teléfono por el canal central.
-- **Codex** — protocolo JSON-RPC `codex app-server` (long-lived):
+- **Codex** — protocolo JSON-RPC `codex app-server` (un proceso por
+  turno; ver 02a §5.8.8):
   elicitaciones `item/commandExecution|fileChange|permissions/
   requestApproval`, `mcpServer/elicitation/request`,
   `item/tool/requestUserInput` (+ legacy `applyPatchApproval`,

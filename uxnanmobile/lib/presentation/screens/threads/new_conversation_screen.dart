@@ -788,8 +788,9 @@ class _AgentLeading extends StatelessWidget {
 /// Model picker. A tappable field that opens the shared [ModelPickerSheet]
 /// (lazy, searchable, grouped by provider) rather than an inline dropdown —
 /// agents like pi/OpenCode report hundreds of models, which made an inline
-/// `DropdownMenu` janky to build. Shows the selected model id (or a hint), with
-/// a spinner while the bridge's model list is still loading.
+/// `DropdownMenu` janky to build. Shows the selected model the way the sheet
+/// itself does — readable name over routing id, so the provider stays visible —
+/// or a hint, with a spinner while the bridge's model list is still loading.
 class _ModelField extends StatelessWidget {
   const _ModelField({
     required this.controller,
@@ -824,8 +825,15 @@ class _ModelField extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     final loading = models?.isLoading ?? false;
-    final hasModel = controller.text.isNotEmpty;
+    final modelId = controller.text;
+    final hasModel = modelId.isNotEmpty;
     final tappable = enabled && agentId != null && !loading;
+    // The readable name the bridge reports for the picked id, falling back to
+    // the id itself while the list loads, offline, or when the agent reports no
+    // separate name (pi/OpenCode `provider/model` ids already read as one).
+    final label =
+        models?.value?.firstWhereOrNull((m) => m.id == modelId)?.displayName ??
+            modelId;
 
     return Material(
       color: colors.surfaceContainerHighest,
@@ -849,13 +857,34 @@ class _ModelField extends StatelessWidget {
               ),
               const SizedBox(width: UxnanSpacing.md),
               Expanded(
-                child: Text(
-                  hasModel ? controller.text : l10n.newThreadModelHint,
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: hasModel ? null : colors.onSurfaceVariant,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: !hasModel
+                    ? Text(
+                        l10n.newThreadModelHint,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            style: textTheme.bodyMedium,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          // Only when it says something the name doesn't.
+                          if (label != modelId)
+                            Text(
+                              modelId,
+                              style: UxnanTypography.codeSmall.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
               ),
               const SizedBox(width: UxnanSpacing.sm),
               if (loading)

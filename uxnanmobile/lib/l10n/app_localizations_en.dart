@@ -884,7 +884,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sessionInfoResumeHint =>
-      'Resume this conversation from the agent\'s CLI on your PC.';
+      'Resume this conversation from the agent\'s CLI or desktop app on your PC, while it isn\'t running a turn here.';
 
   @override
   String get sessionInfoCopied => 'Copied to clipboard';

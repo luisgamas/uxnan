@@ -42,7 +42,9 @@ class Thread extends Equatable {
   /// Path of the git worktree backing this thread, if any.
   final String? worktreePath;
 
-  /// Model the thread's agent runs (bridge wire id / display name), if known.
+  /// Model the thread's agent runs, if known: the **routing id** the agent CLI
+  /// expects (`agent/models` `id`), not the readable name — resolve that with
+  /// `threadModelLabelProvider` before showing it.
   final String? model;
 
   /// Local-vs-bridge synchronization state.

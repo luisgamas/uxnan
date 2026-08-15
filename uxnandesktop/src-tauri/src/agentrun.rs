@@ -59,6 +59,9 @@ pub struct HeadlessResult {
 /// `timeout_ms` overrides [`DEFAULT_TIMEOUT`]. A non-zero exit is **not** an
 /// error here (it's returned in `exit_code` so the engine can decide); only a
 /// spawn failure, timeout, or an unsupported/uninstalled agent is an `Err`.
+/// `extra` are CLI arguments beyond the model and the autonomy posture, placed
+/// before the prompt (see [`agentcli::build_args`]) — how the title runner pins
+/// Codex to its lowest reasoning effort.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_headless(
     agent_id: &str,
@@ -67,6 +70,7 @@ pub async fn run_headless(
     cwd: &str,
     timeout_ms: Option<u64>,
     autonomous: bool,
+    extra: &[String],
 ) -> Result<HeadlessResult, AppError> {
     let Some(resolved) = agentcli::resolve(agent_id) else {
         return Err(AppError::Agent(format!(
@@ -82,7 +86,13 @@ pub async fn run_headless(
     // is what a chained step planting a previous step's full output needs.
     match agentcli::prompt_delivery(agent_id) {
         agentcli::PromptDelivery::Stdin => {
-            let args = build(agent_id, model, agentcli::PromptSource::Stdin, autonomous)?;
+            let args = build(
+                agent_id,
+                model,
+                agentcli::PromptSource::Stdin,
+                autonomous,
+                extra,
+            )?;
             run(&resolved, &args, cwd, timeout, Some(prompt)).await
         }
         agentcli::PromptDelivery::File => {
@@ -92,6 +102,7 @@ pub async fn run_headless(
                 model,
                 agentcli::PromptSource::File(&file.path_str),
                 autonomous,
+                extra,
             )?;
             // The file must outlive the run; `PromptFile` removes it on drop.
             run(&resolved, &args, cwd, timeout, None).await
@@ -103,6 +114,7 @@ pub async fn run_headless(
                 model,
                 agentcli::PromptSource::Argv(&capped),
                 autonomous,
+                extra,
             )?;
             run(&resolved, &args, cwd, timeout, None).await
         }
@@ -114,8 +126,9 @@ fn build(
     model: &str,
     prompt: agentcli::PromptSource<'_>,
     autonomous: bool,
+    extra: &[String],
 ) -> Result<Vec<String>, AppError> {
-    agentcli::build_args(agent_id, model, prompt, autonomous)
+    agentcli::build_args(agent_id, model, prompt, autonomous, extra)
         .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent_id}'")))
 }
 
@@ -231,7 +244,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_agent_errors_without_spawning() {
-        let err = run_headless("definitely-not-an-agent", "", "hi", "", None, false)
+        let err = run_headless("definitely-not-an-agent", "", "hi", "", None, false, &[])
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::Agent(_)));

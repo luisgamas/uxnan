@@ -28,15 +28,42 @@ const TITLE_TIMEOUT: Duration = Duration::from_secs(45);
 /// Naming is a trivial task and must not spend the quota of the model the user
 /// is actually working with. An agent missing from this list runs on its CLI
 /// default (`""`), which is still correct — just not necessarily the cheapest.
+///
+/// **Every id here has a twin in the bridge**, which names the phone's
+/// conversations the same way (`claude-adapter.ts` `TITLE_MODEL`,
+/// `codex-adapter.ts` `CODEX_TITLE_MODEL`, `antigravity-adapter.ts`
+/// `ANTIGRAVITY_TITLE_MODEL`). Move both halves together, or one app keeps
+/// paying for a tier the other one dropped.
 fn title_model(agent_id: &str) -> &'static str {
     match agent_id {
         "claude" => "haiku",
         // Verified against the account's real `model/list` (codex) and
         // `agy models`. A wrong id is not a cosmetic mistake here: the CLI
         // rejects the run and the session silently keeps its old label.
-        "codex" => "gpt-5.4-mini",
+        //
+        // Luna is the cheapest of Codex's line on both halves of the bill —
+        // $0.20/$1.20 per 1M tokens against the mini tier's $0.75/$4.50 — and
+        // measured on a real title it also spent *fewer* tokens (13.4k vs
+        // 18.3k), so it is roughly 5× cheaper per name.
+        "codex" => "gpt-5.6-luna",
         "agy" => "gemini-3.6-flash-low",
         _ => "",
+    }
+}
+
+/// Extra flags pinning the title run to the cheapest reasoning tier its CLI
+/// offers, empty for the CLIs with no such knob.
+///
+/// This matters most on the model picked for being cheap: Luna's own default
+/// effort is `medium`, and reasoning tokens are exactly what could make a cheap
+/// model cost more than an expensive one on a task this small. Codex validates
+/// the config key, so a typo fails the run instead of quietly naming on the
+/// default tier. Claude's `haiku` and Antigravity's `-low` id carry their tier
+/// already.
+fn title_effort_args(agent_id: &str) -> Vec<String> {
+    match agent_id {
+        "codex" => vec!["-c".to_string(), "model_reasoning_effort=low".to_string()],
+        _ => vec![],
     }
 }
 
@@ -130,6 +157,7 @@ pub async fn generate(agent_id: &str, transcript: &str, cwd: &str) -> Result<Str
         Some(TITLE_TIMEOUT.as_millis() as u64),
         // A title is read-only work: never let it act on the workspace.
         false,
+        &title_effort_args(agent_id),
     )
     .await
     .inspect_err(|e| fail(agent_id, &format!("could not run the CLI: {e}")))?;
@@ -303,11 +331,44 @@ agent: the token expired",
     #[test]
     fn the_title_model_is_the_cheap_tier_where_we_know_one() {
         assert_eq!(title_model("claude"), "haiku");
-        assert_eq!(title_model("codex"), "gpt-5.4-mini");
+        assert_eq!(title_model("codex"), "gpt-5.6-luna");
         assert_eq!(title_model("agy"), "gemini-3.6-flash-low");
         // An agent whose cheap tier we cannot name falls back to its CLI
         // default rather than guessing an id the CLI would reject.
         assert_eq!(title_model("opencode"), "");
         assert_eq!(title_model("unknown"), "");
+    }
+
+    #[test]
+    fn the_title_run_pins_the_lowest_reasoning_effort_it_can() {
+        // Luna is picked for being cheap and defaults to `medium` effort, so
+        // the tier has to be said out loud or the saving is spent on thinking.
+        assert_eq!(
+            title_effort_args("codex"),
+            vec!["-c".to_string(), "model_reasoning_effort=low".to_string()]
+        );
+        // The others carry their tier in the model id itself (`haiku`,
+        // `gemini-3.6-flash-low`) or expose no knob at all.
+        for id in ["claude", "agy", "opencode", "grok", "zero", "pi", "unknown"] {
+            assert!(title_effort_args(id).is_empty(), "{id}");
+        }
+    }
+
+    #[test]
+    fn the_title_flags_land_before_the_prompt() {
+        // A flag after the prompt is ignored by some CLIs and swallowed into
+        // the prompt by others, so the effort override must precede it.
+        let args = crate::agentcli::build_args(
+            "codex",
+            title_model("codex"),
+            crate::agentcli::PromptSource::Argv("name this"),
+            false,
+            &title_effort_args("codex"),
+        )
+        .unwrap();
+        assert_eq!(args.last().unwrap(), "name this");
+        let c = args.iter().position(|a| a == "-c").unwrap();
+        assert_eq!(args[c + 1], "model_reasoning_effort=low");
+        assert!(c < args.len() - 1);
     }
 }

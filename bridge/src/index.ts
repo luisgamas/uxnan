@@ -124,6 +124,7 @@ export { resolvePiBinary, type ResolvedPi } from './adapters/resolve-pi.js';
 export {
   AntigravityAdapter,
   antigravityPermissionMode,
+  normalizeAntigravityModel,
   parseAntigravityModelList,
   permissionArgs as antigravityPermissionArgs,
   type AntigravityAdapterOptions,

@@ -221,6 +221,8 @@ async fn run_agent(
         cwd,
         Some(GENERATE_TIMEOUT.as_millis() as u64),
         false,
+        // The user picked this model themselves; its own effort default stands.
+        &[],
     )
     .await?;
 

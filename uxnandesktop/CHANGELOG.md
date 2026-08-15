@@ -68,6 +68,108 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   above a local project's folders, which had listed perfectly well. It now
   clears when the tree changes root and whenever a listing succeeds.
 
+- **A disconnected host's file tree stops pretending.** Disconnect a host and the
+  Files panel kept showing that machine's folders — no message, no hint, a tree
+  that was quietly a memory: a folder already loaded is never listed again, so
+  nothing ever noticed the session had gone. It now goes back to the same
+  "waiting for this host" state a cold start has, and fills itself in again when
+  the host returns. Handled where the whole live set is known, so a session that
+  ends on its own is caught by the same path as one the user closed.
+
+- **uxnan no longer names a shell for your host.** A terminal already asked the
+  host's `sshd` for *a* shell and let that machine choose — but one thing still
+  named one: the probe that asks what a host has installed ran `powershell`,
+  which is Windows PowerShell **5.1**. On a machine whose owner had installed
+  PowerShell 7, that started an older engine inside the one already running. Now
+  a host whose shell *is* PowerShell runs the script **in that PowerShell**,
+  whichever version it is, with no interpreter named at all; only a cmd host
+  needs one named, and there `pwsh` is asked for first with 5.1 as the fallback.
+  The probe also takes the shell the host reported when it connected instead of
+  trying POSIX and falling back, so a Windows host stops paying for a failed
+  command before the real one — about two seconds per connection.
+
+- **Browsing a host's folders is no longer slow.** The picker asked the host's
+  *shell* to list a directory — and tried POSIX first, so a Windows host paid for
+  **two** remote commands per click, each one starting a shell and its profile
+  over there. It now goes the same way the file tree already did, over SFTP: the
+  same listing measured **6.6 ms** instead of 336 ms against this machine's own
+  `sshd`, and on a real host across a tailnet each of those commands had been
+  measured at 2.1 s. The repository badge survives the move because the `.git`
+  checks **pipeline on the one open channel** — 63 folders cost 3.3 ms asked
+  together against 44 ms one after another — and they use no extra channels, so
+  browsing no longer eats into the host's session limit either.
+
+  Two things only running it could show: a Windows host answers SFTP's
+  `realpath(".")` with `/C:/Users/you`, which is unusable as a project path and
+  is now corrected; and the badge is decided by `.git` **existing**, because in a
+  worktree it is a file rather than a folder — asserted against a real worktree.
+  One trade-off, stated rather than hidden: a host with the `sftp` subsystem
+  disabled can no longer be browsed. The file tree already required it.
+
+- **A project on a host no longer wears a "folder is missing" warning.** The
+  check ran `is_dir` on *this* machine against the other machine's path, so a
+  perfectly healthy remote project was marked as gone — while its neighbour on a
+  second host escaped only because that host happened to be this same PC, which
+  made the warning look selective rather than wrong. This machine's filesystem
+  cannot answer for another one, so it no longer tries; asking the host itself is
+  recorded as the follow-up.
+
+- **Project cards can be dragged again.** Their identity region — the icon and
+  the name, which is the whole card — is a button so the keyboard can reach it,
+  and the reorder gesture refuses to start on a control, so pressing anywhere a
+  user would press did nothing. (The worktree rows underneath dragged fine,
+  which is what made it look like the cards had lost the feature.) A control that
+  *is* its row can now be marked as that row's drag handle; a row's action
+  buttons still stay buttons.
+
+- **Adding a second host no longer freezes the app.** Connecting one while
+  another was busy left Settings spinning, and removing it spun too. The cause
+  was not SSH being slow: the registry of live sessions was held **across** the
+  network by nearly every remote call, and it is a fair lock — so the write a
+  connect needs queued behind whatever call was mid-round-trip, and every later
+  read queued behind that write. One ~2s remote command was enough to stall the
+  connected list, the git panels, the file tree and the Settings dialog at once.
+  Callers now take their connection and release the lock before they say a word
+  to the host, which a live test holds them to. A remote command also cannot run
+  forever any more: a host that stops answering fails after 60 seconds with a
+  message saying so, instead of leaving whatever asked waiting for good.
+
+- **A host is only reconnected at startup when reaching it asks nothing.** The
+  first version of this trusted "did not need a password last time" — which a
+  host registered five seconds ago also reports, because that mark is only
+  written once a host has been connected. Reaching one whose key is not on file
+  can only end in the trust prompt, so the app would have raised it by itself
+  while still opening. The backend now decides, and it checks both halves.
+
+- **A host is no longer dropped for being quiet.** An SSH connection carries
+  nothing while a shell sits at its prompt, so a host nobody had typed at was
+  reaped after five minutes of silence — and a host that had really gone away
+  took those same five minutes to be noticed, with its terminals looking alive
+  against a machine that was not there. uxnan now asks every 30 seconds and
+  gives up after three unanswered asks, which is where mature SSH clients land
+  (OpenSSH ships this **off**; the guidance for editors holding long sessions is
+  30–60s with 3–5 misses). It also keeps a NAT or firewall from closing an idle
+  connection. Proven by a test that idles longer than the old timeout and then
+  uses the connection.
+
+- **A dialog's action band no longer hangs past the dialog.** The content area
+  is a grid whose single track grows to the widest thing in it — and that is the
+  row of buttons, so the unsaved-changes prompt's three Spanish labels (370px)
+  stretched the band to 410px inside a 384px dialog, leaving 26px of grey
+  sticking out past the rounded corner. The band is now allowed to be narrower
+  than its own buttons, in the shared token rather than at one call site, so
+  every dialog in the app is covered by the same fix. That prompt also moves to
+  the medium width: three actions need 370px and the confirmation width offers
+  344. Measured in a browser against the built stylesheet — reading the CSS gave
+  the wrong answer twice.
+
+- **Three dialogs stop printing their title against the top edge.** Remove
+  worktree, close-several-worktrees and import-pets opened with a plain row
+  instead of `Dialog.Header`, and the dialog's top inset lives in that header —
+  so they had no top padding at all. The pets dialog also had its buttons in a
+  bare row rather than the shared footer, which is why it had no bottom padding
+  either; both ends are now the same as every other dialog.
+
 ### Added
 
 - **A host that drops comes back on its own.** Only the ones that can: the same
@@ -259,6 +361,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   fewer bytes than were sent is reported instead of leaving the editor showing
   text the host does not have. Saving is refused, with the host named, while
   that host is disconnected.
+
 - **Hosts come back on their own at startup.** A host that let uxnan in without
   asking for anything is reconnected when the app starts, so a project on it has
   its files, its branch and its terminal without opening Settings first. A host
@@ -271,6 +374,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   naming the machine it lives on — only on projects that are *not* on this one,
   because a badge on every card is noise on the 90% that are local, and its
   absence is already the answer.
+
 - **Folders on a host can be browsed, and one can become a project.** There is no
   filesystem to walk on another machine, only a shell, so the host is asked to
   enumerate a directory and the answer is parsed — one command with delimited
@@ -281,6 +385,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   it. Whether the folder is a git repository is asked of the host too — only it
   can answer, and guessing wrong would leave a real repository with permanently
   empty git panels.
+
 - **Selecting a host's project now means that machine, everywhere.** Clicking one
   opened a terminal *here*, in this PC's home, and filled the right panel with an
   i/o error and a branch of "(detached)" — every layer had been handed a path
@@ -289,6 +394,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   every entry point — the card, `+`, a split, a quick command, the launcher — is
   right without each having to remember. The shell lands in the project's folder
   on the host, where that folder exists.
+
 - **A project on a host says what it cannot show, instead of showing the wrong
   thing.** Files, changes, history and GitHub are read with this machine's
   filesystem and git; on a host they now stand down and the panel names the
@@ -297,12 +403,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   was never an empty panel but a folder of the same name *here* answering
   confidently for someone else's repository. Reading git and files over SSH is a
   later phase.
+
 - **A worktree row's indicators end at the panel's right edge.** Completion, pin,
   unread, terminals, git status and PR trailed the branch name into the middle of
   the row. A worktree row has no hover actions competing for that edge — unlike
   the project header, whose indicators stay beside its name so the actions still
   have their place — so the name now takes the free width and the indicators sit
   where the eye looks for them, at any panel width.
+
 - **A debug build no longer shares its data with the installed app.** It writes
   to a `…-dev` profile beside the real one. They are the same product but not
   the same code, and serde drops fields it cannot name — so every save from the
@@ -311,6 +419,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project living on one, repeatedly, and each time it read as the app losing its
   own settings. A dev build now starts empty, and launching it no longer
   relaunches the agents of your everyday session.
+
 - **A file on a host opens without a git error, and cannot be half-saved.**
   Opening one showed an empty "Changes" view and raised `git error: cannot change
   to …` over it, because the editor asked *this* machine's git about a path on
@@ -320,11 +429,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   either fails or — the reason this is a guard and not a `catch` — writes a file
   of that name **here** while the editor reports success. Writing over SFTP is
   next.
+
 - **A file tree waits for its host instead of showing an error.** Open the app
   before connecting and the panel said "connect to this host before reading its
   files" and kept saying it until you switched projects and back — nothing
   retried, because the failed root never entered the loaded set. It now says it
   is waiting, and fills itself in the moment that host connects.
+
 - **A terminal that could not reach its host starts when the host connects.** It
   writes the reason into the pane and stays — deliberately, so the reason can be
   read — but once the host was up that pane held an explanation of a condition
@@ -332,6 +443,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   restarts itself, like the file tree beside it. Only terminals that *failed to
   start* are touched: one the user closed, or whose shell exited on its own, is
   left exactly as it is.
+
 - **The file panel survives the host ending its file channel.** A connection
   carries one channel per terminal and one for files; when the host ended the
   file one, every folder answered `could not list … : session closed` — for good,
@@ -345,11 +457,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   permission — is still reported at once, unretried. And a tree that could not be
   read no longer adds "This folder is empty." underneath the reason: nobody
   looked in that folder.
+
 - **A connection that has ended stops claiming to be connected.** Connect
   returned "already connected" for a session whose transport was gone, so a host
   could sit there looking connected while nothing on it worked and pressing
   Connect changed nothing. A dead session is now let go — with the shell and the
   file session that belonged to it — and the host is reached again.
+
 - **A host's project shows its real branch and how dirty it is.** Git has to be
   *run*, so this one does go through the host's shell — the one it reported when
   it connected, with every argument quoted for it. Branch, change count and
@@ -360,6 +474,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   only a live test could find: chaining with `&&` let a branch without an
   upstream swallow the rest of the reply, and the distance line can be missing
   entirely.)
+
 - **A project on a host now has its files.** The Files tab lists and opens them
   over **SFTP** — an SSH subsystem, so the same code path serves a host running
   cmd, PowerShell, WSL or Git Bash, and nothing has to be installed there. It is
@@ -369,6 +484,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   walks *this* filesystem, so it would answer "no matches" to everything — the
   action is not offered instead of offered broken), no automatic refresh, and no
   writing yet. Changes, History and GitHub still stand down on a host and say so.
+
 - **An agent launched on a host is quoted for that host's shell.** The command
   line is typed into a shell, and which shell it is decided the quoting — but the
   code asked *this* machine (`currentOS()`), so a Windows desktop driving a POSIX
@@ -377,11 +493,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   an unrecognisable one falls back to what that host's inventory says it runs
   rather than to a default. A remote tab also stops recording a local shell it
   never used.
+
 - **The launcher offers the agents the host actually has.** The configured list
   describes this machine, and a host has its own CLIs — which is the reason for
   running the work there. A host that has reported its inventory now filters the
   list; one that has not been asked yet changes nothing, because absence of an
   inventory is not absence of agents.
+
 - **Closing one terminal no longer closes its neighbour.** Two terminals in a
   workspace, close one, both disappear — while the survivor's shell went on
   running on the far machine, which is what made it look like the backend
@@ -393,6 +511,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   renders nothing. Removal now happens before the backend round trip, and the
   event path only ever removes a region when removing *its own* tab is what
   empties it. Reproduced in a test first: it fails without the fix.
+
 - **uxnan asks a host which shell it runs, instead of assuming one.** A terminal
   is placed in its project's folder by typing a `cd`, and the families share no
   syntax: the first version sent cmd syntax, so a machine whose sshd starts
@@ -405,6 +524,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a terminal that opens in the home directory is a small loss, one that dies is a
   broken feature. Every family's reply was measured in cmd, Windows PowerShell
   5.1, pwsh 7, Git Bash and WSL, and each is a test.
+
 - **An agent launched on a host stops leaving uxnan's session id in its TUI.**
   The launch command is typed into the shell, and an SSH channel opens seconds
   before the remote shell has finished starting — so the front of the command
@@ -412,14 +532,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   input box. A terminal on a host is now given until it has actually said
   something (and a wider quiet window once it has), while a shell that stays
   silent is still typed into rather than left dead.
+
 - **Paste-and-submit works on a host.** It had no remote branch while every
   other PTY command had one, so it wrote to the local manager, which does not
   know a remote id: the run engine, the orchestration broadcast and mid-turn
   delivery each silently did nothing over SSH.
+
 - **A terminal remembers which machine it was on across a restart.** The saved
   layout never carried it, so every remote tab came back as a local shell
   holding another machine's path — and started here, in the home directory,
   looking like the tab you left.
+
 - **Every option in the terminal area's `+` opens where the workspace is.** The
   menu hands over the key of the workspace it is showing, and for a local project
   a key and a path are the same string — so passing one where the other was
@@ -427,6 +550,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   project matched, the machine fell back to local and the cwd was a string no
   filesystem has, which is why every entry in that menu — terminals, profiles,
   agents — landed in this PC's home. Those entry points now take either form.
+
 - **A terminal that ends in a background workspace says so when it happens.** Its
   pane is parked, so the exit was held and replayed the next time that tab was
   adopted — which is to say, as you clicked something else. A tab that had been
@@ -434,16 +558,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   which reads exactly like closing one tab closing two. The model now hears the
   exit at once. Exits a *sleeping* workspace causes are still ignored: it closed
   those PTYs on purpose, and acting on them would delete every asleep tab.
+
 - **`+` in the terminal area opens on the machine you are looking at.** The
   Global space is the one place terminals from several machines share, so its
   workspace names none: pressing `+` beside a terminal on a host opened a shell
   on this PC, in this PC's home. A new terminal there now inherits the machine of
   the active tab; inside a project, the project's own machine still decides. The
   same rule covers a split.
+
 - **The machine of the active workspace is derived, never stored.** A second copy
   of a fact the workspace key already carries is a second thing to keep in sync,
   and that drift is how a panel ends up reading this filesystem for a project on
   a host.
+
 - **Remote terminals record their lifecycle in the app's log.** Opened, closed,
   and *why* one ended — uxnan closed it, the host ended the channel, or the
   connection went away and took every terminal with it. Those three look
@@ -451,6 +578,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   tab closed and took the other with it" leaves you in. Ids and host ids only,
   never a path or a byte of output; the interface logs its own side of the same
   fork, so the record says which one decided.
+
 - **Browsing a host uses the picker you already know.** The host answers in the
   local browser's own shape, so choosing a folder over there is the same surface
   as choosing one here: address bar, ↑/↓ navigation, repository badges, a per-row
@@ -459,6 +587,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   same command, so fifty folders cost one round trip instead of fifty. What is
   genuinely different is said rather than faked: a host is not watched for
   changes (the refresh button is the reload), and a cut listing still admits it.
+
 - **A folder on a Windows host lists correctly whatever its `sshd` launches.**
   The PowerShell the app sends is interpreted first by the shell that host is
   configured to start — `cmd`, `powershell`, `pwsh` — and each treats quotes and
@@ -468,6 +597,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   base64-encoded (`-EncodedCommand`), which contains no quotes, backslashes or
   spaces for an outer shell to reinterpret. Hidden dot-folders are skipped there
   too, matching what the local browser shows.
+
 - **A terminal only inherits a folder from its own machine.** Opening a terminal
   on a host while a *local* project was the active workspace handed the remote
   shell a local path; it tried to `cd` somewhere that does not exist there and
@@ -476,10 +606,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   terminal only when both are on the same one. The same mistake in reverse (a
   local terminal seeded with a remote path) is closed too, before there is
   anything to trip over it.
+
 - **A host's terminal opens in the Global space**, not inside whichever project
   happens to be selected. A terminal on another machine does not belong filed
   under a local folder it has nothing to do with; when a project can live on a
   host, it will open in that project instead.
+
 - **A settings change no longer deletes your hosts.** Settings travel as one
   whole object, and the interface does not model the host list — so writing any
   unrelated setting used to send an empty one and wipe every host *and* every
@@ -487,9 +619,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a fresh id that no live session matched, which is why a host could sit there
   looking connected while opening a terminal on it failed. Fields the backend
   owns are now carried over rather than taken from the payload.
+
 - **A terminal that could not start stays open.** It writes why into the pane —
   and then used to close itself immediately, because a plain terminal that exits
   is closed. The pane flashed and the reason went with it.
+
 - **Open a terminal on a host, from the host list.** A connected machine gets an
   *Open terminal* button; the terminal opens in the main area like any other,
   because it *is* one. Disconnecting a host now ends its terminals rather than
@@ -497,6 +631,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   its own, since a channel waiting for output never learns its session went away.
   A genuine network drop is still only noticed when the connection times out;
   that gap is recorded rather than papered over.
+
 - **Terminals can live on another machine.** A remote terminal is one channel on
   that host's existing connection carrying a PTY and a shell — no second
   handshake, no second login. It is deliberately the *same shape* as a local one:
@@ -507,6 +642,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   rather than guaranteeing every descendant dies, and there is no local process,
   so the process-detection layer of agent monitoring cannot see these — the
   title/OSC layer works untouched, because it reads the byte stream.
+
 - **A host can say what it has.** Its OS, home, git, whether a terminal
   multiplexer is there, and **which agent CLIs are installed on it, with their
   versions** — which is what will let the launcher offer the agents that machine
@@ -515,6 +651,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   starts a shell for each one, so ten facts in ten commands would be ten times
   the wait. Reading only what sits between the markers also means a chatty (or
   failing) remote shell profile cannot be mistaken for an answer.
+
 - **A host holds one live session, shared by everything that runs on it.**
   Connecting authenticates once and keeps the connection; the terminal, the
   inventory and git calls will each be a *channel* on it rather than another
@@ -525,6 +662,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   nowhere. Whether a host asked for anything interactive is remembered, so a
   later startup can bring back the silent ones and leave the rest until you are
   there to answer.
+
 - **Hosts can be registered, probed and trusted.** The command surface the
   Settings UI will sit on: list, add (or update), remove, probe, trust. Adding a
   host reports whether it *recovered* a machine you had removed — its projects
@@ -535,6 +673,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   server presented. Trusting appends to `known_hosts` — never rewrites it — and
   is only possible right after an *unknown* probe: there is deliberately no way
   to trust a key that **changed**.
+
 - **Removing a host no longer strands its projects.** A project stores only its
   target id, so deleting a host used to leave every project on it pointing at an
   id that would never exist again. Removal now remembers the machine, and
@@ -545,6 +684,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   host + port + user, user included: two accounts on one machine are two
   different homes. Re-importing your SSH config never overwrites a host you typed
   by hand.
+
 - **Remote commands run as channels on one connection.** A single command
   primitive (`exec`) that opens a channel, runs, and collects stdout and stderr
   *separately* — a remote shell profile that prints noise, or fails outright as
@@ -553,6 +693,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   spawned `ssh` per call: each command is a channel, not a new handshake and a new
   login. An exit code that never arrives stays `None` instead of being flattened
   to zero, because "the channel closed without telling us" is information.
+
 - **You can connect with just a password.** No key to generate, nothing to
   append to `authorized_keys` on the far machine — if the host accepts a
   password, the app asks for one and connects. The exchange starts by asking the
@@ -561,6 +702,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   "this machine wants a password and nobody asked you for one". A rejected key
   followed by a password-capable host says both things at once: what was refused,
   and what to try next.
+
 - **Authentication, in the order OpenSSH would use it.** The system's ssh-agent
   first — it holds keys you have already unlocked, which is what keeps connecting
   to several hosts from becoming several passphrase prompts — then the identity
@@ -571,6 +713,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and "I could not open your key" send you to different places. Key paths that do
   not exist are dropped instead of attempted — OpenSSH lists its defaults whether
   or not they are there, and trying each one would bury the real answer.
+
 - **The app can reach a host and decide whether to trust it.** The TCP
   connection and the SSH handshake, with one rule that shapes everything else:
   **an unverified host is never connected to, not even in order to ask.** When
@@ -580,6 +723,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   would mean a man-in-the-middle has already been talked to. Every connection
   also carries a *generation*, which is what stops an operation prepared before a
   reconnect from executing after one.
+
 - **Host-key verification, with no way to turn it off.** The rule set the app
   will connect under: a key already in `known_hosts` connects, an unknown host
   asks you first and nothing is written until you say yes, and a host whose key
@@ -590,6 +734,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and hashed entries (`HashKnownHosts yes`) are matched properly so a hashed
   file does not make every host look new. There is no "ignore host key" mode,
   not even behind a setting.
+
 - **The app can read your own SSH configuration.** It lists the `Host` aliases
   in `~/.ssh/config` (following `Include`, globs included, surviving cycles, and
   skipping wildcard patterns — `Host *` configures defaults, it is not a host)
@@ -599,6 +744,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   three platforms and prints exactly what OpenSSH would use. Nothing connects
   anywhere yet — this is the first step of remote hosts, and it is read-only.
   See [`docs/remote-hosts.md`](docs/remote-hosts.md).
+
 - **Projects and worktrees now record which machine they live on.** Every repo
   and worktree carries an execution target (`local` today), and workspaces are
   keyed by the pair *(target, path)* rather than the path alone. Nothing changes
@@ -608,11 +754,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   them, and the reconciler that heals path spellings would have merged two of
   them into one workspace. It now refuses to re-point a workspace at a different
   machine even when the paths match exactly.
+
 - **Mutations are fenced to the machine they were prepared for.** Creating and
   removing a worktree carry the target (and its connection generation) the
   caller was looking at, and the backend refuses the call — before any git
   process starts — when that no longer matches, with an error naming both sides.
   A call that carries no target can only ever act locally.
+
+### Changed
+
+- **Building from source now needs Rust 1.85** (was 1.77.2). The floor comes
+  from the SSH client the remote-hosts work uses; nothing consumed the old
+  value as a contract — every workflow builds on `stable`, `rust-toolchain.toml`
+  selects `stable`, there is no MSRV job and this crate is never published — so
+  holding it back would only have meant shipping an SSH/crypto stack eight minor
+  versions behind. `Cargo.lock` moves to format v4 as a consequence (cargo
+  1.78+).
+- Persistence schema is now **v2**: loading stamps `target: "local"` on every
+  stored repo and worktree, and a document written by a newer build is refused
+  rather than half-understood (an older build would otherwise ignore an unknown
+  target field and treat a remote project's path as one of its own).
+
+## [0.0.43] - 20260815
+### Added
 
 - **Cloned repositories land in `~/uxnan/repos`.** They used to go directly into
   `~/uxnan`, which left the worktree root as just another folder among the
@@ -701,195 +865,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
-- **Building from source now needs Rust 1.85** (was 1.77.2). The floor comes
-  from the SSH client the remote-hosts work uses; nothing consumed the old
-  value as a contract — every workflow builds on `stable`, `rust-toolchain.toml`
-  selects `stable`, there is no MSRV job and this crate is never published — so
-  holding it back would only have meant shipping an SSH/crypto stack eight minor
-  versions behind. `Cargo.lock` moves to format v4 as a consequence (cargo
-  1.78+).
-- Persistence schema is now **v2**: loading stamps `target: "local"` on every
-  stored repo and worktree, and a document written by a newer build is refused
-  rather than half-understood (an older build would otherwise ignore an unknown
-  target field and treat a remote project's path as one of its own).
-
-- **The two agent lists in Settings read like the rest of Settings.** **Hooks**
-  and **Browser → Agents** each invented their own shape — Hooks nested a
-  master–detail card with a navigation rail of its own inside a pane that already
-  has one, and the browser MCP agents were a wrapped grid of unlabelled switches
-  inside a single row. Both are now ordinary settings rows: the agent's mark and
-  name on the left, one line of context under it, and the switch on the right,
-  grouped under section labels above the usual body band. Nothing moved out of
-  reach — every agent's state is readable at a glance again instead of one
-  selection at a time. Both lists render through one shared `AgentSettingsRow`
-  (itself a `SettingsRow`), so they can't drift apart into two shapes again.
-- **A hook is installed per agent by its row's switch**, replacing the
-  Install/Uninstall button pair and the status badge (installing still needs the
-  master **Install agent hooks** switch on; removing never does). The agents on
-  this machine stay first and open; the rest fold into a collapsed **Other
-  agents** group. Each row's chevron discloses the config path and the exact
-  bytes the ADE writes — fetched only for the row you open, as before.
-- **Browser → Agents shows how each agent is wired**, in the slot where the hooks
-  list shows the config file it writes: `mcp_info` returns what that launch is
-  given (`McpAgentInfo.mechanism` — `--mcp-config <file>`,
-  `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`). There is no
-  config file to name here, and that is the point — see the browser MCP fix
-  above.
-
-- **Where a worktree goes is decided in one place.** It used to be computed in
-  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
-  copy that had already drifted into a different folder name for the same
-  repository and branch. The layout now lives only in
-  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
-  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
-- **The PR and issue worktree flows use the same location and the same reuse
-  check.** Both used to build the sibling path themselves, and the issue flow
-  decided "this was already checked out" by testing whether that exact folder
-  existed. It now asks git which worktree is on the branch, so a re-run finds the
-  existing checkout wherever it lives — including one created under the old
-  layout.
+- **Codex names conversations on `gpt-5.6-luna`, at its lowest reasoning tier.**
+  Naming used the `mini` tier, but Luna is cheaper on both halves of the bill
+  ($0.20/$1.20 per 1M tokens against $0.75/$4.50) and, measured on a real title,
+  also spent fewer tokens (13.4k vs 18.3k) — roughly 5× cheaper per name. The
+  effort is pinned explicitly (`-c model_reasoning_effort=low`) because Luna
+  defaults to `medium` and thinking tokens are what would undo the saving; the
+  key is validated by the CLI, so a typo fails loudly instead of silently naming
+  on the default tier. The bridge names the phone's conversations with the same
+  id and moves with this change.
 
 ### Fixed
 
-- **A disconnected host's file tree stops pretending.** Disconnect a host and the
-  Files panel kept showing that machine's folders — no message, no hint, a tree
-  that was quietly a memory: a folder already loaded is never listed again, so
-  nothing ever noticed the session had gone. It now goes back to the same
-  "waiting for this host" state a cold start has, and fills itself in again when
-  the host returns. Handled where the whole live set is known, so a session that
-  ends on its own is caught by the same path as one the user closed.
-
-- **uxnan no longer names a shell for your host.** A terminal already asked the
-  host's `sshd` for *a* shell and let that machine choose — but one thing still
-  named one: the probe that asks what a host has installed ran `powershell`,
-  which is Windows PowerShell **5.1**. On a machine whose owner had installed
-  PowerShell 7, that started an older engine inside the one already running. Now
-  a host whose shell *is* PowerShell runs the script **in that PowerShell**,
-  whichever version it is, with no interpreter named at all; only a cmd host
-  needs one named, and there `pwsh` is asked for first with 5.1 as the fallback.
-  The probe also takes the shell the host reported when it connected instead of
-  trying POSIX and falling back, so a Windows host stops paying for a failed
-  command before the real one — about two seconds per connection.
-
-- **Browsing a host's folders is no longer slow.** The picker asked the host's
-  *shell* to list a directory — and tried POSIX first, so a Windows host paid for
-  **two** remote commands per click, each one starting a shell and its profile
-  over there. It now goes the same way the file tree already did, over SFTP: the
-  same listing measured **6.6 ms** instead of 336 ms against this machine's own
-  `sshd`, and on a real host across a tailnet each of those commands had been
-  measured at 2.1 s. The repository badge survives the move because the `.git`
-  checks **pipeline on the one open channel** — 63 folders cost 3.3 ms asked
-  together against 44 ms one after another — and they use no extra channels, so
-  browsing no longer eats into the host's session limit either.
-
-  Two things only running it could show: a Windows host answers SFTP's
-  `realpath(".")` with `/C:/Users/you`, which is unusable as a project path and
-  is now corrected; and the badge is decided by `.git` **existing**, because in a
-  worktree it is a file rather than a folder — asserted against a real worktree.
-  One trade-off, stated rather than hidden: a host with the `sftp` subsystem
-  disabled can no longer be browsed. The file tree already required it.
-
-- **A project on a host no longer wears a "folder is missing" warning.** The
-  check ran `is_dir` on *this* machine against the other machine's path, so a
-  perfectly healthy remote project was marked as gone — while its neighbour on a
-  second host escaped only because that host happened to be this same PC, which
-  made the warning look selective rather than wrong. This machine's filesystem
-  cannot answer for another one, so it no longer tries; asking the host itself is
-  recorded as the follow-up.
-- **Project cards can be dragged again.** Their identity region — the icon and
-  the name, which is the whole card — is a button so the keyboard can reach it,
-  and the reorder gesture refuses to start on a control, so pressing anywhere a
-  user would press did nothing. (The worktree rows underneath dragged fine,
-  which is what made it look like the cards had lost the feature.) A control that
-  *is* its row can now be marked as that row's drag handle; a row's action
-  buttons still stay buttons.
-
-- **Adding a second host no longer freezes the app.** Connecting one while
-  another was busy left Settings spinning, and removing it spun too. The cause
-  was not SSH being slow: the registry of live sessions was held **across** the
-  network by nearly every remote call, and it is a fair lock — so the write a
-  connect needs queued behind whatever call was mid-round-trip, and every later
-  read queued behind that write. One ~2s remote command was enough to stall the
-  connected list, the git panels, the file tree and the Settings dialog at once.
-  Callers now take their connection and release the lock before they say a word
-  to the host, which a live test holds them to. A remote command also cannot run
-  forever any more: a host that stops answering fails after 60 seconds with a
-  message saying so, instead of leaving whatever asked waiting for good.
-- **A host is only reconnected at startup when reaching it asks nothing.** The
-  first version of this trusted "did not need a password last time" — which a
-  host registered five seconds ago also reports, because that mark is only
-  written once a host has been connected. Reaching one whose key is not on file
-  can only end in the trust prompt, so the app would have raised it by itself
-  while still opening. The backend now decides, and it checks both halves.
-
-- **A host is no longer dropped for being quiet.** An SSH connection carries
-  nothing while a shell sits at its prompt, so a host nobody had typed at was
-  reaped after five minutes of silence — and a host that had really gone away
-  took those same five minutes to be noticed, with its terminals looking alive
-  against a machine that was not there. uxnan now asks every 30 seconds and
-  gives up after three unanswered asks, which is where mature SSH clients land
-  (OpenSSH ships this **off**; the guidance for editors holding long sessions is
-  30–60s with 3–5 misses). It also keeps a NAT or firewall from closing an idle
-  connection. Proven by a test that idles longer than the old timeout and then
-  uses the connection.
-
-- **A dialog's action band no longer hangs past the dialog.** The content area
-  is a grid whose single track grows to the widest thing in it — and that is the
-  row of buttons, so the unsaved-changes prompt's three Spanish labels (370px)
-  stretched the band to 410px inside a 384px dialog, leaving 26px of grey
-  sticking out past the rounded corner. The band is now allowed to be narrower
-  than its own buttons, in the shared token rather than at one call site, so
-  every dialog in the app is covered by the same fix. That prompt also moves to
-  the medium width: three actions need 370px and the confirmation width offers
-  344. Measured in a browser against the built stylesheet — reading the CSS gave
-  the wrong answer twice.
-- **Three dialogs stop printing their title against the top edge.** Remove
-  worktree, close-several-worktrees and import-pets opened with a plain row
-  instead of `Dialog.Header`, and the dialog's top inset lives in that header —
-  so they had no top padding at all. The pets dialog also had its buttons in a
-  bare row rather than the shared footer, which is why it had no bottom padding
-  either; both ends are now the same as every other dialog.
-- **A downloaded update no longer hides the "Check now" button.**
-  Settings → Updates now shows two independent buttons instead of one that
-  morphs: *Check now* is always there, and the phase action (*Download* /
-  *Install now*, plus *Install when idle* while an agent works) appears next to
-  it only when there is one to take. The old single button became *Install* the
-  moment an update was staged — which is exactly when checking matters most: an
-  install waits for agents to go idle, releases keep landing meanwhile, and the
-  only way to pick up a newer one was to finish the work, quit the app and
-  reopen it.
-- **Checking is no longer a lifecycle state.** `updater.checking` overlays
-  `status`, so a check can run in any phase without erasing what is already
-  downloaded — the *Install* button (and the pinned toast) stay put while it
-  runs, and a check that fails no longer throws away a ready-to-install
-  download.
-- **A check that re-reports the version already staged no longer re-downloads
-  it.** The updater compares against the *running* build, so every check kept
-  offering the version sitting in memory — and each one (including the automatic
-  6-hourly one) downloaded the same installer again. `checkOutcome` now decides
-  between keeping the staged download, superseding it when the channel offers a
-  genuinely different version (dropping any armed install-when-idle, since the
-  backend rejects stale bytes), and the plain up-to-date / available cases.
-- **A superseded download stops occupying memory.** New
-  `updater_discard_staged` command: when a check supersedes a staged update, the
-  installer bytes are released before the new download starts (awaited, so a
-  late discard can't throw away the version just fetched) instead of sitting in
-  memory until the app quits. Nothing is lost — those bytes could no longer be
-  installed, and any older build is still a manual download from its GitHub
-  Release.
-- **A failed install no longer offers a retry the backend can't serve.**
-  `updater_install` takes the staged bytes before it can fail — on every failure
-  path — so returning the UI to "downloaded" left an *Install* button whose only
-  possible answer was *no downloaded update to install*. It now returns to
-  "available", which is the true state: the version is still on offer, just no
-  longer downloaded. It does not re-download by itself, so an installer that
-  genuinely breaks can't loop with an auto-install policy.
-
-Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version,
-including the channel-switch and "release pulled" cases) + 2 Rust
-(`updater.rs` — discarding frees the bytes and reports the version; discarding
-nothing is a no-op).
-
+- **Antigravity's models are listed again, with readable names.** `agy models`
+  changed shape (a progress line, then `<id>⟨TAB⟩<label>` columns instead of one
+  bare id per line), and the parser only accepted a line with no whitespace — so
+  every row was discarded and the AI-commit / PR-body pickers offered **no**
+  Antigravity model at all, which reads like a CLI that isn't signed in. The
+  output is now read as two columns: the id still routes `--model` (it carries
+  the reasoning tier, so no `--effort` is needed) and the label is what the
+  picker shows, so Antigravity reads "Gemini 3.7 Flash (High)" like every other
+  agent. Bare-id output from older `agy` still parses, and prose from a
+  signed-out CLI still never becomes a phantom model.
 - **Agents launched outside uxnan no longer complain about uxnan's browser MCP
   server.** Until now the integrated browser was exposed to agents by writing a
   `uxnan-browser` entry into each CLI's own user-global config
@@ -1029,6 +1026,20 @@ nothing is a no-op).
   this dialog does not show — which also wrapped the description early. The
   footer goes back to the one shared action band the rest of the dialogs use.
 
+- **A downloaded update no longer hides the "Check now" button.**
+  Settings → Updates now shows two independent buttons instead of one that
+  morphs: *Check now* is always there, and the phase action (*Download* /
+  *Install now*, plus *Install when idle* while an agent works) appears next to
+  it only when there is one to take. The old single button became *Install* the
+  moment an update was staged — which is exactly when checking matters most: an
+  install waits for agents to go idle, releases keep landing meanwhile, and the
+  only way to pick up a newer one was to finish the work, quit the app and
+  reopen it.
+- **Checking is no longer a lifecycle state.** `updater.checking` overlays
+  `status`, so a check can run in any phase without erasing what is already
+  downloaded — the *Install* button (and the pinned toast) stay put while it
+  runs, and a check that fails no longer throws away a ready-to-install
+  download.
 - **A check that re-reports the version already staged no longer re-downloads
   it.** The updater compares against the *running* build, so every check kept
   offering the version sitting in memory — and each one (including the automatic
@@ -1036,6 +1047,64 @@ nothing is a no-op).
   between keeping the staged download, superseding it when the channel offers a
   genuinely different version (dropping any armed install-when-idle, since the
   backend rejects stale bytes), and the plain up-to-date / available cases.
+- **A superseded download stops occupying memory.** New
+  `updater_discard_staged` command: when a check supersedes a staged update, the
+  installer bytes are released before the new download starts (awaited, so a
+  late discard can't throw away the version just fetched) instead of sitting in
+  memory until the app quits. Nothing is lost — those bytes could no longer be
+  installed, and any older build is still a manual download from its GitHub
+  Release.
+- **A failed install no longer offers a retry the backend can't serve.**
+  `updater_install` takes the staged bytes before it can fail — on every failure
+  path — so returning the UI to "downloaded" left an *Install* button whose only
+  possible answer was *no downloaded update to install*. It now returns to
+  "available", which is the true state: the version is still on offer, just no
+  longer downloaded. It does not re-download by itself, so an installer that
+  genuinely breaks can't loop with an auto-install policy.
+
+Tests: 5 frontend (`src/lib/updaterLogic.test.ts` — staged vs. offered version,
+including the channel-switch and "release pulled" cases) + 2 Rust
+(`updater.rs` — discarding frees the bytes and reports the version; discarding
+nothing is a no-op).
+
+### Changed
+
+- **The two agent lists in Settings read like the rest of Settings.** **Hooks**
+  and **Browser → Agents** each invented their own shape — Hooks nested a
+  master–detail card with a navigation rail of its own inside a pane that already
+  has one, and the browser MCP agents were a wrapped grid of unlabelled switches
+  inside a single row. Both are now ordinary settings rows: the agent's mark and
+  name on the left, one line of context under it, and the switch on the right,
+  grouped under section labels above the usual body band. Nothing moved out of
+  reach — every agent's state is readable at a glance again instead of one
+  selection at a time. Both lists render through one shared `AgentSettingsRow`
+  (itself a `SettingsRow`), so they can't drift apart into two shapes again.
+- **A hook is installed per agent by its row's switch**, replacing the
+  Install/Uninstall button pair and the status badge (installing still needs the
+  master **Install agent hooks** switch on; removing never does). The agents on
+  this machine stay first and open; the rest fold into a collapsed **Other
+  agents** group. Each row's chevron discloses the config path and the exact
+  bytes the ADE writes — fetched only for the row you open, as before.
+- **Browser → Agents shows how each agent is wired**, in the slot where the hooks
+  list shows the config file it writes: `mcp_info` returns what that launch is
+  given (`McpAgentInfo.mechanism` — `--mcp-config <file>`,
+  `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`). There is no
+  config file to name here, and that is the point — see the browser MCP fix
+  above.
+
+- **Where a worktree goes is decided in one place.** It used to be computed in
+  the Rust backend and mirrored in the Svelte dialogs — and the phone had a third
+  copy that had already drifted into a different folder name for the same
+  repository and branch. The layout now lives only in
+  `src-tauri/src/worktreeloc.rs`; the create dialogs ask it for a preview
+  (`worktree_preview_path`), and `branchName.ts` no longer computes paths.
+- **The PR and issue worktree flows use the same location and the same reuse
+  check.** Both used to build the sibling path themselves, and the issue flow
+  decided "this was already checked out" by testing whether that exact folder
+  existed. It now asks git which worktree is on the branch, so a re-run finds the
+  existing checkout wherever it lives — including one created under the old
+  layout.
+
 ## [0.0.39] - 2026-08-12
 
 ### Removed

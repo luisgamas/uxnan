@@ -242,7 +242,7 @@ interface AgentCapabilities {
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
 //   ✅ opencode  (default; `opencode serve` HTTP/SSE; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
-//   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
+//   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation)
 //   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
 //   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; active Google CLI; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
@@ -2035,8 +2035,12 @@ another client attached to the same native session converge into Uxnan.
 | Antigravity | none | unsupported: `agy` has no history/export API and its SQLite step payloads are opaque |
 
 `IAgentAdapter.nativeSessionId(threadId)` supplies the native identity and
-`AgentManager` persists it through `ThreadStore.setAgentSession`. Reconciliation
-then follows these rules:
+`AgentManager` persists it through `ThreadStore.setAgentSession`. The mirror of
+that — `IAgentAdapter.adoptNativeSession(threadId, sessionId)`, offered before a
+turn runs and only when the stored session belongs to the same agent — hands the
+id back after a bridge restart, so the conversation continues in the SAME agent
+session rather than opening a new one behind a history the phone still shows.
+Reconciliation then follows these rules:
 
 - bridge-owned turns keep their UUID and remain authoritative for ordered
   segments, queue state, usage and delivery status;
@@ -2067,6 +2071,29 @@ near-real-time **completed-turn convergence**, not token streaming from the
 external client. The active Mobile conversation polls the newest page every
 three seconds while connected and idle; navigation, reconnect and lifecycle
 resume also trigger immediate reads.
+
+##### The other direction: the phone's conversation must open in the agent's app
+
+Convergence is not only a read. A conversation **started from Mobile** has to be
+openable in the agent's own client, and for Codex that is a write claim, not a
+read: the app-server grants **one writer per thread**, held for as long as the
+thread is loaded in a process. So an adapter that keeps a process alive across
+turns locks every conversation the phone ever touched, and Codex Desktop /
+`codex resume` refuse to open it (`already has an active writer`, surfaced by
+the Codex app as *this conversation is not available*).
+
+**Rule for any server-style adapter: the bridge holds an agent session only
+while a turn is in flight.** Codex implements it by ending its `codex app-server`
+as soon as no turn is running and re-attaching with `thread/resume` on the next
+one — `thread/unsubscribe` does NOT release the writer (measured on codex-cli
+0.147.0: the thread stays loaded and held; only the process exiting hands it
+over). The turn's `(approvalPolicy, sandbox)` rides on each resume, so a
+mid-conversation access-mode change applies from the next turn.
+
+The conflict is symmetric and has no fallback: if the agent's app holds the
+thread when Mobile sends, the turn fails with a message naming the other client
+rather than a protocol string. If the native session was deleted elsewhere, the
+conversation continues in a fresh native thread.
 
 #### 5.8.9 Account status sanitizado
 
@@ -2303,7 +2330,7 @@ de su propia CLI y elegida para no dejar rastro en la conversacion que nombra:
 | Agente | Invocacion | Modelo |
 |---|---|---|
 | Claude Code | `-p`, sin `--resume` | `haiku` |
-| Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.4-mini` |
+| Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` con `-c model_reasoning_effort=low` |
 | OpenCode | `opencode run` (sin flags de sesion) | por defecto de la CLI |
 | pi | `pi -p --no-session` | por defecto de la CLI |
 | Antigravity | `agy -p` (sin `--conversation`) | `gemini-3.6-flash-low` |

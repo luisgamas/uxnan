@@ -23,15 +23,34 @@
  * the phone's approval card just works. See `codex-approval.ts` for the
  * per-kind mapping.
  *
- * ## Process model
+ * ## Process model — the app-server lives for the turn, not for the session
  *
- * One long-lived `codex app-server` process per adapter instance. It's
- * spawned lazily on the first turn (or eagerly by `start()`), the bridge
- * speaks JSON-RPC over its stdio, and the process is killed on `stop()`.
- * Threads live inside the app-server, so multi-turn conversations are cheap
- * (`turn/start` reuses the same `threadId`). The bridge persists each
- * thread's `nativeSessionId` so a restart can `thread/resume` and the
- * conversation history is preserved.
+ * A `codex app-server` process is spawned lazily on the first turn, the bridge
+ * speaks JSON-RPC over its stdio, and it is **shut down as soon as no turn is
+ * in flight**. The next turn spawns a fresh one and re-attaches to the thread
+ * with `thread/resume`.
+ *
+ * That handover is not an optimization, it is the contract: **Codex allows
+ * exactly ONE writer per thread, held for as long as the thread is loaded in a
+ * process.** A long-lived app-server therefore keeps every thread the phone has
+ * ever touched locked, and Codex Desktop / `codex resume` answer
+ * `thread <id> already has an active writer` — the phone's conversation cannot
+ * be opened there at all. Measured against codex-cli 0.147.0:
+ *
+ *   - `thread/unsubscribe` replies `{status:'unsubscribed'}` but the thread
+ *     STAYS in `thread/loaded/list` and the writer stays held — it does NOT
+ *     hand the thread over;
+ *   - once the holding process exits, another client's `thread/resume` succeeds
+ *     immediately.
+ *
+ * So ending the process is the handover. It costs ~250ms to respawn plus
+ * ~200–750ms to `thread/resume` (measured, the upper end on a 7k-line rollout),
+ * paid once per turn against a model call that takes seconds to minutes.
+ *
+ * Threads still live inside the app-server for the duration of a turn, so
+ * streaming, approvals and steering are unchanged. The bridge persists each
+ * thread's `nativeSessionId` so both a later turn and a bridge restart resume
+ * the same Codex thread instead of starting a new one.
  *
  * Captured app-server JSON-RPC events (one JSON object per line):
  *   { "method":"turn/started", "params":{...} }
@@ -104,11 +123,25 @@ import {
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 
 /**
- * Model used to name a conversation: the `mini` tier, never the thread's own.
+ * Model used to name a conversation: the cheapest one, never the thread's own.
  * Writing a six-word title is not work for the expensive model, and it must not
  * eat that model's quota. Verified against the account's real `model/list`.
+ *
+ * `gpt-5.6-luna` ("fast and affordable") beats the `mini` tier on **both**
+ * halves of the bill, measured rather than assumed: $0.20/$1.20 per 1M tokens
+ * against `gpt-5.4-mini`'s $0.75/$4.50, and naming the same conversation cost
+ * 13.4k tokens on Luna against 18.3k on mini — roughly 5× cheaper per title.
  */
-const CODEX_TITLE_MODEL = 'gpt-5.4-mini';
+const CODEX_TITLE_MODEL = 'gpt-5.6-luna';
+
+/**
+ * Reasoning effort for that one-shot. Luna defaults to `medium`, and a title is
+ * the least reasoning-hungry task there is — the tokens a thinking tier would
+ * spend here are exactly the ones that could make a cheap model cost more than
+ * an expensive one. `-c` takes a config override; the key is validated, so a
+ * typo fails the run loudly instead of silently naming on the default tier.
+ */
+const CODEX_TITLE_REASONING = ['-c', 'model_reasoning_effort=low'];
 
 const CODEX_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -329,6 +362,13 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #spawnAppServer: () => SpawnedAppServer;
   /** threadId (bridge) → Codex app-server threadId, for `thread/resume` continuity. */
   readonly #threadByBridgeThread = new Map<string, string>();
+  /**
+   * Codex thread ids loaded in the CURRENT app-server process (i.e. whose
+   * writer this bridge holds right now). Cleared whenever the process goes
+   * away, because the next process starts with nothing loaded and every thread
+   * has to be re-attached with `thread/resume`.
+   */
+  readonly #loadedThreads = new Set<string>();
   /** turnId (bridge) → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** model id → context-window tokens, from `~/.codex/models_cache.json`. */
@@ -344,9 +384,11 @@ export class CodexAdapter extends BaseAgentAdapter {
   defaultCwd(): string {
     return this.#defaultCwd;
   }
-  /** Long-lived app-server connection. Spawned lazily on first use. */
+  /** Per-turn app-server connection. Spawned lazily, released when idle. */
   #rpc: CodexAppServerRpc | null = null;
   #appServerInit: Promise<CodexAppServerRpc> | null = null;
+  /** The live process handle, kept so the idle release can end it. */
+  #appServerStreams: SpawnedAppServer | null = null;
   /** Pending approvals keyed by the bridge's `approvalId`; the server request id
    * is captured so the reply is shaped with the right `ReviewDecision` kind. */
   #pendingApprovals = new Map<string, { kind: ApprovalKind; serverRequestId: number | string }>();
@@ -355,6 +397,46 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** Native Codex thread id for a thread (on-disk history-fallback locator). */
   nativeSessionId(threadId: string): string | undefined {
     return this.#threadByBridgeThread.get(threadId);
+  }
+
+  /**
+   * Re-attach a thread to the Codex thread the bridge recorded for it before
+   * this process existed (i.e. after a bridge restart). Without it the map is
+   * empty and the next turn would open a NEW Codex thread — the phone would
+   * still show the history, read off the rollout, while Codex had lost it.
+   *
+   * Called by the AgentManager just before a turn; the first `sendTurn` then
+   * takes the ordinary `thread/resume` path. Never overwrites a live mapping.
+   */
+  adoptNativeSession(threadId: string, sessionId: string): void {
+    if (!sessionId || this.#threadByBridgeThread.has(threadId)) return;
+    this.#threadByBridgeThread.set(threadId, sessionId);
+  }
+
+  /**
+   * Mirror the conversation's name onto the Codex thread, so the phone's
+   * conversation is recognizable in Codex Desktop / `codex resume` instead of
+   * showing up untitled (a thread the bridge starts comes back with
+   * `name: null`, and Codex names its own threads client-side).
+   *
+   * `thread/name/set` does NOT need the thread loaded — verified against
+   * codex-cli 0.147.0 from a process that never resumed it; the name lands in
+   * `~/.codex/session_index.jsonl`, which is what those clients list. Called by
+   * the AgentManager right after it names a thread, and best-effort: a failure
+   * leaves the Codex-side name alone and never touches the conversation.
+   */
+  async setNativeTitle(threadId: string, title: string): Promise<void> {
+    const codexThreadId = this.#threadByBridgeThread.get(threadId);
+    if (!codexThreadId || !title) return;
+    try {
+      const rpc = await this.#ensureAppServer();
+      await rpc.request('thread/name/set', { threadId: codexThreadId, name: title });
+    } catch {
+      /* best-effort: the conversation keeps its uxnan name either way */
+    } finally {
+      // Naming runs between turns, so this hands the thread straight back.
+      this.#releaseAppServerIfIdle();
+    }
   }
 
   constructor(options: CodexAdapterOptions = {}) {
@@ -382,12 +464,12 @@ export class CodexAdapter extends BaseAgentAdapter {
    *  - `fullAccess`      → `bypassPermissions` (danger-full-access, no prompts).
    * Absent → the configured posture (no behaviour change).
    *
-   * FOR-DEV: the resulting `(approvalPolicy, sandbox)` is sent on `thread/start`,
-   * which runs only on a thread's FIRST turn — so the posture governs the thread
-   * from creation but a mid-thread access-mode change does NOT re-issue
-   * `thread/start` and only takes effect on threads started after the change.
-   * A true per-turn re-apply needs confirming whether the app-server `turn/start`
-   * accepts an approval/sandbox override (see bridge/FOR-DEV.md).
+   * The resulting `(approvalPolicy, sandbox)` is sent on `thread/start` AND on
+   * every `thread/resume`, and each turn re-attaches to its thread, so changing
+   * the access mode mid-conversation takes effect on the very next turn.
+   * Verified live against codex-cli 0.147.0: resuming with
+   * `on-request`/`workspace-write` a thread created `never`/`read-only` wrote the
+   * new pair into the rollout's `turn_context` for that turn.
    */
   #effectiveMode(accessMode: SendTurnOptions['accessMode']): CodexPermissionMode {
     switch (accessMode) {
@@ -416,11 +498,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
     }
     this.#active.clear();
-    if (this.#rpc) {
-      this.#rpc.close();
-      this.#rpc = null;
-      this.#appServerInit = null;
-    }
+    this.#closeAppServer();
   }
 
   async sendTurn(options: SendTurnOptions): Promise<void> {
@@ -429,8 +507,9 @@ export class CodexAdapter extends BaseAgentAdapter {
     const model = options.service ?? this.#defaultModel;
     const effort = reasoningValue(options);
     // The thread's persisted access mode (chosen on the phone) overrides the
-    // configured posture. NOTE: the policy is applied at `thread/start` below,
-    // so it governs a thread from its FIRST turn; see `#effectiveMode`.
+    // configured posture. It is applied on `thread/start` AND on every
+    // `thread/resume`, so a mid-conversation change takes effect on the next
+    // turn (each turn re-attaches to the thread; see `#effectiveMode`).
     const { approvalPolicy, sandbox } = permissionToPolicies(
       this.#effectiveMode(options.accessMode),
     );
@@ -450,9 +529,46 @@ export class CodexAdapter extends BaseAgentAdapter {
       return;
     }
 
-    // Resolve the Codex thread id: re-use a previously persisted one (after a
-    // bridge restart) or start a fresh one.
+    // Resolve the Codex thread id. A known thread is re-attached with
+    // `thread/resume` because the previous turn released the app-server (and
+    // with it every loaded thread) so Codex Desktop / the CLI could open the
+    // conversation in between.
     let codexThreadId = this.#threadByBridgeThread.get(threadId);
+    if (codexThreadId && !this.#loadedThreads.has(codexThreadId)) {
+      try {
+        await rpc.request('thread/resume', {
+          threadId: codexThreadId,
+          cwd,
+          approvalPolicy,
+          sandbox,
+          ...(typeof model === 'string' ? { model } : {}),
+        });
+        this.#loadedThreads.add(codexThreadId);
+      } catch (err) {
+        if (isThreadHeldElsewhere(err)) {
+          // Another Codex client (the app, `codex resume`, an IDE) is holding
+          // the thread. Codex allows one writer, so there is nothing to fall
+          // back to — say who has it instead of failing with protocol prose.
+          this.emit({
+            type: 'turn_error',
+            threadId,
+            turnId,
+            data: {
+              text:
+                'This conversation is currently open in another Codex client ' +
+                '(the Codex app, an IDE or `codex resume`). Close it there, then send the message again.',
+            },
+          });
+          this.#releaseAppServerIfIdle();
+          return;
+        }
+        // The rollout is gone (deleted/archived from another client) — the
+        // conversation continues in a fresh Codex thread rather than dead-ending.
+        this.#threadByBridgeThread.delete(threadId);
+        this.#loadedThreads.delete(codexThreadId);
+        codexThreadId = undefined;
+      }
+    }
     if (!codexThreadId) {
       try {
         const started = await rpc.request<{ thread: { id: string; sessionId?: string } }>(
@@ -462,11 +578,16 @@ export class CodexAdapter extends BaseAgentAdapter {
             cwd,
             approvalPolicy,
             sandbox,
+            // A person typed this on their phone, so the thread is classified
+            // like any other human-started one (the app-server otherwise leaves
+            // `thread_source` unset, which no first-party client does).
+            threadSource: 'user',
             ...(typeof effort === 'string' ? { effort } : {}),
           },
         );
         codexThreadId = started.thread.id;
         this.#threadByBridgeThread.set(threadId, codexThreadId);
+        this.#loadedThreads.add(codexThreadId);
       } catch (err) {
         this.emit({
           type: 'turn_error',
@@ -474,6 +595,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           turnId,
           data: { text: `codex thread/start failed: ${errorMessage(err)}` },
         });
+        this.#releaseAppServerIfIdle();
         return;
       }
     }
@@ -510,6 +632,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         turnId,
         data: { text: `codex turn/start failed: ${errorMessage(err)}` },
       });
+      this.#releaseAppServerIfIdle();
     }
   }
 
@@ -537,6 +660,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       '--skip-git-repo-check',
       '-m',
       CODEX_TITLE_MODEL,
+      ...CODEX_TITLE_REASONING,
       '-o',
       outFile,
       prompt,
@@ -615,6 +739,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       /* process may have died — the close handler will surface it */
     }
     this.emit({ type: 'turn_aborted', threadId: run.threadId, turnId: run.bridgeTurnId });
+    this.#releaseAppServerIfIdle();
   }
 
   /** Lazy app-server lifecycle: spawn → initialize → return the RPC client. */
@@ -646,18 +771,51 @@ export class CodexAdapter extends BaseAgentAdapter {
         throw err;
       }
       this.#rpc = rpc;
+      this.#appServerStreams = streams;
       return rpc;
     })().catch((err) => {
       this.#appServerInit = null;
+      this.#appServerStreams = null;
       throw err;
     });
     return this.#appServerInit;
+  }
+
+  /**
+   * End the app-server as soon as no turn is running, handing every thread it
+   * holds back to Codex's other clients (see the *Process model* note at the
+   * top of this file: the writer is released by the process ending, and by
+   * nothing else). A no-op while a turn — or an approval inside one — is still
+   * in flight.
+   */
+  #releaseAppServerIfIdle(): void {
+    if (this.#active.size > 0 || this.#pendingApprovals.size > 0) return;
+    this.#closeAppServer();
+  }
+
+  /** Tear down the app-server connection + process and forget its loaded threads. */
+  #closeAppServer(): void {
+    const streams = this.#appServerStreams;
+    this.#appServerStreams = null;
+    this.#loadedThreads.clear();
+    if (this.#rpc) {
+      this.#rpc.close();
+      this.#rpc = null;
+    }
+    this.#appServerInit = null;
+    try {
+      streams?.kill();
+    } catch {
+      /* already gone */
+    }
   }
 
   /** Handle an unexpected app-server exit: drop state, fail in-flight turns. */
   #handleAppServerClose(): void {
     this.#rpc = null;
     this.#appServerInit = null;
+    this.#appServerStreams = null;
+    this.#loadedThreads.clear();
     for (const run of this.#active.values()) {
       this.emit({
         type: 'turn_error',
@@ -742,7 +900,13 @@ export class CodexAdapter extends BaseAgentAdapter {
         // catastrophic failures (e.g. context overflow). Surface to the
         // current in-flight turn.
         const message = typeof p['message'] === 'string' ? p['message'] : 'codex app-server error';
+        const run = this.#currentRun();
         this.#emitTurnErrorForActive(message);
+        // The bridge ends the turn on this event, so the adapter must too:
+        // a run left "in flight" here would hold the app-server — and with it
+        // the thread's single writer — until some later turn released it.
+        if (run) this.#active.delete(run.turnId);
+        this.#releaseAppServerIfIdle();
         return;
       }
       default:
@@ -922,6 +1086,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         turnId: run.bridgeTurnId,
         data: { text: message },
       });
+      this.#releaseAppServerIfIdle();
       return;
     }
     // Populated by `thread/tokenUsage/updated` during the turn. The model-cache
@@ -941,6 +1106,9 @@ export class CodexAdapter extends BaseAgentAdapter {
           : {}),
       },
     });
+    // The turn is over: give the thread back, so the same conversation opens in
+    // Codex Desktop / `codex resume` while the phone is idle.
+    this.#releaseAppServerIfIdle();
   }
 
   /**
@@ -1309,6 +1477,18 @@ export function parseCodexConfigModels(toml: string): AgentModel[] {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Does this `thread/resume` failure mean another Codex client owns the thread?
+ *
+ * The app-server rejects the second writer with
+ * `thread <id> already has an active writer` (codex-cli 0.147.0, verified by
+ * running two app-servers against one thread). Matched on the phrase rather
+ * than the code, which is the generic `-32600` invalid-request.
+ */
+function isThreadHeldElsewhere(err: unknown): boolean {
+  return /active writer/i.test(errorMessage(err));
 }
 
 /**

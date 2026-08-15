@@ -3963,6 +3963,8 @@ pub async fn agent_run_headless(
         &cwd,
         timeout_ms,
         autonomous.unwrap_or(false),
+        // An automation step runs the model as configured, effort included.
+        &[],
     )
     .await
     .map_err(CommandError::from)

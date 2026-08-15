@@ -876,3 +876,76 @@ baseTest('a terminal event that throws ends the turn instead of hanging it', asy
   Object.defineProperty(store, 'completeTurn', { configurable: true, value: original });
   await rmrf(baseDir);
 });
+
+// The mirror of `#persistAgentSession`: after a restart the adapter's in-memory
+// map is empty, so the manager offers the id the store kept. Without it the
+// next turn opens a NEW agent session under a conversation whose history the
+// phone still shows — the agent would have lost the context the user can see.
+baseTest('a turn hands the persisted native session id back to its adapter', async () => {
+  class AdoptingAdapter extends ControlledAdapter {
+    readonly adopted: [string, string][] = [];
+    readonly #sessions = new Map<string, string>();
+    adoptNativeSession(threadId: string, sessionId: string): void {
+      this.adopted.push([threadId, sessionId]);
+      this.#sessions.set(threadId, sessionId);
+    }
+    nativeSessionId(threadId: string): string | undefined {
+      return this.#sessions.get(threadId);
+    }
+  }
+
+  const baseDir = join(tmpdir(), `uxnan-am-adopt-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new AdoptingAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p', agentId: 'echo' }, 1);
+  await store.setAgentSession(thread.id, 'native-session-1', 2);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+  await waitFor(() => adapter.adopted.length > 0);
+  assert.deepEqual(adapter.adopted[0], [thread.id, 'native-session-1']);
+
+  // Offered once: a second turn finds the adapter already holding the thread.
+  adapter.complete(thread.id, turnId, 'done');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  await manager.sendTurn(thread.id, 'again');
+  assert.equal(adapter.adopted.length, 1);
+  await rmrf(baseDir);
+});
+
+// A thread switched to another agent must not inherit the previous agent's
+// session id — that would resume someone else's conversation.
+baseTest('the persisted session id is not offered to a different agent', async () => {
+  class AdoptingAdapter extends ControlledAdapter {
+    readonly adopted: [string, string][] = [];
+    adoptNativeSession(threadId: string, sessionId: string): void {
+      this.adopted.push([threadId, sessionId]);
+    }
+  }
+
+  const baseDir = join(tmpdir(), `uxnan-am-adopt-other-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new AdoptingAdapter();
+  manager.register(adapter);
+
+  // The stored session belongs to `codex`; the turn runs on `echo`.
+  const thread = await store.startThread({ projectId: 'p', agentId: 'codex' }, 1);
+  await store.setAgentSession(thread.id, 'codex-session-1', 2);
+  await manager.sendTurn(thread.id, 'go');
+  assert.deepEqual(adapter.adopted, []);
+  await rmrf(baseDir);
+});
