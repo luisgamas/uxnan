@@ -910,6 +910,53 @@ export function sshFsDuplicate(
   return invoke<string>('ssh_fs_duplicate', { hostId, path, expect: expect ?? null });
 }
 
+/** Filename search in a host's project.
+ *
+ *  Asks **git** on that machine (`git ls-files`) instead of walking it over
+ *  SFTP: a walk would be one request per folder across a network, and "the files
+ *  git would list" is already what the local search means, so both machines
+ *  answer about the same project. A folder that is not a repository there is
+ *  refused with that as the reason. */
+export function sshFsSearchFiles(
+  hostId: string,
+  root: string,
+  query: string,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<FileSearch> {
+  return invoke<FileSearch>('ssh_fs_search_files', {
+    hostId,
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+  });
+}
+
+/** Content search in a host's project, through `git grep` — the matching lines
+ *  come back, the files never cross the link. The highlight offsets are computed
+ *  on this side with the same regex the local search uses, because `git grep`
+ *  reports lines and not columns. */
+export function sshFsSearchContent(
+  hostId: string,
+  root: string,
+  query: ContentQuery,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<ContentSearch> {
+  return invoke<ContentSearch>('ssh_fs_search_content', {
+    hostId,
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+  });
+}
+
 /** Register a folder that lives on a host as a project. The path is stored the
  *  way that machine spells it; identity is the pair `(host, path)`, so the same
  *  absolute path on two machines is two projects. */

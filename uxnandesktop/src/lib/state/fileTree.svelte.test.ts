@@ -335,3 +335,66 @@ describe("changing a host's tree", () => {
     expect(fileTree.mutable).toBe(true);
   });
 });
+
+describe("searching a host's project", () => {
+  it("asks that machine, never this one, and offers the box only while it can", async () => {
+    // Search was hidden for a host until now because both walks read *this*
+    // filesystem — pointed at a host they would answer "no matches", which is a
+    // lie the user cannot tell from an empty result.
+    const { sessions } = await import("./sessions.svelte");
+    sessions.replace([{ hostId: "h1", generation: 1, label: "gamas" }]);
+    backend.setCommands({
+      ssh_fs_list: () => [],
+      ssh_fs_search_files: () => ({ entries: [], truncated: false }),
+      ssh_fs_search_content: () => ({ files: [], total: 0, truncated: false }),
+    });
+    fileTree.setRoot("C:/app", "ssh:h1");
+    await settle();
+    expect(fileTree.searchable).toBe(true);
+
+    fileTree.query = "needle";
+    fileTree.scheduleSearch();
+    await settle();
+    expect(backend.lastCallTo("ssh_fs_search_files")?.args).toMatchObject({
+      hostId: "h1",
+      root: "C:/app",
+      query: "needle",
+    });
+    expect(backend.lastCallTo("fs_search_files")).toBeUndefined();
+
+    fileTree.contentQuery = "needle";
+    fileTree.scheduleContentSearch();
+    await settle();
+    expect(backend.lastCallTo("ssh_fs_search_content")?.args).toMatchObject({
+      hostId: "h1",
+      root: "C:/app",
+    });
+    expect(backend.lastCallTo("fs_search_content")).toBeUndefined();
+
+    // Nothing can be asked of a host that is not connected, so the box is not
+    // offered rather than offered and failing.
+    sessions.replace([]);
+    expect(fileTree.searchable).toBe(false);
+  });
+
+  it("shows what the host said when the folder is not a repository there", async () => {
+    // Searching asks git. An empty result would be indistinguishable from "no
+    // matches", so the reason is carried through to the panel.
+    const { sessions } = await import("./sessions.svelte");
+    sessions.replace([{ hostId: "h1", generation: 1, label: "gamas" }]);
+    backend.setCommands({
+      ssh_fs_list: () => [],
+      ssh_fs_search_files: () => {
+        throw new Error("C:/app could not be searched on that host: ... not a repository there");
+      },
+    });
+    fileTree.setRoot("C:/app", "ssh:h1");
+    await settle();
+
+    fileTree.query = "needle";
+    fileTree.scheduleSearch();
+    await settle();
+    expect(fileTree.error).toMatch(/not a repository/);
+    expect(fileTree.searchResults).toEqual([]);
+  });
+});

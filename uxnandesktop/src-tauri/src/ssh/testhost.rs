@@ -588,3 +588,140 @@ async fn posix_host_creates_renames_duplicates_and_deletes() {
     files.delete(&base).await.expect("clean up");
     assert!(!files.exists(&base).await.unwrap());
 }
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_searches_its_project_by_name_and_by_content() {
+    let (conn, _) = host_or_skip!();
+    let kind = super::shellkind::classify(&conn).await;
+    let files = super::sftp::open(&conn).await.expect("an SFTP session");
+    let home = files.home().await.expect("the host's home");
+
+    // Its own repository: a search asserts on *what is in the project*, so it
+    // cannot share one with the tests that add and remove files.
+    let repo = format!("{home}/searchable");
+    conn.exec(&format!(
+        "rm -rf {repo} && mkdir -p {repo}/src {repo}/.github && cd {repo} && git init -q \
+         && printf 'alpha beta\\nBETA gamma\\n' > src/notes.txt \
+         && printf 'fn main() {{}}\\n' > src/main.rs \
+         && printf 'ignored beta\\n' > secret.log \
+         && printf 'beta in a dotfolder\\n' > .github/ci.yml \
+         && printf '*.log\\n' > .gitignore \
+         && git add -A && git commit -qm first \
+         && printf 'untracked beta\\n' > src/fresh.txt"
+    ))
+    .await
+    .expect("a repository to search");
+
+    let filters = crate::fs::SearchFilters::default();
+
+    // By name: tracked and untracked both, ignored never.
+    let by_name = super::search::files(&conn, kind, &repo, "src", false, &filters, 100)
+        .await
+        .expect("a filename search");
+    let names: Vec<&str> = by_name.entries.iter().map(|e| e.name.as_str()).collect();
+    assert!(names.contains(&"notes.txt"), "{names:?}");
+    assert!(
+        names.contains(&"fresh.txt"),
+        "untracked files count: {names:?}"
+    );
+    assert!(!names.contains(&"secret.log"), "ignored: {names:?}");
+    assert!(
+        by_name.entries.iter().all(|e| e.path.starts_with(&repo)),
+        "paths come back absolute, as that machine spells them"
+    );
+
+    // Hidden folders follow the same rule as locally: off unless asked for.
+    let hidden_off = super::search::files(&conn, kind, &repo, "ci", false, &filters, 100)
+        .await
+        .expect("a filename search");
+    assert!(hidden_off.entries.is_empty(), "{:?}", hidden_off.entries);
+    let hidden_on = super::search::files(&conn, kind, &repo, "ci", true, &filters, 100)
+        .await
+        .expect("a filename search");
+    assert_eq!(hidden_on.entries.len(), 1, "{:?}", hidden_on.entries);
+
+    // By content: case-insensitive by default, and the offsets are ours.
+    let query = crate::fs::ContentQuery {
+        query: "beta".to_string(),
+        ..Default::default()
+    };
+    let hits = super::search::content(&conn, kind, &repo, &query, false, &filters, 100)
+        .await
+        .expect("a content search");
+    let hit_files: Vec<&str> = hits.files.iter().map(|f| f.name.as_str()).collect();
+    assert!(hit_files.contains(&"notes.txt"), "{hit_files:?}");
+    assert!(hit_files.contains(&"fresh.txt"), "untracked: {hit_files:?}");
+    assert!(!hit_files.contains(&"secret.log"), "ignored: {hit_files:?}");
+
+    let notes = hits
+        .files
+        .iter()
+        .find(|f| f.name == "notes.txt")
+        .expect("the file with two matching lines");
+    assert_eq!(notes.matches.len(), 2, "both lines: {:?}", notes.matches);
+    assert_eq!(notes.matches[0].line, 1);
+    assert_eq!(notes.matches[1].line, 2);
+    // The highlight is computed here from the line the host sent — git grep
+    // reports lines, not columns.
+    let first = &notes.matches[0];
+    assert_eq!(
+        &first.text[first.start as usize..first.end as usize],
+        "beta"
+    );
+
+    // Case-sensitive drops the shouted one.
+    let cased = crate::fs::ContentQuery {
+        query: "beta".to_string(),
+        case_sensitive: true,
+        ..Default::default()
+    };
+    let strict = super::search::content(&conn, kind, &repo, &cased, false, &filters, 100)
+        .await
+        .expect("a content search");
+    let strict_notes = strict
+        .files
+        .iter()
+        .find(|f| f.name == "notes.txt")
+        .expect("still one file");
+    assert_eq!(strict_notes.matches.len(), 1);
+    assert_eq!(strict_notes.matches[0].line, 1);
+
+    // A word search does not match inside a longer word.
+    let worded = crate::fs::ContentQuery {
+        query: "bet".to_string(),
+        whole_word: true,
+        ..Default::default()
+    };
+    assert!(
+        super::search::content(&conn, kind, &repo, &worded, false, &filters, 100)
+            .await
+            .expect("a content search")
+            .files
+            .is_empty()
+    );
+
+    // Nothing matched is an empty answer, not a failure — `git grep` exits 1.
+    let absent = crate::fs::ContentQuery {
+        query: "nothing-is-here".to_string(),
+        ..Default::default()
+    };
+    assert_eq!(
+        super::search::content(&conn, kind, &repo, &absent, false, &filters, 100)
+            .await
+            .expect("an empty search")
+            .total,
+        0
+    );
+
+    // A folder that is not a repository says so, rather than answering nothing.
+    let plain = format!("{home}/plain-folder");
+    assert!(
+        super::search::files(&conn, kind, &plain, "x", false, &filters, 100)
+            .await
+            .is_err(),
+        "searching asks git, so a plain folder cannot be searched"
+    );
+
+    let _ = conn.exec(&format!("rm -rf {repo}")).await;
+}

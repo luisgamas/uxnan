@@ -105,6 +105,7 @@ conexion alguna.
 | §5.10b | rama y estado de git en el host | implementado |
 | §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
 | §5.10d | Crear/renombrar/duplicar/borrar en el host | `ssh/sftp.rs`, `fsRouter.ts` |
+| §5.10e | Buscar en el proyecto del host | `ssh/search.rs`, `fsRouter.ts` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1080,19 +1081,61 @@ filesystem) y registrar como proyecto local. Y con el host desconectado, lo que
 cambia la maquina se deshabilita: se puede leer lo que ya se leyo, pero no
 mandarle nada.
 
+## 5.10e Buscar en el proyecto del host — IMPLEMENTADO (fase 3, quinta parte)
+
+`src-tauri/src/ssh/search.rs` + `src/lib/fsRouter.ts`. Por nombre de fichero y
+por contenido.
+
+**Por que git y no SFTP.** Todo lo demas de ficheros va por SFTP porque es un
+subsistema y no exige instalar nada. Buscar es justo lo que SFTP **no** sabe
+hacer: no tiene "find", asi que buscar sobre el es listar cada carpeta y leer
+cada fichero, una peticion cada vez, a traves de la red. Un repositorio de
+cualquier tamaño son miles de idas y vueltas por pulsacion.
+
+Los clientes remotos maduros lo resuelven instalando en el host un servidor que
+lleva `ripgrep`. El ayudante en el host esta descartado (§5.11), y exigir `rg`
+pondria la funcion detras de algo que la mayoria de las maquinas no tiene. Asi
+que se le pregunta a **git**, que ya esta en todo host con el que esta app puede
+hacer algo util — la rama, la revision y el historial se ejecutan alli
+(§5.10b, §5.10c). Dos ordenes, un viaje cada una:
+
+- `git ls-files -co --exclude-standard -z`: cada fichero seguido y sin seguir que
+  no este ignorado. Es **exactamente** lo que recorre la busqueda local (el crate
+  `ignore` lee las mismas reglas de `.gitignore`), asi que las dos maquinas
+  contestan sobre el mismo proyecto y no sobre dos ideas distintas de "el
+  proyecto".
+- `git grep -n -I --no-color -z`: las lineas que casan. **Los ficheros no cruzan
+  el enlace**, solo las lineas.
+
+**Los offsets del resaltado se calculan aqui**, no alli: `git grep` informa de
+lineas, no de columnas, y el resaltado tiene que coincidir con lo que habria
+producido la busqueda local. Cada linea devuelta se vuelve a casar con **el
+mismo regex que construye la busqueda local** (`crate::fs::build_content_regex`),
+asi que "que cuenta como coincidencia" tiene una sola definicion en la app. Si el
+dialecto de git caso algo que el nuestro no (un regex exotico), la linea se
+descarta en vez de enseñar un acierto que nada puede resaltar.
+
+**El formato se midio contra el host, no se supuso**: `-z` deja `ruta NUL linea NUL texto`, terminado en salto de linea, y se lee campo a campo — partir primero por saltos de linea tiraria
+justo la garantia que `-z` da (una ruta puede contener un salto de linea). Un
+host con CRLF manda ademas el retorno de carro, que no es parte de la linea.
+
+**Alcance honesto:** una carpeta del host que no es repositorio no se puede
+buscar, y se dice — una lista vacia seria indistinguible de "no hay
+coincidencias". "Buscar en la carpeta" acota con `-C`, y git contesta rutas
+relativas a esa carpeta (medido tambien).
+
 ## 5.11 Lo que queda de la fase 3
 
 Cambios e Historial ya estan (§5.10c), con las dos soluciones que se habian
 anotado aqui: parche y mensaje por SFTP, porque `exec` no tiene stdin. Quedan:
 
-1. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la
-   busqueda recorre este filesystem. Es lo unico que queda del arbol: crear,
-   renombrar, duplicar y borrar ya funcionan alli (§5.10d).
-2. **Diff de imagenes y borrador de commit con IA** en remoto — las dos piezas
+1. **Diff de imagenes y borrador de commit con IA** en remoto — las dos piezas
    que §5.10c deja fuera. El diff de imagenes mueve bytes binarios y `exec`
    devuelve `String::from_utf8_lossy`: el lado del working tree sale por SFTP y
    los blobs por base64 en el host. El borrador con IA necesita que el diff
    preparado llegue aqui para dárselo al agente local.
+2. **Avisar a la UI de una sesion caida** (hoy el frontend se entera al
+   preguntar) y el **presupuesto de canales** (`MaxSessions` = 10 por defecto).
 
 **Y una restriccion que no se negocia:** el watcher de git local sondea cada 3 s
 (`lib.rs`). A ~2 s por `exec` (§5.3) eso saturaria el canal para siempre, asi que
@@ -1174,6 +1217,7 @@ primera vez.
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
+| Buscar (nombre y contenido) | **Funciona** preguntandole a git en el host — `ls-files` y `grep` (§5.10e). Solo dentro de un repositorio; si no lo es, se dice. |
 | Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
 | Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
@@ -1189,7 +1233,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales (`MaxSessions`) y mostrar el inventario en la UI. Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) Cambios/Historial (§5.10c) y las operaciones de fichero del arbol (§5.10d) hechos; pendientes: busqueda, diff de imagenes y borrador con IA (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) Cambios/Historial (§5.10c) las operaciones de fichero del arbol (§5.10d) y la busqueda (§5.10e) hechos; pendientes: diff de imagenes, borrador con IA y avisar a la UI de una sesion caida (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

@@ -58,10 +58,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **759 backend tests**
-in total, 716 of which run everywhere; the other 43 are ignored probes that need
-something real to talk to (34 live SSH probes — 26 against a real `sshd`, one of
-which idles for five minutes to prove the keepalive, plus **8 against a Linux
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **764 backend tests**
+in total, 720 of which run everywhere; the other 44 are ignored probes that need
+something real to talk to (35 live SSH probes — 26 against a real `sshd`, one of
+which idles for five minutes to prove the keepalive, plus **9 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
 PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
 the real-scheduler probe). The remaining 36 are the integration tests in
@@ -86,7 +86,7 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The eight tests walk the whole stack on that machine: password authentication,
+The nine tests walk the whole stack on that machine: password authentication,
 the shell classification, the inventory probe, SFTP (list, read, save, and
 shortening a file), the folder picker with its repository badge, remote
 `git status` including the no-upstream case, the whole **review** (HEAD,
@@ -94,7 +94,9 @@ ahead/behind, the changed files and their line counts in one command) with its
 diffs and log, a full **mutation** cycle over the tree — create (bare and intercalated), the
 server's own "must not exist" refusal, a name that tries to escape its folder,
 rename including the case-only one, duplicate, a recursive delete and the refusal
-to aim one at a filesystem root — and a full git **mutation** cycle: stage,
+to aim one at a filesystem root — **searching** it (by name and by content, with the `.gitignore` rules, the
+hidden-folder rule, case sensitivity, whole word, an empty result and a folder
+that is not a repository), and a full git **mutation** cycle: stage,
 unstage, stage all, commit
 a message containing a newline, quotes and `$VAR` and read it back verbatim,
 discard tracked and untracked files, apply a patch and reverse it, and require a
@@ -117,7 +119,7 @@ gets ignored.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 687 passing unit tests (722 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 692 passing unit tests (729 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -218,7 +220,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,208 passing tests** across both
+ships in every build and is never shown). **1,210 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

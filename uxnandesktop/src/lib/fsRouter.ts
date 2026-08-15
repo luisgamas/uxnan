@@ -18,6 +18,8 @@ import {
   fsListDir,
   fsReadFile,
   fsRename,
+  fsSearchContent,
+  fsSearchFiles,
   fsWriteFile,
   sshFsCreateDir,
   sshFsCreateFile,
@@ -26,10 +28,19 @@ import {
   sshFsList,
   sshFsRead,
   sshFsRename,
+  sshFsSearchContent,
+  sshFsSearchFiles,
   sshFsWrite,
 } from "$lib/api";
 import { expectation, sshHostId, type TargetId } from "$lib/target";
-import type { FileContent, FsEntry } from "$lib/types";
+import type {
+  ContentQuery,
+  ContentSearch,
+  FileContent,
+  FileSearch,
+  FsEntry,
+  SearchFilters,
+} from "$lib/types";
 
 /** List a directory on the machine `target` names. */
 export function listDirOn(target: TargetId | undefined | null, path: string): Promise<FsEntry[]> {
@@ -142,4 +153,41 @@ export async function duplicateOn(
   const host = sshHostId(target);
   if (!host) return fsDuplicate(path);
   return sshFsDuplicate(host, path, fence(target, host, generation));
+}
+
+/** Search a project by file name on the machine `target` names.
+ *
+ *  The two sides get there differently, and the difference is the whole reason
+ *  this feature waited: locally it is a threaded walk that reads `.gitignore`;
+ *  on a host it asks git for the same list in one command, because a walk over
+ *  SFTP is one request per folder across a network. Same answer, one round trip
+ *  instead of thousands. */
+export function searchFilesOn(
+  target: TargetId | undefined | null,
+  root: string,
+  query: string,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<FileSearch> {
+  const host = sshHostId(target);
+  return host
+    ? sshFsSearchFiles(host, root, query, includeHidden, filters, limit)
+    : fsSearchFiles(root, query, includeHidden, filters, limit);
+}
+
+/** Search a project by content on the machine `target` names — `git grep` there,
+ *  the threaded walk here. */
+export function searchContentOn(
+  target: TargetId | undefined | null,
+  root: string,
+  query: ContentQuery,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<ContentSearch> {
+  const host = sshHostId(target);
+  return host
+    ? sshFsSearchContent(host, root, query, includeHidden, filters, limit)
+    : fsSearchContent(root, query, includeHidden, filters, limit);
 }

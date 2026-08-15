@@ -30,6 +30,7 @@ pub mod hostkey;
 pub mod inventory;
 pub mod pty;
 pub mod registry;
+pub mod search;
 pub mod sftp;
 pub mod shellkind;
 // The live suite that runs this whole stack against a Linux host in a container

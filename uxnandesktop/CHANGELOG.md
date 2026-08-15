@@ -28,6 +28,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A host's project can be searched — by file name and by content.** The search
+  box was hidden for a remote project because both searches walk *this*
+  filesystem; pointed at a host they would have answered "no matches", which is
+  a lie nobody can tell from an empty result.
+
+  It asks **git on that machine** rather than walking it: `git ls-files` for the
+  names and `git grep` for the lines. SFTP has no "find", so searching over it
+  would mean listing every folder and reading every file one request at a time,
+  across a network — thousands of round trips per keystroke. The mature remote
+  clients solve this by installing a server carrying `ripgrep`; we decided
+  against a host-side helper, and requiring `rg` would put the feature behind
+  something most machines do not have. Git is already there — the branch, the
+  review and the history all run it on the host — and it brings the right
+  semantics for free: `ls-files` lists exactly what the local search walks
+  (tracked and untracked, `.gitignore` respected), so the two machines answer
+  about the same project. Matching lines come back; the files never do.
+
+  The highlight offsets are computed on this side, with the **same regex the
+  local search builds**, because `git grep` reports lines and not columns — so
+  "what counts as a match" has one definition in the app instead of two. Case
+  sensitivity, whole word and regex all carry through, "find in folder" scopes
+  to that folder, and a folder that is not a repository on the host says so
+  instead of answering nothing.
+
 - **A host's file tree can be changed, not just read.** New file, new folder,
   rename, duplicate and delete all run on the machine the tree is of, over SFTP —
   so they behave the same whatever shell that host starts and need nothing

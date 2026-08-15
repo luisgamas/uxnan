@@ -75,8 +75,9 @@ available today are:
   are listed, opened and saved over SFTP — a subsystem, so it behaves the same
   whatever shell the host runs, and the tree can be **changed** there too (new
   file, rename, duplicate, delete — deleting on a host is permanent, because SSH
-  has no trash, and the dialog says so) — and **Changes and History work there
-  too**: the
+  has no trash, and the dialog says so) and **searched** (by name and by content,
+  asking git on that machine so the files never cross the link) — and **Changes
+  and History work there too**: the
   diff, staging, commit, log and fetch/push/pull all run git on that machine,
   with your commit message travelling over SFTP so it is never quoted for someone
   else's shell. Host keys are verified with a confirmation you have to give; no

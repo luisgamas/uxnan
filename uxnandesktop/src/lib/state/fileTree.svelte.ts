@@ -6,7 +6,6 @@
 // access goes through `$lib/api`.
 
 import { listen } from "@tauri-apps/api/event";
-import { fsSearchContent, fsSearchFiles } from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
 import type { ContentFileMatch, FsChangedEvent, FsEntry, SearchFilters } from "$lib/types";
 import {
@@ -16,6 +15,8 @@ import {
   duplicateOn,
   listDirOn,
   renameOn,
+  searchContentOn,
+  searchFilesOn,
 } from "$lib/fsRouter";
 import { sessions } from "$lib/state/sessions.svelte";
 import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
@@ -85,13 +86,12 @@ class FileTreeStore {
 
   /** Whether searching this tree is possible.
    *
-   *  Both searches walk **this** filesystem (`fs_search_*`). Pointed at a host
-   *  they would find nothing and report it as "no matches" — a lie the user
-   *  cannot tell from an empty result. Searching a host needs its own
-   *  implementation (phase 3 continues), so until then the affordance is not
-   *  offered rather than offered broken. */
+   *  Local always. On a host it asks git there (`ssh::search`), so it needs a
+   *  live connection — and a folder that is not a repository on that machine
+   *  answers with that as the reason, which the panel shows in place of results
+   *  rather than pretending nothing matched. */
   get searchable(): boolean {
-    return isLocalTarget(this.target);
+    return isLocalTarget(this.target) || this.mutable;
   }
   /** Lazily-loaded children keyed by directory path. */
   childrenByDir = $state<Record<string, FsEntry[]>>({});
@@ -389,7 +389,14 @@ class FileTreeStore {
     const seq = ++this.searchSeq;
     this.searchLoading = true;
     try {
-      const res = await fsSearchFiles(root, q, this.showHidden, this.filters(), SEARCH_LIMIT);
+      const res = await searchFilesOn(
+        this.target,
+        root,
+        q,
+        this.showHidden,
+        this.filters(),
+        SEARCH_LIMIT,
+      );
       if (seq !== this.searchSeq) return;
       this.searchResults = res.entries;
       this.searchTruncated = res.truncated;
@@ -447,7 +454,8 @@ class FileTreeStore {
     const seq = ++this.contentSeq;
     this.contentLoading = true;
     try {
-      const res = await fsSearchContent(
+      const res = await searchContentOn(
+        this.target,
         root,
         {
           query: q,

@@ -1695,6 +1695,47 @@ pub async fn ssh_git_sync(
     Ok(ssh::git::review(&conn, shell, &path).await.status)
 }
 
+/// Filename search in a host's project.
+///
+/// Asks git on that machine rather than walking it over SFTP: a walk would be
+/// one request per folder across a network, and the local search already means
+/// "the files git would list" (`ssh::search`). A folder that is not a repository
+/// there is refused with that as the reason, rather than answering an empty list
+/// nobody can tell from "no matches".
+#[tauri::command]
+pub async fn ssh_fs_search_files(
+    state: State<'_, AppState>,
+    host_id: String,
+    root: String,
+    query: String,
+    include_hidden: bool,
+    filters: crate::fs::SearchFilters,
+    limit: usize,
+) -> Result<crate::fs::FileSearch, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::search::files(&conn, shell, &root, &query, include_hidden, &filters, limit)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Content search in a host's project, through `git grep` — the lines come back,
+/// the files never do.
+#[tauri::command]
+pub async fn ssh_fs_search_content(
+    state: State<'_, AppState>,
+    host_id: String,
+    root: String,
+    query: crate::fs::ContentQuery,
+    include_hidden: bool,
+    filters: crate::fs::SearchFilters,
+    limit: usize,
+) -> Result<crate::fs::ContentSearch, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::search::content(&conn, shell, &root, &query, include_hidden, &filters, limit)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// The file session for a host, opening one on first use.
 ///
 /// Held per host because it is a channel on a connection that already exists:

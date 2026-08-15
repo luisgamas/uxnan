@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 759 Rust tests (723 unit + 36
-integration), of which 43 are ignored probes that need something real to talk to
-(34 live SSH probes — 26 against a real `sshd` and 8 against a **Linux host in a
+always wins). 764 Rust tests (728 unit + 36
+integration), of which 44 are ignored probes that need something real to talk to
+(35 live SSH probes — 26 against a real `sshd` and 9 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,208 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,210 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -926,7 +926,9 @@ commit, log and fetch/push/pull, with the patch and the commit message travellin
 over SFTP because `exec` has no stdin, every mutation fenced, and the whole review
 answered in one command (`02g` §5.10c); **creating, renaming, duplicating and
 deleting in a host's tree**, over SFTP and fenced, with deletion permanent
-because SSH has no trash and the dialog saying so (`02g` §5.10d); a keepalive so a quiet host is not reaped
+because SSH has no trash and the dialog saying so (`02g` §5.10d); **searching a
+host's project** by name and by content, by asking git there rather than dragging
+the project across the link (`02g` §5.10e); a keepalive so a quiet host is not reaped
 and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
 startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
@@ -983,10 +985,9 @@ reasoning, with the measurements that removed its justification, is in
 ### Frontend (Svelte)
 - [ ] **What a remote project still cannot do.** Files, Changes and History all
       work on a host now, and so do the tree's own actions — create, rename,
-      duplicate, delete (`ssh/sftp.rs` + `src/lib/fsRouter.ts`, `ssh/git.rs` +
-      `src/lib/gitRouter.ts`). What is left, in order: **searching** a host's tree
-      (the affordance is hidden today rather than offered broken, because it walks
-      this filesystem); **watching for changes**
+      duplicate, delete — and searching it (`ssh/sftp.rs` + `src/lib/fsRouter.ts`,
+      `ssh/git.rs` + `src/lib/gitRouter.ts`, `ssh/search.rs`). What is left, in
+      order: **watching for changes**
       (a remote project has no watcher on purpose — 3 s polling against a machine
       where one command costs ~2 s — so every panel refreshes on open, on act and
       on its button, and says so); and the two pieces of the review that read this
@@ -1441,7 +1442,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 759 Rust + 1,208 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 764 Rust + 1,210 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

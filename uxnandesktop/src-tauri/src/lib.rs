@@ -451,6 +451,8 @@ pub fn run() {
             commands::ssh_fs_rename,
             commands::ssh_fs_delete,
             commands::ssh_fs_duplicate,
+            commands::ssh_fs_search_files,
+            commands::ssh_fs_search_content,
             commands::ssh_repo_add,
             commands::browse_dirs,
             commands::fs_list_dir,
