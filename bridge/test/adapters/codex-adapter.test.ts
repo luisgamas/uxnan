@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { writeFile } from 'node:fs/promises';
 import { PassThrough } from 'node:stream';
 import {
   CodexAdapter,
@@ -8,7 +10,9 @@ import {
   parseCodexModelList,
   parseCodexModelWindows,
   parseCodexReasoning,
+  type SpawnFn,
   type SpawnedAppServer,
+  type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 import { codexFileChanges } from '../../src/adapters/codex-tools.js';
@@ -1364,4 +1368,42 @@ test('CodexAdapter maps the reasoning knob (options) to the turn/start effort fi
     }),
   ]);
   await new Promise((r) => setImmediate(r));
+});
+
+test('CodexAdapter names a conversation on the cheapest model, at the lowest effort', async () => {
+  // `generateTitle` never touches the app-server: it is a one-shot `codex exec`
+  // whose final message lands in the `-o` file.
+  let captured: string[] = [];
+  const adapter = new CodexAdapter({
+    binaryPath: 'codex',
+    spawnFn: ((_command: string, args: string[]) => {
+      captured = args;
+      const stdout = new PassThrough();
+      const emitter = new EventEmitter();
+      stdout.on('end', () => emitter.emit('close', 0));
+      // The real CLI writes the title to the file it was pointed at.
+      void writeFile(args[args.indexOf('-o') + 1]!, 'Fix the model list\n', 'utf8').then(() =>
+        stdout.end(),
+      );
+      return {
+        stdout,
+        stderr: new PassThrough(),
+        on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+        kill: () => emitter.emit('close', 0),
+      } as unknown as SpawnedProcess;
+    }) as unknown as SpawnFn,
+  });
+
+  assert.equal(
+    await adapter.generateTitle({ userText: 'hi', assistantText: 'ok', cwd: process.cwd() }),
+    'Fix the model list',
+  );
+  // The cheap model, never the thread's own.
+  assert.equal(captured[captured.indexOf('-m') + 1], 'gpt-5.6-luna');
+  // Pinned explicitly: Luna's own default effort is `medium`, and reasoning
+  // tokens are what would make the cheap model cost more than the mini tier.
+  assert.equal(captured[captured.indexOf('-c') + 1], 'model_reasoning_effort=low');
+  // Ephemeral + read-only: naming must not write a session or touch the repo.
+  assert.equal(captured.includes('--ephemeral'), true);
+  assert.equal(captured[captured.indexOf('-s') + 1], 'read-only');
 });

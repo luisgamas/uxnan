@@ -211,7 +211,14 @@ pub async fn execute(
             let autonomous = step.autonomous;
             inflight.spawn(async move {
                 let outcome = match crate::agentrun::run_headless(
-                    &agent, &model, &prompt, &dir, timeout_ms, autonomous,
+                    &agent,
+                    &model,
+                    &prompt,
+                    &dir,
+                    timeout_ms,
+                    autonomous,
+                    // A step runs its model as configured, effort included.
+                    &[],
                 )
                 .await
                 {

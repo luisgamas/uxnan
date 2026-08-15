@@ -332,11 +332,20 @@ pub fn resolve(agent_id: &str) -> Option<Resolved> {
 /// An unattended automation that is supposed to *do* something therefore needs
 /// this — but it is opt-in per step, never the default, because it lets an agent
 /// edit files and run commands with nobody watching.
+///
+/// `extra` carries CLI arguments that are neither the model nor the autonomy
+/// posture — pinning the reasoning effort of the cheap model a title runs on
+/// (`-c model_reasoning_effort=low` for Codex), for instance. They are placed
+/// with the other options, always **before** the prompt, since a flag after it
+/// is ignored (Antigravity) or swallowed into it. Deliberately opaque: the
+/// caller knows which CLI it is talking to, so this does not have to grow a
+/// per-agent mapping for every possible option.
 pub fn build_args(
     agent_id: &str,
     model: &str,
     prompt: PromptSource<'_>,
     autonomous: bool,
+    extra: &[String],
 ) -> Option<Vec<String>> {
     let m = model.trim();
     let model_flag = |flag: &str| -> Vec<String> {
@@ -346,8 +355,10 @@ pub fn build_args(
             vec![flag.to_string(), m.to_string()]
         }
     };
-    // The trailing positional prompt, or nothing when it travels another way.
+    // Everything that must sit between the options and the prompt: the caller's
+    // extra flags, then the trailing positional prompt when it travels in argv.
     let positional = |a: &mut Vec<String>| {
+        a.extend_from_slice(extra);
         if let PromptSource::Argv(p) = prompt {
             a.push(p.to_string());
         }
@@ -420,6 +431,7 @@ pub fn build_args(
             }
             match prompt {
                 PromptSource::File(path) => {
+                    a.extend_from_slice(extra);
                     a.push("--prompt-file".to_string());
                     a.push(path.to_string());
                 }
@@ -443,6 +455,7 @@ pub fn build_args(
             }
             match prompt {
                 PromptSource::File(path) => {
+                    a.extend_from_slice(extra);
                     a.push("-f".to_string());
                     a.push(path.to_string());
                 }
@@ -688,33 +701,33 @@ mod tests {
     fn supported_ids_resolve_to_args() {
         for id in SUPPORTED {
             assert!(
-                build_args(id, "", PromptSource::Argv("msg"), false).is_some(),
+                build_args(id, "", PromptSource::Argv("msg"), false, &[]).is_some(),
                 "{id} builds default args"
             );
             assert!(
-                build_args(id, "x", PromptSource::Argv("msg"), false).is_some(),
+                build_args(id, "x", PromptSource::Argv("msg"), false, &[]).is_some(),
                 "{id} builds model args"
             );
         }
-        assert!(build_args("nope", "", PromptSource::Argv("m"), false).is_none());
+        assert!(build_args("nope", "", PromptSource::Argv("m"), false, &[]).is_none());
     }
 
     #[test]
     fn build_args_default_omits_model_flag() {
         assert_eq!(
-            build_args("claude", "", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("claude", "", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["-p", "hi"]
         );
         assert_eq!(
-            build_args("codex", "  ", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("codex", "  ", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["exec", "--skip-git-repo-check", "hi"]
         );
         assert_eq!(
-            build_args("opencode", "", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("opencode", "", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["run", "hi"]
         );
         assert_eq!(
-            build_args("pi", "", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("pi", "", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["-p", "hi"]
         );
     }
@@ -726,19 +739,19 @@ mod tests {
         // hangs until its own print timeout. Both natives therefore put every
         // option first and the prompt last.
         assert_eq!(
-            build_args("agy", "", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("agy", "", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["--print", "hi"]
         );
         assert_eq!(
-            build_args("grok", "", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("grok", "", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["-p", "hi"]
         );
         assert_eq!(
-            build_args("agy", "gemini-3-pro", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("agy", "gemini-3-pro", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["--model", "gemini-3-pro", "--print", "hi"]
         );
         assert_eq!(
-            build_args("grok", "grok-4", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("grok", "grok-4", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["-m", "grok-4", "-p", "hi"]
         );
     }
@@ -831,14 +844,14 @@ Available models:
     fn a_stdin_prompt_is_left_out_of_the_arguments() {
         // If it stayed in argv too, the agent would get the prompt twice.
         for id in ["claude", "codex", "opencode", "pi"] {
-            let args = build_args(id, "", PromptSource::Stdin, false).unwrap();
+            let args = build_args(id, "", PromptSource::Stdin, false, &[]).unwrap();
             assert!(
                 !args.iter().any(|a| a == "hi"),
                 "{id} still passes a positional: {args:?}"
             );
         }
         assert_eq!(
-            build_args("claude", "", PromptSource::Stdin, false).unwrap(),
+            build_args("claude", "", PromptSource::Stdin, false, &[]).unwrap(),
             vec!["-p"]
         );
     }
@@ -846,11 +859,11 @@ Available models:
     #[test]
     fn a_file_prompt_uses_each_cli_own_flag() {
         assert_eq!(
-            build_args("grok", "", PromptSource::File("C:/tmp/p.txt"), false).unwrap(),
+            build_args("grok", "", PromptSource::File("C:/tmp/p.txt"), false, &[]).unwrap(),
             vec!["--prompt-file", "C:/tmp/p.txt"]
         );
         assert_eq!(
-            build_args("zero", "", PromptSource::File("C:/tmp/p.txt"), false).unwrap(),
+            build_args("zero", "", PromptSource::File("C:/tmp/p.txt"), false, &[]).unwrap(),
             vec!["exec", "-f", "C:/tmp/p.txt"]
         );
     }
@@ -860,11 +873,11 @@ Available models:
         // Zero's autonomy is graded, and its own help says `high` is the level
         // that enables unsafe tools.
         assert_eq!(
-            build_args("zero", "", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("zero", "", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["exec", "hi"]
         );
         assert_eq!(
-            build_args("zero", "gpt-5", PromptSource::Argv("hi"), true).unwrap(),
+            build_args("zero", "gpt-5", PromptSource::Argv("hi"), true, &[]).unwrap(),
             vec!["exec", "-m", "gpt-5", "--auto", "high", "hi"]
         );
     }
@@ -874,7 +887,7 @@ Available models:
         // The safe default is the whole point: nothing may auto-approve tools
         // just because a run happens to be headless.
         for id in SUPPORTED {
-            let args = build_args(id, "", PromptSource::Argv("msg"), false).unwrap();
+            let args = build_args(id, "", PromptSource::Argv("msg"), false, &[]).unwrap();
             assert!(
                 !args
                     .iter()
@@ -890,7 +903,7 @@ Available models:
         // Antigravity auto-denies and says so — so the mapping has to be right
         // per CLI rather than one flag hopefully shared by all of them.
         let has = |id: &str, needle: &str| {
-            build_args(id, "", PromptSource::Argv("msg"), true)
+            build_args(id, "", PromptSource::Argv("msg"), true, &[])
                 .unwrap()
                 .iter()
                 .any(|a| a == needle)
@@ -906,7 +919,7 @@ Available models:
     fn the_prompt_stays_the_last_positional_when_autonomy_is_on() {
         // A flag inserted in the wrong place would silently become the prompt.
         assert_eq!(
-            build_args("claude", "opus", PromptSource::Argv("hi"), true).unwrap(),
+            build_args("claude", "opus", PromptSource::Argv("hi"), true, &[]).unwrap(),
             vec![
                 "-p",
                 "--dangerously-skip-permissions",
@@ -918,7 +931,7 @@ Available models:
         // Antigravity is the one that breaks if an option lands after the
         // prompt, so pin its whole shape.
         assert_eq!(
-            build_args("agy", "gemini-3-pro", PromptSource::Argv("hi"), true).unwrap(),
+            build_args("agy", "gemini-3-pro", PromptSource::Argv("hi"), true, &[]).unwrap(),
             vec![
                 "--model",
                 "gemini-3-pro",
@@ -928,7 +941,7 @@ Available models:
             ]
         );
         assert_eq!(
-            build_args("grok", "", PromptSource::Argv("hi"), true).unwrap(),
+            build_args("grok", "", PromptSource::Argv("hi"), true, &[]).unwrap(),
             vec!["--permission-mode", "bypassPermissions", "-p", "hi"]
         );
     }
@@ -936,11 +949,11 @@ Available models:
     #[test]
     fn build_args_inserts_model_flag_per_cli() {
         assert_eq!(
-            build_args("claude", "opus", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("claude", "opus", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["-p", "--model", "opus", "hi"]
         );
         assert_eq!(
-            build_args("codex", "gpt-5", PromptSource::Argv("hi"), false).unwrap(),
+            build_args("codex", "gpt-5", PromptSource::Argv("hi"), false, &[]).unwrap(),
             vec!["exec", "--skip-git-repo-check", "--model", "gpt-5", "hi"]
         );
         assert_eq!(
@@ -948,13 +961,21 @@ Available models:
                 "opencode",
                 "anthropic/claude-3.5",
                 PromptSource::Argv("hi"),
-                false
+                false,
+                &[]
             )
             .unwrap(),
             vec!["run", "--model", "anthropic/claude-3.5", "hi"]
         );
         assert_eq!(
-            build_args("pi", "anthropic/sonnet", PromptSource::Argv("hi"), false).unwrap(),
+            build_args(
+                "pi",
+                "anthropic/sonnet",
+                PromptSource::Argv("hi"),
+                false,
+                &[]
+            )
+            .unwrap(),
             vec!["-p", "--model", "anthropic/sonnet", "hi"]
         );
     }

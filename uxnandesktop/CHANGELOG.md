@@ -92,6 +92,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   folder, a sheet path that isn't a bare file name, and a sheet whose pixels
   don't divide exactly into the format's 192 × 208 cell all fail the suite.
 
+### Changed
+
+- **Codex names conversations on `gpt-5.6-luna`, at its lowest reasoning tier.**
+  Naming used the `mini` tier, but Luna is cheaper on both halves of the bill
+  ($0.20/$1.20 per 1M tokens against $0.75/$4.50) and, measured on a real title,
+  also spent fewer tokens (13.4k vs 18.3k) — roughly 5× cheaper per name. The
+  effort is pinned explicitly (`-c model_reasoning_effort=low`) because Luna
+  defaults to `medium` and thinking tokens are what would undo the saving; the
+  key is validated by the CLI, so a typo fails loudly instead of silently naming
+  on the default tier. The bridge names the phone's conversations with the same
+  id and moves with this change.
+
 ### Fixed
 
 - **Antigravity's models are listed again, with readable names.** `agy models`

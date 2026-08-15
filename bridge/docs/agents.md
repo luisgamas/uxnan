@@ -107,12 +107,28 @@ attention to.
 | Agent | One-shot used | Title model |
 |---|---|---|
 | **Claude Code** | `-p` with no `--resume` | `haiku` |
-| **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.4-mini` |
+| **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` at `-c model_reasoning_effort=low` |
 | **OpenCode** | `opencode run` (no `--session`/`--continue`) | CLI default |
 | **pi** | `pi -p --no-session` | CLI default |
 | **Antigravity** | `agy -p` (no `--conversation`) | `gemini-3.6-flash-low` |
 | **Grok** | `grok -p` | CLI default |
 | **Zero** | `zero exec` | CLI default |
+
+**Cheap means cheapest on the bill, measured — not the smallest-sounding name.**
+Codex names on `gpt-5.6-luna` rather than the `mini` tier because Luna wins on
+both halves ($0.20/$1.20 per 1M tokens against mini's $0.75/$4.50) *and* spent
+fewer tokens naming the same conversation (13.4k vs 18.3k) — about 5× cheaper
+per title. Its effort is pinned to `low` because Luna's own default is `medium`,
+and reasoning tokens are exactly what can make a cheap model cost more than an
+expensive one on a task this small; `-c` keys are validated, so a typo fails the
+run instead of quietly naming on the default tier.
+
+**Each pinned id has a twin in the desktop app** (`uxnandesktop/src-tauri/src/
+convtitle.rs` → `title_model` / `title_effort_args`), which names terminal tabs
+the same way. Move both halves in the same change set — the bridge once passed
+**no** model for Antigravity while both the spec and the desktop said it named
+on the cheap flash tier, so every phone-side title quietly ran on the account's
+frontier model.
 
 Codex needs all three flags: `--ephemeral` writes no session file, `read-only`
 denies the sandbox any write, and `-o` yields the final message **alone** — its

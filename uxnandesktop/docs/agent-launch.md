@@ -248,6 +248,22 @@ anything else runs on its CLI default rather than guessing an id the CLI would
 reject. Verify a new id against the account's real `model/list` — a wrong one is
 not a cosmetic mistake, the run fails and the session silently keeps its label.
 
+**Cheapest means measured, not smallest-sounding.** Codex names on
+`gpt-5.6-luna`, not the `mini` tier: Luna is cheaper on both halves of the bill
+($0.20/$1.20 per 1M tokens against $0.75/$4.50) *and* spent fewer tokens naming
+the same conversation (13.4k vs 18.3k) — about 5× cheaper per title. Where the
+CLI separates the reasoning tier from the model id, that tier is pinned too
+(`title_effort_args` → `-c model_reasoning_effort=low`), because Luna's own
+default is `medium` and thinking tokens are what would undo the saving. Claude's
+`haiku` and Antigravity's `gemini-3.6-flash-low` already carry their tier in the
+id.
+
+**Every id here has a twin in the bridge**, which names the phone's
+conversations (`claude-adapter.ts` `TITLE_MODEL`, `codex-adapter.ts`
+`CODEX_TITLE_MODEL`, `antigravity-adapter.ts` `ANTIGRAVITY_TITLE_MODEL` — see
+[`../../bridge/docs/agents.md`](../../bridge/docs/agents.md)). Move both halves
+in the same change set, or one app keeps paying for a tier the other dropped.
+
 **On the wait.** Measured on Windows: CLI startup is ~140 ms, the floor for any
 model round-trip is ~3.3 s, and a full transcript names in ~7.5–9 s. Shrinking
 the transcript does *not* speed it up (1800 / 900 / 500 chars all land in the
