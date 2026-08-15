@@ -58,8 +58,8 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **771 backend tests**
-in total, 725 of which run everywhere; the other 46 are ignored probes that need
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **773 backend tests**
+in total, 727 of which run everywhere; the other 46 are ignored probes that need
 something real to talk to (37 live SSH probes — 26 against a real `sshd`, one of
 which idles for five minutes to prove the keepalive, plus **11 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
@@ -124,7 +124,7 @@ gets ignored.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 696 passing unit tests (735 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 698 passing unit tests (737 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -225,7 +225,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,213 passing tests** across both
+ships in every build and is never shown). **1,216 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

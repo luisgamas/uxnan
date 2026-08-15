@@ -2250,6 +2250,7 @@ export const en = {
   "hosts.fieldForwardAgent": "Forward my SSH agent",
   "hosts.fieldForwardAgentHint": "Lets git on that machine use the keys held here, without copying a private key to it.",
 
+  "hosts.noGit": "No git on this machine — changes, history and search need it there.",
   "hosts.openTerminal": "Open terminal",
 
   "hosts.addProject": "Add project",

@@ -78,6 +78,30 @@ describe('HostsSettings — what a host has', () => {
     expect(await screen.findByText('mycli')).toBeInTheDocument();
   });
 
+  it('says when the machine has no git, and stays quiet when it does', async () => {
+    // The catalogue knows 31 agents and a host has a handful, so listing what it
+    // lacks would be 25 rows of noise. The one absence that changes what uxnan
+    // can do there is git: without it there is no branch, no review, no history
+    // and no search on that machine.
+    hosts.inventories = { h1: { ...MANY, git: '' } };
+    const { screen, user } = mountWithProviders(HostsSettings, {
+      commands: { ssh_hosts_list: () => [HOST], ssh_hosts_connected: () => [] },
+    });
+
+    await user.click(await screen.findByLabelText('Agents on Workspace Gamas'));
+    expect(await screen.findByText(/no git on this machine/i)).toBeInTheDocument();
+  });
+
+  it('does not mention git when the host has it', async () => {
+    const { screen, user } = mountWithProviders(HostsSettings, {
+      commands: { ssh_hosts_list: () => [HOST], ssh_hosts_connected: () => [] },
+    });
+
+    await user.click(await screen.findByLabelText('Agents on Workspace Gamas'));
+    await screen.findByText('2.1.233 (Claude Code)');
+    expect(screen.queryByText(/no git on this machine/i)).toBeNull();
+  });
+
   it('says so plainly when the host answered and has none', async () => {
     hosts.inventories = { h1: { ...MANY, agents: {} } };
     const { screen } = mountWithProviders(HostsSettings, {

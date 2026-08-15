@@ -323,6 +323,12 @@ class HostsStore {
         case "noUsableMethod":
           this.error = i18n.t("hosts.errNoMethod", { host: label });
           break;
+        case "unreachable":
+          // The backend says *why* — asleep, no such name, nothing listening —
+          // and that sentence names the machine and the port, so it is shown as
+          // it is rather than flattened into "could not connect".
+          this.error = report.detail ?? i18n.t("hosts.errRefused", { host: label });
+          break;
       }
       // A host that let us in (or asked for something) may have flipped its
       // "needs a prompt" flag, which the backend persists.

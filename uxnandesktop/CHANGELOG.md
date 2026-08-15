@@ -70,6 +70,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A host that drops comes back on its own.** Only the ones that can: the same
+  rule startup uses — no password, no passphrase, a key already on file — so the
+  app never raises a credential dialog at someone who walked away from the
+  machine. It tries at 2s, 5s, 15s, 30s and 60s and then stops, because a client
+  that dials forever fills a log and looks broken.
+
+  It also stops the moment trying again cannot help, which needed the failure to
+  be **typed**: "did not answer" (asleep, off the network), "no such address",
+  "refused" (nothing listening — a machine still booting looks exactly like
+  this) and "the handshake did not complete" lead to different actions, and one
+  failure string made them indistinguishable. A name that does not resolve is
+  never retried; anything that needs a person — a password, a passphrase, a host
+  key that changed — is never retried in the background either. The connect
+  dialog now shows that sentence, which names the machine and the port, instead
+  of one blanket "could not connect".
+
+- **Settings → Hosts says when a machine has no git.** Without it there is no
+  branch, no review, no history and no search on that host, and until now the
+  panels just stayed empty. What a machine *lacks* is deliberately one line and
+  not a list: the catalogue knows 31 agents and a host has a handful, so listing
+  the rest would be 25 rows of noise.
+
 - **The last two panel pieces work on a host: image diffs and the AI commit
   draft.** An image diff was not a git problem but a transport one — `exec`
   turned stdout into text with a lossy conversion, which is right for everything

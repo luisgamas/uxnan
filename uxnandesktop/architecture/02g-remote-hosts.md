@@ -109,6 +109,8 @@ conexion alguna.
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
 | §5.10g | Presupuesto de canales | `ssh/conn.rs` |
 | §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
+| §5.12 | Escalera de reconexion | `ssh/conn.rs`, `commands.rs` |
+| §5.13 | El inventario en la interfaz | `HostsSettings.svelte` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1250,6 +1252,54 @@ cambio sin preparar *es* un espacio inicial (§5.10c). Los dos errores opuestos
 viven a una linea de distancia, y cada uno tiene su test: uno con la forma que
 produce `sh` y otro con la que produce `cmd`.
 
+## 5.12 Escalera de reconexion — IMPLEMENTADO (deuda de la fase 1)
+
+`ssh/conn.rs` (`Unreachable`, `classify_dial`) + `commands.rs`
+(`reconnect_ladder`).
+
+**Primero tipar el fallo.** Antes, no llegar a un host era un `Err` con una
+cadena, asi que "esta dormido", "no existe ese nombre" y "no hay nadie
+escuchando" eran indistinguibles — y llevan a acciones distintas. Ahora
+`Handshake::Unreachable` lleva un motivo (`timeout` / `unknownAddress` /
+`refused` / `handshake`) clasificado por el **kind** del error del sistema
+operativo, no por el texto de la libreria: el texto no es contrato y cambia entre
+versiones. El dialogo de conexion enseña esa frase, que nombra maquina y puerto.
+
+**Y luego la escalera**: 2s, 5s, 15s, 30s, 60s y para. Solo para hosts que
+pueden volver **en silencio** — la misma regla que el arranque
+(`ssh_hosts_resumable`): sin contraseña, sin passphrase y con la llave ya en
+`known_hosts`. Una escalera que abriera un dialogo de contraseña sola, minutos
+despues de que el usuario se fuera de la maquina, seria peor que quedarse
+desconectado.
+
+Se detiene en cuanto reintentar no puede ayudar: un nombre que no resuelve, una
+credencial rechazada, o una llave de host que cambio — este ultimo es el caso en
+el que reintentar seria activamente malo, porque algo esta contestando por esa
+direccion y no es la maquina en la que confiamos.
+
+No la dispara una desconexion del usuario: el vigilante compara generaciones
+(§5.10f), y `Desconectar` ya habia quitado la sesion, asi que la escalera no
+arranca. La app no discute con quien acaba de desconectar a mano.
+
+## 5.13 El inventario, en la interfaz — IMPLEMENTADO (deuda de la fase 1)
+
+Lo que la maquina **tiene** ya se ve: Settings → Hosts muestra los agentes como
+logos con `+N`, y detras el detalle completo — cada agente con **la version que
+esa maquina reporto**, el sistema y el multiplexor.
+
+Lo que **le falta** es deliberadamente *una linea y no una lista*: el catalogo
+conoce 31 agentes y un host tiene un puñado, asi que enumerar el resto serian 25
+filas de ruido sobre cosas que a nadie le importan. La unica ausencia que cambia
+lo que uxnan puede hacer alli es **git** — sin el no hay rama, ni revision, ni
+historial, ni busqueda — y eso si se dice, donde el lector ya esta mirando.
+
+**Lo que no se hace, y por que:** "el comando para instalarlo". No existe esa
+dato en ninguna parte de la app (ni siquiera para la maquina local, que solo
+detecta lo que hay en el PATH), y mantener una tabla de instalacion por agente
+seria justo la clase de tabla escrita a mano que se desincroniza sin que nadie
+lo note. Decir que falta es verdad; decir como instalarlo seria una promesa que
+no podemos verificar.
+
 ## 5.11 La fase 3 esta completa
 
 Todo lo que esta seccion enumeraba esta hecho: ficheros (§5.10), git y su
@@ -1264,10 +1314,10 @@ eso saturaria el canal para siempre. Un proyecto remoto **no tiene sondeo**: se
 refresca al abrir la pestaña, al actuar y con el boton, y la interfaz lo dice en
 vez de fingir un directo que no existe.
 
-Fuera de la fase 3, y anotado en `FOR-DEV.md`: la **escalera de reconexion**
-(volver solos tras una caida, con errores tipados), los **puertos reenviados** y
-el **estado preciso de agentes** en un host, que necesitan un tunel inverso y
-reporters instalados alli.
+Fuera de la fase 3, y anotado en `FOR-DEV.md`: los **puertos reenviados** y el
+**estado preciso de agentes** en un host, que necesitan un tunel inverso y
+reporters instalados alli. La escalera de reconexion, que estaba en esta lista,
+es ahora §5.12.
 
 ### La decision sobre el ayudante en el host: NO se construye
 
@@ -1358,7 +1408,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
-| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales (`MaxSessions`) y mostrar el inventario en la UI. Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
+| 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
 | 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) Cambios/Historial (§5.10c) las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |

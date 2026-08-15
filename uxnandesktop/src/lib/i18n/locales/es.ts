@@ -2252,6 +2252,7 @@ export const es: Record<MessageKey, string> = {
   "hosts.fieldForwardAgent": "Reenviar mi agente SSH",
   "hosts.fieldForwardAgentHint": "Permite que git en esa maquina use las llaves de aqui, sin copiarle ninguna llave privada.",
 
+  "hosts.noGit": "Sin git en esta maquina — los cambios, el historial y la busqueda lo necesitan alli.",
   "hosts.openTerminal": "Abrir terminal",
 
   "hosts.addProject": "Anadir proyecto",

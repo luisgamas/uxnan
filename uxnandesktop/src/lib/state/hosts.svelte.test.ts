@@ -176,3 +176,24 @@ describe('a session that ends on its own', () => {
     expect(sessions.isConnected('silent')).toBe(true);
   });
 });
+
+describe('a host that could not be reached', () => {
+  it('shows what the backend said, rather than one blanket message', async () => {
+    // Asleep, no such name and nothing listening lead to different actions, so
+    // the backend classifies them and the sentence it builds names the machine
+    // and the port. Flattening that into "could not connect" is what made a
+    // typo in a hostname look the same as a laptop with its lid shut.
+    backend.setCommands({
+      ssh_host_connect: () => ({
+        status: 'unreachable',
+        reason: 'timeout',
+        detail: 'gamas:22 did not answer within 15s — the machine may be asleep or off this network',
+        attempted: [],
+      }),
+    });
+    await hosts.load();
+    await hosts.connect('silent');
+
+    expect(hosts.error).toMatch(/did not answer within 15s/);
+  });
+});

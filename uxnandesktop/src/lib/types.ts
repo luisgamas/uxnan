@@ -883,7 +883,14 @@ export interface SshConnectReport {
     | "needsPassword"
     | "needsPassphrase"
     | "failed"
-    | "noUsableMethod";
+    | "noUsableMethod"
+    | "unreachable";
+  /** For `unreachable`: which kind it was. They lead to different actions — a
+   *  machine that is asleep is worth another try, a name that does not resolve
+   *  is not — and one failure string made them indistinguishable. */
+  reason?: "timeout" | "unknownAddress" | "refused" | "handshake" | null;
+  /** For `unreachable`: a sentence naming the host and what happened. */
+  detail?: string | null;
   /** Connection incarnation, for `connected`. Travels with every mutation
    *  prepared against this session. */
   generation?: number | null;

@@ -51,13 +51,13 @@ const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300);
 /// or firewall from dropping an idle connection out from under us, which is the
 /// same reason those clients turn it on. A live host answers each one, which
 /// resets both timers; a dead one is reported in ~two minutes instead of five.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const KEEPALIVE_MAX_MISSED: usize = 3;
+
 /// How long a command waits for a channel when the host's limit is already
 /// reached. Short on purpose: commands are brief (§5.3), so a slot usually frees
 /// within one, and waiting longer would only turn a clear refusal into a hang.
 const CHANNEL_WAIT: Duration = Duration::from_secs(10);
-
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
-const KEEPALIVE_MAX_MISSED: usize = 3;
 
 /// How long one remote command may take before it is given up on.
 ///
@@ -120,6 +120,11 @@ pub enum Handshake {
     },
     /// The host is `@revoked` in `known_hosts`.
     Revoked { fingerprint: String },
+    /// It could not be reached at all, and *why* is the part that decides what
+    /// happens next (see [`Unreachable`]). This used to be an `Err` carrying one
+    /// string, which made "asleep" and "wrong name" indistinguishable to
+    /// everything downstream.
+    Unreachable { why: Unreachable, detail: String },
 }
 
 /// How many channels this connection is holding open, and how many the host
@@ -507,6 +512,86 @@ impl client::Handler for Client {
 /// protocol error). A host-key refusal is not an error — it is a
 /// [`Handshake`] variant, because the caller has something to show the user and
 /// possibly an action to offer.
+/// Why a host could not be reached, told apart.
+///
+/// The whole point is that these lead to **different actions**, and one failure
+/// string made them look alike: a machine that is asleep is worth trying again
+/// in a moment, a port that answers "no" is not, and a rejected password will
+/// never fix itself no matter how many times it is retried. The reconnect ladder
+/// reads this to decide whether trying again is honest or just noise, and the
+/// interface reads it to say something a user can act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Unreachable {
+    /// Nothing answered in time — asleep, off the network, or a firewall that
+    /// drops rather than refuses. Worth trying again.
+    Timeout,
+    /// The address itself could not be resolved. Retrying rarely helps; it is a
+    /// typo or a DNS/VPN that is not up.
+    UnknownAddress,
+    /// Something answered and said no: nothing listening on that port. Worth
+    /// trying again — a machine that is still booting looks exactly like this.
+    Refused,
+    /// The connection was reached but the handshake failed — a protocol
+    /// mismatch, or the transport dropped mid-negotiation.
+    Handshake,
+}
+
+impl Unreachable {
+    /// Whether trying the same thing again could plausibly work.
+    ///
+    /// `UnknownAddress` is the one that stays no: a name that does not resolve
+    /// resolves no better on the fourth attempt, and hammering it only fills the
+    /// log. (A VPN coming up would change that — but the user connecting again
+    /// by hand is the honest trigger for it, not a background loop.)
+    pub fn worth_retrying(self) -> bool {
+        !matches!(self, Unreachable::UnknownAddress)
+    }
+
+    /// What to tell the user, naming the host so the message stands alone.
+    pub fn explain(self, endpoint: &Endpoint) -> String {
+        let Endpoint { hostname, port } = endpoint;
+        match self {
+            Unreachable::Timeout => format!(
+                "{hostname}:{port} did not answer within {}s — the machine may be asleep or off \
+                 this network",
+                HANDSHAKE_TIMEOUT.as_secs()
+            ),
+            Unreachable::UnknownAddress => {
+                format!("{hostname} could not be resolved to an address")
+            }
+            Unreachable::Refused => {
+                format!("{hostname}:{port} refused the connection — nothing is listening there")
+            }
+            Unreachable::Handshake => {
+                format!("{hostname}:{port} answered, but the SSH handshake did not complete")
+            }
+        }
+    }
+}
+
+/// Classify a failed dial.
+///
+/// Matched on the io error kind where there is one, because that is the part
+/// the operating system decided; the text of a library error is not a contract
+/// and changes between versions.
+fn classify_dial(error: &russh::Error) -> Unreachable {
+    if let russh::Error::IO(io) = error {
+        return match io.kind() {
+            std::io::ErrorKind::ConnectionRefused => Unreachable::Refused,
+            std::io::ErrorKind::TimedOut => Unreachable::Timeout,
+            // No resolver entry. `HostUnreachable`/`NetworkUnreachable` are
+            // still unstable as `ErrorKind`s, so the message is the only signal
+            // for those and they stay under the timeout arm, which retries.
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidInput => {
+                Unreachable::UnknownAddress
+            }
+            _ => Unreachable::Handshake,
+        };
+    }
+    Unreachable::Handshake
+}
+
 pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake, AppError> {
     let seen: Arc<Mutex<Option<(Verdict, PresentedKey)>>> = Arc::new(Mutex::new(None));
     let handler = Client {
@@ -556,14 +641,18 @@ pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake,
 
     let handle = match attempt {
         Ok(Ok(handle)) => handle,
-        Ok(Err(e)) => return Err(AppError::Invalid(format!("ssh handshake failed: {e}"))),
+        Ok(Err(e)) => {
+            let why = classify_dial(&e);
+            return Ok(Handshake::Unreachable {
+                why,
+                detail: why.explain(&endpoint),
+            });
+        }
         Err(_) => {
-            return Err(AppError::Invalid(format!(
-                "no answer from {}:{} within {}s",
-                endpoint.hostname,
-                endpoint.port,
-                HANDSHAKE_TIMEOUT.as_secs()
-            )))
+            return Ok(Handshake::Unreachable {
+                why: Unreachable::Timeout,
+                detail: Unreachable::Timeout.explain(&endpoint),
+            })
         }
     };
 
@@ -581,6 +670,29 @@ mod tests {
 
     /// The port the tests use to reach an SSH server on this machine.
     const LOCAL_SSHD: u16 = 22;
+
+    /// The classification itself, on the error kinds the OS produces. The kind
+    /// is what the operating system decided; a library's error *text* is not a
+    /// contract and changes between versions, which is why nothing matches on
+    /// it.
+    #[test]
+    fn a_dial_failure_is_classified_by_what_the_os_said() {
+        use std::io::{Error, ErrorKind};
+        let io = |kind: ErrorKind| classify_dial(&russh::Error::IO(Error::new(kind, "x")));
+
+        assert_eq!(io(ErrorKind::ConnectionRefused), Unreachable::Refused);
+        assert_eq!(io(ErrorKind::TimedOut), Unreachable::Timeout);
+        assert_eq!(io(ErrorKind::NotFound), Unreachable::UnknownAddress);
+        // Anything else is the handshake's problem, not the network's.
+        assert_eq!(io(ErrorKind::BrokenPipe), Unreachable::Handshake);
+
+        // And what each one means for trying again: only a name that does not
+        // resolve is hopeless — the rest can clear up on their own.
+        assert!(Unreachable::Timeout.worth_retrying());
+        assert!(Unreachable::Refused.worth_retrying());
+        assert!(Unreachable::Handshake.worth_retrying());
+        assert!(!Unreachable::UnknownAddress.worth_retrying());
+    }
 
     /// The limit is the host's, and it is learned rather than assumed.
     #[test]
@@ -638,13 +750,32 @@ mod tests {
         assert!(a < b && b < c, "{a} {b} {c}");
     }
 
+    /// A port with nothing behind it, dialled for real.
+    ///
+    /// Needs no server and no DNS: a closed port on loopback is the one network
+    /// failure that can be produced anywhere. Some environments drop instead of
+    /// refusing, so what is asserted is what matters — it is **not** a key
+    /// verdict (offering a trust prompt for a machine that never answered would
+    /// be inviting the user to trust nothing at all), it is *typed*, and it is
+    /// one the reconnect ladder will try again.
     #[tokio::test]
     async fn an_unreachable_port_is_a_transport_error_not_a_key_verdict() {
-        // Port 1 is reserved and nothing listens on it; this must not be
-        // reported as "unknown host", which would offer the user a trust
-        // prompt for a host that never answered.
-        let out = connect(Endpoint::new("127.0.0.1", 1), "").await;
-        assert!(out.is_err(), "expected a transport error");
+        // Port 1 is reserved and nothing listens on it.
+        match connect(Endpoint::new("127.0.0.1", 1), "").await {
+            Ok(Handshake::Unreachable { why, detail }) => {
+                assert!(
+                    why.worth_retrying(),
+                    "a closed port can open later: {why:?}"
+                );
+                assert!(
+                    detail.contains("127.0.0.1:1"),
+                    "the sentence names the host and the port: {detail}"
+                );
+            }
+            Ok(Handshake::Ready(_)) => panic!("something is serving SSH on port 1"),
+            Ok(_) => panic!("a closed port cannot produce a host-key verdict"),
+            Err(e) => panic!("expected a typed Unreachable, got an error: {e}"),
+        }
     }
 
     /// Live checks against the SSH server running on this machine. Ignored by
@@ -846,6 +977,7 @@ mod tests {
                 Ok(Handshake::Unknown { .. }) => "Unknown".into(),
                 Ok(Handshake::Changed { .. }) => "Changed".into(),
                 Ok(Handshake::Revoked { .. }) => "Revoked".into(),
+                Ok(Handshake::Unreachable { why, .. }) => format!("Unreachable({why:?})"),
                 Err(e) => format!("Err({e})"),
             }
         }

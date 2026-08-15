@@ -208,6 +208,18 @@
                            `overlay.dataRow` the label/value grid that keeps a
                            4-unit gutter between them, so a long version can never
                            run into the name it belongs to. -->
+                      <!-- What the machine is *missing* is one line, not a list:
+                           the catalogue knows 31 agents and a host has a handful,
+                           so listing the rest would be 25 rows of noise. The one
+                           absence that changes what uxnan can do there is **git**
+                           — without it there is no branch, no review, no history
+                           and no search on that host — so that is the one this
+                           says, where the reader is already looking. -->
+                      {#if !inventory.git}
+                        <p class={cn(text.meta, "border-b border-border/60 px-3 py-2")}>
+                          {i18n.t("hosts.noGit")}
+                        </p>
+                      {/if}
                       <ul class={cn(overlay.menuCompactViewport, "py-1")}>
                         {#each found as agent (agent.key)}
                           <li class={cn(overlay.item, "flex items-center gap-2.5")}>

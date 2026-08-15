@@ -1043,6 +1043,16 @@ pub async fn ssh_host_probe(
             algorithm: None,
             stored_fingerprint: None,
         }),
+        // Not a verdict about the key: nothing was presented, because nothing
+        // answered. Reported as its own status rather than folded into
+        // "unknown", which would invite the user to trust a machine we never
+        // spoke to.
+        ssh::conn::Handshake::Unreachable { detail, .. } => Ok(SshHostProbe {
+            status: "unreachable".into(),
+            fingerprint: Some(detail),
+            algorithm: None,
+            stored_fingerprint: None,
+        }),
         ssh::conn::Handshake::Unknown { fingerprint, key } => {
             let algorithm = key.algorithm.clone();
             state.ssh_pending_keys.write().await.insert(host_id, key);
@@ -1100,8 +1110,16 @@ pub async fn ssh_host_trust(
 #[serde(rename_all = "camelCase")]
 pub struct SshConnectReport {
     /// `connected` | `hostUnknown` | `hostChanged` | `hostRevoked` |
-    /// `needsPassword` | `needsPassphrase` | `failed` | `noUsableMethod`.
+    /// `needsPassword` | `needsPassphrase` | `failed` | `noUsableMethod` |
+    /// `unreachable`.
     pub status: String,
+    /// For `unreachable`: which kind of not-reachable it was (`timeout` |
+    /// `unknownAddress` | `refused` | `handshake`). They lead to different
+    /// actions — a machine that is asleep is worth another try, a name that does
+    /// not resolve is not — and one failure string made them look alike.
+    pub reason: Option<ssh::conn::Unreachable>,
+    /// A sentence naming the host and what happened, for `unreachable`.
+    pub detail: Option<String>,
     /// The connection incarnation, for `connected`. Travels with every mutation
     /// prepared against this session (`target::TargetExpectation`).
     pub generation: Option<u64>,
@@ -1125,6 +1143,8 @@ impl SshConnectReport {
     fn of(status: &str) -> Self {
         Self {
             status: status.to_string(),
+            reason: None,
+            detail: None,
             shell: None,
             generation: None,
             method: None,
@@ -1205,6 +1225,12 @@ async fn connect_fresh(
         .map_err(CommandError::from)?
     {
         ssh::conn::Handshake::Ready(conn) => conn,
+        ssh::conn::Handshake::Unreachable { why, detail } => {
+            let mut report = SshConnectReport::of("unreachable");
+            report.reason = Some(why);
+            report.detail = Some(detail);
+            return Ok(report);
+        }
         ssh::conn::Handshake::Unknown { fingerprint, key } => {
             let mut report = SshConnectReport::of("hostUnknown");
             report.fingerprint = Some(fingerprint);
@@ -1353,6 +1379,10 @@ fn watch_session(
                 "ssh",
                 &format!("the connection to {host_id} ended"),
             );
+            // Try to bring it back. Only for a session that was still the
+            // current one: a user who pressed Disconnect removed it first, and
+            // reconnecting them would be the app arguing with them.
+            tauri::async_runtime::spawn(reconnect_ladder(app.clone(), host_id.clone()));
         }
         // Emitted either way: the interface asked to be told when a session ends,
         // and it re-reads the live set rather than trusting this payload — one
@@ -1375,6 +1405,126 @@ fn watch_session(
 /// Split out so the rule is testable without a host to talk to.
 fn ends_the_current_session(stored: Option<u64>, ended: u64) -> bool {
     stored == Some(ended)
+}
+
+/// How long to wait before each reconnect attempt after a host drops.
+///
+/// Growing, and short at first: most drops are a laptop lid, a Wi-Fi handover or
+/// a VPN blink, and those come back in seconds. The last step is a minute
+/// because a machine that has been gone that long is usually gone for a reason a
+/// user has to fix — and a client that keeps dialling forever is one that fills
+/// a log, holds a password prompt hostage, and looks broken.
+const RECONNECT_BACKOFF: [u64; 5] = [2, 5, 15, 30, 60];
+
+/// Come back after a drop, for the hosts that can come back **silently**.
+///
+/// The rule is the one startup already uses (`ssh_hosts_resumable`): a host that
+/// let us in with no password and whose key is on file is reconnected on its
+/// own; one that would ask for anything is not. A ladder that raised a password
+/// dialog by itself, minutes after the user walked away from the machine, would
+/// be worse than staying disconnected.
+///
+/// It stops for good on the first outcome that says trying again cannot help — a
+/// name that does not resolve, a refused credential, a host key that changed
+/// (which is the one case where retrying would be actively wrong: something is
+/// answering for that address and it is not the machine we trusted).
+async fn reconnect_ladder(app: AppHandle, host_id: String) {
+    for (attempt, wait) in RECONNECT_BACKOFF.iter().enumerate() {
+        tokio::time::sleep(std::time::Duration::from_secs(*wait)).await;
+
+        let state = app.state::<AppState>();
+        // Someone may have connected by hand, or removed the host, while this
+        // was sleeping. Both mean this ladder has nothing left to do.
+        if state.ssh_sessions.read().await.contains_key(&host_id) {
+            return;
+        }
+        if !is_resumable(&state, &host_id).await {
+            return;
+        }
+
+        match connect_fresh(app.clone(), state, host_id.clone(), None).await {
+            Ok(report) if report.status == "connected" => {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh",
+                    &format!(
+                        "{host_id} came back on attempt {} of {}",
+                        attempt + 1,
+                        RECONNECT_BACKOFF.len()
+                    ),
+                );
+                // Same event either way: the interface re-reads the live set
+                // rather than trusting a payload, so one signal covers a session
+                // that ended and one that came back.
+                let _ = app.emit(
+                    "ssh:session-ended",
+                    SshSessionEnded {
+                        host_id,
+                        generation: report.generation.unwrap_or_default(),
+                    },
+                );
+                return;
+            }
+            Ok(report) if !worth_retrying(&report) => {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh",
+                    &format!(
+                        "{host_id} will not be retried: {}",
+                        report.detail.as_deref().unwrap_or(report.status.as_str())
+                    ),
+                );
+                return;
+            }
+            // Still unreachable in a way that could clear up, or an error on our
+            // side: sleep longer and try again.
+            _ => {}
+        }
+    }
+    crate::diagnostics::log(
+        crate::diagnostics::Level::Info,
+        "ssh",
+        &format!("{host_id} did not come back; connect it when you are ready"),
+    );
+}
+
+/// Whether another attempt could plausibly succeed.
+///
+/// Anything that needs the user — a password, a passphrase, a key decision — is
+/// not retried: the ladder exists to survive a network blip, not to ask someone
+/// who is not there.
+fn worth_retrying(report: &SshConnectReport) -> bool {
+    match report.status.as_str() {
+        "unreachable" => report.reason.map(|r| r.worth_retrying()).unwrap_or(false),
+        // A transient failure with no reason attached; one more try is fair.
+        "failed" => true,
+        _ => false,
+    }
+}
+
+/// Whether this host is one the app may bring back without asking anything —
+/// the same rule `ssh_hosts_resumable` applies at startup.
+async fn is_resumable(state: &AppState, host_id: &str) -> bool {
+    let Some(host) = state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .find(|h| h.id == host_id)
+        .cloned()
+    else {
+        return false;
+    };
+    if host.needs_prompt {
+        return false;
+    }
+    let Ok(path) = known_hosts_path() else {
+        return false;
+    };
+    let known = ssh::hostkey::read_known_hosts(&path).unwrap_or_default();
+    ssh::hostkey::is_known(&known, &host.hostname, host.port)
 }
 
 /// Payload of `ssh:session-ended`.
@@ -4606,7 +4756,7 @@ mod tests {
         bracketed_paste, ends_the_current_session, fs_path_exists, issue_link_permission_denied,
         missing_locally, preserve_backend_owned, pty_submit_payload, read_term_buffers,
         rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
-        worktrees_without_git, TargetId,
+        worktrees_without_git, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, SshHost, SshHostTombstone};
 
@@ -4620,6 +4770,48 @@ mod tests {
         assert!(!ends_the_current_session(Some(8), 7));
         // Already gone (the user pressed Disconnect): nothing to clean.
         assert!(!ends_the_current_session(None, 7));
+    }
+
+    /// The ladder must not argue with the user, or dial forever.
+    #[test]
+    fn only_a_failure_that_could_clear_up_is_retried() {
+        use super::SshConnectReport;
+        let with = |status: &str, reason: Option<crate::ssh::conn::Unreachable>| {
+            let mut r = SshConnectReport::of(status);
+            r.reason = reason;
+            r
+        };
+
+        // A machine that is asleep, still booting, or behind a link that blinked.
+        assert!(worth_retrying(&with(
+            "unreachable",
+            Some(crate::ssh::conn::Unreachable::Timeout)
+        )));
+        assert!(worth_retrying(&with(
+            "unreachable",
+            Some(crate::ssh::conn::Unreachable::Refused)
+        )));
+        // A name that does not resolve resolves no better on the fourth attempt.
+        assert!(!worth_retrying(&with(
+            "unreachable",
+            Some(crate::ssh::conn::Unreachable::UnknownAddress)
+        )));
+
+        // Anything that needs a person is never retried in the background: the
+        // ladder exists to survive a blip, not to raise a password dialog at
+        // someone who walked away.
+        for status in [
+            "needsPassword",
+            "needsPassphrase",
+            "hostUnknown",
+            "hostChanged",
+            "hostRevoked",
+            "noUsableMethod",
+        ] {
+            assert!(!worth_retrying(&with(status, None)), "{status}");
+        }
+        // And a connected report ends the ladder rather than continuing it.
+        assert!(!worth_retrying(&with("connected", None)));
     }
 
     fn host(id: &str) -> SshHost {
