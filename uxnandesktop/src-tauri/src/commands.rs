@@ -1428,6 +1428,242 @@ pub async fn ssh_git_status(
     Ok(ssh::git::status(&conn, shell, &path).await)
 }
 
+/// What the remote git layer needs on every call: the connection, and the shell
+/// the host reported when it connected.
+///
+/// Both together, because either alone is useless — a connection with no shell
+/// cannot be sent a quoted argument safely, and the shell of a host that is not
+/// connected describes nothing.
+async fn remote_git(
+    state: &AppState,
+    host_id: &str,
+) -> Result<
+    (
+        std::sync::Arc<ssh::conn::Connection>,
+        ssh::shellkind::ShellKind,
+    ),
+    CommandError,
+> {
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(host_id)
+        .copied()
+        .unwrap_or_default();
+    let Some(conn) = session_for(state, host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
+        )));
+    };
+    Ok((conn, shell))
+}
+
+/// Same, for a mutation: refuses unless the caller is still looking at the host
+/// and connection it thought it was.
+///
+/// The check runs **before** anything is sent, for the reason `ssh_fs_write`
+/// gives — a stage or a discard cannot be taken back once the host has run it,
+/// so a late check would only be able to report the damage.
+async fn remote_git_fenced(
+    state: &AppState,
+    host_id: &str,
+    expect: Option<TargetExpectation>,
+) -> Result<
+    (
+        std::sync::Arc<ssh::conn::Connection>,
+        ssh::shellkind::ShellKind,
+    ),
+    CommandError,
+> {
+    let (conn, shell) = remote_git(state, host_id).await?;
+    target::check(
+        expect.as_ref(),
+        &TargetId::Ssh(host_id.to_string()),
+        conn.generation(),
+    )
+    .map_err(CommandError::from)?;
+    Ok((conn, shell))
+}
+
+/// Everything the Changes panel needs about a worktree on a host, in one round
+/// trip: HEAD, ahead/behind, the changed files and their line counts.
+///
+/// One command rather than the local layer's four, because each of those is a
+/// round trip to another machine and the panel asks for all of them at once —
+/// on a link with 60 ms of latency, four separate reads is a quarter of a second
+/// of nothing happening. See `ssh::git::review`.
+#[tauri::command]
+pub async fn ssh_git_review(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<ssh::git::RemoteReview, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    Ok(ssh::git::review(&conn, shell, &path).await)
+}
+
+/// A file's diff on a host, staged or unstaged.
+#[tauri::command]
+pub async fn ssh_git_diff(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    staged: bool,
+) -> Result<String, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::diff(&conn, shell, &path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// A host worktree's history, newest first.
+#[tauri::command]
+pub async fn ssh_git_log(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    limit: u32,
+    skip: u32,
+) -> Result<Vec<git::CommitInfo>, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::log(&conn, shell, &path, limit, skip)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// One commit's patch, on a host.
+#[tauri::command]
+pub async fn ssh_git_show(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    hash: String,
+) -> Result<String, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::show(&conn, shell, &path, &hash)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_stage(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::stage(&conn, shell, &path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_unstage(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::unstage(&conn, shell, &path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_stage_all(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::stage_all(&conn, shell, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_unstage_all(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::unstage_all(&conn, shell, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Throw a file's changes away on a host. Fenced like every other mutation, and
+/// the one where being wrong about *which* machine is unrecoverable.
+#[tauri::command]
+pub async fn ssh_git_discard(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    untracked: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::discard(&conn, shell, &path, &file, untracked)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Apply a patch on a host — the per-hunk actions. The patch travels over SFTP,
+/// not through the shell (`ssh::git::apply_patch`).
+#[tauri::command]
+pub async fn ssh_git_apply(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    patch: String,
+    cached: bool,
+    reverse: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    let session = sftp_for(&state, &host_id).await?;
+    ssh::git::apply_patch(&conn, &session, shell, &path, &patch, cached, reverse)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Commit on a host. The message travels over SFTP for the same reason
+/// (`ssh::git::commit`).
+#[tauri::command]
+pub async fn ssh_git_commit(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    message: String,
+    amend: bool,
+    sign_off: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    let session = sftp_for(&state, &host_id).await?;
+    ssh::git::commit(
+        &conn,
+        &session,
+        shell,
+        &path,
+        message.trim(),
+        amend,
+        sign_off,
+    )
+    .await
+    .map_err(CommandError::from)
+}
+
 /// The file session for a host, opening one on first use.
 ///
 /// Held per host because it is a channel on a connection that already exists:

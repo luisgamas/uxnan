@@ -224,3 +224,271 @@ async fn posix_host_answers_about_its_git() {
     let plain = super::git::status(&conn, kind, &format!("{home}/plain-folder")).await;
     assert!(!plain.is_repo, "a plain folder is not a repository");
 }
+
+/// Whether git reports this file as staged. The status codes are the porcelain
+/// `XY` pair: an index column that is neither blank nor `?` means the index
+/// differs from HEAD.
+fn is_staged(file: &crate::git::FileChange) -> bool {
+    !matches!(file.index.as_str(), "" | " " | "?")
+}
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_reviews_diffs_and_shows_its_history() {
+    let (conn, _) = host_or_skip!();
+    let kind = super::shellkind::classify(&conn).await;
+    let files = super::sftp::open(&conn).await.expect("an SFTP session");
+    let home = files.home().await.expect("the host's home");
+
+    // Its own repository rather than the image's: the SFTP test rewrites the
+    // fixture's README while it runs, and a test that reads someone else's file
+    // mid-write fails for a reason that has nothing to do with what it checks.
+    let repo = format!("{home}/review");
+    conn.exec(&format!(
+        "rm -rf {repo} && mkdir -p {repo}/src && cd {repo} && git init -q          && printf 'hello' > README.md && git add README.md && git commit -qm first          && printf 'dirty' >> README.md && printf 'fn main() {{}}' > src/main.rs"
+    ))
+    .await
+    .expect("a repository to review");
+
+    // The Changes panel's one round trip: everything it draws, at once.
+    let review = super::git::review(&conn, kind, &repo).await;
+    println!(
+        "linux: head={:?} files={:?} numstat={}",
+        review.head,
+        review
+            .files
+            .iter()
+            .map(|f| (&f.path, &f.index, &f.worktree))
+            .collect::<Vec<_>>(),
+        review.numstat.len()
+    );
+    assert!(review.is_repo);
+    assert!(
+        review.head.as_ref().is_some_and(|h| h.len() >= 7),
+        "a repository with a commit has a HEAD: {:?}",
+        review.head
+    );
+
+    let readme = review
+        .files
+        .iter()
+        .find(|f| f.path == "README.md")
+        .expect("the modified file is listed");
+    assert!(!is_staged(readme), "it was never added");
+    // The untracked file the image leaves behind, which is the case a status
+    // parser is most likely to drop.
+    assert!(
+        review.files.iter().any(|f| f.path == "src/main.rs"),
+        "untracked files are part of a review: {:?}",
+        review.files.iter().map(|f| &f.path).collect::<Vec<_>>()
+    );
+    assert!(
+        review.numstat.iter().any(|n| n.path == "README.md"),
+        "the modified file has line counts"
+    );
+
+    // A file's diff, unstaged.
+    let diff = super::git::diff(&conn, kind, &repo, "README.md", false)
+        .await
+        .expect("a diff");
+    assert!(diff.contains("+hellodirty"), "{diff}");
+    assert!(
+        super::git::diff(&conn, kind, &repo, "README.md", true)
+            .await
+            .expect("a staged diff")
+            .is_empty(),
+        "nothing is staged in the fixture"
+    );
+
+    // History, and the patch of the commit it names.
+    let log = super::git::log(&conn, kind, &repo, 10, 0)
+        .await
+        .expect("a log");
+    assert_eq!(log.len(), 1, "the image makes exactly one commit");
+    assert_eq!(log[0].subject, "first");
+    assert_eq!(
+        log[0].author_name, "uxnan test",
+        "the host's own git identity"
+    );
+
+    let patch = super::git::show(&conn, kind, &repo, &log[0].hash)
+        .await
+        .expect("the commit's patch");
+    assert!(patch.contains("+hello"), "{patch}");
+
+    // A hash that is not one never reaches the host.
+    assert!(
+        super::git::show(&conn, kind, &repo, "HEAD; rm -rf /")
+            .await
+            .is_err(),
+        "only hex is accepted"
+    );
+
+    let _ = conn.exec(&format!("rm -rf {repo}")).await;
+}
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_stages_commits_and_discards() {
+    let (conn, _) = host_or_skip!();
+    let kind = super::shellkind::classify(&conn).await;
+    let files = super::sftp::open(&conn).await.expect("an SFTP session");
+    let home = files.home().await.expect("the host's home");
+
+    // Its own repository, so the fixture the read tests assert on is left as the
+    // image built it however this one ends.
+    let repo = format!("{home}/mutations");
+    conn.exec(&format!(
+        "rm -rf {repo} && mkdir -p {repo} && cd {repo} && git init -q && printf 'one\\n' > a.txt && git add a.txt && git commit -qm base"
+    ))
+    .await
+    .expect("a scratch repository");
+
+    // Change one file and add another, then stage exactly one of them.
+    files
+        .write_file(&format!("{repo}/a.txt"), "one\ntwo\n")
+        .await
+        .expect("edit");
+    files
+        .write_file(&format!("{repo}/b.txt"), "new\n")
+        .await
+        .expect("add");
+
+    super::git::stage(&conn, kind, &repo, "a.txt")
+        .await
+        .expect("stage");
+    let review = super::git::review(&conn, kind, &repo).await;
+    let a = review.files.iter().find(|f| f.path == "a.txt").unwrap();
+    let b = review.files.iter().find(|f| f.path == "b.txt").unwrap();
+    assert!(is_staged(a), "a.txt was staged");
+    assert!(!is_staged(b), "b.txt was not");
+
+    super::git::unstage(&conn, kind, &repo, "a.txt")
+        .await
+        .expect("unstage");
+    assert!(
+        !is_staged(
+            super::git::review(&conn, kind, &repo)
+                .await
+                .files
+                .iter()
+                .find(|f| f.path == "a.txt")
+                .unwrap()
+        ),
+        "unstaging puts it back"
+    );
+
+    super::git::stage_all(&conn, kind, &repo)
+        .await
+        .expect("stage all");
+    assert!(
+        super::git::review(&conn, kind, &repo)
+            .await
+            .files
+            .iter()
+            .all(is_staged),
+        "add -A stages the untracked one too"
+    );
+
+    // A message with the two things that would break if it went through a
+    // shell: a newline, and quotes. It travels over SFTP instead.
+    let message = "commit from a test\n\nwith a \"quoted\" second line and a $VAR";
+    super::git::commit(&conn, &files, kind, &repo, message, false, false)
+        .await
+        .expect("commit");
+
+    let log = super::git::log(&conn, kind, &repo, 10, 0)
+        .await
+        .expect("a log");
+    assert_eq!(log.len(), 2, "base plus the one just made");
+    assert_eq!(log[0].subject, "commit from a test");
+    assert!(
+        log[0].body.contains("\"quoted\"") && log[0].body.contains("$VAR"),
+        "the message arrived verbatim: {:?}",
+        log[0].body
+    );
+    assert!(
+        super::git::review(&conn, kind, &repo)
+            .await
+            .files
+            .is_empty(),
+        "committing everything leaves a clean tree"
+    );
+
+    // The scratch file the commit used must not survive it.
+    assert!(
+        !files
+            .exists(&format!("{repo}/.git/UXNAN_COMMIT_MSG"))
+            .await
+            .unwrap_or(true),
+        "the message file is removed afterwards"
+    );
+
+    // Discard, tracked and untracked.
+    files
+        .write_file(&format!("{repo}/a.txt"), "wrong\n")
+        .await
+        .expect("edit again");
+    files
+        .write_file(&format!("{repo}/c.txt"), "unwanted\n")
+        .await
+        .expect("stray file");
+    super::git::discard(&conn, kind, &repo, "a.txt", false)
+        .await
+        .expect("discard tracked");
+    super::git::discard(&conn, kind, &repo, "c.txt", true)
+        .await
+        .expect("discard untracked");
+    assert!(
+        super::git::review(&conn, kind, &repo)
+            .await
+            .files
+            .is_empty(),
+        "both are gone"
+    );
+    assert_eq!(
+        files
+            .read_file(&format!("{repo}/a.txt"))
+            .await
+            .expect("a.txt")
+            .content,
+        "one\ntwo\n",
+        "the committed content is what came back"
+    );
+
+    // A patch, applied to the working tree — the per-hunk path, over SFTP.
+    let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,3 @@\n one\n two\n+three\n";
+    super::git::apply_patch(&conn, &files, kind, &repo, patch, false, false)
+        .await
+        .expect("apply");
+    assert_eq!(
+        files
+            .read_file(&format!("{repo}/a.txt"))
+            .await
+            .expect("a.txt")
+            .content,
+        "one\ntwo\nthree\n"
+    );
+    // And reversed, which is how "discard this hunk" is spelled.
+    super::git::apply_patch(&conn, &files, kind, &repo, patch, false, true)
+        .await
+        .expect("reverse");
+    assert_eq!(
+        files
+            .read_file(&format!("{repo}/a.txt"))
+            .await
+            .expect("a.txt")
+            .content,
+        "one\ntwo\n"
+    );
+
+    // A patch that does not apply must fail loudly rather than report success.
+    assert!(
+        super::git::apply_patch(&conn, &files, kind, &repo, "not a patch\n", false, false)
+            .await
+            .is_err(),
+        "a refused apply is an error"
+    );
+
+    let _ = conn.exec(&format!("rm -rf {repo}")).await;
+}

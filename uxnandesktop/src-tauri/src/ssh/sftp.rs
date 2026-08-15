@@ -139,8 +139,21 @@ impl RemoteFiles {
         self.alive.store(true, Ordering::Relaxed);
     }
 
-    /// Delete a file. Test-only: the app has no remote delete yet, and the live
-    /// write test has to clean up after itself on the host.
+    /// Delete a file on the host.
+    ///
+    /// Not a tree operation yet (create/rename/delete from the file tree is still
+    /// local-only): its caller is the git layer, which writes a commit message or
+    /// a patch to a scratch file and has to take it away again — leaving one
+    /// behind would have the next commit read a message nobody wrote.
+    pub async fn remove_file(&self, path: &str) -> Result<(), SftpFailure> {
+        let file = normalize(path);
+        self.session
+            .remove_file(file.clone())
+            .await
+            .map_err(|e| self.failed(&format!("could not remove {file} on that host"), e))
+    }
+
+    /// Delete a file, for a test that has to clean up after itself.
     #[cfg(test)]
     async fn remove_for_test(&self, path: &str) -> Result<(), SftpError> {
         self.session.remove_file(normalize(path)).await
