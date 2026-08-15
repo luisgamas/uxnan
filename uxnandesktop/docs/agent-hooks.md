@@ -264,6 +264,21 @@ turn never showed its check. Now the environment wins and the file is only tried
 when the environment's server does not answer, so both windows work at once and
 an agent that outlived a restart is still rescued.
 
+### Running the ADE from inside an ADE terminal
+
+Those same variables are inherited by every process below the terminal, which
+includes an ADE you launch *from* one — `npm run tauri dev` while you try a
+change out. That second app is handed the first one's hook server and the id of
+the terminal it was launched from, and anything it spawns would inherit them in
+turn: the CLIs it runs one-shot (an AI commit message, a conversation title, an
+automation step) would report to the *first* app as if they were that terminal,
+painting an agent card on a terminal that only ever ran a dev server.
+
+So the app drops those keys from its own environment at startup, and from every
+child it spawns. A one-shot run reports as nothing at all, which is what it is —
+only the agents you launch in a terminal have an identity to report. Overrides
+you set on purpose (`UXNAN_DATA_DIR`, `UXNAN_SHELL`) are never touched.
+
 The **browser MCP** used to fail across two windows for the same reason — one
 shared entry in each CLI's config, holding one window's URL, so the window that
 started last owned it and the other's agents got nothing. It no longer does: the

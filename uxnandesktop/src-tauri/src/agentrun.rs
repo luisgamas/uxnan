@@ -175,6 +175,10 @@ async fn run(
 ) -> Result<HeadlessResult, AppError> {
     use tokio::io::AsyncWriteExt;
 
+    // `winproc::command` also strips the inherited terminal identity
+    // (`launchenv`): a headless run belongs to no terminal, so it must not carry
+    // an `UXNAN_AGENT_ID` — its CLI's own hook would report the run as that
+    // terminal's agent, on whichever app owns the inherited hook server.
     let mut cmd = crate::winproc::command(&resolved.program);
     cmd.args(&resolved.prepend)
         .args(args)
