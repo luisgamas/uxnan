@@ -24,6 +24,7 @@ import {
   worktreeCreate,
   worktreeList,
   worktreeRemove,
+  sshGitStatus,
   worktreeStatus,
 } from "$lib/api";
 import type {
@@ -38,7 +39,23 @@ import type {
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
-import { canonicalFor, reconcilePlan, samePath } from "$lib/pathid";
+import {
+  canonicalFor,
+  keyTarget,
+  parseWorkspaceKey,
+  reconcilePlan,
+  samePath,
+  sameWorkspace,
+  workspaceKey,
+} from "$lib/pathid";
+import {
+  expectation,
+  isLocalTarget,
+  LOCAL_TARGET,
+  sshHostId,
+  targetOf,
+  type TargetId,
+} from "$lib/target";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
@@ -105,6 +122,7 @@ class ProjectsStore {
   changedPaths = $state<string[]>([]);
   /** Active worktree, keyed by its path (WorktreeEntry has no stable id). */
   activeWorktreePath = $state<string | null>(null);
+
   /** Last error from a project/worktree action, surfaced in the panel. */
   error = $state<string | null>(null);
   /** Whether the quick worktree-switch palette is open. */
@@ -124,12 +142,69 @@ class ProjectsStore {
   get activeRepo(): RepoData | null {
     const key = terminals.activeWorkspace;
     if (key === GLOBAL_WORKSPACE) return null;
-    const main = app.repos.find((r) => r.path === key);
+    // Compared as workspace keys, not as paths: the same folder name on two
+    // machines is two projects, and matching on the path alone would hand back
+    // whichever one happened to be registered first.
+    const keyOf = (repo: RepoData, path: string) => workspaceKey(targetOf(repo.target), path);
+    const main = app.repos.find((r) => sameWorkspace(keyOf(r, r.path), key));
     if (main) return main;
     for (const r of app.repos) {
-      if (this.worktreesOf(r.id).some((w) => w.path === key)) return r;
+      if (this.worktreesOf(r.id).some((w) => sameWorkspace(keyOf(r, w.path), key))) return r;
     }
     return null;
+  }
+
+  /** The machine the active workspace is on.
+   *
+   *  **Derived, never stored.** The workspace key already carries its machine,
+   *  and a second copy of that fact is a second thing to keep in sync — which is
+   *  exactly how a panel ends up reading this PC's filesystem for a project on a
+   *  host. The Global space names no machine, so there the selected project (if
+   *  any) answers. */
+  get activeWorktreeTarget(): TargetId {
+    const key = terminals.activeWorkspace;
+    if (key && key !== GLOBAL_WORKSPACE) return keyTarget(key);
+    return this.activeWorktreePath ? this.targetForPath(this.activeWorktreePath) : LOCAL_TARGET;
+  }
+
+  /** The machine to describe `activeWorktreePath` on — the pair the review
+   *  panels (Changes, History, the editor's gutter) read a **path** with.
+   *
+   *  Not the same question as [`activeWorktreeTarget`], and the difference is a
+   *  bug we shipped: that one follows the focused terminal workspace, which is
+   *  right for opening a terminal and wrong for describing a folder. Focus a
+   *  terminal that lives on a host while a local project is selected and the two
+   *  facts disagree — the panel then asked a host about a path on *this*
+   *  machine. With the host down that showed "waiting for this host to connect"
+   *  over a local project; with it up it would have been a review of the wrong
+   *  machine, which is the failure that looks like success.
+   *
+   *  So: the workspace key answers only while it is about this very path (the
+   *  one case the path alone cannot resolve — the same absolute path registered
+   *  on two machines), and otherwise the path's own registration does. */
+  get activeReviewTarget(): TargetId {
+    const path = this.activeWorktreePath;
+    if (!path) return LOCAL_TARGET;
+    const key = terminals.activeWorkspace;
+    if (key && key !== GLOBAL_WORKSPACE) {
+      const focused = parseWorkspaceKey(key);
+      if (samePath(focused.path, path)) return focused.target;
+    }
+    return this.targetForPath(path);
+  }
+
+  /** Whether the active workspace lives on another machine. Anything that reads
+   *  this machine's filesystem or runs git here must check it first. */
+  get activeIsRemote(): boolean {
+    return !isLocalTarget(this.activeWorktreeTarget);
+  }
+
+  /** The active worktree path **only when it is on this machine** — what the
+   *  local file watcher, git and GitHub layers are allowed to act on. A remote
+   *  workspace resolves to null so those layers idle instead of reading a
+   *  same-named folder here (`architecture/02g-remote-hosts.md` §6). */
+  get activeLocalPath(): string | null {
+    return this.activeIsRemote ? null : this.activeWorktreePath;
   }
 
   /** The active repo only when it is a real git repository — worktrees need git,
@@ -633,12 +708,18 @@ class ProjectsStore {
   async reconcileRestoredWorkspaces(): Promise<void> {
     const known: string[] = [];
     // Worktree spellings first: they are what sidebar clicks use as keys.
-    for (const r of app.repos) for (const w of this.worktreesOf(r.id)) known.push(w.path);
-    for (const r of app.repos) known.push(r.path);
+    for (const r of app.repos)
+      for (const w of this.worktreesOf(r.id)) known.push(this.workspaceFor(w.path, targetOf(r.target)));
+    for (const r of app.repos) known.push(this.workspaceFor(r.path, targetOf(r.target)));
 
     const plan = reconcilePlan(terminals.workspaceKeys, known);
     for (const [oldKey, newKey] of plan.rekeys) terminals.rekeyWorkspace(oldKey, newKey);
     for (const key of plan.unknown) {
+      // A workspace on a host cannot be checked against this filesystem — asking
+      // would answer about a folder here — so it is kept. Its project is
+      // registered or it is not; either way a live shell is never dropped on a
+      // question this machine cannot answer.
+      if (!isLocalTarget(keyTarget(key))) continue;
       // On an API failure err on the side of keeping the workspace.
       const exists = await fsPathExists(key).catch(() => true);
       if (!exists) terminals.dropWorkspace(key);
@@ -647,7 +728,10 @@ class ProjectsStore {
     const active = terminals.activeWorkspace;
     if (active === GLOBAL_WORKSPACE) return;
     const canon = canonicalFor(active, known);
-    if (canon !== undefined) this.setActiveWorktree(canon);
+    if (canon !== undefined) {
+      const { target, path } = parseWorkspaceKey(canon);
+      this.setActiveWorktree(path, target);
+    }
   }
 
   /**
@@ -695,6 +779,8 @@ class ProjectsStore {
               );
             if (!same) {
               this.worktreesByRepo = { ...this.worktreesByRepo, [repo.id]: list };
+              // Reads git on whichever machine the worktree is on (see
+              // `refreshStatuses`), so a host's project gets real badges.
               await this.refreshStatuses(list.map((w) => w.path));
             }
           } catch {
@@ -726,6 +812,16 @@ class ProjectsStore {
     const entries = await Promise.all(
       paths.map(async (path) => {
         try {
+          // Whichever machine the worktree is on. Asking this one for a host's
+          // path is how a sidebar badge ends up describing the wrong folder.
+          const host = sshHostId(this.targetForPath(path));
+          if (host) {
+            const remote = await sshGitStatus(host, path);
+            // "Not a repository / no git / unnamed shell" is not "clean": leave
+            // the badges alone rather than showing zeroes that mean nothing.
+            if (!remote.isRepo) return null;
+            return [path, { dirty: remote.dirty, ahead: remote.ahead, behind: remote.behind }] as const;
+          }
           return [path, await worktreeStatus(path)] as const;
         } catch {
           return null;
@@ -1141,6 +1237,9 @@ class ProjectsStore {
         base: options.base,
         fromExisting: options.fromExisting,
         path: options.path,
+        // Fence the write to the machine this project lives on, as it was when
+        // the dialog opened: creating a worktree writes to disk.
+        expect: expectation(app.repos.find((r) => r.id === repoId)?.target),
       });
       await this.adoptWorktree(repoId, created, options.agentId);
       return true;
@@ -1226,6 +1325,9 @@ class ProjectsStore {
         row.branch,
         force,
         cleanup,
+        // The most destructive command in the app: fence it to the machine the
+        // user was actually looking at when they confirmed.
+        expectation(app.repos.find((r) => r.id === row.repoId)?.target),
       );
       await this.loadWorktrees(row.repoId);
       // Drop any quick commands scoped to the now-removed worktree.
@@ -1264,11 +1366,53 @@ class ProjectsStore {
     }
   }
 
+  /** Accept either a worktree path or a workspace key, and answer with both.
+   *
+   *  Callers hold one or the other depending on where they sit: a sidebar row
+   *  has the path, the terminal area has the key of the workspace it is showing.
+   *  For a local project the two are the same string, so passing the wrong one
+   *  was invisible — until a remote key (`ssh:h1::C:/…`) reached the launcher as
+   *  a path and every option in that menu opened a shell **here**, in this PC's
+   *  home, because no project matched and the cwd was a string no filesystem
+   *  has. Normalizing at the entry point is what keeps that from being every
+   *  caller's problem to remember. */
+  private locate(pathOrKey: string): { path: string; target: TargetId } {
+    const parsed = parseWorkspaceKey(pathOrKey);
+    if (!isLocalTarget(parsed.target)) return parsed;
+    return { path: pathOrKey, target: this.targetForPath(pathOrKey) };
+  }
+
+  /** The machine a worktree path lives on: the target of the project that owns
+   *  it. Looked up rather than inferred from the path, because the same absolute
+   *  path can be registered on two machines at once and only the registration
+   *  says which one a row came from. Unknown paths are local — that is what every
+   *  path meant before hosts existed. */
+  targetForPath(path: string): TargetId {
+    const owner = app.repos.find(
+      (repo) =>
+        samePath(repo.path, path) ||
+        (this.worktreesByRepo[repo.id] ?? []).some((w) => samePath(w.path, path)),
+    );
+    return targetOf(owner?.target);
+  }
+
+  /** The terminal-workspace key for a worktree path on a given machine. Two hosts
+   *  with the same absolute path are two workspaces, which is the whole point. */
+  workspaceFor(path: string, target: TargetId = this.targetForPath(path)): string {
+    return workspaceKey(target, path);
+  }
+
   /** Select a worktree: highlight it and show its terminal workspace. Opening it
    *  clears its "unread agent result" badge. */
-  setActiveWorktree(path: string): void {
+  setActiveWorktree(pathOrKey: string, knownTarget?: TargetId): void {
+    const { path, target } = this.locate(pathOrKey);
+    if (knownTarget !== undefined) return this.select(path, knownTarget);
+    return this.select(path, target);
+  }
+
+  private select(path: string, target: TargetId): void {
     this.activeWorktreePath = path;
-    terminals.setWorkspace(path);
+    terminals.setWorkspace(this.workspaceFor(path, target));
     unread.clear(path);
     this.stampActive(path);
     // Activating a workspace (a worktree/project click) returns to the normal
@@ -1277,17 +1421,29 @@ class ProjectsStore {
   }
 
   /** Open a terminal in `path`'s workspace (and switch to it). An optional
-   *  `profileId` opens that terminal profile instead of the default shell. */
-  openTerminalAt(path: string, profileId?: string): void {
+   *  `profileId` opens that terminal profile instead of the default shell.
+   *
+   *  The path is handed over as the cwd *and* the machine as the target: on a
+   *  host that folder is exactly where the shell should start, and without the
+   *  target it would be a local shell trying to `cd` into someone else's path. */
+  openTerminalAt(pathOrKey: string, profileId?: string): void {
+    const { path, target } = this.locate(pathOrKey);
     this.activeWorktreePath = path;
     this.stampActive(path);
-    app.openTerminal({ cwd: path, title: baseName(path), workspace: path, profileId });
+    app.openTerminal({
+      cwd: path,
+      title: baseName(path),
+      workspace: this.workspaceFor(path, target),
+      target,
+      profileId,
+    });
   }
 
   /** Launch an agent in `path`'s workspace (and switch to it). */
-  launchAgentAt(path: string, agent: AgentProfile): void {
+  launchAgentAt(pathOrKey: string, agent: AgentProfile): void {
+    const { path, target } = this.locate(pathOrKey);
     this.activeWorktreePath = path;
-    app.launchAgent(agent, { cwd: path, workspace: path });
+    app.launchAgent(agent, { cwd: path, workspace: this.workspaceFor(path, target), target });
   }
 
   // --- Quick commands ------------------------------------------------------

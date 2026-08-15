@@ -2,6 +2,12 @@
   // Version-control tab: the active worktree's changed files (staged / changes),
   // per-file stage / unstage / discard, a commit composer, push/pull, and a diff
   // viewer. Status updates live via the backend `git:status-changed` event.
+  //
+  // The worktree can be on a host, and two things follow from that. There is no
+  // watcher there — the refresh control is the update, and its tooltip says so
+  // rather than a banner explaining app mechanics. And a host that dropped its
+  // connection can still be *read*; nothing may be sent to it, so every action
+  // waits on `git.actionable`.
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Switch } from "$lib/components/ui/switch";
@@ -35,6 +41,16 @@
 
   type Area = "staged" | "changes";
 
+  // How tall each kind of row really is, **measured** against the app's own
+  // stylesheet rather than assumed. The list positions rows by number, so a row
+  // taller than the number it was given spills onto the one below it — which is
+  // what put the first file's actions on top of "Stage all". Both are `row.list`
+  // (`py-2`, so 16px of padding) around their tallest control: the section
+  // header carries a `size="sm"` button (32px) and a file row an
+  // `iconButton.xs` (28px). Change either control and these change with it.
+  const HEADER_ROW_PX = 48;
+  const FILE_ROW_PX = 44;
+
   // The active worktree's git status is loaded by the always-mounted page shell;
   // this panel just renders the shared store.
   // Amend can reword the previous commit with nothing staged, so it relaxes the
@@ -42,11 +58,14 @@
   const canCommit = $derived(
     (git.staged.length > 0 || git.amend) &&
       git.message.trim().length > 0 &&
-      !git.committing,
+      !git.committing &&
+      git.actionable,
   );
 
   // The AI "Generate" button shows only when the feature is enabled AND an agent
   // is selected (Settings → AI commit). It drafts from the staged diff.
+  // Offered for either machine: the diff comes from wherever the project is and
+  // the agent runs here, which is where its CLI and sign-in are.
   const aiEnabled = $derived(
     !!app.settings.aiCommit?.enabled &&
       (app.settings.aiCommit?.agentId ?? "").trim().length > 0,
@@ -191,7 +210,7 @@
             size="icon"
             class={iconButton.action}
             aria-label={i18n.t("rightPanel.discard")}
-            disabled={git.busy}
+            disabled={git.busy || !git.actionable}
             onclick={(e) => {
               e.stopPropagation();
               askDiscard(f);
@@ -210,7 +229,7 @@
               size="icon"
               class={iconButton.action}
               aria-label={i18n.t("rightPanel.unstage")}
-              disabled={git.busy}
+              disabled={git.busy || !git.actionable}
               onclick={(e) => {
                 e.stopPropagation();
                 void git.unstage(f.path);
@@ -233,7 +252,7 @@
               size="icon"
               class={iconButton.action}
               aria-label={i18n.t("rightPanel.stage")}
-              disabled={git.busy}
+              disabled={git.busy || !git.actionable}
               onclick={(e) => {
                 e.stopPropagation();
                 void git.stage(f.path);
@@ -262,7 +281,7 @@
       variant="outline"
       size="sm"
       class={text.body}
-      disabled={git.busy}
+      disabled={git.busy || !git.actionable}
       onclick={() => void (area === "staged" ? git.unstageAll() : git.stageAll())}
     >
       {#if git.busyAction?.kind === (area === "staged" ? "unstage" : "stage") && git.busyAction.file === "*"}
@@ -325,7 +344,11 @@
             </Button>
           {/snippet}
         </TooltipSimple>
-        <TooltipSimple title={i18n.t("rightPanel.refresh")}>
+        <TooltipSimple
+          title={git.remote
+            ? `${i18n.t("rightPanel.refresh")} — ${i18n.t("git.remoteNoWatch")}`
+            : i18n.t("rightPanel.refresh")}
+        >
           {#snippet children(tp)}
             <Button
               {...tp}
@@ -367,14 +390,20 @@
   {:else}
     {#if rows.length === 0}
       <p class={cn("p-3", text.meta)}>
-        {query.trim()
-          ? i18n.t("rightPanel.noMatch")
-          : git.loading
-            ? i18n.t("common.loading")
-            : i18n.t("rightPanel.noChanges")}
+        {git.awaitingHost
+          ? i18n.t("fileTree.awaitingHost")
+          : query.trim()
+            ? i18n.t("rightPanel.noMatch")
+            : git.loading
+              ? i18n.t("common.loading")
+              : i18n.t("rightPanel.noChanges")}
       </p>
     {:else}
-      <VirtualList items={rows} estimateSize={36} class="min-h-0 flex-1 px-2">
+      <VirtualList
+        items={rows}
+        estimateSize={(i) => (rows[i]?.kind === "header" ? HEADER_ROW_PX : FILE_ROW_PX)}
+        class="min-h-0 flex-1 px-2"
+      >
         {#snippet row(r)}
           {#if r.kind === "header"}
             {@render sectionHeader(r.area, r.count)}

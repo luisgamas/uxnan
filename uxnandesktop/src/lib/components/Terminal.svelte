@@ -48,6 +48,7 @@
     runCommand,
     runCommandExecute = true,
     env,
+    target,
     onexit,
   }: {
     id: string;
@@ -59,6 +60,8 @@
     /** Whether `runCommand` is auto-run (Enter appended) or only pre-typed. */
     runCommandExecute?: boolean;
     env?: [string, string][];
+    /** Machine to open the shell on (`ssh:<hostId>`); absent = this one. */
+    target?: string;
     onexit?: () => void;
   } = $props();
 
@@ -425,6 +428,7 @@
         env,
         // Attribution only (resource monitor): the workspace this tab lives in.
         workspace: terminals.workspaceOfTab(id),
+        target,
       },
     }));
     if (destroyed) {
@@ -654,6 +658,10 @@
         // into a dead PTY (`spawnFailed` gates the launch).
         term.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
         term.writeln(`\x1b[90m${res.error}\x1b[0m`);
+        // Keep the tab. Without this the exit that follows closes a plain
+        // terminal outright and takes the message with it — the pane flashes and
+        // the user is left with no idea what went wrong.
+        terminals.markSpawnFailed(id);
       }
     }
 

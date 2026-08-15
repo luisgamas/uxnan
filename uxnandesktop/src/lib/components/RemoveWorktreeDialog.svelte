@@ -50,12 +50,15 @@
 
   const label = $derived(row.branch ?? i18n.t("worktree.detached"));
   const status = $derived(projects.status(row.path));
+  /** The workspace key for this row — the pair (machine, path), which is what
+   *  terminals are filed under. */
+  const wsKey = $derived(projects.workspaceFor(row.path));
   const defaults = $derived(
     removalDefaults({
       completion: projects.completion(row),
       dirty: status?.dirty ?? 0,
       ahead: status?.ahead ?? 0,
-      liveAgents: terminals.agentTabs(row.path).filter((t) => !t.exited).length,
+      liveAgents: terminals.agentTabs(wsKey).filter((t) => !t.exited).length,
       hasBranch: !!row.branch,
     }),
   );
@@ -122,7 +125,12 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content size="small" class="flex min-w-0 flex-col" showCloseButton={false}>
-    <div class="flex min-w-0 gap-3">
+    <!-- `Dialog.Header`, not a bare row: the content grid has no vertical padding
+         of its own (`dialog.content` is `py-0`), so the top inset comes from the
+         header's `pt-5` and without it the icon and title sit against the top
+         edge. `pb-0` because the grid's 16px gap already separates it from the
+         options below, and `pr-0` because this dialog shows no close button. -->
+    <Dialog.Header class="flex-row items-start gap-3 pb-0 pr-0">
       <div
         class={cn(
           "flex size-9 shrink-0 items-center justify-center rounded-lg",
@@ -154,7 +162,7 @@
           </p>
         {/if}
       </div>
-    </div>
+    </Dialog.Header>
 
     <!-- Opt-in branch cleanup (only when the worktree is on a branch). -->
     {#if row.branch}

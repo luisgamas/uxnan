@@ -269,7 +269,7 @@
         )}
       >
         <Icon icon={ChevronDownIcon}
-          class={cn("size-3.5 transition-transform", !advancedOpen && "-rotate-90")}
+          class={cn("size-3.5 transition-transform", advancedOpen && "rotate-180")}
         />
         {i18n.t("resourceMode.advanced")}
       </Collapsible.Trigger>

@@ -35,11 +35,14 @@ import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
 import { primeNotifications } from "$lib/notify";
-import { buildRunCommand, shellKind } from "$lib/shell";
+import { buildRunCommand, shellKind, type ShellKind } from "$lib/shell";
 import { loadMcpLaunch, syncMcpLaunchSettings } from "$lib/mcpLaunch";
 import { ownedSession } from "$lib/agentSessionId";
 import { modelFromArgs } from "$lib/agentModel";
 import { currentOS } from "$lib/platform";
+import { hosts } from "$lib/state/hosts.svelte";
+import { agentsFor } from "$lib/agentAvailability";
+import { sshHostId, type TargetId } from "$lib/target";
 import {
   BUILTIN_DARK,
   BUILTIN_LIGHT,
@@ -80,6 +83,7 @@ export type SettingsSection =
   | "openWith"
   | "git"
   | "github"
+  | "hosts"
   | "resources"
   | "diagnostics"
   | "updates";
@@ -351,6 +355,11 @@ class AppStore {
       void loadMcpLaunch();
       // Check hook health in the background (drives the status-bar indicator).
       void this.refreshHooksStatus();
+      // Bring the registered hosts back up, in the background. Until now this
+      // only happened when Settings → Hosts was opened, so after a restart a
+      // project on a host had a panel, a terminal and a save button that all
+      // needed a session nobody had asked for (`hosts.resume`).
+      void hosts.resume();
     } catch (err) {
       this.backend = "error";
       this.errorMessage = err instanceof Error ? err.message : String(err);
@@ -572,8 +581,10 @@ class AppStore {
     cwd?: string;
     title?: string;
     profileId?: string;
-    /** Workspace to open in (worktree path, or "" for Global). */
+    /** Workspace to open in (its workspace key, or "" for Global). */
     workspace?: string;
+    /** Machine to open it on. Omitted, the workspace's own machine is used. */
+    target?: string;
   }): void {
     // A terminal is being shown → leave the inline GitHub view (it replaces the
     // center pane, so a new terminal would otherwise open hidden behind it). This
@@ -589,6 +600,7 @@ class AppStore {
       shell: command || undefined,
       args: command ? profile?.args : undefined,
       workspace: opts?.workspace,
+      target: opts?.target,
     });
   }
 
@@ -623,6 +635,21 @@ class AppStore {
   /** The agents that can actually be launched (a non-blank command). */
   get launchableAgents(): AgentProfile[] {
     return this.agentProfiles.filter((a) => a.command.trim().length > 0);
+  }
+
+  /** The agents launchable **on a given machine**.
+   *
+   *  The configured list describes this one; a host has its own CLIs, which is
+   *  the reason for running the work there. Offering ours for a host invites
+   *  launching something that is not installed — a pane that dies seconds later
+   *  with a message from a shell instead of from us. A host that has been asked
+   *  filters the list to what it actually reported; one that has not been asked
+   *  yet changes nothing, because absence of an inventory is not absence of
+   *  agents. */
+  launchableAgentsOn(target?: string | null): AgentProfile[] {
+    const hostId = sshHostId(target as TargetId | undefined);
+    if (!hostId) return this.launchableAgents;
+    return agentsFor(this.launchableAgents, hosts.inventories[hostId]);
   }
 
   /** The agent auto-launched on worktree create, if one is set and launchable. */
@@ -685,7 +712,7 @@ class AppStore {
    *  resolve. No-op for an agent with a blank command. */
   launchAgent(
     agent: AgentProfile,
-    opts: { cwd?: string; workspace?: string; title?: string },
+    opts: { cwd?: string; workspace?: string; title?: string; target?: string },
   ): void {
     const command = agent.command.trim();
     if (!command) return;
@@ -706,7 +733,18 @@ class AppStore {
     const shell =
       shellProfile?.command?.trim() ||
       (currentOS() === "windows" ? "cmd.exe" : undefined);
-    const kind = shellKind(shell);
+    // Which shell will actually receive this command line.
+    //
+    // On a host it is **that machine's**, asked when it connected — never this
+    // one's, and never the local terminal profile, which the remote side does
+    // not use at all (a remote terminal always gets the host's own login shell).
+    // Quoting for the wrong family is how an argument with a space or a quote
+    // turns into a dead pane, which is the same mistake that once sent cmd
+    // syntax to a PowerShell host and killed every terminal there.
+    const remoteHost = sshHostId(opts.target as TargetId | undefined);
+    const kind = remoteHost
+      ? (hosts.shellOf(remoteHost) ?? remoteFallbackShell(remoteHost))
+      : shellKind(shell);
     // Name the session ourselves when this CLI accepts a caller-chosen id, so the
     // tab is resumable from the moment the agent starts. A hook only reports a
     // session once the agent has actually done something, which left a
@@ -730,8 +768,12 @@ class AppStore {
     terminals.create({
       cwd: opts.cwd,
       title: opts.title ?? baseTitle,
-      shell,
-      args: shell ? shellProfile?.args : undefined,
+      // A local shell choice means nothing on a host: a remote terminal always
+      // gets that machine's own login shell. Recording one anyway would put a
+      // `cmd.exe` on a tab whose shell is somebody else's zsh, and the saved
+      // layout would carry the fiction into the next session.
+      shell: remoteHost ? undefined : shell,
+      args: !remoteHost && shell ? shellProfile?.args : undefined,
       runCommand,
       env: env.length ? env : undefined,
       agentName: name,
@@ -756,6 +798,7 @@ class AppStore {
           }
         : undefined,
       workspace: opts.workspace,
+      target: opts.target,
     });
   }
 
@@ -763,6 +806,21 @@ class AppStore {
   prefersDark(): boolean {
     return this.resolveActiveTheme().base === "dark";
   }
+}
+
+/** What to quote for when a host is connected but its shell could not be named.
+ *
+ *  Not a guess dressed as a default: the inventory already asked that machine
+ *  what OS it runs, so a Windows host is quoted the way both of its shells
+ *  accept (double quotes), and everything else POSIX. If even the inventory is
+ *  missing, POSIX — the majority of hosts, and the form whose failure mode is a
+ *  visible quoting error rather than a silently truncated argument.
+ *
+ *  It exists so an unrecognised shell degrades instead of blocking the launch;
+ *  most agent arguments need no quoting at all, so this rarely decides anything.
+ */
+function remoteFallbackShell(hostId: string): ShellKind {
+  return hosts.inventories[hostId]?.os === "windows" ? "cmd" : "posix";
 }
 
 /** Singleton store shared across the app. */

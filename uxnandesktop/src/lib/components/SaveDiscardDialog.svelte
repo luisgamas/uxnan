@@ -3,6 +3,10 @@
   // the `saveDiscard` service so non-component code (the tab-close path) can ask
   // what to do with unsaved file edits. Closing the dialog any other way (escape
   // / overlay) resolves to "cancel".
+  //
+  // `medium`, not the `small` a two-button confirmation uses: this one asks for
+  // three decisions, and its actions measure 370px against a 344px inset at
+  // `small` — the buttons would sit on top of the band's own padding.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { i18n } from "$lib/i18n";
@@ -15,7 +19,7 @@
     if (!o) saveDiscard.choose("cancel");
   }}
 >
-  <Dialog.Content size="small">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>{saveDiscard.title}</Dialog.Title>
       {#if saveDiscard.description}

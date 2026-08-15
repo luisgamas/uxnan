@@ -21,12 +21,16 @@
 
   let { path }: { path: string } = $props();
 
+  /** The workspace key for this path — the pair (machine, path), which is what
+   *  terminals are filed under. */
+  const wsKey = $derived(projects.workspaceFor(path));
+
   /** Avatars shown in the collapsed strip before overflowing into a "+N". */
   const MAX_AVATARS = 4;
   let avatarStrip: HTMLDivElement | undefined = $state();
   let visibleCount = $state(0);
 
-  const tabs = $derived(terminals.agentTabs(path));
+  const tabs = $derived(terminals.agentTabs(wsKey));
   // The terminal currently shown in the center (to highlight its row).
   const revealedId = $derived(
     terminals.activeWorkspace === path ? terminals.activePtyId() : null,
@@ -55,7 +59,7 @@
 
   function reveal(tabId: string) {
     projects.setActiveWorktree(path);
-    terminals.revealTab(path, tabId);
+    terminals.revealTab(wsKey, tabId);
   }
 </script>
 

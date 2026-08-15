@@ -3,6 +3,7 @@
 // `src-tauri/src/commands.rs`.
 
 import { invoke } from '@tauri-apps/api/core';
+import type { TargetExpectation } from '$lib/target';
 import type {
   Automation,
   AutomationRun,
@@ -30,6 +31,18 @@ import type {
   FileNumstat,
   FileSearch,
   FsEntry,
+  SshConfigAlias,
+  SshGitReview,
+  SshGitStatus,
+  SshConnectReport,
+  SshHostInventory,
+  SshHost,
+  SshHostAdded,
+  SshHostDraft,
+  SshHostProbe,
+  SshHostSession,
+  SshRemoteListing,
+  SshResolvedHost,
   GitIdentity,
   StaleWorktrees,
   WorktreeCleanupCandidate,
@@ -529,7 +542,14 @@ export function repoSetWorktreeRoot(repoId: string, root: string | null): Promis
 export function worktreeCreate(
   repoId: string,
   branch: string,
-  options: { base?: string; fromExisting?: boolean; path?: string } = {},
+  options: {
+    base?: string;
+    fromExisting?: boolean;
+    path?: string;
+    /** Machine this was prepared for. The backend refuses the call when the
+     *  project no longer lives there; omitting it authorizes local work only. */
+    expect?: TargetExpectation;
+  } = {},
 ): Promise<WorktreeEntry> {
   return invoke<WorktreeEntry>('worktree_create', {
     repoId,
@@ -537,6 +557,7 @@ export function worktreeCreate(
     base: options.base ?? null,
     fromExisting: options.fromExisting ?? false,
     path: options.path ?? null,
+    expect: options.expect ?? null,
   });
 }
 
@@ -550,6 +571,10 @@ export function worktreeRemove(
   branch: string | null,
   force: boolean,
   cleanup?: BranchCleanup,
+  /** Machine this was prepared for — see `worktreeCreate`. Removal deletes a
+   *  working tree and can delete branches, so a stale expectation aborts the
+   *  call before any git process starts. */
+  expect?: TargetExpectation,
 ): Promise<RemoveOutcome> {
   return invoke<RemoveOutcome>('worktree_remove', {
     repoId,
@@ -557,6 +582,7 @@ export function worktreeRemove(
     branch: branch ?? null,
     force,
     cleanup: cleanup ?? null,
+    expect: expect ?? null,
   });
 }
 
@@ -575,6 +601,403 @@ export function worktreeStatus(path: string): Promise<WorktreeStatus> {
  *  delete, asked without deleting anything. */
 export function branchIntegrated(path: string, branch: string): Promise<boolean> {
   return invoke<boolean>('branch_integrated', { path, branch });
+}
+
+// --- Remote hosts (SSH) ----------------------------------------------------
+
+/** The `Host` aliases declared in the user's own OpenSSH configuration (and
+ *  whatever it `Include`s), so adding a host is picking one instead of retyping
+ *  what they already wrote. Read-only; empty when there is no config file. */
+export function sshConfigHosts(): Promise<SshConfigAlias[]> {
+  return invoke<SshConfigAlias[]>('ssh_config_hosts');
+}
+
+/** Resolve one alias to the settings OpenSSH itself would use (`ssh -G`), rather
+ *  than reimplementing its precedence rules. Rejects when the alias cannot be
+ *  resolved, so we never quietly connect somewhere else. */
+export function sshConfigResolve(alias: string): Promise<SshResolvedHost> {
+  return invoke<SshResolvedHost>('ssh_config_resolve', { alias });
+}
+
+/** The registered remote machines. */
+export function sshHostsList(): Promise<SshHost[]> {
+  return invoke<SshHost[]>('ssh_hosts_list');
+}
+
+/** Register a machine, or update the one already registered for it. Resolves
+ *  with `recovered: true` when a previously removed machine's id was reused —
+ *  its projects are live again and the user should be told. */
+export function sshHostAdd(draft: SshHostDraft): Promise<SshHostAdded> {
+  return invoke<SshHostAdded>('ssh_host_add', { draft });
+}
+
+/** Forget a machine, remembering enough to give its projects back if it returns.
+ *  Resolves `false` when no such host is registered (removing twice is fine). */
+export function sshHostRemove(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_remove', { hostId });
+}
+
+/** Reach a host and report what `known_hosts` says about the key it presents.
+ *  Writes nothing and offers no credential. On `unknown`, the backend holds the
+ *  key so `sshHostTrust` can record exactly what the server presented. */
+export function sshHostProbe(hostId: string): Promise<SshHostProbe> {
+  return invoke<SshHostProbe>('ssh_host_probe', { hostId });
+}
+
+/** Record the key the last probe saw, after the user confirmed its fingerprint.
+ *  Only valid right after an `unknown` probe — there is deliberately no way to
+ *  trust a *changed* key. */
+export function sshHostTrust(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_trust', { hostId });
+}
+
+/** Open an authenticated session on a host and keep it. Idempotent: a host that
+ *  is already connected reports that rather than connecting twice. `password` is
+ *  passed only on a retry, after the app has asked for one — it is used for that
+ *  attempt and never stored. */
+export function sshHostConnect(hostId: string, password?: string): Promise<SshConnectReport> {
+  return invoke<SshConnectReport>('ssh_host_connect', { hostId, password: password ?? null });
+}
+
+/** Ask a connected host what it has: OS, home, git, a multiplexer, and the agent
+ *  CLIs installed there with their versions. Needs a live session — guessing it
+ *  from this machine would offer agents that are not there. */
+export function sshHostInventory(hostId: string): Promise<SshHostInventory> {
+  return invoke<SshHostInventory>('ssh_host_inventory', { hostId });
+}
+
+/** List the folders inside `path` on a connected host. An empty `path` starts at
+ *  that machine's home — only it knows where that is. */
+export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteListing> {
+  return invoke<SshRemoteListing>('ssh_browse_dirs', { hostId, path });
+}
+
+/** A worktree's git state **on a host**: branch plus changed/ahead/behind.
+ *
+ *  Runs git there through the shell that machine reported, with every argument
+ *  quoted for it. `isRepo: false` covers "not a repository", "no git installed"
+ *  and "the shell could not be named" — all of which the UI must render as *not
+ *  read*, never as "no changes". */
+export function sshGitStatus(hostId: string, path: string): Promise<SshGitStatus> {
+  return invoke<SshGitStatus>('ssh_git_status', { hostId, path });
+}
+
+/** Everything the Changes tab needs about a worktree on a host, in **one** round
+ *  trip: HEAD, ahead/behind, the changed files and their line counts.
+ *
+ *  One call rather than the local layer's four because each one costs a shell
+ *  start on that machine — measured at ~2s on a real host — and the panel asks
+ *  for all of them at once. `isRepo: false` means *not read*, never "clean". */
+export function sshGitReview(hostId: string, path: string): Promise<SshGitReview> {
+  return invoke<SshGitReview>('ssh_git_review', { hostId, path });
+}
+
+/** A file's unified diff on a host, staged or unstaged. */
+export function sshGitDiff(
+  hostId: string,
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<string> {
+  return invoke<string>('ssh_git_diff', { hostId, path, file, staged });
+}
+
+/** A file's diff against HEAD on a host — the editor's change gutter. Not the
+ *  same question as `sshGitDiff`: the gutter marks every line that differs from
+ *  the committed file, so staging a hunk must not clear it. */
+export function sshGitDiffHead(hostId: string, path: string, file: string): Promise<string> {
+  return invoke<string>('ssh_git_diff_head', { hostId, path, file });
+}
+
+/** Draft a commit message for a project on a host: the diff is read there, the
+ *  agent runs here (its CLI and credentials are this machine's). */
+export function sshGitGenerateCommitMessage(hostId: string, path: string): Promise<string> {
+  return invoke<string>('ssh_git_generate_commit_message', { hostId, path });
+}
+
+/** Before/after versions of an **image** on a host, for the visual diff.
+ *
+ *  The committed side is read with `git show` keeping its bytes as bytes (the
+ *  text path would turn a PNG into replacement characters), and the working-tree
+ *  side over SFTP. Nothing has to be installed on the host to encode it. */
+export function sshGitImageDiff(
+  hostId: string,
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<ImageDiff> {
+  return invoke<ImageDiff>('ssh_git_image_diff', { hostId, path, file, staged });
+}
+
+/** A host worktree's history, newest first. Same shape as the local log, so the
+ *  History tab and the branch graph render either machine unchanged. */
+export function sshGitLog(
+  hostId: string,
+  path: string,
+  limit: number,
+  skip: number,
+): Promise<CommitInfo[]> {
+  return invoke<CommitInfo[]>('ssh_git_log', { hostId, path, limit, skip });
+}
+
+/** One commit's patch, on a host. */
+export function sshGitShow(hostId: string, path: string, hash: string): Promise<string> {
+  return invoke<string>('ssh_git_show', { hostId, path, hash });
+}
+
+/** Stage a file on a host. Fenced like every mutation: `expect` names the
+ *  machine and connection the user was looking at, and the backend refuses
+ *  before anything is sent when that no longer holds. */
+export function sshGitStage(
+  hostId: string,
+  path: string,
+  file: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_stage', { hostId, path, file, expect: expect ?? null });
+}
+
+export function sshGitUnstage(
+  hostId: string,
+  path: string,
+  file: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_unstage', { hostId, path, file, expect: expect ?? null });
+}
+
+export function sshGitStageAll(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_stage_all', { hostId, path, expect: expect ?? null });
+}
+
+export function sshGitUnstageAll(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_unstage_all', { hostId, path, expect: expect ?? null });
+}
+
+/** Throw a file's changes away on a host — the one action here that cannot be
+ *  undone, and the reason the fence exists at all. */
+export function sshGitDiscard(
+  hostId: string,
+  path: string,
+  file: string,
+  untracked: boolean,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_discard', {
+    hostId,
+    path,
+    file,
+    untracked,
+    expect: expect ?? null,
+  });
+}
+
+/** Apply a patch on a host — the per-hunk stage/unstage/discard. The patch
+ *  travels over SFTP, never through that machine's shell. */
+export function sshGitApply(
+  hostId: string,
+  path: string,
+  patch: string,
+  cached: boolean,
+  reverse: boolean,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_apply', {
+    hostId,
+    path,
+    patch,
+    cached,
+    reverse,
+    expect: expect ?? null,
+  });
+}
+
+/** Commit on a host. The message travels over SFTP for the same reason: a
+ *  multi-line message with quotes in it must never be quoted for a shell. */
+export function sshGitCommit(
+  hostId: string,
+  path: string,
+  message: string,
+  amend: boolean,
+  signOff: boolean,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_commit', {
+    hostId,
+    path,
+    message,
+    amend,
+    signOff,
+    expect: expect ?? null,
+  });
+}
+
+/** Fetch, push or pull **on the host**, answering the worktree's new distance
+ *  from its upstream. The credentials are that machine's own — the project lives
+ *  there, so its remote is reachable from there. */
+export function sshGitSync(
+  hostId: string,
+  path: string,
+  action: 'fetch' | 'push' | 'pull',
+  expect?: TargetExpectation,
+): Promise<WorktreeStatus> {
+  return invoke<WorktreeStatus>('ssh_git_sync', { hostId, path, action, expect: expect ?? null });
+}
+
+/** List a directory on a host, for the file tree. Over SFTP — a subsystem, so it
+ *  works the same whatever shell that machine starts, with nothing installed
+ *  there. Shapes are the local layer's own, so the tree renders either machine. */
+export function sshFsList(hostId: string, path: string): Promise<FsEntry[]> {
+  return invoke<FsEntry[]>('ssh_fs_list', { hostId, path });
+}
+
+/** Read a text file on a host, for the editor. Same guards as the local reader:
+ *  binary and over-cap files come back flagged rather than mangled. */
+export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
+  return invoke<FileContent>('ssh_fs_read', { hostId, path });
+}
+
+/** Save a text file on a host. Fenced: `expect` names the machine the caller
+ *  prepared the save for, and the backend refuses the write outright when that
+ *  no longer matches — the same absolute path usually exists on both machines,
+ *  so a misrouted save is the one that looks like success. */
+export function sshFsWrite(
+  hostId: string,
+  path: string,
+  content: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_fs_write', { hostId, path, content, expect: expect ?? null });
+}
+
+/** Create an empty file on a host (the tree's "New File"). `path` is a bare name
+ *  or an intercalated relative path (`sub/dir/file.ts`), validated by the same
+ *  rules as locally — a name that could escape its folder never reaches the host.
+ *  Fenced like every mutation. */
+export function sshFsCreateFile(
+  hostId: string,
+  dir: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_create_file', { hostId, dir, path, expect: expect ?? null });
+}
+
+/** Create a folder on a host (the tree's "New Folder"). */
+export function sshFsCreateDir(
+  hostId: string,
+  dir: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_create_dir', { hostId, dir, path, expect: expect ?? null });
+}
+
+/** Rename an entry on a host, within its folder. Answers the new path. */
+export function sshFsRename(
+  hostId: string,
+  path: string,
+  newName: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_rename', { hostId, path, newName, expect: expect ?? null });
+}
+
+/** Delete a file or folder on a host — **permanently**. SSH has no trash, so
+ *  unlike the local delete this cannot be undone, and the dialog says so. */
+export function sshFsDelete(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_fs_delete', { hostId, path, expect: expect ?? null });
+}
+
+/** Copy a file next to itself on a host under a free "… copy" name. */
+export function sshFsDuplicate(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<string> {
+  return invoke<string>('ssh_fs_duplicate', { hostId, path, expect: expect ?? null });
+}
+
+/** Filename search in a host's project.
+ *
+ *  Asks **git** on that machine (`git ls-files`) instead of walking it over
+ *  SFTP: a walk would be one request per folder across a network, and "the files
+ *  git would list" is already what the local search means, so both machines
+ *  answer about the same project. A folder that is not a repository there is
+ *  refused with that as the reason. */
+export function sshFsSearchFiles(
+  hostId: string,
+  root: string,
+  query: string,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<FileSearch> {
+  return invoke<FileSearch>('ssh_fs_search_files', {
+    hostId,
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+  });
+}
+
+/** Content search in a host's project, through `git grep` — the matching lines
+ *  come back, the files never cross the link. The highlight offsets are computed
+ *  on this side with the same regex the local search uses, because `git grep`
+ *  reports lines and not columns. */
+export function sshFsSearchContent(
+  hostId: string,
+  root: string,
+  query: ContentQuery,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<ContentSearch> {
+  return invoke<ContentSearch>('ssh_fs_search_content', {
+    hostId,
+    root,
+    query,
+    includeHidden,
+    filters,
+    limit,
+  });
+}
+
+/** Register a folder that lives on a host as a project. The path is stored the
+ *  way that machine spells it; identity is the pair `(host, path)`, so the same
+ *  absolute path on two machines is two projects. */
+export function sshRepoAdd(hostId: string, path: string): Promise<RepoData> {
+  return invoke<RepoData>('ssh_repo_add', { hostId, path });
+}
+
+/** Drop a host's session. Resolves `false` when it was not connected. */
+export function sshHostDisconnect(hostId: string): Promise<boolean> {
+  return invoke<boolean>('ssh_host_disconnect', { hostId });
+}
+
+/** The host ids with a live session, so the UI can show what is connected
+ *  without reaching out to anything. */
+export function sshHostsResumable(): Promise<string[]> {
+  return invoke<string[]>('ssh_hosts_resumable');
+}
+
+/** The hosts with a live session, and which incarnation each one is. */
+export function sshHostsConnected(): Promise<SshHostSession[]> {
+  return invoke<SshHostSession[]>('ssh_hosts_connected');
 }
 
 // --- Filesystem: file tree + editor ----------------------------------------

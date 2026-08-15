@@ -8,8 +8,12 @@
 // CodeMirror document itself lives in `FileEditor.svelte`. All FS/git access
 // goes through `$lib/api`.
 
-import { fsReadFile, fsWriteFile, gitDiffHead } from "$lib/api";
+import { readFileOn, writeFileOn } from "$lib/fsRouter";
+import { diffHeadOn } from "$lib/gitRouter";
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 import { git } from "$lib/state/git.svelte";
+import { sessions } from "$lib/state/sessions.svelte";
+import { i18n } from "$lib/i18n";
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -61,9 +65,14 @@ export class FileEditorState {
   reveal = $state<{ line: number; seq: number } | null>(null);
   private revealSeq = 0;
 
-  constructor(absPath: string, worktree: string | null) {
+  /** The machine this file lives on. A file tab is opened from a tree that
+   *  already knows it, and a read has to go where the path came from. */
+  readonly target: TargetId;
+
+  constructor(absPath: string, worktree: string | null, target: TargetId = LOCAL_TARGET) {
     this.path = absPath;
     this.worktree = worktree;
+    this.target = target;
     this.rel = worktree ? relativeTo(absPath, worktree) : (absPath.split("/").pop() ?? absPath);
     void this.load();
   }
@@ -88,9 +97,20 @@ export class FileEditorState {
     this.rel = this.worktree
       ? relativeTo(newPath, this.worktree)
       : (newPath.split("/").pop() ?? newPath);
-    if (this.worktree && !this.binary && !this.tooLarge) {
-      this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
+    if (!this.binary && !this.tooLarge) {
+      this.headDiff = await this.diffAgainstHead();
     }
+  }
+
+  /** The file's diff against HEAD, or empty when there is nothing to ask.
+   *
+   *  Asked on whichever machine the file is on. A failure is swallowed on
+   *  purpose and always was: the gutter is a decoration over a file that opened
+   *  perfectly well, and a folder that is not a repository (or a host that
+   *  dropped) must not put an error toast over it. */
+  private async diffAgainstHead(): Promise<string> {
+    if (!this.worktree) return "";
+    return diffHeadOn(this.target, this.worktree, this.rel).catch(() => "");
   }
 
   /** Read the file content + its `git diff HEAD` from disk, resetting dirty /
@@ -104,13 +124,13 @@ export class FileEditorState {
     this.externallyChanged = false;
     this.headDiff = "";
     try {
-      const r = await fsReadFile(this.path);
+      const r = await readFileOn(this.target, this.path);
       this.binary = r.binary;
       this.tooLarge = r.tooLarge;
       this.baseline = r.content;
       this.content = r.content;
       if (!r.binary && !r.tooLarge && this.worktree) {
-        this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
+        this.headDiff = await this.diffAgainstHead();
       }
       this.rev++;
     } catch (e) {
@@ -130,20 +150,46 @@ export class FileEditorState {
     else void this.load();
   }
 
+  /** Whether this file cannot be written from here.
+   *
+   *  A file on a host is writable (over SFTP) **while that host is connected**.
+   *  Without a live session there is nothing to write through, and the
+   *  connection generation a save has to carry does not exist — so the editor
+   *  says so up front instead of failing at the end of a round trip. */
+  get readOnly(): boolean {
+    const host = sshHostId(this.target);
+    return host !== null && sessions.generationOf(host) === undefined;
+  }
+
   /** Persist `content` to disk, then refresh the gutter + the right-panel status
    *  so the change indicators update immediately (not just on the watcher). */
   async save(content: string): Promise<void> {
+    const host = sshHostId(this.target);
+    if (host !== null && sessions.generationOf(host) === undefined) {
+      // Refused before anything is written, and said in the pane rather than
+      // swallowed: an editor that silently does not save is worse than one that
+      // will not.
+      this.error = i18n.t("files.hostDisconnected", { host: sessions.labelOf(host) });
+      return;
+    }
     this.saving = true;
     this.error = null;
     try {
-      await fsWriteFile(this.path, content);
+      await writeFileOn(
+        this.target,
+        this.path,
+        content,
+        host ? sessions.generationOf(host) : undefined,
+      );
       this.baseline = content;
       this.content = content;
       this.dirty = false;
       this.externallyChanged = false;
       if (this.worktree) {
-        this.headDiff = await gitDiffHead(this.worktree, this.rel).catch(() => "");
-        if (git.path === this.worktree) void git.refresh();
+        this.headDiff = await this.diffAgainstHead();
+        // The panel is showing this worktree only if both halves match — the
+        // same absolute path on two machines is two different worktrees.
+        if (git.path === this.worktree && git.target === this.target) void git.refresh();
       }
     } catch (e) {
       this.error = msg(e);

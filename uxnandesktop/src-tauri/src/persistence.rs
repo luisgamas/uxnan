@@ -164,15 +164,50 @@ fn remove_retired_gemini_state(value: &mut serde_json::Value) {
 
 /// Transform a document from `from_version` to `from_version + 1`.
 ///
-// FOR-DEV: add an arm per schema bump as the model evolves, e.g.
-//   1 => Ok(migrate_v1_to_v2(value)),
-// Each arm mutates the document for the next version and returns it. Until the
-// first bump there are no arms, so any sub-current version is unsupported.
+/// One arm per schema bump: each mutates the document for the next version and
+/// returns it, so every migration stays independently testable and the chain in
+/// [`migrate`] is just repeated application. A version with no arm is
+/// unsupported rather than silently passed through.
 fn migrate_step(
     from_version: u32,
-    _value: serde_json::Value,
+    value: serde_json::Value,
 ) -> Result<serde_json::Value, AppError> {
-    Err(AppError::UnsupportedVersion(from_version))
+    match from_version {
+        1 => Ok(migrate_v1_to_v2(value)),
+        _ => Err(AppError::UnsupportedVersion(from_version)),
+    }
+}
+
+/// v1 → v2: stamp every repo and worktree with its execution target.
+///
+/// The field deserializes with a `local` default, so this transform is not what
+/// makes an old document load — it is what makes the document *self-describing*,
+/// and, more importantly, what the version bump buys us in the other direction:
+/// a v1 binary reading a v2 document would ignore an unknown `target` field and
+/// treat an SSH-hosted project as if its path were local. `migrate` refuses a
+/// document newer than this binary (`version > SCHEMA_VERSION`), so that
+/// misreading can never happen.
+///
+/// Idempotent: an existing `target` is left exactly as written.
+fn migrate_v1_to_v2(mut value: serde_json::Value) -> serde_json::Value {
+    const LOCAL: &str = "local";
+    let Some(repos) = value.get_mut("repos").and_then(|v| v.as_array_mut()) else {
+        return value;
+    };
+    for repo in repos.iter_mut() {
+        let Some(repo) = repo.as_object_mut() else {
+            continue;
+        };
+        repo.entry("target").or_insert_with(|| LOCAL.into());
+        if let Some(worktrees) = repo.get_mut("worktrees").and_then(|v| v.as_array_mut()) {
+            for wt in worktrees.iter_mut() {
+                if let Some(wt) = wt.as_object_mut() {
+                    wt.entry("target").or_insert_with(|| LOCAL.into());
+                }
+            }
+        }
+    }
+    value
 }
 
 #[cfg(test)]
@@ -228,6 +263,71 @@ mod tests {
         );
     }
 
+    /// A v1 document: repos and worktrees written before execution targets existed.
+    fn v1_document() -> serde_json::Value {
+        serde_json::json!({
+            "version": 1,
+            "repos": [{
+                "id": "r1", "name": "demo", "path": "C:/code/demo",
+                "worktrees": [
+                    { "id": "w1", "repoId": "r1", "name": "feat", "branch": "feat",
+                      "path": "C:/code/demo--feat", "createdByAde": true,
+                      "createdAt": 0, "lastActivity": 0 }
+                ]
+            }],
+            // Real defaults, not `{}`: the point of the round-trip assertion
+            // below is that a migrated document deserializes as the *whole*
+            // model, which a stub settings object would not.
+            "settings": serde_json::to_value(AppSettings::default()).unwrap()
+        })
+    }
+
+    #[test]
+    fn migrate_v1_stamps_every_repo_and_worktree_as_local() {
+        let migrated = migrate(v1_document()).unwrap();
+        assert_eq!(migrated["version"], SCHEMA_VERSION);
+        assert_eq!(migrated["repos"][0]["target"], "local");
+        assert_eq!(migrated["repos"][0]["worktrees"][0]["target"], "local");
+
+        // And the migrated document is loadable as the real model.
+        let data: AppData = serde_json::from_value(migrated).unwrap();
+        assert!(data.repos[0].target.is_local());
+        assert!(data.repos[0].worktrees[0].target.is_local());
+    }
+
+    #[test]
+    fn migrate_v1_is_idempotent_and_never_relabels_an_existing_target() {
+        // A document that already carries targets (a re-run, or a partially
+        // migrated file) must come out untouched — re-stamping "local" over a
+        // remote target would silently move a project to the wrong machine.
+        let mut doc = v1_document();
+        doc["repos"][0]["target"] = serde_json::json!("ssh:h1");
+        doc["repos"][0]["worktrees"][0]["target"] = serde_json::json!("ssh:h1");
+
+        let once = migrate(doc).unwrap();
+        assert_eq!(once["repos"][0]["target"], "ssh:h1");
+        assert_eq!(once["repos"][0]["worktrees"][0]["target"], "ssh:h1");
+
+        // Feeding the result back through is a no-op (it is already current).
+        let twice = migrate(once.clone()).unwrap();
+        assert_eq!(twice, once);
+    }
+
+    #[test]
+    fn migrate_v1_tolerates_documents_with_no_repos() {
+        let migrated = migrate(serde_json::json!({ "version": 1, "settings": {} })).unwrap();
+        assert_eq!(migrated["version"], SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_document_newer_than_this_binary_is_refused() {
+        // Why this matters for targets: a v1 binary reading a v2 document would
+        // ignore the unknown `target` field and treat an SSH-hosted project as
+        // local. Refusing outright is what makes that impossible.
+        let err = migrate(serde_json::json!({ "version": SCHEMA_VERSION + 1 })).unwrap_err();
+        assert!(matches!(err, AppError::UnsupportedVersion(_)));
+    }
+
     #[test]
     fn save_then_load_roundtrips() {
         let (_dir, mgr) = temp_manager();
@@ -238,6 +338,7 @@ mod tests {
             id: "r1".into(),
             name: "demo".into(),
             path: "/tmp/demo".into(),
+            target: Default::default(),
             worktrees: vec![],
             is_git: true,
             icon: None,

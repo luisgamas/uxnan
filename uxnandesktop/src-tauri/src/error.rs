@@ -26,6 +26,16 @@ pub enum AppError {
     Agent(String),
     #[error("invalid input: {0}")]
     Invalid(String),
+    /// A host has no live session yet. Its own variant because it is not a
+    /// *failure* the user has to read: it happens every time the app starts
+    /// before a host is connected, and the interface should say "not connected
+    /// yet" and retry once it is — not print an error over an empty panel.
+    #[error("{0} is not connected")]
+    NotConnected(String),
+    /// A mutation was prepared for one execution target and would have run on
+    /// another (see `target::check`). Always fatal to the call: nothing runs.
+    #[error("execution target mismatch: {0}")]
+    TargetMismatch(String),
     #[error("updater error: {0}")]
     Updater(String),
     #[error("github error: {0}")]
@@ -61,6 +71,8 @@ impl From<AppError> for CommandError {
             AppError::Git(_) => "GIT_ERROR",
             AppError::Agent(_) => "AGENT_ERROR",
             AppError::Invalid(_) => "INVALID_INPUT",
+            AppError::NotConnected(_) => "NOT_CONNECTED",
+            AppError::TargetMismatch(_) => "TARGET_MISMATCH",
             AppError::Updater(_) => "UPDATER_ERROR",
             AppError::Github(_) => "GITHUB_ERROR",
         };

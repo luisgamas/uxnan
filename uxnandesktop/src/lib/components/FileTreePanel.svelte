@@ -26,6 +26,8 @@
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { fileTree } from "$lib/state/fileTree.svelte";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import { sshHostId } from "$lib/target";
   import { revealPath } from "$lib/api";
   import { dropPathsIntoTerminal } from "$lib/terminal/terminalDrop";
   import { cn } from "$lib/utils";
@@ -71,12 +73,28 @@
   );
   const worktreeName = $derived(root ? (root.split("/").pop() ?? root) : "");
 
-  // Keep the shared tree store pointed at the active worktree.
+  // Keep the shared tree store pointed at the active worktree — and at the
+  // machine **that root** lives on, because every listing and read in the tree
+  // has to go where the root came from.
+  //
+  // `activeReviewTarget`, not `activeWorktreeTarget`: the latter follows the
+  // focused terminal workspace, which is right for opening a terminal and wrong
+  // for describing a folder. Focus a terminal on a host while a local project is
+  // selected and the two disagree — the tree then asked the host about a path on
+  // *this* machine, which is what put "waiting for this host to connect" over a
+  // local project.
   $effect(() => {
-    fileTree.setRoot(root);
+    fileTree.setRoot(root, projects.activeReviewTarget);
   });
 
   let searching = $state(false);
+  // A host's tree cannot be searched yet (`fileTree.searchable`): the search
+  // walks this filesystem, so offering it there would answer "no matches" for
+  // every query. Closing it when the workspace changes machine keeps a stale
+  // search box from hanging over a tree it cannot search.
+  $effect(() => {
+    if (!fileTree.searchable && searching) searching = false;
+  });
   function toggleSearch(): void {
     searching = !searching;
     // Closing search drops both queries but keeps the filters and match modes, so
@@ -359,6 +377,14 @@
   function cancelRename(): void {
     fileTree.renamingPath = null;
   }
+  /** The machine's own name, for the delete dialog. A notice that names the
+   *  computer beats one that says "the host" — and the id is the honest
+   *  fallback when it has no label. */
+  const hostLabel = $derived.by(() => {
+    const id = sshHostId(fileTree.target);
+    return id ? sessions.labelOf(id) : "";
+  });
+
   function openDelete(entry: FsEntry): void {
     deleteTarget = entry;
     deleteError = null;
@@ -562,20 +588,24 @@
       {#if root}
         <!-- The tooltip is a hover affordance only; each icon button also carries its
              own `aria-label`, so the toolbar is usable by name (screen reader, tests). -->
-        <TooltipSimple title={i18n.t("fileTree.search")}>
-          {#snippet children(tp)}
-            <Button
-              variant="ghost"
-              size="icon"
-              class={iconButton.xs}
-              {...tp}
-              aria-label={i18n.t("fileTree.search")}
-              onclick={toggleSearch}
-            >
-              <Icon icon={SearchIcon} class={icon.action} />
-            </Button>
-          {/snippet}
-        </TooltipSimple>
+        {#if fileTree.searchable}
+          <!-- Not offered on a host: the search walks *this* filesystem, so it
+               would answer "no matches" for every query there. -->
+          <TooltipSimple title={i18n.t("fileTree.search")}>
+            {#snippet children(tp)}
+              <Button
+                variant="ghost"
+                size="icon"
+                class={iconButton.xs}
+                {...tp}
+                aria-label={i18n.t("fileTree.search")}
+                onclick={toggleSearch}
+              >
+                <Icon icon={SearchIcon} class={icon.action} />
+              </Button>
+            {/snippet}
+          </TooltipSimple>
+        {/if}
         <TooltipSimple title={i18n.t("fileTree.collapseAll")}>
           {#snippet children(tp)}
             <Button
@@ -778,7 +808,11 @@
   {#if !root}
     <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
   {:else}
-    {#if fileTree.error}
+    {#if fileTree.awaitingHost}
+      <!-- Not an error: the app opened before the host was connected. It fills
+           itself in the moment the host comes up (`retryForHost`). -->
+      <p class={cn("px-3 py-1.5", text.meta)}>{i18n.t("fileTree.awaitingHost")}</p>
+    {:else if fileTree.error}
       <p class={cn("px-3 py-1.5 text-destructive", text.body)}>{fileTree.error}</p>
     {/if}
 
@@ -900,9 +934,15 @@
         </div>
       {/if}
     {:else if treeRows.length === 0}
-      <p class={cn("p-3", text.meta)}>
-        {fileTree.loadingDir.has(root) ? i18n.t("common.loading") : i18n.t("fileTree.empty")}
-      </p>
+      <!-- "Empty" is a fact about a folder that was read. When the read failed —
+           or has not happened yet because the host is still coming up — the line
+           above already says so, and adding "this folder is empty" under it
+           states something nobody checked. -->
+      {#if !fileTree.error && !fileTree.awaitingHost}
+        <p class={cn("p-3", text.meta)}>
+          {fileTree.loadingDir.has(root) ? i18n.t("common.loading") : i18n.t("fileTree.empty")}
+        </p>
+      {/if}
     {:else}
       <div bind:this={treeEl} class="uxnan-scroll flex min-h-0 flex-1 flex-col overflow-auto px-1 py-1">
         <div class="shrink-0">
@@ -1011,17 +1051,30 @@
   </div>
 {/if}
 
-<!-- Delete confirm, mounted once (rename + create are inline in the tree). -->
+<!-- Delete confirm, mounted once (rename + create are inline in the tree).
+     The two machines do different things, so the dialog says which: locally the
+     entry goes to the OS trash and can be brought back; a host has no trash, so
+     there it is gone. Same button, different promise — and the promise is the
+     part the user is agreeing to. -->
 <ConfirmDialog
   bind:open={deleteOpen}
   danger
-  title={i18n.t("fileTree.deleteTitle")}
+  title={fileTree.deletesToTrash
+    ? i18n.t("fileTree.deleteTitle")
+    : i18n.t("fileTree.deleteTitleHost", { host: hostLabel })}
   description={deleteTarget
-    ? i18n.t(deleteTarget.isDir ? "fileTree.deleteFolderDesc" : "fileTree.deleteFileDesc", {
-        name: deleteTarget.name,
-      })
+    ? fileTree.deletesToTrash
+      ? i18n.t(deleteTarget.isDir ? "fileTree.deleteFolderDesc" : "fileTree.deleteFileDesc", {
+          name: deleteTarget.name,
+        })
+      : i18n.t(
+          deleteTarget.isDir ? "fileTree.deleteFolderDescHost" : "fileTree.deleteFileDescHost",
+          { name: deleteTarget.name, host: hostLabel },
+        )
     : ""}
-  confirmLabel={i18n.t("fileTree.deleteConfirm")}
+  confirmLabel={fileTree.deletesToTrash
+    ? i18n.t("fileTree.deleteConfirm")
+    : i18n.t("fileTree.deleteConfirmHost")}
   error={deleteError}
   onconfirm={doDelete}
 />

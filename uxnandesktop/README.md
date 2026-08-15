@@ -69,6 +69,23 @@ change-review layer, and any CLI agent works inside it without modification.
 The application is **alpha-functional as a standalone app**. The capabilities
 available today are:
 
+- **A project can live on another machine.** Register an SSH host (from your own
+  `~/.ssh/config`, or by hand), browse its folders and add one as a project. Its
+  terminals open **there**, with that machine's CLIs and credentials; its files
+  are listed, opened and saved over SFTP — a subsystem, so it behaves the same
+  whatever shell the host runs, and the tree can be **changed** there too (new
+  file, rename, duplicate, delete — deleting on a host is permanent, because SSH
+  has no trash, and the dialog says so) and **searched** (by name and by content,
+  asking git on that machine so the files never cross the link) — and **Changes
+  and History work there too**, image diffs and the AI commit draft included: the
+  diff, staging, commit, log and fetch/push/pull all run git on that machine,
+  with your commit message travelling over SFTP so it is never quoted for someone
+  else's shell. Host keys are verified with a confirmation you have to give; no
+  key or password is ever stored. A remote project has no 3-second watcher — one
+  command on a host costs about two seconds — so its panels refresh when you open
+  them, when you act, and on their refresh button, and say as much. GitHub still
+  reads *this* machine's repository, so on a host it stands down and says so
+  ([`docs/remote-hosts.md`](./docs/remote-hosts.md)).
 - **Parallel, isolated agents.** Every task gets its own git worktree, its own
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
@@ -277,6 +294,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[remote hosts over SSH](./docs/remote-hosts.md) ·
 [worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·
 [file viewer](./docs/file-viewer.md) ·
@@ -300,7 +318,8 @@ The full product/engineering specification is in
 
 ```
 uxnandesktop/
-├── architecture/          # Spec (source of truth) — Phase 0-5+S status; Phase 6 pending
+├── architecture/          # Spec (source of truth) — Phase 0-5+S status; Phase 6 pending;
+│                          # remote hosts over SSH in 02g (phases 0-1 done, 3 mostly done)
 ├── docs/                  # Task-focused docs (install, build, test, i18n, hooks, ...)
 ├── src/                   # SvelteKit frontend (SPA)
 │   ├── app.css            # Tailwind v4 + shadcn-svelte tokens
@@ -323,6 +342,9 @@ uxnandesktop/
 │       ├── pty.rs         # portable-pty manager
 │       ├── git.rs         # git CLI wrapper (worktrees, branches, status, commit)
 │       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
+│       ├── target.rs      # execution-target identity (local / ssh:<host>) + fencing
+│       ├── ssh/           # remote hosts: conn, auth, hostkey, config, registry,
+│       │                  # inventory, shellkind, pty, browse, sftp, git
 │       ├── hooks.rs       # axum HTTP hook server (Layer 1 agent monitoring)
 │       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
 │       ├── procscan.rs    # foreground-job agent detection (Layer 3)

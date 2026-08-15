@@ -1466,7 +1466,8 @@ const LOG_RECORD_SEP: char = '\u{1e}';
 /// The `--pretty=format:` template for [`log_cli`], matching the field order
 /// [`parse_log`] expects (hash, short, parents, name, email, time, refs, subject,
 /// body), terminated by the record separator.
-const LOG_FORMAT: &str = "format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e";
+pub(crate) const LOG_FORMAT: &str =
+    "format:%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s%x1f%b%x1e";
 
 /// List the worktree's commit history (newest first, date order while keeping
 /// children before parents), `limit` commits starting `skip` from `HEAD`. Fast

@@ -7,7 +7,10 @@
   import ChangesPanel from "./ChangesPanel.svelte";
   import HistoryPanel from "./HistoryPanel.svelte";
   import GithubPanel from "./GithubPanel.svelte";
+  import RemoteWorkspaceNotice from "./RemoteWorkspaceNotice.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { projects } from "$lib/state/projects.svelte";
+  import { isLocalTarget } from "$lib/target";
   import { rightPanel } from "$lib/state/rightPanel.svelte";
   import { i18n } from "$lib/i18n";
   import { divider, focus, icon, shell, tab as tabStyle } from "$lib/design";
@@ -113,6 +116,12 @@
       </Tabs.Trigger>
     {/if}
   </Tabs.List>
+  <!-- Files, Changes and History all work on a host: files over SFTP (a
+       subsystem, so it behaves the same whatever shell that machine starts), and
+       git through that machine's own shell with every argument quoted for it.
+       GitHub is the one that cannot: it reads this machine's repository and its
+       `gh` sign-in, so on a remote project it stands down and says which machine
+       the project is on. -->
   <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
     <FileTreePanel />
   </Tabs.Content>
@@ -124,7 +133,11 @@
   </Tabs.Content>
   {#if showGithub}
     <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-      <GithubPanel />
+      {#if !isLocalTarget(projects.activeReviewTarget)}
+        <RemoteWorkspaceNotice />
+      {:else}
+        <GithubPanel />
+      {/if}
     </Tabs.Content>
   {/if}
   </Tabs.Root>

@@ -345,6 +345,37 @@ async fn codex_models_inner(resolved: &agentcli::Resolved) -> Option<Vec<AgentMo
     result
 }
 
+/// Draft a message from a diff that has already been read.
+///
+/// Split out from [`generate`] for the project that lives on another machine:
+/// the diff comes from **that** host (`ssh::git::diff`) while the agent CLI runs
+/// **here**, because the agent is this machine's and the host has no reason to
+/// have one installed.
+///
+/// `cwd` is where the CLI is started. For a local project it is the worktree —
+/// the natural place. For a remote one there is no such folder on this machine,
+/// so the caller passes somewhere ordinary: the whole input is in the prompt, so
+/// the directory is only where the process happens to stand. A CLI that insists
+/// on trusting a folder before doing anything fails there rather than hanging —
+/// the run is bounded by [`GENERATE_TIMEOUT`] — and the button reports it.
+pub async fn from_diff(diff: &str, cfg: &AiCommitSettings, cwd: &str) -> Result<String, AppError> {
+    if diff.trim().is_empty() {
+        return Err(AppError::Invalid(
+            "nothing is staged to summarize".to_string(),
+        ));
+    }
+    let agent = cfg.agent_id.trim();
+    let prompt = build_prompt(cfg, diff);
+    let raw = run_agent(agent, &cfg.model, &prompt, cwd).await?;
+    let message = sanitize_message(&raw);
+    if message.is_empty() {
+        return Err(AppError::Agent(
+            "the agent returned an empty message".to_string(),
+        ));
+    }
+    Ok(message)
+}
+
 /// Build the agent prompt from the config and the (capped) staged diff.
 fn build_prompt(cfg: &AiCommitSettings, diff: &str) -> String {
     let mut p = String::new();

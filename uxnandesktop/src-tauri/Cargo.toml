@@ -4,7 +4,13 @@ version = "0.0.43"
 description = "Uxnan Desktop — Agent Development Environment (ADE)."
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
-rust-version = "1.77.2"
+# Floor set by `russh` (the SSH client), not by anything in this crate. Raised
+# from 1.77.2 deliberately: nothing consumes this as a contract — every workflow
+# builds on `stable`, `rust-toolchain.toml` says `stable`, there is no MSRV job
+# and this crate is never published — so holding it back would only have meant
+# shipping an SSH/crypto stack eight minor versions behind to protect a claim
+# nobody verifies.
+rust-version = "1.85"
 license = "MPL-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -95,16 +101,43 @@ ignore = "0.4"
 # naming them here adds no build cost. MIT/Apache-2.0.
 regex = "1"
 globset = "0.4"
+# SSH client for remote hosts (`ssh/`). In-process rather than shelling out to
+# `ssh` per operation: the Windows OpenSSH client does not implement
+# `ControlMaster`, so every invocation would pay a full TCP + auth handshake
+# (~400 ms), and one connection carrying many channels is the whole design.
+# Pure Rust, Apache-2.0, and its crypto backend (`aws-lc-rs`) is already in the
+# tree via rustls/reqwest, so it adds no new build toolchain. It sets this
+# crate's MSRV — see `rust-version` above.
+russh = "0.62.6"
+# SFTP over the same connection. A *subsystem*, not a shell — it behaves
+# identically whatever shell a host starts (cmd, PowerShell, WSL, Git Bash) and
+# needs nothing installed there, which is why remote files go through it rather
+# than through commands typed at a prompt. Apache-2.0, pure Rust, ~54 KiB.
+russh-sftp = "2.4.0"
+# SHA-1, for exactly one thing: reading OpenSSH's hashed `known_hosts` entries
+# (`|1|salt|hmac`), whose lookup keys are HMAC-SHA1 by that file format's own
+# definition. Not a security primitive here — the host key itself is compared
+# byte-for-byte. Pinned to 0.10 to share `digest` 0.10 with sha2 already in the
+# tree; 0.11 pulls a second, incompatible digest generation into the graph.
+sha1 = "0.10"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs),
 # and GetShortPathNameW for the agent hooks — Grok parses a hook command as a
 # literal path with no quoting, so a hooks folder whose path contains a space is
 # only reachable through its 8.3 short form (agent_hooks.rs).
+# `join_all` for the SFTP requests a folder listing fans out (one `.git` check
+# per folder). They pipeline on the session's single channel, which is what
+# makes the badge affordable: 63 folders cost 44ms one after another and 3.3ms
+# together. Already compiled into this binary via axum/hyper/tokio-util/tauri,
+# so making it direct adds nothing to the build. Apache-2.0/MIT.
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
   "Win32_System_Power",
   "Win32_Storage_FileSystem",
 ] }
+
 
 [dev-dependencies]
 tempfile = "3"
@@ -114,3 +147,7 @@ tokio = { version = "1", features = ["test-util"] }
 # The resource-observability integration tests (`tests/resources_processes.rs`)
 # read real process facts through the same sysinfo the app uses.
 sysinfo = "0.33"
+# Only for the live SSH test that opens many channels at once (`ssh/auth.rs`):
+# `join_all` over borrowed futures, which tokio::spawn cannot take. Test-only, so
+# it never reaches the shipped binary.
+futures = "0.3.34"

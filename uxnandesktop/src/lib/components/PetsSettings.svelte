@@ -353,10 +353,16 @@
 
 <Dialog.Root bind:open={importOpen}>
   <Dialog.Content size="large">
-    <Dialog.Title class="text-[15px] font-semibold">{i18n.t("pets.importTitle")}</Dialog.Title>
-    <Dialog.Description class="text-[13px] text-muted-foreground">
-      {i18n.t("pets.importDesc")}
-    </Dialog.Description>
+    <!-- Wrapped in `Dialog.Header` for the top inset: the content grid is `py-0`,
+         so a title placed straight into it prints against the dialog's top edge.
+         `pb-0` only — the grid's gap spaces the notice below, and `pr-8` stays
+         because this dialog *does* show a close button. -->
+    <Dialog.Header class="pb-0">
+      <Dialog.Title class="text-[15px] font-semibold">{i18n.t("pets.importTitle")}</Dialog.Title>
+      <Dialog.Description class="text-[13px] text-muted-foreground">
+        {i18n.t("pets.importDesc")}
+      </Dialog.Description>
+    </Dialog.Header>
 
     <!-- Always shown in the import dialog (not dismissible here): this is the
          moment the user takes on someone else's artwork. -->
@@ -400,13 +406,18 @@
       {/each}
     </div>
 
-    <div class="flex justify-end gap-2">
+    <!-- The shared action band, not a bare row: `dialog.content` has no vertical
+         padding, so a plain row of buttons sits flush against the bottom edge —
+         which is what this dialog did, and it showed the moment the header gave
+         the top its 20px back. `Dialog.Footer` brings the padding, the hairline
+         and the muted band every other dialog's actions stand on. -->
+    <Dialog.Footer>
       {#if candidates.length > 1}
         <Button variant="outline" size="sm" disabled={importing} onclick={importAll}>
           {i18n.t("pets.importAll")}
         </Button>
       {/if}
       <Button size="sm" onclick={() => (importOpen = false)}>{i18n.t("common.close")}</Button>
-    </div>
+    </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

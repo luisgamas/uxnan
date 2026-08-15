@@ -38,6 +38,11 @@ import { agentMonitor } from '$lib/state/agentMonitor.svelte';
 import { KeyboardProtocol } from '$lib/terminal/keyboardProtocol';
 import { DEFAULT_TERMINAL_SCROLLBACK, SNAPSHOT_SCROLLBACK } from '$lib/terminal/scrollback';
 import { scanForJunctionBlock, forgetJunctionBlock } from '$lib/terminal/windowsJunctionGuard';
+import {
+  launchDelayMs,
+  RUN_COMMAND_FALLBACK_MS,
+  RUN_COMMAND_QUIET_MS,
+} from '$lib/terminal/launchTiming';
 
 /** Read CSI parameter `i` as a non-negative integer, or `def` when absent.
  *  (xterm hands sub-parameters as `number[]`; the keyboard sequences handled
@@ -49,8 +54,9 @@ function numParam(params: (number | number[])[], i: number, def: number): number
 
 // Shell output is debounced before typing an agent command so profile scripts
 // can finish drawing their prompt. Quiet shells still launch via the fallback.
-const RUN_COMMAND_QUIET_MS = 160;
-const RUN_COMMAND_FALLBACK_MS = 1800;
+// The timing rule itself lives in `launchTiming.ts` — a shell on a host is not
+// ready when its channel opens, and typing then splits the command.
+
 
 /** Spawn parameters for the instance's PTY. Fixed per tab — they come from the
  *  tab's state — with one exception: `respawnPty` re-arms `runCommand` when an
@@ -68,6 +74,11 @@ export interface TerminalSpawnSpec {
   /** Workspace key the tab belongs to at spawn time — only so the backend's
    *  resource monitor can attribute the shell's cost to its workspace. */
   workspace?: string;
+  /** Machine to open the shell on. Absent = this one. An `ssh:<hostId>` target
+   *  opens a channel on that host's live session instead of spawning a process
+   *  here; everything downstream (output events, resize, close) is identical,
+   *  which is why nothing else in this file needs to know. */
+  target?: string;
 }
 
 /** Everything needed to build a fresh instance. */
@@ -126,6 +137,9 @@ export interface TerminalInstance {
   spawnFailed: boolean;
   /** The agent `runCommand` was already typed (never re-type into a live agent). */
   launched: boolean;
+  /** This PTY has produced at least one byte. On a host that is the only proof
+   *  its shell is actually up: the channel opens well before the shell does. */
+  sawOutput: boolean;
   /** `pty:exit` arrived while parked; the next adopting mount fires its onExit. */
   exitedWhileParked: boolean;
   /** Token of the adopting mount (null while parked). Guards against the
@@ -139,6 +153,20 @@ export interface TerminalInstance {
 }
 
 const registry = new Map<string, TerminalInstance>();
+
+/** Told when a PTY ends while its pane is parked (its workspace unmounted).
+ *
+ *  Without this the model hears nothing: the exit waits on the instance and is
+ *  replayed the next time that tab is adopted — so a terminal that died in a
+ *  background workspace looks alive until you touch it, and then closes *as you
+ *  click something else*. Two tabs appearing to close together is what that
+ *  looks like from the outside. The store registers the handler; keeping it a
+ *  callback keeps this module free of the store it would otherwise import. */
+let onParkedExit: ((id: string) => void) | null = null;
+
+export function setParkedExitHandler(handler: (id: string) => void): void {
+  onParkedExit = handler;
+}
 /** In-flight creations, so two overlapping mounts of the same id (drag remount)
  *  never build two instances / spawn two PTYs. */
 const pending = new Map<string, Promise<TerminalInstance>>();
@@ -328,6 +356,7 @@ export async function spawnPty(
       rows,
       // "" is the global workspace — meaningless as an attribution target.
       workspace: spec.workspace || null,
+      target: spec.target ?? null,
     });
     // The PTY now exists at exactly `cols`×`rows`; record that as the known
     // grid, then flush any fit that settled while the spawn was in flight so
@@ -426,6 +455,11 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
   const { runCommand, runCommandExecute = true } = inst.spec;
   if (!runCommand || !inst.ptyReady || inst.spawnFailed || inst.launched) return;
   if (inst.launchTimer) clearTimeout(inst.launchTimer);
+  const wait = launchDelayMs({
+    target: inst.spec.target,
+    sawOutput: inst.sawOutput,
+    requested: delay,
+  });
   inst.launchTimer = setTimeout(async () => {
     inst.launchTimer = undefined;
     try {
@@ -441,7 +475,7 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
       // Backend not ready for this write — stay retryable (next output chunk
       // or fallback reschedules).
     }
-  }, delay);
+  }, wait);
 }
 
 async function createInstance(
@@ -518,6 +552,7 @@ async function createInstance(
     ptyReady: false,
     spawnFailed: false,
     launched: false,
+    sawOutput: false,
     exitedWhileParked: false,
     adopter: null,
     hooks: {},
@@ -575,6 +610,7 @@ async function createInstance(
   try {
     const unOutput = await listen<number[]>(`pty:output:${id}`, (e) => {
       const bytes = new Uint8Array(e.payload);
+      inst.sawOutput = true;
       inst.term.write(bytes, () => inst.hooks.onOutput?.());
       agentMonitor.noteOutput(id);
       scheduleAgentLaunch(inst);
@@ -584,7 +620,13 @@ async function createInstance(
     });
     const unExit = await listen(`pty:exit:${id}`, () => {
       if (inst.hooks.onExit) inst.hooks.onExit();
-      else inst.exitedWhileParked = true;
+      else {
+        // Keep the flag: an adopting mount still needs to render the ended
+        // state. But tell the model *now*, so the tab reflects it where the
+        // user can see it rather than at the next adoption.
+        inst.exitedWhileParked = true;
+        onParkedExit?.(id);
+      }
     });
     inst.disposables.push(unOutput, unExit);
   } catch {

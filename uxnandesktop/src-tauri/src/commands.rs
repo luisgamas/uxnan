@@ -13,9 +13,11 @@ use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
 use crate::model::{
-    AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData, WorktreeLocationMode,
+    AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData, SshHost, WorktreeLocationMode,
 };
+use crate::ssh;
 use crate::state::{AppState, HookServerInfo};
+use crate::target::{self, TargetExpectation, TargetId, LOCAL_GENERATION};
 use crate::worktreeclean;
 use crate::worktreeloc::{self, Resolved};
 
@@ -36,12 +38,33 @@ pub async fn update_settings(
     settings: AppSettings,
 ) -> Result<AppData, CommandError> {
     let mut data = state.data.write().await;
-    data.settings = settings;
+    data.settings = preserve_backend_owned(&mut data.settings, settings);
     state.persistence.save(&data).map_err(CommandError::from)?;
     // Keep the resource monitor's cadence in step (no-op unless the resource
     // settings actually changed — this command fires for every settings write).
     state.resources.apply_settings(&data.settings.resources);
     Ok(data.clone())
+}
+
+/// Merge a settings payload from the UI over what is already stored, keeping the
+/// fields the **backend** owns.
+///
+/// Settings travel as one whole object, so every field in the payload replaces
+/// its stored counterpart. That is fine for things the user edits and wrong for
+/// anything only the backend writes: the frontend does not model those, so its
+/// copy is an empty one, and accepting it deletes them.
+///
+/// This is not hypothetical. Adding an SSH host and then changing any unrelated
+/// setting silently deleted every host *and* every tombstone — and because the
+/// tombstones went too, re-adding the same machine minted a fresh id, which no
+/// live session matched, so opening a terminal on it failed with "connect
+/// first" while the host sat there looking connected.
+fn preserve_backend_owned(stored: &mut AppSettings, incoming: AppSettings) -> AppSettings {
+    AppSettings {
+        ssh_hosts: std::mem::take(&mut stored.ssh_hosts),
+        removed_ssh_hosts: std::mem::take(&mut stored.removed_ssh_hosts),
+        ..incoming
+    }
 }
 
 // --- Resource observability (`resources.rs`) ---------------------------------
@@ -441,7 +464,77 @@ pub async fn pty_create(
     // Workspace this terminal belongs to (the tab's workspace key), used only to
     // attribute the shell's resource cost to its workspace (`resources.rs`).
     workspace: Option<String>,
+    // Machine to open it on. Absent or `local` spawns a process here; an
+    // `ssh:<hostId>` target opens a channel on that host's live session.
+    target: Option<String>,
 ) -> Result<bool, CommandError> {
+    // Remote first, because everything below this line is about spawning a local
+    // process: hook coordinates for a local server, WSLENV, resource attribution
+    // of a pid. None of it applies to a terminal on another machine, and running
+    // it anyway would inject a loopback URL the host cannot reach.
+    if let Some(target) = target.as_deref().filter(|t| !t.is_empty() && *t != "local") {
+        let host_id = TargetId::parse(target)
+            .map_err(CommandError::from)?
+            .ssh_host_id()
+            .ok_or_else(|| {
+                CommandError::from(AppError::Invalid(format!(
+                    "{target} is not a machine a terminal can open on"
+                )))
+            })?
+            .to_string();
+
+        let Some(conn) = session_for(&state, &host_id).await else {
+            return Err(CommandError::from(AppError::Invalid(
+                "connect to this host before opening a terminal on it".to_string(),
+            )));
+        };
+
+        // Which shell this host starts, asked once per connection. A terminal is
+        // placed in its folder by *typing* a `cd`, and the families do not share
+        // syntax — assuming cmd is what killed every project terminal on a
+        // PowerShell host. An unrecognised shell types nothing at all.
+        let shell = {
+            let known = state.ssh_shells.read().await.get(&host_id).copied();
+            match known {
+                Some(kind) => kind,
+                None => {
+                    let kind = crate::ssh::shellkind::classify(&conn).await;
+                    state.ssh_shells.write().await.insert(host_id.clone(), kind);
+                    kind
+                }
+            }
+        };
+
+        let out_app = app.clone();
+        let out_id = id.clone();
+        let exit_app = app.clone();
+        let exit_id = id.clone();
+        return state
+            .ssh_pty
+            .create(
+                &host_id,
+                &conn,
+                crate::ssh::pty::RemotePtySpec {
+                    id: id.clone(),
+                    cwd,
+                    shell,
+                    // An interactive shell, like the local path: the launcher
+                    // delivers its command by typing it in afterwards
+                    // (`pty_paste_submit`), which works the same either side.
+                    command: None,
+                    cols,
+                    rows,
+                },
+                move |bytes: &[u8]| {
+                    let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
+                },
+                move || {
+                    let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
+                },
+            )
+            .await
+            .map_err(CommandError::from);
+    }
     let out_app = app.clone();
     let out_id = id.clone();
     let on_output = move |bytes: &[u8]| {
@@ -635,6 +728,13 @@ pub async fn pty_write(
     id: String,
     data: String,
 ) -> Result<(), CommandError> {
+    if state.ssh_pty.owns(&id).await {
+        return state
+            .ssh_pty
+            .write(&id, data.as_bytes())
+            .await
+            .map_err(CommandError::from);
+    }
     state.pty.write(&id, &data).map_err(CommandError::from)
 }
 
@@ -700,15 +800,31 @@ pub async fn pty_paste_submit(
     text: String,
 ) -> Result<(), CommandError> {
     let multiline = text.contains('\n') || text.contains('\r');
-    state
-        .pty
-        .write(&id, &pty_submit_payload(&text))
-        .map_err(CommandError::from)?;
+    let payload = pty_submit_payload(&text);
     let delay = if multiline {
         BRACKETED_SUBMIT_DELAY_MS
     } else {
         PASTE_SUBMIT_DELAY_MS
     };
+    // A terminal on a host takes the same two writes, on its own channel. This
+    // branch was missing while `pty_write`, `pty_resize` and `pty_close` all had
+    // one, so every paste-and-submit aimed at a remote agent went to the local
+    // manager, which does not know that id: the run engine, the orchestration
+    // broadcast and mid-turn delivery each silently did nothing over SSH.
+    if state.ssh_pty.owns(&id).await {
+        state
+            .ssh_pty
+            .write(&id, payload.as_bytes())
+            .await
+            .map_err(CommandError::from)?;
+        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+        return state
+            .ssh_pty
+            .write(&id, b"\r")
+            .await
+            .map_err(CommandError::from);
+    }
+    state.pty.write(&id, &payload).map_err(CommandError::from)?;
     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
     state.pty.write(&id, "\r").map_err(CommandError::from)?;
     Ok(())
@@ -763,6 +879,13 @@ pub async fn pty_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), CommandError> {
+    if state.ssh_pty.owns(&id).await {
+        return state
+            .ssh_pty
+            .resize(&id, cols, rows)
+            .await
+            .map_err(CommandError::from);
+    }
     state
         .pty
         .resize(&id, cols, rows)
@@ -774,10 +897,1607 @@ pub async fn pty_resize(
 pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     // Snapshot the terminal's last-known members first, so a subtree that
     // survives the kill shows up as an orphan on the next resource sample.
+    if state.ssh_pty.owns(&id).await {
+        // No local process tree to account for: this terminal never had one.
+        return state.ssh_pty.close(&id).await.map_err(CommandError::from);
+    }
     state
         .resources
         .terminal_closed(&id, crate::resources::now_ms());
     state.pty.close(&id).map_err(CommandError::from)
+}
+
+// --- Remote hosts (SSH) ----------------------------------------------------
+
+/// List the `Host` aliases in the user's own OpenSSH configuration, so adding a
+/// remote host is picking one rather than retyping what they already wrote.
+///
+/// Read-only and connectionless. An absent config file is an empty list, not an
+/// error: plenty of users have none.
+#[tauri::command]
+pub async fn ssh_config_hosts() -> Result<Vec<ssh::config::ConfigAlias>, CommandError> {
+    let Some(path) = ssh::config::default_config_path() else {
+        return Ok(Vec::new());
+    };
+    Ok(ssh::config::enumerate(&path))
+}
+
+/// Resolve one alias to the settings OpenSSH would actually use, by asking
+/// `ssh -G` rather than reimplementing its precedence rules (`Match` blocks,
+/// pattern order, per-user defaults). Getting those subtly wrong would mean
+/// connecting somewhere the user's own `ssh` would not.
+#[tauri::command]
+pub async fn ssh_config_resolve(alias: String) -> Result<ssh::config::ResolvedHost, CommandError> {
+    ssh::config::resolve(&alias)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The registered remote machines.
+#[tauri::command]
+pub async fn ssh_hosts_list(state: State<'_, AppState>) -> Result<Vec<SshHost>, CommandError> {
+    Ok(state.data.read().await.settings.ssh_hosts.clone())
+}
+
+/// What adding a host did. `recovered` matters to the user: it means projects
+/// they thought were gone came back with the id, and saying so is better than
+/// having them reappear unannounced.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostAdded {
+    pub host: SshHost,
+    pub recovered: bool,
+    pub updated_existing: bool,
+}
+
+/// Register a machine (or update the one already registered for it).
+///
+/// Ids are minted here and nowhere else: the frontend sends a description, never
+/// an id, so there is no way for the UI to overwrite a record by guessing one.
+#[tauri::command]
+pub async fn ssh_host_add(
+    state: State<'_, AppState>,
+    draft: ssh::registry::HostDraft,
+) -> Result<SshHostAdded, CommandError> {
+    if draft.hostname.trim().is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "a host needs a hostname".to_string(),
+        )));
+    }
+    let mut data = state.data.write().await;
+    let settings = &mut data.settings;
+    let outcome = ssh::registry::add_host(
+        &mut settings.ssh_hosts,
+        &mut settings.removed_ssh_hosts,
+        draft,
+        || Uuid::new_v4().to_string(),
+    );
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(SshHostAdded {
+        host: outcome.host,
+        recovered: outcome.recovered,
+        updated_existing: outcome.updated_existing,
+    })
+}
+
+/// Forget a machine, remembering enough to give its projects back if it returns.
+/// Idempotent — removing an unknown id answers `false` rather than failing.
+#[tauri::command]
+pub async fn ssh_host_remove(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let mut data = state.data.write().await;
+    let settings = &mut data.settings;
+    let removed = ssh::registry::remove_host(
+        &mut settings.ssh_hosts,
+        &mut settings.removed_ssh_hosts,
+        &host_id,
+        now,
+    )
+    .is_some();
+    if removed {
+        state.persistence.save(&data).map_err(CommandError::from)?;
+    }
+    Ok(removed)
+}
+
+/// What reaching a host said about its identity, before any credential.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostProbe {
+    /// `trusted` | `unknown` | `changed` | `revoked`.
+    pub status: String,
+    /// The fingerprint to show the user, in OpenSSH's own format.
+    pub fingerprint: Option<String>,
+    pub algorithm: Option<String>,
+    /// For `changed`: what `known_hosts` has on file instead.
+    pub stored_fingerprint: Option<String>,
+}
+
+/// Reach a host and report what `known_hosts` says about the key it presents.
+///
+/// Nothing is written and no credential is offered. On `unknown` the key is held
+/// in memory so [`ssh_host_trust`] can record *exactly what the server
+/// presented* once the user confirms — the blob never travels through the UI.
+#[tauri::command]
+pub async fn ssh_host_probe(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<SshHostProbe, CommandError> {
+    let host = find_ssh_host(&state, &host_id).await?;
+    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
+    let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
+
+    match ssh::conn::connect(endpoint, &known)
+        .await
+        .map_err(CommandError::from)?
+    {
+        ssh::conn::Handshake::Ready(_) => Ok(SshHostProbe {
+            status: "trusted".into(),
+            fingerprint: None,
+            algorithm: None,
+            stored_fingerprint: None,
+        }),
+        // Not a verdict about the key: nothing was presented, because nothing
+        // answered. Reported as its own status rather than folded into
+        // "unknown", which would invite the user to trust a machine we never
+        // spoke to.
+        ssh::conn::Handshake::Unreachable { detail, .. } => Ok(SshHostProbe {
+            status: "unreachable".into(),
+            fingerprint: Some(detail),
+            algorithm: None,
+            stored_fingerprint: None,
+        }),
+        ssh::conn::Handshake::Unknown { fingerprint, key } => {
+            let algorithm = key.algorithm.clone();
+            state.ssh_pending_keys.write().await.insert(host_id, key);
+            Ok(SshHostProbe {
+                status: "unknown".into(),
+                fingerprint: Some(fingerprint),
+                algorithm: Some(algorithm),
+                stored_fingerprint: None,
+            })
+        }
+        ssh::conn::Handshake::Changed {
+            presented_fingerprint,
+            stored_fingerprint,
+        } => Ok(SshHostProbe {
+            status: "changed".into(),
+            fingerprint: Some(presented_fingerprint),
+            algorithm: None,
+            stored_fingerprint: Some(stored_fingerprint),
+        }),
+        ssh::conn::Handshake::Revoked { fingerprint } => Ok(SshHostProbe {
+            status: "revoked".into(),
+            fingerprint: Some(fingerprint),
+            algorithm: None,
+            stored_fingerprint: None,
+        }),
+    }
+}
+
+/// Record the key a probe just saw, after the user confirmed the fingerprint.
+///
+/// Only ever appends the key **this app watched the server present**, and only
+/// for a host whose probe came back `unknown`. There is deliberately no way to
+/// trust a *changed* key from here: that path exists to be refused.
+#[tauri::command]
+pub async fn ssh_host_trust(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    let host = find_ssh_host(&state, &host_id).await?;
+    let Some(key) = state.ssh_pending_keys.write().await.remove(&host_id) else {
+        return Err(CommandError::from(AppError::Invalid(
+            "no host key is awaiting confirmation for this host".to_string(),
+        )));
+    };
+    let line = ssh::hostkey::trust_line(&host.hostname, host.port, &key);
+    append_known_host(&line).map_err(CommandError::from)?;
+    Ok(true)
+}
+
+/// The result of trying to open a working session on a host.
+///
+/// One shape for every outcome, because each one sends the user somewhere
+/// different and "it failed" sends them nowhere.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConnectReport {
+    /// `connected` | `hostUnknown` | `hostChanged` | `hostRevoked` |
+    /// `needsPassword` | `needsPassphrase` | `failed` | `noUsableMethod` |
+    /// `unreachable`.
+    pub status: String,
+    /// For `unreachable`: which kind of not-reachable it was (`timeout` |
+    /// `unknownAddress` | `refused` | `handshake`). They lead to different
+    /// actions — a machine that is asleep is worth another try, a name that does
+    /// not resolve is not — and one failure string made them look alike.
+    pub reason: Option<ssh::conn::Unreachable>,
+    /// A sentence naming the host and what happened, for `unreachable`.
+    pub detail: Option<String>,
+    /// The connection incarnation, for `connected`. Travels with every mutation
+    /// prepared against this session (`target::TargetExpectation`).
+    pub generation: Option<u64>,
+    /// Which credential worked, so the UI can say how you got in.
+    pub method: Option<String>,
+    /// For the host-key outcomes.
+    pub fingerprint: Option<String>,
+    pub stored_fingerprint: Option<String>,
+    /// For `needsPassphrase`: which key file needs one.
+    pub path: Option<String>,
+    /// What was offered and refused, in order, so the message can name it.
+    pub attempted: Vec<String>,
+    /// Which shell this host starts (`posix` | `cmd` | `powershell` |
+    /// `unknown`), for `connected`. The interface needs it to quote an agent's
+    /// command line for the shell that will actually receive it — quoting for
+    /// *this* machine's shell is how a launch lands in a dead pane.
+    pub shell: Option<String>,
+}
+
+impl SshConnectReport {
+    fn of(status: &str) -> Self {
+        Self {
+            status: status.to_string(),
+            reason: None,
+            detail: None,
+            shell: None,
+            generation: None,
+            method: None,
+            fingerprint: None,
+            stored_fingerprint: None,
+            path: None,
+            attempted: Vec::new(),
+        }
+    }
+}
+
+/// Open an authenticated session on a host and keep it.
+///
+/// Idempotent: a host that already has a live session reports it rather than
+/// opening a second one. Everything that runs on the host — terminal, inventory,
+/// git — shares this connection, which is the point of an in-process client.
+///
+/// `password` is supplied only on a retry, after the app has asked for it. It is
+/// used for this attempt and never stored.
+#[tauri::command]
+pub async fn ssh_host_connect(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    password: Option<String>,
+) -> Result<SshConnectReport, CommandError> {
+    // An existing session is only worth keeping while its transport is up. One
+    // that has ended answers nothing and can open no channel, so reporting it as
+    // connected would leave the user pressing Connect on a host that is already
+    // "connected" and still broken. Let it go instead, and reach the machine
+    // again below — with everything that was learned from the old connection.
+    // `Some(Some(generation))` is a session still up; `Some(None)`, one that has
+    // ended; `None`, a host with no session at all.
+    let existing = {
+        let sessions = state.ssh_sessions.read().await;
+        sessions
+            .get(&host_id)
+            .map(|conn| (!conn.handle().is_closed()).then(|| conn.generation()))
+    };
+    match existing {
+        Some(Some(generation)) => {
+            let mut report = SshConnectReport::of("connected");
+            report.generation = Some(generation);
+            return Ok(report);
+        }
+        Some(None) => {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh",
+                &format!("the connection to {host_id} had ended; connecting again"),
+            );
+            // Everything learned from that connection went with it: its shell,
+            // and the file session that was a channel on it.
+            state.ssh_sessions.write().await.remove(&host_id);
+            state.ssh_shells.write().await.remove(&host_id);
+            state.ssh_sftp.lock().await.remove(&host_id);
+        }
+        None => {}
+    }
+    connect_fresh(app, state, host_id, password).await
+}
+
+/// Reach a host that has no live session, from the host key to the shell it
+/// starts. Split out of [`ssh_host_connect`] so both the first connection and a
+/// replacement for one that ended take exactly the same path.
+async fn connect_fresh(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    host_id: String,
+    password: Option<String>,
+) -> Result<SshConnectReport, CommandError> {
+    let host = find_ssh_host(&state, &host_id).await?;
+    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).map_err(CommandError::from)?;
+    let endpoint = ssh::conn::Endpoint::new(host.hostname.clone(), host.port);
+
+    let mut connection = match ssh::conn::connect(endpoint, &known)
+        .await
+        .map_err(CommandError::from)?
+    {
+        ssh::conn::Handshake::Ready(conn) => conn,
+        ssh::conn::Handshake::Unreachable { why, detail } => {
+            let mut report = SshConnectReport::of("unreachable");
+            report.reason = Some(why);
+            report.detail = Some(detail);
+            return Ok(report);
+        }
+        ssh::conn::Handshake::Unknown { fingerprint, key } => {
+            let mut report = SshConnectReport::of("hostUnknown");
+            report.fingerprint = Some(fingerprint);
+            state
+                .ssh_pending_keys
+                .write()
+                .await
+                .insert(host_id.clone(), key);
+            return Ok(report);
+        }
+        ssh::conn::Handshake::Changed {
+            presented_fingerprint,
+            stored_fingerprint,
+        } => {
+            let mut report = SshConnectReport::of("hostChanged");
+            report.fingerprint = Some(presented_fingerprint);
+            report.stored_fingerprint = Some(stored_fingerprint);
+            return Ok(report);
+        }
+        ssh::conn::Handshake::Revoked { fingerprint } => {
+            let mut report = SshConnectReport::of("hostRevoked");
+            report.fingerprint = Some(fingerprint);
+            return Ok(report);
+        }
+    };
+
+    // The agent first, then the key files this host's config points at, then a
+    // password if the user has already been asked for one.
+    let mut credentials = ssh::auth::credentials_for(true, &host.identity_files);
+    if let Some(password) = password {
+        credentials.push(ssh::auth::Credential::Password(password));
+    }
+
+    let outcome = ssh::auth::authenticate(&mut connection, &host.user, &credentials)
+        .await
+        .map_err(CommandError::from)?;
+
+    match outcome {
+        ssh::auth::AuthOutcome::Success { method } => {
+            let mut report = SshConnectReport::of("connected");
+            report.generation = Some(connection.generation());
+            report.method = Some(method);
+            // Ask now, once, which shell this machine starts. Everything that
+            // later types into it — a terminal's `cd`, an agent's quoted command
+            // line — needs the answer, and asking here means no caller has to
+            // guess while it waits (`ssh::shellkind`).
+            let shell = ssh::shellkind::classify(&connection).await;
+            state
+                .ssh_shells
+                .write()
+                .await
+                .insert(host_id.clone(), shell);
+            report.shell = Some(shell.as_str().to_string());
+            let generation = connection.generation();
+            let session = std::sync::Arc::new(connection);
+            state
+                .ssh_sessions
+                .write()
+                .await
+                .insert(host_id.clone(), std::sync::Arc::clone(&session));
+            watch_session(app, host_id.clone(), generation, session);
+            // Remember that this host let us in without asking, so startup can
+            // reconnect the silent ones and leave the rest until the user is here.
+            set_needs_prompt(&state, &host_id, false).await?;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::NeedsPassword { attempted } => {
+            let mut report = SshConnectReport::of("needsPassword");
+            report.attempted = attempted;
+            set_needs_prompt(&state, &host_id, true).await?;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::NeedsPassphrase { path } => {
+            let mut report = SshConnectReport::of("needsPassphrase");
+            report.path = Some(path);
+            set_needs_prompt(&state, &host_id, true).await?;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::Failed { attempted } => {
+            let mut report = SshConnectReport::of("failed");
+            report.attempted = attempted;
+            Ok(report)
+        }
+        ssh::auth::AuthOutcome::NoUsableMethod => Ok(SshConnectReport::of("noUsableMethod")),
+    }
+}
+
+/// How often a live connection is looked at to see whether it is still there.
+///
+/// This is a **local** check — one boolean on a channel this process owns, no
+/// traffic at all — so the interval only decides how quickly the interface hears
+/// about something the transport already knows. Two seconds is imperceptible to
+/// a user and free to the host.
+const SESSION_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Tell the interface, once, when a host's connection ends.
+///
+/// Everything else about a dropped session was already right — the keepalive
+/// notices a dead host in ~2 min, a listing opens a new file channel, a
+/// connection that has ended stops counting as connected — but only *when asked*.
+/// With nothing asking, a host that dropped while its panel was open kept
+/// looking connected until the user clicked something, and the click was how
+/// they found out. This is the missing half: the app says so by itself.
+///
+/// Deliberately a poll of a local flag rather than a subscription: russh's
+/// handle exposes `is_closed()` and no notification, and reaching into its
+/// internals to await the channel would tie us to a private detail of a
+/// dependency for two seconds of latency.
+///
+/// **Only its own incarnation is cleaned up.** A reconnect stores a new
+/// connection under the same host id; this task compares generations before
+/// removing anything, so a watcher for a dead session can never take away the
+/// live one that replaced it.
+fn watch_session(
+    app: AppHandle,
+    host_id: String,
+    generation: u64,
+    session: std::sync::Arc<ssh::conn::Connection>,
+) {
+    tauri::async_runtime::spawn(async move {
+        while !session.handle().is_closed() {
+            tokio::time::sleep(SESSION_WATCH_INTERVAL).await;
+        }
+        // Nothing else holds this connection open; let it go before the state is
+        // touched, so the entry that is removed is the last reference.
+        drop(session);
+
+        let state = app.state::<AppState>();
+        let was_current = {
+            let mut sessions = state.ssh_sessions.write().await;
+            let stored = sessions.get(&host_id).map(|c| c.generation());
+            if ends_the_current_session(stored, generation) {
+                sessions.remove(&host_id);
+                true
+            } else {
+                false
+            }
+        };
+        if was_current {
+            // Everything learned from that connection went with it: its shell,
+            // and the file session that was a channel on it.
+            state.ssh_shells.write().await.remove(&host_id);
+            state.ssh_sftp.lock().await.remove(&host_id);
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh",
+                &format!("the connection to {host_id} ended"),
+            );
+            // Try to bring it back. Only for a session that was still the
+            // current one: a user who pressed Disconnect removed it first, and
+            // reconnecting them would be the app arguing with them.
+            tauri::async_runtime::spawn(reconnect_ladder(app.clone(), host_id.clone()));
+        }
+        // Emitted either way: the interface asked to be told when a session ends,
+        // and it re-reads the live set rather than trusting this payload — one
+        // source of truth, and no chance of the two disagreeing.
+        let _ = app.emit(
+            "ssh:session-ended",
+            SshSessionEnded {
+                host_id,
+                generation,
+            },
+        );
+    });
+}
+
+/// Whether the connection that just ended is the one the app is still holding.
+///
+/// A reconnect stores a new connection under the same host id, so a watcher for
+/// a dead session must never take away the live one that replaced it — and a
+/// session already removed (the user pressed Disconnect) has nothing to clean.
+/// Split out so the rule is testable without a host to talk to.
+fn ends_the_current_session(stored: Option<u64>, ended: u64) -> bool {
+    stored == Some(ended)
+}
+
+/// How long to wait before each reconnect attempt after a host drops.
+///
+/// Growing, and short at first: most drops are a laptop lid, a Wi-Fi handover or
+/// a VPN blink, and those come back in seconds. The last step is a minute
+/// because a machine that has been gone that long is usually gone for a reason a
+/// user has to fix — and a client that keeps dialling forever is one that fills
+/// a log, holds a password prompt hostage, and looks broken.
+const RECONNECT_BACKOFF: [u64; 5] = [2, 5, 15, 30, 60];
+
+/// Come back after a drop, for the hosts that can come back **silently**.
+///
+/// The rule is the one startup already uses (`ssh_hosts_resumable`): a host that
+/// let us in with no password and whose key is on file is reconnected on its
+/// own; one that would ask for anything is not. A ladder that raised a password
+/// dialog by itself, minutes after the user walked away from the machine, would
+/// be worse than staying disconnected.
+///
+/// It stops for good on the first outcome that says trying again cannot help — a
+/// name that does not resolve, a refused credential, a host key that changed
+/// (which is the one case where retrying would be actively wrong: something is
+/// answering for that address and it is not the machine we trusted).
+async fn reconnect_ladder(app: AppHandle, host_id: String) {
+    for (attempt, wait) in RECONNECT_BACKOFF.iter().enumerate() {
+        tokio::time::sleep(std::time::Duration::from_secs(*wait)).await;
+
+        let state = app.state::<AppState>();
+        // Someone may have connected by hand, or removed the host, while this
+        // was sleeping. Both mean this ladder has nothing left to do.
+        if state.ssh_sessions.read().await.contains_key(&host_id) {
+            return;
+        }
+        if !is_resumable(&state, &host_id).await {
+            return;
+        }
+
+        match connect_fresh(app.clone(), state, host_id.clone(), None).await {
+            Ok(report) if report.status == "connected" => {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh",
+                    &format!(
+                        "{host_id} came back on attempt {} of {}",
+                        attempt + 1,
+                        RECONNECT_BACKOFF.len()
+                    ),
+                );
+                // Same event either way: the interface re-reads the live set
+                // rather than trusting a payload, so one signal covers a session
+                // that ended and one that came back.
+                let _ = app.emit(
+                    "ssh:session-ended",
+                    SshSessionEnded {
+                        host_id,
+                        generation: report.generation.unwrap_or_default(),
+                    },
+                );
+                return;
+            }
+            Ok(report) if !worth_retrying(&report) => {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh",
+                    &format!(
+                        "{host_id} will not be retried: {}",
+                        report.detail.as_deref().unwrap_or(report.status.as_str())
+                    ),
+                );
+                return;
+            }
+            // Still unreachable in a way that could clear up, or an error on our
+            // side: sleep longer and try again.
+            _ => {}
+        }
+    }
+    crate::diagnostics::log(
+        crate::diagnostics::Level::Info,
+        "ssh",
+        &format!("{host_id} did not come back; connect it when you are ready"),
+    );
+}
+
+/// Whether another attempt could plausibly succeed.
+///
+/// Anything that needs the user — a password, a passphrase, a key decision — is
+/// not retried: the ladder exists to survive a network blip, not to ask someone
+/// who is not there.
+fn worth_retrying(report: &SshConnectReport) -> bool {
+    match report.status.as_str() {
+        "unreachable" => report.reason.map(|r| r.worth_retrying()).unwrap_or(false),
+        // A transient failure with no reason attached; one more try is fair.
+        "failed" => true,
+        _ => false,
+    }
+}
+
+/// Whether this host is one the app may bring back without asking anything —
+/// the same rule `ssh_hosts_resumable` applies at startup.
+async fn is_resumable(state: &AppState, host_id: &str) -> bool {
+    let Some(host) = state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .find(|h| h.id == host_id)
+        .cloned()
+    else {
+        return false;
+    };
+    if host.needs_prompt {
+        return false;
+    }
+    let Ok(path) = known_hosts_path() else {
+        return false;
+    };
+    let known = ssh::hostkey::read_known_hosts(&path).unwrap_or_default();
+    ssh::hostkey::is_known(&known, &host.hostname, host.port)
+}
+
+/// Payload of `ssh:session-ended`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshSessionEnded {
+    pub host_id: String,
+    /// Which incarnation ended. The frontend uses it to ignore an event for a
+    /// connection that has already been replaced.
+    pub generation: u64,
+}
+
+/// Ask a connected host what it has: its OS, home, git, a multiplexer, and which
+/// agent CLIs are installed there with what version.
+///
+/// Requires a live session — the answer is what the launcher filters on, and
+/// guessing it from the local machine would offer agents that are not there.
+#[tauri::command]
+pub async fn ssh_host_inventory(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<ssh::inventory::HostInventory, CommandError> {
+    let commands = state.agent_commands.read().await.clone();
+    // The shell this host reported when it connected. The probe asks in that
+    // dialect instead of trying POSIX and falling back, which cost every Windows
+    // host a wasted round trip.
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(&host_id)
+        .copied()
+        .unwrap_or_default();
+    let Some(conn) = session_for(&state, &host_id).await else {
+        return Err(CommandError::from(AppError::Invalid(
+            "connect to this host before asking what it has".to_string(),
+        )));
+    };
+    ssh::inventory::probe(&conn, &commands, shell)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// List the directories inside `path` on a connected host, for the picker that
+/// adds a project living there. An empty `path` starts at that machine's home.
+#[tauri::command]
+pub async fn ssh_browse_dirs(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<ssh::browse::RemoteListing, CommandError> {
+    let dir = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        ssh::browse::list_dirs(&session, dir).await
+    })
+    .await
+}
+
+/// Register a folder that lives on a host as a project.
+///
+/// The path is the host's, so it is stored exactly as that machine spells it;
+/// the identity is the pair `(target, path)`, which is why the same absolute
+/// path on two machines is two projects rather than one.
+#[tauri::command]
+pub async fn ssh_repo_add(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<RepoData, CommandError> {
+    let path = path.trim().to_string();
+    if path.is_empty() {
+        return Err(CommandError::from(AppError::Invalid(
+            "a project needs a folder".to_string(),
+        )));
+    }
+    let target = TargetId::Ssh(host_id.clone());
+    // Ask the host whether this is a git repository, the same question the local
+    // path asks — a plain folder is a valid project too, it just has no branches.
+    let is_git = {
+        let folder = path.as_str();
+        // Never a reason to refuse the project: `is_git_repo` answers `false`
+        // when it could not look, and a session that is not there is the same
+        // kind of "could not look".
+        with_sftp(&state, &host_id, |session| async move {
+            Ok(ssh::browse::is_git_repo(&session, folder).await)
+        })
+        .await
+        .unwrap_or(false)
+    };
+
+    let mut data = state.data.write().await;
+    if let Some(existing) = data
+        .repos
+        .iter()
+        .find(|r| r.target == target && r.path == path)
+    {
+        return Ok(existing.clone());
+    }
+    let name = path
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&path)
+        .to_string();
+    let repo = RepoData {
+        id: Uuid::new_v4().to_string(),
+        name,
+        path,
+        target,
+        worktrees: Vec::new(),
+        is_git,
+        icon: None,
+        branch_icons: std::collections::HashMap::new(),
+        worktree_order: Vec::new(),
+        // No per-project worktree root: a project on a host has nowhere local to
+        // put one, and the global setting is the honest default until worktrees
+        // can be created there at all.
+        worktree_root: None,
+    };
+    data.repos.push(repo.clone());
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(repo)
+}
+
+/// A worktree's git state **on a host**: branch plus changed/ahead/behind.
+///
+/// Reached through `exec`, so it goes through that machine's shell — the one
+/// place remote git differs from remote files, which use a subsystem. The shell
+/// is the one the host reported when it connected, and every argument is quoted
+/// for it; an unnamed shell, a missing git or a plain folder all answer
+/// `isRepo: false`, which the UI must render as "not read" rather than "clean".
+#[tauri::command]
+pub async fn ssh_git_status(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<ssh::git::RemoteGitStatus, CommandError> {
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(&host_id)
+        .copied()
+        .unwrap_or_default();
+    let Some(conn) = session_for(&state, &host_id).await else {
+        return Err(CommandError::from(AppError::Invalid(
+            "connect to this host before reading its git state".to_string(),
+        )));
+    };
+    Ok(ssh::git::status(&conn, shell, &path).await)
+}
+
+/// What the remote git layer needs on every call: the connection, and the shell
+/// the host reported when it connected.
+///
+/// Both together, because either alone is useless — a connection with no shell
+/// cannot be sent a quoted argument safely, and the shell of a host that is not
+/// connected describes nothing.
+async fn remote_git(
+    state: &AppState,
+    host_id: &str,
+) -> Result<
+    (
+        std::sync::Arc<ssh::conn::Connection>,
+        ssh::shellkind::ShellKind,
+    ),
+    CommandError,
+> {
+    let shell = state
+        .ssh_shells
+        .read()
+        .await
+        .get(host_id)
+        .copied()
+        .unwrap_or_default();
+    let Some(conn) = session_for(state, host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
+        )));
+    };
+    Ok((conn, shell))
+}
+
+/// Same, for a mutation: refuses unless the caller is still looking at the host
+/// and connection it thought it was.
+///
+/// The check runs **before** anything is sent, for the reason `ssh_fs_write`
+/// gives — a stage or a discard cannot be taken back once the host has run it,
+/// so a late check would only be able to report the damage.
+async fn remote_git_fenced(
+    state: &AppState,
+    host_id: &str,
+    expect: Option<TargetExpectation>,
+) -> Result<
+    (
+        std::sync::Arc<ssh::conn::Connection>,
+        ssh::shellkind::ShellKind,
+    ),
+    CommandError,
+> {
+    let (conn, shell) = remote_git(state, host_id).await?;
+    target::check(
+        expect.as_ref(),
+        &TargetId::Ssh(host_id.to_string()),
+        conn.generation(),
+    )
+    .map_err(CommandError::from)?;
+    Ok((conn, shell))
+}
+
+/// Everything the Changes panel needs about a worktree on a host, in one round
+/// trip: HEAD, ahead/behind, the changed files and their line counts.
+///
+/// One command rather than the local layer's four, because each of those is a
+/// round trip to another machine and the panel asks for all of them at once —
+/// on a link with 60 ms of latency, four separate reads is a quarter of a second
+/// of nothing happening. See `ssh::git::review`.
+#[tauri::command]
+pub async fn ssh_git_review(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<ssh::git::RemoteReview, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    Ok(ssh::git::review(&conn, shell, &path).await)
+}
+
+/// A file's diff on a host, staged or unstaged.
+#[tauri::command]
+pub async fn ssh_git_diff(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    staged: bool,
+) -> Result<String, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::diff(&conn, shell, &path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// A file's diff against `HEAD` on a host — the editor's change gutter.
+#[tauri::command]
+pub async fn ssh_git_diff_head(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+) -> Result<String, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::diff_head(&conn, shell, &path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Draft a commit message for a project on a host.
+///
+/// The diff is read **there** and the agent runs **here**: the CLI and its
+/// credentials are this machine's, and requiring one on every host would put
+/// the feature behind an install nobody asked for. The agent is started in the
+/// user's home rather than the project, which does not exist on this machine —
+/// the whole diff is in the prompt, so the directory is only where the process
+/// stands (`aicommit::from_diff`).
+#[tauri::command]
+pub async fn ssh_git_generate_commit_message(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<String, CommandError> {
+    let cfg = state.data.read().await.settings.ai_commit.clone();
+    if !cfg.enabled {
+        return Err(CommandError::from(AppError::Invalid(
+            "AI commit-message generation is disabled".to_string(),
+        )));
+    }
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    // Everything staged, in one command — the same diff the local path feeds the
+    // agent, read from the machine the project is on.
+    let diff = ssh::git::diff(&conn, shell, &path, ".", true)
+        .await
+        .map_err(CommandError::from)?;
+    let home = crate::agent_hooks::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+    crate::aicommit::from_diff(&diff, &cfg, &home)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Before/after versions of an image on a host, for the visual diff viewer.
+///
+/// The committed side comes from `git show` with its bytes kept as bytes; the
+/// working-tree side over SFTP. Nothing is base64-ed by the host, so no tool has
+/// to exist there (`ssh::git::image_diff`).
+#[tauri::command]
+pub async fn ssh_git_image_diff(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    staged: bool,
+) -> Result<git::ImageDiff, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    let session = sftp_for(&state, &host_id).await?;
+    ssh::git::image_diff(&conn, &session, shell, &path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// A host worktree's history, newest first.
+#[tauri::command]
+pub async fn ssh_git_log(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    limit: u32,
+    skip: u32,
+) -> Result<Vec<git::CommitInfo>, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::log(&conn, shell, &path, limit, skip)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// One commit's patch, on a host.
+#[tauri::command]
+pub async fn ssh_git_show(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    hash: String,
+) -> Result<String, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::show(&conn, shell, &path, &hash)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_stage(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::stage(&conn, shell, &path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_unstage(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::unstage(&conn, shell, &path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_stage_all(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::stage_all(&conn, shell, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn ssh_git_unstage_all(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::unstage_all(&conn, shell, &path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Throw a file's changes away on a host. Fenced like every other mutation, and
+/// the one where being wrong about *which* machine is unrecoverable.
+#[tauri::command]
+pub async fn ssh_git_discard(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    untracked: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::discard(&conn, shell, &path, &file, untracked)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Apply a patch on a host — the per-hunk actions. The patch travels over SFTP,
+/// not through the shell (`ssh::git::apply_patch`).
+#[tauri::command]
+pub async fn ssh_git_apply(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    patch: String,
+    cached: bool,
+    reverse: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    let session = sftp_for(&state, &host_id).await?;
+    ssh::git::apply_patch(&conn, &session, shell, &path, &patch, cached, reverse)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Commit on a host. The message travels over SFTP for the same reason
+/// (`ssh::git::commit`).
+#[tauri::command]
+pub async fn ssh_git_commit(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    message: String,
+    amend: bool,
+    sign_off: bool,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    let session = sftp_for(&state, &host_id).await?;
+    ssh::git::commit(
+        &conn,
+        &session,
+        shell,
+        &path,
+        message.trim(),
+        amend,
+        sign_off,
+    )
+    .await
+    .map_err(CommandError::from)
+}
+
+/// Fetch, push or pull on a host, then read the worktree back so the panel's
+/// ahead/behind bar reflects what just happened without a second round trip.
+#[tauri::command]
+pub async fn ssh_git_sync(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    action: ssh::git::SyncAction,
+    expect: Option<TargetExpectation>,
+) -> Result<git::WorktreeStatus, CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::sync(&conn, shell, &path, action)
+        .await
+        .map_err(CommandError::from)?;
+    Ok(ssh::git::review(&conn, shell, &path).await.status)
+}
+
+/// Filename search in a host's project.
+///
+/// Asks git on that machine rather than walking it over SFTP: a walk would be
+/// one request per folder across a network, and the local search already means
+/// "the files git would list" (`ssh::search`). A folder that is not a repository
+/// there is refused with that as the reason, rather than answering an empty list
+/// nobody can tell from "no matches".
+#[tauri::command]
+pub async fn ssh_fs_search_files(
+    state: State<'_, AppState>,
+    host_id: String,
+    root: String,
+    query: String,
+    include_hidden: bool,
+    filters: crate::fs::SearchFilters,
+    limit: usize,
+) -> Result<crate::fs::FileSearch, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::search::files(&conn, shell, &root, &query, include_hidden, &filters, limit)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Content search in a host's project, through `git grep` — the lines come back,
+/// the files never do.
+#[tauri::command]
+pub async fn ssh_fs_search_content(
+    state: State<'_, AppState>,
+    host_id: String,
+    root: String,
+    query: crate::fs::ContentQuery,
+    include_hidden: bool,
+    filters: crate::fs::SearchFilters,
+    limit: usize,
+) -> Result<crate::fs::ContentSearch, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::search::content(&conn, shell, &root, &query, include_hidden, &filters, limit)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The file session for a host, opening one on first use.
+///
+/// Held per host because it is a channel on a connection that already exists:
+/// keeping it costs nothing, and re-opening one per listing would put a round
+/// trip in front of every folder the user expands.
+///
+/// A cached session is only handed out while its transport is still there
+/// ([`ssh::sftp::RemoteFiles::usable`]). That check is what keeps the first click
+/// after a host ends the channel from waiting out a ten-second timeout before
+/// anything can be done about it.
+async fn sftp_for(
+    state: &AppState,
+    host_id: &str,
+) -> Result<std::sync::Arc<ssh::sftp::RemoteFiles>, CommandError> {
+    {
+        let mut cached = state.ssh_sftp.lock().await;
+        match cached.get(host_id) {
+            Some(session) if session.usable() => return Ok(std::sync::Arc::clone(session)),
+            Some(_) => {
+                cached.remove(host_id);
+                // Logged because this is the ordinary recovery, and a file panel
+                // that hesitates for a moment should be explainable from the log
+                // rather than from another screenshot. Host ids only.
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "ssh-files",
+                    &format!("the file session on {host_id} had ended; opening another"),
+                );
+            }
+            None => {}
+        }
+    }
+    let Some(conn) = session_for(state, host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
+        )));
+    };
+    // A connection whose transport has ended cannot carry another channel, and
+    // saying so is the difference between the panel waiting for its host and the
+    // panel showing the user a sentence about a channel they never asked for.
+    if conn.handle().is_closed() {
+        return Err(CommandError::from(AppError::NotConnected(
+            host_id.to_string(),
+        )));
+    }
+    let session = std::sync::Arc::new(ssh::sftp::open(&conn).await.map_err(CommandError::from)?);
+    state
+        .ssh_sftp
+        .lock()
+        .await
+        .insert(host_id.to_string(), std::sync::Arc::clone(&session));
+    Ok(session)
+}
+
+/// Run one file operation on a host, on a session that is allowed to have died.
+///
+/// The cached session is a channel, and a channel ends on its own schedule — the
+/// host's `sftp-server` exits, or it is closed under us — while the connection
+/// carries on. That is not hypothetical: it left the file panel reading
+/// `session closed` on every folder, permanently, next to terminals on the same
+/// host that were perfectly happy, because each terminal opens its own channel
+/// and this one was cached forever.
+///
+/// So a session that turns out to be gone is dropped and the work is done once
+/// more on a fresh one. Only that failure is retried ([`ssh::sftp::SftpFailure`]):
+/// what the *host* answered — no such path, no permission — is the user's to
+/// see, and asking a second time would only make them wait for the same no.
+///
+/// The retry covers the gap [`sftp_for`] cannot: a session that was fine when it
+/// was handed out and ended while the request was in the air.
+async fn with_sftp<T, F, Fut>(
+    state: &AppState,
+    host_id: &str,
+    operation: F,
+) -> Result<T, CommandError>
+where
+    F: Fn(std::sync::Arc<ssh::sftp::RemoteFiles>) -> Fut,
+    Fut: std::future::Future<Output = Result<T, ssh::sftp::SftpFailure>>,
+{
+    let session = sftp_for(state, host_id).await?;
+    match operation(std::sync::Arc::clone(&session)).await {
+        Ok(value) => return Ok(value),
+        Err(ssh::sftp::SftpFailure::Refused(error)) => return Err(CommandError::from(error)),
+        Err(ssh::sftp::SftpFailure::Gone(message)) => {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh-files",
+                &format!("the file session on {host_id} had ended ({message}); opening another"),
+            );
+        }
+    }
+
+    // Drop *this* session, not whatever is cached now: another call may already
+    // have replaced it, and evicting that one would send both of us round again.
+    {
+        let mut cached = state.ssh_sftp.lock().await;
+        if cached
+            .get(host_id)
+            .is_some_and(|current| std::sync::Arc::ptr_eq(current, &session))
+        {
+            cached.remove(host_id);
+        }
+    }
+    drop(session);
+
+    let fresh = sftp_for(state, host_id).await?;
+    operation(fresh)
+        .await
+        .map_err(|failure| CommandError::from(AppError::from(failure)))
+}
+
+/// List a directory on a host, for the file tree.
+///
+/// Over SFTP rather than a shell command, deliberately: it is a subsystem, so it
+/// behaves the same whatever shell that machine starts and needs nothing
+/// installed there (`ssh::sftp`).
+#[tauri::command]
+pub async fn ssh_fs_list(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<Vec<crate::fs::FsEntry>, CommandError> {
+    let dir = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.list_dir(dir).await
+    })
+    .await
+}
+
+/// A host's live connection, cloned out of the registry.
+///
+/// **The guard is released before this returns**, and that is the entire point.
+/// Everything here talks to another machine, `ssh_sessions` is a fair
+/// (write-preferring) lock, and one connect needs to write to it — so a caller
+/// that kept the guard while it waited on the network queued that write, and
+/// every later reader queued behind the write. One slow round trip then stalled
+/// the connected list, the git panels, the file tree and the Settings dialog at
+/// once. Reported from the app as "adding a second host froze it".
+async fn session_for(
+    state: &AppState,
+    host_id: &str,
+) -> Option<std::sync::Arc<ssh::conn::Connection>> {
+    state.ssh_sessions.read().await.get(host_id).cloned()
+}
+
+/// Save a text file on a host, for the editor.
+///
+/// **Fenced** (`02a` §2.9), because this is a mutation: the expectation the
+/// caller prepared has to name the machine the write would actually land on. A
+/// save is the one operation where being pointed at the wrong host is silent —
+/// the same absolute path very often exists on both machines, and the editor
+/// would report success either way.
+///
+/// The **connection generation** is checked too, but note what it does and does
+/// not buy here: for a process or a worktree, a reconnect invalidates the world
+/// the caller saw. For an absolute path on a host, it does not — the file is the
+/// same file. It is checked because the contract says a stale expectation is
+/// stale; the value that matters in this command is the target id.
+#[tauri::command]
+pub async fn ssh_fs_write(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    content: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    // Refuse before anything is opened: `write_file` truncates to open, so a
+    // check that ran afterwards would have already destroyed the file.
+    let generation = {
+        let sessions = state.ssh_sessions.read().await;
+        let Some(conn) = sessions.get(&host_id) else {
+            return Err(CommandError::from(AppError::NotConnected(host_id.clone())));
+        };
+        conn.generation()
+    };
+    target::check(expect.as_ref(), &TargetId::Ssh(host_id.clone()), generation)
+        .map_err(CommandError::from)?;
+
+    let file = path.as_str();
+    let text = content.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.write_file(file, text).await
+    })
+    .await
+}
+
+/// Everything the file tree can do to a host's disk, fenced.
+///
+/// One entry point rather than five, because they share the only part that
+/// matters: the check that this is still the machine, and the connection, the
+/// user was looking at. The same absolute path usually exists on both machines,
+/// so a misrouted create is confusing and a misrouted **delete** is the one that
+/// cannot be taken back.
+async fn fenced_files(
+    state: &AppState,
+    host_id: &str,
+    expect: Option<TargetExpectation>,
+) -> Result<std::sync::Arc<ssh::sftp::RemoteFiles>, CommandError> {
+    let generation = {
+        let sessions = state.ssh_sessions.read().await;
+        let Some(conn) = sessions.get(host_id) else {
+            return Err(CommandError::from(AppError::NotConnected(
+                host_id.to_string(),
+            )));
+        };
+        conn.generation()
+    };
+    target::check(
+        expect.as_ref(),
+        &TargetId::Ssh(host_id.to_string()),
+        generation,
+    )
+    .map_err(CommandError::from)?;
+    sftp_for(state, host_id).await
+}
+
+/// Create an empty file on a host (the tree's "New File"). `path` is a bare name
+/// or an intercalated relative path, validated by the same rules as locally.
+#[tauri::command]
+pub async fn ssh_fs_create_file(
+    state: State<'_, AppState>,
+    host_id: String,
+    dir: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .create_file(&dir, &path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Create a folder on a host (the tree's "New Folder").
+#[tauri::command]
+pub async fn ssh_fs_create_dir(
+    state: State<'_, AppState>,
+    host_id: String,
+    dir: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .create_dir(&dir, &path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Rename an entry on a host, within its folder.
+#[tauri::command]
+pub async fn ssh_fs_rename(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    new_name: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .rename(&path, &new_name)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Delete a file or folder on a host. **Permanent** — a host has no trash, and
+/// the caller is expected to have said so (see `ssh::sftp::RemoteFiles::delete`).
+#[tauri::command]
+pub async fn ssh_fs_delete(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<(), CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .delete(&path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Copy a file next to itself on a host under a free "… copy" name.
+#[tauri::command]
+pub async fn ssh_fs_duplicate(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    expect: Option<TargetExpectation>,
+) -> Result<String, CommandError> {
+    let files = fenced_files(&state, &host_id, expect).await?;
+    files
+        .duplicate(&path)
+        .await
+        .map_err(|e| CommandError::from(AppError::from(e)))
+}
+
+/// Read a text file on a host, for the editor. Same guards as the local reader:
+/// binary and over-cap files come back flagged rather than mangled.
+#[tauri::command]
+pub async fn ssh_fs_read(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<crate::fs::FileContent, CommandError> {
+    let file = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.read_file(file).await
+    })
+    .await
+}
+
+/// Drop a host's session. Idempotent — disconnecting one that is not connected
+/// answers `false` rather than failing.
+#[tauri::command]
+pub async fn ssh_host_disconnect(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<bool, CommandError> {
+    // End its terminals first, while the session is still there to carry the
+    // goodbye. Afterwards they would have no way to be told.
+    state.ssh_pty.close_host(&host_id).await;
+    // A reconnect may find the machine configured differently, so the shell is
+    // learned again rather than remembered across sessions.
+    state.ssh_shells.write().await.remove(&host_id);
+    state.ssh_sftp.lock().await.remove(&host_id);
+    Ok(state.ssh_sessions.write().await.remove(&host_id).is_some())
+}
+
+/// One live session, as the UI needs to know it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostSession {
+    pub host_id: String,
+    /// Which incarnation of the connection this is. The frontend sends it back
+    /// with every mutation it prepares (`target::TargetExpectation`), so a call
+    /// made against one connection cannot execute against its replacement. It is
+    /// reported here, and not only by `ssh_host_connect`, because the app is
+    /// restarted and reloaded far more often than a host is connected — without
+    /// it, every save after a reload would carry a generation of nobody's.
+    pub generation: u64,
+}
+
+/// The hosts that can be brought back **without asking the user anything**.
+///
+/// Startup uses this instead of "every host that is not marked as needing a
+/// prompt", because that mark is only written once a host has been connected —
+/// a machine registered five seconds ago carries the same `false` as one that
+/// has let us in silently for weeks. The difference that matters is whether
+/// reaching it can raise a dialog, and there are exactly two ways it can:
+///
+/// - it asked for a password or a passphrase last time (`needs_prompt`), or
+/// - **its host key is not on file**, which can only end in the trust prompt.
+///
+/// Neither belongs on screen unprompted while the app is still opening. A host
+/// left out of this list is not refused — it connects the moment the user asks.
+#[tauri::command]
+pub async fn ssh_hosts_resumable(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    let hosts = state.data.read().await.settings.ssh_hosts.clone();
+    // Read the file once: this runs at startup, for every host at once.
+    let known = ssh::hostkey::read_known_hosts(&known_hosts_path()?).unwrap_or_default();
+    Ok(hosts
+        .into_iter()
+        .filter(|h| !h.needs_prompt && ssh::hostkey::is_known(&known, &h.hostname, h.port))
+        .map(|h| h.id)
+        .collect())
+}
+
+/// The hosts with a live session, and which incarnation each one is.
+///
+/// "Live" is checked, not assumed: a connection whose transport has ended is
+/// still in the map until something tries to use it, and listing it would have
+/// the app claim a host is connected while every panel on it fails.
+#[tauri::command]
+pub async fn ssh_hosts_connected(
+    state: State<'_, AppState>,
+) -> Result<Vec<SshHostSession>, CommandError> {
+    Ok(state
+        .ssh_sessions
+        .read()
+        .await
+        .iter()
+        .filter(|(_, conn)| !conn.handle().is_closed())
+        .map(|(host_id, conn)| SshHostSession {
+            host_id: host_id.clone(),
+            generation: conn.generation(),
+        })
+        .collect())
+}
+
+/// Record whether a host asked for something interactive. Persisted because the
+/// value is only learned by connecting, and losing it means prompting at every
+/// startup for a host we already knew was silent.
+async fn set_needs_prompt(
+    state: &AppState,
+    host_id: &str,
+    needs_prompt: bool,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    let Some(host) = data.settings.ssh_hosts.iter_mut().find(|h| h.id == host_id) else {
+        return Ok(());
+    };
+    if host.needs_prompt == needs_prompt {
+        return Ok(());
+    }
+    host.needs_prompt = needs_prompt;
+    state.persistence.save(&data).map_err(CommandError::from)
+}
+
+async fn find_ssh_host(state: &AppState, host_id: &str) -> Result<SshHost, CommandError> {
+    state
+        .data
+        .read()
+        .await
+        .settings
+        .ssh_hosts
+        .iter()
+        .find(|h| h.id == host_id)
+        .cloned()
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("ssh host {host_id}"))))
+}
+
+fn known_hosts_path() -> Result<std::path::PathBuf, CommandError> {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .ok_or_else(|| {
+            CommandError::from(AppError::Invalid("no home directory to read".to_string()))
+        })?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".ssh")
+        .join("known_hosts"))
+}
+
+/// Append one line to `known_hosts`, creating `~/.ssh` if this is the first
+/// host ever trusted. Appends — never rewrites — so entries the user or their
+/// own `ssh` put there are untouched.
+fn append_known_host(line: &str) -> Result<(), AppError> {
+    use std::io::Write;
+    let path = known_hosts_path().map_err(|e| AppError::Invalid(e.message))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    // A file that does not end in a newline would otherwise glue our entry onto
+    // the last one and corrupt both.
+    let needs_newline = std::fs::metadata(&path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
+        && !std::fs::read_to_string(&path)
+            .map(|s| s.ends_with('\n'))
+            .unwrap_or(true);
+    if needs_newline {
+        file.write_all(b"\n")?;
+    }
+    writeln!(file, "{line}")?;
+    Ok(())
 }
 
 // --- Repositories ----------------------------------------------------------
@@ -795,13 +2515,23 @@ pub async fn repo_add(state: State<'_, AppState>, path: String) -> Result<RepoDa
     }
     let is_git = git::is_git_repo(&path).await;
     let mut data = state.data.write().await;
-    if let Some(existing) = data.repos.iter().find(|r| r.path == path) {
+    // Identity is `(target, path)`, not the path: the same absolute path names a
+    // different folder on each machine. Only local projects exist today, so the
+    // target check is a no-op that stays correct once remote ones do.
+    if let Some(existing) = data
+        .repos
+        .iter()
+        .find(|r| r.target.is_local() && r.path == path)
+    {
         return Ok(existing.clone());
     }
     let repo = RepoData {
         id: Uuid::new_v4().to_string(),
         name: git::repo_name(&path),
         path,
+        // This command registers a folder on the machine the ADE runs on; adding
+        // a project that lives on a remote host is a separate entry point.
+        target: TargetId::Local,
         worktrees: Vec::new(),
         is_git,
         icon: None,
@@ -962,6 +2692,15 @@ pub async fn repo_list(state: State<'_, AppState>) -> Result<Vec<RepoData>, Comm
 /// Resolve a registered repo's absolute path by id (read lock released before
 /// any git `await`, so we never hold the lock across a subprocess).
 async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, CommandError> {
+    Ok(repo_location_of(state, repo_id).await?.0)
+}
+
+/// Resolve a registered repo's absolute path **and** the machine it lives on.
+/// Same lock discipline as [`repo_path_of`].
+async fn repo_location_of(
+    state: &AppState,
+    repo_id: &str,
+) -> Result<(String, TargetId), CommandError> {
     state
         .data
         .read()
@@ -969,8 +2708,27 @@ async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, Command
         .repos
         .iter()
         .find(|r| r.id == repo_id)
-        .map(|r| r.path.clone())
+        .map(|r| (r.path.clone(), r.target.clone()))
         .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))
+}
+
+/// Resolve a repo for a **mutating** command, refusing the call when the target
+/// the caller prepared for is no longer the target the work would run on.
+///
+/// Every destructive repo-bound command goes through here rather than
+/// [`repo_path_of`], so "which machine does this run on" is answered once, in
+/// one place, instead of being re-derived (and eventually forgotten) per command.
+/// See `target::check` for why a missing expectation only ever authorizes local.
+async fn repo_path_for_mutation(
+    state: &AppState,
+    repo_id: &str,
+    expect: Option<&TargetExpectation>,
+) -> Result<String, CommandError> {
+    let (path, actual) = repo_location_of(state, repo_id).await?;
+    // Only local targets exist today, so the live generation is the local
+    // constant; the SSH connection registry supplies the real one in phase 1.
+    target::check(expect, &actual, LOCAL_GENERATION).map_err(CommandError::from)?;
+    Ok(path)
 }
 
 /// A repo's branches plus the resolved default base, for the new-worktree dialog.
@@ -1149,21 +2907,38 @@ pub(crate) async fn managed_roots(state: &AppState) -> Vec<String> {
 /// why the app only *marks* such a project and stops spending work on it —
 /// polling git and `gh` against a path that is not there produces nothing but
 /// errors — and never removes it. Removing stays the user's call.
+///
+/// **A project on a host is never reported here.** This asks *this* machine's
+/// filesystem, and a host's absolute path is not a question it can answer: the
+/// folder is on the other machine. Asked anyway, it marked a perfectly healthy
+/// remote project as missing — and marked its neighbour as fine only because
+/// that host happened to be this same machine, which is worse, because the
+/// warning then looks selective rather than broken. Reporting a host's folder
+/// as gone needs asking the host (`FOR-DEV.md`).
 #[tauri::command]
 pub async fn repos_missing(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
-    let repos: Vec<(String, String)> = state
+    let repos: Vec<(String, TargetId, String)> = state
         .data
         .read()
         .await
         .repos
         .iter()
-        .map(|r| (r.id.clone(), r.path.clone()))
+        .map(|r| (r.id.clone(), r.target.clone(), r.path.clone()))
         .collect();
     Ok(repos
         .into_iter()
-        .filter(|(_, path)| !std::path::Path::new(path).is_dir())
-        .map(|(id, _)| id)
+        .filter(|(_, target, path)| missing_locally(target, path))
+        .map(|(id, _, _)| id)
         .collect())
+}
+
+/// Whether *this* machine can say the folder is not there.
+///
+/// Only ever true for a local project: for any other target the honest answer
+/// is "not mine to say", and `false` is what carries that — the app marks
+/// nothing rather than inventing a verdict from the wrong filesystem.
+fn missing_locally(target: &TargetId, path: &str) -> bool {
+    target.is_local() && !std::path::Path::new(path).is_dir()
 }
 
 /// A project still carrying worktree bookkeeping for folders that are gone.
@@ -1323,6 +3098,10 @@ pub async fn worktree_cleanup_remove(
 /// location from the user's settings — by default the managed root
 /// `<home>/uxnan/worktrees/<repo>/<branch>` (`worktreeloc.rs`). Returns the
 /// created entry as git itself lists it.
+///
+/// `expect` fences the call to the machine the caller prepared it for (see
+/// `target::check`): creating a worktree writes to disk, so it must never land
+/// on a target other than the intended one.
 #[tauri::command]
 pub async fn worktree_create(
     state: State<'_, AppState>,
@@ -1331,6 +3110,7 @@ pub async fn worktree_create(
     base: Option<String>,
     from_existing: Option<bool>,
     path: Option<String>,
+    expect: Option<TargetExpectation>,
 ) -> Result<WorktreeEntry, CommandError> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
@@ -1338,7 +3118,7 @@ pub async fn worktree_create(
             "branch name is required".to_string(),
         )));
     }
-    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
     let from_existing = from_existing.unwrap_or(false);
 
     // Resolve the worktree location: a custom absolute path for this creation,
@@ -1399,6 +3179,11 @@ pub async fn worktree_create(
 /// by default only the worktree is removed. When asked, the local branch is
 /// deleted (safe, force, or squash-merge) and/or the remote branch on `origin`.
 /// The returned [`git::RemoveOutcome`] tells the UI what happened to each.
+///
+/// `expect` fences the call (see `target::check`). This is the single most
+/// dangerous command to run on the wrong machine — it deletes a working tree and
+/// can delete branches — so an expectation that no longer matches aborts before
+/// any git process starts.
 #[tauri::command]
 pub async fn worktree_remove(
     state: State<'_, AppState>,
@@ -1407,8 +3192,9 @@ pub async fn worktree_remove(
     branch: Option<String>,
     force: bool,
     cleanup: Option<git::BranchCleanup>,
+    expect: Option<TargetExpectation>,
 ) -> Result<git::RemoveOutcome, CommandError> {
-    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
     git::remove_worktree(
         &repo_path,
         &path,
@@ -1421,15 +3207,71 @@ pub async fn worktree_remove(
 }
 
 /// List a repo's worktrees (ADE-created and ones made externally by agents).
+///
+/// A project on another machine reports **one** workspace — its own folder, with
+/// no branch — and no local git runs. Running it would be worse than useless: the
+/// path belongs to the host, so at best git fails, and at worst a folder with the
+/// same absolute path *does* exist here and the sidebar would show this machine's
+/// branches for someone else's repository. Reading git over SSH is phase 3; until
+/// then the interface says "not available here" rather than filling the gap with
+/// local data (`architecture/02g-remote-hosts.md` §6).
 #[tauri::command]
 pub async fn worktree_list(
     state: State<'_, AppState>,
     repo_id: String,
 ) -> Result<Vec<WorktreeEntry>, CommandError> {
-    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let (repo_path, target) = repo_location_of(&state, &repo_id).await?;
+    if let Some(host_id) = target.ssh_host_id() {
+        // Ask the host. Its shell was identified when it connected, so the
+        // arguments are quoted for the shell that will receive them; a host that
+        // could not be named, has no git, or holds a plain folder answers "not a
+        // repository" and the row says the branch was not read — never a branch
+        // this machine made up.
+        let shell = state
+            .ssh_shells
+            .read()
+            .await
+            .get(host_id)
+            .copied()
+            .unwrap_or_default();
+        let conn = session_for(&state, host_id).await;
+        let branch = match conn {
+            Some(conn) => ssh::git::status(&conn, shell, &repo_path).await.branch,
+            None => None,
+        };
+        return Ok(vec![WorktreeEntry {
+            path: repo_path,
+            branch,
+            head: None,
+            is_main: true,
+        }]);
+    }
+    if let Some(entries) = worktrees_without_git(&target, &repo_path) {
+        return Ok(entries);
+    }
     git::list_worktrees(&repo_path)
         .await
         .map_err(CommandError::from)
+}
+
+/// The worktree list for a project this machine's git cannot answer for: one
+/// entry, the project's own folder, and **no branch**. `None` means "local — go
+/// ask git".
+///
+/// Split out so the decision is testable on its own, because the invariant is
+/// easy to break and expensive when broken: a project on a host must never
+/// report a branch, or the sidebar would put this machine's answer on another
+/// machine's repository.
+fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<WorktreeEntry>> {
+    if target.is_local() {
+        return None;
+    }
+    Some(vec![WorktreeEntry {
+        path: repo_path.to_string(),
+        branch: None,
+        head: None,
+        is_main: true,
+    }])
 }
 
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
@@ -2913,9 +4755,176 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, fs_path_exists, issue_link_permission_denied, pty_submit_payload,
-        read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
+        bracketed_paste, ends_the_current_session, fs_path_exists, issue_link_permission_denied,
+        missing_locally, preserve_backend_owned, pty_submit_payload, read_term_buffers,
+        rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
+        worktrees_without_git, worth_retrying, TargetId,
     };
+    use crate::model::{AppSettings, SshHost, SshHostTombstone};
+
+    /// A watcher speaks only for its own incarnation.
+    #[test]
+    fn a_dead_session_never_removes_the_one_that_replaced_it() {
+        // The connection that ended is still the one on file: clean it up.
+        assert!(ends_the_current_session(Some(7), 7));
+        // A reconnect already stored a newer one — taking it away here would
+        // disconnect a host the user just reconnected.
+        assert!(!ends_the_current_session(Some(8), 7));
+        // Already gone (the user pressed Disconnect): nothing to clean.
+        assert!(!ends_the_current_session(None, 7));
+    }
+
+    /// The ladder must not argue with the user, or dial forever.
+    #[test]
+    fn only_a_failure_that_could_clear_up_is_retried() {
+        use super::SshConnectReport;
+        let with = |status: &str, reason: Option<crate::ssh::conn::Unreachable>| {
+            let mut r = SshConnectReport::of(status);
+            r.reason = reason;
+            r
+        };
+
+        // A machine that is asleep, still booting, or behind a link that blinked.
+        assert!(worth_retrying(&with(
+            "unreachable",
+            Some(crate::ssh::conn::Unreachable::Timeout)
+        )));
+        assert!(worth_retrying(&with(
+            "unreachable",
+            Some(crate::ssh::conn::Unreachable::Refused)
+        )));
+        // A name that does not resolve resolves no better on the fourth attempt.
+        assert!(!worth_retrying(&with(
+            "unreachable",
+            Some(crate::ssh::conn::Unreachable::UnknownAddress)
+        )));
+
+        // Anything that needs a person is never retried in the background: the
+        // ladder exists to survive a blip, not to raise a password dialog at
+        // someone who walked away.
+        for status in [
+            "needsPassword",
+            "needsPassphrase",
+            "hostUnknown",
+            "hostChanged",
+            "hostRevoked",
+            "noUsableMethod",
+        ] {
+            assert!(!worth_retrying(&with(status, None)), "{status}");
+        }
+        // And a connected report ends the ladder rather than continuing it.
+        assert!(!worth_retrying(&with("connected", None)));
+    }
+
+    fn host(id: &str) -> SshHost {
+        SshHost {
+            id: id.into(),
+            label: id.into(),
+            config_host: None,
+            hostname: "10.0.0.5".into(),
+            port: 22,
+            user: "dev".into(),
+            identity_files: vec![],
+            identity_agent: None,
+            identities_only: false,
+            forward_agent: false,
+            proxy_command: None,
+            proxy_jump: None,
+            source: Default::default(),
+            needs_prompt: false,
+        }
+    }
+
+    #[test]
+    fn a_hosts_project_is_never_called_missing_from_here() {
+        // Reported from the app: a healthy project on a host wore the "its
+        // folder is gone" warning, because the check ran `is_dir` on *this*
+        // machine against the other machine's path. The neighbour on a second
+        // host escaped it only because that host was this same PC — so the
+        // warning looked selective instead of simply wrong.
+        let remote = TargetId::parse("ssh:h1").unwrap();
+        assert!(
+            !missing_locally(&remote, r"C:\Users\gamas\code\nothing-here"),
+            "this filesystem cannot answer for another machine"
+        );
+        // Even a path that does exist here is not evidence about the host.
+        let here = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert!(!missing_locally(&remote, &here));
+    }
+
+    #[test]
+    fn a_local_project_that_is_gone_is_still_reported() {
+        // The feature itself must keep working for the projects it is about.
+        let local = TargetId::Local;
+        let here = std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert!(!missing_locally(&local, &here), "a folder that is there");
+        assert!(missing_locally(
+            &local,
+            &format!("{here}/definitely-not-here-9f2")
+        ));
+    }
+
+    #[test]
+    fn a_project_on_a_host_reports_one_workspace_and_no_branch() {
+        // Local git must not be run against a path that belongs to another
+        // machine: at best it fails, and at worst a folder with the same
+        // absolute path exists here and answers for the wrong repository.
+        let entries =
+            worktrees_without_git(&TargetId::parse("ssh:h1").unwrap(), r"C:\Users\dev\code")
+                .expect("a remote project answers without git");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, r"C:\Users\dev\code");
+        assert!(entries[0].is_main);
+        assert!(entries[0].branch.is_none(), "no branch may be invented");
+        assert!(entries[0].head.is_none());
+    }
+
+    #[test]
+    fn a_local_project_is_still_asked_of_git() {
+        // The guard must be exactly "not local", not "always synthetic" — every
+        // local project depends on the real worktree list.
+        assert!(worktrees_without_git(&TargetId::Local, r"C:\code\uxnan").is_none());
+    }
+
+    #[test]
+    fn a_settings_write_from_the_ui_cannot_delete_the_hosts() {
+        // The bug this exists for: the UI sends the whole settings object, does
+        // not model the host list, and so used to send an empty one — deleting
+        // every host on any unrelated settings change.
+        let mut stored = AppSettings {
+            ssh_hosts: vec![host("h1"), host("h2")],
+            removed_ssh_hosts: vec![SshHostTombstone {
+                host_id: "gone".into(),
+                config_host: None,
+                hostname: "old".into(),
+                port: 22,
+                user: "dev".into(),
+                label: "old".into(),
+                removed_at: 1,
+            }],
+            ..AppSettings::default()
+        };
+        let from_ui = AppSettings {
+            left_sidebar_width: 999,
+            ..AppSettings::default()
+        };
+
+        let merged = preserve_backend_owned(&mut stored, from_ui);
+
+        assert_eq!(merged.ssh_hosts.len(), 2, "the hosts must survive");
+        assert_eq!(merged.removed_ssh_hosts.len(), 1, "and the tombstones");
+        // Tombstones matter as much as the hosts: lose them and a re-added
+        // machine gets a new id, stranding its projects and its live session.
+        assert_eq!(merged.removed_ssh_hosts[0].host_id, "gone");
+        // Everything the user *did* change still lands.
+        assert_eq!(merged.left_sidebar_width, 999);
+    }
 
     #[test]
     fn issue_link_falls_back_only_for_authorization_failures() {
@@ -3072,5 +5081,198 @@ mod tests {
         let mut items = vec![Item { id: "a" }, Item { id: "b" }];
         reorder_by_ids(&mut items, &[], |i| i.id);
         assert_eq!(ids(&items), vec!["a", "b"]);
+    }
+
+    /// The file panel's recovery, end to end against this machine's sshd.
+    ///
+    /// The reported failure was a host whose terminals worked while every folder
+    /// answered `session closed`, so the test builds exactly that state — a live
+    /// connection with a dead file session cached on it — and asks for a listing.
+    ///
+    /// It has to be live: what makes a session unusable is its channel ending,
+    /// and no fake can produce the library's own behavior when it does.
+    mod remote_files {
+        use super::super::with_sftp;
+        use crate::persistence::PersistenceManager;
+        use crate::ssh;
+        use crate::state::AppState;
+        use std::sync::Arc;
+
+        const HOST: &str = "live-host";
+
+        /// A connected host in an otherwise empty app.
+        async fn state_with_a_live_host() -> (tempfile::TempDir, AppState) {
+            use ssh::auth::{authenticate, AuthOutcome, Credential};
+            use ssh::conn::{connect, Endpoint, Handshake};
+
+            let user = std::env::var("UXNAN_SSH_TEST_USER")
+                .or_else(|_| std::env::var("USERNAME"))
+                .expect("a username");
+            let endpoint = Endpoint::new("127.0.0.1", 22);
+            let Ok(Handshake::Unknown { key, .. }) = connect(endpoint.clone(), "").await else {
+                panic!("expected an unknown host");
+            };
+            let trusted = ssh::hostkey::trust_line("127.0.0.1", 22, &key);
+            let Ok(Handshake::Ready(mut conn)) = connect(endpoint, &trusted).await else {
+                panic!("the recorded key should verify");
+            };
+            match authenticate(&mut conn, &user, &[Credential::Agent])
+                .await
+                .unwrap()
+            {
+                AuthOutcome::Success { .. } => {}
+                other => panic!("authenticate with the agent first: {other:?}"),
+            }
+
+            let dir = tempfile::tempdir().unwrap();
+            let state = AppState::new(PersistenceManager::new(dir.path()), Default::default());
+            state
+                .ssh_sessions
+                .write()
+                .await
+                .insert(HOST.to_string(), Arc::new(conn));
+            (dir, state)
+        }
+
+        fn here() -> String {
+            std::env::current_dir()
+                .expect("cwd")
+                .to_string_lossy()
+                .replace('\\', "/")
+        }
+
+        /// Cache a session that has ended, and list a folder on it.
+        async fn cache_a_dead_session(state: &AppState) -> Arc<ssh::sftp::RemoteFiles> {
+            let dead = {
+                let sessions = state.ssh_sessions.read().await;
+                Arc::new(
+                    ssh::sftp::open(sessions.get(HOST).unwrap())
+                        .await
+                        .expect("an SFTP session"),
+                )
+            };
+            dead.close().await;
+            state
+                .ssh_sftp
+                .lock()
+                .await
+                .insert(HOST.to_string(), Arc::clone(&dead));
+            dead
+        }
+
+        /// The freeze the user hit: adding a second host and connecting it left
+        /// Settings spinning, and removing it spun too.
+        ///
+        /// The cause was not SSH being slow — it was `ssh_sessions` being held
+        /// **across** the network. It is a fair lock, so the write a connect
+        /// needs queues behind the reader that is mid-round-trip, and every
+        /// later reader queues behind that write. This holds the invariant that
+        /// makes that impossible: after a caller has its connection, the lock is
+        /// free — including while it is actually talking to the host.
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn talking_to_a_host_never_holds_the_session_lock() {
+            let (_dir, state) = state_with_a_live_host().await;
+
+            let conn = super::super::session_for(&state, HOST)
+                .await
+                .expect("a session");
+            assert!(
+                state.ssh_sessions.try_write().is_ok(),
+                "the registry must be writable the moment a caller has its connection"
+            );
+
+            // And while a real command is in flight on that connection, a
+            // connect (which needs the write) must not have to wait for it.
+            let slow = tokio::spawn(async move {
+                // Any command will do: what matters is that it is a round trip.
+                let _ = conn.exec("cd .").await;
+            });
+            let start = std::time::Instant::now();
+            {
+                let mut sessions = state.ssh_sessions.write().await;
+                sessions.remove("nobody");
+            }
+            let waited = start.elapsed();
+            assert!(
+                waited < std::time::Duration::from_millis(500),
+                "a connect waited {waited:?} for an unrelated command to finish"
+            );
+            let _ = slow.await;
+            println!("live: the write took {waited:?} with a command in flight");
+        }
+
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn a_dead_file_session_is_replaced_rather_than_reported() {
+            let (_dir, state) = state_with_a_live_host().await;
+            let listed = here();
+            // Borrowed, not moved: the operation is run twice, so it has to be
+            // callable twice — the same reason the commands pass a `&str`.
+            let dir = listed.as_str();
+
+            let dead = cache_a_dead_session(&state).await;
+
+            let entries = with_sftp(&state, HOST, |session| async move {
+                session.list_dir(dir).await
+            })
+            .await
+            .expect("the listing recovers on a new session");
+            assert!(!entries.is_empty(), "a source directory is not empty");
+
+            // And the dead one is gone from the cache, or the next call would
+            // pay for the same discovery all over again.
+            let cached = state.ssh_sftp.lock().await;
+            let current = cached.get(HOST).expect("a session is cached again");
+            assert!(
+                !Arc::ptr_eq(current, &dead),
+                "the replacement must be cached, not the corpse"
+            );
+        }
+
+        /// The same recovery, one step later: a session that still *claims* to be
+        /// usable and is not — which is what a host leaves behind when it ends a
+        /// channel between two clicks, and the only case the check in `sftp_for`
+        /// cannot catch before the request goes out.
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn a_session_that_dies_unnoticed_is_retried_not_reported() {
+            let (_dir, state) = state_with_a_live_host().await;
+            let listed = here();
+            let dir = listed.as_str();
+
+            let dead = cache_a_dead_session(&state).await;
+            dead.pretend_usable();
+
+            let entries = with_sftp(&state, HOST, |session| async move {
+                session.list_dir(dir).await
+            })
+            .await
+            .expect("the retry lists it");
+            assert!(!entries.is_empty(), "a source directory is not empty");
+        }
+
+        #[tokio::test]
+        #[ignore = "needs a local sshd that authorizes a key in the agent"]
+        async fn what_the_host_refuses_is_reported_on_the_first_ask() {
+            let (_dir, state) = state_with_a_live_host().await;
+            let absent = format!("{}/no-such-folder-9d2f", here());
+            let missing = absent.as_str();
+
+            let error = with_sftp(&state, HOST, |session| async move {
+                session.list_dir(missing).await
+            })
+            .await
+            .expect_err("a folder that is not there cannot be listed");
+            println!("live: refused with {}", error.message);
+
+            // The session it used is still cached: the host answered, so there
+            // was nothing wrong with the channel and nothing to open again.
+            let cached = state.ssh_sftp.lock().await;
+            assert!(
+                cached.contains_key(HOST),
+                "a refusal must not throw away a working session"
+            );
+        }
     }
 }

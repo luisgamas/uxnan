@@ -47,6 +47,54 @@ pub struct AppState {
     pub persistence: PersistenceManager,
     /// Live pseudoterminal sessions.
     pub pty: PtyManager,
+    /// Terminals running on a remote host. Separate from `pty` because they are
+    /// a different mechanism, but keyed in the same id space: a terminal id
+    /// means one thing app-wide, and the command layer asks who owns it rather
+    /// than making the frontend remember.
+    pub ssh_pty: crate::ssh::pty::RemotePtyManager,
+    /// Live, authenticated sessions, keyed by host id.
+    ///
+    /// One connection per host, shared by everything that runs on it — the
+    /// terminal, the inventory probe, git calls. That is the whole reason the
+    /// SSH client is in-process: each of those is a channel here, not another
+    /// handshake and another login.
+    ///
+    /// **`Arc<Connection>`, so the lock is never held across the network.** A
+    /// caller clones the handle out and lets the guard go before it starts
+    /// talking to the host. Holding it instead froze the whole app: this is a
+    /// *fair* (write-preferring) lock, so the write that a connect needs queues
+    /// behind whatever reader is mid-round-trip — and every later reader queues
+    /// behind that write. With one exec costing ~2s on a real host, adding a
+    /// second host was enough to stall the connected list, the git panels, the
+    /// file tree and the remove dialog all at once.
+    pub ssh_sessions:
+        Arc<RwLock<std::collections::HashMap<String, Arc<crate::ssh::conn::Connection>>>>,
+    /// One file session per connected host, opened on first use. It is a channel
+    /// on the connection that host already has, so keeping it costs nothing while
+    /// re-opening one per listing would cost a round trip each time. Dropped with
+    /// the session — and replaced, without being asked, whenever the host ends
+    /// the channel under it (`commands::with_sftp`).
+    pub ssh_sftp: Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, std::sync::Arc<crate::ssh::sftp::RemoteFiles>>,
+        >,
+    >,
+    /// Which shell each connected host's `sshd` starts, learned once per
+    /// connection (`ssh::shellkind`). Everything shell-shaped uxnan sends is
+    /// chosen from this rather than assumed — a host's owner switches between
+    /// cmd, PowerShell, WSL and Git Bash as they please, and guessing wrong
+    /// killed every project terminal on a PowerShell machine. Dropped with the
+    /// session, because a reconnect may find a different configuration.
+    pub ssh_shells:
+        Arc<RwLock<std::collections::HashMap<String, crate::ssh::shellkind::ShellKind>>>,
+    /// Host keys seen during a probe, kept between "we asked" and "the user
+    /// said yes", keyed by host id.
+    ///
+    /// The key never travels to the frontend and back. The UI is shown a
+    /// fingerprint and returns a decision, not a blob it could have altered —
+    /// what gets written to `known_hosts` is exactly what the server presented.
+    pub ssh_pending_keys:
+        Arc<RwLock<std::collections::HashMap<String, crate::ssh::hostkey::PresentedKey>>>,
     /// Worktree path the right panel is reviewing, polled for status while set
     /// (the background git watcher reads this). `None` = nothing to watch.
     pub git_watch: Arc<RwLock<Option<String>>>,
@@ -103,6 +151,11 @@ impl AppState {
             data: RwLock::new(data),
             persistence,
             pty: PtyManager::default(),
+            ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
+            ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            ssh_sftp: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            ssh_pending_keys: Arc::new(RwLock::new(std::collections::HashMap::new())),
             git_watch: Arc::new(RwLock::new(None)),
             fs_watcher: FsWatcher::default(),
             browse_watcher: BrowseWatcher::default(),

@@ -118,7 +118,8 @@ Representa un repositorio git (o carpeta no-git). Cada repositorio almacena:
 
 | Campo | Descripcion |
 |-------|-------------|
-| Ruta en el filesystem | Ruta absoluta al directorio del repositorio en disco |
+| Destino de ejecucion | En que maquina vive el proyecto (`target`): `local` o `ssh:<hostId>`. Junto con la ruta forma la identidad del workspace (§2.9). Todo lo persistido antes de existir el campo es `local` — migracion de esquema v1→v2 |
+| Ruta en el filesystem | Ruta absoluta al directorio del repositorio en disco. **No es identidad por si sola**: la misma ruta nombra carpetas distintas en maquinas distintas |
 | Nombre visible | Nombre que el usuario ve en la sidebar (editable vía `repo_update`; **solo** cambia la etiqueta de la tarjeta, la carpeta en disco conserva su nombre real) |
 | Tipo | `git` (repositorio git) o `folder` (carpeta simple sin git) |
 | Icono del proyecto | Icono opcional de la tarjeta (`icon`): un `data:` URL incrustado (imagen de archivo/URL/avatar de la cuenta del host git, rasterizada a un PNG cuadrado pequeño) o vacío = icono por defecto. Se fija con `repo_update`; el avatar del host se resuelve con `repo_remote_owner` + `image_fetch_data_url` |
@@ -133,6 +134,7 @@ Representa un checkout independiente de git. Es la **unidad fundamental de aisla
 | Campo | Descripcion |
 |-------|-------------|
 | Referencia al repositorio padre | A que repo pertenece este worktree |
+| Destino de ejecucion | En que maquina vive (`target`). **Invariante: siempre igual al del repo padre** — un worktree es un checkout del git dir de ese repo, no puede vivir en otra maquina. Se guarda igualmente porque el frontend indexa workspaces por `(target, ruta)` sin subir al repo |
 | Nombre descriptivo | Nombre asignado por el usuario para identificar la tarea |
 | Rama de git actual | La branch que tiene checked out este worktree |
 | Creado por el ADE | Flag booleano: `true` si fue creado por el ADE, `false` si existia previamente |
@@ -191,6 +193,39 @@ Campos adicionales del estado:
 | Timestamps | Cuando se reporto el estado por primera vez y ultima actualizacion |
 | TTL | Los estados se persisten con un TTL de 7 dias. Al cabo de 7 dias sin actividad, el registro se elimina del cache |
 | Staleness | Si un agente no reporta estado en 30 minutos, se marca como "stale" y se muestra con opacidad reducida en la UI |
+
+### 2.9 Destino de ejecucion e identidad del workspace
+
+Un **destino de ejecucion** (`TargetId`, `src-tauri/src/target.rs` y su espejo
+`src/lib/target.ts`) es la maquina donde vive un proyecto y donde corre el
+trabajo. Forma persistida y de wire: cadena plana — `local` o `ssh:<hostId>`;
+`wsl:<distro>` queda **reservado** para cuando WSL deje de detectarse olfateando
+rutas UNC (`wsl.rs`) y pase a ser un destino propio.
+
+**La ruta dejo de ser identidad.** La clave de un workspace es el par
+`(destino, ruta)` (`workspaceKey` en `src/lib/pathid.ts`). Una clave local
+conserva su forma historica —la ruta desnuda— para que nada persistido tenga que
+reescribirse y el workspace Global siga siendo la cadena vacia; una remota lleva
+el prefijo de su destino. El reconciliador de arranque, que cura diferencias de
+escritura de una misma ruta, **nunca** reapunta un workspace a otra maquina
+aunque las rutas coincidan exactamente.
+
+**Fencing de mutaciones.** Toda mutacion atada a una ruta viaja con el destino y
+la *generacion de conexion* que el llamador vio (`TargetExpectation`). El backend
+(`target::check`) la rechaza antes de ejecutar nada cuando alguna de las dos ha
+cambiado, con un error que nombra ambos lados. Reglas:
+
+- Una llamada **sin** destino solo puede actuar en `local`: la ausencia jamas
+  autoriza trabajo remoto.
+- Una generacion distinta es tan fatal como un host distinto: tras reconectar, el
+  directorio de trabajo puede haber desaparecido y el agente puede estar muerto.
+- Un destino desconocido (escrito por una build mas nueva) se conserva tal cual,
+  no cuenta como local y jamas satisface el chequeo.
+
+Persistencia: esquema **v2**. La migracion v1→v2 estampa `target: "local"` en
+cada repo y worktree, y `migrate` rechaza un documento mas nuevo que el binario
+— sin eso, una build vieja ignoraria el campo y trataria la ruta de un proyecto
+remoto como si fuera suya.
 
 ---
 

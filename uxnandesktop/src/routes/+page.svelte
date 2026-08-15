@@ -5,6 +5,8 @@
   import { projects } from "$lib/state/projects.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import { sshHostId } from "$lib/target";
   import { git } from "$lib/state/git.svelte";
   import { github } from "$lib/state/github.svelte";
   import { openWith } from "$lib/state/openWith.svelte";
@@ -150,8 +152,13 @@
   // file-tree panel, so it follows the worktree even when the right panel/Files
   // tab is closed — the center file/diff tabs depend on it for external-change
   // detection). Emits `fs:changed`, consumed by the file tree + open tabs.
+  //
+  // All three of these read `activeLocalPath`, not the raw path: on a workspace
+  // that lives on a host there is nothing here to watch, no git to run and no
+  // repository to resolve — and a folder of the same name on *this* machine
+  // would answer all three wrongly rather than not at all.
   $effect(() => {
-    void fsSetWatch(projects.activeWorktreePath).catch(() => {});
+    void fsSetWatch(projects.activeLocalPath).catch(() => {});
   });
 
   // Load the active worktree's git status here too — at the always-mounted shell,
@@ -165,7 +172,22 @@
     void git.startListening();
   });
   $effect(() => {
-    void git.load(projects.activeWorktreePath);
+    // The real path plus **its own** machine, not `activeLocalPath`: git now
+    // runs on a host too, and the path alone would have this machine answer for
+    // a folder of the same name. `activeReviewTarget` rather than
+    // `activeWorktreeTarget` because the latter follows the focused terminal
+    // workspace — right for opening a terminal, wrong for describing a folder,
+    // and the two disagree the moment a remote terminal is focused while a
+    // local project is selected.
+    const target = projects.activeReviewTarget;
+    // Read the host's connection as well, so this re-runs when that host comes
+    // up (filling in a review that could not be read at startup) and when it
+    // drops (clearing a list that is no longer anyone's current state). Pushing
+    // that from the hosts store instead would make it import this one, and it
+    // already imports `app` — the cycle the sessions registry exists to avoid.
+    const host = sshHostId(target);
+    if (host !== null) void sessions.generationOf(host);
+    void git.load(projects.activeWorktreePath, target);
   });
 
   // GitHub integration: read sign-in status once the backend is ready, load the
@@ -177,7 +199,7 @@
   });
   $effect(() => {
     void github.available;
-    void github.loadContext(projects.activeWorktreePath);
+    void github.loadContext(projects.activeLocalPath);
   });
   $effect(() => {
     // Restart the poll when the interval setting or the resource-mode policy

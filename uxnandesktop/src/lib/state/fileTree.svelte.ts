@@ -6,18 +6,20 @@
 // access goes through `$lib/api`.
 
 import { listen } from "@tauri-apps/api/event";
-import {
-  fsCreateDir,
-  fsCreateFile,
-  fsDelete,
-  fsDuplicate,
-  fsListDir,
-  fsRename,
-  fsSearchContent,
-  fsSearchFiles,
-} from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
 import type { ContentFileMatch, FsChangedEvent, FsEntry, SearchFilters } from "$lib/types";
+import {
+  createDirOn,
+  createFileOn,
+  deleteOn,
+  duplicateOn,
+  listDirOn,
+  renameOn,
+  searchContentOn,
+  searchFilesOn,
+} from "$lib/fsRouter";
+import { sessions } from "$lib/state/sessions.svelte";
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
@@ -39,6 +41,12 @@ function parentOf(path: string): string {
   return i > 0 ? path.slice(0, i) : path;
 }
 
+/** Whether a failure is "that host is not connected yet" — a state, not a fault.
+ *  Matched on the backend's own code so the wording can change freely. */
+function isNotConnected(e: unknown): boolean {
+  return !!e && typeof e === "object" && "code" in e && (e as { code: unknown }).code === "NOT_CONNECTED";
+}
+
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
     ? String((e as { message: unknown }).message)
@@ -47,6 +55,44 @@ const msg = (e: unknown) =>
 class FileTreeStore {
   /** Active worktree root (forward-slash, no trailing slash), or null. */
   root = $state<string | null>(null);
+  /** The machine the root lives on. Every listing and read in this tree goes
+   *  there — see `setRoot`. */
+  target = $state<TargetId>(LOCAL_TARGET);
+  /** The tree is on a host that has no session yet. Not an error — the panel
+   *  says it is waiting, and `retryForHost` fills it in when the host connects. */
+  awaitingHost = $state(false);
+
+  /** The connection this tree's mutations must run against, or `undefined` when
+   *  it is not a host's (local) or the host is not connected — which the router
+   *  turns into a refusal rather than a mutation sent with a zero. */
+  private get generation(): number | undefined {
+    const host = sshHostId(this.target);
+    return host === null ? undefined : sessions.generationOf(host);
+  }
+
+  /** Whether this tree can be changed at all: local always, a host only while it
+   *  is connected. The context menu reads it — offering "Delete" for a machine
+   *  nothing can be sent to is an action that can only fail. */
+  get mutable(): boolean {
+    const host = sshHostId(this.target);
+    return host === null || sessions.generationOf(host) !== undefined;
+  }
+
+  /** Whether deleting here is recoverable. Local goes to the OS trash; a host
+   *  has no trash, so there it is permanent — the confirm dialog says which. */
+  get deletesToTrash(): boolean {
+    return isLocalTarget(this.target);
+  }
+
+  /** Whether searching this tree is possible.
+   *
+   *  Local always. On a host it asks git there (`ssh::search`), so it needs a
+   *  live connection — and a folder that is not a repository on that machine
+   *  answers with that as the reason, which the panel shows in place of results
+   *  rather than pretending nothing matched. */
+  get searchable(): boolean {
+    return isLocalTarget(this.target) || this.mutable;
+  }
   /** Lazily-loaded children keyed by directory path. */
   childrenByDir = $state<Record<string, FsEntry[]>>({});
   /** Set of expanded directory paths. */
@@ -140,13 +186,23 @@ class FileTreeStore {
    *  root is unchanged, so remounting the tab keeps the expanded state. The
    *  backend filesystem watcher is aimed centrally (in `+page.svelte`) so it
    *  follows the active worktree regardless of which panel/tab is open. */
-  setRoot(root: string | null): void {
+  setRoot(root: string | null, target: TargetId = LOCAL_TARGET): void {
     void this.startListening();
-    if (root === this.root) return;
+    if (root === this.root && target === this.target) return;
     this.root = root;
+    // Which machine this tree is of. Held beside the root because every listing
+    // and every file read has to go to the same place the root came from —
+    // asking per call site is how one of them ends up reading this filesystem
+    // for a project that lives on a host.
+    this.target = target;
     this.childrenByDir = {};
     this.expanded = new Set();
     this.error = null;
+    // Whatever the previous tree was waiting for is not this tree's business.
+    // Left behind, it put "waiting for this host to connect" above a local
+    // project's folders — which had listed perfectly well — because this reset
+    // cleared the error and everything else but not this flag.
+    this.awaitingHost = false;
     this.query = "";
     this.searchScope = null;
     this.contentQuery = "";
@@ -189,11 +245,25 @@ class FileTreeStore {
     if (this.childrenByDir[dir] && !force) return;
     this.loadingDir = new Set(this.loadingDir).add(dir);
     try {
-      const entries = await fsListDir(dir);
+      const entries = await listDirOn(this.target, dir);
       this.childrenByDir = { ...this.childrenByDir, [dir]: entries };
       this.error = null;
+      // A tree that just listed is not waiting for anything, whatever it was
+      // doing a moment ago — including the host coming back on its own.
+      this.awaitingHost = false;
     } catch (e) {
-      this.error = msg(e);
+      // "The host is not connected yet" is not a failure to read about: it is
+      // the ordinary state between starting the app and connecting. The tree
+      // says so plainly and retries by itself once the host is up
+      // (`retryForHost`), instead of leaving a red line the user has to clear by
+      // switching projects and back.
+      // Only a tree that is *of* a host can be waiting for one. The check is
+      // structural rather than trusting the error: "waiting for this host to
+      // connect" over a local project is a message the user cannot act on, and
+      // it reached the screen once because the machine and the root were read
+      // from two different places (`projects.activeReviewTarget`).
+      this.awaitingHost = isNotConnected(e) && !isLocalTarget(this.target);
+      this.error = this.awaitingHost ? null : msg(e);
     } finally {
       const s = new Set(this.loadingDir);
       s.delete(dir);
@@ -211,6 +281,44 @@ class FileTreeStore {
       void this.loadDir(entry.path);
     }
     this.expanded = next;
+  }
+
+  /** Reload this tree once its host is up.
+   *
+   *  Called when a host connects. The first listing after a cold start fails —
+   *  there is no session yet — and nothing else would ever retry it: the root is
+   *  not in `childrenByDir`, so a plain refresh has nothing to reload, which is
+   *  why the panel stayed on its message until the workspace changed and came
+   *  back. */
+  retryForHost(hostId: string): void {
+    if (sshHostId(this.target) !== hostId) return;
+    this.awaitingHost = false;
+    this.error = null;
+    const root = this.root;
+    if (root) void this.loadDir(root, true);
+    for (const dir of Object.keys(this.childrenByDir)) void this.loadDir(dir, true);
+  }
+
+  /** Forget this tree when its host goes away.
+   *
+   *  The counterpart of `retryForHost`, and the half that was missing: a loaded
+   *  folder is never listed again (`loadDir` returns early when it already has
+   *  the children), so after a disconnect the panel kept showing another
+   *  machine's files as if that machine were still there — no message, no hint,
+   *  just a tree that was quietly a memory. Every panel in this app is supposed
+   *  to say what it cannot know; this one was claiming the opposite.
+   *
+   *  It goes back to the same state a cold start has, so `retryForHost` fills it
+   *  in again when the host returns. */
+  hostWentAway(hostId: string): void {
+    if (sshHostId(this.target) !== hostId) return;
+    this.childrenByDir = {};
+    this.expanded = new Set();
+    this.selectedEntry = null;
+    this.draft = null;
+    this.renamingPath = null;
+    this.error = null;
+    this.awaitingHost = true;
   }
 
   /** Reload every already-loaded directory (keeps the expansion state); also
@@ -281,7 +389,14 @@ class FileTreeStore {
     const seq = ++this.searchSeq;
     this.searchLoading = true;
     try {
-      const res = await fsSearchFiles(root, q, this.showHidden, this.filters(), SEARCH_LIMIT);
+      const res = await searchFilesOn(
+        this.target,
+        root,
+        q,
+        this.showHidden,
+        this.filters(),
+        SEARCH_LIMIT,
+      );
       if (seq !== this.searchSeq) return;
       this.searchResults = res.entries;
       this.searchTruncated = res.truncated;
@@ -339,7 +454,8 @@ class FileTreeStore {
     const seq = ++this.contentSeq;
     this.contentLoading = true;
     try {
-      const res = await fsSearchContent(
+      const res = await searchContentOn(
+        this.target,
         root,
         {
           query: q,
@@ -403,7 +519,10 @@ class FileTreeStore {
    *  and select the leaf. Returns the new absolute path; throws so the caller can
    *  surface the backend error inline. */
   async createEntry(dir: string, rel: string, kind: "file" | "folder"): Promise<string> {
-    const path = kind === "folder" ? await fsCreateDir(dir, rel) : await fsCreateFile(dir, rel);
+    const path =
+      kind === "folder"
+        ? await createDirOn(this.target, dir, rel, this.generation)
+        : await createFileOn(this.target, dir, rel, this.generation);
     await this.revealNewEntry(dir, path);
     this.selectedEntry = {
       name: path.split("/").pop() ?? path,
@@ -457,7 +576,7 @@ class FileTreeStore {
   /** Rename an entry (bare name, same folder) and re-point any open tabs. Reloads
    *  the parent so the new name shows. Returns the new path; throws on failure. */
   async renameEntry(entry: FsEntry, newName: string): Promise<string> {
-    const newPath = await fsRename(entry.path, newName);
+    const newPath = await renameOn(this.target, entry.path, newName, this.generation);
     await terminals.repathTabs(entry.path, newPath);
     // A renamed folder's children now live under a different path — drop the stale
     // expansion + cached listing so the reload rebuilds them under the new path.
@@ -469,7 +588,7 @@ class FileTreeStore {
   /** Move an entry to the OS trash, closing any open tabs under it and reloading
    *  the parent folder. Throws on failure so the confirm dialog shows the error. */
   async deleteEntry(entry: FsEntry): Promise<void> {
-    await fsDelete(entry.path);
+    await deleteOn(this.target, entry.path, this.generation);
     terminals.closeTabsUnder(entry.path);
     if (entry.isDir) this.forgetSubtree(entry.path);
     await this.loadDir(parentOf(entry.path), true);
@@ -478,7 +597,7 @@ class FileTreeStore {
   /** Duplicate a file next to itself ("… copy"), reloading its folder. Returns the
    *  new path. */
   async duplicateEntry(entry: FsEntry): Promise<string> {
-    const newPath = await fsDuplicate(entry.path);
+    const newPath = await duplicateOn(this.target, entry.path, this.generation);
     await this.loadDir(parentOf(entry.path), true);
     return newPath;
   }

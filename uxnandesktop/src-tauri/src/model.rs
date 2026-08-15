@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 /// Current persistence schema version. Bump this whenever [`AppData`]'s shape
 /// changes in a backwards-incompatible way and add a migration arm in
 /// [`crate::persistence::migrate`].
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// * v2 — every repo and worktree carries an execution target
+///   ([`crate::target::TargetId`]); everything written before it is local.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Root persisted document. Written atomically to `state.json` in the app data
 /// directory.
@@ -67,6 +70,13 @@ pub struct RepoData {
     pub id: String,
     pub name: String,
     pub path: String,
+    /// Machine this project lives on. `path` alone is not an identity once a
+    /// second execution target exists — the same absolute path names a different
+    /// folder on every machine — so the pair `(target, path)` is what the app
+    /// keys on. Defaults to local, which is what every project persisted before
+    /// this field was (schema v2 stamps it explicitly).
+    #[serde(default)]
+    pub target: crate::target::TargetId,
     #[serde(default)]
     pub worktrees: Vec<WorktreeData>,
     /// Whether the folder is a git repository. Non-git folders are valid projects
@@ -109,6 +119,13 @@ pub struct WorktreeData {
     pub name: String,
     pub branch: String,
     pub path: String,
+    /// Machine this worktree lives on. **Invariant: always equal to its parent
+    /// [`RepoData::target`]** — a worktree is a checkout of that repo's git
+    /// directory, so it cannot live on another machine. It is stored anyway
+    /// because the frontend keys workspaces by `(target, path)` and reads
+    /// worktrees without walking back up to the repo.
+    #[serde(default)]
+    pub target: crate::target::TargetId,
     /// `true` if the ADE created this worktree, `false` if it pre-existed.
     pub created_by_ade: bool,
     pub created_at: i64,
@@ -131,6 +148,89 @@ pub struct TerminalProfile {
     /// Arguments passed to the command (e.g. `["-NoLogo"]`, `["-d", "Ubuntu"]`).
     #[serde(default)]
     pub args: Vec<String>,
+}
+
+/// A remote machine the user has registered.
+///
+/// **Holds no secret.** Alias, hostname, port, user and a *reference* to an
+/// identity file — never a key, never a password. Those come from the system's
+/// ssh-agent, from the key file on disk, or from a prompt that lives in memory
+/// for one attempt (`ssh/auth.rs`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHost {
+    /// Stable id, and the only thing a project stores. Never the hostname: a
+    /// hostname changes, and two hosts can share one.
+    pub id: String,
+    /// What the user sees. Defaults to the alias or `user@host`.
+    pub label: String,
+    /// The `~/.ssh/config` alias this came from, when it came from there. Kept so
+    /// a re-import can refresh the derived fields below without touching hosts
+    /// the user typed by hand.
+    #[serde(default)]
+    pub config_host: Option<String>,
+    pub hostname: String,
+    pub port: u16,
+    pub user: String,
+    /// Path to a private key, as OpenSSH reported it. A path, not a key.
+    #[serde(default)]
+    pub identity_files: Vec<String>,
+    #[serde(default)]
+    pub identity_agent: Option<String>,
+    #[serde(default)]
+    pub identities_only: bool,
+    /// `ForwardAgent`: lets git *on the host* use the keys held by the agent
+    /// *here*, without a private key ever leaving this machine.
+    #[serde(default)]
+    pub forward_agent: bool,
+    #[serde(default)]
+    pub proxy_command: Option<String>,
+    #[serde(default)]
+    pub proxy_jump: Option<String>,
+    /// Where this record came from. Imported hosts have their derived fields
+    /// refreshed on re-import; hand-written ones are never overwritten.
+    #[serde(default)]
+    pub source: SshHostSource,
+    /// Set after a connection that needed a passphrase or password prompt.
+    /// Persisted so startup can reconnect the hosts that need nothing and leave
+    /// the rest until the user is present — without it, opening the app with
+    /// four hosts means four prompts.
+    #[serde(default)]
+    pub needs_prompt: bool,
+}
+
+/// Where an [`SshHost`] record came from.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SshHostSource {
+    /// Typed by the user. Never overwritten by an import.
+    #[default]
+    Manual,
+    /// Imported from `~/.ssh/config`, and refreshed from it on re-import.
+    SshConfig,
+}
+
+/// The identity of a removed host, kept so re-adding the same machine can
+/// recover its projects.
+///
+/// Projects store only a target id. Delete a host and every project on it points
+/// at an id that no longer exists — with no way back, because the new record
+/// gets a new id. This is the way back, and it is cheap to write now and
+/// impossible to reconstruct later.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostTombstone {
+    /// The id the removed host had — what orphaned projects still point at.
+    pub host_id: String,
+    /// The most stable re-identification key when there is one.
+    #[serde(default)]
+    pub config_host: Option<String>,
+    pub hostname: String,
+    pub port: u16,
+    pub user: String,
+    pub label: String,
+    /// Epoch millis, for pruning.
+    pub removed_at: i64,
 }
 
 /// A single environment variable a user can attach to an agent. Set on the
@@ -344,6 +444,14 @@ pub struct AppSettings {
     /// Configurable terminal/shell profiles (seeded with platform defaults).
     #[serde(default)]
     pub terminal_profiles: Vec<TerminalProfile>,
+    /// Registered remote machines. Empty by default: with none of these the app
+    /// behaves exactly as it did before remote hosts existed.
+    #[serde(default)]
+    pub ssh_hosts: Vec<SshHost>,
+    /// Identities of removed hosts, so re-adding one recovers its projects
+    /// ([`SshHostTombstone`]).
+    #[serde(default)]
+    pub removed_ssh_hosts: Vec<SshHostTombstone>,
     /// Id of the profile used for new terminals unless one is picked explicitly.
     #[serde(default)]
     pub default_profile_id: Option<String>,
@@ -1114,6 +1222,10 @@ impl Default for AppSettings {
             left_sidebar_open: true,
             right_sidebar_open: true,
             terminal_profiles,
+            // No hosts by default: with none of these the app is exactly what it
+            // was before remote hosts existed.
+            ssh_hosts: Vec::new(),
+            removed_ssh_hosts: Vec::new(),
             default_profile_id,
             agent_profiles: Vec::new(),
             default_agent_id: None,

@@ -17,7 +17,7 @@ use crate::error::AppError;
 /// Largest file the editor will open (2 MiB). Past this we refuse to load the
 /// content (so the webview never chokes on a giant/minified file) and the UI
 /// shows a "too large to edit" notice instead.
-const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
+pub(crate) const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Largest image/PDF the preview will inline as a `data:` URL (25 MiB). Past
 /// this we refuse rather than base64-encode a huge blob into the webview.
@@ -74,7 +74,7 @@ const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 
 /// Matches reported per file before that file's list is cut (`truncated`). Keeps
 /// one generated/minified file from crowding out the rest of the results.
-const MAX_MATCHES_PER_FILE: usize = 50;
+pub(crate) const MAX_MATCHES_PER_FILE: usize = 50;
 
 /// Characters of a matching line sent to the UI. A longer line is windowed
 /// around the match (see [`ContentMatch::elided`]) so a minified bundle still
@@ -193,20 +193,20 @@ fn build_glob_set(patterns: &str) -> Option<globset::GlobSet> {
 }
 
 /// The include/exclude test both searches apply to a worktree-relative path.
-struct CompiledFilters {
+pub(crate) struct CompiledFilters {
     include: Option<globset::GlobSet>,
     exclude: Option<globset::GlobSet>,
 }
 
 impl CompiledFilters {
-    fn new(filters: &SearchFilters) -> Self {
+    pub(crate) fn new(filters: &SearchFilters) -> Self {
         Self {
             include: build_glob_set(&filters.include),
             exclude: build_glob_set(&filters.exclude),
         }
     }
     /// Whether `rel` (worktree-relative, forward-slash) survives the filters.
-    fn allows(&self, rel: &str) -> bool {
+    pub(crate) fn allows(&self, rel: &str) -> bool {
         if let Some(inc) = &self.include {
             if !inc.is_match(rel) {
                 return false;
@@ -254,7 +254,7 @@ fn normalize(path: &Path) -> String {
 /// fragment that could move or escape the target folder. Trims, then rejects an
 /// empty name, any path separator, and the `.` / `..` specials. Returns the
 /// trimmed name so callers operate on the cleaned value.
-fn validate_bare_name(name: &str) -> Result<&str, AppError> {
+pub(crate) fn validate_bare_name(name: &str) -> Result<&str, AppError> {
     let name = name.trim();
     if name.is_empty() {
         return Err(AppError::Invalid("the name is empty".into()));
@@ -455,7 +455,7 @@ pub async fn rename_path(path: &str, new_name: &str) -> Result<String, AppError>
 /// `..`, no absolute/`\`-rooted segment). A single trailing `/` is tolerated
 /// (the caller may pass a folder path with a trailing separator). Returns at
 /// least one segment.
-fn split_new_entry_path(rel: &str) -> Result<Vec<&str>, AppError> {
+pub(crate) fn split_new_entry_path(rel: &str) -> Result<Vec<&str>, AppError> {
     let rel = rel.trim();
     let body = rel.strip_suffix('/').unwrap_or(rel);
     if body.is_empty() {
@@ -694,7 +694,7 @@ pub struct ContentQuery {
 /// `a.b` means `a.b`, not "a, any char, b"); `whole_word` wraps it in word
 /// boundaries; `is_regex` passes it through as written. Returns the user-facing
 /// error for an unparsable pattern, so the UI can show it under the input.
-fn build_content_regex(q: &ContentQuery) -> Result<regex::Regex, AppError> {
+pub(crate) fn build_content_regex(q: &ContentQuery) -> Result<regex::Regex, AppError> {
     let base = if q.is_regex {
         q.query.clone()
     } else {
@@ -723,7 +723,7 @@ fn utf16_len(s: &str) -> u32 {
 /// Build the snippet the UI shows for one match: the whole line when it is short
 /// enough, otherwise a window around the match. Offsets come back in UTF-16 code
 /// units, relative to the returned text.
-fn snippet_for(line: &str, m_start: usize, m_end: usize) -> ContentMatch {
+pub(crate) fn snippet_for(line: &str, m_start: usize, m_end: usize) -> ContentMatch {
     // Character (not byte) positions, so a window never splits a multi-byte char.
     let char_start = line[..m_start].chars().count();
     let char_len = line[m_start..m_end].chars().count();

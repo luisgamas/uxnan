@@ -48,6 +48,32 @@ instantly; edits to `src-tauri/**` rebuild and restart the app.
 Element* (or your platform's devtools shortcut) to debug the Svelte UI, console,
 and network.
 
+**A debug build keeps its own profile.** It writes to
+`<app-data>/dev.luisgamas.uxnandesktop-dev/`, beside the installed app's
+`dev.luisgamas.uxnandesktop/` — so you can run both at once, which is the normal
+way to work on the app while using it.
+
+That separation is not tidiness. The two are the same product but not the same
+code: a build that predates a feature does not know its fields, and serde drops
+what it cannot name — so every save from the older one silently deletes the
+newer one's data. Sharing a profile between the installed app and a dev build of
+the remote-hosts branch erased the registered SSH hosts and every project living
+on one, over and over, and each time it looked like the app losing its own
+settings.
+
+Consequences worth knowing:
+
+- Your dev build starts **empty** — no projects, no hosts. That is the point;
+  add what the change you are testing needs.
+- Restored tabs are the dev profile's own, so launching it no longer relaunches
+  the agents of your everyday session (which, for an agent that resumes a live
+  conversation, means two of them writing to it).
+- Two *dev* builds still share `…-dev`. Give one its own with
+  `UXNAN_DATA_DIR=<absolute path>` (the same override the resource benchmarks
+  use for a disposable profile).
+- To start a dev build from a copy of your real profile, copy the directory once
+  — never point `UXNAN_DATA_DIR` at the installed app's own folder.
+
 The Projects sidebar performs a lightweight worktree reconciliation every 3
 seconds while the shell is mounted. This also discovers worktrees created by an
 agent CLI or another Git process; the manual refresh button remains available

@@ -61,6 +61,7 @@
   import ThemeSettings from "./ThemeSettings.svelte";
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import OpenWithSettings from "./OpenWithSettings.svelte";
+  import HostsSettings from "$lib/components/HostsSettings.svelte";
   import GitSettings from "./GitSettings.svelte";
   import GithubSettings from "./GithubSettings.svelte";
   import PetsSettings from "./PetsSettings.svelte";
@@ -88,6 +89,7 @@
   import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
   import LanguagesIcon from "@hugeicons/core-free-icons/LanguageSkillIcon";
   import ComputerActivityIcon from "@hugeicons/core-free-icons/ComputerActivityIcon";
+  import ServerStackIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
@@ -781,6 +783,7 @@
         { id: "git", key: "settings.git", icon: GitBranchIcon },
         { id: "github", key: "settings.github", icon: GithubIcon },
         { id: "openWith", key: "settings.openWith", icon: AppWindowIcon },
+        { id: "hosts", key: "settings.hosts", icon: ServerStackIcon },
       ],
     },
     {
@@ -1692,6 +1695,8 @@
           <GitSettings />
         {:else if app.settingsSection === "github"}
           <GithubSettings />
+        {:else if app.settingsSection === "hosts"}
+          <HostsSettings />
         {:else if app.settingsSection === "resources"}
           <div class="flex flex-col gap-10">
             <ResourceModeSection />

@@ -9,6 +9,8 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import * as HoverCard from "$lib/components/ui/hover-card";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
+  import { app } from "$lib/state/app.svelte";
+  import { isLocalTarget } from "$lib/target";
   import { unread } from "$lib/state/unread.svelte";
   import { github } from "$lib/state/github.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
@@ -64,7 +66,20 @@
   } = $props();
 
   const active = $derived(projects.activeWorktreePath === row.path);
-  const label = $derived(row.branch ?? i18n.t("worktree.detached"));
+  /** This workspace's key — the pair (machine, path). Terminals are filed under
+   *  it, so a project on a host keys its shells separately from a folder of the
+   *  same name here. */
+  const wsKey = $derived(projects.workspaceFor(row.path));
+  /** Whether this row's project lives on another machine — where git is not read
+   *  read on the machine it lives on, and may not have been readable at all. */
+  const remote = $derived(!isLocalTarget(app.repos.find((r) => r.id === row.repoId)?.target));
+  // A branch when git said so — and on a host git *is* asked now, on that
+  // machine. The remote wording therefore only appears when it could not answer
+  // (no git there, not a repository, a shell that could not be named), where
+  // "(detached)" would be a claim about a repository nobody read.
+  const label = $derived(
+    row.branch ?? i18n.t(remote ? "remote.branchNotRead" : "worktree.detached"),
+  );
   // The cached GitHub PR for this worktree's branch (for the sidebar-card badge),
   // colored by its CI checks. Cheap: read from the store's per-path cache.
   const prBadge = $derived(github.contextFor(row.path)?.pr ?? null);
@@ -111,24 +126,24 @@
   // Live-space indicator: how many terminals this worktree's workspace holds
   // (0 hides the chip — an empty space needs no marker), and whether the whole
   // workspace is asleep (dimmed moon variant).
-  const termCount = $derived(terminals.terminalCount(row.path));
-  const wsAsleep = $derived(terminals.isWorkspaceAsleep(row.path));
+  const termCount = $derived(terminals.terminalCount(wsKey));
+  const wsAsleep = $derived(terminals.isWorkspaceAsleep(wsKey));
 
   // Sleep with a working agent inside requires an explicit confirm; the dialog
   // opens a macrotask after the menu closes (the menu→dialog body-lock race).
   let sleepConfirmOpen = $state(false);
   let sleepAgents = $state<string[]>([]);
   function requestSleep() {
-    const blockers = terminals.sleepBlockers(row.path);
+    const blockers = terminals.sleepBlockers(wsKey);
     if (blockers.length === 0) {
-      void terminals.sleepWorkspace(row.path);
+      void terminals.sleepWorkspace(wsKey);
       return;
     }
     sleepAgents = blockers;
     setTimeout(() => (sleepConfirmOpen = true), 0);
   }
 
-  const agentTabs = $derived(terminals.agentTabs(row.path));
+  const agentTabs = $derived(terminals.agentTabs(wsKey));
 
   // Aggregate agent status for the leading indicator: a working agent wins, else
   // the first one; null when the worktree has no agents (show the branch icon).
@@ -162,7 +177,7 @@
     // Swallow the click a just-finished drag would otherwise fire.
     if (drag?.consumeClick()) return;
     projects.setActiveWorktree(row.path);
-    if (terminals.terminalCount(row.path) === 0) projects.openTerminalAt(row.path);
+    if (terminals.terminalCount(wsKey) === 0) projects.openTerminalAt(row.path);
   }
 
   // The stable per-branch icon key (branch name, or path when detached) + the
@@ -334,8 +349,14 @@
                 {/if}
               </span>
               <div class="min-w-0 flex-1">
+                <!-- The name takes the free width so the indicators after it —
+                     completion, pin, unread, terminals, git status, PR — end at
+                     the row's right edge rather than trailing the text into the
+                     middle of the panel. A worktree row has no hover actions to
+                     make room for, so that edge is theirs; the project header,
+                     which does have them, keeps its indicators beside the name. -->
                 <div class="flex items-center gap-1.5">
-                  <span class={cn("truncate", text.body, active && "font-medium")}>{label}</span>
+                  <span class={cn("min-w-0 flex-1 truncate", text.body, active && "font-medium")}>{label}</span>
                   <!-- The verdict, stated once and quietly. Only `done` and
                        `abandoned` earn a chip: they are the two uxnan can defend. -->
                   {#if completion === "done"}
@@ -500,7 +521,7 @@
   description={i18n.t("workspace.sleepBlockedDesc", { agents: sleepAgents.join(", ") })}
   confirmLabel={i18n.t("workspace.sleepAnyway")}
   onconfirm={async () => {
-    await terminals.sleepWorkspace(row.path);
+    await terminals.sleepWorkspace(wsKey);
     return true;
   }}
 />

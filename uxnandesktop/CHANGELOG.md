@@ -25,6 +25,776 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   terminal handed that terminal's identity to every agent CLI it spawned — and
   is fixed in the same change (`bridge/CHANGELOG.md`).
 
+### Fixed
+
+- **Running out of channels now says what is holding them.** The first wording
+  asserted the host's configuration ("this host allows N") when what is actually
+  known is that it refused *at* N — a channel we closed is released on that
+  machine's own schedule, so the two differ. Worse, it said "close a terminal"
+  without saying what else takes one, which cannot be worked out from the
+  interface: a user looking at two tabs has no way to know that the file panel
+  holds a channel and every command holds one while it runs. It now says what is
+  open, what takes one, and the three ways out — close a terminal, disconnect
+  and reconnect the host, or raise `MaxSessions` there.
+
+- **Discarding a change on a host now updates the file you have open.** The
+  panel was right and the editor was stale: the change came back the moment the
+  tab was closed and reopened. Locally the backend watcher sees the file being
+  rewritten and every tab reloads — a host has no watcher, so nothing said
+  anything. It does not need one for this: the app made the change and knows
+  exactly what it did, so it now says so directly (after a discard, a discarded
+  hunk and a pull — not after staging, which moves the index and not the file).
+  A tab with unsaved edits is flagged rather than overwritten, as it already was.
+  What still needs asking is a change made on the host by something *else* — an
+  agent working in that folder, a `git` command in a terminal there — which is
+  the no-watcher decision, stated in the panel.
+
+- **Staging, discarding and the line counts worked on Linux hosts and silently
+  did not on Windows ones.** The review answer is read between markers, and the
+  marker's *line* was not being dropped — only its newlines. `cmd` separates
+  statements with `&`, so `echo __UXNAN_GIT_SEP__ & git …` echoes the marker
+  **plus the space in front of the `&`**, and that space glued itself to the
+  first status record. The panel then asked the host to stage `M AGENTS.md`,
+  which is not a file, and git said so; the same slip made the per-file line
+  counts stop matching their rows, since those are keyed by path. One cause,
+  four symptoms. The marker's whole line is now dropped whatever the shell left
+  on it, with a regression test shaped exactly like a `cmd` answer — the Linux
+  container had been green for days, because `sh` does not keep that space.
+
+- **The first changed file no longer collides with "Stage all".** The list
+  positions rows by a number it is given, and both row kinds are taller than the
+  number they had: a section header is 48px (a `size="sm"` button inside a
+  padded row) and a file row 44px, against an estimate of 36 — so every row
+  overlapped the one above, the header worst. The heights were **measured**
+  against the app's own stylesheet rather than assumed, and the list is now told
+  each kind's real height.
+
+- **"Waiting for this host to connect" no longer appears over a local project.**
+  The panels were reading two independent facts: the **path** from the selected
+  project, and the **machine** from the focused terminal workspace. Focus a
+  terminal that lives on a host while a local project is selected and those
+  disagree, so the file tree — and, once they landed, Changes and History — asked
+  a host about a path on this machine. With the host down that showed a message
+  the user could do nothing about; with the host up it would have been a listing
+  or a review of the wrong machine, which is the failure that looks like success.
+  The panels now take the machine the **path itself** is registered on
+  (`projects.activeReviewTarget`), and the workspace only answers when it is
+  about that same path — the one case a path alone cannot resolve, the same
+  absolute path registered on two machines. The message is also ruled out
+  structurally: a local worktree has no host to wait for, whatever a failure
+  claims. A second cause had the same symptom and is fixed too: the flag
+  survived being pointed at another project — the reset cleared the error and
+  everything else, but not this — so a host that had been down left its line
+  above a local project's folders, which had listed perfectly well. It now
+  clears when the tree changes root and whenever a listing succeeds.
+
+- **A disconnected host's file tree stops pretending.** Disconnect a host and the
+  Files panel kept showing that machine's folders — no message, no hint, a tree
+  that was quietly a memory: a folder already loaded is never listed again, so
+  nothing ever noticed the session had gone. It now goes back to the same
+  "waiting for this host" state a cold start has, and fills itself in again when
+  the host returns. Handled where the whole live set is known, so a session that
+  ends on its own is caught by the same path as one the user closed.
+
+- **uxnan no longer names a shell for your host.** A terminal already asked the
+  host's `sshd` for *a* shell and let that machine choose — but one thing still
+  named one: the probe that asks what a host has installed ran `powershell`,
+  which is Windows PowerShell **5.1**. On a machine whose owner had installed
+  PowerShell 7, that started an older engine inside the one already running. Now
+  a host whose shell *is* PowerShell runs the script **in that PowerShell**,
+  whichever version it is, with no interpreter named at all; only a cmd host
+  needs one named, and there `pwsh` is asked for first with 5.1 as the fallback.
+  The probe also takes the shell the host reported when it connected instead of
+  trying POSIX and falling back, so a Windows host stops paying for a failed
+  command before the real one — about two seconds per connection.
+
+- **Browsing a host's folders is no longer slow.** The picker asked the host's
+  *shell* to list a directory — and tried POSIX first, so a Windows host paid for
+  **two** remote commands per click, each one starting a shell and its profile
+  over there. It now goes the same way the file tree already did, over SFTP: the
+  same listing measured **6.6 ms** instead of 336 ms against this machine's own
+  `sshd`, and on a real host across a tailnet each of those commands had been
+  measured at 2.1 s. The repository badge survives the move because the `.git`
+  checks **pipeline on the one open channel** — 63 folders cost 3.3 ms asked
+  together against 44 ms one after another — and they use no extra channels, so
+  browsing no longer eats into the host's session limit either.
+
+  Two things only running it could show: a Windows host answers SFTP's
+  `realpath(".")` with `/C:/Users/you`, which is unusable as a project path and
+  is now corrected; and the badge is decided by `.git` **existing**, because in a
+  worktree it is a file rather than a folder — asserted against a real worktree.
+  One trade-off, stated rather than hidden: a host with the `sftp` subsystem
+  disabled can no longer be browsed. The file tree already required it.
+
+- **A project on a host no longer wears a "folder is missing" warning.** The
+  check ran `is_dir` on *this* machine against the other machine's path, so a
+  perfectly healthy remote project was marked as gone — while its neighbour on a
+  second host escaped only because that host happened to be this same PC, which
+  made the warning look selective rather than wrong. This machine's filesystem
+  cannot answer for another one, so it no longer tries; asking the host itself is
+  recorded as the follow-up.
+
+- **Project cards can be dragged again.** Their identity region — the icon and
+  the name, which is the whole card — is a button so the keyboard can reach it,
+  and the reorder gesture refuses to start on a control, so pressing anywhere a
+  user would press did nothing. (The worktree rows underneath dragged fine,
+  which is what made it look like the cards had lost the feature.) A control that
+  *is* its row can now be marked as that row's drag handle; a row's action
+  buttons still stay buttons.
+
+- **Adding a second host no longer freezes the app.** Connecting one while
+  another was busy left Settings spinning, and removing it spun too. The cause
+  was not SSH being slow: the registry of live sessions was held **across** the
+  network by nearly every remote call, and it is a fair lock — so the write a
+  connect needs queued behind whatever call was mid-round-trip, and every later
+  read queued behind that write. One ~2s remote command was enough to stall the
+  connected list, the git panels, the file tree and the Settings dialog at once.
+  Callers now take their connection and release the lock before they say a word
+  to the host, which a live test holds them to. A remote command also cannot run
+  forever any more: a host that stops answering fails after 60 seconds with a
+  message saying so, instead of leaving whatever asked waiting for good.
+
+- **A host is only reconnected at startup when reaching it asks nothing.** The
+  first version of this trusted "did not need a password last time" — which a
+  host registered five seconds ago also reports, because that mark is only
+  written once a host has been connected. Reaching one whose key is not on file
+  can only end in the trust prompt, so the app would have raised it by itself
+  while still opening. The backend now decides, and it checks both halves.
+
+- **A host is no longer dropped for being quiet.** An SSH connection carries
+  nothing while a shell sits at its prompt, so a host nobody had typed at was
+  reaped after five minutes of silence — and a host that had really gone away
+  took those same five minutes to be noticed, with its terminals looking alive
+  against a machine that was not there. uxnan now asks every 30 seconds and
+  gives up after three unanswered asks, which is where mature SSH clients land
+  (OpenSSH ships this **off**; the guidance for editors holding long sessions is
+  30–60s with 3–5 misses). It also keeps a NAT or firewall from closing an idle
+  connection. Proven by a test that idles longer than the old timeout and then
+  uses the connection.
+
+- **A dialog's action band no longer hangs past the dialog.** The content area
+  is a grid whose single track grows to the widest thing in it — and that is the
+  row of buttons, so the unsaved-changes prompt's three Spanish labels (370px)
+  stretched the band to 410px inside a 384px dialog, leaving 26px of grey
+  sticking out past the rounded corner. The band is now allowed to be narrower
+  than its own buttons, in the shared token rather than at one call site, so
+  every dialog in the app is covered by the same fix. That prompt also moves to
+  the medium width: three actions need 370px and the confirmation width offers
+  344. Measured in a browser against the built stylesheet — reading the CSS gave
+  the wrong answer twice.
+
+- **Three dialogs stop printing their title against the top edge.** Remove
+  worktree, close-several-worktrees and import-pets opened with a plain row
+  instead of `Dialog.Header`, and the dialog's top inset lives in that header —
+  so they had no top padding at all. The pets dialog also had its buttons in a
+  bare row rather than the shared footer, which is why it had no bottom padding
+  either; both ends are now the same as every other dialog.
+
+### Added
+
+- **A host that drops comes back on its own.** Only the ones that can: the same
+  rule startup uses — no password, no passphrase, a key already on file — so the
+  app never raises a credential dialog at someone who walked away from the
+  machine. It tries at 2s, 5s, 15s, 30s and 60s and then stops, because a client
+  that dials forever fills a log and looks broken.
+
+  It also stops the moment trying again cannot help, which needed the failure to
+  be **typed**: "did not answer" (asleep, off the network), "no such address",
+  "refused" (nothing listening — a machine still booting looks exactly like
+  this) and "the handshake did not complete" lead to different actions, and one
+  failure string made them indistinguishable. A name that does not resolve is
+  never retried; anything that needs a person — a password, a passphrase, a host
+  key that changed — is never retried in the background either. The connect
+  dialog now shows that sentence, which names the machine and the port, instead
+  of one blanket "could not connect".
+
+- **Settings → Hosts says when a machine has no git.** Without it there is no
+  branch, no review, no history and no search on that host, and until now the
+  panels just stayed empty. What a machine *lacks* is deliberately one line and
+  not a list: the catalogue knows 31 agents and a host has a handful, so listing
+  the rest would be 25 rows of noise.
+
+- **The last two panel pieces work on a host: image diffs and the AI commit
+  draft.** An image diff was not a git problem but a transport one — `exec`
+  turned stdout into text with a lossy conversion, which is right for everything
+  that *is* text and destroys a PNG. That conversion was ours, not the channel's,
+  so there is now a read that skips it: the committed side comes from `git show`
+  with its bytes intact and the working-tree side over SFTP. The alternative was
+  asking the host to base64 it, which needs a different tool on every OS and a
+  shell redirect whose encoding differs per shell; this needs nothing installed
+  and no syntax at all. Verified against a real host with bytes that are *not*
+  valid UTF-8, compared byte for byte.
+
+  The AI draft reads the diff **there** and runs the agent **here**, because the
+  CLI and its sign-in are this machine's and requiring an agent on every host
+  would put the feature behind an install nobody asked for.
+
+- **Running out of channels on a host now says what the limit is.** Everything
+  on a connection is a channel — every terminal, the file session, each command
+  while it runs — and a host caps how many it will carry at once. Past that cap
+  the next terminal failed with a library error that read as "it broke".
+
+  The cap is **not assumed**: OpenSSH's `MaxSessions` defaults to 10, but it is
+  a per-host setting and plenty of machines change it, so hard-coding ten would
+  be this app deciding what someone else's `sshd` is configured to do. Channels
+  are counted, and the limit is *learned* from the first refusal — after that,
+  the message names the number that host actually enforces and where to change
+  it. A command queues briefly for a free slot rather than failing while another
+  one finishes; a terminal or a file session, which hold their channel for as
+  long as they live, are told straight away instead of spinning on a slot that
+  is not coming.
+
+  Measured against a real host rather than reasoned about, which caught two
+  things: the refusal count was one too high (it would have told the user to
+  raise a setting to the value it already had), and a host releases a closed
+  channel *asynchronously* — a refusal in that instant was being recorded as
+  "this host allows 1 channel", which would have crippled the connection for the
+  rest of its life.
+
+- **A host that goes away says so, instead of waiting to be asked.** Everything
+  about a dropped session was already right *when asked* — the keepalive notices
+  a dead host in about two minutes, a listing opens a new channel, a connection
+  that has ended stops counting as connected — but with nothing asking, a host
+  that dropped while its panel was open kept looking connected until the user
+  clicked something, and the click was how they found out. The backend now emits
+  `ssh:session-ended` and the app re-reads which hosts are live, so the panels,
+  the badges and the save button all stand down on their own. The event says
+  *that* something changed rather than what is live now: the live set is read
+  from the one place that knows it, so the two can never disagree. A watcher only
+  ever cleans up its own incarnation, so a reconnect cannot be undone by the
+  watcher of the session it replaced.
+
+- **A host's project can be searched — by file name and by content.** The search
+  box was hidden for a remote project because both searches walk *this*
+  filesystem; pointed at a host they would have answered "no matches", which is
+  a lie nobody can tell from an empty result.
+
+  It asks **git on that machine** rather than walking it: `git ls-files` for the
+  names and `git grep` for the lines. SFTP has no "find", so searching over it
+  would mean listing every folder and reading every file one request at a time,
+  across a network — thousands of round trips per keystroke. The mature remote
+  clients solve this by installing a server carrying `ripgrep`; we decided
+  against a host-side helper, and requiring `rg` would put the feature behind
+  something most machines do not have. Git is already there — the branch, the
+  review and the history all run it on the host — and it brings the right
+  semantics for free: `ls-files` lists exactly what the local search walks
+  (tracked and untracked, `.gitignore` respected), so the two machines answer
+  about the same project. Matching lines come back; the files never do.
+
+  The highlight offsets are computed on this side, with the **same regex the
+  local search builds**, because `git grep` reports lines and not columns — so
+  "what counts as a match" has one definition in the app instead of two. Case
+  sensitivity, whole word and regex all carry through, "find in folder" scopes
+  to that folder, and a folder that is not a repository on the host says so
+  instead of answering nothing.
+
+- **A host's file tree can be changed, not just read.** New file, new folder,
+  rename, duplicate and delete all run on the machine the tree is of, over SFTP —
+  so they behave the same whatever shell that host starts and need nothing
+  installed there. Names are validated by the same rules as locally (a name that
+  could escape its folder never reaches the host), and "must not already exist"
+  is the *server's* own check rather than a look-then-create that would race the
+  agent working in that folder. Every one of them carries the machine and
+  connection it was prepared for, and a host that dropped can still be read but
+  not changed — those actions stand down instead of failing.
+
+  **Deleting on a host is permanent, and the dialog says so.** The local delete
+  moves an entry to the OS trash and can be undone; SSH has no trash, and
+  inventing a hidden one on someone else's machine would be a folder we create,
+  never empty and never mention. Same button, different promise — and the
+  promise is what the user is agreeing to.
+
+  This also closes a hole rather than only adding a feature: those menu items
+  were never gated, so on a host's tree they called *this* machine's filesystem
+  with that machine's path. Usually it just failed — but a Windows host's
+  `C:/Users/…` path can exist here too, and then a rename or a delete would have
+  hit the wrong file on the wrong computer. The actions only this machine can
+  carry out (reveal in the file manager, open with a local editor, search,
+  register as a local project) are no longer offered for a host's entry.
+
+- **Changes and History now work for a project that lives on another machine.**
+  Both tabs used to stand down with a notice, because the diff, the index and the
+  log were read through this machine's git. They now run git **on the host**,
+  through the shell that machine reported, with every argument quoted for it: the
+  changed-file list, per-file and per-hunk diffs, staging, discarding, committing,
+  the log, a commit's patch, and fetch/push/pull — the last three with that
+  machine's own credentials, since the project lives there. Everything the panel
+  draws arrives in **one** command, because each remote command costs a shell
+  start on someone else's computer, and your commit message and any patch travel
+  over SFTP rather than through that shell, so a multi-line message with quotes
+  in it arrives exactly as you typed it. Anything that changes the host names the
+  machine and connection it was prepared for and is refused if either has moved
+  on — the same absolute path usually exists on both machines, so a misrouted
+  discard is the failure that would look like success. The editor's change gutter
+  is routed the same way. A remote project has no watcher on purpose (3-second
+  polling against a machine where one command costs ~2s), so the refresh control
+  *is* the update and its tooltip says so; a host that has not connected yet
+  reads as *waiting* rather than as an error, and both panels fill in when it
+  comes up and stop offering actions when it goes away. Two pieces stay this
+  machine's and are now absent rather than broken: the AI commit draft and image
+  diffs, both of which read local git. Verified against a real Linux host, which
+  is also what caught the one real bug here — trimming git's porcelain output as
+  whitespace ate the leading space of an unstaged status, so every path arrived a
+  character short and the panel listed `EADME.md`. GitHub keeps its notice: it
+  reads this machine's repository and its `gh` sign-in.
+
+- **The remote-hosts feature is now tested against a real Linux host.** Every
+  live SSH test until now talked to the `sshd` of the machine running it — which
+  has always been Windows — so the POSIX half of the remote layer had never
+  actually executed: the shell classification, the inventory's `sh -lc` script,
+  the git script's sequencing, SFTP paths rooted at `/`. "Works on any OS" was a
+  claim with nothing behind it. `npm run test:ssh:linux` now builds a small
+  Debian container with `sshd`, `git` and a repository to read, and walks the
+  whole stack on it: password authentication, shell classification, inventory,
+  SFTP (list, read, save, shorten), the folder picker with its repository badge,
+  and remote `git status` including the no-upstream case. CI runs it whenever the
+  SSH layer or the fixture changes. Still uncovered, and said out loud: a macOS
+  host, and a Windows machine as the *remote* end.
+
+- **Settings → Hosts shows what a machine has, as logos.** The agents a host
+  reported used to be a comma-joined list of names under its address; that row
+  fits about three before truncating, and a truncated list reads as "this host
+  has three agents". They are now brand logos — the same strip the sidebar uses
+  for running agents, `+N` and all — and clicking them opens the full picture:
+  every agent, **the version that machine reported**, the OS and the multiplexer.
+  The versions were being read all along and shown nowhere. A command the
+  catalog does not know still appears under its own name, because it is installed
+  there and dropping it would under-report the host.
+
+- **A file on a host can be saved.** The editor writes it back over SFTP, so it
+  works whatever shell that machine runs and needs nothing installed there. It
+  writes **in place** rather than to a temp file that is renamed over the
+  original, and that is not a shortcut: measured against a real `sshd`, renaming
+  onto a path that already exists is *refused* by SFTP v3 — the atomic-overwrite
+  rename is an OpenSSH extension the client library does not implement — so the
+  usual strategy would fail on every save after the first. Its fallback (delete,
+  then rename) trades a truncated file for a missing one, which is the worse
+  loss: after a bad write the editor still holds your text, after a bad delete
+  nobody does. Writing in place also keeps the file's permissions, owner and
+  hard links, which a temp file silently replaces with its own.
+
+  Two guards come with it. The save is **fenced**: it names the machine and the
+  connection it was prepared for, and the backend refuses it before opening the
+  file when that no longer matches — the same absolute path usually exists on
+  both machines, so a misrouted save is the one that looks like success. And
+  after writing, the host is asked how big the file ended up: a save that stored
+  fewer bytes than were sent is reported instead of leaving the editor showing
+  text the host does not have. Saving is refused, with the host named, while
+  that host is disconnected.
+
+- **Hosts come back on their own at startup.** A host that let uxnan in without
+  asking for anything is reconnected when the app starts, so a project on it has
+  its files, its branch and its terminal without opening Settings first. A host
+  that asked for a password or a passphrase last time is deliberately left for
+  the user to connect: a stack of credential prompts at launch is not a greeting.
+
+- **A project can live on another machine.** A connected host offers *Add
+  project*: walk its folders from its own home, and the folder you are in becomes
+  a project. It appears in the left panel like any other, with a small badge
+  naming the machine it lives on — only on projects that are *not* on this one,
+  because a badge on every card is noise on the 90% that are local, and its
+  absence is already the answer.
+
+- **Folders on a host can be browsed, and one can become a project.** There is no
+  filesystem to walk on another machine, only a shell, so the host is asked to
+  enumerate a directory and the answer is parsed — one command with delimited
+  output, for the same reason as the inventory. Only directories come back: a
+  project is a folder, and shipping thousands of files nobody can pick is bytes
+  spent on noise. A listing that had to be cut says so, because a picker quietly
+  showing 500 of 3,000 folders is one that cannot find yours and will not admit
+  it. Whether the folder is a git repository is asked of the host too — only it
+  can answer, and guessing wrong would leave a real repository with permanently
+  empty git panels.
+
+- **Selecting a host's project now means that machine, everywhere.** Clicking one
+  opened a terminal *here*, in this PC's home, and filled the right panel with an
+  i/o error and a branch of "(detached)" — every layer had been handed a path
+  with no machine attached to it. A workspace is now keyed by the pair (machine,
+  folder), and a terminal takes its machine from the workspace it opens in, so
+  every entry point — the card, `+`, a split, a quick command, the launcher — is
+  right without each having to remember. The shell lands in the project's folder
+  on the host, where that folder exists.
+
+- **A project on a host says what it cannot show, instead of showing the wrong
+  thing.** Files, changes, history and GitHub are read with this machine's
+  filesystem and git; on a host they now stand down and the panel names the
+  machine the project lives on, offering the terminal that does work. Same for
+  the row: no branch is claimed, because none has been read — and the worst case
+  was never an empty panel but a folder of the same name *here* answering
+  confidently for someone else's repository. Reading git and files over SSH is a
+  later phase.
+
+- **A worktree row's indicators end at the panel's right edge.** Completion, pin,
+  unread, terminals, git status and PR trailed the branch name into the middle of
+  the row. A worktree row has no hover actions competing for that edge — unlike
+  the project header, whose indicators stay beside its name so the actions still
+  have their place — so the name now takes the free width and the indicators sit
+  where the eye looks for them, at any panel width.
+
+- **A debug build no longer shares its data with the installed app.** It writes
+  to a `…-dev` profile beside the real one. They are the same product but not
+  the same code, and serde drops fields it cannot name — so every save from the
+  older build silently deleted the newer one's data. Running the installed app
+  alongside a dev build of this branch erased the registered hosts and every
+  project living on one, repeatedly, and each time it read as the app losing its
+  own settings. A dev build now starts empty, and launching it no longer
+  relaunches the agents of your everyday session.
+
+- **A file on a host opens without a git error, and cannot be half-saved.**
+  Opening one showed an empty "Changes" view and raised `git error: cannot change
+  to …` over it, because the editor asked *this* machine's git about a path on
+  another. The Changes view is no longer offered for a remote file (there is no
+  remote diff yet) and no local git is run for it. Saving is refused outright and
+  says why: writing went through the local filesystem, which for a host's path
+  either fails or — the reason this is a guard and not a `catch` — writes a file
+  of that name **here** while the editor reports success. Writing over SFTP is
+  next.
+
+- **A file tree waits for its host instead of showing an error.** Open the app
+  before connecting and the panel said "connect to this host before reading its
+  files" and kept saying it until you switched projects and back — nothing
+  retried, because the failed root never entered the loaded set. It now says it
+  is waiting, and fills itself in the moment that host connects.
+
+- **A terminal that could not reach its host starts when the host connects.** It
+  writes the reason into the pane and stays — deliberately, so the reason can be
+  read — but once the host was up that pane held an explanation of a condition
+  that had passed, and the only way out was to close it and open another. It now
+  restarts itself, like the file tree beside it. Only terminals that *failed to
+  start* are touched: one the user closed, or whose shell exited on its own, is
+  left exactly as it is.
+
+- **The file panel survives the host ending its file channel.** A connection
+  carries one channel per terminal and one for files; when the host ended the
+  file one, every folder answered `could not list … : session closed` — for good,
+  and next to terminals on the same host that were perfectly fine, because that
+  session was cached and never questioned. It is now replaced the next time it is
+  used, and the app knows it is gone by watching the channel itself rather than
+  by reading the error: measured against a real `sshd`, the request in flight
+  when a session dies is not refused, it is simply never answered and comes back
+  ten seconds later as a plain timeout — which reads as "slow host" and would
+  have left the panel just as broken. What the *host* answers — no such path, no
+  permission — is still reported at once, unretried. And a tree that could not be
+  read no longer adds "This folder is empty." underneath the reason: nobody
+  looked in that folder.
+
+- **A connection that has ended stops claiming to be connected.** Connect
+  returned "already connected" for a session whose transport was gone, so a host
+  could sit there looking connected while nothing on it worked and pressing
+  Connect changed nothing. A dead session is now let go — with the shell and the
+  file session that belonged to it — and the host is reached again.
+
+- **A host's project shows its real branch and how dirty it is.** Git has to be
+  *run*, so this one does go through the host's shell — the one it reported when
+  it connected, with every argument quoted for it. Branch, change count and
+  upstream distance come from git on that machine, in one command with delimited
+  output. When the host cannot answer — not a repository, no git installed, a
+  shell that could not be named — the badges are left alone rather than showing
+  zeroes, because "no changes" and "not read" are different answers. (Two things
+  only a live test could find: chaining with `&&` let a branch without an
+  upstream swallow the rest of the reply, and the distance line can be missing
+  entirely.)
+
+- **A project on a host now has its files.** The Files tab lists and opens them
+  over **SFTP** — an SSH subsystem, so the same code path serves a host running
+  cmd, PowerShell, WSL or Git Bash, and nothing has to be installed there. It is
+  the same tree and the same editor as for a local project, because the host
+  answers in the local layer's own shapes. What it does not do is said rather
+  than faked: no git-ignored dimming (only git can answer that), no search (it
+  walks *this* filesystem, so it would answer "no matches" to everything — the
+  action is not offered instead of offered broken), no automatic refresh, and no
+  writing yet. Changes, History and GitHub still stand down on a host and say so.
+
+- **An agent launched on a host is quoted for that host's shell.** The command
+  line is typed into a shell, and which shell it is decided the quoting — but the
+  code asked *this* machine (`currentOS()`), so a Windows desktop driving a POSIX
+  host produced cmd-style quotes and any argument with a space or a quote landed
+  in a dead pane. The machine's own answer, taken when it connected, decides now;
+  an unrecognisable one falls back to what that host's inventory says it runs
+  rather than to a default. A remote tab also stops recording a local shell it
+  never used.
+
+- **The launcher offers the agents the host actually has.** The configured list
+  describes this machine, and a host has its own CLIs — which is the reason for
+  running the work there. A host that has reported its inventory now filters the
+  list; one that has not been asked yet changes nothing, because absence of an
+  inventory is not absence of agents.
+
+- **Closing one terminal no longer closes its neighbour.** Two terminals in a
+  workspace, close one, both disappear — while the survivor's shell went on
+  running on the far machine, which is what made it look like the backend
+  closing two. It was a race between two paths reacting to the same close: the
+  exit event a close produces arrived while the tab was still in the tree, and
+  the path that handled it decided from a tab count read *before* its own
+  awaits. By then the other path had removed the closed tab, so the count said
+  one, and it deleted the whole **region** — and a workspace with no regions
+  renders nothing. Removal now happens before the backend round trip, and the
+  event path only ever removes a region when removing *its own* tab is what
+  empties it. Reproduced in a test first: it fails without the fix.
+
+- **uxnan asks a host which shell it runs, instead of assuming one.** A terminal
+  is placed in its project's folder by typing a `cd`, and the families share no
+  syntax: the first version sent cmd syntax, so a machine whose sshd starts
+  PowerShell answered with a parameter error and closed the channel a second
+  later — every project terminal there opened and died. Guessing better was not
+  the fix either, because the same person switches between cmd, PowerShell, WSL
+  and Git Bash on the same machine, as they should be able to. A single probe now
+  identifies the family from its own reply, once per connection, and the `cd` is
+  written in that shell's own form. A reply we cannot recognise types **nothing**:
+  a terminal that opens in the home directory is a small loss, one that dies is a
+  broken feature. Every family's reply was measured in cmd, Windows PowerShell
+  5.1, pwsh 7, Git Bash and WSL, and each is a test.
+
+- **An agent launched on a host stops leaving uxnan's session id in its TUI.**
+  The launch command is typed into the shell, and an SSH channel opens seconds
+  before the remote shell has finished starting — so the front of the command
+  was eaten and the tail, session id included, arrived inside the agent's own
+  input box. A terminal on a host is now given until it has actually said
+  something (and a wider quiet window once it has), while a shell that stays
+  silent is still typed into rather than left dead.
+
+- **Paste-and-submit works on a host.** It had no remote branch while every
+  other PTY command had one, so it wrote to the local manager, which does not
+  know a remote id: the run engine, the orchestration broadcast and mid-turn
+  delivery each silently did nothing over SSH.
+
+- **A terminal remembers which machine it was on across a restart.** The saved
+  layout never carried it, so every remote tab came back as a local shell
+  holding another machine's path — and started here, in the home directory,
+  looking like the tab you left.
+
+- **Every option in the terminal area's `+` opens where the workspace is.** The
+  menu hands over the key of the workspace it is showing, and for a local project
+  a key and a path are the same string — so passing one where the other was
+  expected was invisible until a project on a host made them differ. Then no
+  project matched, the machine fell back to local and the cwd was a string no
+  filesystem has, which is why every entry in that menu — terminals, profiles,
+  agents — landed in this PC's home. Those entry points now take either form.
+
+- **A terminal that ends in a background workspace says so when it happens.** Its
+  pane is parked, so the exit was held and replayed the next time that tab was
+  adopted — which is to say, as you clicked something else. A tab that had been
+  dead for minutes then closed in the same breath as the one you actually closed,
+  which reads exactly like closing one tab closing two. The model now hears the
+  exit at once. Exits a *sleeping* workspace causes are still ignored: it closed
+  those PTYs on purpose, and acting on them would delete every asleep tab.
+
+- **`+` in the terminal area opens on the machine you are looking at.** The
+  Global space is the one place terminals from several machines share, so its
+  workspace names none: pressing `+` beside a terminal on a host opened a shell
+  on this PC, in this PC's home. A new terminal there now inherits the machine of
+  the active tab; inside a project, the project's own machine still decides. The
+  same rule covers a split.
+
+- **The machine of the active workspace is derived, never stored.** A second copy
+  of a fact the workspace key already carries is a second thing to keep in sync,
+  and that drift is how a panel ends up reading this filesystem for a project on
+  a host.
+
+- **Remote terminals record their lifecycle in the app's log.** Opened, closed,
+  and *why* one ended — uxnan closed it, the host ended the channel, or the
+  connection went away and took every terminal with it. Those three look
+  identical once the pane is gone, which is exactly the state a report of "one
+  tab closed and took the other with it" leaves you in. Ids and host ids only,
+  never a path or a byte of output; the interface logs its own side of the same
+  fork, so the record says which one decided.
+
+- **Browsing a host uses the picker you already know.** The host answers in the
+  local browser's own shape, so choosing a folder over there is the same surface
+  as choosing one here: address bar, ↑/↓ navigation, repository badges, a per-row
+  *Add*, `Ctrl`/`⌘`+`Enter` for the folder you are in. Which folders are
+  repositories now arrives *with* the listing — flagged by the host inside the
+  same command, so fifty folders cost one round trip instead of fifty. What is
+  genuinely different is said rather than faked: a host is not watched for
+  changes (the refresh button is the reload), and a cut listing still admits it.
+
+- **A folder on a Windows host lists correctly whatever its `sshd` launches.**
+  The PowerShell the app sends is interpreted first by the shell that host is
+  configured to start — `cmd`, `powershell`, `pwsh` — and each treats quotes and
+  backslashes differently, so hand-escaping worked on the machine it was written
+  against and produced garbage on the next one: a listing came back with a path
+  of a single backslash and no folders at all. Those scripts now travel
+  base64-encoded (`-EncodedCommand`), which contains no quotes, backslashes or
+  spaces for an outer shell to reinterpret. Hidden dot-folders are skipped there
+  too, matching what the local browser shows.
+
+- **A terminal only inherits a folder from its own machine.** Opening a terminal
+  on a host while a *local* project was the active workspace handed the remote
+  shell a local path; it tried to `cd` somewhere that does not exist there and
+  died at once — which looked like a terminal that flashed and refused to open.
+  A workspace knows which machine it belongs to, so its folder now seeds a
+  terminal only when both are on the same one. The same mistake in reverse (a
+  local terminal seeded with a remote path) is closed too, before there is
+  anything to trip over it.
+
+- **A host's terminal opens in the Global space**, not inside whichever project
+  happens to be selected. A terminal on another machine does not belong filed
+  under a local folder it has nothing to do with; when a project can live on a
+  host, it will open in that project instead.
+
+- **A settings change no longer deletes your hosts.** Settings travel as one
+  whole object, and the interface does not model the host list — so writing any
+  unrelated setting used to send an empty one and wipe every host *and* every
+  tombstone. Because the tombstones went too, re-adding the same machine minted
+  a fresh id that no live session matched, which is why a host could sit there
+  looking connected while opening a terminal on it failed. Fields the backend
+  owns are now carried over rather than taken from the payload.
+
+- **A terminal that could not start stays open.** It writes why into the pane —
+  and then used to close itself immediately, because a plain terminal that exits
+  is closed. The pane flashed and the reason went with it.
+
+- **Open a terminal on a host, from the host list.** A connected machine gets an
+  *Open terminal* button; the terminal opens in the main area like any other,
+  because it *is* one. Disconnecting a host now ends its terminals rather than
+  leaving them claiming to be alive — dropping the connection is not enough on
+  its own, since a channel waiting for output never learns its session went away.
+  A genuine network drop is still only noticed when the connection times out;
+  that gap is recorded rather than papered over.
+
+- **Terminals can live on another machine.** A remote terminal is one channel on
+  that host's existing connection carrying a PTY and a shell — no second
+  handshake, no second login. It is deliberately the *same shape* as a local one:
+  the same five commands, the same output and exit events, and the terminal UI
+  (xterm, splits, re-parenting on a pane move) cannot tell which kind it got. A
+  second terminal implementation the interface had to branch on would drift from
+  the first within a release. Two honest differences: closing ends the channel
+  rather than guaranteeing every descendant dies, and there is no local process,
+  so the process-detection layer of agent monitoring cannot see these — the
+  title/OSC layer works untouched, because it reads the byte stream.
+
+- **A host can say what it has.** Its OS, home, git, whether a terminal
+  multiplexer is there, and **which agent CLIs are installed on it, with their
+  versions** — which is what will let the launcher offer the agents that machine
+  actually has instead of the ones yours does. It is deliberately *one* command
+  with delimited output: a single remote command costs seconds because the host
+  starts a shell for each one, so ten facts in ten commands would be ten times
+  the wait. Reading only what sits between the markers also means a chatty (or
+  failing) remote shell profile cannot be mistaken for an answer.
+
+- **A host holds one live session, shared by everything that runs on it.**
+  Connecting authenticates once and keeps the connection; the terminal, the
+  inventory and git calls will each be a *channel* on it rather than another
+  handshake and another login. Connecting a host that is already connected
+  reports that instead of opening a second one. Every outcome has its own shape —
+  connected, unknown host key, changed key, needs a password, needs a passphrase,
+  refused — because each sends you somewhere different and "it failed" sends you
+  nowhere. Whether a host asked for anything interactive is remembered, so a
+  later startup can bring back the silent ones and leave the rest until you are
+  there to answer.
+
+- **Hosts can be registered, probed and trusted.** The command surface the
+  Settings UI will sit on: list, add (or update), remove, probe, trust. Adding a
+  host reports whether it *recovered* a machine you had removed — its projects
+  come back with it, and being told beats having them reappear unannounced.
+  Probing reaches the host, reports what `known_hosts` says about the key it
+  presents, and writes nothing; the key itself is held by the backend rather than
+  handed to the interface and back, so what gets recorded is exactly what the
+  server presented. Trusting appends to `known_hosts` — never rewrites it — and
+  is only possible right after an *unknown* probe: there is deliberately no way
+  to trust a key that **changed**.
+
+- **Removing a host no longer strands its projects.** A project stores only its
+  target id, so deleting a host used to leave every project on it pointing at an
+  id that would never exist again. Removal now remembers the machine, and
+  re-adding it **reuses the old id** — the projects come back with it, and
+  nothing else has to be rewritten, so there is no half-migrated state to get
+  wrong. A machine is recognised by your own `~/.ssh/config` alias first (an
+  address changes with the network, your name for the machine does not), else by
+  host + port + user, user included: two accounts on one machine are two
+  different homes. Re-importing your SSH config never overwrites a host you typed
+  by hand.
+
+- **Remote commands run as channels on one connection.** A single command
+  primitive (`exec`) that opens a channel, runs, and collects stdout and stderr
+  *separately* — a remote shell profile that prints noise, or fails outright as
+  they commonly do on Windows over a non-interactive session, must not corrupt
+  output the app is parsing. This is why the client is in-process rather than a
+  spawned `ssh` per call: each command is a channel, not a new handshake and a new
+  login. An exit code that never arrives stays `None` instead of being flattened
+  to zero, because "the channel closed without telling us" is information.
+
+- **You can connect with just a password.** No key to generate, nothing to
+  append to `authorized_keys` on the far machine — if the host accepts a
+  password, the app asks for one and connects. The exchange starts by asking the
+  server *what it accepts*, so the app offers keys only to hosts that take them
+  and, crucially, never reports "authentication failed" when the real answer is
+  "this machine wants a password and nobody asked you for one". A rejected key
+  followed by a password-capable host says both things at once: what was refused,
+  and what to try next.
+
+- **Authentication, in the order OpenSSH would use it.** The system's ssh-agent
+  first — it holds keys you have already unlocked, which is what keeps connecting
+  to several hosts from becoming several passphrase prompts — then the identity
+  files your SSH config actually points at. **No secret is stored by the app**: a
+  credential is a reference (the agent, or a path), and a passphrase lives in
+  memory for one attempt. An encrypted key stops the attempt asking for a
+  passphrase rather than reporting "authentication failed", because "wrong key"
+  and "I could not open your key" send you to different places. Key paths that do
+  not exist are dropped instead of attempted — OpenSSH lists its defaults whether
+  or not they are there, and trying each one would bury the real answer.
+
+- **The app can reach a host and decide whether to trust it.** The TCP
+  connection and the SSH handshake, with one rule that shapes everything else:
+  **an unverified host is never connected to, not even in order to ask.** When
+  `known_hosts` has nothing on file the handshake is refused and the app reports
+  the fingerprint for you to check; trusting is a separate, explicit act, after
+  which it connects again. Completing the connection first and asking afterwards
+  would mean a man-in-the-middle has already been talked to. Every connection
+  also carries a *generation*, which is what stops an operation prepared before a
+  reconnect from executing after one.
+
+- **Host-key verification, with no way to turn it off.** The rule set the app
+  will connect under: a key already in `known_hosts` connects, an unknown host
+  asks you first and nothing is written until you say yes, and a host whose key
+  *changed* is refused outright — the two are separate verdicts on purpose,
+  because "never seen this host" and "this host's key is not the one I have" are
+  not the same event. `@revoked` is refused and never offered for trust,
+  `@cert-authority` lines are skipped rather than misread as the host's own key,
+  and hashed entries (`HashKnownHosts yes`) are matched properly so a hashed
+  file does not make every host look new. There is no "ignore host key" mode,
+  not even behind a setting.
+
+- **The app can read your own SSH configuration.** It lists the `Host` aliases
+  in `~/.ssh/config` (following `Include`, globs included, surviving cycles, and
+  skipping wildcard patterns — `Host *` configures defaults, it is not a host)
+  and resolves one of them through **`ssh -G`** rather than interpreting the file
+  itself. OpenSSH's precedence rules are subtle enough that a hand-written parser
+  eventually connects somewhere your own `ssh` would not; `ssh -G` ships on all
+  three platforms and prints exactly what OpenSSH would use. Nothing connects
+  anywhere yet — this is the first step of remote hosts, and it is read-only.
+  See [`docs/remote-hosts.md`](docs/remote-hosts.md).
+
+- **Projects and worktrees now record which machine they live on.** Every repo
+  and worktree carries an execution target (`local` today), and workspaces are
+  keyed by the pair *(target, path)* rather than the path alone. Nothing changes
+  for the user yet — everything existing is local, and a local workspace key is
+  still the bare path — but a path stops being an identity the moment a second
+  machine can be registered: `/home/u/repo` names a different folder on each of
+  them, and the reconciler that heals path spellings would have merged two of
+  them into one workspace. It now refuses to re-point a workspace at a different
+  machine even when the paths match exactly.
+
+- **Mutations are fenced to the machine they were prepared for.** Creating and
+  removing a worktree carry the target (and its connection generation) the
+  caller was looking at, and the backend refuses the call — before any git
+  process starts — when that no longer matches, with an error naming both sides.
+  A call that carries no target can only ever act locally.
+
+### Changed
+
+- **Building from source now needs Rust 1.85** (was 1.77.2). The floor comes
+  from the SSH client the remote-hosts work uses; nothing consumed the old
+  value as a contract — every workflow builds on `stable`, `rust-toolchain.toml`
+  selects `stable`, there is no MSRV job and this crate is never published — so
+  holding it back would only have meant shipping an SSH/crypto stack eight minor
+  versions behind. `Cargo.lock` moves to format v4 as a consequence (cargo
+  1.78+).
+- Persistence schema is now **v2**: loading stamps `target: "local"` on every
+  stored repo and worktree, and a document written by a newer build is refused
+  rather than half-understood (an older build would otherwise ignore an unknown
+  target field and treat a remote project's path as one of its own).
+
 ## [0.0.43] - 20260815
 ### Added
 

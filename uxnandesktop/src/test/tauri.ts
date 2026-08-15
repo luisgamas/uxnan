@@ -99,10 +99,20 @@ export function installFakeBackend(commands: CommandTable = {}): FakeBackend {
     // hands us the callback as a "channel" object whose id we call back through.
     if (cmd === "plugin:event|listen") {
       const event = String(args.event ?? "");
-      const handler = args.handler as { onmessage?: (e: unknown) => void } | undefined;
+      // `listen()` sends the callback through `transformCallback`, which returns
+      // a **number** — an id in Tauri's own callback registry — not an object to
+      // call. Delivering used to reach for `handler.onmessage`, which is
+      // `undefined` here, so every `emit()` in a test was a no-op and the tests
+      // that used it passed without proving anything. Deliver the way the
+      // runtime does: through `runCallback`.
+      const callbackId = Number(args.handler);
       const id = nextListenerId++;
       if (!listeners.has(event)) listeners.set(event, new Map());
-      listeners.get(event)!.set(id, (e) => handler?.onmessage?.(e));
+      listeners.get(event)!.set(id, (e) => {
+        const internals = (globalThis as { __TAURI_INTERNALS__?: { runCallback?: (id: number, data: unknown) => void } })
+          .__TAURI_INTERNALS__;
+        internals?.runCallback?.(callbackId, e);
+      });
       calls.push({ command: cmd, args });
       return id;
     }

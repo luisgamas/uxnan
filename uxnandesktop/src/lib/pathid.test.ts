@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { canonicalFor, pathKey, reconcilePlan, samePath } from "./pathid";
+import {
+  canonicalFor,
+  keyTarget,
+  parseWorkspaceKey,
+  pathKey,
+  reconcilePlan,
+  samePath,
+  sameWorkspace,
+  workspaceKey,
+} from "./pathid";
 
 describe("pathKey / samePath", () => {
   it("treats separator spellings as the same folder", () => {
@@ -64,5 +73,78 @@ describe("reconcilePlan", () => {
     const plan = reconcilePlan(["C:/somewhere/else"], known);
     expect(plan.rekeys).toEqual([]);
     expect(plan.unknown).toEqual(["C:/somewhere/else"]);
+  });
+});
+
+describe("workspaceKey / parseWorkspaceKey", () => {
+  it("keeps a local key as the bare path, so nothing persisted changes", () => {
+    expect(workspaceKey("local", "C:/repo")).toBe("C:/repo");
+    expect(workspaceKey(undefined, "C:/repo")).toBe("C:/repo");
+    expect(workspaceKey(null, "/home/u/repo")).toBe("/home/u/repo");
+  });
+
+  it("prefixes a remote key with its target", () => {
+    expect(workspaceKey("ssh:h1", "/home/u/repo")).toBe("ssh:h1::/home/u/repo");
+  });
+
+  it("round-trips both forms", () => {
+    expect(parseWorkspaceKey("C:/repo")).toEqual({ target: "local", path: "C:/repo" });
+    expect(parseWorkspaceKey("ssh:h1::/home/u/repo")).toEqual({
+      target: "ssh:h1",
+      path: "/home/u/repo",
+    });
+    expect(keyTarget("ssh:h1::/x")).toBe("ssh:h1");
+    expect(keyTarget("C:/x")).toBe("local");
+  });
+
+  it("splits at the first separator, so a path containing '::' survives", () => {
+    const key = workspaceKey("ssh:h1", "/home/u/we::ird");
+    expect(parseWorkspaceKey(key).path).toBe("/home/u/we::ird");
+  });
+
+  it("treats a Windows drive letter as a path, never as a target", () => {
+    // `C:` looks like a scheme; only known target prefixes may claim a key.
+    expect(parseWorkspaceKey("C:/a::b")).toEqual({ target: "local", path: "C:/a::b" });
+  });
+});
+
+describe("sameWorkspace (identity is the pair, not the path)", () => {
+  it("still tolerates spelling differences within one machine", () => {
+    expect(sameWorkspace("C:/repo/wt", "C:\\repo\\WT")).toBe(true);
+    expect(
+      sameWorkspace(workspaceKey("ssh:h1", "/home/u/repo/"), workspaceKey("ssh:h1", "/home/u/repo")),
+    ).toBe(true);
+  });
+
+  it("never merges the same path across two machines", () => {
+    const a = workspaceKey("ssh:h1", "/home/u/repo");
+    const b = workspaceKey("ssh:h2", "/home/u/repo");
+    expect(sameWorkspace(a, b)).toBe(false);
+    expect(sameWorkspace(a, "/home/u/repo")).toBe(false); // remote vs local
+  });
+
+  it("does not fold host ids (they are ids, not user-typed paths)", () => {
+    expect(sameWorkspace(workspaceKey("ssh:H1", "/x"), workspaceKey("ssh:h1", "/x"))).toBe(false);
+  });
+});
+
+describe("reconcilePlan across targets", () => {
+  it("re-keys only within the same machine", () => {
+    const known = [workspaceKey("ssh:h1", "/home/u/repo"), "C:/repo"];
+    const plan = reconcilePlan([workspaceKey("ssh:h1", "/home/u/repo/"), "C:\\repo"], known);
+    expect(plan.rekeys).toEqual([
+      ["ssh:h1::/home/u/repo/", "ssh:h1::/home/u/repo"],
+      ["C:\\repo", "C:/repo"],
+    ]);
+    expect(plan.unknown).toEqual([]);
+  });
+
+  it("never re-points a workspace at another machine that shares its path", () => {
+    // The data-loss case: host h2 is registered, h1 is not. The h1 workspace is
+    // unknown (drop candidate) — it must not be adopted by h2.
+    const known = [workspaceKey("ssh:h2", "/home/u/repo")];
+    const plan = reconcilePlan([workspaceKey("ssh:h1", "/home/u/repo")], known);
+    expect(plan.rekeys).toEqual([]);
+    expect(plan.unknown).toEqual(["ssh:h1::/home/u/repo"]);
   });
 });

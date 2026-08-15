@@ -44,7 +44,10 @@
     !(isImg && !isSvg) && !fileState.binary && !fileState.tooLarge && !fileState.error,
   );
   const canPreview = $derived(previewKind !== null);
-  const canChanges = $derived(tab.worktree !== null);
+  // Changes runs git on whichever machine the file is on. It still needs a
+  // worktree, and a read-only file (a host that dropped its connection) offers
+  // nothing to stage, so neither gets the view.
+  const canChanges = $derived(tab.worktree !== null && !fileState.readOnly);
 
   interface ViewSpec {
     view: FileView;

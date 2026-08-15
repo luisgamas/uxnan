@@ -2,6 +2,7 @@
 // Serde emits camelCase, so these fields match the Rust structs one-to-one.
 // Keep this file in sync whenever the Rust model changes.
 
+import type { TargetId } from "$lib/target";
 import type {
   Theme as CustomTheme,
   TerminalTheme,
@@ -722,12 +723,226 @@ export interface WorktreeData {
   createdAt: number;
   lastActivity: number;
   agentId: string | null;
+  /** Machine this worktree lives on — always its parent repo's target (a
+   *  worktree is a checkout of that repo). Absent in state written before
+   *  targets existed, which is local by definition. */
+  target?: TargetId;
+}
+
+/** Where a registered host record came from (mirror of Rust `SshHostSource`). */
+export type SshHostSource = "manual" | "sshConfig";
+
+/** A registered remote machine (mirror of Rust `SshHost`).
+ *
+ *  Holds **no secret**: alias, address, user and a *reference* to an identity
+ *  file. Keys and passwords come from the system agent, from disk, or from a
+ *  prompt that lives in memory for one attempt. */
+export interface SshHost {
+  /** Stable id, and the only thing a project stores. Never the hostname. */
+  id: string;
+  label: string;
+  /** The `~/.ssh/config` alias this came from, when it did. */
+  configHost?: string | null;
+  hostname: string;
+  port: number;
+  user: string;
+  /** Paths to private keys, as OpenSSH reported them. Paths, not keys. */
+  identityFiles?: string[];
+  identityAgent?: string | null;
+  identitiesOnly?: boolean;
+  /** Lets git *on the host* use the keys held by the agent *here*, without a
+   *  private key ever leaving this machine. */
+  forwardAgent?: boolean;
+  proxyCommand?: string | null;
+  proxyJump?: string | null;
+  source?: SshHostSource;
+  /** Set after a connection that needed a passphrase or password, so startup can
+   *  reconnect the silent hosts and leave the rest until the user is present. */
+  needsPrompt?: boolean;
+}
+
+/** What the form (or an imported alias) sends. Never an id — those are minted
+ *  by the backend, so the UI cannot overwrite a record by guessing one. */
+export interface SshHostDraft {
+  label: string;
+  configHost?: string | null;
+  hostname: string;
+  port: number;
+  user: string;
+  identityFiles?: string[];
+  identityAgent?: string | null;
+  identitiesOnly?: boolean;
+  forwardAgent?: boolean;
+  proxyCommand?: string | null;
+  proxyJump?: string | null;
+  source?: SshHostSource;
+}
+
+/** The result of registering a host. */
+export interface SshHostAdded {
+  host: SshHost;
+  /** This machine had been removed and its id was reused — so projects that
+   *  looked lost are live again. Worth telling the user rather than letting
+   *  them reappear unannounced. */
+  recovered: boolean;
+  /** An already-registered machine was updated instead of a new one added. */
+  updatedExisting: boolean;
+}
+
+/** What reaching a host said about its identity, before any credential. */
+export interface SshHostProbe {
+  status: "trusted" | "unknown" | "changed" | "revoked";
+  /** In OpenSSH's own format, so it can be compared with `ssh-keygen -lf`. */
+  fingerprint?: string | null;
+  algorithm?: string | null;
+  /** For `changed`: what `known_hosts` holds instead. Show both. */
+  storedFingerprint?: string | null;
+}
+
+/** A worktree's git state on a host (mirror of Rust `ssh::git::RemoteGitStatus`).
+ *
+ *  `isRepo: false` is the honest catch-all — not a repository, no git installed,
+ *  or a shell that could not be named — and must never be rendered as "clean". */
+export interface SshGitStatus extends WorktreeStatus {
+  branch: string | null;
+  isRepo: boolean;
+}
+
+/** Everything the Changes tab reads about a worktree on a host, answered in one
+ *  remote command (mirror of Rust `ssh::git::RemoteReview`).
+ *
+ *  The pieces are the local layer's own shapes on purpose, so the panel renders
+ *  either machine with the components it already has. `isRepo: false` carries
+ *  the same meaning as in `SshGitStatus`: *not read*, never "clean". */
+export interface SshGitReview extends WorktreeStatus {
+  files: FileChange[];
+  numstat: FileNumstat[];
+  /** The worktree's HEAD, so History knows when it has to reload. Absent in a
+   *  repository with no commits yet. */
+  head: string | null;
+  isRepo: boolean;
+}
+
+/** Which shell a host's `sshd` starts (mirror of Rust `ssh::shellkind::ShellKind`). */
+export type RemoteShellKind = "posix" | "cmd" | "powershell" | "unknown";
+
+/** One directory listing from a host (mirror of Rust `RemoteListing`).
+ *
+ *  A `DirListing` plus `truncated`: the host answers in the local browser's own
+ *  shape — paths spelled as *that* machine spells them — so one component browses
+ *  either machine and a remote folder looks like a folder. */
+export interface SshRemoteListing extends DirListing {
+  /** The listing was cut. Say so: a picker quietly showing part of a folder is
+   *  one that cannot find what you want and will not admit why. */
+  truncated: boolean;
+}
+
+/** Payload of `ssh:session-ended` (mirror of Rust `SshSessionEnded`).
+ *
+ *  It reports *that* a connection ended, not what is live now — the receiver
+ *  re-reads the live set, so the two can never disagree about it. */
+export interface SshSessionEnded {
+  hostId: string;
+  /** Which incarnation ended, so an event for a connection that has already
+   *  been replaced can be told apart from one about the current session. */
+  generation: number;
+}
+
+/** One live session on a host (mirror of Rust `SshHostSession`). */
+export interface SshHostSession {
+  hostId: string;
+  /** Which incarnation of the connection this is. It travels back with every
+   *  mutation the app prepares, so a save prepared against one connection cannot
+   *  execute against its replacement. */
+  generation: number;
+}
+
+/** What a host reported about itself (mirror of Rust `HostInventory`). */
+export interface SshHostInventory {
+  os: string;
+  home: string;
+  git: string;
+  /** A terminal multiplexer, if one is there — what decides whether a session
+   *  can outlive a disconnection. Empty when there is none. */
+  multiplexer: string;
+  /** Agent CLI id → version. Absent means "not installed here". */
+  agents: Record<string, string>;
+  /** Which shell answered, for troubleshooting. */
+  shell: string;
+}
+
+/** The result of trying to open a working session on a host (mirror of Rust
+ *  `SshConnectReport`). One shape for every outcome, because each one sends you
+ *  somewhere different and "it failed" sends you nowhere. */
+export interface SshConnectReport {
+  status:
+    | "connected"
+    | "hostUnknown"
+    | "hostChanged"
+    | "hostRevoked"
+    | "needsPassword"
+    | "needsPassphrase"
+    | "failed"
+    | "noUsableMethod"
+    | "unreachable";
+  /** For `unreachable`: which kind it was. They lead to different actions — a
+   *  machine that is asleep is worth another try, a name that does not resolve
+   *  is not — and one failure string made them indistinguishable. */
+  reason?: "timeout" | "unknownAddress" | "refused" | "handshake" | null;
+  /** For `unreachable`: a sentence naming the host and what happened. */
+  detail?: string | null;
+  /** Connection incarnation, for `connected`. Travels with every mutation
+   *  prepared against this session. */
+  generation?: number | null;
+  /** Which credential worked, so the UI can say how you got in. */
+  method?: string | null;
+  /** Which shell that machine starts, for `connected`. Asked on connect, never
+   *  assumed: an agent's command line has to be quoted for the shell that will
+   *  receive it, and quoting for *this* machine's shell lands the agent in a
+   *  dead pane. `unknown` when the host's answer was not recognisable. */
+  shell?: RemoteShellKind | null;
+  fingerprint?: string | null;
+  storedFingerprint?: string | null;
+  /** For `needsPassphrase`: which key file needs one. */
+  path?: string | null;
+  /** What was offered and refused, in order. */
+  attempted: string[];
+}
+
+/** A `Host` alias found in the user's OpenSSH configuration (mirror of Rust
+ *  `ConfigAlias`). Candidates for the host picker — no resolved values, since
+ *  resolving costs a process spawn and only the chosen one is worth it. */
+export interface SshConfigAlias {
+  alias: string;
+  /** File it was declared in, so the UI can show where a duplicate came from. */
+  source: string;
+}
+
+/** The effective OpenSSH settings for one alias, as `ssh -G` reports them
+ *  (mirror of Rust `ResolvedHost`). Only the fields the ADE acts on. */
+export interface SshResolvedHost {
+  hostname: string;
+  port: number;
+  user: string;
+  /** Every `IdentityFile`, in the order OpenSSH would try them. */
+  identityFiles: string[];
+  identityAgent: string | null;
+  identitiesOnly: boolean;
+  /** `ForwardAgent yes` — lets git on the remote host use the keys held by the
+   *  agent here, without a private key ever being copied. */
+  forwardAgent: boolean;
+  proxyCommand: string | null;
+  proxyJump: string | null;
 }
 
 export interface RepoData {
   id: string;
   name: string;
   path: string;
+  /** Machine this project lives on. `path` alone stopped being an identity once
+   *  a second execution target became possible, so workspaces are keyed by
+   *  `(target, path)` (`workspaceKey` in `pathid.ts`). Absent = local. */
+  target?: TargetId;
   worktrees: WorktreeData[];
   /** Whether the folder is a git repository. Non-git folders are valid projects
    *  too — they just have no worktrees/branches and their git panels stay empty.
@@ -1236,6 +1451,11 @@ export type SavedTab =
       cwd?: string;
       shell?: string;
       args?: string[];
+      /** The machine this terminal ran on (`ssh:<hostId>`); absent = this one.
+       *  Without it a restored remote tab came back as a local shell holding
+       *  another machine's path — it then started here, in the home directory,
+       *  looking like the same tab and being nothing of the sort. */
+      target?: string;
       /** Stable id surviving restarts — keys the tab's scrollback snapshot in
        *  the terminal-buffers sidecar. */
       sid?: string;

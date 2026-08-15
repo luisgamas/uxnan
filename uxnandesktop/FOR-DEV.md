@@ -28,9 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 596 passing Rust tests (566 unit + 30
-integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 1,063 passing frontend Vitest tests (+7 skipped) across two
+always wins). 782 Rust tests (745 unit + 37
+integration), of which 46 are ignored probes that need something real to talk to
+(37 live SSH probes — 26 against a real `sshd` and 11 against a **Linux host in a
+container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
+GitHub tests, 1 real-scheduler probe) + 1,216 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -834,6 +836,182 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 - [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
       trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
 
+## Remote hosts over SSH ☐
+
+**Goal:** connect to a remote machine over SSH and run agents *there* — the UI
+stays local, the work happens on the host with its CLIs and its credentials.
+
+**Landed — phases 0 and 1, and half of phase 3.** Execution-target identity (every repo/worktree
+carries a `target`, workspaces key on `(target, path)`, schema v2, and
+`target::check` refuses a mutation aimed at another machine); the user's own SSH
+configuration read through `ssh -G`; host-key verification with its four
+verdicts and TOFU; authentication (agent → key → password); one connection with
+N channels and a generation each; the host inventory; a remote terminal;
+browsing a host's folders and registering one as a project; **using** that
+project (its workspace keys on the machine, its terminals open there in its
+folder, and the panels that read this machine stand down and say so); and the
+launcher filtered by what the host reported.
+
+**The rule this phase paid for:** nothing may assume the host's environment. The
+shell a host starts is *asked* (`ssh/shellkind.rs`) and everything typed into it
+— a terminal's `cd`, an agent's quoted command line — follows that answer; an
+unrecognisable answer types nothing rather than guessing. Assuming cmd killed
+every project terminal on a PowerShell host, twice.
+
+Specs: `architecture/02a` §2.9 and `architecture/02g-remote-hosts.md`;
+user-facing `docs/remote-hosts.md`.
+
+### Backend (Rust)
+- [ ] **Transport gate — do this before any UI.** Five things to prove; failing
+      any of them is a stop-and-rethink, not a workaround.
+      1. *Builds and packages on all three platforms, with no extra toolchain for
+         the user.* **Measured on Windows: yes** — `russh` 0.62.6 compiles clean
+         in ~2m20s and needs no new build tooling (its crypto backend
+         `aws-lc-rs` is already in the tree via `rustls`/`reqwest`). **Attached
+         decision:** it needs rustc 1.85 while `src-tauri/Cargo.toml` declares
+         `rust-version = "1.77.2"` — without raising that, cargo silently
+         resolves to russh 0.54.6, eight releases behind. CI builds on `stable`
+         and there is no MSRV job, so the bump is one line; but a declared MSRV
+         is a public compatibility claim, so it is the maintainer's call.
+         macOS/Linux still unverified.
+      2. ~~One connection sustains ≥8 concurrent channels.~~ **Proven** against
+         a real remote Windows host over a private tailnet: password
+         authentication succeeded and eight `exec` calls ran on the one
+         connection, each with the right output and a zero exit code, with no
+         second handshake and no second login
+         (`ssh/auth.rs` → `one_connection_carries_many_channels`, driven by
+         `UXNAN_SSH_TEST_{HOST,USER,PASSWORD}` from the operator's own shell so
+         the password never leaves their process).
+         **Measured, and the answer changes the design:** `one channel: 2109 ms
+         | 8 concurrent: 3170 ms | ratio 1.5x`. Concurrency is fine — eight cost
+         1.5x one, not 8x. What is expensive is a single `exec`: 2.1 s for an
+         `echo`, because that host's sshd starts PowerShell and loads the user
+         profile for every command. So batching is a requirement, not a
+         preference: the inventory is one command with delimited output, and the
+         doctor should report this per-host cost since it has a user-side fix
+         (`DefaultShell` = cmd, or a fast path in their profile). See
+         `architecture/02g` §5.3.
+      3. ~~Authentication through the Windows agent named pipe.~~ **Proven end
+         to end**: the named pipe is spoken to, an identity it holds is offered,
+         the server accepts it, and a command then runs on that authenticated
+         session. The live test uses `USERNAME` (overridable with
+         `UXNAN_SSH_TEST_USER`) so it works on any machine whose sshd authorizes
+         a key that machine's agent holds, and degrades to "agent consulted, no
+         key authorized" rather than failing where none is.
+      4. ~~`known_hosts` verification, including the *changed fingerprint*
+         case.~~ **Proven live**, first against the sshd on this machine and
+         then against a *real remote host over a private tailnet*: unknown host
+         refused with a usable fingerprint, the recorded key verifying on the
+         next connect, and a mismatching key reported as *changed* with both
+         fingerprints. Both fingerprints our code computed match
+         `ssh-keygen -lf` byte for byte. Point any host at it with
+         `UXNAN_SSH_TEST_HOST=<host[:port]>`.
+      5. Idle cost of an open connection, measured with `npm run bench`.
+- [ ] **Say when a *host's* project folder is gone.** `repos_missing` now only
+      answers for local projects — this machine's filesystem cannot speak for
+      another one, and asking it anyway put a "folder is missing" warning on a
+      perfectly healthy remote project. So a host's project is never marked,
+      which is honest but incomplete: a folder really deleted on the host looks
+      fine until something fails. Asking the host is one SFTP `stat` per remote
+      project on a connected host (`ssh/sftp.rs`), with "not connected" reported
+      as unknown rather than missing — the disconnected state has its own
+      indicator already.
+**Landed from phase 3:** files over SFTP — listing, opening and **saving** (in
+place and fenced, because atomic rename does not exist over SFTP v3); the folder
+picker moved off the host's shell onto SFTP (336 ms → 6.6 ms on loopback, and it
+was paying for two failed shell starts per click on a Windows host); the branch
+and change count read by running git *on* the host; **Changes and History on a
+host** — the changed-file list, per-file and per-hunk diffs, staging, discard,
+commit, log and fetch/push/pull, with the patch and the commit message travelling
+over SFTP because `exec` has no stdin, every mutation fenced, and the whole review
+answered in one command (`02g` §5.10c); **creating, renaming, duplicating and
+deleting in a host's tree**, over SFTP and fenced, with deletion permanent
+because SSH has no trash and the dialog saying so (`02g` §5.10d); **searching a
+host's project** by name and by content, by asking git there rather than dragging
+the project across the link (`02g` §5.10e); **a reconnect ladder** with typed
+reachability failures, for the hosts that can come back without asking anything
+(`02g` §5.12); **the host's inventory in Settings** — its agents with the
+versions that machine reported, and the one absence that changes what uxnan can
+do there, git (`02g` §5.13); **a dropped session announcing
+itself** instead of waiting to be asked (`02g` §5.10f); **a channel budget** that
+learns each host's own limit instead of assuming one (`02g` §5.10g); **image
+diffs and the AI commit draft** — the last two panel pieces, with the image bytes
+travelling as bytes and the agent running here on a diff read there (`02g`
+§5.10h); a keepalive so a quiet host is not reaped
+and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
+startup. The host-side helper is **decided against** — the
+reasoning, with the measurements that removed its justification, is in
+`architecture/02g-remote-hosts.md` §5.11.
+
+- [ ] **A host that is not Linux or Windows has still never been driven.** The
+      remote stack now runs against a real Linux `sshd` in CI
+      (`npm run test:ssh:linux`, `docs/testing.md`), and Windows is what it is
+      developed against. **macOS** takes the same POSIX path Linux does, so it
+      *should* work — nobody has run it. A second container cannot answer this
+      one; it needs a real machine or a hosted runner.
+- [ ] **A Windows machine as the *remote* end is only half-covered.** The
+      generated PowerShell is executed against a local `pwsh` (the preflight
+      test), which proves the script is valid but not that an `sshd` hands it
+      through intact. Windows containers on a Linux runner cannot do this; a
+      `windows-latest` runner with OpenSSH Server enabled could.
+- [ ] **An in-process SSH server for wire-level tests.** `russh::server` would
+      let the protocol-shaped assertions (SFTP behaviour, a channel that dies
+      mid-request, a server that answers slowly) run with no Docker and no
+      network, leaving the container for what only a real `sshd` can show. Today
+      those cases are covered by the live suite or not at all.
+- [ ] **Orphans on the far side.** Closing a remote terminal ends its channel;
+      anything the shell left detached keeps running on that host, and nothing
+      here can see it — the resource monitor walks *local* processes. Raised by
+      the user after a disconnect ("did it close, or is it still running in the
+      background?"), which is the honest question: today the app cannot answer
+      it. Options, none chosen yet: ask the host for its own process list on
+      demand (an `exec`, so it costs a round trip), or narrow it to processes
+      whose parent was a terminal we opened. Whatever it becomes, it belongs
+      beside the existing orphan sweep rather than as a second popup — the user
+      should not have to learn two places to ask "what is still running".
+
+### Frontend (Svelte)
+- [ ] **What a remote project still cannot do.** Files, Changes and History all
+      work on a host now, and so do the tree's own actions — create, rename,
+      duplicate, delete — and searching it (`ssh/sftp.rs` + `src/lib/fsRouter.ts`,
+      `ssh/git.rs` + `src/lib/gitRouter.ts`, `ssh/search.rs`). What is left, in
+      order: **watching for changes**
+      (a remote project has no watcher on purpose — 3 s polling against a machine
+      where one command costs ~2 s — so every panel refreshes on open, on act and
+      on its button, and says so); and the two pieces of the review that read this
+      machine's git, **image diffs** and the **AI commit draft**, both of which
+      need the content brought here first. Spec: `02g` §5.10–§5.11.
+- [ ] **Launching a dev build must not resume the everyday session's agents.**
+      Half-fixed: a debug build now has its own profile, so it restores its own
+      tabs rather than the installed app's — which is what made a second agent
+      attach to a conversation already in progress. What is *not* settled is the
+      general case: two uxnan windows (or a wake, or a restore) can each
+      relaunch a tab holding the same agent session id, and nothing stops the
+      second one. Decide whether a live session id may be claimed twice at all,
+      or whether a restored tab must ask first. Until then, treat "open the same
+      workspace in two windows" as unsupported rather than as working.
+- [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
+      glance rather than only by what its prompt says.
+- [ ] A doctor view per host: the inventory in full, with what is missing and the
+      per-host command cost (§5.3) — it has a fix on the user's side.
+- [ ] i18n: `en.ts` + `es.ts` in the same change. There is **no key-parity test
+      between locales today** — add one with this section.
+
+### Deferred deliberately
+- [ ] **Fencing covers `worktree_create` / `worktree_remove` only.** Those are the
+      path-bound writes worth running on the wrong machine. Every other mutator
+      (fs writes/deletes, git mutations, `pty_close`) adopts
+      `repo_path_for_mutation` as its remote counterpart lands: a target check is
+      meaningless until there is a second target for it to be wrong about.
+- [ ] **WSL is still detected by sniffing UNC paths** (`wsl.rs`, `git.rs`) instead
+      of being a `wsl:<distro>` target. The id is reserved and `TargetId::parse`
+      rejects it on purpose; promoting it is its own refactor.
+- [ ] Precise agent status in remote sessions (layer 1 needs a reverse tunnel +
+      remote reporter install; layer 3 needs a remote process probe). Layer 2
+      (title/OSC) already works remotely — it rides the PTY stream.
+- [ ] Remote files/git/worktrees, port forwarding + preview, session survival
+      across an app restart, remote resource snapshots. Each is its own phase.
+
 ## Deferred follow-ups (non-blocking) — by area
 
 **Agent hooks**
@@ -1252,7 +1430,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 596 Rust + 1,063 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 782 Rust + 1,216 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

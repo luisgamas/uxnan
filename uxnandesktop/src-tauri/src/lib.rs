@@ -50,7 +50,13 @@ mod pty;
 // Public so the resource-observability integration tests (`tests/`) can drive
 // the monitor against real spawned processes through the crate's own API.
 pub mod resources;
+// Remote hosts: reading the user's own OpenSSH configuration today; the
+// connection, inventory and remote PTY land on top of it.
+mod ssh;
 mod state;
+// Execution-target identity (`local`, `ssh:<host>`) plus the fencing that stops
+// a mutation prepared for one machine from running on another.
+mod target;
 mod updater;
 mod usage;
 mod which;
@@ -411,6 +417,46 @@ pub fn run() {
             commands::worktree_list,
             commands::worktree_status,
             commands::branch_integrated,
+            commands::ssh_config_hosts,
+            commands::ssh_config_resolve,
+            commands::ssh_hosts_list,
+            commands::ssh_host_add,
+            commands::ssh_host_remove,
+            commands::ssh_host_probe,
+            commands::ssh_host_trust,
+            commands::ssh_host_connect,
+            commands::ssh_host_disconnect,
+            commands::ssh_hosts_connected,
+            commands::ssh_hosts_resumable,
+            commands::ssh_host_inventory,
+            commands::ssh_browse_dirs,
+            commands::ssh_git_status,
+            commands::ssh_git_review,
+            commands::ssh_git_diff,
+            commands::ssh_git_diff_head,
+            commands::ssh_git_image_diff,
+            commands::ssh_git_generate_commit_message,
+            commands::ssh_git_log,
+            commands::ssh_git_show,
+            commands::ssh_git_stage,
+            commands::ssh_git_unstage,
+            commands::ssh_git_stage_all,
+            commands::ssh_git_unstage_all,
+            commands::ssh_git_discard,
+            commands::ssh_git_apply,
+            commands::ssh_git_commit,
+            commands::ssh_git_sync,
+            commands::ssh_fs_list,
+            commands::ssh_fs_read,
+            commands::ssh_fs_write,
+            commands::ssh_fs_create_file,
+            commands::ssh_fs_create_dir,
+            commands::ssh_fs_rename,
+            commands::ssh_fs_delete,
+            commands::ssh_fs_duplicate,
+            commands::ssh_fs_search_files,
+            commands::ssh_fs_search_content,
+            commands::ssh_repo_add,
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,

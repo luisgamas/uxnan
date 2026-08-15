@@ -4,6 +4,13 @@
   // dialog (New File/Folder, Rename, Delete) are raised to the panel via callbacks
   // so the dialogs mount once; everything else calls the stores directly. Items are
   // shown/hidden by entry kind, mirroring an IDE file tree.
+  //
+  // A second axis since the tree can be of another machine: an action that only
+  // this machine can carry out is **not offered** for a host's entry rather than
+  // offered and failing — revealing a path in this Explorer, opening it in a
+  // local editor, searching (which walks this filesystem) and registering a
+  // folder as a local project. What is offered there is what genuinely runs
+  // there: create, rename, duplicate, delete, copy path, open a terminal.
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
@@ -52,6 +59,12 @@
   } = $props();
 
   const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  /** This entry lives on another machine. */
+  const remote = $derived(!fileTree.deletesToTrash);
+  /** Something can be sent to that machine — a host that dropped can be read but
+   *  not changed, so the actions that change it stand down rather than fail. */
+  const canMutate = $derived(fileTree.mutable);
+
   // A folder can be added as a project unless it's already registered as one.
   const canAddAsProject = $derived(
     entry.isDir && !app.repos.some((r) => norm(r.path) === norm(entry.path)),
@@ -70,11 +83,11 @@
 </script>
 
 <ContextMenu.Content width="wide">
-  <ContextMenu.Item class={text.menu} onclick={onNewFile}>
+  <ContextMenu.Item class={text.menu} disabled={!canMutate} onclick={onNewFile}>
     <Icon icon={FilePlusIcon} />
     {i18n.t("fileTree.newFile")}
   </ContextMenu.Item>
-  <ContextMenu.Item class={text.menu} onclick={onNewFolder}>
+  <ContextMenu.Item class={text.menu} disabled={!canMutate} onclick={onNewFolder}>
     <Icon icon={FolderPlusIcon} />
     {i18n.t("fileTree.newFolder")}
   </ContextMenu.Item>
@@ -91,12 +104,16 @@
   </ContextMenu.Item>
 
   {#if !entry.isDir}
-    <ContextMenu.Item class={text.menu} onclick={() => void fileTree.duplicateEntry(entry)}>
+    <ContextMenu.Item
+      class={text.menu}
+      disabled={!canMutate}
+      onclick={() => void fileTree.duplicateEntry(entry)}
+    >
       <Icon icon={FilesIcon} />
       {i18n.t("fileTree.duplicate")}
     </ContextMenu.Item>
   {/if}
-  {#if canAddAsProject}
+  {#if canAddAsProject && !remote}
     <ContextMenu.Item class={text.menu} onclick={() => void projects.addProjectPaths([entry.path])}>
       <Icon icon={FolderPlusIcon} />
       {i18n.t("fileTree.addAsProject")}
@@ -119,25 +136,38 @@
       {i18n.t("fileTree.collapseFolder")}
     </ContextMenu.Item>
   {/if}
-  {#if entry.isDir}
+  {#if entry.isDir && fileTree.searchable}
     <ContextMenu.Item class={text.menu} onclick={findInFolder}>
       <Icon icon={SearchIcon} />
       {i18n.t("fileTree.findInFolder")}
     </ContextMenu.Item>
   {/if}
-  <OpenWith menu={ContextMenu} path={entry.path} textFile={!entry.isDir && isTextFile(entry.name)} />
-  <ContextMenu.Item class={text.menu} onclick={() => void revealPath(entry.path)}>
-    <Icon icon={FolderOpenIcon} />
-    {i18n.t("fileTree.reveal")}
-  </ContextMenu.Item>
+  {#if !remote}
+    <!-- Both act on *this* machine: an external editor and this Explorer cannot
+         open a folder that is on another one. -->
+    <OpenWith
+      menu={ContextMenu}
+      path={entry.path}
+      textFile={!entry.isDir && isTextFile(entry.name)}
+    />
+    <ContextMenu.Item class={text.menu} onclick={() => void revealPath(entry.path)}>
+      <Icon icon={FolderOpenIcon} />
+      {i18n.t("fileTree.reveal")}
+    </ContextMenu.Item>
+  {/if}
 
   <ContextMenu.Separator />
 
-  <ContextMenu.Item class={text.menu} onclick={onRename}>
+  <ContextMenu.Item class={text.menu} disabled={!canMutate} onclick={onRename}>
     <Icon icon={PencilIcon} />
     {i18n.t("common.rename")}
   </ContextMenu.Item>
-  <ContextMenu.Item variant="destructive" class={text.menu} onclick={onDelete}>
+  <ContextMenu.Item
+    variant="destructive"
+    class={text.menu}
+    disabled={!canMutate}
+    onclick={onDelete}
+  >
     <Icon icon={Trash2Icon} />
     {i18n.t("fileTree.delete")}
   </ContextMenu.Item>

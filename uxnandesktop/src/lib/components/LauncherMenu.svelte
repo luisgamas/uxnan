@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { keyTarget } from "$lib/pathid";
   // The project's "+" — one place to start anything, in any of the project's
   // worktrees. Each worktree is a group (heading = its branch/folder) listing the
   // things you can open there: a terminal (default + each profile) and each
@@ -44,7 +45,9 @@
     title?: string;
   } = $props();
 
-  const agents = $derived(app.launchableAgents);
+  // The agents *that machine* has. A project on a host runs the host's CLIs, so
+  // offering this machine's would invite launching something that is not there.
+  const agents = $derived(app.launchableAgentsOn(keyTarget(target?.path ?? repo.path)));
   const profiles = $derived(app.terminalProfiles);
   const browserEnabled = $derived(app.settings.browser?.enabled ?? true);
 
