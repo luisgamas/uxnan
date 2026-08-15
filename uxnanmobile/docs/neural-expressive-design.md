@@ -546,6 +546,13 @@ any secondary header action.
 - Shape: `StadiumBorder`
 - Color: `surfaceContainerHigh`
 - Content: active model icon + name + chevron
+- **Name, not id.** The name is the readable one the bridge reports
+  ("Gemini 3.7 Flash (High)"), never the routing id the CLI expects
+  (`gemini-3.7-flash-high`): one truncated line in a top bar has no room for a
+  string whose meaning is in its tail. The id belongs where there is a second
+  line for it — the picker sheet's rows, the New conversation field — and in
+  this pill's tooltip. Resolve it with `threadModelLabelProvider`, which falls
+  back to the id so the pill never empties.
 - When expanding: use `spatialDefault` for opening the menu
 
 ---

@@ -1089,6 +1089,30 @@ final activeModelOptionsProvider =
   return (match ?? models.first).options;
 });
 
+/// The human-readable name of a thread's model — the `displayName` the bridge
+/// reports for it in `agent/models` (e.g. `gemini-3.7-flash-high` → "Gemini 3.7
+/// Flash (High)"), for the app bar's model pill.
+///
+/// The thread stores the **routing id**, which is what the agent CLI needs but
+/// not what a person reads. Falls back to that id whenever the readable name
+/// isn't available — offline, while the list loads, or for the agents whose ids
+/// are already the name (`provider/model` on pi and OpenCode) — so the pill
+/// never goes blank. Null only when the thread runs on the agent's own default.
+final threadModelLabelProvider = Provider.family<String?, String>((
+  ref,
+  threadId,
+) {
+  final thread = ref.watch(threadByIdProvider(threadId));
+  final modelId = thread?.model;
+  if (thread == null || modelId == null || modelId.isEmpty) return null;
+  final models = ref.watch(agentModelsProvider(thread.agentId)).value;
+  if (models == null) return modelId;
+  for (final model in models) {
+    if (model.id == modelId) return model.displayName;
+  }
+  return modelId;
+});
+
 /// Map of threadId → the concrete model id the agent resolved most recently
 /// (`stream/model/resolved`), e.g. `opus` → `claude-opus-4-8`.
 final resolvedModelsProvider = StreamProvider<Map<String, String>>(
