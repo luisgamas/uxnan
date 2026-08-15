@@ -240,11 +240,31 @@ fn review_script(kind: ShellKind, path: &str) -> String {
     .join(sep)
 }
 
-/// Take off the newlines a section marker left, and nothing else.
+/// What a section really contains: everything after the **rest of the marker's
+/// line**, with the newline before the next marker taken off.
 ///
-/// Deliberately not `trim`: see the porcelain note in `parse_review`.
-fn trim_newlines(section: &str) -> &str {
-    section.trim_matches(|c: char| c == '\n' || c == '\r')
+/// Splitting on the marker text alone leaves whatever the shell put between it
+/// and the end of that line — and `cmd` puts a space there. Its statement
+/// separator is `&`, so `echo __UXNAN_GIT_SEP__ & git …` echoes the marker
+/// **plus the space in front of the `&`**, and that space then glued itself to
+/// the first status record: the panel asked the host to stage `M AGENTS.md`,
+/// and the host answered that no such file is known to git. Reported from a real
+/// Windows host; the Linux container never saw it, because `sh` does not keep
+/// that space.
+///
+/// So the marker's own line is dropped whole, whatever the shell left on it.
+/// Only newlines come off the end — **not** whitespace: an unstaged change's
+/// status code is a leading *space* (` M README.md`), and trimming that shifted
+/// every path one character left, which is how the panel once listed
+/// `EADME.md`. Two opposite bugs, one line apart.
+fn section_body(section: &str) -> &str {
+    let body = match section.find('\n') {
+        Some(end) => &section[end + 1..],
+        // No line ending at all: the shell echoed nothing after the marker, so
+        // there is no line to drop.
+        None => section,
+    };
+    body.trim_end_matches(['\n', '\r'])
 }
 
 /// Read the whole review state of a worktree on a host.
@@ -299,8 +319,8 @@ fn parse_review(stdout: &str) -> Option<RemoteReview> {
     // status code of an unstaged change is a leading *space* (` M README.md`),
     // and a `trim()` here ate it, which shifted every path one character left
     // and had the panel list `EADME.md`. The live Linux test is what caught it.
-    let files = crate::git::parse_status_files(trim_newlines(files_section));
-    let numstat = crate::git::parse_numstat(numstat_section);
+    let files = crate::git::parse_status_files(section_body(files_section));
+    let numstat = crate::git::parse_numstat(section_body(numstat_section));
 
     Some(RemoteReview {
         status: WorktreeStatus {
@@ -631,6 +651,49 @@ mod tests {
     /// parser can be exercised without one.
     fn review_output(head: &str, distance: &str, porcelain: &str, numstat: &str) -> String {
         format!("{BEGIN}\n{head}\n{SEP}\n{distance}\n{SEP}\n{porcelain}\n{SEP}\n{numstat}\n{END}\n")
+    }
+
+    /// The same answer as a **cmd** host produces it: `\r\n` line endings, and a
+    /// space after every marker — `echo X & git …` echoes the space that sits in
+    /// front of the `&`. Reported from a real Windows host after the Linux
+    /// container had been green for days.
+    fn cmd_review_output(head: &str, distance: &str, porcelain: &str, numstat: &str) -> String {
+        format!(
+            "{BEGIN} \r\n{head}\r\n{SEP} \r\n{distance}\r\n{SEP} \r\n{porcelain}{SEP} \r\n{numstat}\r\n{END} \r\n"
+        )
+    }
+
+    /// The bug that host reported: the space on the marker's line glued itself to
+    /// the first status record, so the panel asked git to stage `M AGENTS.md` —
+    /// not a file — and the host said so.
+    #[test]
+    fn a_marker_line_with_a_trailing_space_does_not_become_part_of_a_path() {
+        let review = parse_review(&cmd_review_output(
+            "5ec28e668963b57bf90efd6dfe3a57499ba92082",
+            "",
+            " M AGENTS.md\0?? notes.txt\0",
+            "3\t1\tAGENTS.md",
+        ))
+        .expect("a parsed review");
+
+        assert_eq!(review.files.len(), 2);
+        assert_eq!(review.files[0].path, "AGENTS.md");
+        assert_eq!(
+            (
+                review.files[0].index.as_str(),
+                review.files[0].worktree.as_str()
+            ),
+            (" ", "M")
+        );
+        assert_eq!(review.files[1].path, "notes.txt");
+        // The line counts are keyed by path, so the same slip made them stop
+        // matching — which is why the numbers had gone missing from the rows too.
+        assert_eq!(review.numstat.len(), 1);
+        assert_eq!(review.numstat[0].path, "AGENTS.md");
+        assert_eq!(
+            review.head.as_deref(),
+            Some("5ec28e668963b57bf90efd6dfe3a57499ba92082")
+        );
     }
 
     /// The bug the Linux host caught: an unstaged change's status is a **leading

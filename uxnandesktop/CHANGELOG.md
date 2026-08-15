@@ -7,6 +7,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Staging, discarding and the line counts worked on Linux hosts and silently
+  did not on Windows ones.** The review answer is read between markers, and the
+  marker's *line* was not being dropped — only its newlines. `cmd` separates
+  statements with `&`, so `echo __UXNAN_GIT_SEP__ & git …` echoes the marker
+  **plus the space in front of the `&`**, and that space glued itself to the
+  first status record. The panel then asked the host to stage `M AGENTS.md`,
+  which is not a file, and git said so; the same slip made the per-file line
+  counts stop matching their rows, since those are keyed by path. One cause,
+  four symptoms. The marker's whole line is now dropped whatever the shell left
+  on it, with a regression test shaped exactly like a `cmd` answer — the Linux
+  container had been green for days, because `sh` does not keep that space.
+
+- **The first changed file no longer collides with "Stage all".** The list
+  positions rows by a number it is given, and both row kinds are taller than the
+  number they had: a section header is 48px (a `size="sm"` button inside a
+  padded row) and a file row 44px, against an estimate of 36 — so every row
+  overlapped the one above, the header worst. The heights were **measured**
+  against the app's own stylesheet rather than assumed, and the list is now told
+  each kind's real height.
+
 - **"Waiting for this host to connect" no longer appears over a local project.**
   The panels were reading two independent facts: the **path** from the selected
   project, and the **machine** from the focused terminal workspace. Focus a

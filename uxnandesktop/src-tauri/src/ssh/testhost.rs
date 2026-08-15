@@ -827,9 +827,11 @@ async fn posix_host_returns_an_image_diff_byte_for_byte() {
 
     // A file that is not in the commit has no old side, and the viewer draws one
     // panel — the same shape the local layer answers with.
-    conn.exec(&format!("cd {repo} && printf '\\x89PNG\\x00\\xff' > added.png"))
-        .await
-        .expect("an untracked image");
+    conn.exec(&format!(
+        "cd {repo} && printf '\\x89PNG\\x00\\xff' > added.png"
+    ))
+    .await
+    .expect("an untracked image");
     let added = super::git::image_diff(&conn, &files, kind, &repo, "added.png", false)
         .await
         .expect("an image diff");

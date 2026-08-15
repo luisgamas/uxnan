@@ -1206,6 +1206,24 @@ se planta. Un CLI que exija confiar en una carpeta antes de hacer nada fallara
 ahi en vez de colgarse (la ejecucion esta acotada por `GENERATE_TIMEOUT`) y el
 boton lo dice.
 
+### La linea del marcador se tira entera, no solo sus saltos
+
+Reportado desde un host Windows real cuando el contenedor Linux llevaba dias en
+verde, y es la misma leccion de siempre con un disfraz nuevo.
+
+`cmd` separa sentencias con `&`, asi que `echo __UXNAN_GIT_SEP__ & git …` **imprime
+el marcador mas el espacio que va delante del `&`**. Al partir por el texto del
+marcador, ese espacio quedaba al principio de la seccion y se pegaba al primer
+registro del `status`: el panel le pedia al host preparar `M AGENTS.md`, que no es
+un fichero, y git contestaba que no lo conoce. Como los recuentos de lineas van
+indexados por ruta, dejaron de casar a la vez. **Una causa, cuatro sintomas.**
+
+Ahora se descarta **la linea entera del marcador**, deje lo que deje la shell, y
+solo se recortan saltos de linea al final — nunca espacios, porque el estado de un
+cambio sin preparar *es* un espacio inicial (§5.10c). Los dos errores opuestos
+viven a una linea de distancia, y cada uno tiene su test: uno con la forma que
+produce `sh` y otro con la que produce `cmd`.
+
 ## 5.11 La fase 3 esta completa
 
 Todo lo que esta seccion enumeraba esta hecho: ficheros (§5.10), git y su

@@ -41,6 +41,16 @@
 
   type Area = "staged" | "changes";
 
+  // How tall each kind of row really is, **measured** against the app's own
+  // stylesheet rather than assumed. The list positions rows by number, so a row
+  // taller than the number it was given spills onto the one below it — which is
+  // what put the first file's actions on top of "Stage all". Both are `row.list`
+  // (`py-2`, so 16px of padding) around their tallest control: the section
+  // header carries a `size="sm"` button (32px) and a file row an
+  // `iconButton.xs` (28px). Change either control and these change with it.
+  const HEADER_ROW_PX = 48;
+  const FILE_ROW_PX = 44;
+
   // The active worktree's git status is loaded by the always-mounted page shell;
   // this panel just renders the shared store.
   // Amend can reword the previous commit with nothing staged, so it relaxes the
@@ -389,7 +399,11 @@
               : i18n.t("rightPanel.noChanges")}
       </p>
     {:else}
-      <VirtualList items={rows} estimateSize={36} class="min-h-0 flex-1 px-2">
+      <VirtualList
+        items={rows}
+        estimateSize={(i) => (rows[i]?.kind === "header" ? HEADER_ROW_PX : FILE_ROW_PX)}
+        class="min-h-0 flex-1 px-2"
+      >
         {#snippet row(r)}
           {#if r.kind === "header"}
             {@render sectionHeader(r.area, r.count)}
