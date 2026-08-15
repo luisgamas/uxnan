@@ -57,7 +57,7 @@ import {
   type PlanStepBlock,
 } from './content-blocks.js';
 import { reasoningValue } from './run-options.js';
-import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+import { agentEnv, defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 import {
   OpenCodeServer,
   type IOpenCodeServer,
@@ -902,6 +902,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
           shell: false,
+          env: agentEnv(),
         });
       } catch {
         resolve([]);

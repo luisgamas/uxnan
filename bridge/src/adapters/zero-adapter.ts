@@ -56,7 +56,7 @@ import type {
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { defaultSpawn, type SpawnFn } from './spawn.js';
+import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
@@ -136,6 +136,7 @@ function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string)
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       shell: false,
+      env: agentEnv(),
     });
     if (!child.stdout || !child.stdin) throw new Error('zero acp: failed to acquire stdio');
     return {
@@ -259,6 +260,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
           stdio: ['ignore', 'pipe', 'ignore'],
           windowsHide: true,
           shell: false,
+          env: agentEnv(),
         });
       } catch {
         resolve([]);
@@ -282,6 +284,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
           stdio: ['ignore', 'pipe', 'ignore'],
           windowsHide: true,
           shell: false,
+          env: agentEnv(),
         });
       } catch {
         resolve(null);

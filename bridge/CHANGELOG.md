@@ -4,6 +4,20 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An agent the bridge spawns no longer inherits a desktop terminal's
+  identity.** The desktop ADE injects `UXNAN_AGENT_ID` plus its hook server's
+  url/token (and the browser / MCP endpoints) into every terminal it opens, and
+  environment variables are inherited by the whole process tree — so a
+  `uxnan-bridge start` run **inside** one of those terminals handed that identity
+  to every agent CLI it spawned, and their hooks reported to the ADE claiming to
+  be that terminal: an agent card on a terminal where nobody launched an agent.
+  Every spawn now runs with an explicit environment stripped of those keys
+  (`agentEnv` in `src/adapters/spawn.ts`). The bridge's **own** approval-hook
+  coordinates are unaffected: it sets them per turn, and what it sets wins over
+  the scrub — only an inherited value is dropped. Same fix as the desktop's, on
+  the other side of the same leak.
 
 ## [0.0.23-alpha.20260815] - 20260815
 ### Fixed — Antigravity's model list is usable again

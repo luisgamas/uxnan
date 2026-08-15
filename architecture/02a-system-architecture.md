@@ -1708,6 +1708,20 @@ El bridge es el componente que corre en la PC del usuario y actua como el plano 
 9. Sanitizar payloads: nunca exponer tokens o secretos al movil
 10. Buffer de outbound messages para reconexion sin perdida
 
+**Invariante de entorno al lanzar un agente.** Todo spawn de un CLI de agente
+usa un entorno **explicito** — el del bridge menos la identidad por terminal que
+inyecta el ADE de escritorio (`UXNAN_AGENT_ID`, url+token de su hook server,
+endpoint file, endpoints de browser/MCP; ver `uxnandesktop/architecture/02d` §1.1
+"Identidad por terminal, jamas heredada") mas lo que el adaptador fije a
+proposito, que gana. Las variables de entorno se heredan por todo el arbol de
+procesos, asi que un `uxnan-bridge start` arrancado **dentro** de una terminal
+del ADE le pasaba esa identidad a cada agente que lanzaba, y sus hooks
+reportaban al ADE como si fueran esa terminal. `agentEnv`
+(`bridge/src/adapters/spawn.ts`) es el unico sitio que decide esto; un spawn
+nuevo debe usarlo. El hook de aprobaciones del bridge reutiliza tres de esos
+nombres (`UXNAN_HOOK_URL`/`_TOKEN`/`_THREAD_ID`) para su propio servidor: los
+**fija** por turno y lo que fija sobrevive; solo se descarta lo heredado.
+
 #### 5.8.2 Entrypoint y estructura de archivos del bridge
 
 > NOTA: el bridge está implementado en **TypeScript** (`bridge/src/*.ts`,

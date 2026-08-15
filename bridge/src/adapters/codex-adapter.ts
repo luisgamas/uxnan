@@ -101,7 +101,7 @@ import {
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { defaultSpawn, type SpawnFn } from './spawn.js';
+import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
 import {
   buildReplyResult,
   describeServerRequest,
@@ -328,6 +328,7 @@ function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () =>
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
       shell: false,
+      env: agentEnv(),
     });
     if (!child.stdout || !child.stdin) {
       throw new Error('codex app-server: failed to acquire stdio streams');

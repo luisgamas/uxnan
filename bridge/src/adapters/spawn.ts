@@ -9,6 +9,48 @@
  */
 import { spawn } from 'node:child_process';
 
+/**
+ * Environment keys the **desktop ADE** injects into one terminal of one launch:
+ * `UXNAN_AGENT_ID` (that terminal's id), its hook server's url + token, the
+ * endpoint file, and the browser / MCP endpoints. They identify a terminal, and
+ * an agent reports its state by echoing them back.
+ *
+ * The bridge must never pass them on. Environment variables are inherited by the
+ * whole process tree, so a `uxnan-bridge start` run **inside** an ADE terminal
+ * gets that terminal's identity — and every agent CLI it spawns would inherit it
+ * and report to the ADE as if it *were* that terminal: an agent card on a
+ * terminal nobody launched an agent in, with a session stamped on the tab.
+ *
+ * `UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID` are on the list even though the
+ * bridge uses those names itself, for its approval hook: it **sets** them per
+ * turn (see the Claude adapter), and a value it sets wins over the scrub. What
+ * must not survive is a value inherited from someone else, which would point the
+ * hook at another process's server.
+ */
+export const DESKTOP_TERMINAL_ENV_KEYS = [
+  'UXNAN_AGENT_ID',
+  'UXNAN_HOOK_URL',
+  'UXNAN_HOOK_TOKEN',
+  'UXNAN_HOOK_THREAD_ID',
+  'UXNAN_ENDPOINT_FILE',
+  'UXNAN_BROWSER_URL',
+  'UXNAN_BROWSER_TOKEN',
+  'UXNAN_MCP_URL',
+  'UXNAN_MCP_TOKEN',
+] as const;
+
+/**
+ * The environment an agent CLI should run with: the bridge's own, minus the
+ * inherited terminal identity ({@link DESKTOP_TERMINAL_ENV_KEYS}), plus whatever
+ * the caller sets deliberately — which wins, so the approval hook's own
+ * coordinates still reach the agent.
+ */
+export function agentEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of DESKTOP_TERMINAL_ENV_KEYS) delete env[key];
+  return extra ? { ...env, ...extra } : env;
+}
+
 /** Minimal child-process surface the adapters rely on (so it can be faked in tests). */
 export interface SpawnedProcess {
   stdout: NodeJS.ReadableStream;
@@ -57,7 +99,9 @@ export const defaultSpawn: SpawnFn = (command, args, cwd, extra) => {
     stdio: [extra?.stdin === 'pipe' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
-    ...(extra?.env ? { env: { ...process.env, ...extra.env } } : {}),
+    // Always an explicit environment, never the implicit inherited one: that is
+    // what keeps a terminal's identity from reaching the agent (`agentEnv`).
+    env: agentEnv(extra?.env),
   });
   // `stdio` is computed, so TypeScript widens the streams to `| null` even
   // though 'pipe' guarantees stdout/stderr. The cast is the narrowing the

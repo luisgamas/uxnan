@@ -23,7 +23,7 @@
  * is spawned with `shell:false`, so there is no command-injection surface.
  */
 import { spawn } from 'node:child_process';
-import type { SpawnedProcess } from './spawn.js';
+import { agentEnv, type SpawnedProcess } from './spawn.js';
 
 /** A reply to an OpenCode `permission.asked`: allow once, always, or reject. */
 export type PermissionReply = 'once' | 'always' | 'reject';
@@ -171,7 +171,13 @@ export class OpenCodeServer implements IOpenCodeServer {
         child = spawn(
           this.#binaryPath,
           ['serve', '--port', '0', '--hostname', '127.0.0.1', '--print-logs'],
-          { cwd: this.#cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: false },
+          {
+            cwd: this.#cwd,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true,
+            shell: false,
+            env: agentEnv(),
+          },
         ) as unknown as SpawnedProcess;
       } catch (err) {
         reject(err instanceof Error ? err : new Error(String(err)));
