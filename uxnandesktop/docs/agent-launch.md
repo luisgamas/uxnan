@@ -179,7 +179,18 @@ can't be told an id — is in [`agent-hooks.md`](agent-hooks.md#reference).
 
 Most agent CLIs enumerate their own models and the ADE asks them directly
 (`opencode models`, `agy models`, `grok models`, `pi --list-models`,
-`codex app-server` `model/list`). **Claude Code cannot**, so the ADE ships a
+`codex app-server` `model/list`). A discovered list is only as stable as that
+CLI's output format: `agy models` changed shape between 1.1.4 and 1.1.13, from a
+bare id per line to a progress line plus `<id>⟨TAB⟩<label>` columns, which left
+`parse_agy_models` returning **nothing** — a picker with no Antigravity model
+reads as "not signed in", not as a parser that fell behind. The id column is the
+`--model` routing key (it carries the reasoning tier, so no `--effort` is
+passed) and the label is what the picker shows. **The bridge parses the same
+output** for the phone's picker
+([`../../bridge/docs/agents.md`](../../bridge/docs/agents.md)), so re-capture the
+real output and fix both apps in the same change set.
+
+**Claude Code cannot** enumerate its models, so the ADE ships a
 hand-kept table — `CLAUDE_MODELS` in
 [`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) — that fills the model
 pickers in **Settings → AI commit** and **Settings → GitHub → AI PR body**.
