@@ -9,7 +9,11 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 
-Widget _wrap({required bool requiresLogin, List<AgentDescriptor>? agents}) {
+Widget _wrap({
+  required bool requiresLogin,
+  List<AgentDescriptor>? agents,
+  List<AgentModel> models = const [],
+}) {
   return ProviderScope(
     overrides: [
       projectsProvider.overrideWith(
@@ -41,7 +45,7 @@ Widget _wrap({required bool requiresLogin, List<AgentDescriptor>? agents}) {
               ),
             ],
       ),
-      agentModelsProvider.overrideWith((ref, id) async => const <AgentModel>[]),
+      agentModelsProvider.overrideWith((ref, id) async => models),
       authStatusProvider.overrideWith(
         (ref, agentId) async => AuthStatus(
           agentId: agentId,
@@ -107,6 +111,45 @@ void main() {
     expect(find.text('Approvals'), findsNothing);
     expect(find.text('Plan mode'), findsOneWidget);
     expect(find.text('Forking'), findsOneWidget);
+  });
+
+  testWidgets('the picked model reads as a name over its routing id', (
+    tester,
+  ) async {
+    // The field used to show the routing id alone ("gemini-3.7-flash-high"),
+    // which says nothing to a reader; the id still has to stay visible, because
+    // on multi-provider agents it is what tells two similar names apart.
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrap(
+        requiresLogin: false,
+        models: const [
+          AgentModel(
+            id: 'gemini-3.7-flash-high',
+            displayName: 'Gemini 3.7 Flash (High)',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _selectCodex(tester);
+
+    // Nothing picked yet: the hint, and no id anywhere.
+    expect(find.text('Default model'), findsOneWidget);
+    expect(find.text('gemini-3.7-flash-high'), findsNothing);
+
+    await tester.tap(find.text('Default model'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gemini 3.7 Flash (High)').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gemini 3.7 Flash (High)'), findsOneWidget);
+    expect(find.text('gemini-3.7-flash-high'), findsOneWidget);
+    expect(find.text('Default model'), findsNothing);
   });
 
   testWidgets('agent cards remain overflow-free on a compact phone', (

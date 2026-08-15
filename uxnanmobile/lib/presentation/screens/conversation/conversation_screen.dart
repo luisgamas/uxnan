@@ -763,15 +763,20 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   /// Builds the environment snapshot (model + context + git branch) from the
   /// active thread, the live git state and the reported token usage.
+  ///
+  /// [modelLabel] is the readable name the bridge reports for the thread's
+  /// model ([threadModelLabelProvider]); the agent's own name stands in when
+  /// the thread runs on the agent's default model.
   SessionEnvironment _buildEnvironment(
     Thread? thread,
     String? gitBranch,
     ({int tokens, int? contextWindow})? usage, {
     required bool showContext,
+    required String? modelLabel,
   }) {
     final agent = AgentIdParsing.fromWireId(thread?.agentId ?? 'custom');
-    final modelName = thread?.model?.isNotEmpty ?? false
-        ? thread!.model!
+    final modelName = modelLabel?.isNotEmpty ?? false
+        ? modelLabel!
         : AgentVisuals.labelFor(agent);
     final window = usage?.contextWindow;
     return SessionEnvironment(
@@ -859,6 +864,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       gitBranch,
       usage,
       showContext: caps?.reportsContextUsage ?? false,
+      modelLabel: ref.watch(threadModelLabelProvider(widget.threadId)),
     );
     final cwd = thread?.cwd;
     // The agent's slash commands (agent/commands): drives the `/` palette rows
@@ -1313,6 +1319,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               ),
               title: _ModelPill(
                 model: environment.modelName,
+                modelId: thread?.model,
                 resolvedModel: resolvedModel,
                 onTap: thread != null ? () => _pickModel(thread) : null,
               ),
@@ -1345,11 +1352,25 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
 /// Model-picker pill in the top bar (Neural Expressive §4.2): a stadium-shaped
 /// `surfaceContainerHigh` chip with the active model name + chevron; tapping
-/// opens the model picker. The tooltip surfaces the resolved version.
+/// opens the model picker.
+///
+/// [model] is the **readable** name ("Gemini 3.7 Flash (High)") — one line in a
+/// top bar has no room for a routing id like `gemini-3.7-flash-high`, and that
+/// id tells the reader nothing the picker doesn't show. The technical value
+/// stays one long-press away in the tooltip: the version the agent actually
+/// resolved when it reported one, else the thread's own model id.
 class _ModelPill extends StatelessWidget {
-  const _ModelPill({required this.model, this.resolvedModel, this.onTap});
+  const _ModelPill({
+    required this.model,
+    this.modelId,
+    this.resolvedModel,
+    this.onTap,
+  });
 
   final String model;
+
+  /// The thread's routing id, null when it runs on the agent's default model.
+  final String? modelId;
   final String? resolvedModel;
   final VoidCallback? onTap;
 
@@ -1360,7 +1381,7 @@ class _ModelPill extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Tooltip(
-        message: resolvedModel ?? model,
+        message: resolvedModel ?? modelId ?? model,
         child: Material(
           color: colors.surfaceContainerHigh,
           shape: const StadiumBorder(),

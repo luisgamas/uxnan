@@ -94,6 +94,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Antigravity's models are listed again, with readable names.** `agy models`
+  changed shape (a progress line, then `<id>⟨TAB⟩<label>` columns instead of one
+  bare id per line), and the parser only accepted a line with no whitespace — so
+  every row was discarded and the AI-commit / PR-body pickers offered **no**
+  Antigravity model at all, which reads like a CLI that isn't signed in. The
+  output is now read as two columns: the id still routes `--model` (it carries
+  the reasoning tier, so no `--effort` is needed) and the label is what the
+  picker shows, so Antigravity reads "Gemini 3.7 Flash (High)" like every other
+  agent. Bare-id output from older `agy` still parses, and prose from a
+  signed-out CLI still never becomes a phantom model.
 - **Agents launched outside uxnan no longer complain about uxnan's browser MCP
   server.** Until now the integrated browser was exposed to agents by writing a
   `uxnan-browser` entry into each CLI's own user-global config

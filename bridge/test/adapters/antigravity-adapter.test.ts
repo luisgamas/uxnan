@@ -6,6 +6,7 @@ import {
   AntigravityAdapter,
   antigravityPermissionMode,
   antigravityPermissionArgs,
+  normalizeAntigravityModel,
   parseAntigravityModelList,
   type SpawnedProcess,
 } from '../../src/index.js';
@@ -68,31 +69,63 @@ function collect(adapter: AntigravityAdapter): { done: Promise<AgentStreamEvent[
   return { done };
 }
 
-test('parseAntigravityModelList parses labels, marks a default, skips headers/dupes', () => {
+test('parseAntigravityModelList splits id + label, marks a default, skips dupes', () => {
+  // Captured verbatim from `agy models` (1.1.13) on a signed-in machine: a
+  // progress line, then `<id>⟨TAB⟩<label>` rows.
   const output = [
-    'Available models:',
-    'Gemini 3.5 Flash (Medium)',
-    'Gemini 3.5 Flash (High)',
+    'Fetching available models...',
+    'gemini-3.7-flash-high\tGemini 3.7 Flash (High)',
+    'gemini-3.7-flash-low\tGemini 3.7 Flash (Low)',
     '',
-    'Gemini 3.5 Flash (Medium)', // duplicate → dropped
-    'Claude Opus 4.6 (Thinking)',
-  ].join('\n');
+    'gemini-3.7-flash-high\tGemini 3.7 Flash (High)', // duplicate → dropped
+    'claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)',
+  ].join('\r\n');
   const models = parseAntigravityModelList(output);
+  // The progress line is NOT a model: taking it made it the default, and the
+  // phone then sent `--model "Fetching available models..."`, failing every turn.
   assert.deepEqual(
     models.map((m) => m.id),
-    ['Gemini 3.5 Flash (Medium)', 'Gemini 3.5 Flash (High)', 'Claude Opus 4.6 (Thinking)'],
+    ['gemini-3.7-flash-high', 'gemini-3.7-flash-low', 'claude-opus-4-6-thinking'],
   );
-  // id === displayName; the first entry is the default (agy lists it first).
-  assert.equal(models[0]?.displayName, 'Gemini 3.5 Flash (Medium)');
+  // The id is the routing key; the label is what the phone shows.
+  assert.equal(models[0]?.displayName, 'Gemini 3.7 Flash (High)');
   assert.equal(models[0]?.isDefault, true);
   assert.equal(models[1]?.isDefault, undefined);
 });
 
+test('parseAntigravityModelList keeps bare ids and drops prose', () => {
+  // Older `agy` printed one bare id per line, and a signed-out CLI answers in
+  // sentences — which must never be minted into a phantom model.
+  const models = parseAntigravityModelList(
+    ['Available models:', 'gemini-3.1-pro-high', 'Please sign in to continue.', ''].join('\n'),
+  );
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ['gemini-3.1-pro-high'],
+  );
+  assert.equal(models[0]?.displayName, 'gemini-3.1-pro-high');
+});
+
 test('parseAntigravityModelList marks a configured default when it matches', () => {
-  const output = 'Gemini 3.5 Flash (Medium)\nGemini 3.1 Pro (High)';
-  const models = parseAntigravityModelList(output, 'Gemini 3.1 Pro (High)');
+  const output =
+    'gemini-3.5-flash-medium\tGemini 3.5 Flash (Medium)\ngemini-3.1-pro-high\tGemini 3.1 Pro (High)';
+  const models = parseAntigravityModelList(output, 'gemini-3.1-pro-high');
   assert.equal(models[0]?.isDefault, undefined);
   assert.equal(models[1]?.isDefault, true);
+});
+
+test('normalizeAntigravityModel recovers a selection stored as the whole list line', () => {
+  // What the previous parser handed the phone; `agy` rejects it outright.
+  assert.equal(
+    normalizeAntigravityModel('gemini-3.6-flash-low\tGemini 3.6 Flash (Low)'),
+    'gemini-3.6-flash-low',
+  );
+  // A plain id (and a label, which `agy` also accepts) passes through untouched.
+  assert.equal(normalizeAntigravityModel('gemini-3.6-flash-low'), 'gemini-3.6-flash-low');
+  assert.equal(normalizeAntigravityModel('Gemini 3.6 Flash (Low)'), 'Gemini 3.6 Flash (Low)');
+  // Nothing usable → no `--model` at all, so `agy` runs on its own default.
+  assert.equal(normalizeAntigravityModel(undefined), undefined);
+  assert.equal(normalizeAntigravityModel('  '), undefined);
 });
 
 test('antigravityPermissionArgs maps posture to the right flags', () => {
@@ -170,12 +203,31 @@ test('AntigravityAdapter passes the selected model', async () => {
     turnId: 'u1',
     text: 'hi',
     cwd: '/p',
-    service: 'Gemini 3.1 Pro (High)',
+    service: 'gemini-3.1-pro-high',
   });
   last().feed(['ok']);
   await done;
   const args = last().args;
-  assert.equal(args[args.indexOf('--model') + 1], 'Gemini 3.1 Pro (High)');
+  assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.1-pro-high');
+});
+
+test('AntigravityAdapter repairs a model stored as the whole `agy models` line', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    cwd: '/p',
+    // A thread picked before the parser fix carries `<id>⟨TAB⟩<label>`, which
+    // `agy` rejects — it must reach the CLI as the id alone.
+    service: 'gemini-3.1-pro-high\tGemini 3.1 Pro (High)',
+  });
+  last().feed(['ok']);
+  await done;
+  const args = last().args;
+  assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.1-pro-high');
 });
 
 test('AntigravityAdapter maps accessMode to plan vs skip-permissions', async () => {
@@ -229,11 +281,18 @@ test('AntigravityAdapter.listModels spawns `agy models` and parses the output', 
   const { spawnFn, last } = fakeSpawner();
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
   const listing = adapter.listModels();
-  last().feed(['Gemini 3.5 Flash (Medium)\nClaude Sonnet 4.6 (Thinking)\n']);
+  last().feed([
+    'Fetching available models...\n',
+    'gemini-3.5-flash-medium\tGemini 3.5 Flash (Medium)\nclaude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)\n',
+  ]);
   const models = await listing;
   assert.equal(last().args[last().args.length - 1], 'models');
   assert.deepEqual(
     models.map((m) => m.id),
+    ['gemini-3.5-flash-medium', 'claude-sonnet-4-6'],
+  );
+  assert.deepEqual(
+    models.map((m) => m.displayName),
     ['Gemini 3.5 Flash (Medium)', 'Claude Sonnet 4.6 (Thinking)'],
   );
 });

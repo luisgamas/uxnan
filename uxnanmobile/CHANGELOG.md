@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed — the model shows the name you read, not the id the CLI routes on
+The app bar's model pill showed the routing id the agent CLI needs
+(`gemini-3.7-flash-high`), truncated to fit — so the one place the active model
+is always visible said the least about it. It now shows the readable name the
+bridge reports for that id ("Gemini 3.7 Flash (High)"), with the id itself one
+long-press away in the tooltip (still the version the agent resolved, when it
+reports one). The **New conversation** model field follows the picker sheet
+instead: readable name over routing id, so on agents that route through many
+providers the id keeps telling near-identical names apart.
+
+Nothing changes in what is sent to the PC — the thread still stores and sends
+the routing id — and a model the bridge doesn't list (offline, an older bridge)
+still shows its id rather than an empty chip.
+
 ### Changed
 - The conversation's **Session info** sheet no longer says the ids are only good
   for the agent's CLI: they open the same conversation in the agent's **desktop
