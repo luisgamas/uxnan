@@ -593,25 +593,41 @@ pub fn parse_pi_models(output: &str) -> Vec<AgentModel> {
     out
 }
 
-/// Parse `agy models`, which prints one bare model id per line and nothing else.
+/// Parse `agy models`, which prints a progress line and then one model per line
+/// as two TAB-separated columns:
 ///
-/// The ids already carry their reasoning tier (`gemini-3.6-flash-high`), so they
-/// are shown verbatim — inventing a prettier display name would only make the
-/// picker disagree with what the user sees running `agy models` themselves.
+/// ```text
+/// Fetching available models...
+/// gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)
+/// ```
+///
+/// The **id** (first column) is the `--model` routing key and already carries
+/// its reasoning tier, so a tier-less id is refused ("requires --effort"); the
+/// label is for humans. `agy` 1.1.4 printed the bare id alone, which is still
+/// accepted — it then doubles as the display name.
+///
+/// Anything that is not one of those two shapes is dropped: the progress line
+/// is not a model, and an unauthenticated CLI answers in prose, which must
+/// never be minted into a phantom model.
 pub fn parse_agy_models(output: &str) -> Vec<AgentModel> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for raw in output.lines() {
         let line = strip_ansi(raw);
-        let id = line.trim();
-        // A bare id has no whitespace; anything else is a banner or an error
-        // line. An unauthenticated CLI answers in prose, and a phantom model
-        // minted from a sentence would be offered as if it were real.
+        let (id, label) = match line.split_once('\t') {
+            Some((id, label)) => (id.trim(), label.trim()),
+            None => (line.trim(), ""),
+        };
+        // A routing key never contains whitespace, so a first column that does
+        // is a banner or a sentence, not a model.
         if id.is_empty() || id.contains(char::is_whitespace) {
             continue;
         }
         if seen.insert(id.to_string()) {
-            out.push(AgentModel::new(id, id));
+            out.push(AgentModel::new(
+                id,
+                if label.is_empty() { id } else { label },
+            ));
         }
     }
     out
@@ -741,17 +757,28 @@ mod tests {
     }
 
     #[test]
-    fn agy_models_are_read_one_per_line() {
-        // Captured verbatim from `agy models` on a signed-in machine.
-        let out = "gemini-3.6-flash-high
-gemini-3.6-flash-medium
-gemini-3.1-pro-high
-claude-sonnet-4-6
+    fn agy_models_are_read_as_id_and_label_columns() {
+        // Captured verbatim from `agy models` (1.1.13) on a signed-in machine:
+        // a progress line, then `<id>⟨TAB⟩<label>` rows.
+        let out = "Fetching available models...
+gemini-3.7-flash-high\tGemini 3.7 Flash (High)
+gemini-3.6-flash-medium\tGemini 3.6 Flash (Medium)
+claude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)
 ";
         let models = parse_agy_models(out);
-        assert_eq!(models.len(), 4);
-        assert_eq!(models[0].id, "gemini-3.6-flash-high");
-        // The id already carries its tier, so it doubles as the display name.
+        // The progress line is not a model — taking it would offer the user a
+        // "model" the CLI rejects.
+        assert_eq!(models.len(), 3, "{models:?}");
+        assert_eq!(models[0].id, "gemini-3.7-flash-high");
+        assert_eq!(models[0].display_name, "Gemini 3.7 Flash (High)");
+        assert_eq!(models[2].display_name, "Claude Sonnet 4.6 (Thinking)");
+    }
+
+    #[test]
+    fn agy_bare_ids_still_parse() {
+        // `agy` 1.1.4 printed the id alone; it then doubles as the label.
+        let models = parse_agy_models("gemini-3.6-flash-high\ngemini-3.1-pro-high\n");
+        assert_eq!(models.len(), 2);
         assert_eq!(models[0].display_name, "gemini-3.6-flash-high");
     }
 

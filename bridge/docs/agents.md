@@ -200,6 +200,26 @@ handshake. **Claude Code is the only curated, hand-maintained list** (see
 *Claude Code models* below); it is the one place a new model has to be added by
 hand, and it has a matching half in the desktop app.
 
+**A discovered list is only as stable as the CLI's output format — re-capture it
+before trusting a parser.** `agy models` changed shape between 1.1.4 and 1.1.13:
+it now prints a progress line first and then two TAB-separated columns.
+
+```text
+Fetching available models...
+gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)
+```
+
+The **first column is the `--model` routing key** (it already carries the
+reasoning tier — `--model gemini-3.5-flash` alone is refused with "requires
+`--effort`", so the bridge never passes `--effort`), and the second is the label
+the phone shows. A parser written for the old one-value-per-line shape kept
+"working" silently: it sent the *whole line* as `--model`, which `agy` rejects,
+and it offered `Fetching available models...` as a model — the first entry, so
+also the default. Both were verified live against `agy` 1.1.13: `--model
+gemini-3.5-flash-low` and `--model "Gemini 3.5 Flash (Low)"` run, the whole line
+does not. The desktop app parses the same output ([`../../uxnandesktop/docs/agent-launch.md`](../../uxnandesktop/docs/agent-launch.md)),
+so a format change there is a **two-app** fix.
+
 ## Wired agents
 
 | Agent | CLI invocation | Continuity | Permission posture | Models |
@@ -208,7 +228,7 @@ hand, and it has a matching half in the desktop app.
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `accessMode` → app-server `approvalPolicy` + `sandbox`, re-applied on **every** `thread/start`/`thread/resume` (so a mid-conversation change lands on the next turn); approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
-| **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |
+| **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
 | **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model) |
 
