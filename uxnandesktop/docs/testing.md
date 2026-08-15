@@ -122,7 +122,11 @@ set, so a developer without Docker sees a reason rather than a failure.
 
 CI runs them on `ubuntu-latest`, but only when the change touches the SSH layer
 or the fixture — a container build on every unrelated UI change is how a lane
-gets ignored.
+gets ignored. The gate needs the full history to compare against the base
+commit, and when it cannot resolve one it **runs anyway**: the first version
+took the opposite branch, so a shallow checkout made the job report success in
+five seconds having run nothing. A check that cannot tell whether it is needed
+must err towards testing.
 
 **Still not covered:** a macOS host, and a *Windows* host as the remote end (the
 generated PowerShell is exercised against a local `pwsh`, which is not the same
