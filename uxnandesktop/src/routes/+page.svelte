@@ -5,6 +5,8 @@
   import { projects } from "$lib/state/projects.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import { sshHostId } from "$lib/target";
   import { git } from "$lib/state/git.svelte";
   import { github } from "$lib/state/github.svelte";
   import { openWith } from "$lib/state/openWith.svelte";
@@ -170,7 +172,18 @@
     void git.startListening();
   });
   $effect(() => {
-    void git.load(projects.activeLocalPath);
+    // The real path plus its machine, not `activeLocalPath`: git now runs on a
+    // host too, and the path alone would have this machine answer for a folder
+    // of the same name.
+    const target = projects.activeWorktreeTarget;
+    // Read the host's connection as well, so this re-runs when that host comes
+    // up (filling in a review that could not be read at startup) and when it
+    // drops (clearing a list that is no longer anyone's current state). Pushing
+    // that from the hosts store instead would make it import this one, and it
+    // already imports `app` — the cycle the sessions registry exists to avoid.
+    const host = sshHostId(target);
+    if (host !== null) void sessions.generationOf(host);
+    void git.load(projects.activeWorktreePath, target);
   });
 
   // GitHub integration: read sign-in status once the backend is ready, load the

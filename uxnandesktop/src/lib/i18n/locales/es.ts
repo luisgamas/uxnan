@@ -2260,7 +2260,11 @@ export const es: Record<MessageKey, string> = {
   "files.hostDisconnected": "{host} no esta conectado — reconectalo para guardar el archivo alli.",
   "remote.branchNotRead": "rama sin leer",
   "remote.panelTitle": "Este proyecto vive en {host}",
-  "remote.panelBody": "Archivos, cambios, historial y GitHub se leen en esta maquina, asi que no pueden describir una carpeta de otra. Leerlos por SSH llega en una fase posterior; una terminal en el host ya funciona.",
+  "remote.panelBody": "GitHub se lee con el repositorio de esta maquina y su sesion de `gh`, asi que no puede describir una carpeta de otra. Archivos, cambios e historial si funcionan en un host.",
   "remote.panelOpenTerminal": "Abrir una terminal alli",
+  "git.remoteNotRead": "Esa carpeta no se pudo leer como repositorio en ese host.",
+  "git.remoteImageDiff": "Las diferencias de imagenes se leen en esta maquina, asi que no estan disponibles para un proyecto en un host.",
+  "git.remoteNoWatch": "En un host, los cambios se leen cuando lo pides — esta lista no se actualiza sola.",
+  "git.refresh": "Actualizar",
 
 };

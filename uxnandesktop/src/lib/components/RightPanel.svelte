@@ -115,27 +115,20 @@
       </Tabs.Trigger>
     {/if}
   </Tabs.List>
-  <!-- Files works on a host: it goes over SFTP, a subsystem, so it behaves the
-       same whatever shell that machine starts. The other three read this
-       machine's git, so on a remote project they stand down and say which
-       machine the project is on — said once, in place of the pane, rather than
-       three times over. -->
+  <!-- Files, Changes and History all work on a host: files over SFTP (a
+       subsystem, so it behaves the same whatever shell that machine starts), and
+       git through that machine's own shell with every argument quoted for it.
+       GitHub is the one that cannot: it reads this machine's repository and its
+       `gh` sign-in, so on a remote project it stands down and says which machine
+       the project is on. -->
   <Tabs.Content value="files" class="min-h-0 min-w-0 flex-1 overflow-hidden">
     <FileTreePanel />
   </Tabs.Content>
   <Tabs.Content value="changes" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-    {#if projects.activeIsRemote}
-      <RemoteWorkspaceNotice />
-    {:else}
-      <ChangesPanel />
-    {/if}
+    <ChangesPanel />
   </Tabs.Content>
   <Tabs.Content value="history" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-    {#if projects.activeIsRemote}
-      <RemoteWorkspaceNotice />
-    {:else}
-      <HistoryPanel />
-    {/if}
+    <HistoryPanel />
   </Tabs.Content>
   {#if showGithub}
     <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">

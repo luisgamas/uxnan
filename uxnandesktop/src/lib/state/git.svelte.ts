@@ -1,31 +1,39 @@
 // Git review state for the right panel (Svelte 5 runes).
 //
 // Holds the changed-file list, staging actions, the selected file's diff and the
-// commit message for the **active worktree**. The panel reloads on demand and
-// applies the backend's live 3 s status snapshots, including HEAD changes made
-// by an agent or another Git client.
+// commit message for the **active worktree**, on whichever machine that worktree
+// lives (`$lib/gitRouter` decides; this store never asks "is it remote?" itself
+// beyond the two places where the *behaviour* genuinely differs).
+//
+// Two of those differences are worth knowing before reading the code:
+//
+// - **A remote worktree has no watcher.** The backend's live 3 s snapshots are
+//   this machine's git being polled; polling a host would be a shell start every
+//   three seconds on someone else's computer, per worktree. So a remote review
+//   refreshes when it is opened, after every action taken here, and when the
+//   user asks — and `remote` is exposed so the panel can say so rather than
+//   letting a stale list look live.
+// - **Two things stay local-only.** The AI commit message reads the staged diff
+//   through this machine's git, and an image diff reads blobs the same way.
+//   Both are absent on a host rather than wrong (see `FOR-DEV.md`).
 
 import { listen } from "@tauri-apps/api/event";
+import { generateCommitMessage, gitImageDiff, gitNumstat, gitSetWatch } from "$lib/api";
 import {
-  generateCommitMessage,
-  gitApply,
-  gitCommit,
-  gitDiff,
-  gitImageDiff,
-  gitDiscard,
-  gitFetch,
-  gitNumstat,
-  gitPull,
-  gitPush,
-  gitSetWatch,
-  gitShow,
-  gitStage,
-  gitStageAll,
-  gitStatus,
-  gitUnstage,
-  gitUnstageAll,
-  worktreeStatus,
-} from "$lib/api";
+  applyOn,
+  commitOn,
+  diffOn,
+  discardOn,
+  reviewOn,
+  showOn,
+  stageAllOn,
+  stageOn,
+  syncOn,
+  unstageAllOn,
+  unstageOn,
+} from "$lib/gitRouter";
+import { sessions } from "$lib/state/sessions.svelte";
+import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 import { projects } from "$lib/state/projects.svelte";
 import { history } from "$lib/state/history.svelte";
 import { app } from "$lib/state/app.svelte";
@@ -35,6 +43,15 @@ import { i18n } from "$lib/i18n";
 import { isImagePath } from "$lib/diff";
 import { commitFileDiff } from "$lib/diffParse";
 import type { FileChange, GitStatusEvent } from "$lib/types";
+
+/** Whether a failure is "that host is not connected yet" — a state, not a
+ *  fault. Matched on the backend's own code, like the file tree does, so the
+ *  wording can change freely. */
+function isNotConnected(e: unknown): boolean {
+  return (
+    !!e && typeof e === "object" && "code" in e && (e as { code: unknown }).code === "NOT_CONNECTED"
+  );
+}
 
 const msg = (e: unknown) =>
   e && typeof e === "object" && "message" in e
@@ -59,6 +76,11 @@ function classify(f: FileChange): FileEntry {
 class GitStore {
   /** Active worktree path the panel reflects (null = no worktree selected). */
   path = $state<string | null>(null);
+  /** The machine that worktree is on. Held next to the path because neither
+   *  means anything alone: the same absolute path names a different folder on
+   *  every machine, which is why every call here goes through `$lib/gitRouter`
+   *  with both. */
+  target = $state<TargetId>(LOCAL_TARGET);
   files = $state<FileEntry[]>([]);
   /** Added/deleted line counts vs HEAD, keyed by worktree-relative path. */
   numstat = $state<Record<string, { added: number; deleted: number }>>({});
@@ -67,6 +89,12 @@ class GitStore {
   busy = $state(false);
   busyAction = $state<{ kind: "stage" | "unstage" | "discard"; file: string } | null>(null);
   error = $state<string | null>(null);
+  /** The worktree is on a host that has not connected yet. Not an error: it is
+   *  the ordinary state between starting the app and the host coming up, and it
+   *  fills itself in from `retryForHost` — the same shape the file tree uses,
+   *  because the alternative is a red line the user has to clear by switching
+   *  projects and back. */
+  awaitingHost = $state(false);
   /** Commit message composer: subject line. */
   message = $state("");
   /** Optional extended description (commit body) — collapsed in the composer. */
@@ -97,6 +125,26 @@ class GitStore {
    *  catches commits made while the user was looking at another workspace. */
   private headsByPath = new Map<string, string | null>();
 
+  /** Whether the reviewed worktree is on another machine. The panel reads it to
+   *  say that the list refreshes on demand rather than by itself, and to leave
+   *  out the two things that only this machine's git can do. */
+  remote = $derived(!isLocalTarget(this.target));
+
+  /** The connection this worktree's mutations must run against, or `undefined`
+   *  when the host is not connected — which is a refusal, never a zero. Local
+   *  work needs none. */
+  private get generation(): number | undefined {
+    const host = sshHostId(this.target);
+    return host === null ? undefined : sessions.generationOf(host);
+  }
+
+  /** Whether an action can be taken at all: a host that dropped its connection
+   *  can still be *shown*, but nothing may be sent to it. */
+  actionable = $derived.by(() => {
+    const host = sshHostId(this.target);
+    return host === null || sessions.generationOf(host) !== undefined;
+  });
+
   /** Files with a staged change / with a working-tree (or untracked) change. */
   staged = $derived(this.files.filter((f) => f.staged));
   changed = $derived(this.files.filter((f) => f.unstaged));
@@ -110,7 +158,11 @@ class GitStore {
     try {
       await listen<GitStatusEvent>("git:status-changed", (e) => {
         const ev = e.payload;
-        if (ev.path !== this.path) return;
+        // The watcher polls *this* machine. A host's worktree can carry the same
+        // absolute path, so the target is checked before the path — otherwise a
+        // local folder of the same name would overwrite a remote review with its
+        // own file list.
+        if (this.remote || ev.path !== this.path) return;
 
         const hadHead = this.headsByPath.has(ev.path);
         const previousHead = this.headsByPath.get(ev.path);
@@ -143,13 +195,16 @@ class GitStore {
     }
   }
 
-  /** Point the panel at a worktree (or clear it), load its status, and tell the
-   *  backend watcher to poll it. */
-  async load(path: string | null): Promise<void> {
+  /** Point the panel at a worktree on a machine (or clear it), load its status,
+   *  and tell the backend watcher to poll it — only when it is this machine's,
+   *  since that watcher can only see this one. */
+  async load(path: string | null, target: TargetId = LOCAL_TARGET): Promise<void> {
     const seq = ++this.loadSeq;
-    const pathChanged = this.path !== path;
+    const pathChanged = this.path !== path || this.target !== target;
     this.path = path;
+    this.target = target;
     this.error = null;
+    this.awaitingHost = false;
     this.ahead = 0;
     this.behind = 0;
     if (pathChanged) {
@@ -159,7 +214,10 @@ class GitStore {
       this.numstat = {};
       this.numstatSeq++;
     }
-    void gitSetWatch(path).catch(() => {});
+    // A remote worktree unwatches whatever this machine was watching: there is
+    // nothing here to poll, and polling a host every three seconds would be a
+    // shell start on someone else's computer for as long as the panel is open.
+    void gitSetWatch(isLocalTarget(target) ? path : null).catch(() => {});
     if (!path) {
       this.loading = false;
       this.numstatSeq++;
@@ -169,34 +227,63 @@ class GitStore {
     }
     this.loading = true;
     try {
-      const files = (await gitStatus(path)).map(classify);
+      // One call for both machines. Locally it is still the three calls it
+      // always was; on a host it is a single command, because each one there
+      // costs a shell start (`$lib/gitRouter`).
+      const review = await reviewOn(target, path);
       if (seq !== this.loadSeq || this.path !== path) return;
-      this.files = files;
-      void this.loadNumstat(path);
-      const st = await worktreeStatus(path);
-      if (seq !== this.loadSeq || this.path !== path) return;
-      this.ahead = st.ahead;
-      this.behind = st.behind;
+      if (!review.isRepo) {
+        // "Not a repository", "no git installed" or "the shell could not be
+        // named" — all of which must read as *not read*, never as a clean tree.
+        this.files = [];
+        this.numstat = {};
+        this.error = i18n.t("git.remoteNotRead");
+        return;
+      }
+      this.files = review.files.map(classify);
+      const map: Record<string, { added: number; deleted: number }> = {};
+      for (const n of review.numstat) map[n.path] = { added: n.added, deleted: n.deleted };
+      this.numstat = map;
+      this.numstatSeq++;
+      this.ahead = review.status.ahead;
+      this.behind = review.status.behind;
+      // A host answers with its HEAD, so History can tell it is looking at an
+      // older one without a second round trip.
+      if (review.head !== null) {
+        const previous = this.headsByPath.get(path);
+        this.headsByPath.set(path, review.head);
+        if (previous !== undefined && previous !== review.head) history.refreshIfLoaded(path);
+      }
       // Keep the project card badge in sync (e.g. after a commit clears it).
-      projects.setStatus(path, st);
+      projects.setStatus(path, review.status);
     } catch (e) {
       if (seq !== this.loadSeq || this.path !== path) return;
-      this.error = msg(e);
-      toastError(e);
       this.files = [];
       this.numstat = {};
+      // A host that is not up yet is said plainly and silently — a toast on
+      // every cold start, for a state the app is about to resolve by itself,
+      // is noise the user cannot act on.
+      this.awaitingHost = isNotConnected(e);
+      this.error = this.awaitingHost ? null : msg(e);
+      if (!this.awaitingHost) toastError(e);
     } finally {
       if (seq === this.loadSeq && this.path === path) this.loading = false;
     }
   }
 
-  /** Re-read the current worktree's status (no-op when none is selected). */
+  /** Re-read the current worktree's status (no-op when none is selected). On a
+   *  host this is the *only* thing that updates the list, so it runs after every
+   *  action here and behind the panel's refresh control. */
   refresh(): Promise<void> {
-    return this.load(this.path);
+    return this.load(this.path, this.target);
   }
 
   /** Refresh the per-file added/deleted line counts (best-effort; only applied if
-   *  we're still showing the same worktree when it resolves). */
+   *  we're still showing the same worktree when it resolves).
+   *
+   *  Local only, and called only from the watcher's snapshot: a host answers its
+   *  counts inside `reviewOn`, so asking again would be a second shell start for
+   *  something already in hand. */
   async loadNumstat(path: string): Promise<void> {
     const seq = ++this.numstatSeq;
     try {
@@ -213,15 +300,17 @@ class GitStore {
   /** Run a staging action then refresh, surfacing any error. */
   private async op(
     action: { kind: "stage" | "unstage" | "discard"; file: string },
-    fn: (path: string) => Promise<void>,
+    fn: (path: string, target: TargetId, generation?: number) => Promise<void>,
   ): Promise<void> {
     const path = this.path;
     if (!path) return;
+    const target = this.target;
+    const generation = this.generation;
     this.busy = true;
     this.busyAction = action;
     this.error = null;
     try {
-      await fn(path);
+      await fn(path, target, generation);
       await this.refresh();
     } catch (e) {
       this.error = msg(e);
@@ -233,25 +322,25 @@ class GitStore {
   }
 
   stage(file: string): Promise<void> {
-    return this.op({ kind: "stage", file }, (p) => gitStage(p, file));
+    return this.op({ kind: "stage", file }, (p, t, g) => stageOn(t, p, file, g));
   }
   unstage(file: string): Promise<void> {
-    return this.op({ kind: "unstage", file }, (p) => gitUnstage(p, file));
+    return this.op({ kind: "unstage", file }, (p, t, g) => unstageOn(t, p, file, g));
   }
   stageAll(): Promise<void> {
-    return this.op({ kind: "stage", file: "*" }, (p) => gitStageAll(p));
+    return this.op({ kind: "stage", file: "*" }, (p, t, g) => stageAllOn(t, p, g));
   }
   unstageAll(): Promise<void> {
-    return this.op({ kind: "unstage", file: "*" }, (p) => gitUnstageAll(p));
+    return this.op({ kind: "unstage", file: "*" }, (p, t, g) => unstageAllOn(t, p, g));
   }
   discard(file: string, untracked: boolean): Promise<void> {
-    return this.op({ kind: "discard", file }, (p) => gitDiscard(p, file, untracked));
+    return this.op({ kind: "discard", file }, (p, t, g) => discardOn(t, p, file, untracked, g));
   }
 
   /** Reload the status if the panel is currently showing `path` (used by a diff
    *  tab after it applies a hunk in that worktree). */
-  refreshIfWatching(path: string): void {
-    if (this.path === path) void this.refresh();
+  refreshIfWatching(path: string, target: TargetId = LOCAL_TARGET): void {
+    if (this.path === path && this.target === target) void this.refresh();
   }
 
   /** Compose the full commit message from the composer fields: the subject, the
@@ -285,7 +374,9 @@ class GitStore {
    *  agent returns one, the body (the rest), overwriting whatever is there. */
   async generateMessage(): Promise<void> {
     const path = this.path;
-    if (!path || this.aiGenerating) return;
+    // Local only: it reads the staged diff through this machine's git. On a host
+    // the button is not offered, so reaching here at all would be a bug.
+    if (!path || this.remote || this.aiGenerating) return;
     this.aiGenerating = true;
     this.error = null;
     try {
@@ -317,7 +408,7 @@ class GitStore {
     this.committing = true;
     this.error = null;
     try {
-      await gitCommit(path, message, this.amend, this.signOff);
+      await commitOn(this.target, path, message, this.amend, this.signOff, this.generation);
       this.resetComposer();
       history.refreshIfLoaded(path);
       await this.refresh();
@@ -337,18 +428,14 @@ class GitStore {
 
   /** Push or pull the current branch, then refresh ahead/behind + status, and
    *  toast `okMsg` on success. */
-  private async sync(
-    action: "push" | "pull",
-    fn: (path: string) => Promise<void>,
-    okMsg: string,
-  ): Promise<void> {
+  private async sync(action: "push" | "pull", okMsg: string): Promise<void> {
     const path = this.path;
     if (!path) return;
     this.syncing = true;
     this.syncingAction = action;
     this.error = null;
     try {
-      await fn(path);
+      await syncOn(this.target, path, action, this.generation);
       history.refreshIfLoaded(path);
       await this.refresh();
       void github.refreshContext();
@@ -363,11 +450,13 @@ class GitStore {
     }
   }
   async push(): Promise<void> {
-    await this.sync("push", (p) => gitPush(p), i18n.t("toast.pushed"));
-    await this.offerCreatePr();
+    await this.sync("push", i18n.t("toast.pushed"));
+    // The GitHub side of this reads *this* machine's repository, so it is only
+    // offered for a worktree that is on it.
+    if (!this.remote) await this.offerCreatePr();
   }
   pull(): Promise<void> {
-    return this.sync("pull", (p) => gitPull(p), i18n.t("toast.pulled"));
+    return this.sync("pull", i18n.t("toast.pulled"));
   }
 
   /** Fetch the current worktree's remote and refresh ahead/behind so the user can
@@ -381,7 +470,7 @@ class GitStore {
     this.fetching = true;
     this.error = null;
     try {
-      const st = await gitFetch(path);
+      const st = await syncOn(this.target, path, "fetch", this.generation);
       if (this.path === path) {
         this.ahead = st.ahead;
         this.behind = st.behind;
@@ -438,6 +527,17 @@ export const git = new GitStore();
  *  registered in the terminals store and rendered by `DiffPane.svelte`. */
 export class DiffViewerState {
   readonly worktree: string;
+  /** The machine that worktree is on, carried for the same reason as the path:
+   *  a tab that outlives the panel must not start reading this machine's copy of
+   *  a folder that lives on a host. */
+  readonly target: TargetId;
+  /** The connection a hunk action must run against, read at the moment of the
+   *  action — the tab can outlive a reconnection, and the generation it was
+   *  opened with would by then name a connection that no longer exists. */
+  private get generation(): number | undefined {
+    const host = sshHostId(this.target);
+    return host === null ? undefined : sessions.generationOf(host);
+  }
   /** Worktree-relative path being diffed. Mutable so a file-tab rename/move can
    *  re-point the same Changes view at the file's new location (see `repoint`). */
   file = $state("");
@@ -456,8 +556,15 @@ export class DiffViewerState {
    *  owning tab can close itself. */
   private onEmpty: () => void;
 
-  constructor(worktree: string, file: string, staged: boolean, onEmpty: () => void) {
+  constructor(
+    worktree: string,
+    file: string,
+    staged: boolean,
+    onEmpty: () => void,
+    target: TargetId = LOCAL_TARGET,
+  ) {
     this.worktree = worktree;
+    this.target = target;
     this.file = file;
     this.staged = staged;
     this.onEmpty = onEmpty;
@@ -486,6 +593,12 @@ export class DiffViewerState {
     this.error = null;
     try {
       if (this.isImage) {
+        if (!isLocalTarget(this.target)) {
+          // Image diffs read the two blobs through this machine's git. Say so
+          // rather than showing an empty frame that looks like "no change".
+          this.error = i18n.t("git.remoteImageDiff");
+          return;
+        }
         const res = await gitImageDiff(this.worktree, this.file, this.staged);
         this.imageOld = res.old ? `data:${res.old.mime};base64,${res.old.base64}` : null;
         this.imageNew = res.new ? `data:${res.new.mime};base64,${res.new.base64}` : null;
@@ -494,7 +607,10 @@ export class DiffViewerState {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("diff timed out")), 30_000),
       );
-      this.diff = await Promise.race([gitDiff(this.worktree, this.file, this.staged), timeout]);
+      this.diff = await Promise.race([
+        diffOn(this.target, this.worktree, this.file, this.staged),
+        timeout,
+      ]);
     } catch (e) {
       this.error = msg(e);
       toastError(e);
@@ -516,8 +632,8 @@ export class DiffViewerState {
     try {
       const cached = action !== "discard";
       const reverse = action !== "stage";
-      await gitApply(this.worktree, patch, cached, reverse);
-      git.refreshIfWatching(this.worktree);
+      await applyOn(this.target, this.worktree, patch, cached, reverse, this.generation);
+      git.refreshIfWatching(this.worktree, this.target);
       await this.reload();
       if (this.diff.trim().length === 0) this.onEmpty();
     } catch (e) {
@@ -534,6 +650,8 @@ export class DiffViewerState {
  *  by `CommitPane.svelte`. */
 export class CommitViewerState {
   readonly worktree: string;
+  /** The machine the commit is on — same reason as `DiffViewerState`. */
+  readonly target: TargetId;
   readonly hash: string;
   readonly subject: string;
   /** When set, the viewer shows only this file's slice of the commit diff. */
@@ -542,8 +660,15 @@ export class CommitViewerState {
   diffLoading = $state(true);
   error = $state<string | null>(null);
 
-  constructor(worktree: string, hash: string, subject: string, file?: string) {
+  constructor(
+    worktree: string,
+    hash: string,
+    subject: string,
+    file?: string,
+    target: TargetId = LOCAL_TARGET,
+  ) {
     this.worktree = worktree;
+    this.target = target;
     this.hash = hash;
     this.subject = subject;
     this.file = file ?? null;
@@ -559,7 +684,7 @@ export class CommitViewerState {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("diff timed out")), 30_000),
       );
-      const full = await Promise.race([gitShow(this.worktree, this.hash), timeout]);
+      const full = await Promise.race([showOn(this.target, this.worktree, this.hash), timeout]);
       this.diff = this.file ? commitFileDiff(full, this.file) : full;
     } catch (e) {
       this.error = msg(e);

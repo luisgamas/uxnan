@@ -1518,6 +1518,20 @@ pub async fn ssh_git_diff(
         .map_err(CommandError::from)
 }
 
+/// A file's diff against `HEAD` on a host — the editor's change gutter.
+#[tauri::command]
+pub async fn ssh_git_diff_head(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+) -> Result<String, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::git::diff_head(&conn, shell, &path, &file)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// A host worktree's history, newest first.
 #[tauri::command]
 pub async fn ssh_git_log(
@@ -1662,6 +1676,23 @@ pub async fn ssh_git_commit(
     )
     .await
     .map_err(CommandError::from)
+}
+
+/// Fetch, push or pull on a host, then read the worktree back so the panel's
+/// ahead/behind bar reflects what just happened without a second round trip.
+#[tauri::command]
+pub async fn ssh_git_sync(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    action: ssh::git::SyncAction,
+    expect: Option<TargetExpectation>,
+) -> Result<git::WorktreeStatus, CommandError> {
+    let (conn, shell) = remote_git_fenced(&state, &host_id, expect).await?;
+    ssh::git::sync(&conn, shell, &path, action)
+        .await
+        .map_err(CommandError::from)?;
+    Ok(ssh::git::review(&conn, shell, &path).await.status)
 }
 
 /// The file session for a host, opening one on first use.

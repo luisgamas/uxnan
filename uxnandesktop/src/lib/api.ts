@@ -32,6 +32,7 @@ import type {
   FileSearch,
   FsEntry,
   SshConfigAlias,
+  SshGitReview,
   SshGitStatus,
   SshConnectReport,
   SshHostInventory,
@@ -679,6 +680,156 @@ export function sshBrowseDirs(hostId: string, path: string): Promise<SshRemoteLi
  *  read*, never as "no changes". */
 export function sshGitStatus(hostId: string, path: string): Promise<SshGitStatus> {
   return invoke<SshGitStatus>('ssh_git_status', { hostId, path });
+}
+
+/** Everything the Changes tab needs about a worktree on a host, in **one** round
+ *  trip: HEAD, ahead/behind, the changed files and their line counts.
+ *
+ *  One call rather than the local layer's four because each one costs a shell
+ *  start on that machine — measured at ~2s on a real host — and the panel asks
+ *  for all of them at once. `isRepo: false` means *not read*, never "clean". */
+export function sshGitReview(hostId: string, path: string): Promise<SshGitReview> {
+  return invoke<SshGitReview>('ssh_git_review', { hostId, path });
+}
+
+/** A file's unified diff on a host, staged or unstaged. */
+export function sshGitDiff(
+  hostId: string,
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<string> {
+  return invoke<string>('ssh_git_diff', { hostId, path, file, staged });
+}
+
+/** A file's diff against HEAD on a host — the editor's change gutter. Not the
+ *  same question as `sshGitDiff`: the gutter marks every line that differs from
+ *  the committed file, so staging a hunk must not clear it. */
+export function sshGitDiffHead(hostId: string, path: string, file: string): Promise<string> {
+  return invoke<string>('ssh_git_diff_head', { hostId, path, file });
+}
+
+/** A host worktree's history, newest first. Same shape as the local log, so the
+ *  History tab and the branch graph render either machine unchanged. */
+export function sshGitLog(
+  hostId: string,
+  path: string,
+  limit: number,
+  skip: number,
+): Promise<CommitInfo[]> {
+  return invoke<CommitInfo[]>('ssh_git_log', { hostId, path, limit, skip });
+}
+
+/** One commit's patch, on a host. */
+export function sshGitShow(hostId: string, path: string, hash: string): Promise<string> {
+  return invoke<string>('ssh_git_show', { hostId, path, hash });
+}
+
+/** Stage a file on a host. Fenced like every mutation: `expect` names the
+ *  machine and connection the user was looking at, and the backend refuses
+ *  before anything is sent when that no longer holds. */
+export function sshGitStage(
+  hostId: string,
+  path: string,
+  file: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_stage', { hostId, path, file, expect: expect ?? null });
+}
+
+export function sshGitUnstage(
+  hostId: string,
+  path: string,
+  file: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_unstage', { hostId, path, file, expect: expect ?? null });
+}
+
+export function sshGitStageAll(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_stage_all', { hostId, path, expect: expect ?? null });
+}
+
+export function sshGitUnstageAll(
+  hostId: string,
+  path: string,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_unstage_all', { hostId, path, expect: expect ?? null });
+}
+
+/** Throw a file's changes away on a host — the one action here that cannot be
+ *  undone, and the reason the fence exists at all. */
+export function sshGitDiscard(
+  hostId: string,
+  path: string,
+  file: string,
+  untracked: boolean,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_discard', {
+    hostId,
+    path,
+    file,
+    untracked,
+    expect: expect ?? null,
+  });
+}
+
+/** Apply a patch on a host — the per-hunk stage/unstage/discard. The patch
+ *  travels over SFTP, never through that machine's shell. */
+export function sshGitApply(
+  hostId: string,
+  path: string,
+  patch: string,
+  cached: boolean,
+  reverse: boolean,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_apply', {
+    hostId,
+    path,
+    patch,
+    cached,
+    reverse,
+    expect: expect ?? null,
+  });
+}
+
+/** Commit on a host. The message travels over SFTP for the same reason: a
+ *  multi-line message with quotes in it must never be quoted for a shell. */
+export function sshGitCommit(
+  hostId: string,
+  path: string,
+  message: string,
+  amend: boolean,
+  signOff: boolean,
+  expect?: TargetExpectation,
+): Promise<void> {
+  return invoke<void>('ssh_git_commit', {
+    hostId,
+    path,
+    message,
+    amend,
+    signOff,
+    expect: expect ?? null,
+  });
+}
+
+/** Fetch, push or pull **on the host**, answering the worktree's new distance
+ *  from its upstream. The credentials are that machine's own — the project lives
+ *  there, so its remote is reachable from there. */
+export function sshGitSync(
+  hostId: string,
+  path: string,
+  action: 'fetch' | 'push' | 'pull',
+  expect?: TargetExpectation,
+): Promise<WorktreeStatus> {
+  return invoke<WorktreeStatus>('ssh_git_sync', { hostId, path, action, expect: expect ?? null });
 }
 
 /** List a directory on a host, for the file tree. Over SFTP — a subsystem, so it

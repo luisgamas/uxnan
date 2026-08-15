@@ -265,6 +265,30 @@ pub async fn diff(
     Ok(out.stdout)
 }
 
+/// A file's diff against `HEAD`, for the editor's change gutter.
+///
+/// Not the same question as [`diff`]: the gutter marks every line that differs
+/// from the committed file, staged or not, so a line the user staged a moment
+/// ago must stay marked. `git diff HEAD` is that; `git diff` alone would clear
+/// the gutter the instant a hunk is staged.
+///
+/// An untracked file has no `HEAD` side, so git answers nothing and the gutter
+/// stays empty — the same as locally.
+pub async fn diff_head(
+    conn: &Connection,
+    kind: ShellKind,
+    path: &str,
+    file: &str,
+) -> Result<String, AppError> {
+    if kind == ShellKind::Unknown {
+        return Err(unnameable_shell());
+    }
+    let p = quote_arg(kind, path);
+    let f = quote_arg(kind, file);
+    let out = conn.exec(&format!("git -C {p} diff HEAD -- {f}")).await?;
+    Ok(out.stdout)
+}
+
 /// The history of a worktree on the host.
 ///
 /// The field separators are git's own (`%x1f` / `%x1e`), so the answer is parsed
@@ -487,6 +511,41 @@ pub async fn apply_patch(
     let outcome = run(conn, kind, &format!("git -C {p} apply{flags} -- {f}")).await;
     let _ = files.remove_file(&scratch).await;
     outcome
+}
+
+/// Fetch, push or pull **on the host**.
+///
+/// The credentials used are that machine's own — its keys, its agent, its
+/// credential helper — which is the point: the project lives there, so its
+/// remote is reachable from there and not necessarily from here.
+///
+/// No terminal is allocated for an `exec` channel, so a remote that wants a
+/// password fails instead of waiting for one nobody can type. That is the
+/// honest outcome: the user then sets up credentials on the host, which is
+/// where they belong.
+pub async fn sync(
+    conn: &Connection,
+    kind: ShellKind,
+    path: &str,
+    action: SyncAction,
+) -> Result<(), AppError> {
+    let p = quote_arg(kind, path);
+    let verb = match action {
+        SyncAction::Fetch => "fetch --prune",
+        SyncAction::Push => "push",
+        SyncAction::Pull => "pull --ff-only",
+    };
+    run(conn, kind, &format!("git -C {p} {verb}")).await
+}
+
+/// Which of the three the caller wants. An enum rather than a string, so a typo
+/// cannot become a command on someone else's machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncAction {
+    Fetch,
+    Push,
+    Pull,
 }
 
 #[cfg(test)]

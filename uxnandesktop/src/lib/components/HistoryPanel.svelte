@@ -6,7 +6,10 @@
   // than one giant blob). Hovering a commit peeks its full details. The log is
   // paginated (a "load more" footer) and filterable; data lives in the shared
   // `history` store so it survives tab re-mounts.
+  import { git } from "$lib/state/git.svelte";
   import { history } from "$lib/state/history.svelte";
+  import { sessions } from "$lib/state/sessions.svelte";
+  import { sshHostId } from "$lib/target";
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
@@ -34,9 +37,24 @@
   import UserIcon from "@hugeicons/core-free-icons/UserIcon";
   import ClockIcon from "@hugeicons/core-free-icons/Clock01Icon";
 
+  // The host connection the loaded log was read over, so a reconnection reloads
+  // it rather than leaving a log from a session that no longer exists. `null` is
+  // "no host involved", which never changes for a local worktree.
+  let lastGeneration: number | null = null;
+
   // Keep the loaded log pointed at the active worktree (cheap no-op on re-mount).
   $effect(() => {
-    history.ensure(projects.activeWorktreePath);
+    const target = projects.activeWorktreeTarget;
+    // Same reason as the Changes panel: reading the connection here is what
+    // makes the log fill in when its host comes up, and clear when it goes.
+    const host = sshHostId(target);
+    const generation = host === null ? null : (sessions.generationOf(host) ?? null);
+    if (generation !== lastGeneration) {
+      lastGeneration = generation;
+      void history.load(projects.activeWorktreePath, target);
+      return;
+    }
+    history.ensure(projects.activeWorktreePath, target);
   });
 
   // Graph geometry (kept in lockstep with the commit row height below). Circular
@@ -446,7 +464,11 @@
             </Button>
           {/snippet}
         </TooltipSimple>
-        <TooltipSimple title={i18n.t("history.refresh")}>
+        <TooltipSimple
+          title={git.remote
+            ? `${i18n.t("history.refresh")} — ${i18n.t("git.remoteNoWatch")}`
+            : i18n.t("history.refresh")}
+        >
           {#snippet children(tp)}
             <Button
               {...tp}
@@ -467,6 +489,10 @@
 
   {#if !history.path}
     <p class={cn("p-3", text.meta)}>{i18n.t("history.selectWorktree")}</p>
+  {:else if history.awaitingHost}
+    <!-- Not an error: the host simply is not up yet, and the log fills itself
+         in the moment it is (the effect above reads the session registry). -->
+    <p class={cn("p-3", text.meta)}>{i18n.t("fileTree.awaitingHost")}</p>
   {:else if history.error}
     <p class={cn("p-3", text.meta)}>{i18n.t("history.notRepo")}</p>
   {:else if history.commits.length === 0}

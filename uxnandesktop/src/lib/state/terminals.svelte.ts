@@ -1147,9 +1147,13 @@ class TerminalStore {
     const wt = tab.worktree;
     if (!wt || this.diffStates.has(tab.id)) return;
     const rel = this.fileStates.get(tab.id)?.rel || relOf(tab.path, wt);
+    // The machine comes from the workspace the tab lives in — the same source
+    // the editor reads, so a file and its diff can never disagree about which
+    // computer they are on.
+    const key = this.workspaceOfTab(tab.id) ?? this.activeWorkspace;
     this.diffStates.set(
       tab.id,
-      new DiffViewerState(wt, rel, tab.staged, () => this.onDiffEmpty(tab.id)),
+      new DiffViewerState(wt, rel, tab.staged, () => this.onDiffEmpty(tab.id), keyTarget(key)),
     );
   }
 
@@ -1187,7 +1191,10 @@ class TerminalStore {
       subject,
       file,
     };
-    this.commitStates.set(id, new CommitViewerState(worktree, hash, subject, file));
+    this.commitStates.set(
+      id,
+      new CommitViewerState(worktree, hash, subject, file, keyTarget(this.activeWorkspace)),
+    );
     this.insertTab(tab, opts?.groupId);
     return id;
   }

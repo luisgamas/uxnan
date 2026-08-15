@@ -808,6 +808,21 @@ export interface SshGitStatus extends WorktreeStatus {
   isRepo: boolean;
 }
 
+/** Everything the Changes tab reads about a worktree on a host, answered in one
+ *  remote command (mirror of Rust `ssh::git::RemoteReview`).
+ *
+ *  The pieces are the local layer's own shapes on purpose, so the panel renders
+ *  either machine with the components it already has. `isRepo: false` carries
+ *  the same meaning as in `SshGitStatus`: *not read*, never "clean". */
+export interface SshGitReview extends WorktreeStatus {
+  files: FileChange[];
+  numstat: FileNumstat[];
+  /** The worktree's HEAD, so History knows when it has to reload. Absent in a
+   *  repository with no commits yet. */
+  head: string | null;
+  isRepo: boolean;
+}
+
 /** Which shell a host's `sshd` starts (mirror of Rust `ssh::shellkind::ShellKind`). */
 export type RemoteShellKind = "posix" | "cmd" | "powershell" | "unknown";
 

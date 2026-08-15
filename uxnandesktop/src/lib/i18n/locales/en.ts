@@ -2258,8 +2258,12 @@ export const en = {
   "files.hostDisconnected": "{host} is not connected — reconnect it to save this file there.",
   "remote.branchNotRead": "branch not read",
   "remote.panelTitle": "This project lives on {host}",
-  "remote.panelBody": "Files, changes, history and GitHub are read on this machine, so they cannot describe a folder on another one. Reading them over SSH comes in a later phase; a terminal on the host works today.",
+  "remote.panelBody": "GitHub is read through this machine's repository and its `gh` sign-in, so it cannot describe a folder on another one. Files, changes and history do work on a host.",
   "remote.panelOpenTerminal": "Open a terminal there",
+  "git.remoteNotRead": "This folder could not be read as a repository on that host.",
+  "git.remoteImageDiff": "Image diffs are read on this machine, so they are not available for a project on a host.",
+  "git.remoteNoWatch": "On a host, changes are read when you ask — this list does not update by itself.",
+  "git.refresh": "Refresh",
 
 } as const;
 

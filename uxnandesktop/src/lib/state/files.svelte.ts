@@ -8,8 +8,8 @@
 // CodeMirror document itself lives in `FileEditor.svelte`. All FS/git access
 // goes through `$lib/api`.
 
-import { gitDiffHead } from "$lib/api";
 import { readFileOn, writeFileOn } from "$lib/fsRouter";
+import { diffHeadOn } from "$lib/gitRouter";
 import { isLocalTarget, LOCAL_TARGET, sshHostId, type TargetId } from "$lib/target";
 import { git } from "$lib/state/git.svelte";
 import { sessions } from "$lib/state/sessions.svelte";
@@ -104,14 +104,13 @@ export class FileEditorState {
 
   /** The file's diff against HEAD, or empty when there is nothing to ask.
    *
-   *  Git runs on **this** machine, so a file that lives on a host is not asked at
-   *  all: pointing local git at a remote path fails, and the failure surfaces as
-   *  an error toast over a file that opened perfectly well. Remote diffs are the
-   *  next piece of phase 3 (`02g` §5.11); until then no diff is the honest
-   *  answer, and the Changes view is not offered for those files. */
+   *  Asked on whichever machine the file is on. A failure is swallowed on
+   *  purpose and always was: the gutter is a decoration over a file that opened
+   *  perfectly well, and a folder that is not a repository (or a host that
+   *  dropped) must not put an error toast over it. */
   private async diffAgainstHead(): Promise<string> {
-    if (!this.worktree || !isLocalTarget(this.target)) return "";
-    return gitDiffHead(this.worktree, this.rel).catch(() => "");
+    if (!this.worktree) return "";
+    return diffHeadOn(this.target, this.worktree, this.rel).catch(() => "");
   }
 
   /** Read the file content + its `git diff HEAD` from disk, resetting dirty /
@@ -188,9 +187,9 @@ export class FileEditorState {
       this.externallyChanged = false;
       if (this.worktree) {
         this.headDiff = await this.diffAgainstHead();
-        // The git panel reads this machine too, so a save on a host has nothing
-        // to refresh here.
-        if (isLocalTarget(this.target) && git.path === this.worktree) void git.refresh();
+        // The panel is showing this worktree only if both halves match — the
+        // same absolute path on two machines is two different worktrees.
+        if (git.path === this.worktree && git.target === this.target) void git.refresh();
       }
     } catch (e) {
       this.error = msg(e);
