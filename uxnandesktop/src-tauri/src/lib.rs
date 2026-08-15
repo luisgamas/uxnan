@@ -37,6 +37,7 @@ mod gitfast;
 // allowlisted sandbox repository in the ignored live suite.
 pub mod github;
 mod hooks;
+pub mod launchenv;
 mod mcp;
 mod mcpinject;
 mod model;

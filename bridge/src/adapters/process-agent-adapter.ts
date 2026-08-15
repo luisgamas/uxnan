@@ -23,6 +23,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { agentEnv } from './spawn.js';
 
 export interface ProcessAdapterOptions {
   agentId: AgentId;
@@ -55,6 +56,7 @@ export class ProcessAgentAdapter extends BaseAgentAdapter {
       cwd: config.cwd ?? process.cwd(),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      env: agentEnv(),
     });
     this.#child = child;
     this.#reader = createInterface({ input: child.stdout });

@@ -193,6 +193,24 @@ else — which is exactly the trap:
   means migrating the turn's whole stream parse to the JSON events (tracked in
   [`../FOR-DEV.md`](../FOR-DEV.md)).
 
+### The environment an agent is spawned with
+
+Every spawn passes an **explicit** environment, never the implicit inherited one:
+the bridge's own, minus the keys the desktop ADE injects into one terminal of one
+launch (`UXNAN_AGENT_ID`, its hook server's url/token, the endpoint file, the
+browser / MCP endpoints), plus whatever the adapter sets deliberately — which
+wins. `agentEnv` in `src/adapters/spawn.ts` is the one place that decides this;
+a new spawn site must use it.
+
+The reason is that environment variables are inherited by the whole process tree.
+Start the bridge **inside** an ADE terminal and it is handed that terminal's
+identity; without the scrub every agent it spawned inherited it too, and their
+hooks reported to the ADE as if they *were* that terminal — an agent card on a
+terminal where nobody launched an agent, with a session stamped on the tab. The
+bridge's own approval hook is unaffected: it uses three of those names
+(`UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID`) for its own server, but it **sets**
+them per turn and a value it sets survives. Only an inherited one is dropped.
+
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models`, `model/list`,
 `pi --list-models`, `agy models`, `zero models list`, Grok's `initialize`
