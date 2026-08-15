@@ -4,6 +4,27 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed — Antigravity's model list is usable again
+
+Picking any Antigravity model on the phone failed the turn with *"invalid model
+selection … is not recognized as a known model"*, and the picker listed
+`Fetching available models...` as if it were a model — marked **Default**, so it
+was what a fresh conversation ran on.
+
+`agy models` changed shape between 1.1.4 and 1.1.13: it now prints a progress
+line, then `<id>⟨TAB⟩<label>` rows. The parser still assumed one value per line,
+so it took the progress line as a model and sent the **whole line** —
+`gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)` — as `--model`. It is now
+read as two columns: the id routes (it already carries the reasoning tier, so no
+`--effort` is passed) and the label is what the phone shows, which also gives
+Antigravity the same two-line rows as every other agent in the model picker.
+Bare-id output (older `agy`) is still accepted, and prose never becomes a
+phantom model. A conversation whose stored model is the old whole-line value is
+repaired on send instead of failing, so no thread needs re-picking.
+
+Verified live against `agy` 1.1.13: `--model gemini-3.5-flash-low` and `--model
+"Gemini 3.5 Flash (Low)"` both run; the whole line is rejected.
+
 ### Fixed — a Codex conversation started on the phone now opens in the Codex app
 
 Starting a conversation on Codex from the phone made it **unopenable everywhere

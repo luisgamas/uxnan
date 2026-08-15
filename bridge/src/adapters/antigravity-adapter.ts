@@ -10,7 +10,7 @@
  *
  * Per-turn command shape:
  *   agy --conversation <uuid> --add-dir <cwd> \
- *       (--dangerously-skip-permissions | --mode plan) [--model "<label>"] -p <text>
+ *       (--dangerously-skip-permissions | --mode plan) [--model <id>] -p <text>
  *
  * Why each flag (each verified live — earlier `agy` releases lacked all of them,
  * which is why Antigravity was previously deferred, see bridge/FOR-DEV.md):
@@ -28,8 +28,10 @@
  *    skip-permissions (autonomous, like pi); a `requestApproval` thread degrades
  *    to read-only `--mode plan` instead (the safe "can't ask you, so I'll only
  *    plan" posture). See {@link AntigravityAdapter.#effectiveMode}.
- *  - `--model "<label>"`: the label from `agy models` (e.g. "Gemini 3.5 Flash
- *    (High)"); omitted → `agy`'s own default.
+ *  - `--model <id>`: the id column of `agy models` (e.g. `gemini-3.7-flash-high`),
+ *    which already carries the reasoning tier — a tier-less id is rejected with
+ *    "requires --effort", so the bridge never passes `--effort` separately;
+ *    omitted → `agy`'s own default.
  *
  * Critical detail: like the other one-shot CLIs, we spawn with stdin IGNORED (the
  * shared {@link defaultSpawn}) and pass the prompt as an argv element with
@@ -122,7 +124,7 @@ export interface AntigravityAdapterOptions {
   binaryPath?: string;
   /** Args prepended before the adapter args (unused for the native `agy` exe). */
   prependArgs?: string[];
-  /** Default model label (an `agy models` entry) when the thread/turn picks none. */
+  /** Default model id (an `agy models` routing key) when the thread/turn picks none. */
   defaultModel?: string;
   /** Tool posture default when the thread sets no access mode (default `bypassPermissions`). */
   permissionMode?: AntigravityPermissionMode;
@@ -136,11 +138,32 @@ interface ActiveRun {
 }
 
 /**
- * Parse the `agy models` output (one model label per line) into
- * {@link AgentModel}s. The label IS the `--model` routing key (e.g. "Gemini 3.5
- * Flash (High)"), so `id === displayName`. `agy` lists its account default first,
- * so — absent a configured `defaultModel` that matches — the first entry is
- * marked as the default (presentation-only). Header/blank lines are skipped.
+ * Parse the `agy models` output into {@link AgentModel}s.
+ *
+ * The surface as of `agy` 1.1.13 (captured verbatim from a signed-in machine):
+ *
+ * ```text
+ * Fetching available models...
+ * gemini-3.7-flash-high⟨TAB⟩Gemini 3.7 Flash (High)
+ * claude-sonnet-4-6⟨TAB⟩Claude Sonnet 4.6 (Thinking)
+ * ```
+ *
+ * So a data row is `<id>⟨TAB⟩<label>`: the **id** is the `--model` routing key
+ * (it already carries the reasoning tier, so no `--effort` is needed — `--model
+ * gemini-3.5-flash` alone is rejected with "requires --effort"), and the label is
+ * for humans. Both were verified live: `--model gemini-3.5-flash-low` and
+ * `--model "Gemini 3.5 Flash (Low)"` each run, while the whole line does NOT —
+ * which is what an earlier parser sent, so every model pick failed.
+ *
+ * Anything that is not a data row is dropped, including the leading progress
+ * line: taking it made "Fetching available models..." the first entry and hence
+ * the default, and the phone then sent it as `--model`. A line without a TAB is
+ * only kept when it is a bare id (older `agy` printed those alone); prose is
+ * never minted into a phantom model.
+ *
+ * `agy` lists its account default first, so — absent a configured
+ * `defaultModel` that matches — the first entry is marked as the default
+ * (presentation-only).
  */
 export function parseAntigravityModelList(output: string, defaultModel?: string): AgentModel[] {
   const out: AgentModel[] = [];
@@ -148,18 +171,39 @@ export function parseAntigravityModelList(output: string, defaultModel?: string)
   for (const raw of output.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
-    // Skip a header row like "Available models:" (the sub-command prints none
-    // today, but stay robust if a future version adds one).
+    // Skip a header row like "Available models:".
     if (line.endsWith(':')) continue;
-    if (seen.has(line)) continue;
-    seen.add(line);
-    out.push({ id: line, displayName: line });
+    const tab = line.indexOf('\t');
+    const id = (tab >= 0 ? line.slice(0, tab) : line).trim();
+    const label = tab >= 0 ? line.slice(tab + 1).trim() : '';
+    // A routing key never contains whitespace, so a "column" that does is prose
+    // (the progress line, or a signed-out CLI answering in sentences).
+    if (!id || /\s/.test(id)) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, displayName: label || id });
   }
   const defaultIndex =
     defaultModel !== undefined ? out.findIndex((m) => m.id === defaultModel) : -1;
   const markIndex = defaultIndex >= 0 ? defaultIndex : out.length > 0 ? 0 : -1;
   if (markIndex >= 0) out[markIndex] = { ...out[markIndex]!, isDefault: true };
   return out;
+}
+
+/**
+ * The `--model` value for a stored model selection, or undefined for "let `agy`
+ * pick".
+ *
+ * A thread keeps whatever the picker handed it, and an earlier parser handed out
+ * the **whole** `agy models` line (`<id>⟨TAB⟩<label>`), which `agy` rejects. So a
+ * selection carrying a TAB is cut back to its id column: threads chosen before
+ * the fix keep running instead of failing every turn until the user re-picks.
+ */
+export function normalizeAntigravityModel(model?: string): string | undefined {
+  if (model === undefined) return undefined;
+  const tab = model.indexOf('\t');
+  const value = (tab >= 0 ? model.slice(0, tab) : model).trim();
+  return value.length > 0 ? value : undefined;
 }
 
 export class AntigravityAdapter extends BaseAgentAdapter {
@@ -240,7 +284,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   sendTurn(options: SendTurnOptions): Promise<void> {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
-    const model = options.service ?? this.#defaultModel;
+    const model = normalizeAntigravityModel(options.service ?? this.#defaultModel);
     // Conversation id: created and owned by us on the first turn, reused after so
     // `agy` resumes the same conversation (continuity across turns).
     let conversationId = this.#conversationByThread.get(threadId);
@@ -347,8 +391,9 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * List the models `agy models` reports (e.g. "Gemini 3.5 Flash (High)"), each a
-   * `--model` routing key. Parsed by {@link parseAntigravityModelList}. Resolves
+   * List the models `agy models` reports — the id is the `--model` routing key
+   * (`gemini-3.7-flash-high`) and the label is what the phone shows ("Gemini 3.7
+   * Flash (High)"). Parsed by {@link parseAntigravityModelList}. Resolves
    * to `[]` if the spawn fails or times out — the phone then shows no picker and
    * the agent runs on `agy`'s own default model.
    */
