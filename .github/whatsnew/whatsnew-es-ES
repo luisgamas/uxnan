@@ -1,3 +1,3 @@
-Ajustes y Perfil ya responden al botón atrás de Android: vuelves a la pantalla anterior en vez de salir de la app.
+El modelo con el que hablas ahora se lee por su nombre —«Gemini 3.7 Flash (High)» en vez de un id técnico— tanto en la barra superior de una conversación como al crear una nueva. El id exacto sigue a un toque: mantén pulsado el nombre del modelo o léelo bajo el nombre en la lista de modelos.
 
-Una conversación con su propia copia del proyecto ahora se crea donde la coloca tu PC, en la misma carpeta que ya usa la app de escritorio, así las dos apps dejan de crear carpetas distintas para la misma rama.
+Info de sesión también deja claro que los ids de una conversación la abren en la app de escritorio del agente, no solo en su línea de comandos.
