@@ -49,12 +49,21 @@ RUN mkdir -p /home/${UXNAN_USER}/plain-folder
 USER root
 # Password auth is what the tests use; root login stays off. `UsePAM no` keeps
 # the container from needing a full PAM stack for a login to succeed.
+#
+# `MaxStartups` is raised because the suite runs in parallel and every test dials
+# its own connection, which sits right at OpenSSH's default (10 unauthenticated
+# at once, then random drops). A handshake dropped there is this fixture's limit,
+# not the app's — and it would surface as a test that fails once in a while for a
+# reason nobody could find. The channel limit the app *does* care about
+# (`MaxSessions`, per connection) is deliberately left at its default, because a
+# test proves what a host enforces by hitting it.
 RUN printf '%s\n' \
       'PasswordAuthentication yes' \
       'PermitRootLogin no' \
       'UsePAM no' \
       'PrintMotd no' \
       'AcceptEnv LANG LC_*' \
+      'MaxStartups 100' \
       > /etc/ssh/sshd_config.d/uxnan.conf
 
 EXPOSE 22

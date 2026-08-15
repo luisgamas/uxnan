@@ -28,6 +28,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Running out of channels on a host now says what the limit is.** Everything
+  on a connection is a channel — every terminal, the file session, each command
+  while it runs — and a host caps how many it will carry at once. Past that cap
+  the next terminal failed with a library error that read as "it broke".
+
+  The cap is **not assumed**: OpenSSH's `MaxSessions` defaults to 10, but it is
+  a per-host setting and plenty of machines change it, so hard-coding ten would
+  be this app deciding what someone else's `sshd` is configured to do. Channels
+  are counted, and the limit is *learned* from the first refusal — after that,
+  the message names the number that host actually enforces and where to change
+  it. A command queues briefly for a free slot rather than failing while another
+  one finishes; a terminal or a file session, which hold their channel for as
+  long as they live, are told straight away instead of spinning on a slot that
+  is not coming.
+
+  Measured against a real host rather than reasoned about, which caught two
+  things: the refusal count was one too high (it would have told the user to
+  raise a setting to the value it already had), and a host releases a closed
+  channel *asynchronously* — a refusal in that instant was being recorded as
+  "this host allows 1 channel", which would have crippled the connection for the
+  rest of its life.
+
 - **A host that goes away says so, instead of waiting to be asked.** Everything
   about a dropped session was already right *when asked* — the keepalive notices
   a dead host in about two minutes, a listing opens a new channel, a connection

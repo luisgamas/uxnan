@@ -725,3 +725,63 @@ async fn posix_host_searches_its_project_by_name_and_by_content() {
 
     let _ = conn.exec(&format!("rm -rf {repo}")).await;
 }
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_says_how_many_channels_it_allows_when_it_runs_out() {
+    let (conn, _) = host_or_skip!();
+
+    // Hold file sessions open — each one is a channel, exactly like a terminal —
+    // until the host refuses. `MaxSessions` defaults to 10 in OpenSSH, but the
+    // point is that the app does not assume that: it counts, and learns the
+    // number from the machine itself.
+    let mut held = Vec::new();
+    let mut refusal = None;
+    for _ in 0..40 {
+        match super::sftp::open(&conn).await {
+            Ok(session) => held.push(session),
+            Err(e) => {
+                refusal = Some(e.to_string());
+                break;
+            }
+        }
+    }
+
+    let message = refusal.expect("a host refuses eventually; it did not in 40 channels");
+    println!("linux: {} channels held, then: {message}", held.len());
+    assert!(
+        message.contains("channels at once") && message.contains("MaxSessions"),
+        "the refusal names the limit and where to change it: {message}"
+    );
+    // The number is what the host enforced, not a guess and not one more than
+    // it: this caught an off-by-one that would have told the user to raise a
+    // setting to the value it already had.
+    assert!(
+        message.contains(&format!("allows {} channels", held.len())),
+        "the message quotes what the host actually allowed ({}): {message}",
+        held.len()
+    );
+
+    // Give the channels back and the connection works again — the budget is a
+    // count of what is open, not a fuse that stays blown.
+    //
+    // With a wait, because **the host releases a channel asynchronously**: our
+    // side knows the session is dropped the instant it is, and the machine has
+    // not necessarily processed the close yet. This found a second bug — a
+    // refusal at that moment was being recorded as "this host allows 1
+    // channel", which would have crippled the connection for the rest of its
+    // life.
+    held.clear();
+    let mut reopened = false;
+    for _ in 0..20 {
+        if super::sftp::open(&conn).await.is_ok() {
+            reopened = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(
+        reopened,
+        "closing the sessions frees their slots on the host"
+    );
+}

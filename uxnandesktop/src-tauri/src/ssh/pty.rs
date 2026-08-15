@@ -111,11 +111,14 @@ impl RemotePtyManager {
             return Ok(false);
         }
 
-        let mut channel = conn
-            .handle()
-            .channel_open_session()
+        // A terminal holds its channel for as long as the tab lives, so it does
+        // not queue for one: `wait: false` means the answer is the host's own
+        // limit rather than a spinner waiting for a slot that is not coming
+        // (`Connection::open_channel`).
+        let (mut channel, lease) = conn
+            .open_channel("a remote terminal", false)
             .await
-            .map_err(|e| AppError::Pty(format!("could not open a remote terminal: {e}")))?;
+            .map_err(|e| AppError::Pty(e.to_string()))?;
 
         // `xterm-256color` because that is what the frontend's xterm actually is;
         // claiming anything else makes a remote TUI draw for a terminal that is
@@ -170,6 +173,9 @@ impl RemotePtyManager {
         // the same time, so neither can starve the other.
         let log_id = spec.id.clone();
         tokio::spawn(async move {
+            // Moved in so the channel's place in the budget is given back when
+            // this terminal ends, whichever of the three ways it ends.
+            let _lease = lease;
             let mut closing = false;
             // Why this terminal ended, for the log: a tab that disappears has
             // exactly three possible causes, and only the record separates them.

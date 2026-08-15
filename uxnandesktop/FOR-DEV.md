@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 765 Rust tests (729 unit + 36
-integration), of which 44 are ignored probes that need something real to talk to
-(35 live SSH probes — 26 against a real `sshd` and 9 against a **Linux host in a
+always wins). 768 Rust tests (732 unit + 36
+integration), of which 45 are ignored probes that need something real to talk to
+(36 live SSH probes — 26 against a real `sshd` and 10 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,212 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -929,7 +929,8 @@ deleting in a host's tree**, over SFTP and fenced, with deletion permanent
 because SSH has no trash and the dialog saying so (`02g` §5.10d); **searching a
 host's project** by name and by content, by asking git there rather than dragging
 the project across the link (`02g` §5.10e); **a dropped session announcing
-itself** instead of waiting to be asked (`02g` §5.10f); a keepalive so a quiet host is not reaped
+itself** instead of waiting to be asked (`02g` §5.10f); **a channel budget** that
+learns each host's own limit instead of assuming one (`02g` §5.10g); a keepalive so a quiet host is not reaped
 and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
 startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
@@ -960,12 +961,6 @@ reasoning, with the measurements that removed its justification, is in
 - [ ] Show the host's inventory **in the UI** — the launcher already filters by
       it, but nothing yet shows what a machine has, what it is missing and the
       command to install it (a per-host doctor view, below).
-- [ ] **A channel budget.** OpenSSH's `MaxSessions` defaults to **10**, and every
-      remote terminal, inventory probe and git call is a channel on the one
-      connection (directory listings no longer are — they ride the single SFTP
-      session). Nothing counts them today, so the eleventh
-      is refused by the host with an error that will read as "it broke". Needs a
-      cap with a queue, or at least an honest message naming the limit.
 - [ ] **Orphans on the far side.** Closing a remote terminal ends its channel;
       anything the shell left detached keeps running on that host, and nothing
       here can see it — the resource monitor walks *local* processes. Raised by

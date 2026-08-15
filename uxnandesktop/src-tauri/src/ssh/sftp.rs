@@ -100,6 +100,9 @@ fn session_is_gone(usable: bool, error: &SftpError) -> bool {
 pub struct RemoteFiles {
     session: SftpSession,
     alive: Arc<AtomicBool>,
+    /// This session's place in the connection's channel budget, given back when
+    /// the session is dropped (`ssh::conn::ChannelBudget`).
+    _lease: super::conn::ChannelLease,
 }
 
 impl RemoteFiles {
@@ -172,11 +175,9 @@ impl RemoteFiles {
 /// One channel, like everything else here (§5.3): the connection is already
 /// authenticated, so this costs a channel rather than a handshake.
 pub async fn open(conn: &Connection) -> Result<RemoteFiles, AppError> {
-    let channel = conn
-        .handle()
-        .channel_open_session()
-        .await
-        .map_err(|e| AppError::Invalid(format!("could not open a file channel: {e}")))?;
+    // The file session holds its channel for as long as it is cached, so like a
+    // terminal it is refused rather than queued when the host is full.
+    let (channel, lease) = conn.open_channel("a file channel", false).await?;
     channel
         .request_subsystem(true, "sftp")
         .await
@@ -189,7 +190,11 @@ pub async fn open(conn: &Connection) -> Result<RemoteFiles, AppError> {
     let session = SftpSession::new(stream)
         .await
         .map_err(|e| AppError::Invalid(format!("the host's SFTP session did not start: {e}")))?;
-    Ok(RemoteFiles { session, alive })
+    Ok(RemoteFiles {
+        session,
+        alive,
+        _lease: lease,
+    })
 }
 
 /// The SFTP stream, with a flag that records the moment it ends.

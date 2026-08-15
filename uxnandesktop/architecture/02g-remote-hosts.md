@@ -107,6 +107,7 @@ conexion alguna.
 | §5.10d | Crear/renombrar/duplicar/borrar en el host | `ssh/sftp.rs`, `fsRouter.ts` |
 | §5.10e | Buscar en el proyecto del host | `ssh/search.rs`, `fsRouter.ts` |
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
+| §5.10g | Presupuesto de canales | `ssh/conn.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1150,6 +1151,35 @@ sustituyo (`ends_the_current_session`, con test).
 vuelve a leer el conjunto vivo del unico sitio que lo sabe. Dos fuentes para un
 mismo hecho es como acaban discrepando.
 
+## 5.10g Presupuesto de canales — IMPLEMENTADO (fase 3, septima parte)
+
+`ssh/conn.rs` (`ChannelBudget`, `ChannelLease`, `open_channel`). Todo lo que
+corre sobre una conexion es un canal —cada terminal, la sesion de ficheros, y
+cada comando mientras dura (§5.3)— y el host limita cuantos lleva a la vez. Pasado
+ese limite, la siguiente terminal fallaba con un error de libreria que se lee como
+"se rompio".
+
+**El limite no se supone.** `MaxSessions` de OpenSSH vale 10 por defecto, pero es
+ajuste por host y mucha gente lo cambia: cablear un 10 seria esta app decidiendo
+como esta configurado el `sshd` de otro. Se cuentan los canales y **se aprende** el
+techo en el primer rechazo; a partir de ahi el mensaje nombra el numero que esa
+maquina impone y donde cambiarlo.
+
+**Dos clases de usuario, dos respuestas.** Un comando dura poco, asi que hace cola
+por un hueco en vez de fallar mientras otro termina. Una terminal o la sesion de
+ficheros retienen su canal mientras viven, asi que se les contesta ya —un spinner
+esperando un hueco que no va a llegar es peor que una frase que nombra el limite—.
+El sitio en el presupuesto se devuelve con un guard (`ChannelLease`), no con un
+decremento a mano: un retorno temprano que se dejara un hueco sin devolver no se
+notaria hasta que el usuario no pudiera abrir una terminal, que es justo el fallo
+que esto viene a evitar.
+
+**Medido contra un host real, no razonado**, y cazo dos cosas: el numero del
+rechazo iba **uno alto** (habria mandado al usuario a subir un ajuste al valor que
+ya tenia), y un host libera un canal cerrado **de forma asincrona** — un rechazo en
+ese instante se estaba registrando como "esta maquina permite 1 canal", lo que
+habria dejado la conexion inutil el resto de su vida.
+
 ## 5.11 Lo que queda de la fase 3
 
 Cambios e Historial ya estan (§5.10c), con las dos soluciones que se habian
@@ -1160,7 +1190,6 @@ anotado aqui: parche y mensaje por SFTP, porque `exec` no tiene stdin. Quedan:
    devuelve `String::from_utf8_lossy`: el lado del working tree sale por SFTP y
    los blobs por base64 en el host. El borrador con IA necesita que el diff
    preparado llegue aqui para dárselo al agente local.
-2. El **presupuesto de canales** (`MaxSessions` = 10 por defecto).
 
 **Y una restriccion que no se negocia:** el watcher de git local sondea cada 3 s
 (`lib.rs`). A ~2 s por `exec` (§5.3) eso saturaria el canal para siempre, asi que

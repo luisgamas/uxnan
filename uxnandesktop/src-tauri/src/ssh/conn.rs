@@ -18,7 +18,7 @@
 //! Authentication lives next door in [`super::auth`]: this module stops at the
 //! host-key decision, which is the one that must not be conflated with it.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -51,6 +51,11 @@ const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300);
 /// or firewall from dropping an idle connection out from under us, which is the
 /// same reason those clients turn it on. A live host answers each one, which
 /// resets both timers; a dead one is reported in ~two minutes instead of five.
+/// How long a command waits for a channel when the host's limit is already
+/// reached. Short on purpose: commands are brief (§5.3), so a slot usually frees
+/// within one, and waiting longer would only turn a clear refusal into a hang.
+const CHANNEL_WAIT: Duration = Duration::from_secs(10);
+
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const KEEPALIVE_MAX_MISSED: usize = 3;
 
@@ -117,11 +122,99 @@ pub enum Handshake {
     Revoked { fingerprint: String },
 }
 
+/// How many channels this connection is holding open, and how many the host
+/// turned out to allow.
+///
+/// **The limit is not ours to guess.** OpenSSH's `MaxSessions` defaults to 10,
+/// but it is a per-host setting and plenty of machines change it — hard-coding
+/// ten would be this app deciding what someone else's `sshd` is configured to
+/// do. So nothing is assumed: channels are counted, and the ceiling is *learned*
+/// the first time the host refuses one. From then on the refusal is reported
+/// with the number the host actually enforced, instead of the eleventh terminal
+/// failing with a library error that reads as "it broke".
+///
+/// Everything on a connection is a channel — every terminal, the file session,
+/// and each command while it runs (§5.3) — so the count is kept here rather than
+/// in any one of them.
+#[derive(Debug, Default)]
+pub struct ChannelBudget {
+    open: AtomicUsize,
+    /// What the host allowed at the moment it said no. `0` means "never
+    /// refused", which is the only honest starting value.
+    ceiling: AtomicUsize,
+}
+
+impl ChannelBudget {
+    fn open(&self) -> usize {
+        self.open.load(Ordering::Relaxed)
+    }
+
+    /// The host's own limit, once it has shown us. `None` until then.
+    pub fn observed_limit(&self) -> Option<usize> {
+        match self.ceiling.load(Ordering::Relaxed) {
+            0 => None,
+            n => Some(n),
+        }
+    }
+
+    /// Whether another channel is worth attempting. False only when the host has
+    /// already refused at this count — never on a guess.
+    fn has_room(&self) -> bool {
+        match self.observed_limit() {
+            Some(limit) => self.open() < limit,
+            None => true,
+        }
+    }
+
+    /// Record what the host enforced. Called with the number of channels that
+    /// were open when it refused, which *is* its limit.
+    ///
+    /// Answers whether this taught us something new, so the discovery is logged
+    /// once rather than on every refusal.
+    fn refused_at(&self, open: usize) -> bool {
+        // A refusal with nothing of ours open says nothing about a channel
+        // limit — it is some other failure, or the host has not finished
+        // releasing the channels we just closed (it does that asynchronously,
+        // which the live test found). Recording it would teach the app that this
+        // machine allows one channel, and it would never open two again.
+        if open == 0 {
+            return false;
+        }
+        // Never widen: a refusal at 8 after one at 10 means the earlier count
+        // included channels that have since closed, and the smaller number is
+        // the one that has been proven.
+        let previous = self.ceiling.load(Ordering::Relaxed);
+        if previous == 0 || open < previous {
+            self.ceiling.store(open, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+}
+
+/// One channel's place in the budget, given back when it is dropped.
+///
+/// A guard rather than a manual decrement, because the alternative is an early
+/// return somewhere that leaks a slot — and a leaked slot is invisible until the
+/// user cannot open a terminal any more, which is exactly the failure this is
+/// here to prevent.
+pub struct ChannelLease {
+    budget: Arc<ChannelBudget>,
+}
+
+impl Drop for ChannelLease {
+    fn drop(&mut self) {
+        self.budget.open.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 /// A live, host-key-verified transport to one host.
 pub struct Connection {
     handle: client::Handle<Client>,
     endpoint: Endpoint,
     generation: u64,
+    /// Channels in use, and what this host turned out to allow.
+    budget: Arc<ChannelBudget>,
 }
 
 impl Connection {
@@ -147,6 +240,95 @@ impl Connection {
     /// Mutable access, needed by the authentication exchange.
     pub fn handle_mut(&mut self) -> &mut client::Handle<Client> {
         &mut self.handle
+    }
+
+    /// Open a channel on this connection, counted against what the host allows.
+    ///
+    /// Every channel goes through here — terminals, the file session, each
+    /// command — because the limit is per connection and counting in one place
+    /// is the only way the number means anything.
+    ///
+    /// `wait` is what separates the two kinds of caller. A command is brief, so
+    /// it queues for a slot rather than failing while another command finishes.
+    /// A terminal or a file session holds its channel for as long as it lives,
+    /// so it is refused straight away with what the host actually allows — a
+    /// spinner that waits ten seconds for a slot that is not coming is worse
+    /// than a sentence naming the limit.
+    pub async fn open_channel(
+        &self,
+        purpose: &str,
+        wait: bool,
+    ) -> Result<(russh::Channel<client::Msg>, ChannelLease), AppError> {
+        let deadline = tokio::time::Instant::now() + CHANNEL_WAIT;
+        loop {
+            if self.budget.has_room() {
+                let open = self.budget.open.fetch_add(1, Ordering::Relaxed) + 1;
+                let lease = ChannelLease {
+                    budget: Arc::clone(&self.budget),
+                };
+                match self.handle.channel_open_session().await {
+                    Ok(channel) => return Ok((channel, lease)),
+                    Err(e) => {
+                        // The host refused. `lease` is dropped as this scope
+                        // ends, so the count goes back to what is really open —
+                        // but the number it refused *at* is what it enforces.
+                        drop(lease);
+                        // `open` counted the attempt itself; what the host
+                        // allowed is the number that were already up when it
+                        // said no. Measured against a real `sshd`: it refuses
+                        // the 11th, so its limit is 10 — quoting 11 would send
+                        // the user to change a setting to a value it already
+                        // has.
+                        if self.budget.refused_at(open.saturating_sub(1)) {
+                            // Worth recording once: it is a fact about the
+                            // user's machine that the app just learned, and the
+                            // next refusal will quote it.
+                            crate::diagnostics::log(
+                                crate::diagnostics::Level::Info,
+                                "ssh",
+                                &format!(
+                                    "{} allows {} channels at once",
+                                    self.endpoint.hostname,
+                                    open.saturating_sub(1)
+                                ),
+                            );
+                        }
+                        if !wait || tokio::time::Instant::now() >= deadline {
+                            return Err(self.no_channel(purpose, e));
+                        }
+                    }
+                }
+            } else if !wait || tokio::time::Instant::now() >= deadline {
+                return Err(self.at_capacity(purpose));
+            }
+            // A slot frees when a command finishes or a terminal closes; there
+            // is nothing to subscribe to, so this looks again shortly.
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    /// The host said no and has never said how many it allows.
+    fn no_channel(&self, purpose: &str, error: russh::Error) -> AppError {
+        match self.budget.observed_limit() {
+            Some(limit) => self.at_capacity_with(purpose, limit),
+            None => AppError::Invalid(format!("could not open a channel for {purpose}: {error}")),
+        }
+    }
+
+    /// The host's limit is known and reached.
+    fn at_capacity(&self, purpose: &str) -> AppError {
+        match self.budget.observed_limit() {
+            Some(limit) => self.at_capacity_with(purpose, limit),
+            None => AppError::Invalid(format!("could not open a channel for {purpose}")),
+        }
+    }
+
+    fn at_capacity_with(&self, purpose: &str, limit: usize) -> AppError {
+        AppError::Invalid(format!(
+            "this host allows {limit} channels at once and they are all in use, so {purpose} \
+             could not be opened. Close a terminal on it, or raise MaxSessions in its sshd \
+             configuration."
+        ))
     }
 
     /// Run one command on its own channel and collect what it printed.
@@ -178,11 +360,9 @@ impl Connection {
     }
 
     async fn exec_unbounded(&self, command: &str) -> Result<CommandOutput, AppError> {
-        let mut channel = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|e| AppError::Invalid(format!("could not open a channel: {e}")))?;
+        // A command is brief, so it queues for a slot rather than failing while
+        // another one finishes. The lease is held until this returns.
+        let (mut channel, _lease) = self.open_channel("this command", true).await?;
         channel
             .exec(true, command)
             .await
@@ -330,6 +510,7 @@ pub async fn connect(endpoint: Endpoint, known_hosts: &str) -> Result<Handshake,
         handle,
         endpoint,
         generation: next_generation(),
+        budget: Arc::new(ChannelBudget::default()),
     }))
 }
 
@@ -339,6 +520,52 @@ mod tests {
 
     /// The port the tests use to reach an SSH server on this machine.
     const LOCAL_SSHD: u16 = 22;
+
+    /// The limit is the host's, and it is learned rather than assumed.
+    #[test]
+    fn a_host_s_channel_limit_is_learned_from_its_refusal() {
+        let budget = ChannelBudget::default();
+        // Nothing has been refused, so nothing is known — and every attempt is
+        // worth making. Assuming OpenSSH's default of 10 would be this app
+        // deciding what someone else's sshd is configured to do.
+        assert_eq!(budget.observed_limit(), None);
+        assert!(budget.has_room());
+
+        // The host refused with 10 open: that is what it enforces.
+        assert!(budget.refused_at(10));
+        assert_eq!(budget.observed_limit(), Some(10));
+        // Learning the same thing twice is not news.
+        assert!(!budget.refused_at(10));
+
+        // A later refusal at a *lower* count is the one that has been proven:
+        // the earlier number included channels that have since closed.
+        assert!(budget.refused_at(8));
+        assert_eq!(budget.observed_limit(), Some(8));
+        // And a refusal with nothing of ours open teaches nothing: a host
+        // releases a channel asynchronously, so a failure right after closing
+        // them all is not a limit of one — recording it would cripple the
+        // connection for the rest of its life. The live test found this.
+        assert!(!budget.refused_at(0));
+        assert_eq!(budget.observed_limit(), Some(8));
+        // And it never widens on a higher one.
+        assert!(!budget.refused_at(12));
+        assert_eq!(budget.observed_limit(), Some(8));
+    }
+
+    /// A channel's place comes back when it is dropped, whichever way it ends.
+    #[test]
+    fn a_lease_returns_its_slot() {
+        let budget = Arc::new(ChannelBudget::default());
+        budget.refused_at(2);
+        budget.open.fetch_add(2, Ordering::Relaxed);
+        assert!(!budget.has_room(), "two of two are in use");
+
+        let lease = ChannelLease {
+            budget: Arc::clone(&budget),
+        };
+        drop(lease);
+        assert!(budget.has_room(), "a dropped lease frees its slot");
+    }
 
     #[test]
     fn generations_are_monotonic_and_never_repeat() {

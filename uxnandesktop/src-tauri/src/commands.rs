@@ -4550,9 +4550,9 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 mod tests {
     use super::{
         bracketed_paste, ends_the_current_session, fs_path_exists, issue_link_permission_denied,
-        missing_locally,
-        preserve_backend_owned, pty_submit_payload, read_term_buffers, rect_on_any_monitor,
-        reorder_by_ids, resting_corner, term_buffers_path, worktrees_without_git, TargetId,
+        missing_locally, preserve_backend_owned, pty_submit_payload, read_term_buffers,
+        rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
+        worktrees_without_git, TargetId,
     };
     use crate::model::{AppSettings, SshHost, SshHostTombstone};
 
