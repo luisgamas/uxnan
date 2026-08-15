@@ -172,10 +172,14 @@
     void git.startListening();
   });
   $effect(() => {
-    // The real path plus its machine, not `activeLocalPath`: git now runs on a
-    // host too, and the path alone would have this machine answer for a folder
-    // of the same name.
-    const target = projects.activeWorktreeTarget;
+    // The real path plus **its own** machine, not `activeLocalPath`: git now
+    // runs on a host too, and the path alone would have this machine answer for
+    // a folder of the same name. `activeReviewTarget` rather than
+    // `activeWorktreeTarget` because the latter follows the focused terminal
+    // workspace — right for opening a terminal, wrong for describing a folder,
+    // and the two disagree the moment a remote terminal is focused while a
+    // local project is selected.
+    const target = projects.activeReviewTarget;
     // Read the host's connection as well, so this re-runs when that host comes
     // up (filling in a review that could not be read at startup) and when it
     // drops (clearing a list that is no longer anyone's current state). Pushing

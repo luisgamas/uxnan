@@ -118,6 +118,23 @@ describe("the git panel on a host", () => {
     expect(git.files).toEqual([]);
   });
 
+  it("never waits for a host over a local worktree", async () => {
+    // What the user reported: "waiting for this host to connect" on a local
+    // project. The cause was upstream (the panel took the machine from the
+    // focused terminal workspace and the path from the selected project), but
+    // the message is also ruled out here — a local review has no host to wait
+    // for, whatever the failure claims.
+    backend.setCommands({
+      git_status: () => {
+        throw { code: "NOT_CONNECTED", message: "h1 is not connected" };
+      },
+    });
+    await git.load("/home/dev/app", "local");
+
+    expect(git.awaitingHost).toBe(false);
+    expect(git.error).not.toBeNull();
+  });
+
   it("says so when the host could not read the folder as a repository", async () => {
     backend.setCommands({
       ssh_git_review: () => ({

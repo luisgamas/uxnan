@@ -21,9 +21,11 @@
   import { sshHostId } from "$lib/target";
 
   // The host's own label, falling back to its id: a notice that names the
-  // machine beats one that says "a host".
+  // machine beats one that says "a host". Read from the machine the *path*
+  // below is on, so the notice and the path it quotes can never name two
+  // different computers.
   const host = $derived.by(() => {
-    const id = sshHostId(projects.activeWorktreeTarget);
+    const id = sshHostId(projects.activeReviewTarget);
     return id ? hosts.labelOf(id) : "";
   });
 

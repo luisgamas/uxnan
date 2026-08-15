@@ -986,6 +986,19 @@ rotas: el **borrador de commit con IA** (lee el diff preparado con el git local)
 el **diff de imagenes** (lee los blobs igual). Ambas necesitan traer el contenido
 aqui primero; quedan anotadas en `FOR-DEV.md`.
 
+**El par (ruta, maquina) sale de un solo sitio.** Los paneles leian la **ruta**
+del proyecto seleccionado y la **maquina** del workspace de terminal enfocado —
+dos hechos independientes que se contradicen en cuanto hay una terminal de un host
+enfocada con un proyecto local seleccionado. El arbol de archivos (y luego Cambios
+e Historial) le preguntaba entonces a un host por una ruta de **esta** maquina: con
+el host caido salia "esperando a que el host se conecte" sobre un proyecto local, y
+con el host arriba habria sido un listado o una revision de la maquina equivocada,
+que es el fallo que se parece a un exito. `projects.activeReviewTarget` es el par
+correcto: la maquina en la que **esa ruta** esta registrada, y el workspace solo
+manda cuando habla de esa misma ruta (el unico caso que la ruta sola no resuelve:
+la misma ruta absoluta registrada en dos maquinas). Ademas el estado "esperando"
+es imposible en local por construccion, no solo por lo que diga el error.
+
 **Sin watcher, y dicho.** El sondeo de 3 s es el git de esta maquina; hacerlo
 contra un host seria un arranque de shell cada tres segundos en el ordenador de
 otro, por worktree. En remoto el boton de refrescar **es** la actualizacion y su

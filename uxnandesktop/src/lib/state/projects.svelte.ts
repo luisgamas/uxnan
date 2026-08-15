@@ -167,6 +167,32 @@ class ProjectsStore {
     return this.activeWorktreePath ? this.targetForPath(this.activeWorktreePath) : LOCAL_TARGET;
   }
 
+  /** The machine to describe `activeWorktreePath` on — the pair the review
+   *  panels (Changes, History, the editor's gutter) read a **path** with.
+   *
+   *  Not the same question as [`activeWorktreeTarget`], and the difference is a
+   *  bug we shipped: that one follows the focused terminal workspace, which is
+   *  right for opening a terminal and wrong for describing a folder. Focus a
+   *  terminal that lives on a host while a local project is selected and the two
+   *  facts disagree — the panel then asked a host about a path on *this*
+   *  machine. With the host down that showed "waiting for this host to connect"
+   *  over a local project; with it up it would have been a review of the wrong
+   *  machine, which is the failure that looks like success.
+   *
+   *  So: the workspace key answers only while it is about this very path (the
+   *  one case the path alone cannot resolve — the same absolute path registered
+   *  on two machines), and otherwise the path's own registration does. */
+  get activeReviewTarget(): TargetId {
+    const path = this.activeWorktreePath;
+    if (!path) return LOCAL_TARGET;
+    const key = terminals.activeWorkspace;
+    if (key && key !== GLOBAL_WORKSPACE) {
+      const focused = parseWorkspaceKey(key);
+      if (samePath(focused.path, path)) return focused.target;
+    }
+    return this.targetForPath(path);
+  }
+
   /** Whether the active workspace lives on another machine. Anything that reads
    *  this machine's filesystem or runs git here must check it first. */
   get activeIsRemote(): boolean {

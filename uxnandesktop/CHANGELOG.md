@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Waiting for this host to connect" no longer appears over a local project.**
+  The panels were reading two independent facts: the **path** from the selected
+  project, and the **machine** from the focused terminal workspace. Focus a
+  terminal that lives on a host while a local project is selected and those
+  disagree, so the file tree — and, once they landed, Changes and History — asked
+  a host about a path on this machine. With the host down that showed a message
+  the user could do nothing about; with the host up it would have been a listing
+  or a review of the wrong machine, which is the failure that looks like success.
+  The panels now take the machine the **path itself** is registered on
+  (`projects.activeReviewTarget`), and the workspace only answers when it is
+  about that same path — the one case a path alone cannot resolve, the same
+  absolute path registered on two machines. The message is also ruled out
+  structurally: a local worktree has no host to wait for, whatever a failure
+  claims.
+
 ### Added
 
 - **Changes and History now work for a project that lives on another machine.**

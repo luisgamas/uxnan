@@ -12,7 +12,7 @@
 // as fresh as the last thing that asked for it.
 
 import { logOn, showOn } from "$lib/gitRouter";
-import { LOCAL_TARGET, type TargetId } from "$lib/target";
+import { isLocalTarget, LOCAL_TARGET, type TargetId } from "$lib/target";
 import { toastError } from "$lib/toast";
 import { splitCommitDiff, type CommitFile } from "$lib/diffParse";
 import type { CommitInfo } from "$lib/types";
@@ -151,7 +151,9 @@ class HistoryStore {
       this.reachedEnd = page.length < PAGE;
     } catch (e) {
       if (seq !== this.loadSeq || this.path !== path) return;
-      this.awaitingHost = isNotConnected(e);
+      // Same rule as the other two panels: a local worktree never waits for a
+      // host, whatever the failure said.
+      this.awaitingHost = isNotConnected(e) && !isLocalTarget(this.target);
       this.error = this.awaitingHost ? null : msg(e);
     } finally {
       if (seq === this.loadSeq) this.loading = false;

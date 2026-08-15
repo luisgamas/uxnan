@@ -228,7 +228,12 @@ class FileTreeStore {
       // says so plainly and retries by itself once the host is up
       // (`retryForHost`), instead of leaving a red line the user has to clear by
       // switching projects and back.
-      this.awaitingHost = isNotConnected(e);
+      // Only a tree that is *of* a host can be waiting for one. The check is
+      // structural rather than trusting the error: "waiting for this host to
+      // connect" over a local project is a message the user cannot act on, and
+      // it reached the screen once because the machine and the root were read
+      // from two different places (`projects.activeReviewTarget`).
+      this.awaitingHost = isNotConnected(e) && !isLocalTarget(this.target);
       this.error = this.awaitingHost ? null : msg(e);
     } finally {
       const s = new Set(this.loadingDir);

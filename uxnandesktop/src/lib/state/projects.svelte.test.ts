@@ -125,6 +125,44 @@ describe('a project that lives on a host', () => {
     terminals.root = null;
   });
 
+  it('keeps the file tree on the machine its root is on', () => {
+    // The same pairing, on the panel where it actually bit: Files is the tab
+    // that opens by default, so a tree asking a host about a local path is what
+    // showed "waiting for this host to connect" over a local project.
+    projects.setActiveWorktree(MAIN.path);
+    terminals.setWorkspace(projects.workspaceFor(REMOTE_PATH, 'ssh:h1'));
+
+    fileTree.setRoot(projects.activeWorktreePath, projects.activeReviewTarget);
+    expect(fileTree.target).toBe(LOCAL_TARGET);
+  });
+
+  it('pairs the review with the machine its own path is on', () => {
+    // Reproduction of a real report: the Changes panel said "waiting for this
+    // host to connect" over a **local** project. The panels were taking the
+    // machine from the focused terminal workspace and the path from the
+    // selected project — two independent facts. Focus a terminal that lives on
+    // a host while a local project is selected and they disagree, so the panel
+    // asked a host about a path on this machine. With the host down that is a
+    // misleading message; with it up it is a review of the wrong machine.
+    projects.setActiveWorktree(MAIN.path);
+    expect(projects.activeReviewTarget).toBe(LOCAL_TARGET);
+
+    terminals.setWorkspace(projects.workspaceFor(REMOTE_PATH, 'ssh:h1'));
+
+    // The terminal side still follows the focused workspace — that is what it
+    // is for — but the review follows the path it is about.
+    expect(projects.activeWorktreeTarget).toBe('ssh:h1');
+    expect(projects.activeReviewTarget).toBe(LOCAL_TARGET);
+  });
+
+  it('still names the exact machine when both are the same path', () => {
+    // The one case the path alone cannot answer: the same absolute path
+    // registered on two machines. The workspace key knows, so it wins when it
+    // is about that path.
+    projects.setActiveWorktree(REMOTE_PATH, 'ssh:h1');
+    expect(projects.activeReviewTarget).toBe('ssh:h1');
+  });
+
   it('activates under a workspace key that names the machine', () => {
     // Without the target in the key, two projects at the same absolute path on
     // two machines would share one terminal workspace — and, worse, a shell

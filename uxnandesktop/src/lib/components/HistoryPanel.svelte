@@ -44,7 +44,7 @@
 
   // Keep the loaded log pointed at the active worktree (cheap no-op on re-mount).
   $effect(() => {
-    const target = projects.activeWorktreeTarget;
+    const target = projects.activeReviewTarget;
     // Same reason as the Changes panel: reading the connection here is what
     // makes the log fill in when its host comes up, and clear when it goes.
     const host = sshHostId(target);

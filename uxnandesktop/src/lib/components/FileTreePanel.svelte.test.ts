@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { mountWithProviders, until } from "../../test/render";
+import { app } from "$lib/state/app.svelte";
 import { projects } from "$lib/state/projects.svelte";
 import { fileTree } from "$lib/state/fileTree.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
@@ -83,6 +84,9 @@ function mountPanel(commands: Record<string, (args: Record<string, unknown>) => 
 }
 
 beforeEach(() => {
+  // Local unless a test says otherwise: the machine a tree is of comes from the
+  // project's own registration, never from whichever terminal has focus.
+  app.repos = [];
   projects.activeWorktreePath = ROOT;
   fileTree.setRoot(null);
   fileTree.filterInclude = "";
@@ -250,8 +254,15 @@ describe("FileTreePanel — a tree that could not be read", () => {
   });
 
   it("says it is waiting for the host, and nothing else, until it connects", async () => {
+    // The tree has to actually be *of* a host for this state to exist: a local
+    // tree has no host to wait for, and saying otherwise is what put this
+    // message over a local project once. So the project is registered on one,
+    // and the failure comes from the remote listing.
+    app.repos = [
+      { id: "remote-1", name: "repo", path: ROOT, target: "ssh:h1", worktrees: [], isGit: true },
+    ];
     const { screen } = mountPanel({
-      fs_list_dir: () => {
+      ssh_fs_list: () => {
         throw { code: "NOT_CONNECTED", message: "host-1 is not connected" };
       },
     });

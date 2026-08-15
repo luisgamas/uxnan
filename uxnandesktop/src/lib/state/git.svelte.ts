@@ -263,7 +263,9 @@ class GitStore {
       // A host that is not up yet is said plainly and silently — a toast on
       // every cold start, for a state the app is about to resolve by itself,
       // is noise the user cannot act on.
-      this.awaitingHost = isNotConnected(e);
+      // Structural, not just the error's word for it: only a review that is of
+      // a host can be waiting for one (see the note in `fileTree`).
+      this.awaitingHost = isNotConnected(e) && this.remote;
       this.error = this.awaitingHost ? null : msg(e);
       if (!this.awaitingHost) toastError(e);
     } finally {

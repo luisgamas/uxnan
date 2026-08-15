@@ -10,6 +10,7 @@
   import RemoteWorkspaceNotice from "./RemoteWorkspaceNotice.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { isLocalTarget } from "$lib/target";
   import { rightPanel } from "$lib/state/rightPanel.svelte";
   import { i18n } from "$lib/i18n";
   import { divider, focus, icon, shell, tab as tabStyle } from "$lib/design";
@@ -132,7 +133,7 @@
   </Tabs.Content>
   {#if showGithub}
     <Tabs.Content value="github" class="min-h-0 min-w-0 flex-1 overflow-hidden">
-      {#if projects.activeIsRemote}
+      {#if !isLocalTarget(projects.activeReviewTarget)}
         <RemoteWorkspaceNotice />
       {:else}
         <GithubPanel />

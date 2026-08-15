@@ -72,10 +72,17 @@
   const worktreeName = $derived(root ? (root.split("/").pop() ?? root) : "");
 
   // Keep the shared tree store pointed at the active worktree — and at the
-  // machine it lives on, because every listing and read in the tree has to go
-  // where the root came from.
+  // machine **that root** lives on, because every listing and read in the tree
+  // has to go where the root came from.
+  //
+  // `activeReviewTarget`, not `activeWorktreeTarget`: the latter follows the
+  // focused terminal workspace, which is right for opening a terminal and wrong
+  // for describing a folder. Focus a terminal on a host while a local project is
+  // selected and the two disagree — the tree then asked the host about a path on
+  // *this* machine, which is what put "waiting for this host to connect" over a
+  // local project.
   $effect(() => {
-    fileTree.setRoot(root, projects.activeWorktreeTarget);
+    fileTree.setRoot(root, projects.activeReviewTarget);
   });
 
   let searching = $state(false);
