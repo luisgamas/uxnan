@@ -106,6 +106,7 @@ conexion alguna.
 | §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
 | §5.10d | Crear/renombrar/duplicar/borrar en el host | `ssh/sftp.rs`, `fsRouter.ts` |
 | §5.10e | Buscar en el proyecto del host | `ssh/search.rs`, `fsRouter.ts` |
+| §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1124,6 +1125,31 @@ buscar, y se dice — una lista vacia seria indistinguible de "no hay
 coincidencias". "Buscar en la carpeta" acota con `-C`, y git contesta rutas
 relativas a esa carpeta (medido tambien).
 
+## 5.10f Avisar de una sesion caida — IMPLEMENTADO (fase 3, sexta parte)
+
+`commands.rs` (`watch_session`, evento `ssh:session-ended`) + `hosts.svelte.ts`.
+
+Todo lo de una sesion caida ya era correcto **cuando se preguntaba**: el
+keepalive nota un host muerto en ~2 min (§5.5), un listado abre un canal nuevo
+(§5.10), y una conexion terminada deja de contar como conectada. Sin nadie
+preguntando, un host que se caia con su panel abierto seguia pareciendo
+conectado hasta que el usuario hacia clic — y el clic era como se enteraba.
+
+**Un vigilante por conexion**, que sondea una bandera **local** (`is_closed()`
+del handle de russh: cero trafico) cada 2 s y avisa una vez. Es un sondeo y no
+una suscripcion porque russh expone la bandera y no una notificacion; meter mano
+en sus internos para ganar dos segundos ataria la app a un detalle privado de una
+dependencia.
+
+**Solo limpia su propia encarnacion.** Una reconexion guarda otra conexion bajo
+el mismo id de host, asi que el vigilante compara generaciones antes de quitar
+nada: el de una sesion muerta no puede llevarse por delante la viva que la
+sustituyo (`ends_the_current_session`, con test).
+
+**El evento dice *que* algo cambio, no cual es el estado nuevo.** El frontend
+vuelve a leer el conjunto vivo del unico sitio que lo sabe. Dos fuentes para un
+mismo hecho es como acaban discrepando.
+
 ## 5.11 Lo que queda de la fase 3
 
 Cambios e Historial ya estan (§5.10c), con las dos soluciones que se habian
@@ -1134,8 +1160,7 @@ anotado aqui: parche y mensaje por SFTP, porque `exec` no tiene stdin. Quedan:
    devuelve `String::from_utf8_lossy`: el lado del working tree sale por SFTP y
    los blobs por base64 en el host. El borrador con IA necesita que el diff
    preparado llegue aqui para dárselo al agente local.
-2. **Avisar a la UI de una sesion caida** (hoy el frontend se entera al
-   preguntar) y el **presupuesto de canales** (`MaxSessions` = 10 por defecto).
+2. El **presupuesto de canales** (`MaxSessions` = 10 por defecto).
 
 **Y una restriccion que no se negocia:** el watcher de git local sondea cada 3 s
 (`lib.rs`). A ~2 s por `exec` (§5.3) eso saturaria el canal para siempre, asi que

@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 764 Rust tests (728 unit + 36
+always wins). 765 Rust tests (729 unit + 36
 integration), of which 44 are ignored probes that need something real to talk to
 (35 live SSH probes — 26 against a real `sshd` and 9 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,210 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,212 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -928,7 +928,8 @@ answered in one command (`02g` §5.10c); **creating, renaming, duplicating and
 deleting in a host's tree**, over SFTP and fenced, with deletion permanent
 because SSH has no trash and the dialog saying so (`02g` §5.10d); **searching a
 host's project** by name and by content, by asking git there rather than dragging
-the project across the link (`02g` §5.10e); a keepalive so a quiet host is not reaped
+the project across the link (`02g` §5.10e); **a dropped session announcing
+itself** instead of waiting to be asked (`02g` §5.10f); a keepalive so a quiet host is not reaped
 and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
 startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
@@ -950,12 +951,6 @@ reasoning, with the measurements that removed its justification, is in
       mid-request, a server that answers slowly) run with no Docker and no
       network, leaving the container for what only a real `sshd` can show. Today
       those cases are covered by the live suite or not at all.
-- [ ] **Push a dropped session to the UI.** `ssh_hosts_connected` no longer
-      lists a corpse (it filters on the transport) and a keepalive now notices a
-      dead host in ~2 minutes instead of 5 — but the frontend still only finds
-      out by asking. There is no event, so a host that drops while its panel is
-      open keeps looking connected until something is clicked. Needs an emit on
-      the connection ending, and the UI reacting to it.
 - [ ] A **reconnect ladder**. One connection with N channels and a generation
       per connection is in place (`ssh/conn.rs`), and so is host-key
       verification with its TOFU confirmation in the UI; what is missing is
@@ -1442,7 +1437,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 764 Rust + 1,210 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 765 Rust + 1,212 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

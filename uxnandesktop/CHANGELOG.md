@@ -28,6 +28,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A host that goes away says so, instead of waiting to be asked.** Everything
+  about a dropped session was already right *when asked* — the keepalive notices
+  a dead host in about two minutes, a listing opens a new channel, a connection
+  that has ended stops counting as connected — but with nothing asking, a host
+  that dropped while its panel was open kept looking connected until the user
+  clicked something, and the click was how they found out. The backend now emits
+  `ssh:session-ended` and the app re-reads which hosts are live, so the panels,
+  the badges and the save button all stand down on their own. The event says
+  *that* something changed rather than what is live now: the live set is read
+  from the one place that knows it, so the two can never disagree. A watcher only
+  ever cleans up its own incarnation, so a reconnect cannot be undone by the
+  watcher of the session it replaced.
+
 - **A host's project can be searched — by file name and by content.** The search
   box was hidden for a remote project because both searches walk *this*
   filesystem; pointed at a host they would have answered "no matches", which is

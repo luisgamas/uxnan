@@ -1146,6 +1146,7 @@ impl SshConnectReport {
 /// used for this attempt and never stored.
 #[tauri::command]
 pub async fn ssh_host_connect(
+    app: AppHandle,
     state: State<'_, AppState>,
     host_id: String,
     password: Option<String>,
@@ -1183,13 +1184,14 @@ pub async fn ssh_host_connect(
         }
         None => {}
     }
-    connect_fresh(state, host_id, password).await
+    connect_fresh(app, state, host_id, password).await
 }
 
 /// Reach a host that has no live session, from the host key to the shell it
 /// starts. Split out of [`ssh_host_connect`] so both the first connection and a
 /// replacement for one that ended take exactly the same path.
 async fn connect_fresh(
+    app: AppHandle,
     state: State<'_, AppState>,
     host_id: String,
     password: Option<String>,
@@ -1256,11 +1258,14 @@ async fn connect_fresh(
                 .await
                 .insert(host_id.clone(), shell);
             report.shell = Some(shell.as_str().to_string());
+            let generation = connection.generation();
+            let session = std::sync::Arc::new(connection);
             state
                 .ssh_sessions
                 .write()
                 .await
-                .insert(host_id.clone(), std::sync::Arc::new(connection));
+                .insert(host_id.clone(), std::sync::Arc::clone(&session));
+            watch_session(app, host_id.clone(), generation, session);
             // Remember that this host let us in without asking, so startup can
             // reconnect the silent ones and leave the rest until the user is here.
             set_needs_prompt(&state, &host_id, false).await?;
@@ -1285,6 +1290,101 @@ async fn connect_fresh(
         }
         ssh::auth::AuthOutcome::NoUsableMethod => Ok(SshConnectReport::of("noUsableMethod")),
     }
+}
+
+/// How often a live connection is looked at to see whether it is still there.
+///
+/// This is a **local** check — one boolean on a channel this process owns, no
+/// traffic at all — so the interval only decides how quickly the interface hears
+/// about something the transport already knows. Two seconds is imperceptible to
+/// a user and free to the host.
+const SESSION_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Tell the interface, once, when a host's connection ends.
+///
+/// Everything else about a dropped session was already right — the keepalive
+/// notices a dead host in ~2 min, a listing opens a new file channel, a
+/// connection that has ended stops counting as connected — but only *when asked*.
+/// With nothing asking, a host that dropped while its panel was open kept
+/// looking connected until the user clicked something, and the click was how
+/// they found out. This is the missing half: the app says so by itself.
+///
+/// Deliberately a poll of a local flag rather than a subscription: russh's
+/// handle exposes `is_closed()` and no notification, and reaching into its
+/// internals to await the channel would tie us to a private detail of a
+/// dependency for two seconds of latency.
+///
+/// **Only its own incarnation is cleaned up.** A reconnect stores a new
+/// connection under the same host id; this task compares generations before
+/// removing anything, so a watcher for a dead session can never take away the
+/// live one that replaced it.
+fn watch_session(
+    app: AppHandle,
+    host_id: String,
+    generation: u64,
+    session: std::sync::Arc<ssh::conn::Connection>,
+) {
+    tauri::async_runtime::spawn(async move {
+        while !session.handle().is_closed() {
+            tokio::time::sleep(SESSION_WATCH_INTERVAL).await;
+        }
+        // Nothing else holds this connection open; let it go before the state is
+        // touched, so the entry that is removed is the last reference.
+        drop(session);
+
+        let state = app.state::<AppState>();
+        let was_current = {
+            let mut sessions = state.ssh_sessions.write().await;
+            let stored = sessions.get(&host_id).map(|c| c.generation());
+            if ends_the_current_session(stored, generation) {
+                sessions.remove(&host_id);
+                true
+            } else {
+                false
+            }
+        };
+        if was_current {
+            // Everything learned from that connection went with it: its shell,
+            // and the file session that was a channel on it.
+            state.ssh_shells.write().await.remove(&host_id);
+            state.ssh_sftp.lock().await.remove(&host_id);
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "ssh",
+                &format!("the connection to {host_id} ended"),
+            );
+        }
+        // Emitted either way: the interface asked to be told when a session ends,
+        // and it re-reads the live set rather than trusting this payload — one
+        // source of truth, and no chance of the two disagreeing.
+        let _ = app.emit(
+            "ssh:session-ended",
+            SshSessionEnded {
+                host_id,
+                generation,
+            },
+        );
+    });
+}
+
+/// Whether the connection that just ended is the one the app is still holding.
+///
+/// A reconnect stores a new connection under the same host id, so a watcher for
+/// a dead session must never take away the live one that replaced it — and a
+/// session already removed (the user pressed Disconnect) has nothing to clean.
+/// Split out so the rule is testable without a host to talk to.
+fn ends_the_current_session(stored: Option<u64>, ended: u64) -> bool {
+    stored == Some(ended)
+}
+
+/// Payload of `ssh:session-ended`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshSessionEnded {
+    pub host_id: String,
+    /// Which incarnation ended. The frontend uses it to ignore an event for a
+    /// connection that has already been replaced.
+    pub generation: u64,
 }
 
 /// Ask a connected host what it has: its OS, home, git, a multiplexer, and which
@@ -4449,11 +4549,24 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, fs_path_exists, issue_link_permission_denied, missing_locally,
+        bracketed_paste, ends_the_current_session, fs_path_exists, issue_link_permission_denied,
+        missing_locally,
         preserve_backend_owned, pty_submit_payload, read_term_buffers, rect_on_any_monitor,
         reorder_by_ids, resting_corner, term_buffers_path, worktrees_without_git, TargetId,
     };
     use crate::model::{AppSettings, SshHost, SshHostTombstone};
+
+    /// A watcher speaks only for its own incarnation.
+    #[test]
+    fn a_dead_session_never_removes_the_one_that_replaced_it() {
+        // The connection that ended is still the one on file: clean it up.
+        assert!(ends_the_current_session(Some(7), 7));
+        // A reconnect already stored a newer one — taking it away here would
+        // disconnect a host the user just reconnected.
+        assert!(!ends_the_current_session(Some(8), 7));
+        // Already gone (the user pressed Disconnect): nothing to clean.
+        assert!(!ends_the_current_session(None, 7));
+    }
 
     fn host(id: &str) -> SshHost {
         SshHost {

@@ -837,6 +837,17 @@ export interface SshRemoteListing extends DirListing {
   truncated: boolean;
 }
 
+/** Payload of `ssh:session-ended` (mirror of Rust `SshSessionEnded`).
+ *
+ *  It reports *that* a connection ended, not what is live now — the receiver
+ *  re-reads the live set, so the two can never disagree about it. */
+export interface SshSessionEnded {
+  hostId: string;
+  /** Which incarnation ended, so an event for a connection that has already
+   *  been replaced can be told apart from one about the current session. */
+  generation: number;
+}
+
 /** One live session on a host (mirror of Rust `SshHostSession`). */
 export interface SshHostSession {
   hostId: string;

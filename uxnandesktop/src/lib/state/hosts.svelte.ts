@@ -26,7 +26,9 @@ import type {
   SshHost,
   SshHostDraft,
   SshHostInventory,
+  SshSessionEnded,
 } from "$lib/types";
+import { listen } from "@tauri-apps/api/event";
 import { fileTree } from "$lib/state/fileTree.svelte";
 import { sessions } from "$lib/state/sessions.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
@@ -60,6 +62,8 @@ class HostsStore {
   hosts = $state<SshHost[]>([]);
   /** Host ids with a live session. */
   connected = $state<string[]>([]);
+  /** The `ssh:session-ended` subscription is installed once. */
+  private listening = false;
   /** Host ids with an operation in flight, so their row can show it. */
   busy = $state<string[]>([]);
   error = $state<string | null>(null);
@@ -99,8 +103,34 @@ class HostsStore {
     return this.hosts.find((h) => h.id === id)?.label ?? id;
   }
 
+  /** Subscribed once: the backend says when a connection ends, instead of the
+   *  interface finding out by asking.
+   *
+   *  Everything about a dropped session was already correct *when asked* — a
+   *  listing opens a new channel, a session that ended stops counting as
+   *  connected — but with nothing asking, a host that dropped while its panel
+   *  was open kept looking connected until the user clicked something, and the
+   *  click was how they found out.
+   *
+   *  The payload is deliberately not trusted for the new state: it says
+   *  *something changed*, and the live set is then re-read from the one place
+   *  that knows it. Two sources for one fact is how they end up disagreeing. */
+  private async startListening(): Promise<void> {
+    if (this.listening) return;
+    this.listening = true;
+    try {
+      await listen<SshSessionEnded>("ssh:session-ended", () => {
+        void this.refreshSessions();
+      });
+    } catch {
+      // No Tauri event bus (the plain browser preview) — on-demand only.
+      this.listening = false;
+    }
+  }
+
   async load(): Promise<void> {
     try {
+      void this.startListening();
       this.hosts = await sshHostsList();
       await this.refreshSessions();
     } catch (e) {

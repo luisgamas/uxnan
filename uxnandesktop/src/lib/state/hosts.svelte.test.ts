@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { installFakeBackend, type FakeBackend } from '../../test/tauri';
+import { until } from '../../test/render';
 import { hosts } from './hosts.svelte';
 import { sessions } from './sessions.svelte';
 import { fileTree } from './fileTree.svelte';
@@ -54,6 +55,10 @@ beforeEach(() => {
   hosts.hosts = [];
   hosts.connected = [];
   sessions.replace([]);
+  // The store is a singleton and subscribes once; each test installs a *new*
+  // fake event bus, so without this the subscription from an earlier test would
+  // count as installed while listening to a bus nobody emits on any more.
+  (hosts as unknown as { listening: boolean }).listening = false;
 });
 
 describe('hosts.resume', () => {
@@ -124,5 +129,50 @@ describe('a host that goes away', () => {
     await hosts.disconnect('already');
 
     expect(fileTree.awaitingHost).toBe(false);
+  });
+});
+
+describe('a session that ends on its own', () => {
+  it('is noticed without anyone asking, and the panels are told', async () => {
+    // What this fixes: everything about a dropped session was already right
+    // *when asked*, so a host that dropped while its panel was open kept looking
+    // connected until the user clicked something — and the click was how they
+    // found out.
+    await hosts.load();
+    connected = [{ hostId: 'silent', generation: 3 }];
+    await hosts.load();
+    expect(sessions.isConnected('silent')).toBe(true);
+
+    // The tree is of that host, so it has something to forget. (The store is a
+    // singleton and `setRoot` no-ops on an unchanged root, so it is cleared
+    // first — an earlier test in this file may have left it pointed here.)
+    fileTree.setRoot(null);
+    fileTree.setRoot('/home/dev/app', 'ssh:silent');
+    expect(fileTree.awaitingHost).toBe(false);
+
+    // The host goes away and the backend says so. (The subscription is
+    // installed without blocking the load, so the test waits for it rather than
+    // assuming it is already there.)
+    await until(() => backend.listenerCount('ssh:session-ended') > 0);
+    connected = [];
+    backend.emit('ssh:session-ended', { hostId: 'silent', generation: 3 });
+    await until(() => !sessions.isConnected('silent'));
+
+    expect(sessions.isConnected('silent')).toBe(false);
+    expect(fileTree.awaitingHost).toBe(true);
+  });
+
+  it('re-reads the live set rather than trusting the payload', async () => {
+    // The event says *something changed*; two sources for one fact is how they
+    // end up disagreeing. Here the payload names a host that is still up.
+    await hosts.load();
+    connected = [{ hostId: 'silent', generation: 3 }];
+    await hosts.load();
+
+    await until(() => backend.listenerCount('ssh:session-ended') > 0);
+    backend.emit('ssh:session-ended', { hostId: 'silent', generation: 1 });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(sessions.isConnected('silent')).toBe(true);
   });
 });
