@@ -256,12 +256,19 @@ working. So:
   was read, but nothing can be sent to a machine that is gone, so every action is
   disabled while it is away — and the commit message you were writing is left
   alone, since the host coming back makes it usable again.
-- **Running out of channels says so.** Every terminal, the file panel and each
-  command is a channel on the one connection, and your host caps how many it
-  carries at once. uxnan does not assume that number — it learns it the first
-  time your machine refuses, and then says what the limit is and where to change
-  it (`MaxSessions` in its `sshd` configuration) instead of failing with
-  something that reads like a bug.
+- **Running out of channels says so, and says what is holding them.** Every
+  terminal, the file panel and each running command is a channel on the one
+  connection, and your host caps how many it carries at once (OpenSSH's
+  `MaxSessions`, 10 by default). uxnan does not assume that number — it learns it
+  the first time your machine refuses. When that happens you have three ways out:
+  close a terminal on that host, **disconnect it in Settings → Hosts and connect
+  again** (which frees every channel at once), or raise `MaxSessions` in its
+  `sshd` configuration.
+
+  Note what this does *not* do: closing a terminal ends its shell, but a program
+  that shell left running on the host keeps running, and uxnan cannot see it —
+  the resource monitor walks *this* machine's processes. To find those, look on
+  the host itself (a terminal there, `ps` / Task Manager).
 - **A host that goes away is noticed in about two minutes.** uxnan asks each
   connected host every 30 seconds whether it is still there and gives up after
   three unanswered asks — the same thing mature SSH clients do, and the reason a

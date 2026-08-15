@@ -750,15 +750,17 @@ async fn posix_host_says_how_many_channels_it_allows_when_it_runs_out() {
     let message = refusal.expect("a host refuses eventually; it did not in 40 channels");
     println!("linux: {} channels held, then: {message}", held.len());
     assert!(
-        message.contains("channels at once") && message.contains("MaxSessions"),
-        "the refusal names the limit and where to change it: {message}"
+        message.contains("already open")
+            && message.contains("Each terminal on it takes one")
+            && message.contains("MaxSessions"),
+        "the refusal says what is holding them and what to do: {message}"
     );
     // The number is what the host enforced, not a guess and not one more than
     // it: this caught an off-by-one that would have told the user to raise a
     // setting to the value it already had.
     assert!(
-        message.contains(&format!("allows {} channels", held.len())),
-        "the message quotes what the host actually allowed ({}): {message}",
+        message.contains(&format!("with {} already open", held.len())),
+        "the message quotes what was actually open ({}), not a guess at the host's setting: {message}",
         held.len()
     );
 

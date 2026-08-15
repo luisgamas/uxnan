@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Running out of channels now says what is holding them.** The first wording
+  asserted the host's configuration ("this host allows N") when what is actually
+  known is that it refused *at* N — a channel we closed is released on that
+  machine's own schedule, so the two differ. Worse, it said "close a terminal"
+  without saying what else takes one, which cannot be worked out from the
+  interface: a user looking at two tabs has no way to know that the file panel
+  holds a channel and every command holds one while it runs. It now says what is
+  open, what takes one, and the three ways out — close a terminal, disconnect
+  and reconnect the host, or raise `MaxSessions` there.
+
 - **Discarding a change on a host now updates the file you have open.** The
   panel was right and the editor was stale: the change came back the moment the
   tab was closed and reopened. Locally the backend watcher sees the file being

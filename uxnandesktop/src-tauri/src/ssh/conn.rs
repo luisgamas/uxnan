@@ -323,11 +323,23 @@ impl Connection {
         }
     }
 
+    /// What to say when the host will not open another channel.
+    ///
+    /// Two things the first wording got wrong, both reported from a real host.
+    /// It asserted that machine's configuration ("this host allows N") when what
+    /// we actually know is that it refused *at* N — the two differ, because a
+    /// channel we closed is released on the host's own schedule. And it said
+    /// "close a terminal" without saying what else holds one, which is
+    /// unanswerable from the interface: a user looking at two tabs cannot tell
+    /// that the file panel takes a channel too, and so does every command while
+    /// it runs.
     fn at_capacity_with(&self, purpose: &str, limit: usize) -> AppError {
         AppError::Invalid(format!(
-            "this host allows {limit} channels at once and they are all in use, so {purpose} \
-             could not be opened. Close a terminal on it, or raise MaxSessions in its sshd \
-             configuration."
+            "{purpose} could not be opened: this host refused another channel with {limit} \
+             already open. Each terminal on it takes one, the file panel takes one, and every \
+             command takes one while it runs. Close a terminal on that host — or disconnect it \
+             in Settings and connect again, which frees them all — or raise MaxSessions in its \
+             sshd configuration."
         ))
     }
 
