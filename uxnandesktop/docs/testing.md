@@ -58,10 +58,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **748 backend tests**
-in total, 708 of which run everywhere; the other 40 are ignored probes that need
-something real to talk to (31 live SSH probes — 26 against a real `sshd`, one of
-which idles for five minutes to prove the keepalive, plus **5 against a Linux
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **758 backend tests**
+in total, 716 of which run everywhere; the other 42 are ignored probes that need
+something real to talk to (33 live SSH probes — 26 against a real `sshd`, one of
+which idles for five minutes to prove the keepalive, plus **7 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
 PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
 the real-scheduler probe). The remaining 36 are the integration tests in
@@ -86,10 +86,22 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The five tests walk the whole stack on that machine: password authentication,
+The seven tests walk the whole stack on that machine: password authentication,
 the shell classification, the inventory probe, SFTP (list, read, save, and
-shortening a file), the folder picker with its repository badge, and remote
-`git status` including the no-upstream case. They are `#[ignore]` like every
+shortening a file), the folder picker with its repository badge, remote
+`git status` including the no-upstream case, the whole **review** (HEAD,
+ahead/behind, the changed files and their line counts in one command) with its
+diffs and log, and a full **mutation** cycle — stage, unstage, stage all, commit
+a message containing a newline, quotes and `$VAR` and read it back verbatim,
+discard tracked and untracked files, apply a patch and reverse it, and require a
+patch that does not apply to fail. The mutating tests build their own repository
+on the host so the image's fixture is left as the image made it.
+
+That last group is why this lane exists: it is what caught the one real bug in
+the remote review — git reports an unstaged change with a **leading space**
+(` M README.md`), and trimming the section as whitespace ate it, so every path
+arrived a character short and the panel listed `EADME.md`. The unit tests were
+happy, because none of them had run a shell. They are `#[ignore]` like every
 other live probe, and they **skip with a message** when the environment is not
 set, so a developer without Docker sees a reason rather than a failure.
 
@@ -101,7 +113,7 @@ gets ignored.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 679 passing unit tests (707 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 687 passing unit tests (722 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -202,7 +214,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,172 passing tests** across both
+ships in every build and is never shown). **1,197 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

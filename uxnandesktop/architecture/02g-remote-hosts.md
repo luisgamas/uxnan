@@ -103,6 +103,7 @@ conexion alguna.
 | §5.9 | un proyecto que vive en el host | implementado |
 | §5.10 | ficheros del host: listar, abrir y guardar | implementado |
 | §5.10b | rama y estado de git en el host | implementado |
+| §5.10c | Cambios e Historial del host | `ssh/git.rs`, `gitRouter.ts` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -893,9 +894,10 @@ repositorio contestando `isRepo: false`.
 el filesystem local: con la ruta de un host eso falla — o, peor, escribe un
 fichero con ese nombre **aqui** mientras el editor informa de exito. Por eso fue
 una guarda y no un `catch`, y por eso ahora el guardado va por SFTP con su
-fencing (§5.10 → *Guardar*). Lo que si sigue sin ofrecerse para un fichero remoto
-es la vista *Cambios* —no hay diff remoto todavia (§5.11)— y no se ejecuta git
-local para el, que es lo que sacaba un error rojo encima de un archivo abierto
+fencing (§5.10 → *Guardar*). La vista *Cambios* de un fichero remoto ya se
+ofrece, y su marca de cambios en el margen se lee en la maquina que toque
+(§5.10c); lo que no se hace nunca es ejecutar el git local sobre una ruta de otra
+maquina, que es lo que sacaba un error rojo encima de un archivo abierto
 correctamente. Mientras su host esta desconectado el editor lo dice y se niega,
 en vez de fallar al final de un viaje de ida y vuelta.
 
@@ -922,27 +924,100 @@ Ahora el backend lo distingue (`AppError::NotConnected`, codigo `NOT_CONNECTED`)
 el panel dice que espera, y al conectar el host el arbol se rellena solo
 (`fileTree.retryForHost`).
 
+## 5.10c Cambios e Historial del host — IMPLEMENTADO (fase 3, tercera parte)
+
+`src-tauri/src/ssh/git.rs` (lectura y mutaciones), `src/lib/gitRouter.ts` (a que
+maquina va cada operacion) y los dos stores del panel derecho. Con esto las
+pestañas *Cambios* e *Historial* describen la maquina en la que el proyecto vive
+de verdad, en lugar del aviso que las sustituia. GitHub conserva el aviso, porque
+si lee el repositorio de **esta** maquina y su sesion de `gh`.
+
+**Una peticion, no cuatro.** El layer local pide estado, distancia y numstat por
+separado porque cada llamada cuesta microsegundos. En un host cada una es un
+arranque de shell (~2 s, §5.3) y el panel las quiere todas a la vez, asi que
+`review()` manda **un** comando con cuatro secciones separadas por marcadores
+(`rev-parse HEAD`, `rev-list --left-right --count`, `status --porcelain=v1 -z` y
+`diff --numstat HEAD`) y lo parsean **los parsers locales** — `parse_status_files`
+y `parse_numstat`. Dos parsers para un mismo formato serian dos oportunidades de
+discrepar sobre un mensaje de commit con un salto de linea dentro.
+
+Las secciones van marcadas y no contadas: dos pueden venir vacias y una
+(`--porcelain -z`) no contiene saltos de linea, asi que partir por lineas las
+fundiria — y un repositorio limpio volveria como uno que no se pudo leer.
+
+**El unico bug real de esta parte lo encontro el host Linux** (§5.12), no los
+unitarios: el estado de un cambio sin preparar es un **espacio** a la izquierda
+(` M README.md`), y recortar la seccion como espacio en blanco se lo comia, con
+lo que cada ruta llegaba un caracter mas corta y el panel listaba `EADME.md`
+—preparar ese fichero habria fallado sobre algo que no existe—. Ahora se recortan
+solo saltos de linea, con un test unitario que ya no necesita Docker.
+
+**Lo que cambia el host va por SFTP, no por su shell.** `git apply` y
+`git commit` leen su entrada de **stdin**, y `Connection::exec` no tiene stdin.
+El parche y el mensaje se escriben con la sesion SFTP que ya esta abierta y se
+apunta git al fichero (`-F`, `apply <fichero>`): un mensaje multilinea con
+comillas y `$VAR` llega exactamente como se escribio, sin pasar por las reglas de
+entrecomillado de tres dialectos. El temporal vive junto al `.git` del propio
+repositorio —el unico directorio en el que el usuario seguro puede escribir en esa
+maquina, y en el mismo sistema de ficheros— y **se borra pase lo que pase**: un
+commit fallido dejaria si no un mensaje que el siguiente leeria como suyo.
+
+**Toda mutacion va cercada.** Preparar, descartar, aplicar un hunk o commitear
+llevan la `TargetExpectation` (§2.9 de `02a`) y el backend la comprueba **antes**
+de enviar nada — un descarte no se puede deshacer una vez que el host lo ha
+ejecutado, y la misma ruta absoluta suele existir en las dos maquinas, asi que
+una mutacion mal encaminada es justo la que se parece a un exito. El frontend se
+niega antes incluso de llamar cuando no puede nombrar una conexion: mandar un cero
+seria una expectativa que nadie emitio.
+
+**`fetch`, `push` y `pull` corren alli**, con las credenciales de esa maquina —el
+proyecto vive en ella, luego su remoto es alcanzable desde ella y no
+necesariamente desde aqui—. Un canal `exec` no tiene terminal, asi que un remoto
+que pida contraseña falla en vez de esperar a que alguien la escriba: la salida
+honesta, que ademas indica donde hay que configurar las credenciales.
+
+**Enrutado en un solo sitio.** `gitRouter.ts` es el hermano de `fsRouter.ts` y
+existe por lo mismo: la alternativa es que cada punto de llamada pregunte "¿esto
+es remoto?", que es la forma que ya nos costo un error. El store del panel guarda
+la maquina **al lado** de la ruta, porque ninguna de las dos significa nada sola.
+
+**Dos cosas siguen siendo de esta maquina**, y ahora estan ausentes en vez de
+rotas: el **borrador de commit con IA** (lee el diff preparado con el git local) y
+el **diff de imagenes** (lee los blobs igual). Ambas necesitan traer el contenido
+aqui primero; quedan anotadas en `FOR-DEV.md`.
+
+**Sin watcher, y dicho.** El sondeo de 3 s es el git de esta maquina; hacerlo
+contra un host seria un arranque de shell cada tres segundos en el ordenador de
+otro, por worktree. En remoto el boton de refrescar **es** la actualizacion y su
+tooltip lo dice — no un cartel explicando el funcionamiento de la app. Ademas el
+evento del watcher local se ignora cuando el panel mira a un host: la misma ruta
+absoluta existe en las dos maquinas, y sin esa comprobacion la lista de ficheros
+de aqui pisaria la revision de alli.
+
+**Al conectar y al desconectar, los paneles reaccionan solos.** No empujando
+desde el store de hosts —eso importaria `git`, que importa `app`, que importa
+`hosts`: el ciclo que el registro hoja de sesiones existe para evitar— sino
+leyendo ese registro desde los efectos de los propios paneles. Un host que aun no
+esta arriba se dice **en silencio** ("esperando a que el host se conecte"), como
+ya hacia el arbol: un toast rojo en cada arranque en frio, por un estado que la
+app resuelve sola, es ruido sobre el que el usuario no puede actuar. Y cuando el
+host se va, la lista se vacia y las acciones se deshabilitan, pero el mensaje de
+commit a medio escribir se respeta.
+
 ## 5.11 Lo que queda de la fase 3
 
-Tres piezas, en orden de valor y de riesgo:
+Cambios e Historial ya estan (§5.10c), con las dos soluciones que se habian
+anotado aqui: parche y mensaje por SFTP, porque `exec` no tiene stdin. Quedan:
 
-1. **Cambios e Historial remotos.** La rama y el recuento ya vienen (§5.10b);
-   faltan el diff por fichero, el area de staging, el commit y el log — lo que
-   llenaria las pestañas en vez del aviso actual. Tres puntos duros, ya
-   identificados leyendo el layer local:
-   - `git apply` (staging por hunks) recibe el parche **por stdin**, y
-     `Connection::exec` no tiene stdin. Solucion sin ayudante: subir el parche
-     por SFTP a un temporal del host y `git apply <fichero>`.
-   - El **mensaje de commit** es texto libre multilinea; entrecomillarlo para
-     tres dialectos es justo el error que este layer evita. Misma solucion:
-     escribirlo por SFTP y `git commit -F <fichero>`.
-   - El **diff de imagenes** mueve bytes binarios, y `exec` devuelve
-     `String::from_utf8_lossy`. El lado del working tree sale por SFTP; los
-     blobs, por base64 en el host.
-2. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la
+1. **Buscar en el arbol de un host** — hoy la accion se oculta, porque la
    busqueda recorre este filesystem.
-3. **Operaciones de fichero desde el arbol** (crear, renombrar, borrar). Guardar
+2. **Operaciones de fichero desde el arbol** (crear, renombrar, borrar). Guardar
    ya funciona (§5.10); el menu contextual sigue siendo local.
+3. **Diff de imagenes y borrador de commit con IA** en remoto — las dos piezas
+   que §5.10c deja fuera. El diff de imagenes mueve bytes binarios y `exec`
+   devuelve `String::from_utf8_lossy`: el lado del working tree sale por SFTP y
+   los blobs por base64 en el host. El borrador con IA necesita que el diff
+   preparado llegue aqui para dárselo al agente local.
 
 **Y una restriccion que no se negocia:** el watcher de git local sondea cada 3 s
 (`lib.rs`). A ~2 s por `exec` (§5.3) eso saturaria el canal para siempre, asi que
@@ -1024,7 +1099,8 @@ primera vez.
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
-| Cambios / Historial / GitHub | **No disponible**: el diff, el staging y el historial leen el git de esta maquina. El panel lo dice y ofrece la terminal. §5.11 |
+| Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
+| GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
 | Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
@@ -1037,7 +1113,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales (`MaxSessions`) y mostrar el inventario en la UI. Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8) y rama/estado de git (§5.10b) hechos; pendientes: Cambios/Historial, busqueda y operaciones de fichero (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) y Cambios/Historial (§5.10c) hechos; pendientes: busqueda, operaciones de fichero, diff de imagenes y borrador con IA (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

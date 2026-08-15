@@ -1,11 +1,12 @@
 # Remote hosts over SSH
 
 > **Status: usable, with gaps that are named.** Connecting, terminals, running an
-> agent, browsing folders, adding a project, and the Files tab — listing, opening
-> and **saving** — all work on a host today. What does not: Changes, History and
-> GitHub (they still read this machine's git), searching a host's tree, and
-> creating/renaming/deleting from the tree. This page says which is which, and is
-> updated by the change that lands each piece.
+> agent, browsing folders, adding a project, the Files tab — listing, opening and
+> **saving** — and now **Changes and History** all work on a host today. What
+> does not: GitHub (it reads this machine's repository and its `gh` sign-in),
+> searching a host's tree, creating/renaming/deleting from the tree, the AI
+> commit draft and image diffs. This page says which is which, and is updated by
+> the change that lands each piece.
 
 ## The idea
 
@@ -216,10 +217,12 @@ Select it in the left panel and:
 | | |
 |---|---|
 | **Terminals** | Open on the host, in the project's folder — a channel on the connection that host already has. Splits and further terminals stay there too. |
-| **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. Gaps that remain: no search (it walks *this* filesystem, so the action is hidden rather than offered broken), no git-ignored dimming, no automatic refresh — the refresh button is the reload — and creating, renaming or deleting from the tree is still local-only. The Changes view is not offered on a host because there is no remote diff yet. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
+| **Files** | **Works — including saving.** The tree lists, opens and saves files on the host over SFTP — an SSH subsystem, so it behaves the same whatever shell your host runs, and nothing has to be installed there. A save writes the file **in place** (keeping its permissions and owner) and then asks the host how big it ended up, so a partial write is reported instead of looking like success; saving is refused outright while the host is disconnected. Gaps that remain: no search (it walks *this* filesystem, so the action is hidden rather than offered broken), no git-ignored dimming, no automatic refresh — the refresh button is the reload — and creating, renaming or deleting from the tree is still local-only. The Changes view is offered on a host like anywhere else. If you open the app before connecting, the panel says it is waiting and fills in by itself once the host is up — and if the host later ends the file channel, the next click opens a new one instead of leaving the panel stuck (see below). |
 | **Branch and change count** | **Works.** The row shows the branch the host is on, how many files changed and how far it is from its upstream — read by running git *there*, through the shell that machine reported. If the host cannot answer (no git, not a repository), the badges stay empty rather than showing zeroes that would read as "clean". |
-| **Changes, History, GitHub** | **Not available.** The diff, staging and history still read this machine's git, so the panel says which host the project lives on instead of describing the wrong repository. |
-| **Automatic refresh** | **No.** The watcher that keeps a local project's panels live polls every 3 seconds, and one remote command costs about two — so a host's panels refresh when you open them, when you act, and on the refresh button. Said out loud rather than faked. |
+| **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run git *on the host*, through the shell that machine reported, with every argument quoted for it. Everything the panel draws arrives in **one** command, because each remote command costs a shell start there. Your commit message and any patch travel over SFTP rather than through that shell, so a message with quotes or several lines arrives exactly as you typed it. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. Two pieces stay this machine's: the **AI commit draft** (it reads the staged diff through local git) and **image diffs**; both are absent on a host rather than broken. |
+| **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
+| **GitHub** | **Not available.** It reads this machine's repository and its `gh` sign-in, so the panel says which host the project lives on instead of describing the wrong repository. |
+| **Automatic refresh** | **No.** The watcher that keeps a local project's panels live polls every 3 seconds, and one remote command costs about two — so a host's panels refresh when you open them, when you act, and on the refresh button, whose tooltip says as much. Said out loud rather than faked: a commit made in a terminal on the host shows up in Changes when you ask it, not by itself. |
 
 The card carries the host's name, and its terminal count includes the terminals
 open on that machine.
@@ -251,6 +254,10 @@ working. So:
 - **The file tree empties itself** and says it is waiting, instead of leaving the
   folders of a machine that is no longer there on screen. It fills back in when
   the host returns.
+- **Changes and History do the same.** What was read stays true of the moment it
+  was read, but nothing can be sent to a machine that is gone, so every action is
+  disabled while it is away — and the commit message you were writing is left
+  alone, since the host coming back makes it usable again.
 - **A host that goes away is noticed in about two minutes.** uxnan asks each
   connected host every 30 seconds whether it is still there and gives up after
   three unanswered asks — the same thing mature SSH clients do, and the reason a
@@ -269,10 +276,11 @@ working. So:
 
 ## What is coming
 
-In order: **Changes and History** on a host (per-file diff, staging, commit and
-the log), **searching** a host's tree, and **creating, renaming and deleting**
+In order: **searching** a host's tree, and **creating, renaming and deleting**
 from it. Then precise agent status on a host (it needs a reverse tunnel and
 reporters installed there), forwarded ports with preview, and session continuity.
+The AI commit draft and image diffs on a host are smaller pieces of the same
+list: both need the file content brought here first.
 
 Two things deliberately *not* coming: a helper program installed on your machines
 — every piece that moved off the shell removed its reason to exist, and it would

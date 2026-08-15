@@ -7,6 +7,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Changes and History now work for a project that lives on another machine.**
+  Both tabs used to stand down with a notice, because the diff, the index and the
+  log were read through this machine's git. They now run git **on the host**,
+  through the shell that machine reported, with every argument quoted for it: the
+  changed-file list, per-file and per-hunk diffs, staging, discarding, committing,
+  the log, a commit's patch, and fetch/push/pull — the last three with that
+  machine's own credentials, since the project lives there. Everything the panel
+  draws arrives in **one** command, because each remote command costs a shell
+  start on someone else's computer, and your commit message and any patch travel
+  over SFTP rather than through that shell, so a multi-line message with quotes
+  in it arrives exactly as you typed it. Anything that changes the host names the
+  machine and connection it was prepared for and is refused if either has moved
+  on — the same absolute path usually exists on both machines, so a misrouted
+  discard is the failure that would look like success. The editor's change gutter
+  is routed the same way. A remote project has no watcher on purpose (3-second
+  polling against a machine where one command costs ~2s), so the refresh control
+  *is* the update and its tooltip says so; a host that has not connected yet
+  reads as *waiting* rather than as an error, and both panels fill in when it
+  comes up and stop offering actions when it goes away. Two pieces stay this
+  machine's and are now absent rather than broken: the AI commit draft and image
+  diffs, both of which read local git. Verified against a real Linux host, which
+  is also what caught the one real bug here — trimming git's porcelain output as
+  whitespace ate the leading space of an unstaged status, so every path arrived a
+  character short and the panel listed `EADME.md`. GitHub keeps its notice: it
+  reads this machine's repository and its `gh` sign-in.
+
 - **The remote-hosts feature is now tested against a real Linux host.** Every
   live SSH test until now talked to the `sshd` of the machine running it — which
   has always been Windows — so the POSIX half of the remote layer had never

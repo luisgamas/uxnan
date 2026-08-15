@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 748 Rust tests (712 unit + 36
-integration), of which 40 are ignored probes that need something real to talk to
-(31 live SSH probes — 26 against a real `sshd` and 5 against a **Linux host in a
+always wins). 758 Rust tests (722 unit + 36
+integration), of which 42 are ignored probes that need something real to talk to
+(33 live SSH probes — 26 against a real `sshd` and 7 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,172 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,197 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -920,9 +920,13 @@ user-facing `docs/remote-hosts.md`.
 place and fenced, because atomic rename does not exist over SFTP v3); the folder
 picker moved off the host's shell onto SFTP (336 ms → 6.6 ms on loopback, and it
 was paying for two failed shell starts per click on a Windows host); the branch
-and change count read by running git *on* the host; a keepalive so a quiet host
-is not reaped and a dead one is noticed in ~2 min; and silent, known-key hosts
-reconnecting at startup. The host-side helper is **decided against** — the
+and change count read by running git *on* the host; **Changes and History on a
+host** — the changed-file list, per-file and per-hunk diffs, staging, discard,
+commit, log and fetch/push/pull, with the patch and the commit message travelling
+over SFTP because `exec` has no stdin, every mutation fenced, and the whole review
+answered in one command (`02g` §5.10c); a keepalive so a quiet host is not reaped
+and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
+startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
 `architecture/02g-remote-hosts.md` §5.11.
 
@@ -975,29 +979,17 @@ reasoning, with the measurements that removed its justification, is in
       should not have to learn two places to ask "what is still running".
 
 ### Frontend (Svelte)
-- [ ] **A remote project has files, but not git.** Listing and opening work over
-      SFTP (`ssh/sftp.rs`, `src/lib/fsRouter.ts`) — a subsystem, so it is shell-
-      agnostic and needs nothing installed on the host. What is left, in order:
-      **diff, staging and history** (the branch and change count already come
-      from `ssh/git.rs` — what is left is per-file diffs, the index and commit,
-      which is what the Changes/History tabs need), **searching** a host's tree
-      (the affordance is hidden today rather than offered broken, because it
-      walks this filesystem), and then the pieces none of that covers: watching
-      for changes, and file operations beyond saving — create, rename, delete and
-      the tree's context menu are still local-only. Saving a file **works**, in
-      place and fenced (`02g` §5.10). Spec: `02g` §5.10–§5.11.
-- [ ] **Stop talking to the host's shell at all (phase 3).** Placing a terminal
-      in a directory, reading files and running git are all done today by
-      *typing* into whatever shell the host's sshd starts. `ssh::shellkind`
-      makes that correct by asking which shell it is, but the whole approach is
-      an interface writing syntax for someone else's shell. The direction the
-      mature remote clients take, and the one agreed for phase 3, is a small
-      helper process on the host: it owns the PTY (with a working directory as
-      a parameter, not as typed text), lists files and runs git, and no shell
-      syntax is involved anywhere. Decide its shape (what it needs installed,
-      how it is deployed and versioned, what happens when the host has no
-      runtime) before phase 3 starts, because it also settles remote files and
-      git.
+- [ ] **What a remote project still cannot do.** Files, Changes and History all
+      work on a host now (`ssh/sftp.rs` + `src/lib/fsRouter.ts`, `ssh/git.rs` +
+      `src/lib/gitRouter.ts`). What is left, in order: **searching** a host's tree
+      (the affordance is hidden today rather than offered broken, because it walks
+      this filesystem); **file operations beyond saving** — create, rename, delete
+      and the tree's context menu are still local-only; **watching for changes**
+      (a remote project has no watcher on purpose — 3 s polling against a machine
+      where one command costs ~2 s — so every panel refreshes on open, on act and
+      on its button, and says so); and the two pieces of the review that read this
+      machine's git, **image diffs** and the **AI commit draft**, both of which
+      need the content brought here first. Spec: `02g` §5.10–§5.11.
 - [ ] **Launching a dev build must not resume the everyday session's agents.**
       Half-fixed: a debug build now has its own profile, so it restores its own
       tabs rather than the installed app's — which is what made a second agent
@@ -1447,7 +1439,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 748 Rust + 1,179 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 758 Rust + 1,197 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
