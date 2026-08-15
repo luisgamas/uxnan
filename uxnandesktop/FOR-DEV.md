@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 768 Rust tests (732 unit + 36
-integration), of which 45 are ignored probes that need something real to talk to
-(36 live SSH probes — 26 against a real `sshd` and 10 against a **Linux host in a
+always wins). 770 Rust tests (734 unit + 36
+integration), of which 46 are ignored probes that need something real to talk to
+(37 live SSH probes — 26 against a real `sshd` and 11 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
 GitHub tests, 1 real-scheduler probe) + 1,212 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -930,7 +930,10 @@ because SSH has no trash and the dialog saying so (`02g` §5.10d); **searching a
 host's project** by name and by content, by asking git there rather than dragging
 the project across the link (`02g` §5.10e); **a dropped session announcing
 itself** instead of waiting to be asked (`02g` §5.10f); **a channel budget** that
-learns each host's own limit instead of assuming one (`02g` §5.10g); a keepalive so a quiet host is not reaped
+learns each host's own limit instead of assuming one (`02g` §5.10g); **image
+diffs and the AI commit draft** — the last two panel pieces, with the image bytes
+travelling as bytes and the agent running here on a diff read there (`02g`
+§5.10h); a keepalive so a quiet host is not reaped
 and a dead one is noticed in ~2 min; and silent, known-key hosts reconnecting at
 startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
@@ -1432,7 +1435,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 765 Rust + 1,212 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 770 Rust + 1,212 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

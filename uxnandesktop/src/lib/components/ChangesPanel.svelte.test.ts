@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { mountWithProviders, until } from "../../test/render";
 import ChangesPanel from "./ChangesPanel.svelte";
+import { app } from "$lib/state/app.svelte";
 import { git } from "$lib/state/git.svelte";
 import { sessions } from "$lib/state/sessions.svelte";
 
@@ -46,14 +47,26 @@ describe("Changes on a host", () => {
     expect(screen.queryByText(/lives on|vive en/i)).toBeNull();
   });
 
-  it("leaves out the AI draft button, which reads this machine's git", async () => {
-    const { screen } = mountWithProviders(ChangesPanel, { commands: COMMANDS });
+  it("still offers the AI draft, which runs here on a diff read there", async () => {
+    // It used to be hidden for a host because it read the staged diff through
+    // this machine's git. The diff now comes from the machine the project is on;
+    // the agent stays here, where its CLI and sign-in are.
+    const { screen } = mountWithProviders(ChangesPanel, {
+      commands: { ...COMMANDS, ssh_git_generate_commit_message: () => "a message" },
+    });
+    app.settings.aiCommit = {
+      enabled: true,
+      agentId: "claude-code",
+      model: "",
+      language: "en",
+      conventional: true,
+      includeBody: false,
+      instructions: "",
+    };
     await git.load("C:/Users/gamas/app", "ssh:h1");
     await until(() => git.files.length > 0);
 
-    // It drafts from the staged diff through local git, so on a host it is not
-    // offered at all rather than offered and failing.
-    expect(screen.queryByText(/^(Generate|Generar|Redactar)/i)).toBeNull();
+    expect(screen.getByText(/^(Generate|Generar|Redactar)/i)).toBeTruthy();
   });
 
   it("refuses to commit to a host that dropped, without blanking the review", async () => {

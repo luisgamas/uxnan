@@ -433,6 +433,8 @@ pub fn run() {
             commands::ssh_git_review,
             commands::ssh_git_diff,
             commands::ssh_git_diff_head,
+            commands::ssh_git_image_diff,
+            commands::ssh_git_generate_commit_message,
             commands::ssh_git_log,
             commands::ssh_git_show,
             commands::ssh_git_stage,

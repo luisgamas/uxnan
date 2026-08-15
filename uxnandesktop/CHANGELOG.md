@@ -28,6 +28,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The last two panel pieces work on a host: image diffs and the AI commit
+  draft.** An image diff was not a git problem but a transport one — `exec`
+  turned stdout into text with a lossy conversion, which is right for everything
+  that *is* text and destroys a PNG. That conversion was ours, not the channel's,
+  so there is now a read that skips it: the committed side comes from `git show`
+  with its bytes intact and the working-tree side over SFTP. The alternative was
+  asking the host to base64 it, which needs a different tool on every OS and a
+  shell redirect whose encoding differs per shell; this needs nothing installed
+  and no syntax at all. Verified against a real host with bytes that are *not*
+  valid UTF-8, compared byte for byte.
+
+  The AI draft reads the diff **there** and runs the agent **here**, because the
+  CLI and its sign-in are this machine's and requiring an agent on every host
+  would put the feature behind an install nobody asked for.
+
 - **Running out of channels on a host now says what the limit is.** Everything
   on a connection is a channel — every terminal, the file session, each command
   while it runs — and a host caps how many it will carry at once. Past that cap

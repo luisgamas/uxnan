@@ -26,6 +26,8 @@ import {
   gitDiff,
   gitDiffHead,
   gitDiscard,
+  generateCommitMessage,
+  gitImageDiff,
   gitFetch,
   gitLog,
   gitNumstat,
@@ -42,6 +44,8 @@ import {
   sshGitDiff,
   sshGitDiffHead,
   sshGitDiscard,
+  sshGitGenerateCommitMessage,
+  sshGitImageDiff,
   sshGitLog,
   sshGitReview,
   sshGitShow,
@@ -53,7 +57,13 @@ import {
   worktreeStatus,
 } from "$lib/api";
 import { expectation, sshHostId, type TargetId } from "$lib/target";
-import type { CommitInfo, FileChange, FileNumstat, WorktreeStatus } from "$lib/types";
+import type {
+  CommitInfo,
+  FileChange,
+  FileNumstat,
+  ImageDiff,
+  WorktreeStatus,
+} from "$lib/types";
 
 /** Everything the Changes tab draws about a worktree, from either machine. */
 export interface Review {
@@ -127,6 +137,29 @@ export function diffHeadOn(
 ): Promise<string> {
   const host = sshHostId(target);
   return host ? sshGitDiffHead(host, path, file) : gitDiffHead(path, file);
+}
+
+/** Before/after versions of an image, from whichever machine it is on. */
+export function imageDiffOn(
+  target: TargetId | undefined | null,
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<ImageDiff> {
+  const host = sshHostId(target);
+  return host ? sshGitImageDiff(host, path, file, staged) : gitImageDiff(path, file, staged);
+}
+
+/** Draft a commit message with the configured agent.
+ *
+ *  The agent always runs on **this** machine — it is this machine's CLI and
+ *  sign-in — and only the diff comes from wherever the project is. */
+export function generateCommitMessageOn(
+  target: TargetId | undefined | null,
+  path: string,
+): Promise<string> {
+  const host = sshHostId(target);
+  return host ? sshGitGenerateCommitMessage(host, path) : generateCommitMessage(path);
 }
 
 /** A worktree's history, newest first. */

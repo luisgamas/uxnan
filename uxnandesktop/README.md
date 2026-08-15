@@ -77,7 +77,7 @@ available today are:
   file, rename, duplicate, delete — deleting on a host is permanent, because SSH
   has no trash, and the dialog says so) and **searched** (by name and by content,
   asking git on that machine so the files never cross the link) — and **Changes
-  and History work there too**: the
+  and History work there too**, image diffs and the AI commit draft included: the
   diff, staging, commit, log and fetch/push/pull all run git on that machine,
   with your commit message travelling over SFTP so it is never quoted for someone
   else's shell. Host keys are verified with a confirmation you have to give; no

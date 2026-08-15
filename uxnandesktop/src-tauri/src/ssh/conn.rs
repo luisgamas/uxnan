@@ -359,6 +359,55 @@ impl Connection {
             })
     }
 
+    /// Run a command and keep its output as **bytes**.
+    ///
+    /// [`exec`] turns stdout into a `String` with `from_utf8_lossy`, which is
+    /// right for everything that is text and destroys anything that is not: an
+    /// image blob read that way comes back as replacement characters. The lossy
+    /// conversion is *our* choice, not the transport's — the channel carries
+    /// bytes — so a caller that wants a file's contents can have them.
+    ///
+    /// The alternative was asking the host to base64 the blob for us, which
+    /// needs a different tool on every OS (`base64`, `certutil`,
+    /// `[Convert]::ToBase64String`) and a shell redirect whose encoding differs
+    /// per shell. This needs nothing installed and no syntax at all.
+    pub async fn exec_bytes(&self, command: &str) -> Result<Vec<u8>, AppError> {
+        let (mut channel, _lease) = self.open_channel("this command", true).await?;
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| AppError::Invalid(format!("could not run a remote command: {e}")))?;
+
+        let mut stdout = Vec::new();
+        let mut exit = None;
+        let collect = async {
+            while let Some(msg) = channel.wait().await {
+                match msg {
+                    russh::ChannelMsg::Data { ref data } => stdout.extend_from_slice(data),
+                    russh::ChannelMsg::ExitStatus { exit_status } => exit = Some(exit_status),
+                    _ => {}
+                }
+            }
+        };
+        tokio::time::timeout(EXEC_TIMEOUT, collect)
+            .await
+            .map_err(|_| {
+                AppError::Invalid(format!(
+                    "the host did not answer within {}s",
+                    EXEC_TIMEOUT.as_secs()
+                ))
+            })?;
+        match exit {
+            Some(0) => Ok(stdout),
+            // Anything else means the host produced no blob — a path that is not
+            // in that revision, most often. The caller renders "no such side",
+            // which is the truth, rather than an empty image.
+            _ => Err(AppError::NotFound(
+                "the host has nothing at that revision".to_string(),
+            )),
+        }
+    }
+
     async fn exec_unbounded(&self, command: &str) -> Result<CommandOutput, AppError> {
         // A command is brief, so it queues for a slot rather than failing while
         // another one finishes. The lease is held until this returns.

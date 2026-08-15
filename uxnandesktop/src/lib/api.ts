@@ -709,6 +709,26 @@ export function sshGitDiffHead(hostId: string, path: string, file: string): Prom
   return invoke<string>('ssh_git_diff_head', { hostId, path, file });
 }
 
+/** Draft a commit message for a project on a host: the diff is read there, the
+ *  agent runs here (its CLI and credentials are this machine's). */
+export function sshGitGenerateCommitMessage(hostId: string, path: string): Promise<string> {
+  return invoke<string>('ssh_git_generate_commit_message', { hostId, path });
+}
+
+/** Before/after versions of an **image** on a host, for the visual diff.
+ *
+ *  The committed side is read with `git show` keeping its bytes as bytes (the
+ *  text path would turn a PNG into replacement characters), and the working-tree
+ *  side over SFTP. Nothing has to be installed on the host to encode it. */
+export function sshGitImageDiff(
+  hostId: string,
+  path: string,
+  file: string,
+  staged: boolean,
+): Promise<ImageDiff> {
+  return invoke<ImageDiff>('ssh_git_image_diff', { hostId, path, file, staged });
+}
+
 /** A host worktree's history, newest first. Same shape as the local log, so the
  *  History tab and the branch graph render either machine unchanged. */
 export function sshGitLog(

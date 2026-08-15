@@ -1632,6 +1632,60 @@ pub async fn ssh_git_diff_head(
         .map_err(CommandError::from)
 }
 
+/// Draft a commit message for a project on a host.
+///
+/// The diff is read **there** and the agent runs **here**: the CLI and its
+/// credentials are this machine's, and requiring one on every host would put
+/// the feature behind an install nobody asked for. The agent is started in the
+/// user's home rather than the project, which does not exist on this machine —
+/// the whole diff is in the prompt, so the directory is only where the process
+/// stands (`aicommit::from_diff`).
+#[tauri::command]
+pub async fn ssh_git_generate_commit_message(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<String, CommandError> {
+    let cfg = state.data.read().await.settings.ai_commit.clone();
+    if !cfg.enabled {
+        return Err(CommandError::from(AppError::Invalid(
+            "AI commit-message generation is disabled".to_string(),
+        )));
+    }
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    // Everything staged, in one command — the same diff the local path feeds the
+    // agent, read from the machine the project is on.
+    let diff = ssh::git::diff(&conn, shell, &path, ".", true)
+        .await
+        .map_err(CommandError::from)?;
+    let home = crate::agent_hooks::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+    crate::aicommit::from_diff(&diff, &cfg, &home)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Before/after versions of an image on a host, for the visual diff viewer.
+///
+/// The committed side comes from `git show` with its bytes kept as bytes; the
+/// working-tree side over SFTP. Nothing is base64-ed by the host, so no tool has
+/// to exist there (`ssh::git::image_diff`).
+#[tauri::command]
+pub async fn ssh_git_image_diff(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+    file: String,
+    staged: bool,
+) -> Result<git::ImageDiff, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    let session = sftp_for(&state, &host_id).await?;
+    ssh::git::image_diff(&conn, &session, shell, &path, &file, staged)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// A host worktree's history, newest first.
 #[tauri::command]
 pub async fn ssh_git_log(

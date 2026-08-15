@@ -22,6 +22,81 @@ use crate::git::WorktreeStatus;
 const BEGIN: &str = "__UXNAN_GIT_BEGIN__";
 const END: &str = "__UXNAN_GIT_END__";
 
+/// Before/after versions of an **image** on a host, for the visual diff.
+///
+/// Text diffs come back as text; an image has to move as bytes, and `exec`
+/// turns stdout into a lossy `String` (see [`Connection::exec_bytes`]). Both
+/// sides are read without a single shell trick: the committed side with
+/// `git show`, whose bytes are kept as bytes, and the working-tree side over
+/// SFTP, which is how every other file on that machine is read.
+///
+/// A side that does not exist — an added or deleted image — comes back `None`,
+/// exactly as it does locally, and the viewer draws one panel.
+pub async fn image_diff(
+    conn: &Connection,
+    files: &super::sftp::RemoteFiles,
+    kind: ShellKind,
+    path: &str,
+    file: &str,
+    staged: bool,
+) -> Result<crate::git::ImageDiff, AppError> {
+    if kind == ShellKind::Unknown {
+        return Err(unnameable_shell());
+    }
+    let mime = crate::git::image_mime(file)
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let encode = |bytes: Vec<u8>| crate::git::ImageData {
+        mime: mime.clone(),
+        base64: base64_of(&bytes),
+    };
+    let p = quote_arg(kind, path);
+
+    // Old side: HEAD for the staged view, the index for the working view — the
+    // same two revisions the local layer compares.
+    let old_rev = quote_arg(
+        kind,
+        &if staged {
+            format!("HEAD:{file}")
+        } else {
+            format!(":{file}")
+        },
+    );
+    let old = conn
+        .exec_bytes(&format!("git -C {p} show {old_rev}"))
+        .await
+        .ok()
+        .filter(|b| !b.is_empty())
+        .map(&encode);
+
+    // New side: the index when staged, otherwise the file as it is on that
+    // machine right now.
+    let new = if staged {
+        let index_rev = quote_arg(kind, &format!(":{file}"));
+        conn.exec_bytes(&format!("git -C {p} show {index_rev}"))
+            .await
+            .ok()
+            .filter(|b| !b.is_empty())
+            .map(&encode)
+    } else {
+        let full = format!("{}/{file}", path.trim_end_matches('/'));
+        files
+            .read_bytes(&full)
+            .await
+            .ok()
+            .filter(|b| !b.is_empty())
+            .map(&encode)
+    };
+
+    Ok(crate::git::ImageDiff { old, new })
+}
+
+/// Base64 for the viewer, with the same alphabet the local layer uses.
+fn base64_of(bytes: &[u8]) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
 /// What a host reported about one worktree.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

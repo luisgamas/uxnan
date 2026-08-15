@@ -108,6 +108,7 @@ conexion alguna.
 | §5.10e | Buscar en el proyecto del host | `ssh/search.rs`, `fsRouter.ts` |
 | §5.10f | Avisar de una sesion caida | `commands.rs`, `hosts.svelte.ts` |
 | §5.10g | Presupuesto de canales | `ssh/conn.rs` |
+| §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1180,22 +1181,49 @@ ya tenia), y un host libera un canal cerrado **de forma asincrona** — un recha
 ese instante se estaba registrando como "esta maquina permite 1 canal", lo que
 habria dejado la conexion inutil el resto de su vida.
 
-## 5.11 Lo que queda de la fase 3
+## 5.10h Las dos ultimas piezas del panel — IMPLEMENTADO (fase 3, octava parte)
 
-Cambios e Historial ya estan (§5.10c), con las dos soluciones que se habian
-anotado aqui: parche y mensaje por SFTP, porque `exec` no tiene stdin. Quedan:
+**Diff de imagenes.** `Connection::exec_bytes` + `RemoteFiles::read_bytes`. Lo
+que faltaba no era git sino el transporte: `exec` convierte stdout con
+`from_utf8_lossy`, correcto para todo lo que es texto y destructivo para lo que
+no — un PNG leido asi vuelve como caracteres de reemplazo. La conversion es
+**nuestra**, no del canal (que lleva bytes), asi que ahora hay una lectura que no
+la hace. La alternativa era pedirle al host que codificara en base64, que necesita
+una herramienta distinta por sistema (`base64`, `certutil`,
+`[Convert]::ToBase64String`) y una redireccion cuya codificacion cambia por
+shell: esto no necesita nada instalado ni sintaxis alguna. El lado comiteado sale
+de `git show` con sus bytes intactos; el del working tree, por SFTP. Verificado
+contra el contenedor con bytes que **no** son UTF-8 validos, comparando byte a
+byte.
 
-1. **Diff de imagenes y borrador de commit con IA** en remoto — las dos piezas
-   que §5.10c deja fuera. El diff de imagenes mueve bytes binarios y `exec`
-   devuelve `String::from_utf8_lossy`: el lado del working tree sale por SFTP y
-   los blobs por base64 en el host. El borrador con IA necesita que el diff
-   preparado llegue aqui para dárselo al agente local.
+**Borrador de commit con IA.** El diff se lee **alli** y el agente corre
+**aqui**: el CLI y su sesion son de esta maquina, y exigir un agente instalado en
+cada host pondria la funcion detras de una instalacion que nadie pidio.
+`aicommit::from_diff` separa "de donde sale el diff" de "quien lo resume". El
+agente arranca en el home del usuario, porque el proyecto no existe en esta
+maquina y el diff entero va en el prompt — el directorio es solo donde el proceso
+se planta. Un CLI que exija confiar en una carpeta antes de hacer nada fallara
+ahi en vez de colgarse (la ejecucion esta acotada por `GENERATE_TIMEOUT`) y el
+boton lo dice.
 
-**Y una restriccion que no se negocia:** el watcher de git local sondea cada 3 s
-(`lib.rs`). A ~2 s por `exec` (§5.3) eso saturaria el canal para siempre, asi que
-un proyecto remoto **no tendra sondeo**: se refresca al abrir la pestaña, al
-actuar y con el boton. Se dice en la interfaz en vez de fingir un directo que no
-existe.
+## 5.11 La fase 3 esta completa
+
+Todo lo que esta seccion enumeraba esta hecho: ficheros (§5.10), git y su
+revision (§5.10b, §5.10c), operaciones del arbol (§5.10d), busqueda (§5.10e),
+aviso de sesion caida (§5.10f), presupuesto de canales (§5.10g) y las dos ultimas
+piezas del panel (§5.10h). Lo unico que un proyecto remoto sigue sin tener frente
+a uno local es **GitHub** —lee el repositorio de esta maquina y su sesion de
+`gh`— y el **sondeo automatico**, que es una decision y no una carencia:
+
+el watcher de git local sondea cada 3 s (`lib.rs`), y a ~2 s por `exec` (§5.3)
+eso saturaria el canal para siempre. Un proyecto remoto **no tiene sondeo**: se
+refresca al abrir la pestaña, al actuar y con el boton, y la interfaz lo dice en
+vez de fingir un directo que no existe.
+
+Fuera de la fase 3, y anotado en `FOR-DEV.md`: la **escalera de reconexion**
+(volver solos tras una caida, con errores tipados), los **puertos reenviados** y
+el **estado preciso de agentes** en un host, que necesitan un tunel inverso y
+reporters instalados alli.
 
 ### La decision sobre el ayudante en el host: NO se construye
 
@@ -1271,6 +1299,7 @@ primera vez.
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
 | Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
+| Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
 | Buscar (nombre y contenido) | **Funciona** preguntandole a git en el host — `ls-files` y `grep` (§5.10e). Solo dentro de un repositorio; si no lo es, se dice. |
 | Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
 | Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
@@ -1287,7 +1316,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Queda como deuda de la fase: escalera de reconexion, presupuesto de canales (`MaxSessions`) y mostrar el inventario en la UI. Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **En curso** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) Cambios/Historial (§5.10c) las operaciones de fichero del arbol (§5.10d) y la busqueda (§5.10e) hechos; pendientes: diff de imagenes, borrador con IA y avisar a la UI de una sesion caida (§5.11). El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b) Cambios/Historial (§5.10c) las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

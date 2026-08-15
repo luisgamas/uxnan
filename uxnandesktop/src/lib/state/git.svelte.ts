@@ -13,17 +13,18 @@
 //   refreshes when it is opened, after every action taken here, and when the
 //   user asks — and `remote` is exposed so the panel can say so rather than
 //   letting a stale list look live.
-// - **Two things stay local-only.** The AI commit message reads the staged diff
-//   through this machine's git, and an image diff reads blobs the same way.
-//   Both are absent on a host rather than wrong (see `FOR-DEV.md`).
+// - **The agent that drafts a commit message runs here, whatever the project.**
+//   It is this machine's CLI and sign-in; only the diff comes from the host.
 
 import { listen } from "@tauri-apps/api/event";
-import { generateCommitMessage, gitImageDiff, gitNumstat, gitSetWatch } from "$lib/api";
+import { gitNumstat, gitSetWatch } from "$lib/api";
 import {
   applyOn,
   commitOn,
   diffOn,
   discardOn,
+  generateCommitMessageOn,
+  imageDiffOn,
   reviewOn,
   showOn,
   stageAllOn,
@@ -376,13 +377,11 @@ class GitStore {
    *  agent returns one, the body (the rest), overwriting whatever is there. */
   async generateMessage(): Promise<void> {
     const path = this.path;
-    // Local only: it reads the staged diff through this machine's git. On a host
-    // the button is not offered, so reaching here at all would be a bug.
-    if (!path || this.remote || this.aiGenerating) return;
+    if (!path || this.aiGenerating) return;
     this.aiGenerating = true;
     this.error = null;
     try {
-      const raw = (await generateCommitMessage(path)).trim();
+      const raw = (await generateCommitMessageOn(this.target, path)).trim();
       const nl = raw.indexOf("\n");
       if (nl === -1) {
         this.message = raw;
@@ -595,13 +594,7 @@ export class DiffViewerState {
     this.error = null;
     try {
       if (this.isImage) {
-        if (!isLocalTarget(this.target)) {
-          // Image diffs read the two blobs through this machine's git. Say so
-          // rather than showing an empty frame that looks like "no change".
-          this.error = i18n.t("git.remoteImageDiff");
-          return;
-        }
-        const res = await gitImageDiff(this.worktree, this.file, this.staged);
+        const res = await imageDiffOn(this.target, this.worktree, this.file, this.staged);
         this.imageOld = res.old ? `data:${res.old.mime};base64,${res.old.base64}` : null;
         this.imageNew = res.new ? `data:${res.new.mime};base64,${res.new.base64}` : null;
         return;

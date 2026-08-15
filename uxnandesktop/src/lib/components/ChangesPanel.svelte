@@ -54,10 +54,10 @@
 
   // The AI "Generate" button shows only when the feature is enabled AND an agent
   // is selected (Settings → AI commit). It drafts from the staged diff.
-  // Never on a host: it reads the staged diff through *this* machine's git.
+  // Offered for either machine: the diff comes from wherever the project is and
+  // the agent runs here, which is where its CLI and sign-in are.
   const aiEnabled = $derived(
-    !git.remote &&
-      !!app.settings.aiCommit?.enabled &&
+    !!app.settings.aiCommit?.enabled &&
       (app.settings.aiCommit?.agentId ?? "").trim().length > 0,
   );
 

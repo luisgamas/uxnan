@@ -58,10 +58,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **768 backend tests**
-in total, 723 of which run everywhere; the other 45 are ignored probes that need
-something real to talk to (36 live SSH probes — 26 against a real `sshd`, one of
-which idles for five minutes to prove the keepalive, plus **10 against a Linux
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **770 backend tests**
+in total, 724 of which run everywhere; the other 46 are ignored probes that need
+something real to talk to (37 live SSH probes — 26 against a real `sshd`, one of
+which idles for five minutes to prove the keepalive, plus **11 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
 PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
 the real-scheduler probe). The remaining 36 are the integration tests in
@@ -86,7 +86,7 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The ten tests walk the whole stack on that machine: password authentication,
+The eleven tests walk the whole stack on that machine: password authentication,
 the shell classification, the inventory probe, SFTP (list, read, save, and
 shortening a file), the folder picker with its repository badge, remote
 `git status` including the no-upstream case, the whole **review** (HEAD,
@@ -98,7 +98,9 @@ to aim one at a filesystem root — **searching** it (by name and by content, wi
 hidden-folder rule, case sensitivity, whole word, an empty result and a folder
 that is not a repository), **what the host does when it runs out of channels** (held open until it refuses,
 then the message has to name the number *it* enforced — this is what caught the
-off-by-one and the asynchronous release), and a full git **mutation** cycle:
+off-by-one and the asynchronous release), **an image diff** (bytes that are not
+valid UTF-8, compared byte for byte — the text path would have replaced every one
+of them), and a full git **mutation** cycle:
 stage,
 unstage, stage all, commit
 a message containing a newline, quotes and `$VAR` and read it back verbatim,
@@ -122,7 +124,7 @@ gets ignored.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 695 passing unit tests (733 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 695 passing unit tests (734 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen

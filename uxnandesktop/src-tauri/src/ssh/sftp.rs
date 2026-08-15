@@ -796,6 +796,21 @@ impl RemoteFiles {
             .map_err(|e| self.failed(&format!("could not look at {target} on that host"), e))
     }
 
+    /// Read a file's raw bytes.
+    ///
+    /// Distinct from [`read_file`], which is for the editor and answers text
+    /// with the binary / too-large flags the editor needs. The one caller here
+    /// is the image diff, which needs the bytes exactly as they are on that
+    /// machine — a PNG turned into replacement characters is not a smaller
+    /// picture, it is a broken one.
+    pub async fn read_bytes(&self, path: &str) -> Result<Vec<u8>, SftpFailure> {
+        let file = normalize(path);
+        self.session
+            .read(file.clone())
+            .await
+            .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))
+    }
+
     /// Read a file for the editor, honouring the same guards as the local layer:
     /// a file that is not UTF-8 text, or is over the edit cap, comes back
     /// flagged rather than truncated or mangled.

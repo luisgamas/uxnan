@@ -2265,7 +2265,6 @@ export const en = {
   "remote.panelBody": "GitHub is read through this machine's repository and its `gh` sign-in, so it cannot describe a folder on another one. Files, changes and history do work on a host.",
   "remote.panelOpenTerminal": "Open a terminal there",
   "git.remoteNotRead": "This folder could not be read as a repository on that host.",
-  "git.remoteImageDiff": "Image diffs are read on this machine, so they are not available for a project on a host.",
   "git.remoteNoWatch": "On a host, changes are read when you ask — this list does not update by itself.",
   "git.refresh": "Refresh",
 

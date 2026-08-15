@@ -785,3 +785,56 @@ async fn posix_host_says_how_many_channels_it_allows_when_it_runs_out() {
         "closing the sessions frees their slots on the host"
     );
 }
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_returns_an_image_diff_byte_for_byte() {
+    let (conn, _) = host_or_skip!();
+    let kind = super::shellkind::classify(&conn).await;
+    let files = super::sftp::open(&conn).await.expect("an SFTP session");
+    let home = files.home().await.expect("the host's home");
+
+    // Bytes that are not text, and specifically not valid UTF-8 (0x80..0xFF):
+    // the text path answers `from_utf8_lossy`, which would replace every one of
+    // them and hand the viewer a picture that is not the file.
+    let repo = format!("{home}/images");
+    conn.exec(&format!(
+        "rm -rf {repo} && mkdir -p {repo} && cd {repo} && git init -q \
+         && printf '\\x89PNG\\r\\n\\x1a\\n\\xde\\xad\\xbe\\xef' > logo.png \
+         && git add -A && git commit -qm first \
+         && printf '\\x89PNG\\r\\n\\x1a\\n\\xca\\xfe\\xba\\xbe\\xff' > logo.png"
+    ))
+    .await
+    .expect("a repository with an image");
+
+    let diff = super::git::image_diff(&conn, &files, kind, &repo, "logo.png", false)
+        .await
+        .expect("an image diff");
+
+    use base64::Engine as _;
+    let decode = |d: &crate::git::ImageData| {
+        base64::engine::general_purpose::STANDARD
+            .decode(&d.base64)
+            .expect("valid base64")
+    };
+    let old = decode(diff.old.as_ref().expect("the committed side"));
+    let new = decode(diff.new.as_ref().expect("the working side"));
+    println!("linux: image diff {} -> {} bytes", old.len(), new.len());
+
+    assert_eq!(diff.old.as_ref().unwrap().mime, "image/png");
+    assert_eq!(old, b"\x89PNG\r\n\x1a\n\xde\xad\xbe\xef");
+    assert_eq!(new, b"\x89PNG\r\n\x1a\n\xca\xfe\xba\xbe\xff");
+
+    // A file that is not in the commit has no old side, and the viewer draws one
+    // panel — the same shape the local layer answers with.
+    conn.exec(&format!("cd {repo} && printf '\\x89PNG\\x00\\xff' > added.png"))
+        .await
+        .expect("an untracked image");
+    let added = super::git::image_diff(&conn, &files, kind, &repo, "added.png", false)
+        .await
+        .expect("an image diff");
+    assert!(added.old.is_none(), "nothing is committed under that name");
+    assert!(added.new.is_some(), "but it is there on the host");
+
+    let _ = conn.exec(&format!("rm -rf {repo}")).await;
+}
