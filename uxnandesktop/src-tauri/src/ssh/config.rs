@@ -147,10 +147,11 @@ fn split_directive(line: &str) -> Option<(&str, &str)> {
     if line.is_empty() || line.starts_with('#') {
         return None;
     }
-    let (keyword, rest) = match line.find([' ', '\t', '=']) {
-        Some(i) => (&line[..i], line[i..].trim_start_matches([' ', '\t', '='])),
-        None => return None,
-    };
+    let cut = line.find([' ', '\t', '='])?;
+    let (keyword, rest) = (
+        &line[..cut],
+        line[cut..].trim_start_matches([' ', '\t', '=']),
+    );
     let rest = rest.trim();
     if keyword.is_empty() || rest.is_empty() {
         return None;

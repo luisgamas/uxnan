@@ -125,18 +125,19 @@ sha1 = "0.10"
 # and GetShortPathNameW for the agent hooks — Grok parses a hook command as a
 # literal path with no quoting, so a hooks folder whose path contains a space is
 # only reachable through its 8.3 short form (agent_hooks.rs).
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = [
-  "Win32_System_Power",
-  "Win32_Storage_FileSystem",
-] }
-
 # `join_all` for the SFTP requests a folder listing fans out (one `.git` check
 # per folder). They pipeline on the session's single channel, which is what
 # makes the badge affordable: 63 folders cost 44ms one after another and 3.3ms
 # together. Already compiled into this binary via axum/hyper/tokio-util/tauri,
 # so making it direct adds nothing to the build. Apache-2.0/MIT.
 futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_System_Power",
+  "Win32_Storage_FileSystem",
+] }
+
 
 [dev-dependencies]
 tempfile = "3"
