@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 782 Rust tests (745 unit + 37
-integration), of which 46 are ignored probes that need something real to talk to
-(37 live SSH probes — 26 against a real `sshd` and 11 against a **Linux host in a
+always wins). 783 Rust tests (746 unit + 37
+integration), of which 47 are ignored probes that need something real to talk to
+(38 live SSH probes — 26 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,216 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,219 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -916,8 +916,10 @@ user-facing `docs/remote-hosts.md`.
       project on a connected host (`ssh/sftp.rs`), with "not connected" reported
       as unknown rather than missing — the disconnected state has its own
       indicator already.
-**Landed from phase 3:** files over SFTP — listing, opening and **saving** (in
-place and fenced, because atomic rename does not exist over SFTP v3); the folder
+**Landed from phase 3:** files over SFTP — listing, opening, **saving** (in
+place and fenced, because atomic rename does not exist over SFTP v3) and
+**previewing** an image or PDF, read from the machine the file is on with the
+size asked before the bytes cross the link (`02g` §5.10); the folder
 picker moved off the host's shell onto SFTP (336 ms → 6.6 ms on loopback, and it
 was paying for two failed shell starts per click on a Windows host); the branch
 and change count read by running git *on* the host; **Changes and History on a
@@ -973,14 +975,21 @@ reasoning, with the measurements that removed its justification, is in
 ### Frontend (Svelte)
 - [ ] **What a remote project still cannot do.** Files, Changes and History all
       work on a host now, and so do the tree's own actions — create, rename,
-      duplicate, delete — and searching it (`ssh/sftp.rs` + `src/lib/fsRouter.ts`,
-      `ssh/git.rs` + `src/lib/gitRouter.ts`, `ssh/search.rs`). What is left, in
-      order: **watching for changes**
+      duplicate, delete — searching it, image diffs, the AI commit draft and the
+      image/PDF preview (`ssh/sftp.rs` + `src/lib/fsRouter.ts`,
+      `ssh/git.rs` + `src/lib/gitRouter.ts`, `ssh/search.rs`). What is left is
+      **watching for changes**
       (a remote project has no watcher on purpose — 3 s polling against a machine
       where one command costs ~2 s — so every panel refreshes on open, on act and
-      on its button, and says so); and the two pieces of the review that read this
-      machine's git, **image diffs** and the **AI commit draft**, both of which
-      need the content brought here first. Spec: `02g` §5.10–§5.11.
+      on its button, and says so) and **GitHub**, which reads this machine's
+      repository and its `gh` sign-in. Spec: `02g` §5.10–§5.11.
+
+      **The lesson this item keeps earning:** a call that does not *look* like a
+      file read is where the routing gets forgotten. The preview pane asked this
+      machine for every image it drew, months after every other read had been
+      routed, because it returns a `data:` URL rather than text. Anything new
+      that touches a path belongs behind `fsRouter` / `gitRouter` on the day it
+      is written.
 - [ ] **Launching a dev build must not resume the everyday session's agents.**
       Half-fixed: a debug build now has its own profile, so it restores its own
       tabs rather than the installed app's — which is what made a second agent
@@ -1430,7 +1439,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 782 Rust + 1,216 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 783 Rust + 1,219 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

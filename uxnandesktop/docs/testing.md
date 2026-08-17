@@ -62,10 +62,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **782 backend tests**
-in total, 736 of which run everywhere; the other 46 are ignored probes that need
-something real to talk to (37 live SSH probes — 26 against a real `sshd`, one of
-which idles for five minutes to prove the keepalive, plus **11 against a Linux
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **783 backend tests**
+in total, 736 of which run everywhere; the other 47 are ignored probes that need
+something real to talk to (38 live SSH probes — 26 against a real `sshd`, one of
+which idles for five minutes to prove the keepalive, plus **12 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
 PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
 the real-scheduler probe). The remaining 37 are the integration tests in
@@ -90,7 +90,7 @@ password, a small git repository with a dirty file, and a folder that is *not* a
 repository so the picker's badge has a negative case. It binds **127.0.0.1
 only** and the password is public on purpose — it holds nothing.
 
-The eleven tests walk the whole stack on that machine: password authentication,
+The twelve tests walk the whole stack on that machine: password authentication,
 the shell classification, the inventory probe, SFTP (list, read, save, and
 shortening a file), the folder picker with its repository badge, remote
 `git status` including the no-upstream case, the whole **review** (HEAD,
@@ -104,7 +104,9 @@ that is not a repository), **what the host does when it runs out of channels** (
 then the message has to name the number *it* enforced — this is what caught the
 off-by-one and the asynchronous release), **an image diff** (bytes that are not
 valid UTF-8, compared byte for byte — the text path would have replaced every one
-of them), and a full git **mutation** cycle:
+of them), **previewing an image the host holds** (the same non-UTF-8 bytes, back
+as a `data:` URL, with a text file refused as not previewable), and a full git
+**mutation** cycle:
 stage,
 unstage, stage all, commit
 a message containing a newline, quotes and `$VAR` and read it back verbatim,
@@ -132,7 +134,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 706 passing unit tests (745 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 706 passing unit tests (746 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -236,7 +238,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,216 passing tests** across both
+ships in every build and is never shown). **1,219 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -255,7 +257,11 @@ instead of quietly agreeing with a mock nobody updated.
   down together), `mountWithProviders()` for components needing the app-level
   context the root layout provides (bits-ui tooltips throw without their
   provider — `ProviderHost.svelte`), and `until()` for the waits that have no
-  DOM signal.
+  DOM signal. Props are handed to Testing Library **under `props`**, never as the
+  bare options object: it reads Svelte's own mount options (`target`, `context`,
+  `events`, `anchor`, `intro`) out of that object, so a component prop named
+  after one of them — `target`, which most of the remote-host UI takes — would be
+  taken for the option and every other prop rejected as unknown.
 - `src/test/setup.dom.ts` — jsdom's gaps filled once (`matchMedia`,
   `ResizeObserver`, canvas), plus a console policy: an unknown-prop or
   lifecycle-outside-component warning **fails** the test; known third-party
