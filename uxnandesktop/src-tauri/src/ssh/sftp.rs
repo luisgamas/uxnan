@@ -811,6 +811,47 @@ impl RemoteFiles {
             .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))
     }
 
+    /// Read a previewable file on the host as an inline `data:<mime>;base64,…`
+    /// URL — the image and PDF viewer, on the machine the file is on.
+    ///
+    /// The local reader ([`crate::fs::read_data_url`]) is not an option here for
+    /// the reason the whole router exists: it would read *this* machine's disk
+    /// at a path that belongs to another one, and the viewer would show whatever
+    /// that failure serialized to. The bytes travel as bytes — the same
+    /// requirement the image diff had (§5.10h) — and the mime is decided by the
+    /// shared sniffer, so a file previews identically on either machine.
+    ///
+    /// The size is asked **before** reading: the cap exists to keep a huge blob
+    /// out of the webview, and here it also keeps it off the link.
+    pub async fn read_data_url(&self, path: &str) -> Result<String, SftpFailure> {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+        let file = normalize(path);
+        let size = self
+            .session
+            .metadata(&file)
+            .await
+            .map_err(|e| self.failed(&format!("could not open {file} on that host"), e))?
+            .size
+            .unwrap_or_default();
+        if size > crate::fs::MAX_PREVIEW_BYTES {
+            return Err(SftpFailure::Refused(AppError::Invalid(
+                "the file is too large to preview".into(),
+            )));
+        }
+        let bytes = self
+            .session
+            .read(&file)
+            .await
+            .map_err(|e| self.failed(&format!("could not read {file} on that host"), e))?;
+        let mime = crate::fs::preview_mime(&file, &bytes).ok_or_else(|| {
+            SftpFailure::Refused(AppError::Invalid(format!(
+                "{file} is not a recognized image or PDF"
+            )))
+        })?;
+        Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
+    }
+
     /// Read a file for the editor, honouring the same guards as the local layer:
     /// a file that is not UTF-8 text, or is over the edit cap, comes back
     /// flagged rather than truncated or mangled.
@@ -928,6 +969,36 @@ mod tests {
             "read the actual file, not an empty buffer"
         );
         println!("live: read {} bytes of Cargo.toml", file.content.len());
+
+        // And an image, the way the preview pane asks for one: the bytes have to
+        // be the file's, byte for byte, and the mime has to be decided from them
+        // rather than from this machine's copy.
+        let png = format!("{dir}/icons/32x32.png");
+        let url = sftp.read_data_url(&png).await.expect("a preview URL");
+        let encoded = url
+            .strip_prefix("data:image/png;base64,")
+            .expect("a PNG data URL");
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+        let bytes = BASE64.decode(encoded).expect("valid base64");
+        assert_eq!(
+            bytes,
+            std::fs::read(&png).expect("the same file on disk"),
+            "the preview must be the file, not a re-encoding of it"
+        );
+        println!("live: previewed {} bytes of 32x32.png", bytes.len());
+
+        // A manifest is not previewable, and says so instead of arriving as a
+        // broken picture.
+        let refused = sftp
+            .read_data_url(&manifest)
+            .await
+            .expect_err("a manifest is not an image");
+        assert!(
+            AppError::from(refused)
+                .to_string()
+                .contains("not a recognized image or PDF"),
+            "the refusal names what it refused"
+        );
     }
 
     /// Saving on a host, against a real `sshd` — including the two things that

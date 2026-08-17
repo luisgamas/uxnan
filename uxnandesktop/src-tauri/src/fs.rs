@@ -21,7 +21,9 @@ pub(crate) const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Largest image/PDF the preview will inline as a `data:` URL (25 MiB). Past
 /// this we refuse rather than base64-encode a huge blob into the webview.
-const MAX_PREVIEW_BYTES: u64 = 25 * 1024 * 1024;
+/// Shared with the host reader (`ssh::sftp::RemoteFiles::read_data_url`) so a
+/// file previews — or is refused — identically on either machine.
+pub(crate) const MAX_PREVIEW_BYTES: u64 = 25 * 1024 * 1024;
 
 /// One entry in a directory listing (a sub-directory or a file).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -367,7 +369,10 @@ pub async fn read_data_url(path: &str) -> Result<String, AppError> {
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
 }
 
-fn preview_mime(path: &str, bytes: &[u8]) -> Option<&'static str> {
+/// The MIME type a previewable file should be inlined as, or `None` when it is
+/// neither a known image nor a PDF. Shared with the host reader so the same file
+/// is recognized (or refused) wherever it lives.
+pub(crate) fn preview_mime(path: &str, bytes: &[u8]) -> Option<&'static str> {
     crate::git::image_mime(path)
         .or_else(|| {
             path.rsplit_once('.')
