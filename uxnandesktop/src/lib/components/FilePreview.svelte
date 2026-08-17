@@ -4,7 +4,9 @@
   // a native PDF document surface.
   // Which one is decided by the owning tab from the file's type; SVG previews as
   // an image. Text stays editable via the tab's Edit mode.
-  import { fsReadDataUrl } from "$lib/api";
+  import { readDataUrlOn } from "$lib/fsRouter";
+  import { LOCAL_TARGET, type TargetId } from "$lib/target";
+  import { errorMessage } from "$lib/toast";
   import { fileParentDirectory, type FilePreviewKind } from "$lib/filePreview";
   import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
@@ -24,12 +26,15 @@
     content = "",
     kind,
     worktree = null,
+    target = LOCAL_TARGET,
     active = false,
   }: {
     path: string;
     content?: string;
     kind: FilePreviewKind;
     worktree?: string | null;
+    /** The machine the file lives on — the preview is read from there. */
+    target?: TargetId;
     active?: boolean;
   } = $props();
 
@@ -44,19 +49,24 @@
   let zoom = $state<number | null>(null);
   const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
 
-  // Load visual binary data whenever the target changes (images/PDF only).
+  // Load visual binary data whenever the file changes (images/PDF only), from
+  // the machine it is on — a host's image is read there, over SFTP.
   $effect(() => {
     if (kind === "markdown") return;
-    const target = path;
+    const wanted = path;
+    const on = target;
     dataUrl = null;
     loadError = null;
     zoom = null;
-    void fsReadDataUrl(target)
+    void readDataUrlOn(on, wanted)
       .then((url) => {
-        if (path === target) dataUrl = url;
+        if (path === wanted) dataUrl = url;
       })
       .catch((e: unknown) => {
-        if (path === target) loadError = e instanceof Error ? e.message : String(e);
+        // A backend refusal arrives as `{ code, message }`, not an `Error`;
+        // stringifying it directly is what put "[object Object]" where the
+        // picture should have been.
+        if (path === wanted) loadError = errorMessage(e);
       });
   });
 
@@ -114,7 +124,7 @@
 
 {#if kind === "markdown"}
   <div class="h-full min-h-0 bg-background">
-    <MarkdownView source={content} {baseDir} onopenfile={openLinkedFile} />
+    <MarkdownView source={content} {baseDir} {target} onopenfile={openLinkedFile} />
   </div>
 {:else if kind === "pdf"}
   <div class="h-full min-h-0 bg-[var(--ux-panel-muted)]">

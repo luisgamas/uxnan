@@ -14,10 +14,15 @@ you switch modes.
 | SVG | Yes | Rendered image | Visual/source diff as available |
 | PDF | No | Native system-webview PDF viewer | Binary diff metadata |
 
-Images and PDFs are read by `fs_read_data_url`. The backend recognizes a known
-extension or file signature, rejects unrelated formats, and caps a preview at
-25 MiB. PDF support therefore depends on the operating system webview's native
-renderer; an explicit fallback is shown when it is unavailable.
+Images and PDFs are read from the machine the file lives on: `fs_read_data_url`
+here, `ssh_fs_read_data_url` over the host's SFTP session (both behind
+`readDataUrlOn`, the same router every other file read goes through). Either
+backend recognizes a known extension or file signature, rejects unrelated
+formats, and caps a preview at 25 MiB — the remote one asks the host for the size
+first, so an over-cap file is refused without crossing the link. PDF support
+therefore depends on the operating system webview's native renderer; an explicit
+fallback is shown when it is unavailable. A preview that fails states the reason
+it failed.
 
 ## Markdown
 
@@ -29,7 +34,8 @@ README conventions:
 - fenced blocks use the same installed Lezer language parsers as the editor;
 - headings receive unique GitHub-style ids and `#anchor` links scroll to them;
 - relative links open sibling files in the existing Uxnan file-tab flow;
-- local images are read through the bounded backend command;
+- images on disk are read through the bounded backend command, on the machine
+  the document itself is on — a host's README renders its own screenshots;
 - relative assets resolve correctly from native Windows, macOS/Linux, and UNC
   file paths;
 - local GitHub-style paths accept URL encoding and delivery suffixes such as

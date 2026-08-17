@@ -51,7 +51,13 @@ export interface Mounted {
 export function mount(component: AnyComponent, options: MountOptions = {}): Mounted {
   const backend = installFakeBackend(options.commands);
   const user = userEvent.setup();
-  const screen = tlRender(component, options.props ?? {}) as RenderResult<AnyComponent>;
+  // Props go under `props`, never as the bare options object: Testing Library
+  // reads Svelte's own mount options (`target`, `context`, `events`, `anchor`,
+  // `intro`) out of that object, so a component prop sharing one of those names
+  // is taken for the option and every other prop is then rejected as unknown.
+  // A component with a `target` prop — which is most of the remote-host UI — is
+  // untestable otherwise.
+  const screen = tlRender(component, { props: options.props ?? {} }) as RenderResult<AnyComponent>;
   return { screen, backend, user };
 }
 

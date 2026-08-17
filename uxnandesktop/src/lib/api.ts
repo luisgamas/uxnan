@@ -865,6 +865,13 @@ export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
   return invoke<FileContent>('ssh_fs_read', { hostId, path });
 }
 
+/** Read an image or PDF on a host as an inline `data:` URL, for the preview
+ *  pane. Same guards as the local reader (25 MiB cap, known image/PDF only), and
+ *  the size is asked before the bytes cross the link. */
+export function sshFsReadDataUrl(hostId: string, path: string): Promise<string> {
+  return invoke<string>('ssh_fs_read_data_url', { hostId, path });
+}
+
 /** Save a text file on a host. Fenced: `expect` names the machine the caller
  *  prepared the save for, and the backend refuses the write outright when that
  *  no longer matches — the same absolute path usually exists on both machines,

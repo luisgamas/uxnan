@@ -15,7 +15,9 @@
   } from "$lib/markdown";
   import { highlightMarkdownCode } from "$lib/markdownHighlight";
   import { resolvePreviewAssetPath } from "$lib/filePreview";
-  import { fsReadDataUrl, imageFetchDataUrl, openExternal } from "$lib/api";
+  import { imageFetchDataUrl, openExternal } from "$lib/api";
+  import { readDataUrlOn } from "$lib/fsRouter";
+  import { LOCAL_TARGET, type TargetId } from "$lib/target";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
@@ -32,11 +34,16 @@
   let {
     source,
     baseDir = null,
+    target = LOCAL_TARGET,
     inline = false,
     onopenfile,
   }: {
     source: string;
     baseDir?: string | null;
+    /** The machine `baseDir` is on — a host's document resolves its images
+     *  there. Irrelevant for `http(s)` images, which are fetched here either
+     *  way. */
+    target?: TargetId;
     inline?: boolean;
     onopenfile?: (path: string) => void;
   } = $props();
@@ -110,7 +117,7 @@
       resolved[src] = ""; // mark in-flight so we don't re-request
       const request = isRemote(src)
         ? imageFetchDataUrl(src, "preview")
-        : fsReadDataUrl(resolvePreviewAssetPath(baseDir!, src));
+        : readDataUrlOn(target, resolvePreviewAssetPath(baseDir!, src));
       void request
         .then((url) => (resolved[src] = url))
         .catch(() => {
