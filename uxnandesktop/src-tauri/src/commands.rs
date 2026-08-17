@@ -2382,6 +2382,23 @@ pub async fn ssh_fs_read(
     .await
 }
 
+/// Read an image or PDF on a host as an inline `data:` URL, for the preview
+/// pane. Same guards as the local reader: over-cap and unrecognized files are
+/// refused, and the size is asked before the bytes cross the link
+/// (`ssh::sftp::RemoteFiles::read_data_url`).
+#[tauri::command]
+pub async fn ssh_fs_read_data_url(
+    state: State<'_, AppState>,
+    host_id: String,
+    path: String,
+) -> Result<String, CommandError> {
+    let file = path.as_str();
+    with_sftp(&state, &host_id, |session| async move {
+        session.read_data_url(file).await
+    })
+    .await
+}
+
 /// A port a terminal on a host just announced (`ports:announced`).
 ///
 /// Announced, not opened: nothing is forwarded until the user asks for it, so

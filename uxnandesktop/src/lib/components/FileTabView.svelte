@@ -205,6 +205,7 @@
           content={fileState.content}
           kind={previewKind}
           worktree={tab.worktree}
+          target={fileState.target}
           active={active && shown === "preview"}
         />
       </div>

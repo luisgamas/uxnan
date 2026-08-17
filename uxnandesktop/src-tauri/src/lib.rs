@@ -453,6 +453,7 @@ pub fn run() {
             commands::ssh_forwards,
             commands::ssh_fs_list,
             commands::ssh_fs_read,
+            commands::ssh_fs_read_data_url,
             commands::ssh_fs_write,
             commands::ssh_fs_create_file,
             commands::ssh_fs_create_dir,

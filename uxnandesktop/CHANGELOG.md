@@ -41,6 +41,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **An image in a host's project shows the image, not `[object Object]`.**
+  Opening one from a remote project drew that string in the middle of the
+  viewer, and both halves of it were bugs. The preview pane asked **this**
+  machine's backend for every file it drew — the one file read that never went
+  through the router the rest of the remote work is built on — so it looked for
+  a host's path on the local disk; and the refusal that came back is a
+  `{ code, message }` object, not an `Error`, so stringifying it produced
+  `[object Object]` where the picture should have been. Images and PDFs are now
+  read from the machine the file is on (`ssh_fs_read_data_url`, over the SFTP
+  session that is already open, with the same 25 MiB cap and the same
+  image/PDF-only guard as the local reader, and the size asked before the bytes
+  cross the link), and a failed preview states the reason it failed. The same
+  routing applies to the images inside a Markdown document, so a host's `README`
+  renders its screenshots instead of blank frames.
+
 - **An agent nobody launched no longer appears on a terminal.** The coordinates
   the ADE injects into every terminal it spawns (`UXNAN_AGENT_ID` + the hook
   server's url/token, and the browser / MCP endpoints) identify **one terminal of

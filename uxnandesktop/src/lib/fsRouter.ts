@@ -16,6 +16,7 @@ import {
   fsDelete,
   fsDuplicate,
   fsListDir,
+  fsReadDataUrl,
   fsReadFile,
   fsRename,
   fsSearchContent,
@@ -27,6 +28,7 @@ import {
   sshFsDuplicate,
   sshFsList,
   sshFsRead,
+  sshFsReadDataUrl,
   sshFsRename,
   sshFsSearchContent,
   sshFsSearchFiles,
@@ -56,6 +58,22 @@ export function readFileOn(
 ): Promise<FileContent> {
   const host = sshHostId(target);
   return host ? sshFsRead(host, path) : fsReadFile(path);
+}
+
+/** Read an image or PDF from the machine `target` names as an inline `data:`
+ *  URL — what the preview pane draws, and what a Markdown document's images
+ *  resolve to.
+ *
+ *  This one had to be routed like every other read, and for the reason this file
+ *  exists: a viewer that always asked the local backend was reading *this*
+ *  machine's disk at a path from another one, so opening a host's image showed
+ *  the failure instead of the picture. */
+export function readDataUrlOn(
+  target: TargetId | undefined | null,
+  path: string,
+): Promise<string> {
+  const host = sshHostId(target);
+  return host ? sshFsReadDataUrl(host, path) : fsReadDataUrl(path);
 }
 
 /** Save a text file to the machine `target` names.

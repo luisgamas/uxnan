@@ -812,6 +812,35 @@ una sesion muerta: la suelta —con su shell y su sesion de ficheros— y vuelve
 conectar. Si no, la app decia "conectado" mientras nada funcionaba y pulsar
 Conectar no arreglaba nada, porque el atajo de "ya hay sesion" respondia primero.
 
+### Ver una imagen: por el mismo camino que leerla
+
+`RemoteFiles::read_data_url` + `ssh_fs_read_data_url`. Reportado desde la app:
+abrir una imagen de un proyecto del host pintaba `[object Object]` en medio del
+visor. Dos fallos encadenados, y el primero es el que importa:
+
+**El visor era la unica lectura de fichero que no pasaba por el router.** El
+panel de previsualizacion —imagenes, PDF y las imagenes que lleva dentro un
+documento Markdown— llamaba siempre al backend local, asi que buscaba en el
+disco de **esta** maquina una ruta que es de otra. Es exactamente la forma que
+§5.10 dice que no se repita ("un solo sitio decide a que maquina se lee"), y
+sobrevivio porque su lectura no se parece a las demas: no devuelve texto sino
+un `data:` URL. Ahora `readDataUrlOn` la enruta como a todas.
+
+**Y el error se enseñaba en bruto.** Lo que rechaza un comando es un objeto
+`{ code, message }`, no un `Error`; convertirlo a texto directamente da
+`[object Object]`. El visor ya usa el extractor comun, asi que un fallo dice por
+que fallo. Vale la pena anotarlo: el sintoma que se ve no siempre pertenece al
+fallo que hay que arreglar, y aqui habia uno de cada.
+
+Del lado del host se hace lo minimo y por SFTP, sin instalar nada: se **pregunta
+el tamaño antes de leer** —el tope de 25 MiB existe para no meter un blob enorme
+en el webview, y aqui ademas evita arrastrarlo por el enlace—, se leen los bytes
+tal cual (la misma exigencia que el diff de imagenes, §5.10h) y el tipo se decide
+con el mismo olfateador que en local, de modo que un fichero se previsualiza —o
+se rechaza— igual en las dos maquinas. Verificado en vivo contra un `sshd` real:
+el PNG vuelve byte a byte identico al del disco y un `Cargo.toml` se rechaza
+diciendo que no es imagen ni PDF.
+
 ### Guardar: en el sitio, porque el reemplazo atomico no existe aqui
 
 `RemoteFiles::write_file`. En local se escribe a un temporal y se renombra
@@ -855,6 +884,7 @@ posterior a una recarga llevaria una expectativa que no emitio nadie.
 | | Estado |
 |---|---|
 | Listar y abrir ficheros | **Funciona** |
+| Previsualizar una imagen o un PDF | **Funciona** (arriba): se lee por SFTP de la maquina del fichero, con el mismo tope y el mismo criterio de tipo que en local |
 | Marcar ignorados por git (`ignored`) | **No**: solo git puede responderlo, y git remoto es su propia pieza. Un arbol que no atenua nada es honesto; uno que adivina esta mal en silencio |
 | Buscar en el arbol | **No ofrecido**: la busqueda recorre *este* filesystem, asi que contestaria "sin resultados" a todo. Se oculta la accion en vez de ofrecerla rota |
 | Refresco automatico | **No**: el watcher es local. El boton de refrescar es la recarga |
@@ -1366,10 +1396,13 @@ usuario con contraseña, un repositorio con un fichero sucio y una carpeta que
 Escucha **solo en 127.0.0.1** y su contraseña es publica a proposito: no guarda
 nada.
 
-`npm run test:ssh:linux` lo levanta y corre las cinco pruebas que recorren el
+`npm run test:ssh:linux` lo levanta y corre las doce pruebas que recorren el
 stack entero en esa maquina: autenticacion por contraseña, la clasificacion de
 shell, el inventario, SFTP (listar, leer, guardar y **acortar**), el explorador
-con su insignia, y `git status` remoto incluido el caso sin upstream. Primera
+con su insignia, `git status` remoto incluido el caso sin upstream, la revision
+completa (diff, historial, preparar, descartar y commit), las operaciones del
+arbol, la busqueda, el presupuesto de canales, el diff de imagenes byte a byte y
+la previsualizacion de una imagen que el host tiene. Primera
 ejecucion, todas en verde: `os=linux`, `home=/home/uxnan`, `git 2.39.5`,
 `shell=posix`, rama `main`.
 
@@ -1497,7 +1530,7 @@ sobre una conexion que ya no existe las aceptaria hacia la nada.
 | Panel sobre un proyecto remoto | Hoy |
 |---|---|
 | Terminal | **Funciona**: canal sobre la sesion del host, en la carpeta del proyecto |
-| Ficheros | **Funciona** por SFTP (§5.10): listar, abrir y **guardar** (en el sitio, con fencing). Sin busqueda, sin marcado de ignorados, sin refresco automatico y sin vista de Cambios |
+| Ficheros | **Funciona** por SFTP (§5.10): listar, abrir, **guardar** (en el sitio, con fencing) y **previsualizar** imagenes y PDF. Sin marcado de ignorados y sin refresco automatico |
 | Rama y estado git de la fila | **Funciona** (§5.10b): rama, cambios y distancia con el upstream, leidos en el host |
 | Diff de imagenes / borrador con IA | **Funciona**: los bytes de la imagen viajan como bytes (§5.10h) y el agente corre en esta maquina sobre el diff leido alli. |
 | Buscar (nombre y contenido) | **Funciona** preguntandole a git en el host — `ls-files` y `grep` (§5.10e). Solo dentro de un repositorio; si no lo es, se dice. |
@@ -1517,7 +1550,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 0 | Identidad de destino y fencing (`02a` §2.9) | **Hecho** |
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
-| 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
+| 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer, **guardar** y **previsualizar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
 | 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |

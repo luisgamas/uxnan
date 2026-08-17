@@ -842,3 +842,46 @@ async fn posix_host_returns_an_image_diff_byte_for_byte() {
 
     let _ = conn.exec(&format!("rm -rf {repo}")).await;
 }
+
+#[tokio::test]
+#[ignore = "needs the Linux container: node scripts/ssh-test-host.mjs up"]
+async fn posix_host_previews_an_image_it_holds() {
+    let (conn, _) = host_or_skip!();
+    let files = super::sftp::open(&conn).await.expect("an SFTP session");
+    let home = files.home().await.expect("the host's home");
+
+    // Same non-UTF-8 bytes the diff test uses, for the same reason: the viewer
+    // must get the file, not a lossy rendering of it.
+    let path = format!("{home}/preview.png");
+    conn.exec(&format!(
+        "printf '\\x89PNG\\r\\n\\x1a\\n\\xde\\xad\\xbe\\xef' > {path}"
+    ))
+    .await
+    .expect("an image on the host");
+
+    let url = files.read_data_url(&path).await.expect("a preview URL");
+    let encoded = url
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or_else(|| panic!("a PNG data URL, got {}", &url[..url.len().min(40)]));
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .expect("valid base64");
+    println!("linux: previewed {} bytes over SFTP", bytes.len());
+    assert_eq!(bytes, b"\x89PNG\r\n\x1a\n\xde\xad\xbe\xef");
+
+    // Refused, and in the host's own words rather than this machine's: the
+    // preview is for images and PDFs, and a text file is neither.
+    let readme = format!("{home}/project/README.md");
+    let refused = files
+        .read_data_url(&readme)
+        .await
+        .expect_err("a README is not previewable");
+    let message = crate::error::AppError::from(refused).to_string();
+    assert!(
+        message.contains("not a recognized image or PDF"),
+        "{message}"
+    );
+
+    let _ = conn.exec(&format!("rm -f {path}")).await;
+}
