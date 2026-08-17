@@ -4,6 +4,41 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **A dev server running on a host is now one click away.** A server started on
+  another machine listens on *that* machine's loopback, where nothing here can
+  reach it — so seeing what you just started meant opening a browser over there.
+  uxnan now knows about those ports two ways, and the difference is deliberate:
+  what a terminal **announces** is picked up for free (the dev server prints its
+  own URL, and those bytes were already on their way to the terminal — so it
+  costs nothing, needs nothing installed, and works whatever shell the host
+  runs), while **asking the host** what it is listening on is a button, because a
+  command there costs a shell start (~2 s) and polling would keep a channel busy
+  on someone else's machine to answer a question nobody asked. A new status-bar
+  indicator lists them, and **Open** brings the port to `127.0.0.1` over the
+  connection that host already has and opens the preview wherever your browser
+  setting says (integrated window / OS browser / ask).
+
+  Details that decide whether this is usable or merely present: the tunnel binds
+  **loopback only** (binding the wildcard would republish someone else's dev
+  server to your whole network); it takes the **same port number** when it is
+  free, because an app writes its own address into redirects and cookies, and
+  says which one it used when it could not; escape sequences are stripped before
+  scanning, since Vite prints its port in bold and a raw scan finds nothing at
+  all; and **nothing is forwarded on its own** — a tunnel opens a socket on your
+  machine, so it waits for your click. Disconnecting a host closes its tunnels.
+  A port that cannot be reached says so **before** a browser is sent at it: the
+  app opens one probe channel and waits to see whether the host keeps it, because
+  — measured against a real `sshd` — asking for a port with nothing behind it
+  does *not* fail the channel open; the server accepts it and closes it a moment
+  later. SSH distinguishes "this host does not allow forwarding at all"
+  (`AllowTcpForwarding no`) from "I tried and nothing answered", and the popover
+  now says which. And when the scan reports a service pinned to one address of
+  that machine — a VPN or LAN interface, which answers nothing on its `127.0.0.1`
+  — the tunnel is aimed there instead of at a loopback that was never going to
+  reply. Spec: `architecture/02g-remote-hosts.md` §5.14.
+
 ### Fixed
 
 - **An image in a host's project shows the image, not `[object Object]`.**

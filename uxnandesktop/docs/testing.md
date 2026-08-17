@@ -62,9 +62,9 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **783 backend tests**
-in total, 736 of which run everywhere; the other 47 are ignored probes that need
-something real to talk to (38 live SSH probes — 26 against a real `sshd`, one of
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **809 backend tests**
+in total, 759 of which run everywhere; the other 50 are ignored probes that need
+something real to talk to (41 live SSH probes — 29 against a real `sshd`, one of
 which idles for five minutes to prove the keepalive, plus **12 against a Linux
 host in a container**; see below — one pwsh preflight that runs the generated
 PowerShell script through a real `pwsh`, the 7 supervised live GitHub tests, and
@@ -72,6 +72,17 @@ the real-scheduler probe). The remaining 37 are the integration tests in
 `tests/`.
 
 ### A Linux host, in a container
+
+Three of those `sshd` probes belong to the ports work: one carries a real
+connection through a forward (and twelve at once, over a host whose `MaxSessions`
+is the default ten — the measurement the design rests on, since `direct-tcpip`
+channels are not sessions), then closes it and proves the socket is really gone;
+the second aims a forward at a port with **nothing behind it** and requires the app
+to say so — the case that proved a channel opening is not the same as a port
+answering; the third asks this machine what it is listening on and finds a port
+the test itself is holding. The parser for `ss` / Windows `netstat` / BSD `netstat` is
+unit-tested on captured output, which proves the parsing and nothing about the
+command — the live pair is what covers the half that has bitten this layer twice.
 
 Every other live SSH test talks to the `sshd` of the machine running it — which
 on this project has always been Windows, with `cmd`. So the POSIX half of the
@@ -134,7 +145,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 706 passing unit tests (746 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 729 passing unit tests (772 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -238,7 +249,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,219 passing tests** across both
+ships in every build and is never shown). **1,231 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

@@ -44,6 +44,7 @@ mod model;
 mod path_env;
 mod persistence;
 mod pets;
+mod portscan;
 mod power;
 mod procscan;
 mod pty;
@@ -446,6 +447,10 @@ pub fn run() {
             commands::ssh_git_apply,
             commands::ssh_git_commit,
             commands::ssh_git_sync,
+            commands::ssh_ports_listening,
+            commands::ssh_forward_open,
+            commands::ssh_forward_close,
+            commands::ssh_forwards,
             commands::ssh_fs_list,
             commands::ssh_fs_read,
             commands::ssh_fs_read_data_url,

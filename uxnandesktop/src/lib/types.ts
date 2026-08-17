@@ -1125,6 +1125,61 @@ export interface ZeroSession {
   reply?: string | null;
 }
 
+/** A port on a host that is reachable from this machine right now (mirror of
+ *  Rust `ssh::forward::ForwardInfo`). `localPort` equals `remotePort` whenever
+ *  that number was free here. */
+export interface ForwardInfo {
+  id: string;
+  hostId: string;
+  remotePort: number;
+  localPort: number;
+  /** The connection incarnation carrying it (`$lib/target`). */
+  generation: number;
+  /** Connections carried since it opened — a tunnel with none has never been
+   *  used, which is worth telling apart from one that is working. */
+  connections: number;
+  /** Connections the host would not carry. */
+  failures: number;
+  /** Whether the host could reach that port when it was last tried. A tunnel
+   *  exists perfectly well with nothing at the far end, which is why this is a
+   *  separate fact from "the forward is open". */
+  reachable: boolean;
+  /** Why the host said no, when it did. */
+  refusal?: ForwardRefusal | null;
+  /** Where on the host the tunnel knocks — `127.0.0.1` normally, another
+   *  address when the service is pinned to one interface there. */
+  address: string;
+}
+
+/** Why a host would not carry a connection to one of its own ports. The `kind`
+ *  is translated by the UI; `detail` is what SSH said, for the tooltip. */
+export interface ForwardRefusal {
+  kind: "forwardingDisabled" | "nothingListening" | "other";
+  detail: string;
+}
+
+/** A TCP port a host reported listening on (mirror of Rust
+ *  `ssh::ports::ListeningPort`), from the on-demand scan. */
+export interface ListeningPort {
+  port: number;
+  /** Bound to loopback only — the case a forward exists to solve. */
+  loopback: boolean;
+  /** Where to knock on that machine when its loopback is not the answer: a
+   *  service pinned to one interface (a VPN or LAN address) does not respond on
+   *  the host's `127.0.0.1` at all. Empty when loopback works. */
+  address: string;
+}
+
+/** A port a host's terminal announced by printing its URL (the `ports:announced`
+ *  event; mirror of Rust `AnnouncedPort`). Announced, never opened: forwarding
+ *  waits for the user. */
+export interface AnnouncedPort {
+  hostId: string;
+  terminalId: string;
+  port: number;
+  path: string;
+}
+
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`
  *  is empty when `binary` or `tooLarge`, which the editor surfaces as a notice. */
 export interface FileContent {

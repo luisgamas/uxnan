@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 783 Rust tests (746 unit + 37
-integration), of which 47 are ignored probes that need something real to talk to
-(38 live SSH probes — 26 against a real `sshd` and 12 against a **Linux host in a
+always wins). 809 Rust tests (772 unit + 37
+integration), of which 50 are ignored probes that need something real to talk to
+(41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,219 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,231 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -945,6 +945,17 @@ startup. The host-side helper is **decided against** — the
 reasoning, with the measurements that removed its justification, is in
 `architecture/02g-remote-hosts.md` §5.11.
 
+**Landed — phase 4 (ports).** A host's ports are known two ways, on purpose:
+what a terminal **announces** is read from the output on its way to the screen
+(free, nothing installed, any shell — and escape sequences are stripped first,
+because Vite prints its port in bold and a raw scan finds nothing), and
+**asking** the host is a button, since a command there costs a shell start.
+"Open" carries the port to `127.0.0.1` over the existing connection and previews
+it through `openUrl`. The tunnel is loopback-only, keeps the same port number
+when it is free and says which it used when not, and closing it aborts the task
+that owns the listener — the OS accepts backlogged connections while the socket
+exists, so "closed" has to mean the socket is gone (`02g` §5.14).
+
 - [ ] **A host that is not Linux or Windows has still never been driven.** The
       remote stack now runs against a real Linux `sshd` in CI
       (`npm run test:ssh:linux`, `docs/testing.md`), and Windows is what it is
@@ -999,6 +1010,14 @@ reasoning, with the measurements that removed its justification, is in
       second one. Decide whether a live session id may be claimed twice at all,
       or whether a restored tab must ask first. Until then, treat "open the same
       workspace in two windows" as unsupported rather than as working.
+- [ ] **Ports — what phase 4 deliberately left out.** A forwarded port shows its
+      number and how many connections it has carried, and nothing else: no
+      process name (that needs a second command per port, and `ss -ltnp` cannot
+      see another user's processes anyway), no reverse forward (a port *here*
+      published *there* — `russh` has `tcpip_forward`, nobody has asked for it),
+      and no memory across restarts (a tunnel dies with the app, which matches
+      what the connection does). Ports are only scanned on hosts; a local dev
+      server needs no tunnel, so announcing it would be noise.
 - [ ] Host indicator on a terminal tab, so a remote tab is identifiable at a
       glance rather than only by what its prompt says.
 - [ ] A doctor view per host: the inventory in full, with what is missing and the
@@ -1018,8 +1037,9 @@ reasoning, with the measurements that removed its justification, is in
 - [ ] Precise agent status in remote sessions (layer 1 needs a reverse tunnel +
       remote reporter install; layer 3 needs a remote process probe). Layer 2
       (title/OSC) already works remotely — it rides the PTY stream.
-- [ ] Remote files/git/worktrees, port forwarding + preview, session survival
-      across an app restart, remote resource snapshots. Each is its own phase.
+- [ ] Session survival across an app restart and remote resource snapshots —
+      each its own phase. (Remote files/git/worktrees landed in phase 3; port
+      forwarding + preview in phase 4.)
 
 ## Deferred follow-ups (non-blocking) — by area
 
@@ -1439,7 +1459,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 783 Rust + 1,219 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 809 Rust + 1,231 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -30,7 +30,9 @@ import type {
   FileContent,
   FileNumstat,
   FileSearch,
+  ForwardInfo,
   FsEntry,
+  ListeningPort,
   SshConfigAlias,
   SshGitReview,
   SshGitStatus,
@@ -870,6 +872,38 @@ export function sshFsRead(hostId: string, path: string): Promise<FileContent> {
  *  the size is asked before the bytes cross the link. */
 export function sshFsReadDataUrl(hostId: string, path: string): Promise<string> {
   return invoke<string>('ssh_fs_read_data_url', { hostId, path });
+}
+
+/** Ask a host what TCP ports it is listening on, right now.
+ *
+ *  One command on that machine, so it runs when the user asks and never on a
+ *  timer — the ports a dev server announces arrive for free through the
+ *  `ports:announced` event instead. */
+export function sshPortsListening(hostId: string): Promise<ListeningPort[]> {
+  return invoke<ListeningPort[]>('ssh_ports_listening', { hostId });
+}
+
+/** Bring a port on a host to this machine over its existing connection.
+ *
+ *  The local port is the same number when it is free; when it is not, the one
+ *  actually opened comes back in the answer. Asking twice returns the tunnel
+ *  that already exists. */
+export function sshForwardOpen(
+  hostId: string,
+  remotePort: number,
+  addresses: string[] = [],
+): Promise<ForwardInfo> {
+  return invoke<ForwardInfo>('ssh_forward_open', { hostId, remotePort, addresses });
+}
+
+/** Close a forward. `false` when there was none — closing twice is a no-op. */
+export function sshForwardClose(id: string): Promise<boolean> {
+  return invoke<boolean>('ssh_forward_close', { id });
+}
+
+/** Every forward that is live right now, on any host. */
+export function sshForwards(): Promise<ForwardInfo[]> {
+  return invoke<ForwardInfo[]>('ssh_forwards');
 }
 
 /** Save a text file on a host. Fenced: `expect` names the machine the caller

@@ -45,6 +45,7 @@
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
   import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
+  import PortsStatusButton from "$lib/components/PortsStatusButton.svelte";
   import WorktreeCleanupNotice from "$lib/components/WorktreeCleanupNotice.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
@@ -485,6 +486,9 @@
       <!-- One-time nudge when the managed worktree folder has collected enough
            checkouts to be worth a look (hidden otherwise, and once dismissed) -->
       <WorktreeCleanupNotice />
+
+      <!-- Ports on the connected hosts (icon + popover; hidden with no host) -->
+      <PortsStatusButton />
 
       <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
       <UsageStatusButton />

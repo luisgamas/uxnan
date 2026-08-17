@@ -2,9 +2,10 @@
 
 > **Status: usable, with gaps that are named.** Connecting, terminals, running an
 > agent, browsing folders, adding a project, the Files tab — listing, opening and
-> **saving** — and now **Changes and History** all work on a host today. What
-> does not: GitHub — it reads this machine's repository and its `gh` sign-in. This page says which is which, and is updated by
-> the change that lands each piece.
+> **saving** — Changes and History, and now **the host's ports**, brought here
+> and previewed, all work on a host today. What does not: GitHub — it reads this
+> machine's repository and its `gh` sign-in. This page says which is which, and
+> is updated by the change that lands each piece.
 
 ## The idea
 
@@ -220,6 +221,7 @@ Select it in the left panel and:
 | **Changes** | **Works.** The changed-file list, per-file and per-hunk diffs, staging, discarding, committing, and fetch/push/pull — all run git *on the host*, through the shell that machine reported, with every argument quoted for it. Everything the panel draws arrives in **one** command, because each remote command costs a shell start there. Your commit message and any patch travel over SFTP rather than through that shell, so a message with quotes or several lines arrives exactly as you typed it. Anything that changes the host names the machine and connection it was prepared for, and is refused outright if either has moved on — the same absolute path usually exists on both machines, so a misrouted discard is the failure that would look like success. Image diffs work too — the picture's bytes travel as bytes — and the **AI commit draft** reads the diff on the host and runs your agent here, where its CLI and sign-in are. |
 | **History** | **Works.** The log, the branch graph, a commit's file list and its patch, read on the host. |
 | **GitHub** | **Not available.** It reads this machine's repository and its `gh` sign-in, so the panel says which host the project lives on instead of describing the wrong repository. |
+| **Ports** | **Works.** A dev server you start on the host shows up in the status-bar ports indicator as soon as it prints its address — that costs nothing and needs nothing installed there, because it is the server talking rather than the machine being asked. For anything that announces nothing (or was already running), the refresh button asks the host what it is listening on; that one runs a command there, which is why it is a button and not a poll. **Open** brings the port to `127.0.0.1` over the connection the host already has and opens the preview where your browser setting says. The tunnel listens on loopback only — never the wildcard, which would republish your host's dev server to the whole network — and keeps the same port number when it is free, saying which one it used when it was not. A port that cannot be reached is reported **before** the preview opens, with the difference SSH itself makes: *that host does not allow port forwarding* (an `sshd` setting its owner can change) versus *nothing answered there* — a browser error page cannot tell you which. If the scan found the service pinned to one address of that machine (a VPN or LAN interface, which does not answer on its own `127.0.0.1`), the tunnel is aimed at that address instead. Nothing is forwarded until you ask, and disconnecting a host closes its tunnels. |
 | **Automatic refresh** | **Only for what uxnan itself does.** Discarding a change, discarding a hunk or pulling updates the tabs you have open, because the app made the change and knows which files it touched. For anything else that happens on that machine — an agent working in the folder, a `git` command in a terminal there — no. The watcher that keeps a local project's panels live polls every 3 seconds, and one remote command costs about two — so a host's panels refresh when you open them, when you act, and on the refresh button, whose tooltip says as much. Said out loud rather than faked: a commit made in a terminal on the host shows up in Changes when you ask it, not by itself. |
 
 The card carries the host's name, and its terminal count includes the terminals
@@ -288,10 +290,10 @@ working. So:
 ## What is coming
 
 In order: precise agent status on a host (it needs a reverse tunnel and reporters
-installed there), forwarded ports with preview, and session continuity.
-Everything else this list used to name — searching a host's tree, creating,
-renaming and deleting from it, image diffs and the AI commit draft — works
-today.
+installed there) and session continuity — knowing what is still running on the
+far side after a terminal closes. Everything else this list used to name —
+searching a host's tree, creating, renaming and deleting from it, image diffs,
+the AI commit draft, and forwarded ports with preview — works today.
 
 Two things deliberately *not* coming: a helper program installed on your machines
 — every piece that moved off the shell removed its reason to exist, and it would

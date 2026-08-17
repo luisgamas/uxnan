@@ -525,8 +525,39 @@ pub async fn pty_create(
                     cols,
                     rows,
                 },
-                move |bytes: &[u8]| {
-                    let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
+                {
+                    // A dev server on the host announces its address the moment
+                    // it is ready, and that line is already on its way to the
+                    // terminal — so reading it costs nothing and needs nothing
+                    // installed there (`crate::portscan`). Only remote terminals
+                    // are scanned: a local server is already reachable, so
+                    // announcing it would be noise about nothing.
+                    let announce_app = app.clone();
+                    let announce_host = host_id.clone();
+                    let announce_id = id.clone();
+                    let tail = std::sync::Mutex::new(crate::portscan::Tail::default());
+                    move |bytes: &[u8]| {
+                        let _ = out_app.emit(&format!("pty:output:{out_id}"), bytes.to_vec());
+                        let text = String::from_utf8_lossy(bytes);
+                        // A poisoned lock would mean a panic in this closure,
+                        // which cannot happen here; either way the terminal's
+                        // output must not stop because a scan did.
+                        let found = match tail.lock() {
+                            Ok(mut tail) => tail.scan(&text),
+                            Err(_) => Vec::new(),
+                        };
+                        for announced in found {
+                            let _ = announce_app.emit(
+                                "ports:announced",
+                                AnnouncedPort {
+                                    host_id: announce_host.clone(),
+                                    terminal_id: announce_id.clone(),
+                                    port: announced.port,
+                                    path: announced.path,
+                                },
+                            );
+                        }
+                    }
                 },
                 move || {
                     let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
@@ -2368,6 +2399,83 @@ pub async fn ssh_fs_read_data_url(
     .await
 }
 
+/// A port a terminal on a host just announced (`ports:announced`).
+///
+/// Announced, not opened: nothing is forwarded until the user asks for it, so
+/// this event is the app noticing rather than the app acting.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnouncedPort {
+    pub host_id: String,
+    /// Which terminal printed it, so the list can say where it came from.
+    pub terminal_id: String,
+    pub port: u16,
+    /// The path the server named (`/`, `/admin`), kept so opening the preview
+    /// lands where the server pointed.
+    pub path: String,
+}
+
+/// Ask a host what it is listening on, right now.
+///
+/// The deliberate second way in, next to what terminals announce: a command
+/// costs a shell start on that machine (`02g` §5.3), so it runs when the user
+/// asks and never on a timer.
+#[tauri::command]
+pub async fn ssh_ports_listening(
+    state: State<'_, AppState>,
+    host_id: String,
+) -> Result<Vec<ssh::ports::ListeningPort>, CommandError> {
+    let (conn, shell) = remote_git(&state, &host_id).await?;
+    ssh::ports::listening(&conn, shell)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Bring a port on a host to this machine, and answer where it landed.
+///
+/// The local port is the same number whenever it is free, because an application
+/// writes its own address into redirects and cookies; when it is not, the port
+/// actually opened is in the answer rather than substituted quietly
+/// (`ssh::forward`). Asking twice for the same port returns the tunnel that is
+/// already there.
+///
+/// Not fenced, unlike the writes: this changes nothing on the host — it opens a
+/// socket *here* — and the host it reaches is decided by `host_id` resolving to
+/// a live connection, so there is no second machine for it to be wrong about.
+#[tauri::command]
+pub async fn ssh_forward_open(
+    state: State<'_, AppState>,
+    host_id: String,
+    remote_port: u16,
+    addresses: Option<Vec<String>>,
+) -> Result<ssh::forward::ForwardInfo, CommandError> {
+    let Some(conn) = session_for(&state, &host_id).await else {
+        return Err(CommandError::from(AppError::NotConnected(host_id)));
+    };
+    state
+        .ssh_forwards
+        .open(&host_id, &conn, remote_port, &addresses.unwrap_or_default())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Close a forward. `false` when there was none — closing twice is a no-op.
+#[tauri::command]
+pub async fn ssh_forward_close(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<bool, CommandError> {
+    Ok(state.ssh_forwards.close(&id).await)
+}
+
+/// Every forward that is live right now, on any host.
+#[tauri::command]
+pub async fn ssh_forwards(
+    state: State<'_, AppState>,
+) -> Result<Vec<ssh::forward::ForwardInfo>, CommandError> {
+    Ok(state.ssh_forwards.list().await)
+}
+
 /// Drop a host's session. Idempotent — disconnecting one that is not connected
 /// answers `false` rather than failing.
 #[tauri::command]
@@ -2378,6 +2486,9 @@ pub async fn ssh_host_disconnect(
     // End its terminals first, while the session is still there to carry the
     // goodbye. Afterwards they would have no way to be told.
     state.ssh_pty.close_host(&host_id).await;
+    // Its forwards go with it: a socket here that carries connections over a
+    // connection that no longer exists would accept them into nothing.
+    state.ssh_forwards.close_host(&host_id).await;
     // A reconnect may find the machine configured differently, so the shell is
     // learned again rather than remembered across sessions.
     state.ssh_shells.write().await.remove(&host_id);
