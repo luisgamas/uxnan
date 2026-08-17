@@ -111,6 +111,7 @@ conexion alguna.
 | §5.10h | Diff de imagenes y borrador con IA | `ssh/conn.rs`, `aicommit.rs` |
 | §5.12 | Escalera de reconexion | `ssh/conn.rs`, `commands.rs` |
 | §5.13 | El inventario en la interfaz | `HostsSettings.svelte` |
+| §5.14 | Puertos del host: detectarlos, traerlos y verlos | `ssh/forward.rs`, `ssh/ports.rs`, `portscan.rs` |
 | §5.11 | lo que queda, y la decision sobre el ayudante | — |
 
 ## 5.0 Handshake y generacion de conexion — IMPLEMENTADO
@@ -1314,8 +1315,8 @@ eso saturaria el canal para siempre. Un proyecto remoto **no tiene sondeo**: se
 refresca al abrir la pestaña, al actuar y con el boton, y la interfaz lo dice en
 vez de fingir un directo que no existe.
 
-Fuera de la fase 3, y anotado en `FOR-DEV.md`: los **puertos reenviados** y el
-**estado preciso de agentes** en un host, que necesitan un tunel inverso y
+Fuera de la fase 3: los **puertos reenviados** son ya la fase 4 (§5.14), y el
+**estado preciso de agentes** sigue pendiente porque necesita un tunel inverso y
 reporters instalados alli. La escalera de reconexion, que estaba en esta lista,
 es ahora §5.12.
 
@@ -1380,6 +1381,111 @@ primera vez.
 **Windows** como extremo remoto — el PowerShell generado se ejecuta contra un
 `pwsh` local (§5.3), que no es lo mismo que un `sshd` lanzandolo.
 
+## 5.14 Puertos del host — IMPLEMENTADO (fase 4)
+
+`src-tauri/src/ssh/forward.rs`, `src-tauri/src/ssh/ports.rs`,
+`src-tauri/src/portscan.rs`, `src/lib/state/ports.svelte.ts`,
+`src/lib/components/PortsStatusButton.svelte`.
+
+**El problema.** Un servidor de desarrollo arrancado en el host escucha en el
+loopback **de esa maquina**, que es precisamente donde nada de aqui llega: el
+sentido de `localhost` es que no se comparte. Sin esto, la unica forma de ver lo
+que uno acaba de levantar alli era abrir el navegador *en* esa maquina.
+
+### Como se sabe que hay un puerto: dos caminos, y la diferencia importa
+
+| Camino | Coste | Que ve |
+|---|---|---|
+| **Anunciado** — la terminal imprimio su URL (`portscan.rs`) | **Cero**: esos bytes ya venian de camino a la terminal | Lo que el propio servidor dice de si mismo, en cualquier host y con cualquier shell, porque habla el *programa* y no la maquina |
+| **Encontrado** — se le pregunta al host (`ssh/ports.rs`) | Un comando allí, o sea un arranque de shell (~2 s, §5.3) | Todo lo que escucha, incluido lo que nadie anuncio o lo que ya corria antes de abrir uxnan |
+
+Por eso el primero es automatico y el segundo es un **boton**. Sondear cada
+pocos segundos mantendria un canal permanentemente ocupado en la maquina de
+otro para responder una pregunta que casi nunca se esta haciendo — la misma
+decision que ya tomo el panel de Cambios (§5.11).
+
+**Quitar las secuencias de escape no es cosmetico.** Vite imprime su puerto en
+negrita: los bytes en el cable son `http://localhost:\e[1m5173\e[22m/`. Un
+escaner que lea la salida cruda encuentra `localhost:` seguido de un escape y no
+reporta **nada** — es decir, se perderia justo el servidor de desarrollo mas
+extendido. Se limpian CSI y OSC y se busca sobre el texto.
+
+**Solo cuentan URLs de verdad.** La salida de una compilacion y un stack trace
+estan llenos de texto con forma de `:3000`. El escaner acepta una URL `http(s)`
+sobre una direccion de loopback o comodin, y nada mas.
+
+### El tunel
+
+Un socket **en 127.0.0.1 de esta maquina**, nunca en `0.0.0.0`: enlazar el
+comodin republicaria el servidor de otro a toda la red local, que no es algo que
+nadie haya pedido al pulsar "Abrir". Cada conexion aceptada abre su canal
+`direct-tcpip` y se copia en las dos direcciones.
+
+**El mismo numero de puerto siempre que se pueda.** Una aplicacion web escribe
+su propia direccion en redirecciones, cookies y URLs de recursos, asi que una
+pagina servida en 5173 y abierta en 49871 se rompe de formas que parecen fallo de
+la aplicacion. Si el numero esta ocupado aqui se usa otro y **se dice cual**, en
+vez de sustituirlo en silencio.
+
+**Estos canales no gastan el presupuesto (§5.10g).** `MaxSessions` limita
+*sesiones* —shells, `exec`, subsistemas— y OpenSSH no se lo aplica a
+`direct-tcpip`. Contarlos en el mismo cupo haria que **una sola carga de pagina**
+(decenas de peticiones en paralelo) dejara al host sin terminales. Medido, no
+supuesto: la prueba en vivo lleva doce conexiones simultaneas por un forward
+contra un host cuyo `MaxSessions` es el diez por defecto, y las doce responden.
+
+### Abrir el tunel no es lo mismo que alcanzar el puerto
+
+Reportado desde un host real: la lista salia, "Abrir" abria el navegador y este
+mostraba un error generico; el registro no decia nada, porque una copia que
+termina bien no escribe nada y una que nunca empieza tampoco. Dos fallos
+distintos con el mismo aspecto, y el usuario en medio adivinando.
+
+**Medido contra un `sshd` de verdad: pedir un canal a un puerto donde no hay
+nada NO falla.** El servidor acepta el canal y lo cierra en cuanto su propio
+`connect()` falla. Asi que una comprobacion que solo mirase la apertura daria por
+bueno cualquier puerto muerto — que es justo lo que hacia la primera version de
+la sonda, hasta que la prueba en vivo lo dijo. Ahora la sonda abre el canal y
+**espera brevemente a ver si sobrevive** (`PROBE_GRACE`), y eso ocurre **antes**
+de abrir el navegador: un puerto que no responde se explica en el sitio donde se
+hizo clic, no en una pagina de error que no puede saber por que.
+
+**SSH distingue dos noes, y la interfaz tambien.** El codigo de rechazo del canal
+separa `AdministrativelyProhibited` —el `sshd` de ese host no reenvia puertos, es
+decir `AllowTcpForwarding no`, una opcion que su dueño puede cambiar— de
+`ConnectFailed` —lo intento y nada contesto—. Reportar los dos como "no se pudo
+abrir" obliga a adivinar cual de los dos es. Viajan como un `kind` estable que la
+interfaz traduce, nunca como texto de protocolo.
+
+**Y el destino no siempre es el loopback del host.** Un servicio atado a **una**
+direccion de esa maquina —la interfaz de una VPN, una direccion de la LAN— no
+responde en su `127.0.0.1`, asi que un tunel apuntado alli llega al silencio
+aunque todo lo demas funcione. El sondeo de puertos ya sabe esa direccion
+(`ListeningPort::address`, que distingue loopback, comodin y direccion concreta),
+de modo que se prueba el loopback primero y, si no contesta, la direccion que el
+propio host reporto. Lo que llegue a la interfaz es siempre una direccion, nunca
+una palabra de shell — y nada de esto pasa por una shell de todos modos.
+
+**"Cerrado" significa que el socket ya no esta.** Señalar al bucle de `accept`
+no basta: el sistema operativo completa el handshake de lo que hay en el backlog
+mientras el socket exista, asi que una conexion hecha justo despues de cerrar
+seguia siendo aceptada. Lo capturo la prueba en vivo. Cerrar **aborta la tarea
+que posee el listener y espera a que muera** —ese `drop` es lo que libera el
+puerto— y despues corta las conexiones que aun llevaba.
+
+### Lo que hace la interfaz, y lo que no
+
+Un boton en la barra de estado abre un popover con los puertos de las maquinas
+conectadas. **Nada se reenvia solo**: un tunel abre un socket en el ordenador del
+usuario, y eso espera a su clic. Lo que llega por su cuenta es solo el
+conocimiento de que el puerto existe. "Abrir" reenvia si hace falta y entrega la
+URL a `openUrl`, que es el punto unico donde se decide navegador integrado / del
+sistema / preguntar — de modo que la vista previa respeta la preferencia que el
+usuario ya configuro.
+
+Al desconectar un host se cierran sus tuneles: un socket que lleva conexiones
+sobre una conexion que ya no existe las aceptaria hacia la nada.
+
 ## 6. Que funciona y que no en un contexto remoto
 
 | Capa de estado de agente (`02d`) | Remoto |
@@ -1398,6 +1504,7 @@ primera vez.
 | Crear / renombrar / duplicar / borrar en el arbol | **Funciona** por SFTP y cercado (§5.10d). Borrar es **permanente**: no hay papelera en un host, y el dialogo lo dice. |
 | Cambios / Historial | **Funciona**: diff por fichero y por hunk, staging, descarte, commit, log y fetch/push/pull, ejecutados en el host. Sin sondeo: el boton refresca. Fuera: diff de imagenes y borrador con IA. §5.10c |
 | GitHub | **No disponible**: lee el repositorio de esta maquina y su sesion de `gh`. El panel lo dice y ofrece la terminal. §5.11 |
+| Puertos | **Funciona** (§5.14): lo que una terminal anuncia aparece solo; el boton pregunta al host; "Abrir" trae el puerto a `127.0.0.1` y lo previsualiza. Nada se reenvia sin pedirlo |
 | Refresco automatico de cualquiera de los anteriores | **No**: el watcher sondea cada 3 s y un `exec` cuesta ~2 s (§5.3). Se refresca al abrir, al actuar y con el boton |
 
 Regla de honestidad para la interfaz: lo que no se puede medir en remoto se
@@ -1411,7 +1518,7 @@ marca **"no disponible en este entorno"**. Jamas se rellena con el dato local.
 | 1 | Registro de hosts, conexion, inventario, PTY remota, lanzador | **Hecha** — hecho: configuracion SSH, registro, conexion y claves, inventario, terminal remota, explorar carpetas, añadir un proyecto del host y seleccionarlo (§5.9), y el lanzador filtrado por el inventario del host. Sus deudas estan saldadas: presupuesto de canales (§5.10g), escalera de reconexion (§5.12) y el inventario en la interfaz (§5.13). Ya no: reconectar al arrancar los hosts que no piden nada, que se hace desde `ssh_hosts_resumable` |
 | 2 | Estado preciso (tunel inverso + reporters remotos) | Pendiente |
 | 3 | Archivos, git y worktrees remotos | **Hecha** — ficheros por SFTP (§5.10, leer **y guardar**), explorador por SFTP (§5.8), rama/estado de git (§5.10b), Cambios/Historial (§5.10c), las operaciones de fichero del arbol (§5.10d), la busqueda (§5.10e), el aviso de sesion caida (§5.10f), el presupuesto de canales (§5.10g) y las dos ultimas piezas del panel (§5.10h). Solo GitHub sigue siendo local, por lo que lee. El ayudante en el host queda **descartado**, con sus razones en §5.11 |
-| 4 | Puertos detectados, forward y vista previa en el navegador integrado | Pendiente |
+| 4 | Puertos detectados, forward y vista previa en el navegador integrado | **Hecha** — deteccion por lo que anuncia la terminal (`portscan.rs`) y por pregunta al host (`ssh/ports.rs`), tunel `direct-tcpip` en loopback (`ssh/forward.rs`) y vista previa por `openUrl` desde el popover de la barra de estado (§5.14) |
 | 5 | Continuidad y recursos remotos | Pendiente |
 | 6 | Que el movil vea tambien los destinos (solo contrato aditivo) | Pendiente |
 

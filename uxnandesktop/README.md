@@ -83,9 +83,13 @@ available today are:
   else's shell. Host keys are verified with a confirmation you have to give; no
   key or password is ever stored. A remote project has no 3-second watcher — one
   command on a host costs about two seconds — so its panels refresh when you open
-  them, when you act, and on their refresh button, and say as much. GitHub still
-  reads *this* machine's repository, so on a host it stands down and says so
-  ([`docs/remote-hosts.md`](./docs/remote-hosts.md)).
+  them, when you act, and on their refresh button, and say as much. **A dev
+  server you start there is one click away**: the ports a terminal announces
+  appear in the status bar by themselves (free — the server prints its own URL),
+  a button asks the host about the ones that announced nothing, and *Open* brings
+  the port to `127.0.0.1` over the connection that host already has and previews
+  it. GitHub still reads *this* machine's repository, so on a host it stands down
+  and says so ([`docs/remote-hosts.md`](./docs/remote-hosts.md)).
 - **Parallel, isolated agents.** Every task gets its own git worktree, its own
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
@@ -319,7 +323,7 @@ The full product/engineering specification is in
 ```
 uxnandesktop/
 ├── architecture/          # Spec (source of truth) — Phase 0-5+S status; Phase 6 pending;
-│                          # remote hosts over SSH in 02g (phases 0-1 done, 3 mostly done)
+│                          # remote hosts over SSH in 02g (phases 0-1, 3 and 4 done)
 ├── docs/                  # Task-focused docs (install, build, test, i18n, hooks, ...)
 ├── src/                   # SvelteKit frontend (SPA)
 │   ├── app.css            # Tailwind v4 + shadcn-svelte tokens

@@ -5,6 +5,11 @@ A complete in-app browser for previewing and debugging what your agents build â€
 It is deliberately **not** a general-purpose browser (no bookmarks/profiles/
 extensions); it's a developer surface.
 
+A dev server running on an **SSH host** previews here too: the ports indicator in
+the status bar forwards the port to `127.0.0.1` over that host's existing
+connection and opens the result through the same routing described below, so a
+remote server behaves like a local one ([remote hosts](remote-hosts.md)).
+
 It lives in a **right-side "4th panel"**. The page itself is a real system webview
 (a frameless `WebviewWindow` â€” Chromium/WebView2 on Windows) **owned by** and
 **docked to** uxnan: it follows the app when you move/resize it and stays above it,
