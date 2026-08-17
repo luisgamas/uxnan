@@ -58,7 +58,9 @@ base64 = "0.22"
 # the exact version is already in the tree via tauri-plugin-updater, so this adds
 # no new build cost. MIT/Apache-2.0.
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros"] }
+# `net` + `io-util` are what a port forward is made of: a loopback listener here
+# and `copy_bidirectional` between it and the SSH channel (`ssh/forward.rs`).
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "process", "macros", "net", "io-util"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 portable-pty = "0.9"

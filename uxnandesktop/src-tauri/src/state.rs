@@ -52,6 +52,11 @@ pub struct AppState {
     /// means one thing app-wide, and the command layer asks who owns it rather
     /// than making the frontend remember.
     pub ssh_pty: crate::ssh::pty::RemotePtyManager,
+    /// Ports on a host that are reachable from this machine right now
+    /// (`ssh/forward.rs`). Held here, not per connection, because a forward
+    /// outlives no connection but the user asks about *all* of them at once —
+    /// the status bar lists every tunnel, whatever host it lands on.
+    pub ssh_forwards: crate::ssh::forward::ForwardManager,
     /// Live, authenticated sessions, keyed by host id.
     ///
     /// One connection per host, shared by everything that runs on it — the
@@ -152,6 +157,7 @@ impl AppState {
             persistence,
             pty: PtyManager::default(),
             ssh_pty: crate::ssh::pty::RemotePtyManager::default(),
+            ssh_forwards: crate::ssh::forward::ForwardManager::default(),
             ssh_sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_shells: Arc::new(RwLock::new(std::collections::HashMap::new())),
             ssh_sftp: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
