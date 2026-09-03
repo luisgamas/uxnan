@@ -41,6 +41,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **The macOS traffic lights sit in the app bar instead of above it.** With the
+  overlay titlebar the buttons keep AppKit's own placement, which is measured
+  against the 32px system titlebar it replaced — so in our 40px app bar they
+  landed 4px high and tight against the window edge, reading as three dots
+  pinned to the corner rather than controls belonging to the bar beside the
+  brand. `tauri.macos.conf.json` now states the position explicitly
+  (`trafficLightPosition: { x: 13, y: 22 }`): tao anchors the button row's
+  vertical **centre** at `y`, so 22 centres the 14px buttons in the 40px bar,
+  and 13 gives the same inset from the left edge as from the top. Measured on
+  real Apple Silicon hardware at 19.75px / 12.5px against a 40px bar, which
+  also confirms `shell.macTrafficLightsInset` (80px) still clears the row — it
+  now ends at 72px.
+
 - **An image in a host's project shows the image, not `[object Object]`.**
   Opening one from a remote project drew that string in the middle of the
   viewer, and both halves of it were bugs. The preview pane asked **this**

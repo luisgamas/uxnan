@@ -246,6 +246,17 @@ do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
 config supplies native overlay traffic lights and `shell.macTrafficLightsInset`
 keeps left-aligned content clear of them.
 
+The overlay titlebar does **not** place those buttons for us: AppKit keeps the
+position it computed for the 32px system titlebar it replaced, which reads 4px
+high and corner-pinned inside our 40px `shell.appBar`. So
+`src-tauri/tauri.macos.conf.json` states it — `trafficLightPosition:
+{ x: 13, y: 22 }`. tao anchors the button row's vertical **centre** at `y`
+(hence 22 for a 40px bar, not 20) and its left edge at `x`. The two numbers are
+therefore tied to two tokens: change `appBar`'s height and `y` must follow;
+change `x` and it has to stay inside `macTrafficLightsInset` (80px), which the
+14px buttons at 23px apart currently reach 72px into. The chrome contract test
+asserts both.
+
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes
 on top of the base.

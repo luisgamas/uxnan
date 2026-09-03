@@ -23,6 +23,14 @@ describe("phase-five chrome and dialog contracts", () => {
     expect(window.decorations).toBe(true);
     expect(window.titleBarStyle).toBe("Overlay");
     expect(window.hiddenTitle).toBe(true);
+    // The overlay titlebar keeps AppKit's placement, which is centred on the
+    // 32px system bar it replaced — 4px high for our 40px app bar. tao anchors
+    // the button row's vertical centre at `y`, so `y` must be half the appbar
+    // height (h-10 → 40 → 20) plus the 2px the container inset adds, and `x`
+    // must stay inside `shell.macTrafficLightsInset` (pl-20 → 80px) once the
+    // 14px buttons are laid out 23px apart.
+    expect(window.trafficLightPosition).toEqual({ x: 13, y: 22 });
+    expect(window.trafficLightPosition.x + 2 * 23 + 14).toBeLessThan(80);
   });
 
   it("keeps full-screen back buttons in the shared workspace header", () => {
