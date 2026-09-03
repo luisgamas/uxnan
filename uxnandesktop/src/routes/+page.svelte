@@ -16,11 +16,12 @@
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
   import { runAppAction } from "$lib/keyactions";
-  import { isUntestedPlatform, osLabel } from "$lib/platform";
+  import { isExperimentalPlatform, osLabel } from "$lib/platform";
+  import { clampPanelWidth } from "$lib/panelWidth";
   import { cn } from "$lib/utils";
   import { focus, icon as iconSize, shell } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
-  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import FlaskIcon from "@hugeicons/core-free-icons/FlaskConicalIcon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
   import PanelLeftIcon from "@hugeicons/core-free-icons/PanelLeftIcon";
   import PanelRightIcon from "@hugeicons/core-free-icons/PanelRightIcon";
@@ -72,9 +73,6 @@
   let startX = 0;
   let startWidth = 0;
 
-  const clamp = (v: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, v));
-
   function onHandleDown(side: Side, e: PointerEvent) {
     dragging = side;
     startX = e.clientX;
@@ -91,18 +89,18 @@
     if (!dragging) return;
     const dx = e.clientX - startX;
     if (dragging === "left") {
-      app.settings.leftSidebarWidth = clamp(startWidth + dx, LEFT_MIN, LEFT_MAX);
+      app.settings.leftSidebarWidth = clampPanelWidth(startWidth + dx, LEFT_MIN, LEFT_MAX);
     } else if (dragging === "right") {
       // Right handle grows the panel as the pointer moves left. The floor is the
       // live tab-strip width, so the panel can't be shrunk to clip the tabs.
-      app.settings.rightSidebarWidth = clamp(
+      app.settings.rightSidebarWidth = clampPanelWidth(
         startWidth - dx,
         rightPanel.min,
         RIGHT_MAX,
       );
     } else {
       // Browser panel handle (far right) grows as the pointer moves left.
-      app.settings.browserPanelWidth = clamp(startWidth - dx, BROWSER_MIN, BROWSER_MAX);
+      app.settings.browserPanelWidth = clampPanelWidth(startWidth - dx, BROWSER_MIN, BROWSER_MAX);
     }
   }
 
@@ -380,7 +378,7 @@
 
           <aside
             class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
-            style="width: {clamp(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
+            style="width: {clampPanelWidth(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
           >
             <RightPanel />
           </aside>
@@ -422,15 +420,18 @@
 
       <div class="flex-1"></div>
 
-      {#if isUntestedPlatform}
-        <TooltipSimple title={i18n.t("status.untestedTooltip", { os: osLabel() })}>
+      <!-- Which build this is, not a warning about it. macOS and Linux ship as
+           experimental — the word the READMEs, the install guide and the site
+           already use — so this is the quiet informational chip the rest of the
+           bar uses, next to the amber one that means something is actually
+           wrong (hooks). An alert triangle here would contradict the download
+           page the user came from. -->
+      {#if isExperimentalPlatform}
+        <TooltipSimple title={i18n.t("status.experimentalTooltip", { os: osLabel() })}>
           {#snippet children(props)}
-            <span
-              {...props}
-              class={cn(shell.statusBarItem, "text-amber-600 dark:text-amber-400")}
-            >
-              <Icon icon={TriangleAlertIcon} class={iconSize.decorative} />
-              {i18n.t("status.untested", { os: osLabel() })}
+            <span {...props} class={cn(shell.statusBarItem, "text-muted-foreground")}>
+              <Icon icon={FlaskIcon} class={iconSize.decorative} />
+              {i18n.t("status.experimental", { os: osLabel() })}
             </span>
           {/snippet}
         </TooltipSimple>

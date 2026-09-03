@@ -4,6 +4,15 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **`typescript` is declared where it is used.** Every bridge script that
+  matters (`build`, `typecheck`, `test`, `prepublishOnly`) runs `tsc`, but the
+  compiler was only ever reached by hoisting from the monorepo root — so the
+  package was not installable and buildable on its own. It now names the
+  dependency itself; the resolved version is unchanged (5.9.3 satisfies both
+  this floor and the root's).
+
 ### Fixed
 
 - **An agent the bridge spawns no longer inherits a desktop terminal's

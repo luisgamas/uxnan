@@ -39,7 +39,77 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   — the tunnel is aimed there instead of at a loopback that was never going to
   reply. Spec: `architecture/02g-remote-hosts.md` §5.14.
 
+### Changed
+
+- **"Prevent sleep" says experimental instead of untested, and the platform
+  matrix stops claiming the app has never run on a Mac.** The settings row read
+  "macOS/Linux support is implemented but untested", which is both harsher and
+  vaguer than what is actually known — it now names the mechanism it holds
+  (`caffeinate` / `systemd-inhibit`) and says only the part that is genuinely
+  unconfirmed, which is its effect on real hardware. In the same pass, the
+  support matrix and `README.md`'s module tree are corrected: the app **was**
+  first run on real Apple Silicon on 2026-09-02, and that run is what produced
+  this release's Mac fixes. **No level moves** — `macos-aarch64` stays at
+  `builds`, because what has still never been launched is the shipped DMG, and
+  the Gatekeeper walkthrough, the feature smoke pass and the resource baseline
+  all remain owed.
+
+- **The status bar calls a macOS or Linux build *experimental*, not untested.**
+  It read "Untested on macOS" under an alert triangle — harsher than the page
+  the build was downloaded from, which says *experimental* in the README, the
+  install guide and the site. Nothing about the honesty changes: the tooltip
+  still says this build is validated on Windows first and has not had an
+  end-to-end pass on this hardware, and invites a report. What changes is that
+  the chip now states **which build this is** rather than warning about it — the
+  quiet informational styling the rest of the bar uses, with a flask instead of
+  a triangle, leaving amber to mean something is actually wrong (the hooks
+  indicator beside it).
+
 ### Fixed
+
+- **Agent hooks install on macOS at all.** A hook command is a literal path to
+  the CLIs that take one — none of them parses quotes — so the path we hand
+  them must contain no space. The ADE named its reporter where it keeps its own
+  scripts, which on macOS is `~/Library/Application Support/…`: the space is in
+  Apple's layout, not in anything a user chose. So the auto-install refused on
+  *every* Mac, for Grok and for every declaratively-wired CLI (OpenClaude, Qwen,
+  Droid, Devin, Command Code, Auggie, Cursor, Copilot) — "the hooks folder path
+  contains a space and Windows won't shorten it", a message that named the
+  wrong operating system because the case had only ever been reasoned about on
+  Windows. The result was a permanent *Hooks not installed* badge and no precise
+  agent states on any Mac.
+
+  The reporter is now **copied into each agent's own config directory** and
+  named from there (`~/.grok/hooks/`, `~/.factory/`, `~/.cursor/`, …), which
+  has no space of its own; uninstall takes that copy with it. This was already
+  Antigravity's answer to the identical problem — it is now the rule rather
+  than the exception, which is also why the fix is one shared helper instead of
+  nine. Two tests hold the line: every command-driven agent must name a
+  reporter inside its own config directory, and no two may share one (a shared
+  copy would let one agent's uninstall silently disarm another).
+
+- **Dragging a panel edge no longer fails the whole settings write.** The
+  persisted widths are `u32`, and pointer coordinates are whole numbers on
+  Windows but **subpixel on macOS** — so the first drag of a sidebar on a Mac
+  sent serde a float and it rejected the entire `AppSettings` payload
+  (*invalid type: floating point `312.57421875`, expected u32*), taking every
+  other setting in that snapshot with it and surfacing as a backend error. Panel
+  widths are now clamped to whole pixels at the one place they are written
+  (`$lib/panelWidth`), the same rule the pet's drag-to-park offsets already
+  followed.
+
+- **The macOS traffic lights sit in the app bar instead of above it.** With the
+  overlay titlebar the buttons keep AppKit's own placement, which is measured
+  against the 32px system titlebar it replaced — so in our 40px app bar they
+  landed 4px high and tight against the window edge, reading as three dots
+  pinned to the corner rather than controls belonging to the bar beside the
+  brand. `tauri.macos.conf.json` now states the position explicitly
+  (`trafficLightPosition: { x: 13, y: 22 }`): tao anchors the button row's
+  vertical **centre** at `y`, so 22 centres the 14px buttons in the 40px bar,
+  and 13 gives the same inset from the left edge as from the top. Measured on
+  real Apple Silicon hardware at 19.75px / 12.5px against a 40px bar, which
+  also confirms `shell.macTrafficLightsInset` (80px) still clears the row — it
+  now ends at 72px.
 
 - **An image in a host's project shows the image, not `[object Object]`.**
   Opening one from a remote project drew that string in the middle of the

@@ -19,7 +19,7 @@ The ADE ships a managed reporter for **twenty-one** agents and installs them
 | Codex | `~/.codex/hooks.json` (+ the trust hash in `config.toml`) |
 | OpenCode | its `plugins/` dir |
 | Pi / OMP | `~/.pi/agent/extensions/` |
-| Grok | `~/.grok/hooks/uxnan-status.json` |
+| Grok | `~/.grok/hooks/uxnan-status.json` (+ the reporter beside it) |
 | Antigravity | `~/.gemini/config/hooks.json` |
 | OpenClaude | `~/.openclaude/settings.json` |
 | Qwen Code | `~/.qwen/settings.json` |
@@ -226,7 +226,7 @@ The reporters (one per agent, plus the generic wrapper) — full table in
 |---|---|---|
 | `uxnan-status-relay.cjs` | Claude Code | Dependency-free Node relay in exec form. Forwards the raw event; the server normalizes it. |
 | `uxnan-codex-hook.{sh,cmd}` | Codex | `curl` hook (Codex is a Rust binary — no Node). Paired with a `trusted_hash` in `~/.codex/config.toml`. |
-| `uxnan-event-hook.{sh,cmd}` | Grok, Antigravity + every declaratively-wired CLI | `curl` reporter with the agent kind as its argument, so one script serves every CLI whose hook runner executes a command and pipes it the raw event JSON. It answers `{}` on stdout, because several of these CLIs parse it and **Cursor gates tool use on it** — a reporter that printed nothing would block the agent's file reads and shell commands, not merely fail to report. On Windows its command is written with **backslashes**: a CLI that hands the command to `cmd.exe` splits a forward-slashed path at the first `/` (`…oaming is not recognized as an internal or external command` — measured against the real Cursor CLI). |
+| `uxnan-event-hook.{sh,cmd}` | Grok, Antigravity + every declaratively-wired CLI | `curl` reporter with the agent kind as its argument, so one script serves every CLI whose hook runner executes a command and pipes it the raw event JSON. The copy here is the readable reference; the one each hook actually runs is **copied into that agent's own config directory**, because a hook command is a literal path and `<app-data>` has a space in it on macOS (see the per-agent notes below). It answers `{}` on stdout, because several of these CLIs parse it and **Cursor gates tool use on it** — a reporter that printed nothing would block the agent's file reads and shell commands, not merely fail to report. On Windows its command is written with **backslashes**: a CLI that hands the command to `cmd.exe` splits a forward-slashed path at the first `/` (`…oaming is not recognized as an internal or external command` — measured against the real Cursor CLI). |
 | `uxnan-opencode-status.js` | OpenCode | In-process plugin. |
 | `uxnan-pi-status.js` | Pi / OMP | In-process extension. |
 | `uxnan-hook-wrapper.{sh,ps1,cmd,fish}` | any CLI agent | Generic wrapper: `working` before exec, `done` on exit. |
@@ -362,9 +362,21 @@ The per-agent notes below are what each CLI made us learn the hard way:
   invoked **dot-relative** (`.\uxnan-event-hook.cmd antigravity`), because
   Antigravity parses a hook command as a literal path and honours no quoting: a
   command holding an absolute path would break for anyone whose account name has
-  a space in it. Grok has the same limitation, so on Windows its command falls
-  back to the path's **8.3 short form** when needed; if the OS won't produce one,
-  the panel says so instead of installing a hook that would never fire.
+  a space in it.
+- **A hook command is a literal path, so the reporter lives beside each agent's
+  own config** — not in `<app-data>/hooks/`, where the ADE keeps the copy you
+  can read. None of these CLIs parses quotes, so the path we hand them must
+  contain no space, and on macOS the ADE's own folder is
+  `~/Library/Application Support/…`: the space is in Apple's layout, not in
+  anything you chose. Naming the reporter from there could therefore never work
+  on *any* Mac, and the auto-install said so — "no hook can be installed from
+  here" — for Grok and for every declaratively-wired CLI. So install copies
+  `uxnan-event-hook.{sh,cmd}` into the agent's own directory (`~/.grok/hooks/`,
+  `~/.factory/`, `~/.cursor/`, …) and names it there; uninstall takes that copy
+  with it. Only a home directory that itself contains a space is left, and on
+  Windows the command falls back to the path's **8.3 short form** first — if the
+  OS won't produce one, the panel says so instead of installing a hook that
+  would never fire.
 
 - **Per-event merge, user-preserving.** For every agent whose hooks live in a
   config file you also own (Claude, Codex, OpenClaude, Qwen, Droid,

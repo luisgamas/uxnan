@@ -225,7 +225,7 @@ example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
 vs merely still readable) and `platform.ts` (user-agent OS detection behind the
-untested-platform badge and every per-OS frontend default) and
+experimental-platform badge and every per-OS frontend default) and
 `resources/policy.ts` (the resource-mode policy
 engine: presets with Balanced pinned to the pre-mode constants, residue-free
 normalization/clamping, headroom gating and the effective poll intervals) and
@@ -249,7 +249,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,231 passing tests** across both
+ships in every build and is never shown). **1,234 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

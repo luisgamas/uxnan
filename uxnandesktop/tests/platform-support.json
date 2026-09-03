@@ -29,7 +29,7 @@
     "defended."
   ],
   "version": 1,
-  "updated": "2026-07-31",
+  "updated": "2026-09-03",
   "levels": [
     "code-only",
     "builds",
@@ -49,7 +49,7 @@
       "name": "macOS (Apple Silicon)",
       "minimum": "macOS 11.0 (src-tauri/tauri.conf.json bundle.macOS.minimumSystemVersion)",
       "announced": "builds",
-      "notes": "Experimental, ad-hoc-signed DMG. CI compiles the app and runs the full Rust + Vitest suites on a macos-14 runner, but the app has never been launched on real Apple hardware — docs/install-macos.md says so to users. No macOS resource baseline exists."
+      "notes": "Experimental, ad-hoc-signed DMG. CI compiles the app and runs the full Rust + Vitest suites on a macos-14 runner. The app was first run on real Apple Silicon on 2026-09-02 (macOS 26.6.2, from-source dev build), which found and fixed three Mac-only defects: overlay-titlebar traffic lights placed for the 32px system bar, a subpixel pointer delta failing the whole u32 settings write, and an agent-hook reporter named from a path with a space in it (~/Library/Application Support/), which had made every command-driven hook uninstallable on macOS. Every cell stays at builds: what has still never happened is a launch of the shipped DMG, so the Gatekeeper walkthrough, the feature smoke pass and the resource baseline all remain owed."
     },
     "macos-x64": {
       "name": "macOS (Intel)",
@@ -93,7 +93,7 @@
           "sha": "5d05643b",
           "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
           "tester": "ci",
-          "evidence": "verify leg green on macos-14 — compile + full Rust/Vitest suites (.github/workflows/ci-desktop.yml run 30608531497); aarch64 DMG shipped in desktop-stable-v0.0.24 (2026-07-29, 039866bb). Never launched on real Apple hardware."
+          "evidence": "verify leg green on macos-14 — compile + full Rust/Vitest suites (.github/workflows/ci-desktop.yml run 30608531497); aarch64 DMG shipped in desktop-stable-v0.0.24 (2026-07-29, 039866bb). A from-source dev build did launch on real Apple Silicon on 2026-09-02 and rendered its empty first-run shell; this cell tracks the shipped artifact, which has still never been launched, so it stays at builds until the mac-first-smoke walkthrough runs."
         },
         "macos-x64": {
           "level": "builds",

@@ -39,12 +39,12 @@ evidence no longer describes the current release line (a major dependency bump,
 a rewritten subsystem, or evidence older than ~6 months), the claim is
 **degraded** back to what current evidence supports, not defended.
 
-## Summary (updated 2026-07-31)
+## Summary (updated 2026-09-03)
 
 | Platform | Minimum version | Announced level | Why not higher |
 |---|---|---|---|
 | `windows-x64` — Windows 11 x64 | Windows 10 + WebView2 Evergreen | `smoke` | `validated` blocked by: unscripted install/upgrade/uninstall cycle, wake-fidelity checked only by hand, R07/R08 still assisted (R10's 2 h soak and R12 were captured 2026-08-01). `signed` needs the paid Authenticode cert (`FOR-HUMAN.md`). |
-| `macos-aarch64` — macOS Apple Silicon | macOS 11.0 | `builds` | Experimental ad-hoc-signed DMG; CI compiles + runs the full suites on `macos-14`, but the app has never been launched on real Apple hardware. |
+| `macos-aarch64` — macOS Apple Silicon | macOS 11.0 | `builds` | Experimental ad-hoc-signed DMG; CI compiles + runs the full suites on `macos-14`. A from-source dev build first ran on real Apple Silicon on 2026-09-02 and produced the first round of Mac-only fixes; the shipped DMG has still never been launched, so the level stands. |
 | `macos-x64` — macOS Intel | macOS 11.0 | `builds` | Cross-compiled on an Apple Silicon runner; the x86_64 binary has never executed anywhere, not even its test suite. |
 | `linux-x64` — Ubuntu LTS reference | WebKitGTK 4.1 distro (Ubuntu 22.04+) | `builds` | Full suites pass on `ubuntu-latest` and installers ship, but no human has installed or launched any of them; the E2E driver supports Linux and has never been run. |
 
@@ -157,14 +157,14 @@ uncovered branches get evidence before they get changes.
 | `editors.rs`, `fonts.rs`, `agentcli.rs`, `agent_hooks.rs`, `hooks.rs`, `browse.rs`, `zero.rs`, `codex_trust.rs`, `which.rs` | Home-dir/`PATHEXT`/`%VAR%` expansion, per-OS probe paths, `.cmd` vs `.sh` reporters, `chmod 0755/0600` on Unix, `WSLENV` injection, 8.3 short paths | Host-OS halves covered by their module suites (each runs on all three CI runners); Windows-gated cases in `editors.rs` | `fonts.rs` enumeration (3 per-OS impls) has no tests — output feeds a font picker, degrades to empty list; macOS-only branches execute on the `macos-14` leg only |
 | `path_env.rs` (macOS Finder PATH) | macOS-only enrichment; no-op elsewhere | Merge/dedupe logic + the off-macOS no-op tested | The macOS ON-branch (login-shell probe) needs real hardware → mac checklist (agent/`gh` detection item) |
 | `pty.rs`, `model.rs` | Default shell per OS (PowerShell / zsh / bash), profile seeds | Lifecycle + seed tests run per-OS on each runner | Interactive behavior per OS → smoke checklists |
-| `main.rs`, `Cargo.toml`, `tauri.conf.json`, `tauri.macos.conf.json`, `capabilities/` | `windows_subsystem`, `windows-sys` deps, `macOSPrivateApi`, native macOS overlay titlebar/traffic lights, ad-hoc signing identity, bundle targets, per-window capabilities | Config is exercised by each platform build; the macOS window override also has a static frontend/config contract test; capabilities audit is a standing FOR-DEV item | Native traffic-light placement still needs the macOS visual smoke checklist |
+| `main.rs`, `Cargo.toml`, `tauri.conf.json`, `tauri.macos.conf.json`, `capabilities/` | `windows_subsystem`, `windows-sys` deps, `macOSPrivateApi`, native macOS overlay titlebar/traffic lights, ad-hoc signing identity, bundle targets, per-window capabilities | Config is exercised by each platform build; the macOS window override also has a static frontend/config contract test, which pins `trafficLightPosition` to the app-bar height and the `macTrafficLightsInset` clearance; capabilities audit is a standing FOR-DEV item | Placement was measured once on real Apple Silicon (dev build, 2026-09-02) and matched the contract; the rest of the window chrome still rides the macOS visual smoke checklist |
 
 ### Frontend (TS/Svelte)
 
 | Area | Branches | Coverage |
 |---|---|---|
-| `platform.ts` | User-agent OS detection; the status-bar "untested platform" badge for macOS/Linux | Unit-tested (`platform.test.ts`) |
-| `keybindings.ts`, `Terminal.svelte`, `WindowControls.svelte`, dialogs | `isMac` modifier mapping (⌘ vs Ctrl), chord rendering, native macOS controls vs custom Windows/Linux controls | Platform selection/config is contract-tested; actual traffic-light placement and input behavior remain visible checks in each platform's smoke checklist |
+| `platform.ts` | User-agent OS detection; the status-bar "experimental platform" badge for macOS/Linux | Unit-tested (`platform.test.ts`) |
+| `keybindings.ts`, `Terminal.svelte`, `WindowControls.svelte`, dialogs | `isMac` modifier mapping (⌘ vs Ctrl), chord rendering, native macOS controls vs custom Windows/Linux controls | Platform selection/config is contract-tested, traffic-light placement now against measured values; input behavior remains a visible check in each platform's smoke checklist |
 | `shell.ts`, `terminalTemplates.ts` | Per-shell quoting (PowerShell/cmd/POSIX), per-OS profile templates | Quoting fully tested; templates are data |
 | `windowsJunctionGuard.ts` | Windows-only Redirection-Guard detection | Pure detector fully tested; the OS gate is a one-line guard |
 | `pathid.ts` | Case-insensitive path identity (Windows semantics applied everywhere, deliberately) | Tested, including UNC/WSL spellings |

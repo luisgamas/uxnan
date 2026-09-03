@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { currentOS, osLabel } from "./platform";
 
-// The status bar's "untested platform" badge and the per-OS defaults (agent
+// The status bar's "experimental platform" badge and the per-OS defaults (agent
 // launch shell, dialog filters, junction guard) all hang off this detection —
 // misreading a user agent silently gives a Mac user Windows behavior.
 
@@ -27,7 +27,7 @@ describe("currentOS", () => {
 });
 
 describe("osLabel", () => {
-  it("names each OS for the untested-platform notice", () => {
+  it("names each OS for the experimental-platform badge", () => {
     expect(osLabel("windows")).toBe("Windows");
     expect(osLabel("macos")).toBe("macOS");
     expect(osLabel("linux")).toBe("Linux");
