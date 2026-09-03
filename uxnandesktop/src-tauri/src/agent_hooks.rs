@@ -252,13 +252,27 @@ fn opencode_config_path() -> Option<PathBuf> {
 /// Grok merges every `*.json` under this directory, so our reporter gets a file
 /// of its own — install writes it, uninstall deletes it, and a user's own hooks
 /// are never read, rewritten or risked. Global hooks need no folder-trust grant.
+fn grok_hooks_dir() -> Option<PathBuf> {
+    Some(home_dir()?.join(".grok").join("hooks"))
+}
+
 fn grok_hooks_path() -> Option<PathBuf> {
-    Some(
-        home_dir()?
-            .join(".grok")
-            .join("hooks")
-            .join("uxnan-status.json"),
-    )
+    Some(grok_hooks_dir()?.join("uxnan-status.json"))
+}
+
+/// Our reporter, copied **into Grok's own hooks folder** rather than referenced
+/// where the ADE keeps its scripts. Grok takes a hook command it cannot quote,
+/// so the path it is given must contain no space — and the ADE's own app-data
+/// folder is `~/Library/Application Support/…` on macOS, which always does. It
+/// is therefore not that the reporter could not be quoted on a Mac; it is that
+/// it could never be *named*, so Grok hooks were uninstallable on every macOS
+/// machine. `~/.grok/hooks/` has no space of its own, which puts the path back
+/// within reach (the same move Antigravity already makes for the same reason,
+/// and Grok merges only `*.json` from this folder, so the script is inert here).
+/// Only a home directory with a space in it is left, and the caller still
+/// reports that honestly instead of writing a hook that would never run.
+fn grok_reporter_path() -> Option<PathBuf> {
+    Some(reporter_in(&grok_hooks_dir()?))
 }
 
 /// Antigravity's machine-global customization directory. Its `hooks.json` lives
@@ -545,6 +559,54 @@ fn short_path(_path: &str) -> Option<String> {
     None
 }
 
+/// Copy the per-event reporter into `dir` and answer where it now lives.
+///
+/// A hook command is a **literal path** to the CLIs that take one — none of them
+/// parses quotes — so the path we hand them must contain no space. The ADE's own
+/// script folder cannot satisfy that on macOS: application data lives under
+/// `~/Library/Application Support/`, and the space is in Apple's layout, not in
+/// anything the user chose. Naming the reporter from there therefore failed on
+/// *every* Mac, which is why the auto-install reported "no hook can be installed
+/// from here" for Grok and for every command-driven agent in the table.
+///
+/// An agent's own config directory has no space of its own, so the reporter is
+/// copied beside its config and named from there. Antigravity has always done
+/// this (its command is even dot-relative, since its docs pin the working
+/// directory); OpenCode, Pi and Amp likewise install into the agent's own
+/// directory. This is that same move, made the rule rather than the exception.
+fn install_reporter_into(dir: &Path) -> Result<PathBuf, AppError> {
+    std::fs::create_dir_all(dir)?;
+    let script = dir.join(reporter_filename());
+    write_if_changed(
+        &script,
+        if cfg!(windows) {
+            EVENT_HOOK_CMD
+        } else {
+            EVENT_HOOK_SH
+        },
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
+    }
+    Ok(script)
+}
+
+/// The reporter copy `install_reporter_into` leaves in `dir`. Uninstall removes
+/// exactly this; anything else in that folder belongs to the agent or the user.
+fn reporter_in(dir: &Path) -> PathBuf {
+    dir.join(reporter_filename())
+}
+
+fn reporter_filename() -> &'static str {
+    if cfg!(windows) {
+        EVENT_HOOK_CMD_FILENAME
+    } else {
+        EVENT_HOOK_SH_FILENAME
+    }
+}
+
 /// A script path in a form a CLI that can't parse quotes will accept: the path
 /// itself when it has no space, else its 8.3 short form. `None` when the path
 /// contains a space and the OS won't shorten it — the caller then reports the
@@ -561,14 +623,15 @@ fn unquotable_path(path: &str) -> Option<String> {
 
 /// The Grok hook command: our per-event reporter plus the agent kind as its
 /// argument. Grok is a Rust binary with no Node guarantee, so this is the `curl`
-/// reporter rather than the Node relay.
-fn grok_hook_command(install: &HookInstall) -> Option<String> {
-    let script = if cfg!(windows) {
-        &install.event_hook_cmd
-    } else {
-        &install.event_hook_sh
-    };
-    Some(format!("{} grok", unquotable_path(script)?))
+/// reporter rather than the Node relay. The path is the copy in Grok's own
+/// hooks folder — see [`grok_reporter_path`] for why it cannot be the one in
+/// the ADE's app-data directory.
+fn grok_hook_command() -> Option<String> {
+    let script = grok_reporter_path()?;
+    Some(format!(
+        "{} grok",
+        unquotable_path(&script.to_string_lossy())?
+    ))
 }
 
 fn grok_hook_entry(command: &str) -> Value {
@@ -982,15 +1045,21 @@ pub fn read_grok_hooks_status() -> AgentHooksStatus {
     status_from_config(grok_hooks_path(), AgentKind::Grok, "uxnan-status.json")
 }
 
-pub fn install_grok_hooks(install: &HookInstall) -> Result<AgentHooksStatus, AppError> {
-    let path = grok_hooks_path()
+pub fn install_grok_hooks() -> Result<AgentHooksStatus, AppError> {
+    let dir = grok_hooks_dir()
         .ok_or_else(|| AppError::Invalid("cannot resolve ~/.grok/hooks/".into()))?;
-    let Some(command) = grok_hook_command(install) else {
+    let path = dir.join("uxnan-status.json");
+
+    // The reporter is copied beside the config because the command cannot be
+    // quoted — see `install_reporter_into`.
+    let script = install_reporter_into(&dir)?;
+
+    let Some(command) = grok_hook_command() else {
         return Err(AppError::Invalid(format!(
-            "the hooks folder path contains a space and Windows won't shorten it \
-             ({}). Grok runs a hook command as a literal path and cannot quote it, \
-             so no hook can be installed from here.",
-            install.dir
+            "{} contains a space and no short form of it is available. Grok runs \
+             a hook command as a literal path and cannot quote it, so no hook can \
+             be installed from here.",
+            script.display()
         )));
     };
     write_json_atomic(&path, &to_pretty(&grok_hooks_doc(&command)))?;
@@ -1005,12 +1074,16 @@ pub fn uninstall_grok_hooks() -> Result<AgentHooksStatus, AppError> {
     if path.exists() {
         std::fs::remove_file(&path)?;
     }
+    // Our reporter copy goes too; anything else in that folder is not ours.
+    if let Some(script) = grok_reporter_path() {
+        let _ = std::fs::remove_file(script);
+    }
     Ok(read_grok_hooks_status())
 }
 
 /// Render the file the ADE writes into `~/.grok/hooks/` (Settings "Show config").
-pub fn render_grok_hooks_json(install: &HookInstall) -> Result<String, AppError> {
-    let command = grok_hook_command(install).unwrap_or_else(|| "<unavailable>".to_string());
+pub fn render_grok_hooks_json() -> Result<String, AppError> {
+    let command = grok_hook_command().unwrap_or_else(|| "<unavailable>".to_string());
     serde_json::to_string_pretty(&grok_hooks_doc(&command)).map_err(AppError::Serde)
 }
 
@@ -1089,27 +1162,8 @@ pub fn install_antigravity_hooks() -> Result<AgentHooksStatus, AppError> {
     let path = dir.join("hooks.json");
 
     // The reporter lives beside the config because the command is dot-relative —
-    // see `antigravity_hook_command`. Same pattern as OpenCode's plugin and Pi's
-    // extension, which are also installed into the agent's own directory.
-    std::fs::create_dir_all(&dir)?;
-    let script = dir.join(if cfg!(windows) {
-        EVENT_HOOK_CMD_FILENAME
-    } else {
-        EVENT_HOOK_SH_FILENAME
-    });
-    write_if_changed(
-        &script,
-        if cfg!(windows) {
-            EVENT_HOOK_CMD
-        } else {
-            EVENT_HOOK_SH
-        },
-    )?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
-    }
+    // see `antigravity_hook_command` and `install_reporter_into`.
+    install_reporter_into(&dir)?;
 
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
     let mut doc: Value = serde_json::from_str(&existing).unwrap_or_else(|_| json!({}));
@@ -1135,12 +1189,7 @@ pub fn uninstall_antigravity_hooks() -> Result<AgentHooksStatus, AppError> {
         }
     }
     // Our reporter copy goes too; anything else in that folder is not ours.
-    let script = dir.join(if cfg!(windows) {
-        EVENT_HOOK_CMD_FILENAME
-    } else {
-        EVENT_HOOK_SH_FILENAME
-    });
-    let _ = std::fs::remove_file(script);
+    let _ = std::fs::remove_file(reporter_in(&dir));
     Ok(read_antigravity_hooks_status())
 }
 
@@ -1978,13 +2027,19 @@ fn kimi_config_path() -> Option<PathBuf> {
 /// as a literal path — so a space in the path falls back to the 8.3 short form,
 /// and `None` (no short form available) makes the caller report the agent
 /// unavailable rather than install a hook that could never run.
-fn table_agent_command(id: &str, install: &HookInstall) -> Option<String> {
-    let script = if cfg!(windows) {
-        &install.event_hook_cmd
-    } else {
-        &install.event_hook_sh
-    };
-    Some(format!("{} {id}", native_unquotable_path(script)?))
+fn table_agent_command(agent: &TableAgent) -> Option<String> {
+    let script = table_reporter_path(agent)?;
+    Some(format!(
+        "{} {}",
+        native_unquotable_path(&script.to_string_lossy())?,
+        agent.id
+    ))
+}
+
+/// Where this agent's reporter copy lives: beside its own config file. See
+/// [`install_reporter_into`] for why it cannot be the ADE's own script folder.
+fn table_reporter_path(agent: &TableAgent) -> Option<PathBuf> {
+    Some(reporter_in((agent.path)()?.parent()?))
 }
 
 /// [`unquotable_path`] in the platform's own path spelling: forward slashes on
@@ -2122,23 +2177,31 @@ fn strip_toml_block(text: &str) -> String {
 }
 
 /// Install (or refresh) one table agent's managed reporter.
-pub fn install_table_agent(id: &str, install: &HookInstall) -> Result<AgentHooksStatus, AppError> {
+pub fn install_table_agent(id: &str) -> Result<AgentHooksStatus, AppError> {
     let agent =
         table_agent(id).ok_or_else(|| AppError::Invalid(format!("unknown hook agent: {id}")))?;
     let path = (agent.path)()
         .ok_or_else(|| AppError::Invalid(format!("cannot resolve the {id} config path")))?;
-    // A plugin posts to the hook server itself, so it needs no command; the
-    // unavailable-path check below only applies to the CLIs that run one.
+    // A plugin posts to the hook server itself, so it needs no command — and no
+    // reporter on disk. Everyone else gets the copy beside their own config and
+    // is named from there; the unavailable-path check applies only to them.
     let command = if matches!(agent.layout, HookLayout::Plugin) {
         Some(String::new())
     } else {
-        table_agent_command(agent.id, install)
+        let dir = path
+            .parent()
+            .ok_or_else(|| AppError::Invalid(format!("the {id} config path has no parent")))?;
+        install_reporter_into(dir)?;
+        table_agent_command(agent)
     };
     let Some(command) = command else {
         return Err(AppError::Invalid(format!(
-            "the hooks folder path contains a space and Windows won't shorten it ({}). \
-             A hook command is a literal path to these CLIs, so none can be installed from here.",
-            install.dir
+            "{} contains a space and no short form of it is available. A hook \
+             command is a literal path to these CLIs, so none can be installed \
+             from here.",
+            table_reporter_path(agent)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| format!("the {id} config directory"))
         )));
     };
     let kind = AgentKind::Tagged(agent.id);
@@ -2250,6 +2313,13 @@ pub fn uninstall_table_agent(id: &str) -> Result<AgentHooksStatus, AppError> {
             }
         }
     }
+    // Our reporter copy goes with the entry that named it. A plugin never had
+    // one; anything else in that folder belongs to the agent or the user.
+    if !matches!(agent.layout, HookLayout::Plugin) {
+        if let Some(script) = table_reporter_path(agent) {
+            let _ = std::fs::remove_file(script);
+        }
+    }
     Ok(read_table_agent_status(id))
 }
 
@@ -2316,11 +2386,10 @@ pub fn read_table_agent_status(id: &str) -> AgentHooksStatus {
 
 /// Render exactly what the ADE writes for one table agent (Settings "Show
 /// config"), so what's shown is what lands on disk — not a prettified sketch.
-pub fn render_table_agent_config(id: &str, install: &HookInstall) -> Result<String, AppError> {
+pub fn render_table_agent_config(id: &str) -> Result<String, AppError> {
     let agent =
         table_agent(id).ok_or_else(|| AppError::Invalid(format!("unknown hook agent: {id}")))?;
-    let command =
-        table_agent_command(agent.id, install).unwrap_or_else(|| "<unavailable>".to_string());
+    let command = table_agent_command(agent).unwrap_or_else(|| "<unavailable>".to_string());
     match agent.layout {
         HookLayout::Plugin => Ok(plugin_body(agent.id)),
         HookLayout::TomlBlock => Ok(table_toml_block(agent, &command)),
@@ -2443,9 +2512,9 @@ pub fn install_agent(id: &str, install: &HookInstall) -> Result<AgentHooksStatus
         "codex" => install_codex_hooks(install),
         "opencode" => install_opencode_hooks(),
         "pi" => install_pi_hooks(),
-        "grok" => install_grok_hooks(install),
+        "grok" => install_grok_hooks(),
         "antigravity" => install_antigravity_hooks(),
-        _ => install_table_agent(id, install),
+        _ => install_table_agent(id),
     }
 }
 
@@ -2469,11 +2538,11 @@ pub fn render_agent_config(id: &str, install: &HookInstall) -> Result<String, Ap
     match id {
         "claude" => render_claude_settings_json(&install.status_relay_script),
         "codex" => render_codex_hooks_json(install),
-        "grok" => render_grok_hooks_json(install),
+        "grok" => render_grok_hooks_json(),
         "antigravity" => render_antigravity_hooks_json(),
         "opencode" => Ok(OPENCODE_STATUS_PLUGIN.to_string()),
         "pi" => Ok(PI_STATUS_EXTENSION.to_string()),
-        _ => render_table_agent_config(id, install),
+        _ => render_table_agent_config(id),
     }
 }
 
@@ -2494,7 +2563,7 @@ pub fn install_all(install: &HookInstall) {
     log("codex", install_codex_hooks(install));
     log("opencode", install_opencode_hooks());
     log("pi", install_pi_hooks());
-    log("grok", install_grok_hooks(install));
+    log("grok", install_grok_hooks());
     log("antigravity", install_antigravity_hooks());
     if let Err(e) = cleanup_retired_gemini_hooks() {
         eprintln!("[uxnan-desktop] retired Gemini hook cleanup failed: {e}");
@@ -2503,7 +2572,7 @@ pub fn install_all(install: &HookInstall) {
     // see `table_agent_present`. An agent installed later is picked up on the
     // next launch, and its Settings card installs it on demand meanwhile.
     for agent in TABLE_AGENTS.iter().filter(|a| table_agent_present(a)) {
-        log(agent.id, install_table_agent(agent.id, install));
+        log(agent.id, install_table_agent(agent.id));
     }
 }
 
@@ -2511,45 +2580,10 @@ pub fn install_all(install: &HookInstall) {
 mod tests {
     use super::*;
 
-    /// A `HookInstall` pointing at plausible script paths, for rendering tests
-    /// that never touch the disk.
-    fn fake_install() -> HookInstall {
-        let mut install = HookInstall {
-            dir: "/tmp/uxnan/hooks".into(),
-            status_relay_script: "/tmp/uxnan/hooks/uxnan-status-relay.cjs".into(),
-            codex_hook_sh: "/tmp/uxnan/hooks/uxnan-codex-hook.sh".into(),
-            codex_hook_cmd: "/tmp/uxnan/hooks/uxnan-codex-hook.cmd".into(),
-            opencode_plugin_script: String::new(),
-            pi_extension_script: String::new(),
-            event_hook_sh: "/tmp/uxnan/hooks/uxnan-event-hook.sh".into(),
-            event_hook_cmd: "/tmp/uxnan/hooks/uxnan-event-hook.cmd".into(),
-            wrapper_bash: String::new(),
-            wrapper_powershell: String::new(),
-            wrapper_cmd: String::new(),
-            wrapper_fish: String::new(),
-            browser_shim_bash: String::new(),
-            browser_shim_cmd: String::new(),
-            claude_settings_path: String::new(),
-            codex_hooks_path: String::new(),
-            opencode_plugin_path: String::new(),
-            pi_extension_path: String::new(),
-            grok_hooks_path: String::new(),
-            antigravity_hooks_path: String::new(),
-        };
-        // Keep the platform's own script the one under test.
-        if cfg!(windows) {
-            install.event_hook_sh = String::new();
-        } else {
-            install.event_hook_cmd = String::new();
-        }
-        install
-    }
-
     #[test]
     fn every_table_agent_renders_a_config_naming_itself() {
-        let install = fake_install();
         for agent in TABLE_AGENTS {
-            let rendered = render_table_agent_config(agent.id, &install)
+            let rendered = render_table_agent_config(agent.id)
                 .unwrap_or_else(|e| panic!("{} failed to render: {e}", agent.id));
             // A plugin carries no command: it runs inside the agent and posts
             // for itself, so what has to be true is that it declares the right
@@ -2844,6 +2878,65 @@ mod tests {
             .remove(ANTIGRAVITY_HOOK_NAME);
         assert!(parsed.get("someone-elses-hook").is_some());
         assert!(!antigravity_installed(&parsed.to_string()));
+    }
+
+    /// The bug this guards: on macOS the ADE's own script folder is
+    /// `~/Library/Application Support/…`, whose space no CLI here can quote and
+    /// no OS can shorten — so every command-driven hook refused to install on
+    /// every Mac. The reporter now lives beside each agent's own config, and the
+    /// command names it there.
+    #[test]
+    fn every_command_hook_names_a_reporter_in_the_agents_own_directory() {
+        let Some(home) = home_dir() else {
+            return; // No home on this runner: nothing to assert about.
+        };
+        let app_data_is_spaced = home.join("Library").join("Application Support");
+
+        let grok = grok_reporter_path().expect("grok reporter path");
+        assert!(grok.starts_with(home.join(".grok")), "{}", grok.display());
+        assert!(!grok.starts_with(&app_data_is_spaced));
+
+        for agent in TABLE_AGENTS {
+            if matches!(agent.layout, HookLayout::Plugin) {
+                continue; // Runs inside the agent; there is no command to name.
+            }
+            let config = (agent.path)().expect(agent.id);
+            let script = table_reporter_path(agent).expect(agent.id);
+            assert_eq!(
+                script.parent(),
+                config.parent(),
+                "{} reporter is not beside its config",
+                agent.id
+            );
+            assert!(
+                !script.starts_with(&app_data_is_spaced),
+                "{} still names the ADE's own (spaced) folder",
+                agent.id
+            );
+        }
+    }
+
+    /// Two agents sharing one directory would have them fight over the same
+    /// reporter file — one's uninstall would silently disarm the other.
+    #[test]
+    fn no_two_command_agents_share_a_reporter_directory() {
+        let mut seen: Vec<PathBuf> = Vec::new();
+        for agent in TABLE_AGENTS {
+            if matches!(agent.layout, HookLayout::Plugin) {
+                continue;
+            }
+            let Some(script) = table_reporter_path(agent) else {
+                continue;
+            };
+            assert!(!seen.contains(&script), "{} shares {:?}", agent.id, script);
+            seen.push(script);
+        }
+        if let Some(grok) = grok_reporter_path() {
+            assert!(
+                !seen.contains(&grok),
+                "grok shares a reporter with a table agent"
+            );
+        }
     }
 
     #[test]

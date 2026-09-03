@@ -41,6 +41,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Agent hooks install on macOS at all.** A hook command is a literal path to
+  the CLIs that take one — none of them parses quotes — so the path we hand
+  them must contain no space. The ADE named its reporter where it keeps its own
+  scripts, which on macOS is `~/Library/Application Support/…`: the space is in
+  Apple's layout, not in anything a user chose. So the auto-install refused on
+  *every* Mac, for Grok and for every declaratively-wired CLI (OpenClaude, Qwen,
+  Droid, Devin, Command Code, Auggie, Cursor, Copilot) — "the hooks folder path
+  contains a space and Windows won't shorten it", a message that named the
+  wrong operating system because the case had only ever been reasoned about on
+  Windows. The result was a permanent *Hooks not installed* badge and no precise
+  agent states on any Mac.
+
+  The reporter is now **copied into each agent's own config directory** and
+  named from there (`~/.grok/hooks/`, `~/.factory/`, `~/.cursor/`, …), which
+  has no space of its own; uninstall takes that copy with it. This was already
+  Antigravity's answer to the identical problem — it is now the rule rather
+  than the exception, which is also why the fix is one shared helper instead of
+  nine. Two tests hold the line: every command-driven agent must name a
+  reporter inside its own config directory, and no two may share one (a shared
+  copy would let one agent's uninstall silently disarm another).
+
 - **The macOS traffic lights sit in the app bar instead of above it.** With the
   overlay titlebar the buttons keep AppKit's own placement, which is measured
   against the 32px system titlebar it replaced — so in our 40px app bar they

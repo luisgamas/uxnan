@@ -4269,7 +4269,7 @@ pub async fn get_hook_scripts(
     let claude_json = agent_hooks::render_claude_settings_json(&install.status_relay_script)
         .map_err(CommandError::from)?;
     let codex_json = agent_hooks::render_codex_hooks_json(&install).map_err(CommandError::from)?;
-    let grok_json = agent_hooks::render_grok_hooks_json(&install).map_err(CommandError::from)?;
+    let grok_json = agent_hooks::render_grok_hooks_json().map_err(CommandError::from)?;
     let antigravity_json =
         agent_hooks::render_antigravity_hooks_json().map_err(CommandError::from)?;
     Ok(Some(HookScripts {
