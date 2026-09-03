@@ -17,6 +17,7 @@
   import { matchAction } from "$lib/keybindings";
   import { runAppAction } from "$lib/keyactions";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
+  import { clampPanelWidth } from "$lib/panelWidth";
   import { cn } from "$lib/utils";
   import { focus, icon as iconSize, shell } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
@@ -72,9 +73,6 @@
   let startX = 0;
   let startWidth = 0;
 
-  const clamp = (v: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, v));
-
   function onHandleDown(side: Side, e: PointerEvent) {
     dragging = side;
     startX = e.clientX;
@@ -91,18 +89,18 @@
     if (!dragging) return;
     const dx = e.clientX - startX;
     if (dragging === "left") {
-      app.settings.leftSidebarWidth = clamp(startWidth + dx, LEFT_MIN, LEFT_MAX);
+      app.settings.leftSidebarWidth = clampPanelWidth(startWidth + dx, LEFT_MIN, LEFT_MAX);
     } else if (dragging === "right") {
       // Right handle grows the panel as the pointer moves left. The floor is the
       // live tab-strip width, so the panel can't be shrunk to clip the tabs.
-      app.settings.rightSidebarWidth = clamp(
+      app.settings.rightSidebarWidth = clampPanelWidth(
         startWidth - dx,
         rightPanel.min,
         RIGHT_MAX,
       );
     } else {
       // Browser panel handle (far right) grows as the pointer moves left.
-      app.settings.browserPanelWidth = clamp(startWidth - dx, BROWSER_MIN, BROWSER_MAX);
+      app.settings.browserPanelWidth = clampPanelWidth(startWidth - dx, BROWSER_MIN, BROWSER_MAX);
     }
   }
 
@@ -380,7 +378,7 @@
 
           <aside
             class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
-            style="width: {clamp(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
+            style="width: {clampPanelWidth(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
           >
             <RightPanel />
           </aside>

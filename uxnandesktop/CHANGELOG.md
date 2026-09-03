@@ -62,6 +62,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   reporter inside its own config directory, and no two may share one (a shared
   copy would let one agent's uninstall silently disarm another).
 
+- **Dragging a panel edge no longer fails the whole settings write.** The
+  persisted widths are `u32`, and pointer coordinates are whole numbers on
+  Windows but **subpixel on macOS** — so the first drag of a sidebar on a Mac
+  sent serde a float and it rejected the entire `AppSettings` payload
+  (*invalid type: floating point `312.57421875`, expected u32*), taking every
+  other setting in that snapshot with it and surfacing as a backend error. Panel
+  widths are now clamped to whole pixels at the one place they are written
+  (`$lib/panelWidth`), the same rule the pet's drag-to-park offsets already
+  followed.
+
 - **The macOS traffic lights sit in the app bar instead of above it.** With the
   overlay titlebar the buttons keep AppKit's own placement, which is measured
   against the 32px system titlebar it replaced — so in our 40px app bar they
