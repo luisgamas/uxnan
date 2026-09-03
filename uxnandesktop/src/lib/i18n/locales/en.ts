@@ -1314,7 +1314,7 @@ export const en = {
     "Notify when an agent goes idle while you're looking at another space.",
   "settings.preventSleep": "Prevent sleep while working",
   "settings.preventSleepDesc":
-    "Keep the system awake while an agent is working (auto-releases after 2 h). macOS/Linux support is implemented but untested.",
+    "Keep the system awake while an agent is working (auto-releases after 2 h). On macOS and Linux this is experimental: it holds the system's own inhibitor (caffeinate / systemd-inhibit), but that has not been confirmed on real hardware yet.",
   "settings.pinAgentSessions": "Name agent sessions at launch",
   "settings.pinAgentSessionsDesc":
     "Give each session an id when the agent starts, so its tab comes back after a restart even if you never wrote a message. Adds one flag to the launched command, for the CLIs that support it (Claude Code, Grok, Pi, Antigravity).",

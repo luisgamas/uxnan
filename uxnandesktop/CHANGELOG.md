@@ -41,6 +41,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **"Prevent sleep" says experimental instead of untested, and the platform
+  matrix stops claiming the app has never run on a Mac.** The settings row read
+  "macOS/Linux support is implemented but untested", which is both harsher and
+  vaguer than what is actually known — it now names the mechanism it holds
+  (`caffeinate` / `systemd-inhibit`) and says only the part that is genuinely
+  unconfirmed, which is its effect on real hardware. In the same pass, the
+  support matrix and `README.md`'s module tree are corrected: the app **was**
+  first run on real Apple Silicon on 2026-09-02, and that run is what produced
+  this release's Mac fixes. **No level moves** — `macos-aarch64` stays at
+  `builds`, because what has still never been launched is the shipped DMG, and
+  the Gatekeeper walkthrough, the feature smoke pass and the resource baseline
+  all remain owed.
+
 - **The status bar calls a macOS or Linux build *experimental*, not untested.**
   It read "Untested on macOS" under an alert triangle — harsher than the page
   the build was downloaded from, which says *experimental* in the README, the
