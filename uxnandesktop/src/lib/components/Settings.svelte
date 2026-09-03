@@ -654,7 +654,19 @@
   const agentShellGroups = $derived<ComboGroup[]>([
     {
       items: [
-        { value: AGENT_SHELL_DEFAULT, label: i18n.t("settings.agentShellSmart") },
+        {
+          value: AGENT_SHELL_DEFAULT,
+          // Name the shell the smart default actually resolves to on THIS
+          // machine. The label used to read "Smart default (Command Prompt)"
+          // everywhere, which on a Mac announced a Windows shell the app would
+          // never launch — the one thing this row exists to tell you.
+          label: i18n.t("settings.agentShellSmart", {
+            shell:
+              app.agentShellProfile()?.name?.trim() ||
+              app.agentShellProfile()?.command?.trim() ||
+              i18n.t("settings.agentShellSmartUnknown"),
+          }),
+        },
         ...app.terminalProfiles.map((p) => ({
           value: p.id,
           label: p.name.trim() || i18n.t("terminal.unnamedProfile"),

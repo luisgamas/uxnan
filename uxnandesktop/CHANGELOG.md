@@ -23,6 +23,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a function with a contract is the point: as a comment above a `try` it was one
   stray `await` away from coming back.
 
+- **The agent launch shell names the shell it will actually use.** The picker
+  read *Smart default (Command Prompt)* on every platform, so on a Mac the one
+  row whose job is to tell you which shell agents start in announced a Windows
+  shell the app would never launch. It now names what it resolves to here —
+  *Smart default — zsh (login shell)* — and the description covers both cases
+  instead of only Windows. The behaviour was already correct and is unchanged.
+
 ## [0.0.46] - 20260903
 ### Added
 
