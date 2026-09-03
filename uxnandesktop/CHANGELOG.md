@@ -30,6 +30,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   *Smart default — zsh (login shell)* — and the description covers both cases
   instead of only Windows. The behaviour was already correct and is unchanged.
 
+- **macOS keyboard shortcuts read as shortcuts.** They rendered as `⌘`, `Shift`,
+  `ArrowRight` — one symbol and two English words in separate boxes, next to
+  Windows' tidy `Ctrl` + `Shift` + `ArrowRight`. Mac shortcuts now use Apple's
+  symbols (⌘ ⇧ ⌥ ⌃, and glyphs for Tab and the arrows) in Apple's canonical
+  modifier order, while keeping the shape every platform shares: one keycap per
+  key, joined by a `+`. The menu bar's run-together `⇧⌘→` is right for a menu and
+  unreadable in a settings list, so it is deliberately not copied.
+
 ## [0.0.46] - 20260903
 ### Added
 
