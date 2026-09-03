@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.24-alpha.20260903] - 20260903
 ### Changed
 
 - **`typescript` is declared where it is used.** Every bridge script that
