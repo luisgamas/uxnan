@@ -46,6 +46,33 @@ pub struct PtySpec {
     pub rows: u16,
 }
 
+/// What the terminal declares itself to be, before the caller's own variables.
+///
+/// `TERM` is not inherited from anywhere useful. A GUI app launched from the
+/// Dock, Finder or a desktop launcher starts with **no** `TERM` at all — the
+/// variable is set by terminal emulators, and nothing on that path is one. The
+/// child shell then inherits that emptiness, every CLI inside it concludes the
+/// terminal cannot do colour, and the whole session renders monochrome. (Run the
+/// app from a terminal instead and it inherits that terminal's `TERM`, which is
+/// why this never shows up in development.)
+///
+/// So the terminal says what it is, exactly as the SSH path already does for a
+/// remote shell: `xterm-256color`, because that is what the frontend's xterm
+/// actually is — claiming anything else makes a TUI draw for a terminal that is
+/// not there. `COLORTERM` goes with it because xterm.js renders 24-bit colour,
+/// and a CLI that checks only `TERM` will otherwise quantise to 256.
+///
+/// Both are defaults, not overrides: they are emitted first, so a caller that
+/// sets either in `spec.env` still wins.
+fn terminal_env(caller: &[(String, String)]) -> Vec<(String, String)> {
+    let mut env: Vec<(String, String)> = vec![
+        ("TERM".to_string(), "xterm-256color".to_string()),
+        ("COLORTERM".to_string(), "truecolor".to_string()),
+    ];
+    env.extend(caller.iter().cloned());
+    env
+}
+
 /// One live pseudoterminal: the master handle (for resize), its writer (stdin)
 /// and the child process (for kill).
 struct PtySession {
@@ -105,7 +132,7 @@ impl PtyManager {
         for arg in &spec.args {
             cmd.arg(arg);
         }
-        for (key, value) in &spec.env {
+        for (key, value) in terminal_env(&spec.env) {
             cmd.env(key, value);
         }
         let cwd = spec.cwd.unwrap_or_else(default_cwd);
@@ -430,5 +457,36 @@ mod tests {
     fn close_unknown_pty_is_noop() {
         let mgr = PtyManager::default();
         assert!(mgr.close("missing").is_ok());
+    }
+
+    /// The bug this guards: launched from the Dock there is no `TERM` to
+    /// inherit, so every CLI in every terminal decided the session had no
+    /// colour. The terminal has to say what it is.
+    #[test]
+    fn a_terminal_declares_what_it_is() {
+        let env = terminal_env(&[]);
+        assert!(env.contains(&("TERM".to_string(), "xterm-256color".to_string())));
+        assert!(env.contains(&("COLORTERM".to_string(), "truecolor".to_string())));
+    }
+
+    #[test]
+    fn the_callers_own_variables_come_after_and_win() {
+        let env = terminal_env(&[
+            ("UXNAN_AGENT_ID".to_string(), "a1".to_string()),
+            ("TERM".to_string(), "dumb".to_string()),
+        ]);
+        // `CommandBuilder::env` is last-write-wins, so ours being first is what
+        // makes them defaults rather than overrides — a profile or an agent that
+        // deliberately sets TERM keeps its value.
+        let term_positions: Vec<usize> = env
+            .iter()
+            .enumerate()
+            .filter(|(_, (k, _))| k == "TERM")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(term_positions.len(), 2);
+        assert!(term_positions[0] < term_positions[1]);
+        assert_eq!(env[term_positions[1]].1, "dumb");
+        assert!(env.contains(&("UXNAN_AGENT_ID".to_string(), "a1".to_string())));
     }
 }

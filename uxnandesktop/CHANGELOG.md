@@ -4,7 +4,37 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **The diagnostics log records which renderer the terminals got.** xterm draws
+  on WebGL when it can and silently falls back to a DOM renderer when it cannot
+  — a bare `catch` with a comment. That fallback is not cosmetic: it repaints
+  markedly slower under heavy output, so it surfaces as "the terminal feels
+  laggy", with nothing anywhere to explain it and no way to tell it apart from a
+  slow *program*. It now writes one line per outcome per session — `renderer:
+  WebGL (accelerated)`, or the DOM fallback with its reason — including the
+  second path into the fallback, a repeated WebGL context loss, which used to
+  leave a pane on the slow renderer just as quietly. A performance trade the app
+  makes on your behalf belongs in the record it already keeps.
+
 ### Fixed
+
+- **Terminals have colour again.** Every CLI in every terminal rendered
+  monochrome — an agent's own branding included — because the shell was started
+  with **no `TERM` at all**. That variable is set by terminal emulators, and
+  nothing on the path from the Dock, Finder or a desktop launcher is one, so a
+  GUI launch inherits an empty environment and the child shell inherits that
+  emptiness. Anything that asks "can this terminal do colour?" got no for an
+  answer. Running the app *from* a terminal hides it completely, since it then
+  inherits that terminal's `TERM` — which is why it survived development.
+
+  A terminal now says what it is: `TERM=xterm-256color` and
+  `COLORTERM=truecolor`, exactly as the SSH path already declared for a remote
+  shell, and for the same stated reason — that is what the frontend's xterm
+  actually is, and claiming otherwise makes a TUI draw for a terminal that is not
+  there. Both are defaults rather than overrides: they are set before the
+  caller's own variables, so a profile or an agent that pins either keeps it.
+
 
 - **An agent no longer gets its own launch command typed into it.** Sometimes a
   freshly launched agent found the whole line — command, session id, MCP flags —

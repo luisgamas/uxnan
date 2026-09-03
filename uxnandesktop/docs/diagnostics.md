@@ -54,6 +54,7 @@ message.
 | `webview.rejection` | An unhandled promise rejection in the frontend |
 | `persistence` | Failing to load the persisted state (the app then starts fresh) |
 | `hooks` | The agent hook server failing to start, or hook scripts failing to install |
+| `terminal` | Which renderer xterm actually got — `WebGL (accelerated)`, or the **DOM fallback** with the reason. Once per outcome per session. The fallback is not cosmetic: it repaints markedly slower under heavy output, which reads as "the terminal feels laggy" and is otherwise indistinguishable from a slow *program*, so the app records the trade it made on your behalf |
 
 ### What is never recorded
 
