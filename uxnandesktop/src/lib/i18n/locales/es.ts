@@ -1400,9 +1400,10 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultAgentDesc":
     "Se lanza automáticamente en un worktree justo después de crearlo. Déjalo en “Ninguno” para no iniciar ningún agente automáticamente.",
   "settings.agentShell": "Shell de lanzamiento de agentes",
-  "settings.agentShellSmart": "Predeterminado (Símbolo del sistema)",
+  "settings.agentShellSmart": "Predeterminado — {shell}",
+  "settings.agentShellSmartUnknown": "tu perfil de terminal predeterminado",
   "settings.agentShellDesc":
-    "El shell en el que se lanzan los agentes cuando no fijan el suyo. En Windows, el Símbolo del sistema inicia los CLI de agente más rápido y entrecomilla de forma más predecible que PowerShell; elige otro shell si lo prefieres.",
+    "El shell en el que se lanzan los agentes cuando no fijan el suyo. En Windows es el Símbolo del sistema, que inicia los CLI de agente más rápido y entrecomilla de forma más predecible que PowerShell; en el resto es tu perfil de terminal predeterminado. Elige otro shell si lo prefieres.",
 
   // Settings → Agents → Hooks (configs listas para usar)
   "hooks.title": "Hooks",

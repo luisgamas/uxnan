@@ -4,6 +4,39 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An agent no longer gets its own launch command typed into it.** Sometimes a
+  freshly launched agent found the whole line — command, session id, MCP flags —
+  sitting in its prompt box, as if someone had pasted it there. Someone had: us.
+  The one-shot that types the launch line is re-armed by **every** chunk of PTY
+  output, and the flag it guards on was set only after two awaits (resolving the
+  MCP catalog, then the write). The launch's own output lands inside exactly that
+  window — the shell echoing the command, then the agent painting its TUI — so it
+  armed a second timer, which fired a quiet window later and typed the line again,
+  this time into the running agent. That is also why it favoured the long lines:
+  a pinned session id and MCP flags are what make the echo big enough to matter.
+
+  The sequence now lives in `$lib/terminal/agentLaunch`, which claims the
+  one-shot *before* it awaits anything and hands the claim back only when the
+  write genuinely failed (a PTY that is not ready must stay retryable). Making it
+  a function with a contract is the point: as a comment above a `try` it was one
+  stray `await` away from coming back.
+
+- **The agent launch shell names the shell it will actually use.** The picker
+  read *Smart default (Command Prompt)* on every platform, so on a Mac the one
+  row whose job is to tell you which shell agents start in announced a Windows
+  shell the app would never launch. It now names what it resolves to here —
+  *Smart default — zsh (login shell)* — and the description covers both cases
+  instead of only Windows. The behaviour was already correct and is unchanged.
+
+- **macOS keyboard shortcuts read as shortcuts.** They rendered as `⌘`, `Shift`,
+  `ArrowRight` — one symbol and two English words in separate boxes, next to
+  Windows' tidy `Ctrl` + `Shift` + `ArrowRight`. Mac shortcuts now use Apple's
+  symbols (⌘ ⇧ ⌥ ⌃, and glyphs for Tab and the arrows) in Apple's canonical
+  modifier order, while keeping the shape every platform shares: one keycap per
+  key, joined by a `+`. The menu bar's run-together `⇧⌘→` is right for a menu and
+  unreadable in a settings list, so it is deliberately not copied.
 
 ## [0.0.46] - 20260903
 ### Added

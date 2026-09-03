@@ -115,6 +115,10 @@ The global default is **Smart default**, which means:
   default.
 - **macOS / Linux → your default terminal profile** (your login shell).
 
+The picker names whichever of those it resolves to on *this* machine —
+*Smart default — zsh (login shell)* on a Mac, *Smart default — Command Prompt*
+on Windows — rather than stating one platform's answer everywhere.
+
 Prefer PowerShell, Git Bash, WSL, or a specific profile? Pick it in **Agent launch
 shell** — or pin it on individual agents via **Launch in**. (Manage the available
 shells in **Settings → Terminal → Profiles**.)

@@ -251,15 +251,64 @@ export function matchAction(e: KeyboardEvent): string | null {
  *  to the caller). */
 export function formatChord(chord: string): string {
   if (!chord) return "";
-  return formatChordParts(chord).join(isMac ? "" : "+");
+  return formatChordParts(chord).join("+");
 }
 
-/** The display tokens of a chord, one per key (Mod → Ctrl or ⌘). Lets the UI
- *  render each key as its own keycap (e.g. `Ctrl` `+` `,`) instead of cramming
- *  a whole combo into one — far more legible. `[]` for an empty/disabled chord. */
-export function formatChordParts(chord: string): string[] {
+/** Apple's symbols for the keys a chord can name, and the order it writes the
+ *  modifiers in: ⌃ ⌥ ⇧ ⌘, then the key. The symbols are what a Mac user reads;
+ *  the order is Apple's. What we do *not* copy is the menu bar's run-together
+ *  `⇧⌘→`: every chord here is drawn as one keycap per key, joined by a `+`, and
+ *  that separation is what makes a combo legible in a settings list rather than
+ *  a glyph soup. Same shape on every platform — only the tokens change. */
+const MAC_SYMBOLS: Record<string, string> = {
+  Mod: "⌘",
+  Ctrl: "⌃",
+  Control: "⌃",
+  Alt: "⌥",
+  Option: "⌥",
+  Shift: "⇧",
+  Tab: "⇥",
+  Enter: "↩",
+  Escape: "⎋",
+  Esc: "⎋",
+  Backspace: "⌫",
+  Delete: "⌦",
+  Space: "␣",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+};
+
+/** Modifier order Apple prints them in; anything else is the key and goes last. */
+const MAC_MODIFIER_ORDER = ["Ctrl", "Control", "Alt", "Option", "Shift", "Mod"];
+
+/** The display tokens of a chord.
+ *
+ *  One token per key, on every platform, so the UI can render each as its own
+ *  keycap joined by a faint `+` — `Ctrl` `+` `Shift` `+` `N`. A combo crammed
+ *  into a single box is far harder to read in a settings list.
+ *
+ *  What changes on macOS is the *tokens*, not the shape: `Mod` becomes ⌘, the
+ *  other modifiers take their Mac symbols, named keys become glyphs (⇥, →), and
+ *  the modifiers are reordered into Apple's ⌃ ⌥ ⇧ ⌘. It used to leave "Shift"
+ *  and "ArrowRight" spelled out in English beside a ⌘ symbol.
+ *
+ *  `[]` for an empty/disabled chord. */
+export function formatChordParts(chord: string, mac: boolean = isMac): string[] {
   if (!chord) return [];
-  return chord.split("+").map((p) => (p === "Mod" ? (isMac ? "⌘" : "Ctrl") : p));
+  const parts = chord.split("+");
+  if (!mac) return parts.map((p) => (p === "Mod" ? "Ctrl" : p));
+  const modifiers = MAC_MODIFIER_ORDER.filter((m) => parts.includes(m)).map(
+    (m) => MAC_SYMBOLS[m],
+  );
+  const keys = parts
+    .filter((p) => !MAC_MODIFIER_ORDER.includes(p))
+    // A single character is a letter or punctuation and goes up (⌘S, not ⌘s);
+    // anything longer is a key name we have no symbol for, and mangling its case
+    // would only turn "PageDown" into "PAGEDOWN".
+    .map((p) => MAC_SYMBOLS[p] ?? (p.length === 1 ? p.toUpperCase() : p));
+  return [...modifiers, ...keys];
 }
 
 /** Convert a chord to a CodeMirror key name (`Mod+Shift+S` → `Mod-Shift-s`), or
