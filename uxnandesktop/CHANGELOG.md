@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.46] - 20260903
 ### Added
 
 - **A dev server running on a host is now one click away.** A server started on
