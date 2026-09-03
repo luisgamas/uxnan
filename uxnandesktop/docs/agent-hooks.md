@@ -241,6 +241,15 @@ spawns (inherited by any agent run inside that terminal):
 | `UXNAN_AGENT_ID` | This terminal's id — echo it back as `agentId` |
 | `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd` — a file the ADE rewrites every launch with the live url + token. It is the **rescue**, not the first choice: a reporter uses the terminal's own environment and falls back to this file only when that fails, which is what a terminal that outlived an app restart needs. |
 
+Every terminal also starts with `TERM=xterm-256color` and `COLORTERM=truecolor`,
+because that is what the frontend's xterm actually is. They are defaults, not
+overrides — a terminal profile or an agent that sets either one keeps its value.
+The ADE has to state them: launched from the Dock, Finder or a desktop launcher
+there is no `TERM` to inherit (that variable comes from terminal emulators, and
+none of those is one), so without this every CLI in every terminal concluded the
+session had no colour. Running the app *from* a terminal hides the problem, which
+is why it never appears in development.
+
 You never need to set these by hand — the reporters pick them up from the
 environment, and so does anything else you write against the contract.
 
