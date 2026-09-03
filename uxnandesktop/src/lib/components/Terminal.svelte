@@ -1,3 +1,12 @@
+<script module lang="ts">
+  // One-shot guards for `recordRenderer` (see it, below, for why the renderer is
+  // logged once per outcome rather than per attach). Module-level on purpose:
+  // which renderer xterm can get is a property of the webview, so the first
+  // terminal to find out has answered it for the whole app.
+  let loggedAccelerated = false;
+  let loggedFallback = false;
+</script>
+
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -20,6 +29,8 @@
     type TerminalInstance,
   } from "$lib/terminal/instances";
   import { arbitrateTerminalKey, isMac, type ArbiterContext } from "$lib/keybindings";
+  import { diagnosticsLog } from "$lib/api";
+
   import { runAppAction } from "$lib/keyactions";
   import { terminalKeyboard } from "$lib/state/terminalKeyboard.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
@@ -261,19 +272,52 @@
         const rapid = now - owner.webglLossAt < 2000;
         owner.webglLossAt = now;
         disposeRenderer(webgl);
-        if (!rapid) {
-          requestAnimationFrame(() => {
-            if (term && inst && !inst.renderer) attachRenderer();
-            forceRepaint();
-          });
+        if (rapid) {
+          // Over the context budget: we stay on the DOM fallback until the next
+          // reveal. That is a real drop in paint throughput, so say so.
+          recordRenderer(false, "repeated WebGL context loss");
+          return;
         }
+        requestAnimationFrame(() => {
+          if (term && inst && !inst.renderer) attachRenderer();
+          forceRepaint();
+        });
       });
       term.loadAddon(webgl);
       owner.renderer = webgl;
-    } catch {
+      recordRenderer(true);
+    } catch (err) {
       // WebGL unavailable — xterm falls back to the DOM renderer.
       owner.renderer = undefined;
+      recordRenderer(false, err instanceof Error ? err.message : String(err));
     }
+  }
+
+  // Which renderer the terminals actually got, recorded once per session per
+  // outcome.
+  //
+  // The fallback to xterm's DOM renderer used to be a bare `catch` with a
+  // comment: correct, and completely silent. But it is not a cosmetic
+  // difference — the DOM renderer repaints markedly slower under heavy output,
+  // which surfaces as "the terminal feels laggy" with nothing anywhere to
+  // explain it, and no way to tell it apart from a slow *program*. A perf cliff
+  // the app takes on your behalf belongs in the log it already keeps.
+  //
+  // Once per outcome, not per call: `attachRenderer` runs on every reveal, and
+  // the answer is a property of the webview, not of one pane.
+  function recordRenderer(accelerated: boolean, reason?: string): void {
+    if (accelerated ? loggedAccelerated : loggedFallback) return;
+    if (accelerated) loggedAccelerated = true;
+    else loggedFallback = true;
+    void diagnosticsLog(
+      accelerated ? "info" : "warn",
+      "terminal",
+      accelerated
+        ? "renderer: WebGL (accelerated)"
+        : `renderer: DOM fallback, output paints slower — ${reason ?? "WebGL unavailable"}`,
+    ).catch(() => {
+      // Diagnostics is best-effort; never let logging break a terminal.
+    });
   }
 
   // Dispose the accelerated addon defensively. xterm's WebGL disposer reaches into

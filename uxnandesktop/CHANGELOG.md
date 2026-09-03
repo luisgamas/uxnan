@@ -4,6 +4,19 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **The diagnostics log records which renderer the terminals got.** xterm draws
+  on WebGL when it can and silently falls back to a DOM renderer when it cannot
+  — a bare `catch` with a comment. That fallback is not cosmetic: it repaints
+  markedly slower under heavy output, so it surfaces as "the terminal feels
+  laggy", with nothing anywhere to explain it and no way to tell it apart from a
+  slow *program*. It now writes one line per outcome per session — `renderer:
+  WebGL (accelerated)`, or the DOM fallback with its reason — including the
+  second path into the fallback, a repeated WebGL context loss, which used to
+  leave a pane on the slow renderer just as quietly. A performance trade the app
+  makes on your behalf belongs in the record it already keeps.
+
 ### Fixed
 
 - **Terminals have colour again.** Every CLI in every terminal rendered
