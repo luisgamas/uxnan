@@ -34,6 +34,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { WebglAddon } from '@xterm/addon-webgl';
 import { openUrl } from '$lib/api';
 import { ensureMcpLaunch, withMcpLaunch } from '$lib/mcpLaunch';
+import { runAgentLaunch } from '$lib/terminal/agentLaunch';
 import { agentMonitor } from '$lib/state/agentMonitor.svelte';
 import { KeyboardProtocol } from '$lib/terminal/keyboardProtocol';
 import { DEFAULT_TERMINAL_SCROLLBACK, SNAPSHOT_SCROLLBACK } from '$lib/terminal/scrollback';
@@ -460,9 +461,12 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
     sawOutput: inst.sawOutput,
     requested: delay,
   });
-  inst.launchTimer = setTimeout(async () => {
+  inst.launchTimer = setTimeout(() => {
     inst.launchTimer = undefined;
-    try {
+    // `runAgentLaunch` claims the one-shot before awaiting anything — see it for
+    // why that ordering is the whole correctness argument, and what typed the
+    // launch line into the running agent when it was not.
+    void runAgentLaunch(inst, async () => {
       await ensureMcpLaunch();
       const command = withMcpLaunch(runCommand, inst.spec.shell);
       // Auto-run appends Enter; "type only" leaves the line for the user to run.
@@ -470,11 +474,7 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
         id: inst.id,
         data: runCommandExecute ? `${command}\r` : command,
       });
-      inst.launched = true;
-    } catch {
-      // Backend not ready for this write — stay retryable (next output chunk
-      // or fallback reschedules).
-    }
+    });
   }, wait);
 }
 
