@@ -163,7 +163,7 @@ uncovered branches get evidence before they get changes.
 
 | Area | Branches | Coverage |
 |---|---|---|
-| `platform.ts` | User-agent OS detection; the status-bar "untested platform" badge for macOS/Linux | Unit-tested (`platform.test.ts`) |
+| `platform.ts` | User-agent OS detection; the status-bar "experimental platform" badge for macOS/Linux | Unit-tested (`platform.test.ts`) |
 | `keybindings.ts`, `Terminal.svelte`, `WindowControls.svelte`, dialogs | `isMac` modifier mapping (⌘ vs Ctrl), chord rendering, native macOS controls vs custom Windows/Linux controls | Platform selection/config is contract-tested, traffic-light placement now against measured values; input behavior remains a visible check in each platform's smoke checklist |
 | `shell.ts`, `terminalTemplates.ts` | Per-shell quoting (PowerShell/cmd/POSIX), per-OS profile templates | Quoting fully tested; templates are data |
 | `windowsJunctionGuard.ts` | Windows-only Redirection-Guard detection | Pure detector fully tested; the OS gate is a one-line guard |

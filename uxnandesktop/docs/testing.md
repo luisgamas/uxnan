@@ -225,7 +225,7 @@ example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
 vs merely still readable) and `platform.ts` (user-agent OS detection behind the
-untested-platform badge and every per-OS frontend default) and
+experimental-platform badge and every per-OS frontend default) and
 `resources/policy.ts` (the resource-mode policy
 engine: presets with Balanced pinned to the pre-mode constants, residue-free
 normalization/clamping, headroom gating and the effective poll intervals) and

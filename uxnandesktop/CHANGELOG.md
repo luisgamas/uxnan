@@ -39,6 +39,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   — the tunnel is aimed there instead of at a loopback that was never going to
   reply. Spec: `architecture/02g-remote-hosts.md` §5.14.
 
+### Changed
+
+- **The status bar calls a macOS or Linux build *experimental*, not untested.**
+  It read "Untested on macOS" under an alert triangle — harsher than the page
+  the build was downloaded from, which says *experimental* in the README, the
+  install guide and the site. Nothing about the honesty changes: the tooltip
+  still says this build is validated on Windows first and has not had an
+  end-to-end pass on this hardware, and invites a report. What changes is that
+  the chip now states **which build this is** rather than warning about it — the
+  quiet informational styling the rest of the bar uses, with a flask instead of
+  a triangle, leaving amber to mean something is actually wrong (the hooks
+  indicator beside it).
+
 ### Fixed
 
 - **Agent hooks install on macOS at all.** A hook command is a literal path to

@@ -1319,9 +1319,9 @@ export const es: Record<MessageKey, string> = {
   "settings.pinAgentSessions": "Nombrar las sesiones al lanzarlas",
   "settings.pinAgentSessionsDesc":
     "Asigna un id a cada sesión cuando arranca el agente, para que su pestaña vuelva tras reiniciar aunque no hayas escrito ningún mensaje. Añade un parámetro al comando lanzado, en los CLI que lo permiten (Claude Code, Grok, Pi, Antigravity).",
-  "status.untested": "Sin probar en {os}",
-  "status.untestedTooltip":
-    "Uxnan se desarrolla y valida en Windows. El soporte de {os} está implementado pero aún no se ha probado en hardware real (alpha).",
+  "status.experimental": "{os} — experimental",
+  "status.experimentalTooltip":
+    "La versión para {os} es experimental: está implementada por completo y se compila en CI, pero Uxnan se desarrolla y valida primero en Windows, así que a esta aún le falta una pasada completa en hardware {os}. Si ves algo raro aquí, tu reporte es más que bienvenido.",
   "settings.agentNotifications": "Notificaciones de inactividad",
   "settings.agentNotificationsDesc":
     "Notificar cuando un agente queda inactivo y estás viendo otro espacio.",

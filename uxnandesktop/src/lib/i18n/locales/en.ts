@@ -1318,9 +1318,9 @@ export const en = {
   "settings.pinAgentSessions": "Name agent sessions at launch",
   "settings.pinAgentSessionsDesc":
     "Give each session an id when the agent starts, so its tab comes back after a restart even if you never wrote a message. Adds one flag to the launched command, for the CLIs that support it (Claude Code, Grok, Pi, Antigravity).",
-  "status.untested": "Untested on {os}",
-  "status.untestedTooltip":
-    "Uxnan is developed and validated on Windows. {os} support is implemented but not yet tested on real hardware (alpha).",
+  "status.experimental": "{os} — experimental",
+  "status.experimentalTooltip":
+    "The {os} build is experimental: implemented in full and built in CI, but Uxnan is developed and validated on Windows first, so this one hasn't been put through an end-to-end pass on {os} hardware yet. If something looks wrong here, an issue is genuinely welcome.",
   "notify.agentDoneTitle": "{agent} finished the task",
   "notify.agentDoneBody": "Task complete.",
   "notify.agentTask": "Task: {task}",
