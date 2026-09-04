@@ -373,7 +373,20 @@
             </label>
           {/each}
         {:else}
-          <span class={text.meta}>{i18n.t("providers.noWindowsToPick")}</span>
+          <!-- Two different situations used to share one sentence, and it named
+               the wrong one. A provider read that came back `ok` and has no
+               windows is not waiting on a sign-in — the account simply has no
+               quota window to meter, which is what a pay-as-you-go Grok account
+               looks like: live, authenticated, billed by spend rather than by a
+               percentage. Telling that user to "refresh once signed in" sends
+               them to fix a login that is already fine. -->
+          <span class={text.meta}>
+            {i18n.t(
+              snapshot?.status === "ok"
+                ? "providers.noWindowsForAccount"
+                : "providers.noWindowsToPick",
+            )}
+          </span>
         {/if}
         <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
           <Checkbox

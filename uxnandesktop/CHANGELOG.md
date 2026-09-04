@@ -22,6 +22,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   since each tab owns its own actions. So the title had its full inset while the
   composer's Send sat on the border. It now carries a matching bottom inset.
 
+- **A provider with no quota window stops being told to sign in again.** One
+  sentence covered two different situations and named the wrong one: a read that
+  came back live, with no windows, said *"No quota windows yet — refresh once
+  signed in."* Quota windows are percentages of an allowance, so an account
+  billed by spend has none to report — verified against the real API for a
+  pay-as-you-go Grok account, which returns no `creditUsagePercent` at all, and
+  with no on-demand cap and nothing spent has no balance worth drawing either.
+  Nothing was broken; the panel just blamed a login that was fine. It now says
+  the account reports no window when the read succeeded, and keeps the
+  sign-in wording for the case that really is one.
+
 - **Claude Code's provider panel stops claiming you are signed out on macOS.**
   There it writes no `~/.claude/.credentials.json` at all — the token lives in
   the login Keychain — so the reader reported "not signed in" to people who were

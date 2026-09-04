@@ -23,6 +23,14 @@ A provider that isn't set up, isn't signed in, or errors shows a clear status
 (`Not set up` / `Sign in required` / `Unavailable`) instead of failing the rest —
 each provider is read independently.
 
+**A live provider can still have no meter.** Quota windows are percentages of an
+allowance, so an account billed by spend has none to report — a pay-as-you-go
+Grok account returns no `creditUsagePercent`, and with no on-demand cap and
+nothing spent there is no balance worth drawing either. That is not a failure
+and not a sign-in problem: the provider reads `Live`, and the status-bar
+section says the account reports no window rather than telling you to sign in
+again.
+
 ### What's missing
 
 **Claude Code has no usage on macOS.** There it does not write

@@ -857,6 +857,8 @@ export const en = {
   "providers.empty": "No providers yet. Add one above to track its usage.",
   "providers.showInStatusBar": "Show in status bar",
   "providers.noWindowsToPick": "No quota windows yet — refresh once signed in.",
+  "providers.noWindowsForAccount":
+    "This account reports no quota window, so there is nothing to meter in the status bar.",
   "providers.showPlan": "Plan",
   "providers.showCredit": "Credit balance",
   "providers.refreshGlobal": "Global default",
