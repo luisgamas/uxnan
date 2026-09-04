@@ -22,8 +22,14 @@
 
 <Dialog.Root bind:open={app.orchestrationOpen}>
   <!-- Workspace content needs a viewport-relative canvas for its split run and
-       log panes; the named workspace role supplies the desktop clamp. -->
-  <Dialog.Content size="workspace" class="flex max-h-[88vh] flex-col overflow-hidden">
+       log panes; the named workspace role supplies the desktop clamp.
+       `pb-5` because the content shell is `py-0` by design: the top inset comes
+       from `Dialog.Header`'s `pt-5` and the bottom one normally from
+       `Dialog.Footer`'s action band. This console has no footer — each tab owns
+       its own actions, the composer's Send among them — so without a bottom
+       inset those buttons sat flat against the dialog's edge while the title
+       above them had its full 20px. Matching `pt-5` restores the symmetry. -->
+  <Dialog.Content size="workspace" class="flex max-h-[88vh] flex-col overflow-hidden pb-5">
     <Dialog.Header>
       <Dialog.Title class="flex items-center gap-2">
         {i18n.t("orchestration.title")}

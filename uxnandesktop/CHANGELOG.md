@@ -16,6 +16,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the only visible symptom was the boxes emptying. The reset now depends on the
   dialog opening and nothing else.
 
+- **The orchestration console's buttons are no longer flat against its edge.**
+  Its content shell is `py-0` by design — the top inset comes from the header and
+  the bottom one from a footer's action band — and this console has no footer,
+  since each tab owns its own actions. So the title had its full inset while the
+  composer's Send sat on the border. It now carries a matching bottom inset.
+
 ## [0.0.47] - 20260903
 ### Added
 
