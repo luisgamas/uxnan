@@ -4,6 +4,17 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The remove-worktree dialog stops clearing your choices while you fill it in.**
+  Tick "delete remote branch", let an agent print a line, and the box silently
+  cleared itself; pressing the button did it too. The effect that resets the form
+  on open also *tracked* the worktree's git status and its live agent tabs — both
+  of which move on their own, the status poll every few seconds and an agent tab
+  on every burst of terminal output — so it was a reset-on-anything effect. The
+  removal still ran with the values the click had already captured, which is why
+  the only visible symptom was the boxes emptying. The reset now depends on the
+  dialog opening and nothing else.
 
 ## [0.0.47] - 20260903
 ### Added

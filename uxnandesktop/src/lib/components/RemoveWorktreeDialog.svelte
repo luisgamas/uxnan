@@ -14,6 +14,7 @@
   // Everything that destroys MORE than the default lives under "Advanced",
   // collapsed: forcing an unmerged branch delete, and forcing removal over
   // uncommitted work. They stay one click away — never a default, never hidden.
+  import { untrack } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Button } from "$lib/components/ui/button";
@@ -63,29 +64,41 @@
     }),
   );
 
-  // Reset each time the dialog opens; look up whether the branch exists on origin
-  // so the remote option is only offered when it can do something.
+  // Reset when the dialog OPENS — and only then.
+  //
+  // `open` is the sole dependency on purpose, so the body runs `untrack`ed. It
+  // reads `defaults`, which derives from the worktree's git status and its live
+  // agent tabs; both move on their own while the dialog sits there (the status
+  // poll every few seconds, an agent tab's state on every burst of terminal
+  // output). Tracking those made this a *reset-on-anything* effect: tick "delete
+  // remote branch", let an agent print a line, and the box silently cleared
+  // itself. Pressing the button did it too — the removal it kicks off changes
+  // exactly that state, so the form wiped mid-flight. The actions still ran with
+  // the values `confirm()` had already captured, which is why the damage was
+  // invisible until you looked back at the boxes.
   $effect(() => {
     if (!open) return;
-    // Seeded from the verdict rather than always-false: a landed branch arrives
-    // ticked, so the common finished case is one button.
-    deleteLocal = defaults.deleteLocal;
-    forceLocal = false;
-    deleteRemote = false;
-    forceRemove = false;
-    advancedOpen = false;
-    remoteExists = false;
-    forceNeeded = false;
-    error = null;
-    if (!row.branch) return;
-    projects
-      .branchInfo(row.repoId)
-      .then((info) => {
-        remoteExists = info.remoteBranches.includes(row.branch as string);
-      })
-      .catch(() => {
-        // A missing remote just means no remote option — never block the removal.
-      });
+    untrack(() => {
+      // Seeded from the verdict rather than always-false: a landed branch
+      // arrives ticked, so the common finished case is one button.
+      deleteLocal = defaults.deleteLocal;
+      forceLocal = false;
+      deleteRemote = false;
+      forceRemove = false;
+      advancedOpen = false;
+      remoteExists = false;
+      forceNeeded = false;
+      error = null;
+      if (!row.branch) return;
+      projects
+        .branchInfo(row.repoId)
+        .then((info) => {
+          remoteExists = info.remoteBranches.includes(row.branch as string);
+        })
+        .catch(() => {
+          // A missing remote just means no remote option — never block removal.
+        });
+    });
   });
 
   function toggleLocal() {
