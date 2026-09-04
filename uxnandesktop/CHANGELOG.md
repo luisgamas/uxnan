@@ -4,6 +4,43 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The remove-worktree dialog stops clearing your choices while you fill it in.**
+  Tick "delete remote branch", let an agent print a line, and the box silently
+  cleared itself; pressing the button did it too. The effect that resets the form
+  on open also *tracked* the worktree's git status and its live agent tabs — both
+  of which move on their own, the status poll every few seconds and an agent tab
+  on every burst of terminal output — so it was a reset-on-anything effect. The
+  removal still ran with the values the click had already captured, which is why
+  the only visible symptom was the boxes emptying. The reset now depends on the
+  dialog opening and nothing else.
+
+- **The orchestration console's buttons are no longer flat against its edge.**
+  Its content shell is `py-0` by design — the top inset comes from the header and
+  the bottom one from a footer's action band — and this console has no footer,
+  since each tab owns its own actions. So the title had its full inset while the
+  composer's Send sat on the border. It now carries a matching bottom inset.
+
+- **A provider with no quota window stops being told to sign in again.** One
+  sentence covered two different situations and named the wrong one: a read that
+  came back live, with no windows, said *"No quota windows yet — refresh once
+  signed in."* Quota windows are percentages of an allowance, so an account
+  billed by spend has none to report — verified against the real API for a
+  pay-as-you-go Grok account, which returns no `creditUsagePercent` at all, and
+  with no on-demand cap and nothing spent has no balance worth drawing either.
+  Nothing was broken; the panel just blamed a login that was fine. It now says
+  the account reports no window when the read succeeded, and keeps the
+  sign-in wording for the case that really is one.
+
+- **Claude Code's provider panel stops claiming you are signed out on macOS.**
+  There it writes no `~/.claude/.credentials.json` at all — the token lives in
+  the login Keychain — so the reader reported "not signed in" to people who were
+  signed in, and sent them off to re-run `claude login` for a problem that is
+  ours. It now says what is actually true: the token is somewhere Uxnan does not
+  read. The data stays unavailable, blocked on the same OS-keyring decision that
+  keeps Antigravity out (`docs/providers.md`, and the FOR-DEV item).
+
 
 ## [0.0.47] - 20260903
 ### Added

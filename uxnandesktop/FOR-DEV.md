@@ -32,7 +32,7 @@ always wins). 813 Rust tests (776 unit + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,244 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,245 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1262,6 +1262,15 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       in the `serverUrl`.
 
 **Providers (usage statistics)**
+- [ ] **Claude Code usage on macOS — blocked on the same keyring decision.**
+      macOS Claude Code writes no `~/.claude/.credentials.json`; the token is in
+      the login Keychain as `Claude Code-credentials` (verified on a real
+      install: the file is absent while the keychain item is present, and
+      `~/.claude.json` exists, so the provider is still *detected*). The reader
+      now reports that honestly instead of "not signed in", but the data stays
+      unavailable. Unblocking it is the identical decision as the Antigravity
+      item below — read the OS keyring — and would cover both providers at once.
+      Site: `src-tauri/src/usage.rs` (`read_claude`).
 - [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
       data.** Researched against a real install; nothing implemented. The data and
       the API are within reach: `agy` talks to Google's Code Assist backend (its own
@@ -1459,7 +1468,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 813 Rust + 1,244 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 813 Rust + 1,245 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

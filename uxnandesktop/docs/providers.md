@@ -15,7 +15,7 @@ into Uxnan — only the token the CLI already stored on disk.
 | Provider | Source file | Reads |
 |---|---|---|
 | **Codex** | `~/.codex/auth.json` | monthly/weekly windows, plan, credit, **rate-limit resets**, account type, email |
-| **Claude Code** | `~/.claude/.credentials.json` | session (5h) / weekly / model-scoped windows, plan, account type |
+| **Claude Code** | `~/.claude/.credentials.json` (**not on macOS** — see below) | session (5h) / weekly / model-scoped windows, plan, account type |
 | **GitHub Copilot** | `gh auth token` | premium/chat/completions quotas, plan, account type, GitHub login |
 | **Grok** | `~/.grok/auth.json` | credit-usage window, reset, **on-demand / prepaid $**, plan, account type, email |
 
@@ -23,7 +23,21 @@ A provider that isn't set up, isn't signed in, or errors shows a clear status
 (`Not set up` / `Sign in required` / `Unavailable`) instead of failing the rest —
 each provider is read independently.
 
+**A live provider can still have no meter.** Quota windows are percentages of an
+allowance, so an account billed by spend has none to report — a pay-as-you-go
+Grok account returns no `creditUsagePercent`, and with no on-demand cap and
+nothing spent there is no balance worth drawing either. That is not a failure
+and not a sign-in problem: the provider reads `Live`, and the status-bar
+section says the account reports no window rather than telling you to sign in
+again.
+
 ### What's missing
+
+**Claude Code has no usage on macOS.** There it does not write
+`~/.claude/.credentials.json` at all — the token lives in the login Keychain
+(`Claude Code-credentials`), so there is nothing to read under the posture above
+and the panel says so plainly rather than claiming you are signed out. This is
+the *same* blocker as Antigravity's below, and the same decision unblocks both.
 
 **Antigravity is not a provider yet.** Its quota sits behind the same Google Code
 Assist API this reader already speaks, but `agy` keeps its OAuth token in the OS

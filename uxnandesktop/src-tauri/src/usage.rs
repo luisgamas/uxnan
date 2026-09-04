@@ -707,6 +707,21 @@ fn codex_base_url(home: &Path) -> String {
 async fn read_claude(home: &Path) -> ProviderUsage {
     let creds_path = home.join(".claude").join(".credentials.json");
     let Some(creds) = read_json(&creds_path) else {
+        // On macOS the file is absent even for a signed-in install: Claude Code
+        // keeps its token in the login Keychain (`Claude Code-credentials`)
+        // instead of on disk. Saying "not signed in" there is simply false — the
+        // user is signed in, we just do not read the OS keyring, which is the
+        // same documented posture that keeps Antigravity out (see
+        // `docs/providers.md` and the FOR-DEV item). Report what is actually
+        // true, so the panel does not send someone off to re-run `claude login`
+        // for a problem that is ours.
+        if cfg!(target_os = "macos") && home.join(".claude.json").exists() {
+            return ProviderUsage::base(UsageProvider::Claude, UsageStatus::AuthRequired)
+                .with_message(
+                    "Claude Code stores its token in the macOS Keychain, which Uxnan does not \
+                     read — usage is unavailable here even while you are signed in",
+                );
+        }
         return ProviderUsage::base(UsageProvider::Claude, UsageStatus::NotInstalled)
             .with_message("Claude Code is not signed in (~/.claude/.credentials.json missing)");
     };

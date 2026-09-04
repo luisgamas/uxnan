@@ -861,6 +861,8 @@ export const es: Record<MessageKey, string> = {
   "providers.empty": "Aún no hay proveedores. Agrega uno arriba para ver su uso.",
   "providers.showInStatusBar": "Mostrar en la barra de estado",
   "providers.noWindowsToPick": "Aún no hay ventanas de cuota — actualiza tras iniciar sesión.",
+  "providers.noWindowsForAccount":
+    "Esta cuenta no reporta ninguna ventana de cuota, así que no hay nada que medir en la barra de estado.",
   "providers.showPlan": "Plan",
   "providers.showCredit": "Saldo de crédito",
   "providers.refreshGlobal": "Predeterminado global",
