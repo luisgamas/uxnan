@@ -22,6 +22,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   since each tab owns its own actions. So the title had its full inset while the
   composer's Send sat on the border. It now carries a matching bottom inset.
 
+- **Claude Code's provider panel stops claiming you are signed out on macOS.**
+  There it writes no `~/.claude/.credentials.json` at all — the token lives in
+  the login Keychain — so the reader reported "not signed in" to people who were
+  signed in, and sent them off to re-run `claude login` for a problem that is
+  ours. It now says what is actually true: the token is somewhere Uxnan does not
+  read. The data stays unavailable, blocked on the same OS-keyring decision that
+  keeps Antigravity out (`docs/providers.md`, and the FOR-DEV item).
+
+
 ## [0.0.47] - 20260903
 ### Added
 

@@ -1262,6 +1262,15 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       in the `serverUrl`.
 
 **Providers (usage statistics)**
+- [ ] **Claude Code usage on macOS — blocked on the same keyring decision.**
+      macOS Claude Code writes no `~/.claude/.credentials.json`; the token is in
+      the login Keychain as `Claude Code-credentials` (verified on a real
+      install: the file is absent while the keychain item is present, and
+      `~/.claude.json` exists, so the provider is still *detected*). The reader
+      now reports that honestly instead of "not signed in", but the data stays
+      unavailable. Unblocking it is the identical decision as the Antigravity
+      item below — read the OS keyring — and would cover both providers at once.
+      Site: `src-tauri/src/usage.rs` (`read_claude`).
 - [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
       data.** Researched against a real install; nothing implemented. The data and
       the API are within reach: `agy` talks to Google's Code Assist backend (its own
