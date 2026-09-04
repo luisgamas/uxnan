@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.48] - 20260904
 ### Fixed
 
 - **The remove-worktree dialog stops clearing your choices while you fill it in.**
