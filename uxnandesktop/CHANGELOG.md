@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.49] - 20260906
 ### Changed
 
 - Opening the integrated browser temporarily hides the review panel. Closing it
