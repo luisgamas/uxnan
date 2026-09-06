@@ -8,54 +8,99 @@ import {
   antigravityPermissionArgs,
   normalizeAntigravityModel,
   parseAntigravityModelList,
+  parseAntigravityLine,
+  DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS,
+  type AntigravityUsage,
   type SpawnedProcess,
 } from '../../src/index.js';
+import type { SpawnExtra } from '../../src/adapters/spawn.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
-// --- a fake `agy` process: plain-text stdout (the answer) + stderr (errors) ---
+function stepUpdate(delta: string): string {
+  return JSON.stringify({
+    event: 'step_update',
+    step_update: { text_delta: delta },
+  });
+}
+
+function resultEvent(response: string, usage?: AntigravityUsage, error?: string): string {
+  return JSON.stringify({
+    event: 'result',
+    result: {
+      status: error ? 'ERROR' : 'SUCCESS',
+      response,
+      ...(error ? { error } : {}),
+      ...(usage ? { usage } : {}),
+    },
+  });
+}
+
+// --- a fake `agy` process: supports piped stdin, stdout stream-json, stderr ---
 interface FakeSpawn {
   args: string[];
   cwd: string;
-  /** Write plain-text chunks to STDOUT (the answer), then close. */
-  feed(chunks: string[]): void;
-  /** Write error lines to STDERR, then close with no stdout (the headless auto-deny). */
+  pipedStdin: boolean;
+  readonly stdinData: string;
+  /** Write stream lines to STDOUT, then close. */
+  feed(lines: string[]): void;
+  /** Write stream lines to STDOUT WITHOUT closing (for persistent multi-turn sessions). */
+  feedOpen(lines: string[]): void;
+  /** Write error lines to STDERR, then close with no stdout. */
   feedError(lines: string[]): void;
 }
 
 function fakeSpawner(): {
-  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  spawnFn: (command: string, args: string[], cwd: string, extra?: SpawnExtra) => SpawnedProcess;
   last(): FakeSpawn;
+  spawns: FakeSpawn[];
 } {
   const spawns: FakeSpawn[] = [];
-  const spawnFn = (_command: string, args: string[], cwd: string): SpawnedProcess => {
+  const spawnFn = (
+    _command: string,
+    args: string[],
+    cwd: string,
+    extra?: SpawnExtra,
+  ): SpawnedProcess => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
+    const stdin = new PassThrough();
     const emitter = new EventEmitter();
+    let stdinData = '';
+    stdin.on('data', (chunk) => {
+      stdinData += String(chunk);
+    });
     stdout.on('end', () => emitter.emit('close', 0));
-    const proc: SpawnedProcess = {
-      stdout,
-      stderr,
-      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
-      kill: () => emitter.emit('close', 0),
-    } as SpawnedProcess;
-    spawns.push({
+    const record: FakeSpawn = {
       args,
       cwd,
-      feed: (chunks) => {
-        for (const chunk of chunks) stdout.write(chunk);
+      pipedStdin: extra?.stdin === 'pipe',
+      get stdinData() {
+        return stdinData;
+      },
+      feed: (lines) => {
+        for (const line of lines) stdout.write(`${line}\n`);
         stdout.end();
+      },
+      feedOpen: (lines) => {
+        for (const line of lines) stdout.write(`${line}\n`);
       },
       feedError: (lines) => {
         for (const line of lines) stderr.write(`${line}\n`);
-        // End stderr first, then stdout, so all stderr data is delivered before
-        // the adapter reads it on the stdout `close` (deterministic ordering).
         stderr.on('end', () => stdout.end());
         stderr.end();
       },
-    });
+    };
+    spawns.push(record);
+    const proc: SpawnedProcess = {
+      stdout,
+      stderr,
+      stdin,
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
     return proc;
   };
-  return { spawnFn, last: () => spawns[spawns.length - 1]! };
+  return { spawnFn, last: () => spawns[spawns.length - 1]!, spawns };
 }
 
 function collect(adapter: AntigravityAdapter): { done: Promise<AgentStreamEvent[]> } {
@@ -149,7 +194,11 @@ test('AntigravityAdapter streams stdout as deltas and completes with the full te
   const { done } = collect(adapter);
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/proj' });
-  last().feed(['Hello ', 'world']);
+  last().feed([
+    stepUpdate('Hello '),
+    stepUpdate('world'),
+    resultEvent('Hello world', { total_tokens: 128 }),
+  ]);
 
   const events = await done;
   assert.equal(events[0]?.type, 'turn_started');
@@ -159,17 +208,23 @@ test('AntigravityAdapter streams stdout as deltas and completes with the full te
   assert.deepEqual(deltas, ['Hello ', 'world']);
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { text: string }).text, 'Hello world');
+  assert.deepEqual((completed?.data as { usage?: unknown }).usage, { tokens: 128 });
 
-  // First turn: a client-owned --conversation id, the workspace, autonomous
-  // skip-permissions, and the prompt as the final positional.
+  // First turn: piped stdin carrying the stream-json message, workspace targeting,
+  // autonomous skip-permissions, and stream-json formats.
+  assert.equal(last().pipedStdin, true);
+  assert.match(last().stdinData, /"text":"hi"/);
+
   const args = last().args;
   const convIdx = args.indexOf('--conversation');
   assert.notEqual(convIdx, -1);
   assert.match(args[convIdx + 1]!, /^[0-9a-f-]{36}$/);
   assert.equal(args[args.indexOf('--add-dir') + 1], '/proj');
   assert.equal(args.includes('--dangerously-skip-permissions'), true);
-  assert.equal(args[args.length - 2], '-p');
-  assert.equal(args[args.length - 1], 'hi');
+  assert.equal(args.includes('--input-format'), true);
+  assert.equal(args[args.indexOf('--input-format') + 1], 'stream-json');
+  assert.equal(args.includes('--output-format'), true);
+  assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json');
 });
 
 test('AntigravityAdapter reuses the same conversation id across turns', async () => {
@@ -179,19 +234,114 @@ test('AntigravityAdapter reuses the same conversation id across turns', async ()
   const first = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one', cwd: '/p' });
   const firstArgs = last().args;
-  last().feed(['a']);
+  last().feedOpen([stepUpdate('a'), resultEvent('a')]);
   await first.done;
 
   const second = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two', cwd: '/p' });
   const secondArgs = last().args;
-  last().feed(['b']);
+  last().feed([stepUpdate('b'), resultEvent('b')]);
   await second.done;
 
   const id1 = firstArgs[firstArgs.indexOf('--conversation') + 1];
   const id2 = secondArgs[secondArgs.indexOf('--conversation') + 1];
   assert.equal(id1, id2);
   assert.equal(adapter.nativeSessionId('t1'), id1);
+});
+
+test('AntigravityAdapter maintains persistent session across multiple turns without re-spawning', async () => {
+  const { spawnFn, last, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'turn one', cwd: '/proj' });
+  last().feedOpen([stepUpdate('Reply 1'), resultEvent('Reply 1')]);
+  await first.done;
+  assert.equal(spawns.length, 1);
+
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'turn two', cwd: '/proj' });
+  last().feedOpen([stepUpdate('Reply 2'), resultEvent('Reply 2')]);
+  await second.done;
+
+  // Single persistent process reused!
+  assert.equal(spawns.length, 1);
+  assert.match(last().stdinData, /"text":"turn one"/);
+  assert.match(last().stdinData, /"text":"turn two"/);
+});
+
+test('AntigravityAdapter recycles session when workspace cwd changes', async () => {
+  const { spawnFn, last, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'p1', cwd: '/proj1' });
+  last().feedOpen([resultEvent('done 1')]);
+  await first.done;
+  assert.equal(spawns.length, 1);
+  assert.equal(last().cwd, '/proj1');
+
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'p2', cwd: '/proj2' });
+  last().feedOpen([resultEvent('done 2')]);
+  await second.done;
+
+  // New session spawned for the new workspace directory
+  assert.equal(spawns.length, 2);
+  assert.equal(last().cwd, '/proj2');
+  // Conversation continuity preserved
+  const id1 = spawns[0]!.args[spawns[0]!.args.indexOf('--conversation') + 1];
+  const id2 = spawns[1]!.args[spawns[1]!.args.indexOf('--conversation') + 1];
+  assert.equal(id1, id2);
+});
+
+test('AntigravityAdapter tears down session after idle timeout', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
+  // Fast 50ms timeout for test
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn, idleTimeoutMs: 50 });
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/proj' });
+  spawns[0]!.feedOpen([resultEvent('ok')]);
+  await done;
+
+  assert.equal(adapter.hasActiveSession('t1'), true);
+  // Wait past idle timeout
+  await new Promise((r) => setTimeout(r, 70));
+  assert.equal(adapter.hasActiveSession('t1'), false);
+});
+
+test('AntigravityAdapter capabilities reportsContextUsage is true', () => {
+  const adapter = new AntigravityAdapter();
+  assert.equal(adapter.capabilities.reportsContextUsage, true);
+  assert.equal(adapter.idleTimeoutMs, DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS);
+  assert.equal(DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS, 2 * 60 * 60 * 1000);
+});
+
+test('parseAntigravityLine correctly parses stream-json events', () => {
+  assert.equal(parseAntigravityLine(''), null);
+  assert.equal(parseAntigravityLine('not json'), null);
+
+  const init = parseAntigravityLine(
+    JSON.stringify({ event: 'init', conversation_id: 'c1', init: { cwd: '/workspace' } }),
+  );
+  assert.deepEqual(init, { kind: 'init', conversationId: 'c1', cwd: '/workspace' });
+
+  const step = parseAntigravityLine(
+    JSON.stringify({ event: 'step_update', step_update: { text_delta: 'chunk' } }),
+  );
+  assert.deepEqual(step, { kind: 'step_update', update: { text_delta: 'chunk' } });
+
+  const res = parseAntigravityLine(
+    JSON.stringify({
+      event: 'result',
+      result: { status: 'SUCCESS', response: 'all done', usage: { total_tokens: 100 } },
+    }),
+  );
+  assert.deepEqual(res, {
+    kind: 'result',
+    result: { status: 'SUCCESS', response: 'all done', usage: { total_tokens: 100 } },
+  });
 });
 
 test('AntigravityAdapter passes the selected model', async () => {

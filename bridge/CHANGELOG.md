@@ -4,6 +4,21 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Antigravity token usage reporting.** Driving `agy` over `--output-format stream-json`
+  exposes the native `result.usage` payload (`input_tokens`, `output_tokens`,
+  `thinking_tokens`, `cache_read_tokens`, `total_tokens`), so Antigravity now
+  advertises `reportsContextUsage: true` and turns report context usage.
+
+### Changed
+
+- **Antigravity persistent stream-json session.** Previously, Antigravity was invoked
+  in one-shot mode (`agy -p`) per turn, triggering Google authentication checks and
+  cold-start overhead (~4s+) on every turn. The adapter now maintains a resident `agy`
+  child process per thread using `--input-format stream-json --output-format stream-json`,
+  dropping warm turn turnaround latency to ~1.6s. Idle sessions are automatically torn
+  down after 2 hours (`DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000`).
 
 ## [0.0.24-alpha.20260903] - 20260903
 ### Changed

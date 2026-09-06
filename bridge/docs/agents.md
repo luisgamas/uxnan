@@ -73,7 +73,7 @@ Which agents can, and why — verified against the real CLIs:
 | **OpenCode** | yes | another `prompt_async` on the session that is already busy |
 | **Codex** | yes | app-server `turn/steer { threadId, expectedTurnId, input }` |
 | **pi** | yes | RPC `steer` command, drained by its agent loop at the next boundary |
-| **Antigravity** | no | `agy -p` is one-shot with no input channel at all |
+| **Antigravity** | no | persistent session processes turns sequentially via stream-json |
 | **Zero** | no | its ACP serializes prompts per session (`turnMu`) — and its own TUI does not inject either: it launches a queued message only once the turn ended |
 | **Grok** | no | ACP defines no steer method and advertises none on `initialize` |
 
@@ -177,21 +177,19 @@ surface it does not drive.**
 | **pi** | `pi --mode rpc` | JSON-RPC over stdio | yes |
 | **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
 | **Zero** | `zero acp` | ACP (JSON-RPC over stdio) | **no** — see below |
-| **Antigravity** | `agy -p` | one process per turn, plain text on stdout | **not on this surface** — see below |
+| **Antigravity** | persistent `agy` session | NDJSON stdio (`--input-format stream-json --output-format stream-json`) | yes |
 
-Two agents report no usage, and in both cases the CLI *can* report it somewhere
-else — which is exactly the trap:
+One agent reports no usage (and can report it somewhere else — which is the trap):
 
 - **Zero.** It appends a `provider_usage` event per turn to its session store,
   but only for a session driven by `zero exec`. Verified by running the adapter
   and reading the store it wrote: an **ACP-driven** session holds `message`
   events and nothing else. `reportsContextUsage` is false so the phone hides the
   meter rather than showing one pinned at zero.
-- **Antigravity.** `agy` reports `{input_tokens, output_tokens, thinking_tokens,
-  cache_read_tokens, total_tokens}` on its `result` event — but only under
-  `--output-format stream-json`, while the turn runs on `text`. Surfacing it
-  means migrating the turn's whole stream parse to the JSON events (tracked in
-  [`../FOR-DEV.md`](../FOR-DEV.md)).
+- **Antigravity.** `agy` is driven over `--input-format stream-json --output-format stream-json`
+  as a persistent child process per thread. Its `result` event reports token usage
+  (`input_tokens`, `output_tokens`, `thinking_tokens`, `cache_read_tokens`, `total_tokens`),
+  which is surfaced on `stream/turn/completed` with `reportsContextUsage: true`.
 
 ### The environment an agent is spawned with
 
@@ -246,7 +244,7 @@ so a format change there is a **two-app** fix.
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `accessMode` → app-server `approvalPolicy` + `sandbox`, re-applied on **every** `thread/start`/`thread/resume` (so a mid-conversation change lands on the next turn); approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
-| **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
+| **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) --input-format stream-json --output-format stream-json` | persistent stream-json session per thread (2h idle timeout) reusing `--conversation <uuid>` | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
 | **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model) |
 
@@ -388,8 +386,7 @@ An adapter must decide when the agent is done. There are two kinds:
 
 | Ends on | Adapters | Can the CLI emit after that? |
 |---|---|---|
-| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`stopReason`), Grok / Zero (the ACP `session/prompt` reply) | **Yes** — the process is still alive when the event arrives |
-| **Process exit** | Antigravity | No — the turn cannot end before the process does |
+| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`stopReason`), Grok / Zero (the ACP `session/prompt` reply), Antigravity (`result`) | **Yes** — the process is still alive when the event arrives |
 
 That distinction matters because **Claude Code really does come back**. When the
 model starts a background task (`Bash` with `run_in_background`) and ends its
@@ -448,7 +445,7 @@ way — asked to leave a shell command running and end its turn — and timed:
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
 | Pi | No — no background tool, no wake-up path | Killed on shutdown (tracked pids exist for exactly that) |
 | Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
-| Antigravity | No — the turn ends on process exit | n/a |
+| Antigravity | No — the turn ends on result event | Process kept alive for subsequent turns until 2h idle timeout |
 
 Two consequences worth keeping straight, because they need different answers:
 
