@@ -97,8 +97,7 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
       void app.persistSettings();
       return true;
     case "toggleRightSidebar":
-      app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-      void app.persistSettings();
+      app.toggleRightSidebar();
       return true;
     case "saveFile":
       return false; // handled by the editor's own CodeMirror keymap when focused

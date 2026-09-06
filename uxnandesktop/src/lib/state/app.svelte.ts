@@ -124,6 +124,8 @@ class AppStore {
   orchestrationOpen = $state(false);
   /** Whether the integrated browser panel (the right-side "4th panel") is open. */
   browserOpen = $state(false);
+  /** Browser visibility temporarily overrides the saved review-panel preference. */
+  rightSidebarVisible = $derived(this.settings.rightSidebarOpen && !this.browserOpen);
   /** Target URL shown in the integrated browser panel. */
   browserUrl = $state("");
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
@@ -242,6 +244,17 @@ class AppStore {
   /** Close the integrated browser panel (its `WebviewWindow` is destroyed). */
   closeBrowser(): void {
     this.browserOpen = false;
+  }
+
+  /** Toggle the review panel, keeping browser-only changes out of saved layout. */
+  toggleRightSidebar(): void {
+    if (this.browserOpen) {
+      this.closeBrowser();
+      this.settings.rightSidebarOpen = true;
+    } else {
+      this.settings.rightSidebarOpen = !this.settings.rightSidebarOpen;
+    }
+    void this.persistSettings();
   }
 
   /** Toggle the integrated browser panel (opens at the homepage/blank). */

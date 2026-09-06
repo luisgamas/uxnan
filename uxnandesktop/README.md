@@ -178,6 +178,8 @@ available today are:
   gauge surfaces the meters you pick; startup/focus catch-up and per-provider
   intervals keep reset windows current. See [provider usage](./docs/providers.md).
 - **Integrated developer browser.** A complete in-app browser in a right-side panel
+  that temporarily hides the review panel and restores it on close only if it was
+  previously open
   (a real system webview docked to the app, so it loads any site and has real
   DevTools) to preview and debug what your agents build — `localhost` dev servers
   and any site — and to open the links they create. Links route by a policy you

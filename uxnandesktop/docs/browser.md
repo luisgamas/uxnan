@@ -20,6 +20,11 @@ panel and destroyed when you close it.
 
 ## Opening the browser
 
+Opening the browser temporarily hides the Files / Changes / History / GitHub
+panel. Closing the browser restores that panel only if it was open beforehand;
+navigating to another URL does not change the saved preference. The review-panel
+button or keyboard shortcut switches back to that panel and closes the browser.
+
 - **Toggle it** from the status-bar **globe** button (bottom-right). It opens at
   your configured *home page*, or a blank page.
 - **From a link:** anything the ADE opens as a URL (a **Ctrl/Cmd-clicked** terminal

@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- Opening the integrated browser temporarily hides the review panel. Closing it
+  restores the panel only if it was previously open. The review-panel button and
+  shortcut switch back from the browser without losing the saved layout preference.
+
 ## [0.0.48] - 20260904
 ### Fixed
 

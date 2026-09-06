@@ -143,8 +143,7 @@
     void app.persistSettings();
   }
   function toggleRightSidebar() {
-    app.settings.rightSidebarOpen = !app.settings.rightSidebarOpen;
-    void app.persistSettings();
+    app.toggleRightSidebar();
   }
 
   // Aim the backend filesystem watcher at the active worktree (here, not in the
@@ -372,7 +371,7 @@
           <TerminalArea />
         </main>
 
-        {#if app.settings.rightSidebarOpen}
+        {#if app.rightSidebarVisible}
           <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
           {@render resizeHandle("right")}
 
@@ -525,12 +524,12 @@
             class={cn(
               shell.statusBarAction,
               focus.ring,
-              app.settings.rightSidebarOpen
+              app.rightSidebarVisible
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             )}
             aria-label={i18n.t("terminal.toggleRight")}
-            aria-pressed={app.settings.rightSidebarOpen}
+            aria-pressed={app.rightSidebarVisible}
             onclick={toggleRightSidebar}
           >
             <Icon icon={PanelRightIcon} class={iconSize.action} />
