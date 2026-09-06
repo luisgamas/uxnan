@@ -3,6 +3,7 @@
 > Documento de arquitectura del sistema para el Uxnan Desktop ADE.
 > Cubre el modelo de tres actores, modelo de datos, navegacion, layout, review, conexiones, persistencia y diagnostico post-mortem (§7.3.1).
 > Derivado de las secciones 2, 3, 4, 6.3 y 7 del documento de arquitectura original.
+> Browser layout (§4.2b) temporarily hides the review panel while preserving its saved visibility.
 
 ---
 
@@ -361,6 +362,12 @@ Esto es una distincion importante que diferencia al ADE de un terminal convencio
 - Similar a como funcionan los splits en Vim o tmux.
 
 ### 4.2b Navegador integrado (tab `browser`) — implementado
+
+The browser temporarily hides the Files / Changes / History / GitHub panel.
+Its saved `rightSidebarOpen` preference remains unchanged, so closing the browser
+restores only a previously open panel, including after repeated URL navigation.
+The review-panel button and keyboard shortcut explicitly switch back to review,
+closing the browser and saving the review panel as open.
 
 El tipo de contenido `browser` (webview embebido) **está implementado** como un
 navegador *de desarrollo* ligero: para previsualizar/depurar lo que construyen los
