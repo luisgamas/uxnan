@@ -32,6 +32,9 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
 import { randomUUID } from 'node:crypto';
+import { openSync, readSync, statSync, existsSync, closeSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type {
@@ -43,6 +46,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './content-blocks.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -123,12 +127,27 @@ export interface AntigravityUsage {
   total_tokens?: number;
 }
 
+export interface AntigravityToolInfo {
+  name?: string;
+  parameters?: Record<string, unknown>;
+  output?: string;
+  error?: {
+    type?: string;
+    message?: string;
+  };
+}
+
 export interface AntigravityStepUpdate {
   conversation_id?: string;
   step_index?: number;
-  state?: string;
-  step_type?: string;
+  state?: 'ACTIVE' | 'DONE' | 'ERROR' | string;
+  step_type?: 'user_input' | 'agent_response' | 'tool' | string;
+  tool_name?: string;
+  tool_info?: AntigravityToolInfo;
   text_delta?: string;
+  thinking?: string;
+  thought?: string;
+  thinking_delta?: string;
   duration_seconds?: number;
   usage?: AntigravityUsage;
 }
@@ -148,6 +167,58 @@ export type AntigravityStreamEvent =
   | { kind: 'step_update'; update: AntigravityStepUpdate }
   | { kind: 'result'; result: AntigravityResult }
   | { kind: 'unrecognized'; raw: unknown };
+
+/**
+ * Builds structured message content blocks from Antigravity tool step updates.
+ */
+export function buildAntigravityToolBlock(
+  update: AntigravityStepUpdate,
+): Record<string, unknown> | null {
+  const toolName = update.tool_name ?? update.tool_info?.name ?? 'tool';
+  const params = update.tool_info?.parameters ?? {};
+  const out =
+    typeof update.tool_info?.output === 'string'
+      ? update.tool_info.output
+      : (update.tool_info?.error?.message ?? '');
+  const isError = update.state === 'ERROR' || Boolean(update.tool_info?.error);
+
+  switch (toolName) {
+    case 'run_command': {
+      const cmd = typeof params['CommandLine'] === 'string' ? params['CommandLine'] : '';
+      return commandBlock(cmd, out, isError);
+    }
+    case 'write_to_file': {
+      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
+      const code = typeof params['CodeContent'] === 'string' ? params['CodeContent'] : '';
+      return writeDiffBlock(target, code);
+    }
+    case 'replace_file_content': {
+      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
+      const oldText =
+        typeof params['TargetContent'] === 'string' ? params['TargetContent'] : '';
+      const newText =
+        typeof params['ReplacementContent'] === 'string'
+          ? params['ReplacementContent']
+          : '';
+      return editDiffBlock(target, oldText, newText);
+    }
+    default: {
+      const toolId = `${toolName}_${update.step_index ?? Math.random().toString(36).slice(2, 8)}`;
+      return toolBlock(toolName, toolId, params, out, isError);
+    }
+  }
+}
+
+/**
+ * Returns the path to the Antigravity conversation transcript log file.
+ */
+export function getAntigravityTranscriptPath(conversationId: string): string {
+  const geminiHome =
+    process.env.GEMINI_CLI_HOME ||
+    process.env.ANTIGRAVITY_APP_DATA_DIR ||
+    join(homedir(), '.gemini', 'antigravity-cli');
+  return join(geminiHome, 'brain', conversationId, '.system_generated', 'logs', 'transcript.jsonl');
+}
 
 /**
  * Parse one line from `agy --output-format stream-json`.
@@ -181,9 +252,50 @@ export function parseAntigravityLine(line: string): AntigravityStreamEvent | nul
     typeof parsed['step_update'] === 'object' &&
     parsed['step_update'] !== null
   ) {
+    const su = parsed['step_update'] as Record<string, unknown>;
+    const toolInfo =
+      typeof su['tool_info'] === 'object' && su['tool_info'] !== null
+        ? (su['tool_info'] as Record<string, unknown>)
+        : undefined;
+    const errorObj =
+      toolInfo && typeof toolInfo['error'] === 'object' && toolInfo['error'] !== null
+        ? (toolInfo['error'] as Record<string, unknown>)
+        : undefined;
+
+    const update: AntigravityStepUpdate = {};
+    if (typeof su['conversation_id'] === 'string') update.conversation_id = su['conversation_id'];
+    if (typeof su['step_index'] === 'number') update.step_index = su['step_index'];
+    if (typeof su['state'] === 'string') update.state = su['state'];
+    if (typeof su['step_type'] === 'string') update.step_type = su['step_type'];
+    if (typeof su['tool_name'] === 'string') update.tool_name = su['tool_name'];
+    if (typeof su['duration_seconds'] === 'number') update.duration_seconds = su['duration_seconds'];
+    if (toolInfo) {
+      update.tool_info = {
+        ...(typeof toolInfo['name'] === 'string' ? { name: toolInfo['name'] } : {}),
+        ...(typeof toolInfo['parameters'] === 'object' && toolInfo['parameters'] !== null
+          ? { parameters: toolInfo['parameters'] as Record<string, unknown> }
+          : {}),
+        ...(typeof toolInfo['output'] === 'string' ? { output: toolInfo['output'] } : {}),
+        ...(errorObj
+          ? {
+              error: {
+                ...(typeof errorObj['type'] === 'string' ? { type: errorObj['type'] } : {}),
+                ...(typeof errorObj['message'] === 'string' ? { message: errorObj['message'] } : {}),
+              },
+            }
+          : {}),
+      };
+    }
+    if (typeof su['text_delta'] === 'string') update.text_delta = su['text_delta'];
+    if (typeof su['thinking'] === 'string') update.thinking = su['thinking'];
+    if (typeof su['thought'] === 'string') update.thought = su['thought'];
+    if (typeof su['thinking_delta'] === 'string') update.thinking_delta = su['thinking_delta'];
+    if (typeof su['usage'] === 'object' && su['usage'] !== null)
+      update.usage = su['usage'] as AntigravityUsage;
+
     return {
       kind: 'step_update',
-      update: parsed['step_update'] as AntigravityStepUpdate,
+      update,
     };
   }
   if (event === 'result' && typeof parsed['result'] === 'object' && parsed['result'] !== null) {
@@ -226,6 +338,10 @@ interface ActiveSession {
   mode: AntigravityPermissionMode;
   child: SpawnedProcess;
   idleTimer?: NodeJS.Timeout;
+  transcriptTimer?: NodeJS.Timeout;
+  transcriptOffset: number;
+  transcriptLineBuf: string;
+  emittedThinkingSteps: Set<number>;
   exited: boolean;
   activeTurn?: ActiveTurn;
 }
@@ -391,6 +507,10 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       clearTimeout(session.idleTimer);
       session.idleTimer = undefined;
     }
+    if (session.transcriptTimer) {
+      clearInterval(session.transcriptTimer);
+      session.transcriptTimer = undefined;
+    }
     if (session.activeTurn && !session.activeTurn.completed) {
       session.activeTurn.completed = true;
     }
@@ -403,6 +523,62 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       session.child.kill();
     } catch {
       /* already exited */
+    }
+  }
+
+  #pollTranscript(session: ActiveSession): void {
+    if (!session.conversationId) return;
+    const tPath = getAntigravityTranscriptPath(session.conversationId);
+    try {
+      if (!existsSync(tPath)) return;
+      const stat = statSync(tPath);
+      if (stat.size < session.transcriptOffset) {
+        session.transcriptOffset = 0;
+      }
+      if (stat.size === session.transcriptOffset) return;
+
+      const fd = openSync(tPath, 'r');
+      try {
+        const bytesToRead = stat.size - session.transcriptOffset;
+        const buf = Buffer.alloc(bytesToRead);
+        readSync(fd, buf, 0, bytesToRead, session.transcriptOffset);
+        session.transcriptOffset += bytesToRead;
+
+        session.transcriptLineBuf += buf.toString('utf-8');
+        const lines = session.transcriptLineBuf.split(/\r?\n/);
+        session.transcriptLineBuf = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let record: Record<string, unknown>;
+          try {
+            record = JSON.parse(trimmed) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+          const stepIndex =
+            typeof record['step_index'] === 'number' ? record['step_index'] : undefined;
+          const thinking =
+            typeof record['thinking'] === 'string' ? record['thinking'] : undefined;
+          if (stepIndex !== undefined && thinking && !session.emittedThinkingSteps.has(stepIndex)) {
+            session.emittedThinkingSteps.add(stepIndex);
+            const active = session.activeTurn;
+            if (active && !active.completed) {
+              this.emit({
+                type: 'thinking',
+                threadId: session.threadId,
+                turnId: active.turnId,
+                data: { text: thinking },
+              });
+            }
+          }
+        }
+      } finally {
+        closeSync(fd);
+      }
+    } catch {
+      /* best effort */
     }
   }
 
@@ -437,6 +613,16 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       this.#conversationByThread.set(threadId, conversationId);
     }
 
+    let transcriptOffset = 0;
+    try {
+      const tPath = getAntigravityTranscriptPath(conversationId);
+      if (existsSync(tPath)) {
+        transcriptOffset = statSync(tPath).size;
+      }
+    } catch {
+      /* ignore */
+    }
+
     const args = [
       '--conversation',
       conversationId,
@@ -447,6 +633,8 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       'stream-json',
       '--output-format',
       'stream-json',
+      '--print-timeout',
+      '2h',
     ];
     if (model) args.push('--model', model);
 
@@ -461,6 +649,9 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       model,
       mode,
       child,
+      transcriptOffset,
+      transcriptLineBuf: '',
+      emittedThinkingSteps: new Set<number>(),
       exited: false,
     };
 
@@ -473,7 +664,57 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       const active = session.activeTurn;
       if (!active || active.completed) return;
       const ev = parseAntigravityLine(line);
+      if (ev?.kind === 'init') {
+        if (ev.conversationId && ev.conversationId !== session.conversationId) {
+          session.conversationId = ev.conversationId;
+          this.#conversationByThread.set(session.threadId, ev.conversationId);
+        }
+        return;
+      }
       if (ev?.kind === 'step_update') {
+        if (ev.update.conversation_id && ev.update.conversation_id !== session.conversationId) {
+          session.conversationId = ev.update.conversation_id;
+          this.#conversationByThread.set(session.threadId, ev.update.conversation_id);
+        }
+
+        this.#pollTranscript(session);
+
+        const directThinking = ev.update.thinking || ev.update.thought;
+        if (directThinking) {
+          const stepIdx = ev.update.step_index ?? -1;
+          if (stepIdx === -1 || !session.emittedThinkingSteps.has(stepIdx)) {
+            if (stepIdx !== -1) session.emittedThinkingSteps.add(stepIdx);
+            this.emit({
+              type: 'thinking',
+              threadId,
+              turnId: active.turnId,
+              data: { text: directThinking },
+            });
+          }
+        } else if (ev.update.thinking_delta) {
+          this.emit({
+            type: 'thinking',
+            threadId,
+            turnId: active.turnId,
+            data: { text: ev.update.thinking_delta },
+          });
+        }
+
+        if (
+          ev.update.step_type === 'tool' &&
+          (ev.update.state === 'DONE' || ev.update.state === 'ERROR')
+        ) {
+          const block = buildAntigravityToolBlock(ev.update);
+          if (block) {
+            this.emit({
+              type: 'block',
+              threadId,
+              turnId: active.turnId,
+              data: { content: block },
+            });
+          }
+        }
+
         const delta = ev.update.text_delta;
         if (delta && delta.length > 0) {
           active.fullText += delta;
@@ -482,6 +723,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
         return;
       }
       if (ev?.kind === 'result') {
+        this.#pollTranscript(session);
         active.finish(ev.result);
         return;
       }
@@ -501,6 +743,10 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     child.on('error', (err: Error) => {
       const active = session.activeTurn;
+      if (session.transcriptTimer) {
+        clearInterval(session.transcriptTimer);
+        session.transcriptTimer = undefined;
+      }
       session.exited = true;
       this.#sessions.delete(threadId);
       if (active && !active.completed) {
@@ -515,6 +761,10 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     });
 
     child.on('close', () => {
+      if (session.transcriptTimer) {
+        clearInterval(session.transcriptTimer);
+        session.transcriptTimer = undefined;
+      }
       session.exited = true;
       this.#sessions.delete(threadId);
       if (session.activeTurn && !session.activeTurn.completed) {
@@ -550,6 +800,11 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     const finish = (res?: AntigravityResult): void => {
       if (completed) return;
       completed = true;
+      if (session.transcriptTimer) {
+        clearInterval(session.transcriptTimer);
+        session.transcriptTimer = undefined;
+      }
+      this.#pollTranscript(session);
       if (session.activeTurn?.turnId === turnId) {
         session.activeTurn = undefined;
       }
@@ -605,6 +860,13 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     session.activeTurn = activeTurn;
     this.emit({ type: 'turn_started', threadId, turnId });
 
+    session.transcriptTimer = setInterval(() => {
+      this.#pollTranscript(session);
+    }, 150);
+    if (typeof session.transcriptTimer.unref === 'function') {
+      session.transcriptTimer.unref();
+    }
+
     // Write input turn payload via NDJSON to stdin
     const userMessage = {
       event: 'user',
@@ -649,6 +911,10 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   cancelTurn(threadId: string, turnId: string): Promise<void> {
     const session = this.#sessions.get(threadId);
     if (session && session.activeTurn?.turnId === turnId) {
+      if (session.transcriptTimer) {
+        clearInterval(session.transcriptTimer);
+        session.transcriptTimer = undefined;
+      }
       session.activeTurn.completed = true;
       session.activeTurn = undefined;
       this.emit({ type: 'turn_aborted', threadId, turnId });

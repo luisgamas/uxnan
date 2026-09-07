@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import {
@@ -9,6 +12,8 @@ import {
   normalizeAntigravityModel,
   parseAntigravityModelList,
   parseAntigravityLine,
+  buildAntigravityToolBlock,
+  getAntigravityTranscriptPath,
   DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS,
   type AntigravityUsage,
   type SpawnedProcess,
@@ -225,6 +230,8 @@ test('AntigravityAdapter streams stdout as deltas and completes with the full te
   assert.equal(args[args.indexOf('--input-format') + 1], 'stream-json');
   assert.equal(args.includes('--output-format'), true);
   assert.equal(args[args.indexOf('--output-format') + 1], 'stream-json');
+  assert.equal(args.includes('--print-timeout'), true);
+  assert.equal(args[args.indexOf('--print-timeout') + 1], '2h');
 });
 
 test('AntigravityAdapter reuses the same conversation id across turns', async () => {
@@ -462,3 +469,202 @@ test('AntigravityAdapter names a conversation on the cheap flash tier', async ()
   // And it must never join the conversation the thread resumes.
   assert.equal(args.includes('--conversation'), false);
 });
+
+test('buildAntigravityToolBlock formats command, diff, and tool blocks', () => {
+  const cmdBlock = buildAntigravityToolBlock({
+    step_index: 1,
+    step_type: 'tool',
+    tool_name: 'run_command',
+    state: 'DONE',
+    tool_info: {
+      name: 'run_command',
+      parameters: { CommandLine: 'ls -la' },
+      output: 'file.txt\n',
+    },
+  });
+  assert.deepEqual(cmdBlock, {
+    type: 'command_execution',
+    command: 'ls -la',
+    status: 'completed',
+    output: 'file.txt\n',
+  });
+
+  const writeBlock = buildAntigravityToolBlock({
+    step_index: 2,
+    step_type: 'tool',
+    tool_name: 'write_to_file',
+    state: 'DONE',
+    tool_info: {
+      name: 'write_to_file',
+      parameters: { TargetFile: 'test.ts', CodeContent: 'const a = 1;' },
+      output: 'ok',
+    },
+  });
+  assert.deepEqual(writeBlock, {
+    type: 'diff',
+    filename: 'test.ts',
+    diff: '+const a = 1;',
+    additions: 1,
+    deletions: 0,
+  });
+
+  const editBlock = buildAntigravityToolBlock({
+    step_index: 3,
+    step_type: 'tool',
+    tool_name: 'replace_file_content',
+    state: 'DONE',
+    tool_info: {
+      name: 'replace_file_content',
+      parameters: {
+        TargetFile: 'test.ts',
+        TargetContent: 'const a = 1;',
+        ReplacementContent: 'const a = 2;',
+      },
+      output: 'ok',
+    },
+  });
+  assert.deepEqual(editBlock, {
+    type: 'diff',
+    filename: 'test.ts',
+    diff: '-const a = 1;\n+const a = 2;',
+    additions: 1,
+    deletions: 1,
+  });
+
+  const genericBlock = buildAntigravityToolBlock({
+    step_index: 4,
+    step_type: 'tool',
+    tool_name: 'grep_search',
+    state: 'DONE',
+    tool_info: {
+      name: 'grep_search',
+      parameters: { Query: 'hello' },
+      output: 'matched hello',
+    },
+  });
+  assert.deepEqual(genericBlock, {
+    type: 'tool',
+    toolName: 'grep_search',
+    toolId: 'grep_search_4',
+    input: { Query: 'hello' },
+    output: 'matched hello',
+    isError: false,
+  });
+
+  const errorBlock = buildAntigravityToolBlock({
+    step_index: 5,
+    step_type: 'tool',
+    tool_name: 'run_command',
+    state: 'ERROR',
+    tool_info: {
+      name: 'run_command',
+      parameters: { CommandLine: 'false' },
+      error: { message: 'exit status 1' },
+    },
+  });
+  assert.deepEqual(errorBlock, {
+    type: 'command_execution',
+    command: 'false',
+    status: 'error',
+    output: 'exit status 1',
+  });
+});
+
+test('AntigravityAdapter emits tool block events and thinking events during a turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'run tool', cwd: '/proj' });
+  last().feed([
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 1,
+        thinking: 'I need to check the directory contents first.',
+      },
+    }),
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        step_index: 2,
+        step_type: 'tool',
+        tool_name: 'run_command',
+        state: 'DONE',
+        tool_info: {
+          name: 'run_command',
+          parameters: { CommandLine: 'ls' },
+          output: 'file1\nfile2\n',
+        },
+      },
+    }),
+    stepUpdate('Directory checked.\n'),
+    resultEvent('Directory checked.\n'),
+  ]);
+
+  const events = await done;
+  const thinkingEvents = events.filter((e) => e.type === 'thinking');
+  assert.equal(thinkingEvents.length, 1);
+  assert.equal(
+    (thinkingEvents[0]?.data as { text: string }).text,
+    'I need to check the directory contents first.',
+  );
+
+  const blockEvents = events.filter((e) => e.type === 'block');
+  assert.equal(blockEvents.length, 1);
+  assert.deepEqual((blockEvents[0]?.data as { content: unknown }).content, {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'completed',
+    output: 'file1\nfile2\n',
+  });
+});
+
+test('AntigravityAdapter streams real-time thinking from transcript.jsonl', async () => {
+  const testDir = join(tmpdir(), `antigravity-test-${Date.now()}`);
+  process.env.ANTIGRAVITY_APP_DATA_DIR = testDir;
+
+  try {
+    const { spawnFn, last } = fakeSpawner();
+    const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+    const { done } = collect(adapter);
+
+    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'think deep', cwd: '/proj' });
+    const convId = adapter.nativeSessionId('t1')!;
+    assert.ok(convId);
+
+    const transcriptFile = getAntigravityTranscriptPath(convId);
+    mkdirSync(join(testDir, 'brain', convId, '.system_generated', 'logs'), { recursive: true });
+
+    // Simulate agy writing thinking to transcript.jsonl
+    writeFileSync(
+      transcriptFile,
+      JSON.stringify({
+        step_index: 1,
+        source: 'MODEL',
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        thinking: 'Deep step reasoning extracted from transcript log.',
+      }) + '\n',
+    );
+
+    // Feed step update and finish
+    last().feed([stepUpdate('Done'), resultEvent('Done')]);
+
+    const events = await done;
+    const thinkingEvents = events.filter((e) => e.type === 'thinking');
+    assert.ok(thinkingEvents.length >= 1);
+    assert.equal(
+      (thinkingEvents[0]?.data as { text: string }).text,
+      'Deep step reasoning extracted from transcript log.',
+    );
+  } finally {
+    delete process.env.ANTIGRAVITY_APP_DATA_DIR;
+    try {
+      rmSync(testDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+});
+
