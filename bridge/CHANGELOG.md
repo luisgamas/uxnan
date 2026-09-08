@@ -4,6 +4,16 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Pi persistent RPC session.** Previously, Pi Agent (`pi --mode rpc`) was spawned
+  fresh for every turn, ending its stdin stream after each turn. For long threads,
+  this caused multi-second disk re-parsing overhead of JSONL history, slow turn
+  turnaround, and potential process race conditions. The adapter now maintains a
+  persistent resident `pi --mode rpc` child process per thread with stdin held open,
+  reusing the active session across turns as long as thread configuration (cwd, model,
+  effort, permissionMode) remains unchanged. Idle sessions are automatically torn
+  down after 2 hours (`DEFAULT_PI_IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000`).
 
 ## [0.0.24-alpha.20260903] - 20260903
 ### Changed

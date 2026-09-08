@@ -318,7 +318,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
     },
   );
-  // pi: real agent driven via `pi -p --mode json` (see FOR-DEV.md).
+  // pi: real agent driven via persistent `pi --mode rpc` sessions (see FOR-DEV.md).
   const piSettings = config.agents['pi-agent'] ?? {};
   const pi = resolvePiBinary(piSettings.binaryPath);
   agentManager.register(

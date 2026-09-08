@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 665, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 669, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -401,11 +401,11 @@ running the adapter and reading what it emits — two shipped "fixes" were
 validated against a surface the bridge does not drive, and did nothing.
 
 
-Pick the template that matches the CLI's headless surface. For a **one-shot
-per-turn CLI** (spawns once per turn) copy `pi-adapter.ts`;
-for a **long-lived server** with a pre-tool approval channel copy `codex-adapter.ts`
-or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE over
-`opencode serve`).
+Pick the template that matches the CLI's headless surface. For a **persistent
+per-thread child process** copy `pi-adapter.ts`; for a **one-shot per-turn CLI**
+(spawns once per turn) copy `claude-adapter.ts`; for a **long-lived server** with
+a pre-tool approval channel copy `codex-adapter.ts` or `zero-adapter.ts` (JSON-RPC over
+stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 
 1. Run the real CLI by hand once and capture a turn's machine-readable stream
    (a `--json|--format json` one-shot, or the server's event stream). **Watch for
