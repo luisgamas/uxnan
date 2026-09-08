@@ -448,7 +448,7 @@ way — asked to leave a shell command running and end its turn — and timed:
 | **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
 | Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
-| Pi | No — the turn ends on agent_end | Process kept alive for subsequent turns until 2h idle timeout (or killed on shutdown) |
+| Pi | No — the turn ends on agent_end | Process kept alive for subsequent turns until 24h idle timeout (refreshed per turn) or dismantled on thread delete/archive |
 | Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
 | Antigravity | No — the turn ends on process exit | n/a |
 

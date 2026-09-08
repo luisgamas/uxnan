@@ -18,9 +18,10 @@
  *     token usage in `message_end` events (`reportsContextUsage: true`).
  *  3. **Mid-turn steering**: The persistent RPC channel keeps stdin open, allowing
  *     first-class `steer` commands to reach the agent loop at the next tool boundary.
- *  4. **2-hour idle timeout**: Inactive sessions are automatically dismantled after
- *     2 hours without turns (`DEFAULT_PI_IDLE_TIMEOUT_MS`). The session ID is
+ *  4. **24-hour idle timeout**: Inactive sessions are automatically dismantled after
+ *     24 hours without turns (`DEFAULT_PI_IDLE_TIMEOUT_MS`). The session ID is
  *     persisted (`--session-id <id>`), so subsequent turns seamlessly re-attach.
+ *     Each completed interaction automatically refreshes this 24-hour timer.
  *  5. **Workspace & model isolation**: If a thread changes its project directory,
  *     model, or permission mode, the session is recycled cleanly while preserving
  *     session continuity via `--session-id`.
@@ -53,8 +54,8 @@ import { effortValues, reasoningOption, reasoningValue } from './run-options.js'
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
-/** Default idle timeout before closing an inactive `pi` process (2 hours). */
-export const DEFAULT_PI_IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+/** Default idle timeout before closing an inactive `pi` process (24 hours). */
+export const DEFAULT_PI_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /** Hard cap on the `--list-models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
@@ -411,6 +412,12 @@ export class PiAdapter extends BaseAgentAdapter {
       this.#teardownSession(threadId);
     }
     this.#sessions.clear();
+    return Promise.resolve();
+  }
+
+  /** Dismantle and terminate the active persistent session for a specific thread immediately. */
+  closeSession(threadId: string): Promise<void> {
+    this.#teardownSession(threadId);
     return Promise.resolve();
   }
 

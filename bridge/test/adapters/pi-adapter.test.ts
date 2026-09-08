@@ -8,6 +8,7 @@ import {
   parsePiModelList,
   parsePiUsageTokens,
   parsePiContextWindow,
+  DEFAULT_PI_IDLE_TIMEOUT_MS,
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -694,4 +695,58 @@ test('PiAdapter idleTimeoutMs tears down inactive persistent session', async () 
   assert.equal(adapter.hasActiveSession('t1'), false);
   assert.equal(proc.stdinEnded, true);
 });
+
+test('DEFAULT_PI_IDLE_TIMEOUT_MS defaults to 24 hours', () => {
+  assert.equal(DEFAULT_PI_IDLE_TIMEOUT_MS, 24 * 60 * 60 * 1000);
+  const adapter = new PiAdapter({ binaryPath: 'pi' });
+  assert.equal(adapter.idleTimeoutMs, 24 * 60 * 60 * 1000);
+});
+
+test('PiAdapter closeSession tears down active persistent session immediately', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  const proc = last();
+  proc.feedOpen([SESSION, assistantEnd('ok'), AGENT_END]);
+  await first.done;
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  await adapter.closeSession('t1');
+  assert.equal(adapter.hasActiveSession('t1'), false);
+  assert.equal(proc.stdinEnded, true);
+});
+
+test('PiAdapter interaction refreshes the idle timeout countdown', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, idleTimeoutMs: 50 });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feedOpen([SESSION, assistantEnd('ok 1'), AGENT_END]);
+  await first.done;
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Advance 30ms (timer has 20ms left)
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Second interaction starts and finishes -> should refresh the 50ms countdown!
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'second' });
+  proc.feedOpen([assistantEnd('ok 2'), AGENT_END]);
+  await second.done;
+
+  // Another 30ms: if timer wasn't refreshed, total time would be 60ms (>50ms) and session would be dead
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(adapter.hasActiveSession('t1'), true, 'session must still be alive because timer was refreshed');
+
+  // Wait remaining 30ms to exceed new 50ms window
+  await new Promise((r) => setTimeout(r, 35));
+  assert.equal(adapter.hasActiveSession('t1'), false, 'session now dismantled after refreshed timeout expires');
+  await adapter.stop();
+});
+
 
