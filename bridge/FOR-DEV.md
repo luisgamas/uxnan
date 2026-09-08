@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 665, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 676, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -377,17 +377,11 @@ push validation (FOR-HUMAN).
       `session/set_mode { modeId: <effort> }` actually applies the
       reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
       in `grok-adapter.ts` / `grok-tools.ts`.
-- [ ] **Antigravity token usage** — `AntigravityAdapter` reports
-      `reportsContextUsage:false`, so its card shows no context meter. It is not
-      that `agy` has none: captured from a real run, its `result` event carries
-      `usage:{ input_tokens, output_tokens, thinking_tokens, cache_read_tokens,
-      total_tokens }` — but **only under `--output-format stream-json`**, while
-      the turn currently runs on `text`. Surfacing it means migrating the turn's
-      stream parsing from plain text to the JSON events (`step_update` for
-      deltas, `result` for the final answer + usage), which is why it was not
-      done alongside Grok/Zero/Codex. Once migrated, emit `usage` on
-      `stream/turn/completed` and flip the capability. See the inline marker in
-      `antigravity-adapter.ts`.
+- [x] **Antigravity token usage & persistent stream-json session** — `AntigravityAdapter`
+      now drives `agy` over `--input-format stream-json --output-format stream-json` in
+      a persistent session per thread with a 2-hour idle timeout. Captured from `result.usage`,
+      token usage (`input_tokens`, `output_tokens`, `thinking_tokens`, `cache_read_tokens`,
+      `total_tokens`) is emitted on `turn_completed` and `reportsContextUsage: true` is enabled.
 
 ### Adding the next agent (recipe — do these one by one)
 

@@ -126,9 +126,18 @@ export {
   antigravityPermissionMode,
   normalizeAntigravityModel,
   parseAntigravityModelList,
+  parseAntigravityLine,
+  buildAntigravityToolBlock,
+  getAntigravityTranscriptPath,
+  DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS,
   permissionArgs as antigravityPermissionArgs,
   type AntigravityAdapterOptions,
   type AntigravityPermissionMode,
+  type AntigravityStreamEvent,
+  type AntigravityStepUpdate,
+  type AntigravityToolInfo,
+  type AntigravityResult,
+  type AntigravityUsage,
 } from './adapters/antigravity-adapter.js';
 export {
   resolveAntigravityBinary,
