@@ -18,7 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   cold-start overhead (~4s+) on every turn. The adapter now maintains a resident `agy`
   child process per thread using `--input-format stream-json --output-format stream-json`,
   dropping warm turn turnaround latency to ~1.6s. Idle sessions are automatically torn
-  down after 2 hours (`DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000`).
+  down after 24 hours of inactivity (`DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000`),
+  with each new interaction automatically refreshing the countdown. Active sessions
+  are also immediately dismantled when a thread is deleted (`thread/delete`) or
+  archived (`thread/archive`), freeing backend memory instantly.
 
 ## [0.0.24-alpha.20260903] - 20260903
 ### Changed

@@ -445,7 +445,7 @@ way — asked to leave a shell command running and end its turn — and timed:
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
 | Pi | No — no background tool, no wake-up path | Killed on shutdown (tracked pids exist for exactly that) |
 | Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
-| Antigravity | No — the turn ends on result event | Process kept alive for subsequent turns until 2h idle timeout |
+| Antigravity | No — the turn ends on result event | Process kept alive for subsequent turns until 24h idle timeout (refreshed per turn) or dismantled on thread delete/archive |
 
 Two consequences worth keeping straight, because they need different answers:
 

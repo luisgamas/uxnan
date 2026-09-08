@@ -322,7 +322,51 @@ test('AntigravityAdapter capabilities reportsContextUsage is true', () => {
   const adapter = new AntigravityAdapter();
   assert.equal(adapter.capabilities.reportsContextUsage, true);
   assert.equal(adapter.idleTimeoutMs, DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS);
-  assert.equal(DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS, 2 * 60 * 60 * 1000);
+  assert.equal(DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS, 24 * 60 * 60 * 1000);
+});
+
+test('AntigravityAdapter closeSession tears down active persistent session immediately', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/proj' });
+  spawns[0]!.feedOpen([resultEvent('ok')]);
+  await done;
+
+  assert.equal(adapter.hasActiveSession('t1'), true);
+  await adapter.closeSession('t1');
+  assert.equal(adapter.hasActiveSession('t1'), false);
+});
+
+test('AntigravityAdapter interaction refreshes the idle timeout countdown', async () => {
+  const { spawnFn, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn, idleTimeoutMs: 50 });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'turn 1', cwd: '/proj' });
+  spawns[0]!.feedOpen([resultEvent('reply 1')]);
+  await first.done;
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Advance 30ms (timer has 20ms left)
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Turn 2 completed -> refreshes the 50ms countdown!
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'turn 2', cwd: '/proj' });
+  spawns[0]!.feedOpen([resultEvent('reply 2')]);
+  await second.done;
+
+  // Another 30ms -> total elapsed since turn 1 is 60ms (>50ms), but session is still alive
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(adapter.hasActiveSession('t1'), true, 'session must still be alive because timer was refreshed');
+
+  // Wait remaining 30ms to exceed refreshed 50ms window
+  await new Promise((r) => setTimeout(r, 35));
+  assert.equal(adapter.hasActiveSession('t1'), false, 'session now dismantled after refreshed timeout expires');
+  await adapter.stop();
 });
 
 test('parseAntigravityLine correctly parses stream-json events', () => {

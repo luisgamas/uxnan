@@ -50,8 +50,8 @@ import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './conten
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
-/** Default idle timeout before closing an inactive `agy` process (2 hours). */
-export const DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+/** Default idle timeout before closing an inactive `agy` process (24 hours). */
+export const DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /** Hard cap on the `agy models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
@@ -487,6 +487,12 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       this.#teardownSession(threadId);
     }
     this.#sessions.clear();
+    return Promise.resolve();
+  }
+
+  /** Dismantle and terminate the active persistent session for a specific thread immediately. */
+  closeSession(threadId: string): Promise<void> {
+    this.#teardownSession(threadId);
     return Promise.resolve();
   }
 
