@@ -949,3 +949,35 @@ baseTest('the persisted session id is not offered to a different agent', async (
   assert.deepEqual(adapter.adopted, []);
   await rmrf(baseDir);
 });
+
+baseTest('closeThreadSession cancels active turns and invokes closeSession on adapters', async () => {
+  class ClosingAdapter extends ControlledAdapter {
+    readonly closed: string[] = [];
+    closeSession(threadId: string): Promise<void> {
+      this.closed.push(threadId);
+      return Promise.resolve();
+    }
+  }
+
+  const baseDir = join(tmpdir(), `uxnan-am-close-session-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new ClosingAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p', agentId: 'echo' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'running turn');
+  assert.equal(manager.activeTurnId(thread.id), turnId);
+
+  await manager.closeThreadSession(thread.id);
+  assert.equal(manager.activeTurnId(thread.id), undefined);
+  assert.deepEqual(adapter.closed, [thread.id]);
+  await rmrf(baseDir);
+});
+

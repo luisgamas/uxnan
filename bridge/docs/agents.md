@@ -23,13 +23,14 @@ separate paid account beyond what that CLI already has, and it is not an unoffic
 API wrapper. Rate limits are whatever your plan allows.
 
 Prompts are passed as argv elements with `shell:false` (no shell injection); stdin
-is closed (a one-shot CLI hangs on an open stdin pipe). **Claude Code and pi are
-the exceptions among the one-shot agents**: both are run in a mode that reads a
-real message stream (`claude --input-format stream-json`, `pi --mode rpc`), so
-their prompt is written to a stdin pipe that stays open for the length of the
-turn — which is what lets a follow-up reach them mid-run (see below). The
-server-based adapters are the other exception: **Codex** speaks
-JSON-RPC over a long-lived
+is closed for pure one-shot CLIs (a one-shot CLI hangs on an open stdin pipe).
+**Claude Code** runs one-shot per turn in a mode that reads a real message stream
+(`claude --input-format stream-json`), holding its stdin pipe open for the length of
+the turn — which is what lets a follow-up reach it mid-run (see below).
+**Pi** maintains a persistent resident child process per thread
+(`pi --mode rpc` over JSON-RPC stdio with stdin kept open), avoiding process
+cold-start and JSONL history re-parsing across turns. The server-based adapters
+are the other category: **Codex** speaks JSON-RPC over a long-lived
 `codex app-server` stdio, **Zero** and **Grok** speak JSON-RPC (the Agent Client
 Protocol, NDJSON) over a long-lived `zero acp` / `grok agent stdio` process, and
 **OpenCode** speaks HTTP + SSE to a long-lived `opencode serve` process (their
@@ -38,9 +39,10 @@ prompts travel in the request body / session request, never argv).
 ### One turn per thread, and the queue that follows from it
 
 The bridge drives **one turn per thread**, and this is a hard constraint, not a
-policy: half the agents below are spawned fresh for every turn and resume their
-own session (`claude -p --resume`, pi, antigravity), so two concurrent
-turns would be two CLI processes writing to the same session file.
+policy: one-shot turns resume their own session (`claude -p --resume`), persistent
+child processes (`pi`) expect sequential prompts over stdio, and server-backed
+agents drive turns serially, so two concurrent turns would collide on session state
+or process stdio.
 
 So a `turn/send` that arrives while a turn is in flight is **queued** rather than
 started — the same thing the CLIs themselves do when you type a follow-up while
@@ -174,7 +176,7 @@ surface it does not drive.**
 | **OpenCode** | `opencode serve` | local HTTP + SSE | yes |
 | **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin | yes |
 | **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
-| **pi** | `pi --mode rpc` | JSON-RPC over stdio | yes |
+| **pi** | persistent `pi --mode rpc` session | JSON-RPC over stdio | yes |
 | **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
 | **Zero** | `zero acp` | ACP (JSON-RPC over stdio) | **no** — see below |
 | **Antigravity** | `agy -p` | one process per turn, plain text on stdout | **not on this surface** — see below |
@@ -446,7 +448,7 @@ way — asked to leave a shell command running and end its turn — and timed:
 | **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
 | Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
-| Pi | No — no background tool, no wake-up path | Killed on shutdown (tracked pids exist for exactly that) |
+| Pi | No — the turn ends on agent_end | Process kept alive for subsequent turns until 24h idle timeout (refreshed per turn) or dismantled on thread delete/archive |
 | Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
 | Antigravity | No — the turn ends on process exit | n/a |
 
@@ -630,7 +632,8 @@ windows need no edit for a model in an existing tier — `claudeContextWindow()`
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
 real CLI's machine-readable stream once, then copy the closest template — a
-**one-shot per-turn CLI** (`pi-adapter.ts`, which spawns the CLI
+**persistent per-thread child process** (`pi-adapter.ts`),
+a **one-shot per-turn CLI** (`claude-adapter.ts`, which spawns the CLI
 once per turn) or a **server the adapter talks to** (`codex-adapter.ts`/
 `zero-adapter.ts`/`grok-adapter.ts` over stdio JSON-RPC,
 `opencode-adapter.ts` over `opencode serve` HTTP/SSE, when the CLI exposes a
