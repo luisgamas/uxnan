@@ -185,7 +185,10 @@
     // already imports `app` — the cycle the sessions registry exists to avoid.
     const host = sshHostId(target);
     if (host !== null) void sessions.generationOf(host);
-    void git.load(projects.activeWorktreePath, target);
+    // Whether the folder is a repository was decided when the project was
+    // added (`RepoData.isGit`); a plain folder is handed over as such so the
+    // review idles instead of asking git and reading its refusal.
+    void git.load(projects.activeWorktreePath, target, projects.activeRepo?.isGit !== false);
   });
 
   // GitHub integration: read sign-in status once the backend is ready, load the

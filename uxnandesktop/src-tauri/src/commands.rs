@@ -3837,9 +3837,17 @@ pub async fn git_status(path: String) -> Result<Vec<git::FileChange>, CommandErr
     git::status_files(&path).await.map_err(CommandError::from)
 }
 
-/// Per-file added/deleted line counts vs `HEAD` for the changed-files list.
+/// Per-file added/deleted line counts vs `HEAD` for the changed-files list. The
+/// same non-git rule as [`git_status`]: a plain folder has no counts, so it
+/// answers an empty list. Without this guard the CLI fallback runs `git diff`
+/// outside a repository, and git answers that with its whole usage text on
+/// stderr — which became the review's error the moment the frontend started
+/// awaiting all three status reads together.
 #[tauri::command]
 pub async fn git_numstat(path: String) -> Result<Vec<git::FileNumstat>, CommandError> {
+    if !git::is_git_repo(&path).await {
+        return Ok(Vec::new());
+    }
     git::numstat(&path).await.map_err(CommandError::from)
 }
 
@@ -4883,10 +4891,10 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, ends_the_current_session, fs_path_exists, issue_link_permission_denied,
-        missing_locally, preserve_backend_owned, pty_submit_payload, read_term_buffers,
-        rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
-        worktrees_without_git, worth_retrying, TargetId,
+        bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat, git_status,
+        issue_link_permission_denied, missing_locally, preserve_backend_owned, pty_submit_payload,
+        read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
+        worktree_status, worktrees_without_git, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, SshHost, SshHostTombstone};
 
@@ -5129,6 +5137,25 @@ mod tests {
             .await
             .expect("corrupt");
         assert!(read_term_buffers(&path).await.is_none());
+    }
+
+    /// A registered folder that is not a repository is a valid project with
+    /// nothing to review. All three reads the Changes panel awaits together
+    /// must answer "nothing" for it — one of them erroring is what put git's
+    /// whole `diff` usage text in a toast.
+    #[tokio::test]
+    async fn the_review_reads_are_quiet_for_a_plain_folder() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        tokio::fs::write(dir.path().join("notes.txt"), b"plain")
+            .await
+            .expect("write");
+        let path = dir.path().to_string_lossy().into_owned();
+        assert_eq!(git_status(path.clone()).await.unwrap(), Vec::new());
+        assert_eq!(git_numstat(path.clone()).await.unwrap(), Vec::new());
+        assert_eq!(
+            worktree_status(path).await.unwrap(),
+            crate::git::WorktreeStatus::default()
+        );
     }
 
     #[tokio::test]

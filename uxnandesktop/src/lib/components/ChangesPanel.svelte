@@ -386,7 +386,9 @@
   </header>
 
   {#if !git.path}
-    <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
+    <p class={cn("p-3", text.meta)}>
+      {git.notRepo ? i18n.t("rightPanel.notRepo") : i18n.t("rightPanel.selectWorktree")}
+    </p>
   {:else}
     {#if rows.length === 0}
       <p class={cn("p-3", text.meta)}>
