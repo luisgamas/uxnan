@@ -952,6 +952,7 @@ export const es: Record<MessageKey, string> = {
 
   // Right panel (changes / review)
   "rightPanel.changes": "Cambios",
+  "rightPanel.notRepo": "Este proyecto es una carpeta sin repositorio git.",
   "rightPanel.selectWorktree": "Selecciona un proyecto o worktree para ver sus cambios.",
   "rightPanel.refresh": "Actualizar cambios",
   "rightPanel.fetchRemote": "Buscar cambios nuevos en el remoto",

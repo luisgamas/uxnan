@@ -948,6 +948,7 @@ export const en = {
 
   // Right panel (changes / review)
   "rightPanel.changes": "Changes",
+  "rightPanel.notRepo": "This project is a plain folder, not a git repository.",
   "rightPanel.selectWorktree": "Select a project or worktree to see its changes.",
   "rightPanel.refresh": "Refresh changes",
   "rightPanel.fetchRemote": "Check the remote for new changes",

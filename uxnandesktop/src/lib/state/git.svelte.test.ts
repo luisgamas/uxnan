@@ -185,3 +185,38 @@ describe("the git panel on a host", () => {
     expect(git.error).not.toBeNull();
   });
 });
+
+describe("the git panel on a plain folder", () => {
+  it("asks git nothing about a project the app knows is not a repository", async () => {
+    // `RepoData.isGit` was decided when the project was added. Asking anyway
+    // gets a refusal, not "no changes" — and one refusal among the three reads
+    // awaited together used to surface as a toast the size of git's usage text.
+    await git.load("/home/dev/app", "local");
+    backend.clearCalls();
+
+    await git.load("/home/dev/plain", "local", false);
+
+    expect(backend.lastCallTo("git_status")).toBeUndefined();
+    expect(backend.lastCallTo("git_numstat")).toBeUndefined();
+    expect(backend.lastCallTo("worktree_status")).toBeUndefined();
+    // The watcher is released too: polling a plain folder every three seconds
+    // would be two failing git spawns per tick for nothing.
+    expect(backend.lastCallTo("git_set_watch")?.args).toEqual({ path: null });
+    expect(git.notRepo).toBe(true);
+    expect(git.path).toBeNull();
+    expect(git.files).toEqual([]);
+    expect(git.error).toBeNull();
+  });
+
+  it("keeps saying so across a refresh, and forgets it on the next repository", async () => {
+    await git.load("/home/dev/plain", "local", false);
+    backend.clearCalls();
+    await git.refresh();
+    expect(git.notRepo).toBe(true);
+    expect(backend.lastCallTo("git_status")).toBeUndefined();
+
+    await git.load("/home/dev/app", "local");
+    expect(git.notRepo).toBe(false);
+    expect(git.files.map((f) => f.path)).toEqual(["local.rs"]);
+  });
+});

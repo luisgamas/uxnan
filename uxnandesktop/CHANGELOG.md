@@ -4,6 +4,23 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Opening a plain-folder project no longer raises a toast the size of git's
+  usage text.** A folder that is not a repository is a valid project, and the
+  Changes panel reads its status through three backend calls. Two of them
+  already answered "nothing" for a non-git folder; the line-count one
+  (`git_numstat`) did not — `git2` could not open the folder, the CLI fallback
+  ran `git diff --numstat HEAD` there, and git answers that outside a repository
+  with its whole `diff` usage on stderr. Until the review-on-a-host work the
+  counts were read separately and the failure swallowed; once the three reads
+  were awaited together, that refusal became the review's error. The backend
+  now guards that call like its siblings, and the frontend no longer asks at
+  all: the project record already knows whether the folder is a repository
+  (`RepoData.isGit`, decided when it was added), so a plain folder skips the
+  status reads and the 3 s watcher, and the Changes panel says it is not a git
+  repository instead of showing a clean tree with a commit box that cannot
+  commit.
 
 ## [0.0.49] - 20260906
 ### Changed

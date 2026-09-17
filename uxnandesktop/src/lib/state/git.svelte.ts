@@ -97,6 +97,12 @@ class GitStore {
    *  because the alternative is a red line the user has to clear by switching
    *  projects and back. */
   awaitingHost = $state(false);
+  /** The selected project is a plain folder — one the app already knows is not
+   *  a repository (`RepoData.isGit`, decided when it was added). There is
+   *  nothing to review, so nothing is asked: `path` stays null and the panel
+   *  says "not a repository" rather than "select a worktree" or a clean tree
+   *  with a commit box that cannot commit. */
+  notRepo = $state(false);
   /** Commit message composer: subject line. */
   message = $state("");
   /** Optional extended description (commit body) — collapsed in the composer. */
@@ -199,9 +205,21 @@ class GitStore {
 
   /** Point the panel at a worktree on a machine (or clear it), load its status,
    *  and tell the backend watcher to poll it — only when it is this machine's,
-   *  since that watcher can only see this one. */
-  async load(path: string | null, target: TargetId = LOCAL_TARGET): Promise<void> {
+   *  since that watcher can only see this one.
+   *
+   *  `isGit` is what the project record already knows about the folder. A
+   *  plain folder is reviewed as nothing selected — no status reads, no
+   *  watcher — because git asked about a folder that is not a repository does
+   *  not answer "no changes": it refuses, and one refusal among the three reads
+   *  awaited together was a toast the size of git's usage text. */
+  async load(
+    path: string | null,
+    target: TargetId = LOCAL_TARGET,
+    isGit: boolean = true,
+  ): Promise<void> {
     const seq = ++this.loadSeq;
+    this.notRepo = path !== null && !isGit;
+    if (this.notRepo) path = null;
     const pathChanged = this.path !== path || this.target !== target;
     this.path = path;
     this.target = target;
@@ -279,6 +297,9 @@ class GitStore {
    *  host this is the *only* thing that updates the list, so it runs after every
    *  action here and behind the panel's refresh control. */
   refresh(): Promise<void> {
+    // A plain folder has nothing to re-read, and reloading its cleared path
+    // would turn "not a repository" back into "select a worktree".
+    if (this.notRepo) return Promise.resolve();
     return this.load(this.path, this.target);
   }
 
