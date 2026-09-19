@@ -951,6 +951,36 @@ export class AgentManager {
   }
 
   /**
+   * Release and dismantle any active persistent process/session and clear
+   * queued turns for [threadId] (called when a thread is deleted or archived).
+   */
+  async closeThreadSession(threadId: string): Promise<void> {
+    const activeTurnId = this.#activeTurnByThread.get(threadId);
+    if (activeTurnId) {
+      try {
+        await this.cancelTurn(threadId, activeTurnId);
+      } catch {
+        /* best-effort */
+      }
+    }
+    this.#queueByThread.delete(threadId);
+    this.#queuePausedByThread.delete(threadId);
+    this.#activeTurnByThread.delete(threadId);
+
+    for (const adapter of this.#adapters.values()) {
+      const closeFn = (adapter as { closeSession?: (id: string) => Promise<void> }).closeSession;
+      if (typeof closeFn === 'function') {
+        try {
+          await closeFn.call(adapter, threadId);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    this.#agentByThread.delete(threadId);
+  }
+
+  /**
    * Removes [turnId] from [threadId]'s queue if it is there. Returns whether it
    * was (so {@link cancelTurn} knows not to bother an adapter with it).
    */

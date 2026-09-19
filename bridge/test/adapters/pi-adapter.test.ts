@@ -8,6 +8,7 @@ import {
   parsePiModelList,
   parsePiUsageTokens,
   parsePiContextWindow,
+  DEFAULT_PI_IDLE_TIMEOUT_MS,
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -83,7 +84,10 @@ function fakeSpawner(): {
       stderr,
       ...(extra?.stdin === 'pipe' ? { stdin } : {}),
       on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
-      kill: () => emitter.emit('close', 0),
+      kill: () => {
+        record.stdinEnded = true;
+        emitter.emit('close', 0);
+      },
     } as SpawnedProcess;
     spawns.push(record);
     return proc;
@@ -276,7 +280,7 @@ test('PiAdapter streams text_delta as deltas and completes with the text + usage
   const { done } = collect(adapter);
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
-  last().feed([
+  last().feedOpen([
     SESSION,
     '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Hello "}}',
     '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"world"}}',
@@ -304,7 +308,9 @@ test('PiAdapter streams text_delta as deltas and completes with the text + usage
   assert.equal(last().pipedStdin, true);
   await flush();
   assert.deepEqual(last().sent, [{ type: 'prompt', message: 'hi' }]);
-  // …and the pipe is closed when the turn ends, or pi would never exit.
+  // In persistent mode, the stdin pipe remains open across turns.
+  assert.equal(last().stdinEnded, false);
+  await adapter.stop();
   assert.equal(last().stdinEnded, true);
 });
 
@@ -334,7 +340,7 @@ test('PiAdapter preserves multiple assistant messages including non-streamed tex
   );
 });
 
-test('PiAdapter reuses the captured session id with --session-id next turn', async () => {
+test('PiAdapter reuses the captured session id with --session-id across session restarts', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
 
@@ -342,6 +348,7 @@ test('PiAdapter reuses the captured session id with --session-id next turn', asy
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
   last().feed([SESSION, assistantEnd('a'), AGENT_END]);
   await first.done;
+  await adapter.stop();
 
   const second = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two' });
@@ -510,10 +517,12 @@ test('steerTurn sends a steer command into the running turn', async () => {
   assert.equal(last(), proc);
   assert.equal(proc.stdinEnded, false, 'the pipe stays open while the turn runs');
 
-  proc.feed(['{"type":"agent_end","messages":[],"willRetry":false}']);
+  proc.feedOpen(['{"type":"agent_end","messages":[],"willRetry":false}']);
   const events = await done;
   assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
   await flush();
+  assert.equal(proc.stdinEnded, false);
+  await adapter.stop();
   assert.equal(proc.stdinEnded, true);
 });
 
@@ -585,3 +594,159 @@ test('PiAdapter advertises steering', () => {
   const adapter = new PiAdapter({ binaryPath: 'pi' });
   assert.equal(adapter.capabilities.steering, true);
 });
+
+test('PiAdapter reuses the persistent session process across turns on the same thread', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+
+  // Turn 1
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first question' });
+  const proc = last();
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  proc.feedOpen([SESSION, assistantEnd('first reply'), AGENT_END]);
+  await first.done;
+  await flush();
+
+  assert.equal(proc.stdinEnded, false, 'process stays alive between turns');
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Turn 2 on the SAME session process
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'second question' });
+  assert.equal(last(), proc, 'same child process is reused without re-spawn');
+  await flush();
+  assert.deepEqual(proc.sent, [
+    { type: 'prompt', message: 'first question' },
+    { type: 'prompt', message: 'second question' },
+  ]);
+
+  proc.feedOpen([assistantEnd('second reply'), AGENT_END]);
+  await second.done;
+
+  // Stopping adapter tears down the persistent session
+  await adapter.stop();
+  assert.equal(proc.stdinEnded, true);
+  assert.equal(adapter.hasActiveSession('t1'), false);
+});
+
+test('PiAdapter recycles persistent session when cwd or model changes', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+
+  // Turn 1 on /dirA
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one', cwd: '/dirA' });
+  const proc1 = last();
+  proc1.feedOpen([SESSION, assistantEnd('a'), AGENT_END]);
+  await first.done;
+
+  // Turn 2 with different cwd /dirB -> must dismantle proc1 and spawn proc2 with --session-id
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two', cwd: '/dirB' });
+  const proc2 = last();
+  assert.notEqual(proc1, proc2, 'new process spawned for different cwd');
+  assert.equal(proc1.stdinEnded, true, 'previous session dismantled');
+  const args = proc2.args;
+  assert.equal(args.includes('--session-id'), true);
+  assert.equal(args[args.indexOf('--session-id') + 1], 'sess-1');
+
+  proc2.feedOpen([assistantEnd('b'), AGENT_END]);
+  await second.done;
+  await adapter.stop();
+});
+
+test('PiAdapter cancelTurn sends abort, unsets active turn, and tears down session', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const events: AgentStreamEvent[] = [];
+  adapter.onEvent((e) => events.push(e));
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'long job' });
+  const proc = last();
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  await adapter.cancelTurn('t1', 'u1');
+  await flush();
+
+  assert.deepEqual(proc.sent, [
+    { type: 'prompt', message: 'long job' },
+    { type: 'abort' },
+  ]);
+  assert.equal(adapter.hasActiveSession('t1'), false);
+  const aborted = events.find((e) => e.type === 'turn_aborted');
+  assert.notEqual(aborted, undefined);
+});
+
+test('PiAdapter idleTimeoutMs tears down inactive persistent session', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, idleTimeoutMs: 20 });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  const proc = last();
+  proc.feedOpen([SESSION, assistantEnd('ok'), AGENT_END]);
+  await first.done;
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Wait for idle timer to fire (20ms)
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(adapter.hasActiveSession('t1'), false);
+  assert.equal(proc.stdinEnded, true);
+});
+
+test('DEFAULT_PI_IDLE_TIMEOUT_MS defaults to 24 hours', () => {
+  assert.equal(DEFAULT_PI_IDLE_TIMEOUT_MS, 24 * 60 * 60 * 1000);
+  const adapter = new PiAdapter({ binaryPath: 'pi' });
+  assert.equal(adapter.idleTimeoutMs, 24 * 60 * 60 * 1000);
+});
+
+test('PiAdapter closeSession tears down active persistent session immediately', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  const proc = last();
+  proc.feedOpen([SESSION, assistantEnd('ok'), AGENT_END]);
+  await first.done;
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  await adapter.closeSession('t1');
+  assert.equal(adapter.hasActiveSession('t1'), false);
+  assert.equal(proc.stdinEnded, true);
+});
+
+test('PiAdapter interaction refreshes the idle timeout countdown', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, idleTimeoutMs: 50 });
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feedOpen([SESSION, assistantEnd('ok 1'), AGENT_END]);
+  await first.done;
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Advance 30ms (timer has 20ms left)
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(adapter.hasActiveSession('t1'), true);
+
+  // Second interaction starts and finishes -> should refresh the 50ms countdown!
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'second' });
+  proc.feedOpen([assistantEnd('ok 2'), AGENT_END]);
+  await second.done;
+
+  // Another 30ms: if timer wasn't refreshed, total time would be 60ms (>50ms) and session would be dead
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(adapter.hasActiveSession('t1'), true, 'session must still be alive because timer was refreshed');
+
+  // Wait remaining 30ms to exceed new 50ms window
+  await new Promise((r) => setTimeout(r, 35));
+  assert.equal(adapter.hasActiveSession('t1'), false, 'session now dismantled after refreshed timeout expires');
+  await adapter.stop();
+});
+
+

@@ -116,6 +116,7 @@ export {
   parsePiModelList,
   parsePiUsageTokens,
   parsePiContextWindow,
+  DEFAULT_PI_IDLE_TIMEOUT_MS,
   type PiAdapterOptions,
   type PiEvent,
   type PiPermissionMode,
