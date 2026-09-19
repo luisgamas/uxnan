@@ -365,9 +365,15 @@ The per-agent notes below are what each CLI made us learn the hard way:
 - **Antigravity** gets one named entry, `uxnan-status`, in
   `~/.gemini/config/hooks.json`; other named hooks in that file are untouched.
   It exposes only its execution loop (`PreInvocation`, `PostInvocation`,
-  `PreToolUse`, `PostToolUse`, `Stop`) — there is no prompt, permission or
+  `PostToolUse`, `Stop`) — there is no prompt, permission or
   notification event — so it reports **working** and **done** precisely and can
-  never claim to be waiting on you. Its reporter is copied next to that config and
+  never claim to be waiting on you. **`PreToolUse` is deliberately not
+  registered:** in Antigravity's contract it is a permission gate whose answer
+  must carry a `decision`, with no "no opinion" value, and `agy` reads the
+  reporter's `{}` there as a refusal — every tool call was denied with
+  `tool call denied by pre-tool hook:` (measured on 1.2.7, even under
+  `--dangerously-skip-permissions`). `PostToolUse` expects exactly `{}` and
+  still fires once per tool. Its reporter is copied next to that config and
   invoked **dot-relative** (`.\uxnan-event-hook.cmd antigravity`), because
   Antigravity parses a hook command as a literal path and honours no quoting: a
   command holding an absolute path would break for anyone whose account name has

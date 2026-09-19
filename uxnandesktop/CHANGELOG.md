@@ -47,6 +47,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   derived from it follows at once. The same probe runs at startup, for a
   folder that became a repository while the app was closed. A project that is
   already a repository costs nothing here.
+- **Antigravity's status hook no longer denies its tool calls.** The managed
+  `uxnan-status` entry in `~/.gemini/config/hooks.json` registered the reporter
+  on `PreToolUse`, which in Antigravity's hook contract is a **permission
+  gate**: its answer must carry a `decision` (`allow` / `deny` / `ask` /
+  `force_ask`) and there is no "no opinion" value. The reporter answers `{}`,
+  and `agy` (1.2.7) read that as a refusal — every `run_command`, `view_file`
+  and `write_to_file` ended in `tool call denied by pre-tool hook:`, even under
+  `--dangerously-skip-permissions`, from the bridge and from a terminal alike.
+  The entry now registers `PostToolUse` only (whose contract expects exactly
+  `{}`), plus the loop events as before; nothing the ADE shows depended on
+  `PreToolUse`, since `PreInvocation` already marks the turn working before
+  the first tool. The managed entry is rewritten at every launch, so an
+  existing install loses the gate the next time the app starts (#244).
 
 ## [0.0.50] - 20260917
 ### Fixed
