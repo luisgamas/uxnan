@@ -2133,15 +2133,28 @@ ver 02b). Surface las ventanas de cuota (% consumido + reinicio), plan/cuenta y
 saldo de credito de los CLIs de IA que el usuario **activo** — nunca de todos, para
 ahorrar recursos.
 
-**Postura de datos:** solo se leen los **archivos locales del CLI** (su token OAuth
-ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
-cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
-**Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
-→ `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-and **Grok**
-(`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
-`status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
-los demas.
+**Postura de datos:** solo se lee el **token OAuth que el propio CLI guardo** —
+su archivo local o, cuando el CLI lo guarda ahi, el **almacen de credenciales del
+SO** — y se llama a la **API oficial de uso** de cada proveedor. **Nunca** cookies
+del navegador, API keys pegadas por el usuario ni el refresh token (solo el access
+token, en memoria durante una llamada; los CLIs tratan la reutilizacion del
+refresh como sesion comprometida). Proveedores wired: **Codex**
+(`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
+en Windows/Linux; en macOS el item `Claude Code-credentials` del login Keychain →
+`api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
+and **Grok** (`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
+`status` (`ok`/`authRequired`/`accessRequired`/`notInstalled`/`error`); uno lento
+o roto no tumba a los demas.
+
+**Almacen de credenciales del SO (consentimiento explicito):** el lector **nunca
+abre un dialogo por su cuenta**. Un poll corre con la interaccion del SO
+desactivada; si el SO tendria que preguntar, el proveedor reporta `accessRequired`
+y la UI ofrece *Grant access* — la unica lectura interactiva, iniciada por el
+usuario, en la que el SO muestra su propio dialogo y (con *Always Allow*) registra
+a la app en la lista de acceso del item. La autorizacion es del SO, revocable desde
+su gestor de credenciales; la app no persiste nada sobre ella. Hoy lo implementa el
+desktop en macOS (`src-tauri/src/credstore.rs`); Windows Credential Manager y
+Linux Secret Service se incorporan en el mismo modulo cuando un CLI wired los use.
 
 **Lectura per-runtime (dual-reader, mismo contrato):** el acceso al disco de la PC
 es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codigo:
@@ -2150,8 +2163,11 @@ es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codi
 - **Bridge (implementado):** lo lee en **TS** (`bridge/src/usage/usage-reader.ts`,
   handler `agent/usageStats`) portando el mismo reader del desktop, y lo sirve al
   telefono, que no ve el disco de la PC directamente — mismo contrato, misma
-  postura de datos. La UI del telefono (seccion "Uso y credito" en el perfil) es
-  el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
+  postura de datos. El bridge **no abre el almacen del SO** (su binario Node
+  necesitaria una autorizacion propia y su binding de keyring no puede silenciar
+  el dialogo): en una Mac reporta el estado honesto y remite al desktop
+  (`bridge/FOR-DEV.md`). La UI del telefono (seccion "Uso y credito" en el perfil)
+  es el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
 
 #### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
 

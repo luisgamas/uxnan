@@ -892,6 +892,17 @@ pub async fn usage_detect(
     Ok(crate::usage::detect_present(&providers))
 }
 
+/// Let the OS ask the user to authorize Uxnan to read `provider`'s token from
+/// the OS credential store (Claude Code on macOS). The only interactive read —
+/// triggered by the *Grant access* button after a poll reported
+/// `accessRequired`; the frontend re-reads usage on success.
+#[tauri::command]
+pub async fn usage_grant_access(provider: crate::usage::UsageProvider) -> Result<(), CommandError> {
+    crate::usage::grant_access(provider)
+        .await
+        .map_err(|e| CommandError::from(AppError::Invalid(e)))
+}
+
 /// Redeem one Codex rate-limit reset ("reinicio") from the UI. Returns the outcome
 /// code (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`) so the
 /// frontend can message the result and refresh.

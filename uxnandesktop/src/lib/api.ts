@@ -206,6 +206,13 @@ export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]
   return invoke<UsageProvider[]>('usage_detect', { providers });
 }
 
+/** Let the OS ask the user to authorize Uxnan to read a provider's token from
+ *  the OS credential store (Claude Code on macOS) — the one interactive read,
+ *  after a poll reported `accessRequired`. Re-read usage on success. */
+export function usageGrantAccess(provider: UsageProvider): Promise<void> {
+  return invoke<void>('usage_grant_access', { provider });
+}
+
 /** Redeem one Codex rate-limit reset ("reinicio"). Returns the outcome code
  *  (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`). */
 export function usageCodexRedeemReset(): Promise<string> {

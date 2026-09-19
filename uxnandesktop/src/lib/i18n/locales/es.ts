@@ -906,6 +906,11 @@ export const es: Record<MessageKey, string> = {
   "providers.usedCaption": "La barra muestra cuánto has consumido de cada límite.",
   "providers.statusOk": "En vivo",
   "providers.statusAuthRequired": "Requiere iniciar sesión",
+  "providers.statusAccessRequired": "Requiere acceso",
+  "providers.grantAccess": "Conceder acceso",
+  "providers.grantAccessHint":
+    "macOS lo preguntará una sola vez: elige “Permitir siempre” para que el medidor se mantenga al día sin volver a preguntar. Puedes revocarlo cuando quieras en Acceso a Llaveros.",
+  "providers.grantAccessDone": "Acceso concedido",
   "providers.statusNotInstalled": "No configurado",
   "providers.statusError": "No disponible",
   "ports.statusBarTooltip": "Puertos de tus hosts",

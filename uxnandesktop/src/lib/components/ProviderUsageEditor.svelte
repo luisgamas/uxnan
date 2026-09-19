@@ -21,7 +21,7 @@
   } from "$lib/usageFormat";
   import type { ProviderUsage, UsageProviderConfig } from "$lib/types";
   import type { MessageKey } from "$lib/i18n/locales/en";
-  import { usageCodexRedeemReset } from "$lib/api";
+  import { usageCodexRedeemReset, usageGrantAccess } from "$lib/api";
   import { toast, toastError } from "$lib/toast";
   import UsageMeter from "./UsageMeter.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -81,11 +81,29 @@
       tone:
         s === "error"
           ? "border-destructive/40 bg-destructive/10 text-destructive"
-          : s === "authRequired"
+          : s === "authRequired" || s === "accessRequired"
             ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
             : "border-border/60 bg-muted/40 text-muted-foreground",
     };
   });
+
+  // The provider's token sits in the OS credential store and the OS has not
+  // authorized Uxnan to read it yet. Polls never prompt; this button is the one
+  // place the OS dialog is allowed to appear, and only because the user asked.
+  const needsGrant = $derived(snapshot?.status === "accessRequired");
+  let granting = $state(false);
+  async function grantAccess() {
+    granting = true;
+    try {
+      await usageGrantAccess(config.provider);
+      toast.success(i18n.t("providers.grantAccessDone"));
+      onrefresh();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      granting = false;
+    }
+  }
 
   const updatedAt = $derived(
     snapshot?.updatedAt ? new Date(snapshot.updatedAt).toLocaleTimeString() : null,
@@ -329,7 +347,25 @@
   {/if}
 
   {#if hint}
-    <div class={cn("rounded-md border px-2.5 py-1.5", text.meta, hint.tone)}>{hint.message}</div>
+    <div class={cn("rounded-md border px-2.5 py-1.5", text.meta, hint.tone)}>
+      <div>{hint.message}</div>
+      {#if needsGrant}
+        <!-- Consent lives in the OS: the dialog it shows is the grant, and
+             "Always Allow" is what keeps later polls silent. -->
+        <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+          <span class="text-muted-foreground">{i18n.t("providers.grantAccessHint")}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            class="px-2 text-xs"
+            disabled={granting || loading}
+            onclick={grantAccess}
+          >
+            {i18n.t("providers.grantAccess")}
+          </Button>
+        </div>
+      {/if}
+    </div>
   {/if}
 
   <!-- Refresh interval -->

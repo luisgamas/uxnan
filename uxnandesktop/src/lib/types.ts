@@ -107,7 +107,7 @@ export interface QuickCommand {
 export type UsageProvider = "codex" | "claude" | "copilot" | "grok";
 
 /** Outcome of reading one provider's usage. */
-export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
+export type UsageStatus = "ok" | "authRequired" | "accessRequired" | "notInstalled" | "error";
 
 /** How the data was obtained, for the provenance label. */
 export type UsageSource = "token";

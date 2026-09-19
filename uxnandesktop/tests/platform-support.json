@@ -675,6 +675,11 @@
         "item": "Walk the platform-sensitive features once: notifications, keep-awake (a caffeinate process appears and disappears), the pet overlay window, the integrated browser, sleep/wake of a workspace."
       },
       {
+        "id": "mac-keychain-grant",
+        "advancesTo": "smoke",
+        "item": "Settings \u2192 Providers \u2192 add Claude Code with a Keychain-only sign-in: the tab must read Access required with no dialog; Grant access \u2192 macOS dialog \u2192 Always Allow \u2192 Live; a manual Refresh and an app restart stay silent; revoking Uxnan in Keychain Access (Claude Code-credentials \u2192 Access Control) returns Access required on the next poll; a rebuilt ad-hoc binary asks once more (docs/providers.md \u2192 Verify)."
+      },
+      {
         "id": "mac-scheduler",
         "advancesTo": "validated",
         "item": "Register an automation, quit the app, and confirm the LaunchAgent fires the headless runner; then remove it and confirm launchctl is clean."
