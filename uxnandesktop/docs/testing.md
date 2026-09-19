@@ -32,13 +32,14 @@ must state its gap. Every plan that adds a feature updates its row.
 
 ```bash
 cd uxnandesktop/src-tauri
-cargo test                     # unit + integration tests
-cargo clippy --all-targets     # lints — must be warning-free
-cargo fmt --check              # formatting — must be clean (run `cargo fmt` to fix)
+cargo test --workspace         # unit + integration tests, app + the two control crates
+cargo clippy --workspace --all-targets   # lints — must be warning-free
+cargo fmt --all --check        # formatting — must be clean (run `cargo fmt --all` to fix)
 ```
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
-`git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
+`git.rs`, `gitfast.rs`, `pty.rs`, `control/` (the catalog dispatch, the two
+gates and end-to-end RPC/MCP over a real socket), `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
 `launchenv.rs`, `updater.rs`, `which.rs`, `pets.rs`, `datadir.rs`);
 **integration** tests go in
 `src-tauri/tests/` and may use only the crate's public surface, which is what
@@ -145,7 +146,9 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 731 passing unit tests (773 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 750 passing unit tests of the app crate (792 with the ignored probes) — plus 17 in
+`uxnan-control-protocol` and 8 in `uxnan-cli`, the two workspace crates behind the
+control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -249,7 +252,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,253 passing tests** across both
+ships in every build and is never shown). **1,258 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -558,5 +561,5 @@ cd uxnandesktop \
   && npm run check \
   && npm test \
   && npm run build \
-  && ( cd src-tauri && cargo test && cargo clippy --all-targets && cargo fmt --check )
+  && ( cd src-tauri && cargo test --workspace && cargo clippy --workspace --all-targets && cargo fmt --all --check )
 ```

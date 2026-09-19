@@ -65,7 +65,11 @@ struct OpenUrlEvent {
     ask: bool,
 }
 
-fn emit_open_url(app: &AppHandle, url: &str, ask: bool) -> Result<(), CommandError> {
+fn emit_open_url<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    url: &str,
+    ask: bool,
+) -> Result<(), CommandError> {
     app.emit(
         "browser:open-url",
         OpenUrlEvent {
@@ -80,7 +84,10 @@ fn emit_open_url(app: &AppHandle, url: &str, ask: bool) -> Result<(), CommandErr
 /// window, the OS default browser, or a per-link prompt. The single decision point
 /// shared by the `open_url` command and the agent `/browser` hook route; a disabled
 /// browser always goes external.
-pub async fn route_url(app: &AppHandle, url: String) -> Result<(), CommandError> {
+pub async fn route_url<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    url: String,
+) -> Result<(), CommandError> {
     let (enabled, policy) = {
         let state = app.state::<AppState>();
         let data = state.data.read().await;
@@ -141,7 +148,7 @@ fn nav_allowed(url: &tauri::Url) -> bool {
 /// Record the browser's live URL in shared state so the browser MCP server's
 /// `browser_status` tool can report the current page to an agent (see
 /// [`AppState::browser_url`]). Best-effort: a poisoned lock is ignored.
-fn track_url(app: &AppHandle, url: &str) {
+fn track_url<R: tauri::Runtime>(app: &AppHandle<R>, url: &str) {
     let slot = app.state::<AppState>().browser_url.clone();
     let mut guard = match slot.lock() {
         Ok(g) => g,
@@ -168,7 +175,7 @@ pub struct BrowserStatus {
 
 /// Read the live integrated-browser status (window open? current URL? settings?)
 /// for the browser MCP server's `browser_status` tool.
-pub async fn status(app: &AppHandle) -> BrowserStatus {
+pub async fn status<R: tauri::Runtime>(app: &AppHandle<R>) -> BrowserStatus {
     let open = app.get_webview_window(BROWSER_WINDOW).is_some();
     let state = app.state::<AppState>();
     let url = state
@@ -193,7 +200,7 @@ pub async fn status(app: &AppHandle) -> BrowserStatus {
 }
 
 /// Fetch the docked browser window, or a clean "not open" error.
-fn window(app: &AppHandle) -> Result<tauri::WebviewWindow, CommandError> {
+fn window<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<tauri::WebviewWindow<R>, CommandError> {
     app.get_webview_window(BROWSER_WINDOW)
         .ok_or_else(|| CommandError::new("BROWSER_NO_WINDOW", "browser window not open"))
 }
@@ -202,7 +209,13 @@ fn window(app: &AppHandle) -> Result<tauri::WebviewWindow, CommandError> {
 /// `x`/`y`/`width`/`height` are CSS (logical) px relative to the main window's
 /// content area; we convert to absolute physical screen coords via the main
 /// window's content origin + scale factor, so the window glues to the panel slot.
-fn place(app: &AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), CommandError> {
+fn place<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), CommandError> {
     let main = app
         .get_webview_window(HOST_WINDOW)
         .ok_or_else(|| CommandError::new("BROWSER_NO_HOST", "host window not found"))?;
@@ -227,8 +240,8 @@ fn place(app: &AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(),
 /// panel rect. Creates the window on first use: frameless, owned by the main window
 /// (so it minimizes/closes with it and stays above it), off the taskbar.
 #[tauri::command]
-pub async fn browser_window_open(
-    app: AppHandle,
+pub async fn browser_window_open<R: tauri::Runtime>(
+    app: AppHandle<R>,
     url: String,
     x: f64,
     y: f64,
@@ -290,8 +303,8 @@ pub async fn browser_window_open(
 
 /// Reposition / resize the window to track the panel rect (frontend layout sync).
 #[tauri::command]
-pub fn browser_window_set_bounds(
-    app: AppHandle,
+pub fn browser_window_set_bounds<R: tauri::Runtime>(
+    app: AppHandle<R>,
     x: f64,
     y: f64,
     width: f64,
@@ -302,7 +315,10 @@ pub fn browser_window_set_bounds(
 
 /// Navigate the browser window to a new URL.
 #[tauri::command]
-pub fn browser_window_navigate(app: AppHandle, url: String) -> Result<(), CommandError> {
+pub fn browser_window_navigate<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    url: String,
+) -> Result<(), CommandError> {
     let target = parse_url(&url)?;
     track_url(&app, &url);
     window(&app)?
@@ -312,7 +328,7 @@ pub fn browser_window_navigate(app: AppHandle, url: String) -> Result<(), Comman
 
 /// Reload the current page.
 #[tauri::command]
-pub fn browser_window_reload(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_reload<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     window(&app)?
         .eval("window.location.reload()")
         .map_err(|e| CommandError::new("BROWSER_RELOAD_FAILED", e.to_string()))
@@ -320,7 +336,7 @@ pub fn browser_window_reload(app: AppHandle) -> Result<(), CommandError> {
 
 /// Go back in the page's history.
 #[tauri::command]
-pub fn browser_window_back(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_back<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     window(&app)?
         .eval("window.history.back()")
         .map_err(|e| CommandError::new("BROWSER_BACK_FAILED", e.to_string()))
@@ -328,7 +344,7 @@ pub fn browser_window_back(app: AppHandle) -> Result<(), CommandError> {
 
 /// Go forward in the page's history.
 #[tauri::command]
-pub fn browser_window_forward(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_forward<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     window(&app)?
         .eval("window.history.forward()")
         .map_err(|e| CommandError::new("BROWSER_FORWARD_FAILED", e.to_string()))
@@ -336,7 +352,7 @@ pub fn browser_window_forward(app: AppHandle) -> Result<(), CommandError> {
 
 /// Show the window (its panel became visible again).
 #[tauri::command]
-pub fn browser_window_show(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_show<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     window(&app)?
         .show()
         .map_err(|e| CommandError::new("BROWSER_SHOW_FAILED", e.to_string()))
@@ -346,7 +362,7 @@ pub fn browser_window_show(app: AppHandle) -> Result<(), CommandError> {
 /// app minimized). An owned window paints above the main one, so it must be hidden
 /// whenever something else should be in front.
 #[tauri::command]
-pub fn browser_window_hide(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_hide<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     if let Some(win) = app.get_webview_window(BROWSER_WINDOW) {
         win.hide()
             .map_err(|e| CommandError::new("BROWSER_HIDE_FAILED", e.to_string()))?;
@@ -356,7 +372,7 @@ pub fn browser_window_hide(app: AppHandle) -> Result<(), CommandError> {
 
 /// Destroy the window (the panel closed). No-op if it was never opened.
 #[tauri::command]
-pub fn browser_window_close(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_close<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     if let Some(win) = app.get_webview_window(BROWSER_WINDOW) {
         win.close()
             .map_err(|e| CommandError::new("BROWSER_CLOSE_FAILED", e.to_string()))?;
@@ -367,7 +383,7 @@ pub fn browser_window_close(app: AppHandle) -> Result<(), CommandError> {
 /// Open the browser window's DevTools (available in release too — the `devtools`
 /// Cargo feature is on — since this is a developer browser).
 #[tauri::command]
-pub fn browser_window_devtools(app: AppHandle) -> Result<(), CommandError> {
+pub fn browser_window_devtools<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
     window(&app)?.open_devtools();
     Ok(())
 }

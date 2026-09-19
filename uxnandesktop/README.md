@@ -184,10 +184,19 @@ available today are:
   DevTools) to preview and debug what your agents build — `localhost` dev servers
   and any site — and to open the links they create. Links route by a policy you
   choose (in-app · system browser · ask); when allowed, agents open URLs in it
-  automatically — and, through a **browser-control MCP server** registered on each
-  agent uxnan launches (and only there — your agent configs are never touched),
-  discover `browser_*` tools to preview and test what they build with no setup. See
+  automatically — and, through the **MCP server** registered on each agent uxnan
+  launches (and only there — your agent configs are never touched), discover
+  `browser_*` tools to preview and test what they build with no setup. See
   [the integrated browser](./docs/browser.md).
+- **A control surface for agents and shells.** The same MCP server gives every
+  agent uxnan launches tools to read the app (`uxnan_status`, `project_list`,
+  `worktree_show`, `terminal_list`, `agent_list`, `run_show`) and to show you
+  things (`file_open`, `file_diff`, `terminal_reveal`, `app_focus`) — nothing to
+  install. From any shell, **`uxnan-cli`** (a separate small binary) does the same:
+  `uxnan-cli status`, `uxnan-cli terminal ls --json`, `uxnan-cli file diff
+  src/app.ts --worktree branch:feat`. One catalog behind both, no shell access, no
+  destructive git or filesystem entries by construction. See
+  [the control surface](./docs/control-api.md).
 - **Quick commands.** Program shell commands you run often and launch them from a
   top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.
   Each command carries a scope (**global · project · worktree**, pruned with its
@@ -308,6 +317,7 @@ Detailed docs live in [`docs/`](./docs/):
 [multi-agent orchestration](./docs/orchestration.md) ·
 [automations (unattended, recurring)](./docs/automations.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
+[control surface (MCP tools & `uxnan-cli`)](./docs/control-api.md) ·
 [integrated browser](./docs/browser.md) ·
 [GitHub integration](./docs/github.md) ·
 [GitHub validation status](./docs/github-validation.md) ·
@@ -337,7 +347,10 @@ uxnandesktop/
 │   │   ├── components/    # shadcn-svelte primitives + app components
 │   │   └── ...            # diff.ts, clipboard.ts, agentCatalog.ts, etc.
 │   └── routes/            # +layout.svelte, +page.svelte (three-panel shell)
-├── src-tauri/             # Rust backend
+├── src-tauri/             # Rust backend (a Cargo workspace)
+│   ├── crates/
+│   │   ├── control-protocol/  # the control catalog, envelope, discovery, selectors (no Tauri)
+│   │   └── uxnan-cli/         # the console client, built with the app
 │   └── src/
 │       ├── lib.rs         # Tauri builder, state wiring, command registration
 │       ├── main.rs        # entrypoint
@@ -351,7 +364,10 @@ uxnandesktop/
 │       ├── target.rs      # execution-target identity (local / ssh:<host>) + fencing
 │       ├── ssh/           # remote hosts: conn, auth, hostkey, config, registry,
 │       │                  # inventory, shellkind, pty, browse, sftp, git
-│       ├── hooks.rs       # axum HTTP hook server (Layer 1 agent monitoring)
+│       ├── control/       # the control surface: the one local server (hook, browser,
+│       │                  # MCP, JSON-RPC routes), catalog dispatch, services, the
+│       │                  # window bridge and the discovery file
+│       ├── hooks.rs       # what a hook report means (Layer 1 agent monitoring)
 │       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
 │       ├── procscan.rs    # foreground-job agent detection (Layer 3)
 │       ├── launchenv.rs   # per-terminal identity: scrubbed from this process + every child

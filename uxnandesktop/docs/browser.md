@@ -108,10 +108,17 @@ They map onto the same in-app browser and the same link policy as a clicked link
 (Page inspection/interaction — snapshot/click/type — is a planned follow-up; see
 `FOR-DEV.md`.)
 
+The browser tools are six entries of a larger list: the same MCP server carries the
+whole **control surface** — `uxnan_status`, `project_*`, `worktree_*`, `terminal_*`,
+`agent_list`, `run_*`, `file_open`, `file_diff`, `app_focus` and the orchestration
+report tools — and the same catalog is what `uxnan-cli` speaks from a shell. See
+[the control surface](./control-api.md).
+
 ### How it connects — and why it stays inside uxnan
 
-The ADE runs a tiny MCP server at **`/mcp`** on the same local hook server the agent
-monitor already uses (`127.0.0.1`, ephemeral port, `Authorization: Bearer <token>`).
+The ADE runs a tiny MCP server at **`/mcp`** on the app's one local server — the
+one the agent monitor's hooks and the control RPC also use (`127.0.0.1`, ephemeral
+port, `Authorization: Bearer <token>`; `src-tauri/src/control/server.rs`).
 
 The server is registered **per launch**: uxnan points the agent at it *in the process
 it spawns*, and **writes nothing** to `~/.claude.json`, `~/.codex/config.toml`,

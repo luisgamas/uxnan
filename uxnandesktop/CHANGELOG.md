@@ -4,6 +4,47 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **A control surface: the agents Uxnan launches, a person at a shell and
+  scripts can now operate the app** through one allowlisted, versioned catalog
+  with two transports — MCP tools (with nothing to install, inside every
+  terminal Uxnan spawns) and a new console client, **`uxnan-cli`**. Today the
+  `read` and `ui` groups ship: `status`, `project/list|show`,
+  `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`,
+  `browser/status`, `app/focus`, `terminal/reveal`, `file/open`, `file/diff` and
+  the `browser/*` navigation entries; the orchestration report tools are part
+  of the same catalog. Selectors (`current`, `id:`, `path:`, `branch:`, `name:`)
+  name things without copying ids off the sidebar. Nothing outside the catalog
+  is reachable — no shell, no raw terminal bytes, no destructive git or
+  filesystem entry — and each capability group can be switched off
+  (`settings.control.disabledGroups`). `uxnan-cli` finds the running app by
+  itself (the environment inside a Uxnan terminal; a private `control.json`
+  discovery file — pid + start time checked — from any other shell), prints
+  stable `--json`, exits with a code per kind of failure, and prints the whole
+  guide with `skills get control --full`. Docs: `docs/control-api.md`; spec
+  `architecture/02d` §1.6.
+
+### Changed
+
+- **The app has one local server.** The axum server that `hooks.rs` used to
+  own, and the standalone `mcp.rs`, are rebuilt as `control/`: one loopback
+  server with the hook, browser, MCP and control-RPC routes behind the same two
+  gates (loopback `Host`/`Origin`, then a token), and the MCP tool list is now
+  the control catalog rather than a second, hand-kept list — the existing tool
+  names (`browser_*`, `orchestration_report_*`) are unchanged, so every
+  per-launch agent config keeps working. `hooks.rs` keeps only what a hook
+  report means. The sidebar's `worktree_list` command delegates to the control
+  service that answers `worktree/list`, so there is one implementation.
+- **`src-tauri` is a Cargo workspace.** Two small member crates,
+  `uxnan-control-protocol` (the contract: catalog, envelope, discovery record,
+  selectors, data-dir rules — no Tauri) and `uxnan-cli` (the console client),
+  inherit the app's version from `[workspace.package]`; the release tooling
+  bumps their `Cargo.lock` entries with the app's. The headless automation
+  runner and the app's `datadir` now take the data-directory rules from the
+  protocol crate, so the runner of a development build reads the `-dev`
+  profile like the app does instead of the installed app's.
+
 ### Fixed
 
 - **A plain-folder project that runs `git init` is now recognized as a

@@ -1,0 +1,15 @@
+[package]
+name = "uxnan-control-protocol"
+description = "The control protocol Uxnan Desktop exposes to agents and to its console client: the method catalog, the JSON-RPC envelope, the discovery file and the selectors."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Deliberately tiny: this crate is the contract, so it must be usable from the
+# console client (no Tauri, no async runtime) and must never grow a dependency
+# the app does not already have.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

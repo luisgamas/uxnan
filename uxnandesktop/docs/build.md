@@ -65,7 +65,7 @@ npm run tauri build -- --target x86_64-apple-darwin    # Intel
 ```bash
 npm run check                              # svelte-check (type check)
 npm run build                              # SPA build succeeds
-( cd src-tauri && cargo test && cargo clippy --all-targets && cargo fmt --check )
+( cd src-tauri && cargo test --workspace && cargo clippy --workspace --all-targets && cargo fmt --all --check )
 ```
 
 See [`testing.md`](testing.md) for the full gate list.

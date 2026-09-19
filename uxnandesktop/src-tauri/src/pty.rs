@@ -297,6 +297,18 @@ impl PtyManager {
             .collect()
     }
 
+    /// Every live session with the working directory it was spawned in
+    /// (forward slashes), keyed by id — what the control surface joins the agent
+    /// cache against to say which agents are *running* rather than remembered.
+    pub fn live_sessions(&self) -> Vec<(String, String)> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, s)| (id.clone(), s.cwd.replace('\\', "/")))
+            .collect()
+    }
+
     /// Number of live sessions (used by tests).
     #[cfg(test)]
     fn len(&self) -> usize {

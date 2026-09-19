@@ -639,6 +639,21 @@ pub struct AppSettings {
     /// and keep working wherever they are.
     #[serde(default)]
     pub worktrees: WorktreeSettings,
+    /// The control surface (`control/`): which capability groups are switched
+    /// off. All on by default — reading and UI actions are what an agent needs
+    /// from its first launch — and older state loads with nothing disabled.
+    #[serde(default)]
+    pub control: ControlSettings,
+}
+
+/// Control-surface settings. Groups are named by their stable lowercase name
+/// (`uxnan_control_protocol::catalog::Group::name`); an unknown name is kept
+/// verbatim so a newer build's choice survives a round trip through this one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlSettings {
+    #[serde(default)]
+    pub disabled_groups: Vec<String>,
 }
 
 /// Where the ADE puts a new worktree (spec `02c` §2.1). The layout itself lives
@@ -1268,6 +1283,7 @@ impl Default for AppSettings {
             resources: ResourceSettings::default(),
             resource_mode: ResourceModeSettings::default(),
             worktrees: WorktreeSettings::default(),
+            control: ControlSettings::default(),
         }
     }
 }

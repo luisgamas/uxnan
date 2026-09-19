@@ -24,11 +24,11 @@ function seedDesktop(version = '0.0.28') {
   );
   put(
     'uxnandesktop/src-tauri/Cargo.toml',
-    `[package]\nname = "uxnan-desktop"\nversion = "${version}"\n`,
+    `[workspace]\nmembers = ["crates/control-protocol", "crates/uxnan-cli"]\n\n[workspace.package]\nversion = "${version}"\n\n[package]\nname = "uxnan-desktop"\nversion.workspace = true\n`,
   );
   put(
     'uxnandesktop/src-tauri/Cargo.lock',
-    `version = 3\n\n[[package]]\nname = "serde"\nversion = "1.0.200"\n\n[[package]]\nname = "uxnan-desktop"\nversion = "${version}"\n`,
+    `version = 3\n\n[[package]]\nname = "serde"\nversion = "1.0.200"\n\n[[package]]\nname = "uxnan-cli"\nversion = "${version}"\n\n[[package]]\nname = "uxnan-control-protocol"\nversion = "${version}"\n\n[[package]]\nname = "uxnan-desktop"\nversion = "${version}"\n`,
   );
   put(
     'uxnandesktop/package.json',

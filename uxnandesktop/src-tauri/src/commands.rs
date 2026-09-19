@@ -3396,60 +3396,20 @@ pub async fn worktree_remove(
 #[tauri::command]
 pub async fn worktree_list(
     state: State<'_, AppState>,
+    app: AppHandle,
     repo_id: String,
 ) -> Result<Vec<WorktreeEntry>, CommandError> {
-    let (repo_path, target) = repo_location_of(&state, &repo_id).await?;
-    if let Some(host_id) = target.ssh_host_id() {
-        // Ask the host. Its shell was identified when it connected, so the
-        // arguments are quoted for the shell that will receive them; a host that
-        // could not be named, has no git, or holds a plain folder answers "not a
-        // repository" and the row says the branch was not read — never a branch
-        // this machine made up.
-        let shell = state
-            .ssh_shells
-            .read()
-            .await
-            .get(host_id)
-            .copied()
-            .unwrap_or_default();
-        let conn = session_for(&state, host_id).await;
-        let branch = match conn {
-            Some(conn) => ssh::git::status(&conn, shell, &repo_path).await.branch,
-            None => None,
-        };
-        return Ok(vec![WorktreeEntry {
-            path: repo_path,
-            branch,
-            head: None,
-            is_main: true,
-        }]);
-    }
-    if let Some(entries) = worktrees_without_git(&target, &repo_path) {
-        return Ok(entries);
-    }
-    git::list_worktrees(&repo_path)
+    let repo = {
+        let data = state.data.read().await;
+        data.repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .cloned()
+            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
+    };
+    crate::control::services::worktree::list_of(&app, &repo)
         .await
-        .map_err(CommandError::from)
-}
-
-/// The worktree list for a project this machine's git cannot answer for: one
-/// entry, the project's own folder, and **no branch**. `None` means "local — go
-/// ask git".
-///
-/// Split out so the decision is testable on its own, because the invariant is
-/// easy to break and expensive when broken: a project on a host must never
-/// report a branch, or the sidebar would put this machine's answer on another
-/// machine's repository.
-fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<WorktreeEntry>> {
-    if target.is_local() {
-        return None;
-    }
-    Some(vec![WorktreeEntry {
-        path: repo_path.to_string(),
-        branch: None,
-        head: None,
-        is_main: true,
-    }])
+        .map_err(|e| CommandError::from(AppError::Git(e.message)))
 }
 
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
@@ -4944,7 +4904,7 @@ mod tests {
         bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat, git_status,
         issue_link_permission_denied, missing_locally, preserve_backend_owned, pty_submit_payload,
         read_term_buffers, rect_on_any_monitor, redetect_git, reorder_by_ids, resting_corner,
-        term_buffers_path, worktree_status, worktrees_without_git, worth_retrying, TargetId,
+        term_buffers_path, worktree_status, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, RepoData, SshHost, SshHostTombstone};
 
@@ -5061,9 +5021,11 @@ mod tests {
         // Local git must not be run against a path that belongs to another
         // machine: at best it fails, and at worst a folder with the same
         // absolute path exists here and answers for the wrong repository.
-        let entries =
-            worktrees_without_git(&TargetId::parse("ssh:h1").unwrap(), r"C:\Users\dev\code")
-                .expect("a remote project answers without git");
+        let entries = crate::control::services::worktree::worktrees_without_git(
+            &TargetId::parse("ssh:h1").unwrap(),
+            r"C:\Users\dev\code",
+        )
+        .expect("a remote project answers without git");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, r"C:\Users\dev\code");
         assert!(entries[0].is_main);
@@ -5075,7 +5037,11 @@ mod tests {
     fn a_local_project_is_still_asked_of_git() {
         // The guard must be exactly "not local", not "always synthetic" — every
         // local project depends on the real worktree list.
-        assert!(worktrees_without_git(&TargetId::Local, r"C:\code\uxnan").is_none());
+        assert!(crate::control::services::worktree::worktrees_without_git(
+            &TargetId::Local,
+            r"C:\code\uxnan"
+        )
+        .is_none());
     }
 
     #[test]
@@ -5359,7 +5325,11 @@ mod tests {
             }
 
             let dir = tempfile::tempdir().unwrap();
-            let state = AppState::new(PersistenceManager::new(dir.path()), Default::default());
+            let state = AppState::new(
+                PersistenceManager::new(dir.path()),
+                Default::default(),
+                dir.path().to_path_buf(),
+            );
             state
                 .ssh_sessions
                 .write()

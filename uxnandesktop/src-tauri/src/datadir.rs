@@ -20,19 +20,19 @@
 //! could point at two different profiles) — the app then falls back to the
 //! platform location rather than persisting somewhere surprising.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Environment variable that relocates the application data directory.
-pub const DATA_DIR_ENV: &str = "UXNAN_DATA_DIR";
+pub const DATA_DIR_ENV: &str = uxnan_control_protocol::datadir::DATA_DIR_ENV;
 
 /// The override, if one is set and usable. `None` when unset, empty, or
 /// relative.
 pub fn override_dir() -> Option<PathBuf> {
-    parse_override(std::env::var_os(DATA_DIR_ENV).as_deref().map(Path::new))
+    uxnan_control_protocol::datadir::override_dir()
 }
 
 /// Suffix a **development** build appends to the profile directory.
-pub const DEV_SUFFIX: &str = "-dev";
+pub const DEV_SUFFIX: &str = uxnan_control_protocol::datadir::DEV_SUFFIX;
 
 /// The directory the app should use: the override when it is usable, else the
 /// platform default — with a separate profile for development builds.
@@ -60,25 +60,14 @@ pub fn resolve(platform_default: PathBuf) -> PathBuf {
 /// `<dir>` → `<dir>-dev`, keeping it beside the real profile rather than inside
 /// it (a nested profile would be swept by anything that walks the real one).
 fn dev_profile(dir: PathBuf) -> PathBuf {
-    let Some(name) = dir.file_name().map(|n| n.to_string_lossy().into_owned()) else {
-        return dir;
-    };
-    dir.with_file_name(format!("{name}{DEV_SUFFIX}"))
-}
-
-/// Pure half of [`override_dir`], so the rules are testable without touching
-/// the process environment.
-fn parse_override(raw: Option<&Path>) -> Option<PathBuf> {
-    let path = raw?;
-    if path.as_os_str().is_empty() || !path.is_absolute() {
-        return None;
-    }
-    Some(path.to_path_buf())
+    uxnan_control_protocol::datadir::dev_profile(dir)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+    use uxnan_control_protocol::datadir::parse_override;
 
     #[test]
     fn a_dev_build_gets_its_own_profile() {

@@ -101,6 +101,11 @@ export const COMPONENTS = [
       { file: 'uxnandesktop/src-tauri/tauri.conf.json', adapter: 'json' },
       { file: 'uxnandesktop/src-tauri/Cargo.toml', adapter: 'cargo-toml' },
       { file: 'uxnandesktop/src-tauri/Cargo.lock', adapter: 'cargo-lock', crate: 'uxnan-desktop' },
+      // The two workspace members take `version.workspace = true` from the
+      // root Cargo.toml (the `[workspace.package]` line is the one the
+      // cargo-toml adapter rewrites), so only their lock entries need a hand.
+      { file: 'uxnandesktop/src-tauri/Cargo.lock', adapter: 'cargo-lock', crate: 'uxnan-control-protocol' },
+      { file: 'uxnandesktop/src-tauri/Cargo.lock', adapter: 'cargo-lock', crate: 'uxnan-cli' },
       { file: 'uxnandesktop/package.json', adapter: 'json' },
       { file: 'uxnandesktop/package-lock.json', adapter: 'lock-root' },
     ],

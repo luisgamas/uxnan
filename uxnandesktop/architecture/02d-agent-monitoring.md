@@ -579,13 +579,63 @@ Para evitar que estados obsoletos contaminen la interfaz:
 
 ---
 
-### 1.6 Capa MCP: Navegador Controlable por Agentes
+### 1.6 Superficie de control: MCP y `uxnan-cli` sobre un catalogo
 
-El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un servidor **Model Context Protocol** (transporte Streamable HTTP) que hace **descubrible** el navegador integrado (`architecture/02a` §4.2b) para los agentes CLI. En lugar de que el agente tenga que *conocer* la convencion `$BROWSER`/`curl` al hook `/browser`, las herramientas del navegador aparecen en su lista de tools como cualquier capacidad nativa, y las usa sin leer documentacion.
+El mismo servidor HTTP local (Capa 1) es **el unico servidor local de la app**
+(`src-tauri/src/control/server.rs`): sirve los reportes de hooks (`/hook`), el
+shim del navegador (`/browser`), un servidor **Model Context Protocol** (`/mcp`,
+transporte Streamable HTTP) y un endpoint **JSON-RPC 2.0** de control
+(`/control/v1/rpc`), en un puerto efimero de `127.0.0.1`. Los dos ultimos son los
+dos transportes de **una sola superficie de control**: un catalogo de entradas
+(`uxnan-control-protocol`, `src-tauri/crates/control-protocol`) que el agente
+lanzado por el ADE descubre como tools MCP **sin instalar nada**, y que
+`uxnan-cli` (`src-tauri/crates/uxnan-cli`, un binario sin Tauri) expone a
+cualquier shell del mismo usuario. Una tool MCP `worktree_list` y un metodo
+`worktree/list` son la **misma entrada** con el mismo esquema de argumentos y el
+mismo resultado; ambos terminan en el mismo servicio (`control/services/`) que
+tambien llama el comando Tauri de la ventana. Nada fuera del catalogo es
+alcanzable: no hay shell, ni bytes crudos al PTY, ni filesystem o git
+destructivos, ni credenciales, ni edicion externa de la persistencia.
 
-**Superficie de herramientas (solo control):** `browser_open`, `browser_navigate`, `browser_reload`, `browser_back`, `browser_forward`, `browser_status`. Reusan los mismos caminos del navegador (`browser::route_url` + comandos de ventana) y respetan la misma politica de enlaces que un enlace clicado. La inspeccion/interaccion de pagina (snapshot/evaluate/click/type) queda como fase posterior (requiere un canal de retorno JS desde la `WebviewWindow`).
+**Grupos de capacidad (versionados y desconectables en `settings.control`):**
+`read` (`status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`,
+`agent/list`, `run/list|show`, `browser/status`), `ui` (`app/focus`,
+`terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`),
+`create`, `converse` y `orchestrate` (hoy `orchestration/reportResult|reportProgress`,
+§3.7). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
+para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
+(`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;
+`current` se ancla en el `UXNAN_AGENT_ID` del llamador, asi que solo existe
+dentro de una terminal lanzada por el ADE.
 
-**Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). El **token nunca se escribe en un archivo**: toda registracion lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente.
+**Recursos de la ventana.** Las pestanas de terminal, los archivos abiertos y las
+corridas de orquestacion son estado del webview (el backend persiste su
+serializacion sin interpretarla). Las entradas que los tocan se reenvian a la
+ventana como evento `control:request` y esperan su unica respuesta por el comando
+`control_respond` (`control/bridge.rs` + `src/lib/control/bridge.ts`); una ventana
+que no responde en 5 s produce *unavailable*, distinto de "no".
+
+**Autenticacion y aislamiento:** toda ruta rechaza primero un llamador cuyo
+`Host`/`Origin` no sea loopback y exige despues un token. Hay **dos tokens**,
+ambos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
+referenciado por la config MCP del agente como `UXNAN_MCP_TOKEN`; con
+`UXNAN_HOOK_URL` y `UXNAN_AGENT_ID`) identifica un proceso que el ADE arranco y
+ancla `current` en su terminal; el **token de control** vive solo en el archivo de
+descubrimiento `control.json` del directorio de datos (`0600` en Unix; en Windows
+la ACL del perfil de usuario), junto al pid **y la hora de inicio** del proceso, y
+se borra al salir limpiamente — `uxnan-cli` rechaza un archivo legible por otros,
+una version de protocolo distinta o un pid que ya no es ese proceso. El token de
+control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
+la app); el de lanzamiento, el proyecto de su terminal. Ninguno se escribe en la
+config de ningun CLI ni se registra en logs.
+
+**`uxnan-cli`:** resultados en stdout, errores en stderr, `--json` estable, codigos
+de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,
+timeout 6, no encontrado 7, ocupado 8); `skills get control --full` imprime la guia
+generada desde el catalogo. Encuentra la app por el entorno (dentro de una
+terminal del ADE) o por `control.json` (con las mismas reglas de directorio de
+datos que la app, incluido el perfil `-dev` de una build de desarrollo). Detalle
+operativo en `docs/control-api.md`.
 
 **Registracion por lanzamiento (`mcpinject.rs`) — invariante de diseno:** el servidor se registra **en el proceso que lanza uxnan y solo para ese lanzamiento**; el ADE **no escribe nada** en la config de ningun CLI (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, …). Un agente arrancado fuera de uxnan no descubre el servidor, no intenta conectarse y **no puede avisar de que esta caido**.
 
@@ -771,7 +821,7 @@ agentes** corriendo **o** cuando existe alguna corrida):
 > el store reactivo `src/lib/state/orchestrationRun.svelte.ts` (agentes vivos,
 > despacho, timers, persistencia). Backend: `set_orchestration_runs` (persistencia
 > opaca, patron `terminal_layout`), `agent_run_headless` (modo print con exit code
-> verificado, reusa `agentcli`) y tools MCP de orquestacion en `mcp.rs`.
+> verificado, reusa `agentcli`) y tools MCP de orquestacion en `control/` (§1.6).
 
 ### 3.1 Modelo: corrida (`Run`) = grafo de pasos (`Step`)
 
@@ -841,8 +891,9 @@ agentes** corriendo **o** cuando existe alguna corrida):
 ### 3.7 Canal cooperativo agente→ADE (tools MCP de orquestacion)
 
 - El ADE registra en cada agente que lanza (junto a las tools del navegador, §1.6)
-  las tools MCP `orchestration_report_result` / `orchestration_report_progress`. El
-  agente pasa su `UXNAN_AGENT_ID`; el handler en `mcp.rs` emite un evento
+  las tools MCP `orchestration_report_result` / `orchestration_report_progress`
+  (entradas `orchestration/reportResult|reportProgress` del catalogo, §1.6). El
+  agente pasa su `UXNAN_AGENT_ID`; el servicio en `control/services/orchestration.rs` emite un evento
   `agent:orchestration` que el motor frontend atribuye al paso interactivo en curso
   (backend tonto; el modelo de corrida vive 100% en TS). Esto da **salida
   estructurada** de agentes interactivos, mejor que el `summary` grueso. Para que el
