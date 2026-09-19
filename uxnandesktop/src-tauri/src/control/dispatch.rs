@@ -11,8 +11,8 @@ use tauri::{AppHandle, Manager};
 use uxnan_control_protocol::catalog::{self, Group};
 use uxnan_control_protocol::rpc::{ErrorCode, RpcError};
 
-use super::services;
 use super::Caller;
+use super::{audit, receipts, services};
 use crate::state::AppState;
 
 /// The groups the user has left on.
@@ -60,31 +60,73 @@ pub async fn dispatch<R: tauri::Runtime>(
     } else {
         params.clone()
     };
+    // A `create` entry is receipted and audited: the same key returns the first
+    // receipt instead of doing the thing twice, and every call that reached the
+    // service — done or refused by it — leaves a line the person can read later.
+    let audited = entry.group == Group::Create;
+    if audited {
+        if let Some(key) = receipts::key_of(&params) {
+            let state = app.state::<AppState>();
+            if let Some(receipt) = state.control_receipts.lookup(method, &key) {
+                return Ok(receipt);
+            }
+        }
+    }
+    let outcome = run(app, caller, method, &params).await;
+    if audited {
+        let state = app.state::<AppState>();
+        let logged = outcome.clone().map_err(|e| e.message);
+        audit::append(
+            &state.data_dir,
+            &audit::line(caller, method, &params, &logged),
+        );
+        if let (Ok(receipt), Some(key)) = (&outcome, receipts::key_of(&params)) {
+            state
+                .control_receipts
+                .remember(method, &key, receipt.clone());
+        }
+    }
+    outcome
+}
+
+/// The service behind `method`, once the entry, its group and its params have
+/// been checked.
+async fn run<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    method: &str,
+    params: &Value,
+) -> Result<Value, RpcError> {
     match method {
-        "status" => services::status::status(app, caller, &params).await,
-        "project/list" => services::project::list(app, caller, &params).await,
-        "project/show" => services::project::show(app, caller, &params).await,
-        "worktree/list" => services::worktree::list(app, caller, &params).await,
-        "worktree/show" => services::worktree::show(app, caller, &params).await,
-        "terminal/list" => services::terminal::list(app, caller, &params).await,
-        "terminal/show" => services::terminal::show(app, caller, &params).await,
-        "agent/list" => services::agent::list(app, caller, &params).await,
-        "run/list" => services::run::list(app, caller, &params).await,
-        "run/show" => services::run::show(app, caller, &params).await,
-        "browser/status" => services::browser::status(app, caller, &params).await,
-        "app/focus" => services::ui::focus(app, caller, &params).await,
-        "terminal/reveal" => services::ui::reveal(app, caller, &params).await,
-        "file/open" => services::ui::open_file(app, caller, &params).await,
-        "file/diff" => services::ui::open_diff(app, caller, &params).await,
-        "browser/open" | "browser/navigate" => services::browser::open(app, caller, &params).await,
-        "browser/reload" => services::browser::reload(app, caller, &params).await,
-        "browser/back" => services::browser::back(app, caller, &params).await,
-        "browser/forward" => services::browser::forward(app, caller, &params).await,
+        "status" => services::status::status(app, caller, params).await,
+        "project/list" => services::project::list(app, caller, params).await,
+        "project/show" => services::project::show(app, caller, params).await,
+        "worktree/list" => services::worktree::list(app, caller, params).await,
+        "worktree/show" => services::worktree::show(app, caller, params).await,
+        "terminal/list" => services::terminal::list(app, caller, params).await,
+        "terminal/show" => services::terminal::show(app, caller, params).await,
+        "agent/list" => services::agent::list(app, caller, params).await,
+        "run/list" => services::run::list(app, caller, params).await,
+        "run/show" => services::run::show(app, caller, params).await,
+        "automation/list" => services::automation::list(app, caller, params).await,
+        "browser/status" => services::browser::status(app, caller, params).await,
+        "app/focus" => services::ui::focus(app, caller, params).await,
+        "terminal/reveal" => services::ui::reveal(app, caller, params).await,
+        "file/open" => services::ui::open_file(app, caller, params).await,
+        "file/diff" => services::ui::open_diff(app, caller, params).await,
+        "browser/open" | "browser/navigate" => services::browser::open(app, caller, params).await,
+        "browser/reload" => services::browser::reload(app, caller, params).await,
+        "browser/back" => services::browser::back(app, caller, params).await,
+        "browser/forward" => services::browser::forward(app, caller, params).await,
+        "worktree/create" => services::worktree::create_entry(app, caller, params).await,
+        "terminal/create" => services::terminal::create(app, caller, params).await,
+        "run/start" => services::run::start(app, caller, params).await,
+        "automation/run" => services::automation::run(app, caller, params).await,
         "orchestration/reportResult" => {
-            services::orchestration::report_result(app, caller, &params).await
+            services::orchestration::report_result(app, caller, params).await
         }
         "orchestration/reportProgress" => {
-            services::orchestration::report_progress(app, caller, &params).await
+            services::orchestration::report_progress(app, caller, params).await
         }
         // The catalog and this table are checked against each other by a test;
         // an entry that reaches here is a bug, not a caller's mistake.
@@ -120,6 +162,11 @@ const IMPLEMENTED: &[&str] = &[
     "browser/reload",
     "browser/back",
     "browser/forward",
+    "automation/list",
+    "worktree/create",
+    "terminal/create",
+    "run/start",
+    "automation/run",
     "orchestration/reportResult",
     "orchestration/reportProgress",
 ];

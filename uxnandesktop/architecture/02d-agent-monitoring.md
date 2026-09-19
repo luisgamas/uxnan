@@ -599,10 +599,17 @@ destructivos, ni credenciales, ni edicion externa de la persistencia.
 
 **Grupos de capacidad (versionados y desconectables en `settings.control`):**
 `read` (`status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`,
-`agent/list`, `run/list|show`, `browser/status`), `ui` (`app/focus`,
+`agent/list`, `run/list|show`, `automation/list`, `browser/status`), `ui` (`app/focus`,
 `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`),
-`create`, `converse` y `orchestrate` (hoy `orchestration/reportResult|reportProgress`,
-§3.7). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
+`create` (`worktree/create` — el nucleo del comando `worktree_create` movido al
+servicio, adopcion por la ventana via el puente, lanzamiento del agente y primer
+mensaje encolado tras el backpressure del broadcast —, `terminal/create`,
+`run/start` y `automation/run` **solo sobre definiciones guardadas**; cada entrada
+responde con un **recibo** `{ requestId, idempotencyKey?, … }`, repite el primer
+recibo ante la misma `idempotencyKey` en vez de crear dos veces, y deja una linea
+en `control-audit.log` del directorio de datos con el llamador, la entrada, los
+argumentos — el prompt reducido a su longitud — y el resultado), `converse` y
+`orchestrate` (hoy `orchestration/reportResult|reportProgress`, §3.7). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
 para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
 (`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;
 `current` se ancla en el `UXNAN_AGENT_ID` del llamador, asi que solo existe

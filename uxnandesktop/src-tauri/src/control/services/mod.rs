@@ -9,6 +9,7 @@
 //! without a protocol bump.
 
 pub mod agent;
+pub mod automation;
 pub mod browser;
 pub mod orchestration;
 pub mod project;

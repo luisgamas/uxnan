@@ -19,6 +19,8 @@ on:
       - ".prettierrc.json"
       - ".github/workflows/ci-node.yml"
       - ".github/workflows/verify-node.yml"
+  # On demand, for a branch without a pull request (see ci-desktop.yml).
+  workflow_dispatch:
   pull_request:
     paths:
       - "shared/**"

@@ -2947,31 +2947,23 @@ pub async fn branch_list(
     })
 }
 
-/// Resolve where a worktree for `branch` goes, from the settings that apply to
-/// this project: the global layout, plus the effective root — the project's own
-/// override first, then the global custom root (which only a `custom` layout
-/// uses; a leftover value must not silently move a `managed` project).
+/// Where a new worktree of `repo_id` for `branch` goes: the control service's
+/// one implementation of the location policy (`services::worktree::resolve_location`).
 async fn resolve_worktree_location(
     state: &AppState,
     repo_id: &str,
-    repo_path: &str,
+    _repo_path: &str,
     branch: &str,
 ) -> Result<Resolved, CommandError> {
-    let (mode, root) = {
+    let repo = {
         let data = state.data.read().await;
-        let settings = data.settings.worktrees.clone();
-        let project_root = data
-            .repos
+        data.repos
             .iter()
             .find(|r| r.id == repo_id)
-            .and_then(|r| r.worktree_root.clone());
-        let global_root = match settings.location {
-            WorktreeLocationMode::Custom => settings.root.clone(),
-            _ => None,
-        };
-        (settings.location, project_root.or(global_root))
+            .cloned()
+            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
     };
-    worktreeloc::resolve(repo_path, branch, mode, root.as_deref())
+    crate::control::services::worktree::resolve_location(state, &repo, branch)
         .await
         .map_err(CommandError::from)
 }
@@ -3282,7 +3274,7 @@ pub async fn worktree_cleanup_remove(
 /// on a target other than the intended one.
 #[tauri::command]
 pub async fn worktree_create(
-    state: State<'_, AppState>,
+    app: AppHandle,
     repo_id: String,
     branch: String,
     base: Option<String>,
@@ -3290,65 +3282,31 @@ pub async fn worktree_create(
     path: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<WorktreeEntry, CommandError> {
-    let branch = branch.trim().to_string();
-    if branch.is_empty() {
-        return Err(CommandError::from(AppError::Invalid(
-            "branch name is required".to_string(),
-        )));
-    }
-    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
-    let from_existing = from_existing.unwrap_or(false);
-
-    // Resolve the worktree location: a custom absolute path for this creation,
-    // or the configured layout. A custom path is normalized to forward slashes
-    // (matching git's own spelling) and must be absolute and not already exist.
-    let worktree_path = match path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
-        Some(custom) => {
-            let normalized = custom.replace('\\', "/");
-            let normalized = normalized.trim_end_matches('/').to_string();
-            if !std::path::Path::new(&normalized).is_absolute() {
-                return Err(CommandError::from(AppError::Invalid(
-                    "custom worktree path must be absolute".to_string(),
-                )));
-            }
-            if std::path::Path::new(&normalized).exists() {
-                return Err(CommandError::from(AppError::Invalid(
-                    "a folder already exists at that path".to_string(),
-                )));
-            }
-            normalized
-        }
-        None => {
-            let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
-            worktreeloc::prepare(&resolved).await;
-            resolved.path
-        }
+    // The fence stays here: it is about the *caller's* expectation of which
+    // machine this is, which only the window carries. The creation itself is
+    // the control service's, shared with `worktree/create`.
+    let state = app.state::<AppState>();
+    repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
+    let repo = {
+        let data = state.data.read().await;
+        data.repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .cloned()
+            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
     };
-
-    if from_existing {
-        git::add_worktree_from_existing(&repo_path, &branch, &worktree_path)
-            .await
-            .map_err(CommandError::from)?;
-    } else {
-        let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
-            Some(base) => base,
-            None => git::default_base(&repo_path).await,
-        };
-        git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base))
-            .await
-            .map_err(CommandError::from)?;
-    }
-
-    // Prefer git's own listing of the new worktree (canonical path/branch/head);
-    // fall back to a hand-built entry if the re-list misses it for any reason.
-    Ok(git::find_worktree_entry(&repo_path, &worktree_path)
-        .await
-        .unwrap_or(WorktreeEntry {
-            path: worktree_path,
-            branch: Some(branch),
-            head: None,
-            is_main: false,
-        }))
+    crate::control::services::worktree::create(
+        &app,
+        &repo,
+        crate::control::services::worktree::CreateSpec {
+            branch,
+            base,
+            from_existing: from_existing.unwrap_or(false),
+            path,
+        },
+    )
+    .await
+    .map_err(CommandError::from)
 }
 
 /// Remove a worktree (spec §2.3). With `force = false` the backend refuses when

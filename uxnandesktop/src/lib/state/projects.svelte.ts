@@ -1319,7 +1319,7 @@ class ProjectsStore {
     repoId: string,
     created: WorktreeEntry,
     agentId?: string | null,
-  ): Promise<void> {
+  ): Promise<string | null> {
     await this.loadWorktrees(repoId, false);
     this.setActiveWorktree(created.path);
     void this.refreshStatuses([created.path]);
@@ -1329,7 +1329,7 @@ class ProjectsStore {
         : agentId
           ? app.launchableAgents.find((a) => a.id === agentId)
           : undefined;
-    if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
+    return agent ? app.launchAgent(agent, { cwd: created.path, workspace: created.path }) : null;
   }
 
   /** Remove a worktree. Branch cleanup is opt-in via `cleanup` (delete local /

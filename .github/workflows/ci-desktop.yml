@@ -15,6 +15,10 @@ on:
       - "uxnandesktop/**"
       - ".github/workflows/ci-desktop.yml"
       - ".github/workflows/verify-desktop.yml"
+  # On demand, for a branch that has no pull request yet: a multi-phase branch
+  # is verified on the platform matrix per phase, not only once it is proposed
+  # for merge (`gh workflow run ci-desktop.yml --ref <branch>`).
+  workflow_dispatch:
 
 concurrency:
   group: ci-desktop-${{ github.ref }}

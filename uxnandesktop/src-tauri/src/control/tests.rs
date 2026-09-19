@@ -11,9 +11,10 @@ use tokio::sync::RwLock;
 use uxnan_control_protocol::rpc::ErrorCode;
 use uxnan_control_protocol::{MCP_PATH, RPC_PATH};
 
-use crate::model::AppData;
+use crate::model::{AppData, RepoData};
 use crate::persistence::PersistenceManager;
 use crate::state::AppState;
+use crate::target::TargetId;
 
 const LAUNCH: &str = "launch-token";
 const CONTROL: &str = "control-token";
@@ -290,6 +291,201 @@ async fn a_hook_report_needs_the_launch_token() {
     let data = state.data.read().await;
     assert_eq!(data.agent_cache.len(), 1);
     assert_eq!(data.agent_cache[0].agent_id, "a1");
+}
+
+/// A real repository to create worktrees of, registered as a project.
+async fn repo_in(dir: &std::path::Path) -> (String, RepoData) {
+    let path = dir.join("repo");
+    std::fs::create_dir_all(&path).unwrap();
+    let run = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&path)
+            .output()
+            .expect("git");
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    run(&["init", "-q", "-b", "main"]);
+    run(&["config", "user.email", "test@uxnan.dev"]);
+    run(&["config", "user.name", "Uxnan Test"]);
+    run(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(path.join("README.md"), "hi\n").unwrap();
+    run(&["add", "."]);
+    run(&["commit", "-q", "-m", "init"]);
+    let path = crate::worktreeloc::canonical_temp(&path);
+    (
+        path.clone(),
+        RepoData {
+            id: "repo-1".into(),
+            name: "repo".into(),
+            path,
+            target: TargetId::Local,
+            worktrees: Vec::new(),
+            is_git: true,
+            icon: None,
+            branch_icons: Default::default(),
+            worktree_order: Vec::new(),
+            worktree_root: Some(dir.join("wt").to_string_lossy().into_owned()),
+        },
+    )
+}
+
+/// `worktree/create` creates the worktree where the project's policy says, is
+/// receipted, audited, and idempotent by key — and a window that is not there
+/// to adopt it is reported, not a failure of the creation.
+#[tokio::test]
+async fn a_worktree_is_created_receipted_audited_and_not_created_twice() {
+    let dir = tempfile::tempdir().unwrap();
+    let (repo_path, repo) = repo_in(dir.path()).await;
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    let s = server(data).await;
+    let auth = [("authorization", "Bearer control-token")];
+    let params = json!({ "project": "name:repo", "branch": "feat/x", "idempotencyKey": "k-1" });
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc("worktree/create", params.clone()),
+    )
+    .await;
+    let receipt = &body["result"];
+    assert!(receipt["requestId"].as_str().is_some(), "{body}");
+    assert_eq!(receipt["idempotencyKey"], "k-1");
+    assert_eq!(receipt["worktree"]["branch"], "feat/x");
+    // No window in the mock app: created, adoption reported as not done.
+    assert_eq!(receipt["adopted"], false);
+    assert!(receipt["warning"]
+        .as_str()
+        .unwrap()
+        .contains("did not adopt"));
+    let created = receipt["worktree"]["path"].as_str().unwrap().to_string();
+    assert!(std::path::Path::new(&created).join("README.md").exists());
+
+    // Same key: the same receipt, and still one worktree.
+    let (_, again) = post(&s.origin, RPC_PATH, &auth, rpc("worktree/create", params)).await;
+    assert_eq!(again["result"], *receipt);
+    let list = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    let worktrees = String::from_utf8_lossy(&list.stdout)
+        .lines()
+        .filter(|l| l.starts_with("worktree "))
+        .count();
+    assert_eq!(worktrees, 2, "main + the one created");
+
+    // The audit log has the line, with the caller and the receipt id.
+    let data_dir = s._app.state::<AppState>().data_dir.clone();
+    let log = std::fs::read_to_string(data_dir.join(super::audit::FILE_NAME)).unwrap();
+    let lines: Vec<Value> = log
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "the idempotent replay is not a second attempt"
+    );
+    assert_eq!(lines[0]["method"], "worktree/create");
+    assert_eq!(lines[0]["ok"], true);
+    assert_eq!(lines[0]["caller"]["kind"], "control");
+    assert_eq!(lines[0]["requestId"], receipt["requestId"]);
+
+    // A refusal is audited too, as a refusal.
+    let (_, refused) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc(
+            "worktree/create",
+            json!({ "project": "name:repo", "branch": "feat/x" }),
+        ),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], ErrorCode::InvalidParams.code());
+    let log = std::fs::read_to_string(data_dir.join(super::audit::FILE_NAME)).unwrap();
+    let last: Value = serde_json::from_str(log.lines().last().unwrap()).unwrap();
+    assert_eq!(last["ok"], false);
+    assert!(!last["error"].as_str().unwrap().is_empty());
+}
+
+/// A prompt without an agent, and a prompt over the cap, are refused before
+/// anything is created — and the refusal names the rule.
+#[tokio::test]
+async fn a_prompt_is_checked_before_the_worktree_exists() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_, repo) = repo_in(dir.path()).await;
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    let s = server(data).await;
+    let auth = [("authorization", "Bearer control-token")];
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc(
+            "worktree/create",
+            json!({ "project": "name:repo", "branch": "feat/p", "prompt": "hi" }),
+        ),
+    )
+    .await;
+    assert_eq!(body["error"]["code"], ErrorCode::InvalidParams.code());
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("needs `agent`"));
+    let big = "x".repeat(super::services::terminal::PROMPT_MAX_BYTES + 1);
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc(
+            "worktree/create",
+            json!({ "project": "name:repo", "branch": "feat/p", "agent": "claude", "prompt": big }),
+        ),
+    )
+    .await;
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("the most a first message may be"));
+    // The folder that would have been created is not there.
+    assert!(
+        !dir.path().join("wt").exists()
+            || std::fs::read_dir(dir.path().join("wt"))
+                .map(|d| d.count() == 0)
+                .unwrap_or(true)
+    );
+}
+
+/// `automation/run` refuses an id nobody saved; `run/start` needs the window.
+#[tokio::test]
+async fn saved_things_only() {
+    let s = server(AppData::default()).await;
+    let auth = [("authorization", "Bearer control-token")];
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc("automation/run", json!({ "automation": "not-saved" })),
+    )
+    .await;
+    assert_eq!(body["error"]["code"], ErrorCode::NotFound.code());
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc("run/start", json!({ "run": "r1" })),
+    )
+    .await;
+    assert_eq!(body["error"]["code"], ErrorCode::Unavailable.code());
 }
 
 /// The control token can change while the server runs, and the old one stops

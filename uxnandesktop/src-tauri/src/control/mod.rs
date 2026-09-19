@@ -17,11 +17,13 @@
 //! services ask the window through [`bridge`] and wait for its answer, rather
 //! than reinterpreting a serialization the backend has always treated as opaque.
 
+pub mod audit;
 pub mod bridge;
 pub mod discovery;
 mod dispatch;
 pub mod mcp;
 mod params;
+pub mod receipts;
 mod resolve;
 pub mod rpc;
 pub mod server;

@@ -726,9 +726,9 @@ class AppStore {
   launchAgent(
     agent: AgentProfile,
     opts: { cwd?: string; workspace?: string; title?: string; target?: string },
-  ): void {
+  ): string | null {
     const command = agent.command.trim();
-    if (!command) return;
+    if (!command) return null;
     // Launching an agent opens its terminal → leave the inline GitHub view.
     this.closeGithub();
     // Ask for notification permission now (focused, user-initiated) so an
@@ -778,7 +778,7 @@ class AppStore {
     const baseTitle = opts.cwd
       ? (opts.cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? undefined)
       : undefined;
-    terminals.create({
+    return terminals.create({
       cwd: opts.cwd,
       title: opts.title ?? baseTitle,
       // A local shell choice means nothing on a host: a remote terminal always
@@ -813,6 +813,20 @@ class AppStore {
       workspace: opts.workspace,
       target: opts.target,
     });
+  }
+
+  /** A launchable agent by what a caller may call it: its profile name, its
+   *  command (`claude`, `codex`) or its profile id — case-insensitively. What the
+   *  control surface resolves an `agent` argument with. */
+  findLaunchableAgent(selector: string): AgentProfile | undefined {
+    const wanted = selector.trim().toLowerCase();
+    if (!wanted) return undefined;
+    return this.launchableAgents.find(
+      (a) =>
+        a.id === selector.trim() ||
+        a.name.trim().toLowerCase() === wanted ||
+        a.command.trim().toLowerCase() === wanted,
+    );
   }
 
   /** Whether the dark base applies right now (drives the `.dark` class). */

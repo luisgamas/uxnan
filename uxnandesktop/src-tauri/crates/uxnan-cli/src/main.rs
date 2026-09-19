@@ -66,6 +66,11 @@ enum Command {
         #[command(subcommand)]
         cmd: RunCmd,
     },
+    /// Saved automations (unattended, recurring runs).
+    Automation {
+        #[command(subcommand)]
+        cmd: AutomationCmd,
+    },
     /// The app window.
     App {
         #[command(subcommand)]
@@ -113,6 +118,37 @@ enum WorktreeCmd {
     },
     /// Describe one worktree.
     Show { worktree: String },
+    /// Create a worktree on a new branch, and optionally launch an agent in it.
+    Create {
+        /// The project (`current`, `id:`, `path:` or `name:`).
+        #[arg(long)]
+        project: String,
+        /// The new branch name.
+        #[arg(long)]
+        branch: String,
+        /// The ref to branch from (default: the project's default base).
+        #[arg(long)]
+        base: Option<String>,
+        /// Check out an existing branch instead of creating one.
+        #[arg(long)]
+        from_existing: bool,
+        #[command(flatten)]
+        launch: Launch,
+    },
+}
+
+/// The arguments shared by the entries that may launch an agent.
+#[derive(Args)]
+struct Launch {
+    /// The agent to launch: a profile name, its command (`claude`, `codex`) or id.
+    #[arg(long)]
+    agent: Option<String>,
+    /// A file whose contents become the agent's first message (needs --agent).
+    #[arg(long)]
+    prompt_file: Option<std::path::PathBuf>,
+    /// A caller-chosen key: repeating the call with it returns the first receipt.
+    #[arg(long)]
+    idempotency_key: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -126,6 +162,17 @@ enum TerminalCmd {
     Show { terminal: String },
     /// Show a terminal tab in the window.
     Reveal { terminal: String },
+    /// Open a new terminal tab in a worktree, optionally with an agent.
+    Create {
+        /// The worktree (`current`, `path:` or `branch:`).
+        #[arg(long)]
+        worktree: String,
+        /// A tab title (default: the worktree folder name).
+        #[arg(long)]
+        title: Option<String>,
+        #[command(flatten)]
+        launch: Launch,
+    },
 }
 
 #[derive(Subcommand)]
@@ -140,6 +187,26 @@ enum RunCmd {
     Ls,
     /// Describe one run with its steps.
     Show { run: String },
+    /// Start (or re-run) a saved run.
+    Start {
+        run: String,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AutomationCmd {
+    /// List the saved automations.
+    Ls,
+    /// Run a saved automation now.
+    Run {
+        automation: String,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -225,6 +292,23 @@ fn plan(command: Command) -> Result<Plan, String> {
             WorktreeCmd::Show { worktree } => {
                 with("worktree/show", json!({ "worktree": worktree }))
             }
+            WorktreeCmd::Create {
+                project,
+                branch,
+                base,
+                from_existing,
+                launch,
+            } => {
+                let mut p = json!({ "project": project, "branch": branch });
+                if let Some(b) = sel(base) {
+                    p["base"] = json!(b);
+                }
+                if from_existing {
+                    p["fromExisting"] = json!(true);
+                }
+                launch.apply(&mut p)?;
+                with("worktree/create", p)
+            }
         },
         Command::Terminal { cmd } => match cmd {
             TerminalCmd::Ls { worktree } => match sel(worktree) {
@@ -237,6 +321,18 @@ fn plan(command: Command) -> Result<Plan, String> {
             TerminalCmd::Reveal { terminal } => {
                 with("terminal/reveal", json!({ "terminal": terminal }))
             }
+            TerminalCmd::Create {
+                worktree,
+                title,
+                launch,
+            } => {
+                let mut p = json!({ "worktree": worktree });
+                if let Some(t) = sel(title) {
+                    p["title"] = json!(t);
+                }
+                launch.apply(&mut p)?;
+                with("terminal/create", p)
+            }
         },
         Command::Agent { cmd } => match cmd {
             AgentCmd::Ls => with("agent/list", json!({})),
@@ -244,6 +340,29 @@ fn plan(command: Command) -> Result<Plan, String> {
         Command::Run { cmd } => match cmd {
             RunCmd::Ls => with("run/list", json!({})),
             RunCmd::Show { run } => with("run/show", json!({ "run": run })),
+            RunCmd::Start {
+                run,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "run": run });
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("run/start", p)
+            }
+        },
+        Command::Automation { cmd } => match cmd {
+            AutomationCmd::Ls => with("automation/list", json!({})),
+            AutomationCmd::Run {
+                automation,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "automation": automation });
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("automation/run", p)
+            }
         },
         Command::App { cmd } => match cmd {
             AppCmd::Focus => with("app/focus", json!({})),
@@ -299,6 +418,51 @@ fn plan(command: Command) -> Result<Plan, String> {
     }
 }
 
+/// The most a prompt file may weigh — the same cap the app enforces, checked
+/// here first so a too-large file is refused before anything is sent.
+const PROMPT_MAX_BYTES: u64 = 64 * 1024;
+
+impl Launch {
+    /// Put the launch arguments into `params`, reading the prompt file.
+    fn apply(self, params: &mut Value) -> Result<(), String> {
+        if let Some(agent) = self.agent.filter(|a| !a.trim().is_empty()) {
+            params["agent"] = json!(agent.trim());
+        }
+        if let Some(path) = self.prompt_file {
+            if params.get("agent").is_none() {
+                return Err(
+                    "--prompt-file needs --agent: a plain terminal has nobody to read it".into(),
+                );
+            }
+            params["prompt"] = json!(read_prompt_file(&path)?);
+        }
+        if let Some(key) = self.idempotency_key.filter(|k| !k.trim().is_empty()) {
+            params["idempotencyKey"] = json!(key.trim());
+        }
+        Ok(())
+    }
+}
+
+/// Read a prompt file: UTF-8, non-empty, under the cap.
+fn read_prompt_file(path: &std::path::Path) -> Result<String, String> {
+    let meta = std::fs::metadata(path)
+        .map_err(|e| format!("cannot read prompt file {}: {e}", path.display()))?;
+    if meta.len() > PROMPT_MAX_BYTES {
+        return Err(format!(
+            "prompt file {} is {} bytes; the most a first message may be is {} — tell the agent to read the file instead",
+            path.display(),
+            meta.len(),
+            PROMPT_MAX_BYTES
+        ));
+    }
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read prompt file {}: {e}", path.display()))?;
+    if text.trim().is_empty() {
+        return Err(format!("prompt file {} is empty", path.display()));
+    }
+    Ok(text)
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let json = cli.json;
@@ -351,4 +515,58 @@ fn fail(json: bool, code: ErrorCode, message: &str) -> ExitCode {
         eprintln!("uxnan-cli: {message}");
     }
     ExitCode::from(code.exit_status() as u8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_prompt_file_must_exist_be_non_empty_and_fit_the_cap() {
+        let dir = std::env::temp_dir().join(format!("uxnan-cli-prompt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ok = dir.join("ok.md");
+        std::fs::write(&ok, "do the thing\n").unwrap();
+        assert_eq!(read_prompt_file(&ok).unwrap(), "do the thing\n");
+        let empty = dir.join("empty.md");
+        std::fs::write(&empty, "  \n").unwrap();
+        assert!(read_prompt_file(&empty).unwrap_err().contains("is empty"));
+        let big = dir.join("big.md");
+        std::fs::write(&big, "x".repeat(PROMPT_MAX_BYTES as usize + 1)).unwrap();
+        assert!(read_prompt_file(&big)
+            .unwrap_err()
+            .contains("the most a first message may be"));
+        assert!(read_prompt_file(&dir.join("missing.md"))
+            .unwrap_err()
+            .contains("cannot read"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_prompt_needs_an_agent_and_launch_args_land_in_params() {
+        let dir = std::env::temp_dir().join(format!("uxnan-cli-launch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("p.md");
+        std::fs::write(&file, "hello").unwrap();
+        let mut p = json!({ "worktree": "current" });
+        let no_agent = Launch {
+            agent: None,
+            prompt_file: Some(file.clone()),
+            idempotency_key: None,
+        };
+        assert!(no_agent
+            .apply(&mut p)
+            .unwrap_err()
+            .contains("needs --agent"));
+        let full = Launch {
+            agent: Some(" claude ".into()),
+            prompt_file: Some(file),
+            idempotency_key: Some("k1".into()),
+        };
+        full.apply(&mut p).unwrap();
+        assert_eq!(p["agent"], "claude");
+        assert_eq!(p["prompt"], "hello");
+        assert_eq!(p["idempotencyKey"], "k1");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

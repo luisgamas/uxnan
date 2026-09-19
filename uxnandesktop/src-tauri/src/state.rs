@@ -151,6 +151,9 @@ pub struct AppState {
     /// (`control::bridge`): tabs, open files and runs are the window's, so a
     /// caller's request about them is answered by the window.
     pub control_bridge: crate::control::bridge::Bridge,
+    /// Receipts of the control surface's `create` entries, by idempotency key
+    /// (`control::receipts`): a retried call gets its first answer back.
+    pub control_receipts: crate::control::receipts::Receipts,
     /// The control token (`control::discovery`): what the user's own shell
     /// presents. Minted here at start, shared with the server, rewritable so
     /// Settings can rotate it without a restart.
@@ -190,6 +193,7 @@ impl AppState {
             mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             resources,
             control_bridge: crate::control::bridge::Bridge::default(),
+            control_receipts: crate::control::receipts::Receipts::default(),
             control_token: Arc::new(RwLock::new(uuid::Uuid::new_v4().to_string())),
             data_dir,
         }

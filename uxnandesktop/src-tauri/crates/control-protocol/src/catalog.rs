@@ -114,6 +114,31 @@ fn terminal_selector() -> Value {
     })
 }
 
+/// The schema fragment every `create` entry accepts: a caller-chosen key that
+/// makes a retry return the first receipt instead of doing the thing twice.
+fn idempotency_key() -> Value {
+    json!({
+        "type": "string",
+        "description": "Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime."
+    })
+}
+
+/// The schema fragment for choosing an agent profile to launch.
+fn agent_selector() -> Value {
+    json!({
+        "type": "string",
+        "description": "Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id. Omit for no agent (a plain terminal)."
+    })
+}
+
+/// The schema fragment for the first message to an agent that was just launched.
+fn prompt() -> Value {
+    json!({
+        "type": "string",
+        "description": "A first message for the launched agent, typed into it once it is ready (queued behind Uxnan's backpressure, so it is never pasted into a busy agent). Requires `agent`. At most 64 KiB."
+    })
+}
+
 fn object(properties: Value, required: &[&str]) -> Value {
     json!({
         "type": "object",
@@ -207,6 +232,14 @@ pub fn catalog() -> Vec<Entry> {
             group: Group::Read,
             summary: "Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.",
             params: object(json!({ "run": { "type": "string", "description": "The run id from `run/list`." } }), &["run"]),
+            mutates: false,
+        },
+        Entry {
+            method: "automation/list",
+            tool: "automation_list",
+            group: Group::Read,
+            summary: "List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.",
+            params: object(json!({}), &[]),
             mutates: false,
         },
         Entry {
@@ -307,6 +340,71 @@ pub fn catalog() -> Vec<Entry> {
             group: Group::Ui,
             summary: "Go forward one entry in the integrated browser's history. Errors if no page is open.",
             params: object(json!({}), &[]),
+            mutates: true,
+        },
+        // ── Create ───────────────────────────────────────────────────────────
+        Entry {
+            method: "worktree/create",
+            tool: "worktree_create",
+            group: Group::Create,
+            summary: "Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — make it the active worktree, and optionally launch an agent in it with a first message. Use it to give a subtask its own isolated space and agent instead of running `git worktree add` yourself: Uxnan then sees, lists and can stop it. Returns a receipt with the worktree and, when an agent was launched, its terminal id.",
+            params: object(
+                json!({
+                    "project": project_selector(true),
+                    "branch": { "type": "string", "description": "The new branch name (also the worktree's folder name under the policy's root)." },
+                    "base": { "type": "string", "description": "The ref to branch from. Default: the project's default base (its main branch)." },
+                    "fromExisting": { "type": "boolean", "description": "Check out an existing branch named `branch` instead of creating it. Default false." },
+                    "agent": agent_selector(),
+                    "prompt": prompt(),
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["project", "branch"],
+            ),
+            mutates: true,
+        },
+        Entry {
+            method: "terminal/create",
+            tool: "terminal_create",
+            group: Group::Create,
+            summary: "Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message. Returns a receipt with the terminal id.",
+            params: object(
+                json!({
+                    "worktree": worktree_selector(),
+                    "agent": agent_selector(),
+                    "title": { "type": "string", "description": "A tab title. Default: the worktree folder name." },
+                    "prompt": prompt(),
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["worktree"],
+            ),
+            mutates: true,
+        },
+        Entry {
+            method: "run/start",
+            tool: "run_start",
+            group: Group::Create,
+            summary: "Start (or re-run) a saved orchestration run by id: every step is reset and the engine begins dispatching. Refused with the validation errors when the run is not runnable. Only saved runs can be started; there is no way to inject steps from here.",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id from `run/list`." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["run"],
+            ),
+            mutates: true,
+        },
+        Entry {
+            method: "automation/run",
+            tool: "automation_run",
+            group: Group::Create,
+            summary: "Run a saved automation now, as a manual run of the same headless runner its schedule uses. Only saved definitions can be run.",
+            params: object(
+                json!({
+                    "automation": { "type": "string", "description": "The automation id from `automation/list`." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["automation"],
+            ),
             mutates: true,
         },
         // ── Orchestrate ──────────────────────────────────────────────────────

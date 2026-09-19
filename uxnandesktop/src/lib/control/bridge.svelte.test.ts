@@ -1,6 +1,8 @@
 /**
  * The window's side of the control surface: what it answers when the backend
- * forwards a caller's question about tabs, files and runs.
+ * forwards a caller's question about tabs, files and runs — and, for the
+ * `create` group, what it does when asked to adopt a worktree, open a terminal
+ * or start a run.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +11,9 @@ import { installFakeBackend, type FakeBackend } from "../../test/tauri";
 
 const { terminals } = await import("$lib/state/terminals.svelte");
 const { orchestrationRun } = await import("$lib/state/orchestrationRun.svelte");
+const { orchestration } = await import("$lib/state/orchestration.svelte");
+const { projects } = await import("$lib/state/projects.svelte");
+const { app } = await import("$lib/state/app.svelte");
 const { answer, startControlBridge } = await import("./bridge");
 
 const WT = "C:/repo";
@@ -20,20 +25,30 @@ beforeEach(() => {
     git_diff_head: () => "",
     term_buffers_set: () => undefined,
     control_respond: () => undefined,
+    pty_create: () => true,
+    pty_paste_submit: () => undefined,
+    worktree_list: () => [{ path: WT, branch: "main", head: "abc", isMain: true }],
+    worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
   });
   terminals.root = null;
   terminals.workspaces = {};
   orchestrationRun.runs = [];
+  orchestration.clearQueue();
+  app.repos = [{ id: "repo-1", name: "repo", path: WT, worktrees: [], isGit: true }];
+  app.settings.agentProfiles = [
+    { id: "a-claude", name: "Claude Code", command: "claude", args: [] },
+    { id: "a-none", name: "Broken", command: "", args: [] },
+  ];
 });
 
 describe("the control bridge", () => {
-  it("lists every terminal tab with its workspace and agent, and nothing else", () => {
+  it("lists every terminal tab with its workspace and agent, and nothing else", async () => {
     terminals.setWorkspace(WT);
     const shell = terminals.create({ cwd: WT, title: "zsh" });
     const agent = terminals.create({ cwd: WT, title: "claude", agentName: "Claude Code" });
     terminals.openFile(`${WT}/src/a.ts`, WT);
 
-    const { result } = answer({ id: "r1", method: "terminal/list", params: null });
+    const { result } = await answer({ id: "r1", method: "terminal/list", params: null });
     const tabs = (result as { tabs: { id: string; workspace: string; agentName?: string }[] }).tabs;
     expect(tabs.map((t) => t.id).sort()).toEqual([shell, agent].sort());
     expect(tabs.every((t) => t.workspace === WT)).toBe(true);
@@ -41,15 +56,15 @@ describe("the control bridge", () => {
     expect(tabs.find((t) => t.id === shell)?.agentName).toBeUndefined();
   });
 
-  it("reveals a terminal and opens a file or a diff where the backend says", () => {
+  it("reveals a terminal and opens a file or a diff where the backend says", async () => {
     terminals.setWorkspace(WT);
     const shell = terminals.create({ cwd: WT });
     terminals.setWorkspace("");
-    answer({ id: "r2", method: "terminal/reveal", params: { terminal: shell, workspace: WT } });
+    await answer({ id: "r2", method: "terminal/reveal", params: { terminal: shell, workspace: WT } });
     expect(terminals.activeWorkspace).toBe(WT);
     expect(terminals.activePtyId()).toBe(shell);
 
-    const opened = answer({
+    const opened = await answer({
       id: "r3",
       method: "file/open",
       params: { path: `${WT}/src/a.ts`, worktree: WT },
@@ -57,7 +72,7 @@ describe("the control bridge", () => {
     expect(opened.error).toBeUndefined();
     expect(terminals.activeFilePath).toBe(`${WT}/src/a.ts`);
 
-    const diffed = answer({
+    const diffed = await answer({
       id: "r4",
       method: "file/diff",
       params: { path: "src/b.ts", worktree: WT, staged: true },
@@ -66,7 +81,7 @@ describe("the control bridge", () => {
     expect(terminals.isFileChangesOpen(WT, "src/b.ts", true)).toBe(true);
   });
 
-  it("describes runs from the run store, and says null for one it does not have", () => {
+  it("describes runs from the run store, and says null for one it does not have", async () => {
     orchestrationRun.runs = [
       {
         id: "run-1",
@@ -98,21 +113,18 @@ describe("the control bridge", () => {
         ],
       },
     ];
-    const list = answer({ id: "r5", method: "run/list", params: null }).result as {
+    const list = (await answer({ id: "r5", method: "run/list", params: null })).result as {
       runs: { id: string; steps: number; completed: number }[];
     };
-    expect(list.runs).toEqual([
-      expect.objectContaining({ id: "run-1", steps: 2, completed: 1 }),
-    ]);
-    const show = answer({ id: "r6", method: "run/show", params: { run: "run-1" } }).result as {
-      steps: { id: string; output: string | null }[];
-    };
+    expect(list.runs).toEqual([expect.objectContaining({ id: "run-1", steps: 2, completed: 1 })]);
+    const show = (await answer({ id: "r6", method: "run/show", params: { run: "run-1" } }))
+      .result as { steps: { id: string; output: string | null }[] };
     expect(show.steps.map((s) => s.output)).toEqual(["done", null]);
-    expect(answer({ id: "r7", method: "run/show", params: { run: "nope" } }).result).toBeNull();
+    expect((await answer({ id: "r7", method: "run/show", params: { run: "nope" } })).result).toBeNull();
   });
 
-  it("answers an unknown method with an error, never with silence", () => {
-    const out = answer({ id: "r8", method: "shell/exec", params: null });
+  it("answers an unknown method with an error, never with silence", async () => {
+    const out = await answer({ id: "r8", method: "shell/exec", params: null });
     expect(out.error).toContain("shell/exec");
     expect(out.result).toBeUndefined();
   });
@@ -126,5 +138,93 @@ describe("the control bridge", () => {
       result: { runs: [] },
       error: null,
     });
+  });
+});
+
+describe("the create group, on the window's side", () => {
+  const created = { path: `${WT}-worktrees/feat-x`, branch: "feat/x", head: "def", isMain: false };
+
+  it("adopts a created worktree like the dialog does, launching the agent and queueing its prompt", async () => {
+    backend.setCommands({
+      worktree_list: () => [{ path: WT, branch: "main", head: "abc", isMain: true }, created],
+    });
+    const out = await answer({
+      id: "c1",
+      method: "worktree/adopt",
+      params: { projectId: "repo-1", worktree: created, agent: "claude", prompt: "start here" },
+    });
+    expect(out.error).toBeUndefined();
+    const terminal = (out.result as { terminal: { id: string; agent: string } }).terminal;
+    expect(terminal.agent).toBe("Claude Code");
+    // The worktree is the active one, the agent's tab lives in it…
+    expect(projects.activeWorktreePath).toBe(created.path);
+    const tab = terminals.findTab(terminal.id);
+    expect(tab?.kind === "terminal" && tab.agentName).toBe("Claude Code");
+    // …and the first message is held for that tab by the backpressure queue
+    // (queued, or already in flight through a paste — never typed blindly).
+    const delivered = backend.lastCallTo("pty_paste_submit")?.args as { id?: string } | undefined;
+    expect(delivered?.id === terminal.id || orchestration.pendingFor(terminal.id) > 0).toBe(true);
+  });
+
+  it("adopts without an agent when none is asked, and refuses an agent it does not know", async () => {
+    const plain = await answer({
+      id: "c2",
+      method: "worktree/adopt",
+      params: { projectId: "repo-1", worktree: created },
+    });
+    expect((plain.result as { terminal: unknown }).terminal).toBeNull();
+
+    const unknown = await answer({
+      id: "c3",
+      method: "worktree/adopt",
+      params: { projectId: "repo-1", worktree: created, agent: "gpt-9" },
+    });
+    expect(unknown.error).toContain("no configured agent matches `gpt-9`");
+    expect(unknown.error).toContain("claude");
+  });
+
+  it("opens a terminal in a worktree, plain or with an agent by name, command or id", async () => {
+    const plain = await answer({
+      id: "c4",
+      method: "terminal/create",
+      params: { worktree: WT, title: "build" },
+    });
+    const plainId = (plain.result as { terminal: { id: string } }).terminal.id;
+    const plainTab = terminals.findTab(plainId);
+    expect(plainTab?.kind === "terminal" && plainTab.cwd).toBe(WT);
+    expect(plainTab?.title).toBe("build");
+
+    for (const agent of ["Claude Code", "claude", "a-claude"]) {
+      const out = await answer({
+        id: `c5-${agent}`,
+        method: "terminal/create",
+        params: { worktree: WT, agent },
+      });
+      const t = (out.result as { terminal: { id: string; agent: string } }).terminal;
+      expect(t.agent).toBe("Claude Code");
+      const tab = terminals.findTab(t.id);
+      expect(tab?.kind === "terminal" && tab.agentName).toBe("Claude Code");
+    }
+
+    // A profile with no command is not launchable, so it is not an agent a
+    // caller can name: refused with the ones that are.
+    const broken = await answer({
+      id: "c6",
+      method: "terminal/create",
+      params: { worktree: WT, agent: "Broken" },
+    });
+    expect(broken.error).toContain("no configured agent matches `Broken`");
+    expect(broken.error).toContain("claude");
+  });
+
+  it("starts a saved run through the engine and reports validation refusals", async () => {
+    orchestrationRun.runs = [
+      { id: "run-empty", title: "Empty", createdAt: 1, updatedAt: 1, status: "draft", seq: 0, steps: [] },
+    ];
+    const refused = await answer({ id: "c7", method: "run/start", params: { run: "run-empty" } });
+    const r = refused.result as { errors: string[]; status: string };
+    expect(r.errors.length).toBeGreaterThan(0);
+    expect(r.status).toBe("draft");
+    expect((await answer({ id: "c8", method: "run/start", params: { run: "nope" } })).result).toBeNull();
   });
 });

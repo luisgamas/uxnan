@@ -55,6 +55,12 @@ pub fn render(method: &str, value: &Value) -> String {
             &[],
             &[],
         ),
+        "automation/list" => table(
+            value.get("automations"),
+            &["id", "name", "enabled", "agent", "cwd"],
+            &[],
+            &[],
+        ),
         _ => record(value, 0),
     }
 }

@@ -1387,19 +1387,6 @@ class TerminalStore {
     return out;
   }
 
-  /** Every terminal tab in every workspace, with the workspace key it lives
-   *  in — what the control surface reports to a caller asking what is open. */
-  allTerminalTabs(): { workspace: string; tab: TerminalTab }[] {
-    const out: { workspace: string; tab: TerminalTab }[] = [];
-    for (const [workspace, tree] of Object.entries(this.workspaces)) {
-      if (!tree) continue;
-      for (const tab of allTabs(tree)) {
-        if (tab.kind === 'terminal') out.push({ workspace, tab });
-      }
-    }
-    return out;
-  }
-
   /** Reveal a specific terminal: show its workspace and make it the active tab
    *  of its region (so clicking a sidebar agent row jumps to its terminal). */
   revealTab(key: string, tabId: string): void {

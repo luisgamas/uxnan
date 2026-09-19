@@ -24,6 +24,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   stable `--json`, exits with a code per kind of failure, and prints the whole
   guide with `skills get control --full`. Docs: `docs/control-api.md`; spec
   `architecture/02d` §1.6.
+- **The `create` group of the control surface.** An agent (or a shell) can give
+  a subtask its own space: `worktree/create` makes a worktree on a new branch
+  where the project's location policy puts it — the same service the
+  New-worktree dialog uses — hands it to the window so it is listed and active
+  like one created from the dialog, and, with `agent`, launches that
+  configured agent in it with an optional first message (queued behind the
+  orchestration backpressure, so it is never typed into a TUI still starting);
+  `terminal/create` opens a tab in a worktree, plain or with an agent;
+  `run/start` starts a saved orchestration run; `automation/run` runs a saved
+  automation now (`automation/list` joins the `read` group). Every `create`
+  entry answers with a **receipt** and is **idempotent by key** — a retry with
+  the same `idempotencyKey` returns the first receipt instead of creating a
+  second thing — and every call that reached its service is written to
+  `control-audit.log` in the app's data directory (prompt text as its length
+  only). A prompt needs an agent and is capped at 64 KiB. `uxnan-cli` grows
+  `worktree create`, `terminal create`, `run start`, `automation ls|run`,
+  `--prompt-file` and `--idempotency-key`; `launchAgent` now returns the tab
+  it opened.
 
 ### Changed
 
@@ -41,6 +59,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   control surface's end-to-end tests build a Tauri mock app, which links
   comctl32 v6-only symbols, and without the manifest the test process could
   not even be loaded on Windows (`STATUS_ENTRYPOINT_NOT_FOUND`).
+- **The desktop and Node CI workflows can be run on demand** (`workflow_dispatch`),
+  so a multi-phase branch is verified on the platform matrix per phase instead
+  of only once it is proposed for merge.
 - **`src-tauri` is a Cargo workspace.** Two small member crates,
   `uxnan-control-protocol` (the contract: catalog, envelope, discovery record,
   selectors, data-dir rules — no Tauri) and `uxnan-cli` (the console client),

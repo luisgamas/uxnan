@@ -20,11 +20,13 @@ transports, no shell access and nothing destructive — by construction.
 
 An agent that Uxnan launched can, today: learn what Uxnan holds (projects,
 worktrees, terminals, the agents in them and their live state), show the person
-a file or a diff, drive the integrated browser to test what it built, and report
-its result to an orchestration run. A person can do the same from a prompt, and
-script it. Later capability groups (creating worktrees and terminals, sending a
-message to an agent and waiting for it to go idle, coordinating several agents)
-build on the same surface; the groups and the road are in the spec.
+a file or a diff, drive the integrated browser to test what it built, report
+its result to an orchestration run — and **give a subtask its own space**:
+create a worktree on a new branch and launch an agent in it with a first
+message, open a terminal, start a saved run or automation. A person can do the
+same from a prompt, and script it. The later groups (sending a message to a
+running agent and waiting for it to go idle; coordinating several agents) build
+on the same surface; the groups and the road are in the spec.
 
 What it is **not**: a shell. There is no entry that runs a command, writes raw
 bytes to a terminal, touches the filesystem or git destructively, reads a
@@ -77,12 +79,52 @@ name) without touching the others. Trust order:
 |---|---|---|
 | `read` | `status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `browser/status` | shipped |
 | `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward` | shipped |
-| `create` | create a worktree or a terminal, start a saved run | planned |
+| `create` | `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run`; `automation/list` sits in `read` | shipped |
 | `converse` | send a complete message to an agent, wait for a state, read its screen | planned |
 | `orchestrate` | `orchestration/reportResult|reportProgress` (shipped); tasks, inbox, questions | partly |
 
 `uxnan-cli skills get control --full` lists every entry with its arguments —
 generated from the catalog, so it cannot describe something the app does not do.
+
+### The `create` group: receipts, idempotency, audit
+
+A `create` entry answers with a **receipt** — `{ requestId, idempotencyKey?, … }`
+plus what was created (the worktree, the terminal id, the run) — and it is safe
+to retry: pass an `idempotencyKey` (any string the caller chooses, a UUID will
+do) and a later call with the same entry and key returns the **first** receipt
+without doing the thing again. Keys are held in memory for the app's lifetime
+(`AppState.control_receipts`, bounded to the last 1024), because a promise about
+"this run of the app" is what a lost reply needs; a worktree created before a
+restart is in `worktree/list` anyway.
+
+Every `create` call that reached its service — done or refused by it — writes
+one JSON line to **`control-audit.log`** in the app's data directory (rotated
+once to `.1` past 1 MiB): the time, the caller (`launch` + terminal id, or
+`control`), the entry, its arguments with any prompt reduced to its byte
+length, and `ok` with the receipt id or the error. It is what lets the person
+read afterwards what was done in their name.
+
+What each entry does, and through which existing path:
+
+- **`worktree/create`** — the branch and folder come from the same policy the
+  New-worktree dialog uses (`worktreeloc`, plus the project's own root); the
+  service is the one the dialog's `worktree_create` command calls. The new
+  worktree is then handed to the window (`worktree/adopt` over the bridge), which
+  lists it, makes it active and — with `agent` — launches that configured agent
+  in it exactly as the dialog would. A `prompt` is queued for the agent through
+  the orchestration broadcast queue, so it is typed only once the agent is free,
+  never into a TUI that is still starting. If the window is not there to adopt,
+  the receipt still comes back with `adopted: false` and a warning — the
+  worktree exists and the next reconcile pass lists it.
+- **`terminal/create`** — a tab in a worktree, plain or with an agent (`agent` by
+  profile name, command or id; `prompt` as above). The window mints the tab id.
+- **`run/start`** — the run engine validates and starts a **saved** run; a run
+  that is not runnable is refused with its validation errors (exit 8 / *busy*).
+- **`automation/run`** — the same headless runner the schedule starts, as a
+  manual run of a **saved** automation. Nothing can inject a definition.
+
+A `prompt` needs an `agent` and is capped at 64 KiB — a first message, not a
+document; the CLI's `--prompt-file` enforces the same cap before sending.
 
 ## Selectors
 
@@ -133,9 +175,14 @@ Tauri. Named `uxnan-cli` on purpose, so it is never mistaken for the app.
 uxnan-cli status
 uxnan-cli project ls | show <project>
 uxnan-cli worktree ls [--project <project>] | show <worktree>
+uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing]
+                          [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]
 uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal>
+uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
+                          [--idempotency-key <key>]
 uxnan-cli agent ls
-uxnan-cli run ls | show <run-id>
+uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
+uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
 uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
@@ -199,15 +246,26 @@ contract for scripts) and `references/workflows.md` (recipes).
   (unknown method, misspelled argument, missing selector, `current` from a
   shell, non-JSON-RPC body), a switched-off group refusing only its entries,
   the MCP route listing the catalog and calling through the same dispatcher,
-  a hook report needing the launch token, and live control-token rotation.
+  a hook report needing the launch token, live control-token rotation — and,
+  for `create`: a worktree created on a **real temporary repository** where
+  the project's policy puts it, receipted, written to the audit log, not
+  created twice under the same key, a prompt refused before anything exists,
+  and saved-only refusals for runs and automations. Receipts and the audit
+  log have their own unit tests.
 - **CLI** (`cargo test -p uxnan-cli`): the HTTP client's round trip against a
   stand-in server, response parsing, the origin derivation, the process
   start-time check, the guide naming every entry and exit status, the table
   and record renderers.
 - **Window** (`npm run test:dom`, `src/lib/control/bridge.svelte.test.ts`):
   the tab listing, reveal/open/diff, run list/show, an unknown method answered
-  with an error, and the reply through `control_respond`.
+  with an error, the reply through `control_respond`; and for `create`: a
+  worktree adopted like the dialog does (active, agent launched, prompt
+  queued), an unknown agent refused with the known ones, a terminal opened
+  plain or with an agent named three ways, a run started or refused with its
+  validation errors.
 - **By hand**: run the app (`npm run tauri dev`), then in another shell
   `uxnan-cli status`, `uxnan-cli terminal ls`, `uxnan-cli file diff <path>
-  --worktree path:<folder>`; and from inside a Uxnan terminal, `uxnan-cli
-  terminal show current`.
+  --worktree path:<folder>`, `uxnan-cli worktree create --project name:<p>
+  --branch feat/x --agent claude --prompt-file task.md --idempotency-key k1`
+  (then the same call again: same receipt, one worktree); and from inside a
+  Uxnan terminal, `uxnan-cli terminal show current`.
