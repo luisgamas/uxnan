@@ -1,30 +1,66 @@
 /**
  * pi adapter (`@earendil-works/pi-coding-agent`, the `pi` CLI — real agent).
  *
- * pi does NOT speak the generic bridge agent IPC. Each turn spawns
- * `pi -p --mode json …` as a one-shot process and maps its newline-JSON event
- * stream onto the bridge's agent events (same one-shot pattern as the OpenCode,
- * Claude Code and Codex adapters). Session continuity is preserved by capturing
- * the session `id` from the `session` event and passing `--session-id <id>` on
- * the next turn — validated live against `pi` 0.79.1.
+ * pi does NOT speak the generic bridge agent IPC. The bridge keeps ONE resident
+ * `pi --mode rpc` process per thread and drives it over JSON-RPC-style commands
+ * on stdin (`prompt`, `steer`, `get_state`), reading its newline-JSON event
+ * stream on stdout. Validated live against `pi` 0.85.1.
  *
- * Critical detail: `pi -p` blocks reading stdin when stdin is an open pipe, so we
- * spawn with stdin IGNORED (the shared `defaultSpawn`). The prompt is passed as
- * an argv element with `shell:false`, so it is never interpolated into a shell.
+ * Process shape (spawned on a thread's first turn, reused by the next ones):
+ *   pi --mode rpc [--tools read,grep,find,ls | --approve] [--model <id>]
+ *      [--thinking <level>] [--session-id <id>]
  *
- * Captured `--mode json` event shapes (one JSON object per line):
- *   { "type":"session", "id":"019…", "cwd":"…" }
+ * Why `--mode rpc` and not `-p --mode json`: print mode reads ALL of stdin as the
+ * initial prompt and has no input channel while it works; RPC mode leaves stdin
+ * open, which is what lets a follow-up `steer` a running turn — and, kept open
+ * across turns, what makes the process resident: the next `prompt` goes to the
+ * same process, with the session already in memory, instead of a fresh CLI
+ * re-initializing Node and re-reading the session JSONL from disk on every turn.
+ *
+ * Session continuity — read this before touching `--session-id`. RPC mode emits
+ * **no** `session` event (print mode `-p --mode json` does, which is how the id
+ * used to be captured — and why, after the move to RPC, no id was captured at
+ * all and every turn started a new session). The id is asked for instead: the
+ * adapter sends `get_state` right after spawning and reads `sessionId` (and the
+ * model's `contextWindow`) from its response. Later spawns for the same thread
+ * (a recycle after a cwd / model / effort / posture change, or after the idle
+ * teardown) pass `--session-id <id>`, which resumes the session — "creating it
+ * if missing" (`pi --help`), so a stale id degrades to a fresh session, never a
+ * failed turn.
+ *
+ * The process is torn down after {@link DEFAULT_PI_IDLE_TIMEOUT_MS} without a
+ * turn, when a spawn parameter changes, on cancel, and when the thread is
+ * archived or deleted. Cancelling kills the process rather than sending `abort`
+ * — the next turn resumes the session on a new one, and a kill is the only
+ * cancel that cannot leave a half-aborted turn streaming into the next.
+ *
+ * Captured `--mode rpc` event shapes (one JSON object per line):
+ *   { "type":"response", "command":"get_state", "success":true,
+ *       "data":{ "sessionId":"019…", "sessionFile":"…", "model":{ "contextWindow":200000, … }, … } }
+ *   { "type":"response", "command":"prompt", "success":true }
  *   { "type":"message_update", "assistantMessageEvent":{ "type":"text_delta", "delta":"…" } }
  *   { "type":"message_end", "message":{ "role":"assistant", "content":[{ "type":"text","text":"…" }],
- *       "usage":{ "input":…, "output":…, "totalTokens":… }, "stopReason":"stop"|"error", "errorMessage"?:"…" } }
+ *       "usage":{ "input":…, "output":…, "cacheRead":…, "totalTokens":… },
+ *       "stopReason":"stop"|"error", "errorMessage"?:"…" } }
  *   { "type":"agent_end", "messages":[…], "willRetry":false }
+ *   { "type":"agent_settled" }
  * (`thinking_*` assistant events carry the model's reasoning and are NOT emitted
  * as answer text.) A startup failure (e.g. a provider with no API key) prints a
  * plain-text line instead of JSON; we surface that as the turn error.
  *
- * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
+ * A turn ends on **`agent_settled`**, not on `agent_end`. `agent_end` is the end
+ * of one agent *run*, and pi retries a run on its own: a retryable provider
+ * error (a 5xx, a rate limit) ends the run with `willRetry: true` and starts
+ * another after a backoff, so a prompt written after that `agent_end` is
+ * refused with "Agent is already processing". `agent_settled` is pi's own
+ * "idle" signal — the one its harness waits on — and it follows the run that
+ * really was the last. A rejected `prompt` (`response … success:false`) still
+ * ends the turn at once: no run started, so nothing else will arrive.
+ *
+ * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
 import { createInterface } from 'node:readline';
+import type { Readable } from 'node:stream';
 import type {
   AgentCapabilities,
   AgentConfig,
@@ -41,6 +77,14 @@ import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+
+/**
+ * How long a thread's resident `pi` process may sit without a turn before it is
+ * torn down (24 hours). Every completed turn re-arms the countdown. A later turn
+ * spawns a new process on the same `--session-id`, so the timeout costs the user
+ * one cold start, never any history.
+ */
+export const DEFAULT_PI_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /** Hard cap on the `--list-models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
@@ -93,37 +137,81 @@ export interface PiAdapterOptions {
   permissionMode?: PiPermissionMode;
   /** Injected spawn function (tests). */
   spawnFn?: SpawnFn;
+  /**
+   * Idle time after which a thread's resident `pi` process is torn down
+   * (default {@link DEFAULT_PI_IDLE_TIMEOUT_MS}, 24 hours).
+   */
+  idleTimeoutMs?: number;
 }
 
-interface ActiveRun {
+/** The turn currently running on a resident process (at most one per thread). */
+interface ActiveTurn {
+  turnId: string;
+  /** Everything streamed as answer text (deltas + any unseen final text). */
+  full: string;
+  /** The current assistant message's streamed text, reset at each `message_end`. */
+  currentAssistantText: string;
+  /** The last assistant message's full text (fallback when nothing streamed). */
+  finalText: string;
+  /** Context-occupying tokens from the last `message_end`, for `usage`. */
+  tokens?: number;
+  errored: boolean;
+  errorMsg?: string;
+  /** toolCallId → its invocation (args), until the matching execution_end pairs. */
+  pendingTools: Map<string, PiToolUse>;
+  /** Non-JSON output (e.g. a startup "No API key found") — surfaced if no content. */
+  plainLines: string[];
+  /**
+   * True once the turn emitted its terminal event. Nothing may be written into
+   * it after that: pi would run a follow-up as a NEW turn, streaming a second
+   * reply into a turn the bridge already closed.
+   */
+  completed: boolean;
+  finish: () => void;
+}
+
+/** A thread's resident `pi` process and the parameters it was spawned with. */
+interface ActiveSession {
   child: SpawnedProcess;
   threadId: string;
-  /**
-   * True once the turn emitted its terminal event. A follow-up must not be sent
-   * after that: pi would run it as a NEW turn on the same process, streaming a
-   * second reply into a turn the bridge already closed.
-   */
-  finished: boolean;
-  /** Write one RPC command into the running turn (see {@link PiAdapter.steerTurn}). */
+  /** pi's session id, from `get_state`; undefined until the response arrives. */
+  sessionId?: string;
+  /** The model's context window as `get_state` reports it, for `usage`. */
+  contextWindow?: number;
+  cwd: string;
+  model?: string;
+  effort?: string;
+  permissionMode: PiPermissionMode;
+  idleTimer?: NodeJS.Timeout;
+  activeTurn?: ActiveTurn;
+  exited: boolean;
+  /** Write one RPC command as a JSON line. False when the pipe is gone. */
   send: (command: Record<string, unknown>) => boolean;
 }
 
 /** A normalized pi event extracted from one RPC/`--mode json` line. */
 export interface PiEvent {
-  kind:
+  kind: /** `-p --mode json` only: RPC mode never emits it (see the header). */
     | 'session'
+    /** RPC `get_state` answered: the session id + the model's context window. */
+    | 'state'
     | 'compaction'
     | 'delta'
     | 'thinking'
     | 'tool_start'
     | 'tool_end'
     | 'final'
+    /** `agent_end`: one agent run ended; `willRetry` says pi will run again. */
     | 'end'
+    /** `agent_settled`: pi is idle — the turn is over. */
+    | 'settled'
     /** An RPC command pi rejected (`{ type:'response', success:false }`). */
     | 'command_failed'
     | 'other';
-  /** Only set for `session`: the session id (for `--session-id` continuity). */
+  /** `session` / `state`: the session id (for `--session-id` continuity). */
   sessionId?: string;
+  /** Only set for `state`: the model's context window in tokens, if reported. */
+  contextWindow?: number;
   /** Only set for `command_failed`: which RPC command was rejected. */
   commandName?: string;
   /**
@@ -135,6 +223,8 @@ export interface PiEvent {
   tokens?: number;
   /** Only set for `final`: whether the assistant message ended in error. */
   isError?: boolean;
+  /** Only set for `end`: pi will retry the run itself, so the turn goes on. */
+  willRetry?: boolean;
   /** Only set for `final`: the error message, when present. */
   errorText?: string;
   /** `tool_start`/`tool_end`: the tool call's id (for pairing args ↔ result). */
@@ -180,7 +270,7 @@ export function parsePiContextWindow(cell: string | undefined): number | undefin
   return Math.round(value * multiplier);
 }
 
-/** Parse one `pi -p --mode json` line, or null if it isn't JSON. */
+/** Parse one `pi --mode rpc` (or `-p --mode json`) line, or null if it isn't JSON. */
 export function parsePiLine(line: string): PiEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -261,12 +351,27 @@ export function parsePiLine(line: string): PiEvent | null {
       };
     }
     case 'agent_end':
-      return { kind: 'end' };
+      return { kind: 'end', willRetry: parsed['willRetry'] === true };
+    case 'agent_settled':
+      return { kind: 'settled' };
     // RPC-mode command acknowledgements. A success is noise, but a FAILED one
     // is the only signal that a command never took effect — a rejected `prompt`
     // would otherwise leave the turn waiting for events that never come.
     case 'response': {
-      if (parsed['success'] !== false) return { kind: 'other' };
+      if (parsed['success'] !== false) {
+        if (parsed['command'] !== 'get_state') return { kind: 'other' };
+        const data = isRecord(parsed['data']) ? parsed['data'] : undefined;
+        const sessionId = typeof data?.['sessionId'] === 'string' ? data['sessionId'] : undefined;
+        const model = data && isRecord(data['model']) ? data['model'] : undefined;
+        const window = model?.['contextWindow'];
+        return {
+          kind: 'state',
+          ...(sessionId !== undefined ? { sessionId } : {}),
+          ...(typeof window === 'number' && window > 0
+            ? { contextWindow: Math.round(window) }
+            : {}),
+        };
+      }
       const message = typeof parsed['error'] === 'string' ? parsed['error'] : undefined;
       const command = typeof parsed['command'] === 'string' ? parsed['command'] : 'command';
       return {
@@ -324,10 +429,11 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #permissionMode: PiPermissionMode;
   readonly #spawn: SpawnFn;
-  /** threadId → pi session id, for `--session-id` continuity. */
+  readonly #idleTimeoutMs: number;
+  /** threadId → pi session id (from `get_state`), passed as `--session-id` on every later spawn. */
   readonly #sessionByThread = new Map<string, string>();
-  /** turnId → in-flight run, for cancellation. */
-  readonly #active = new Map<string, ActiveRun>();
+  /** threadId → the thread's resident process, while one is alive. */
+  readonly #sessions = new Map<string, ActiveSession>();
   /** model id → context-window tokens, cached from `--list-models` for `usage`. */
   readonly #contextWindowByModel = new Map<string, number>();
   #defaultCwd = process.cwd();
@@ -339,6 +445,17 @@ export class PiAdapter extends BaseAgentAdapter {
    */
   defaultCwd(): string {
     return this.#defaultCwd;
+  }
+
+  /** The configured idle timeout (observability + tests). */
+  get idleTimeoutMs(): number {
+    return this.#idleTimeoutMs;
+  }
+
+  /** Whether a resident process is alive for the thread (observability + tests). */
+  hasActiveSession(threadId: string): boolean {
+    const session = this.#sessions.get(threadId);
+    return Boolean(session && !session.exited);
   }
 
   /** Native pi session id for a thread (on-disk history-fallback locator). */
@@ -353,6 +470,7 @@ export class PiAdapter extends BaseAgentAdapter {
     this.#defaultModel = options.defaultModel;
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
     this.#spawn = options.spawnFn ?? defaultSpawn;
+    this.#idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_PI_IDLE_TIMEOUT_MS;
   }
 
   get defaultModel(): string | undefined {
@@ -365,49 +483,103 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   stop(): Promise<void> {
-    for (const run of this.#active.values()) {
-      run.child.kill();
+    for (const threadId of Array.from(this.#sessions.keys())) {
+      this.#teardownSession(threadId);
     }
-    this.#active.clear();
     return Promise.resolve();
   }
 
-  sendTurn(options: SendTurnOptions): Promise<void> {
-    const { threadId, turnId, text } = options;
-    const cwd = options.cwd ?? this.#defaultCwd;
-    const model = options.service ?? this.#defaultModel;
-    const effort = reasoningValue(options);
-    const sessionId = this.#sessionByThread.get(threadId);
+  /**
+   * Tear down the thread's resident process now (the thread was archived or
+   * deleted). The session id is kept: an unarchived thread's next turn resumes
+   * the same session on a fresh process.
+   */
+  closeSession(threadId: string): Promise<void> {
+    this.#teardownSession(threadId);
+    return Promise.resolve();
+  }
 
-    // `--mode rpc` instead of `-p --mode json`: same event stream (both modes
-    // are one `session.subscribe(...)` writing JSON lines), but the prompt
-    // travels on stdin as a command, which leaves an input channel open for the
-    // length of the turn — that is what `steerTurn` writes into.
+  /** (Re)arm the idle countdown after a turn ended. */
+  #scheduleIdleTeardown(session: ActiveSession): void {
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    session.idleTimer = setTimeout(() => {
+      this.#teardownSession(session.threadId);
+    }, this.#idleTimeoutMs);
+    // A pending countdown must never keep the daemon alive on shutdown.
+    session.idleTimer.unref();
+  }
+
+  /**
+   * Kill the thread's process and forget it. A turn still running on it is
+   * marked completed WITHOUT a terminal event — every caller emits its own
+   * (`turn_aborted` on cancel; a recycle only happens between turns). Ending
+   * stdin first is what tells pi no more commands are coming (its rpc mode
+   * exits on stdin end); the kill covers a process that does not.
+   */
+  #teardownSession(threadId: string): void {
+    const session = this.#sessions.get(threadId);
+    if (!session) return;
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer);
+      session.idleTimer = undefined;
+    }
+    if (session.activeTurn) session.activeTurn.completed = true;
+    this.#sessions.delete(threadId);
+    session.exited = true;
+    try {
+      session.child.stdin?.end();
+      session.child.kill();
+    } catch {
+      /* already gone */
+    }
+  }
+
+  /**
+   * The thread's resident process, spawning one when there is none or when the
+   * live one was started with a different cwd / model / effort / posture —
+   * those are process arguments, so honouring a change means a new process. The
+   * new one resumes the same session via `--session-id`.
+   */
+  #getOrCreateSession(
+    threadId: string,
+    cwd: string,
+    model: string | undefined,
+    effort: string | undefined,
+    permissionMode: PiPermissionMode,
+  ): ActiveSession {
+    const existing = this.#sessions.get(threadId);
+    if (
+      existing &&
+      !existing.exited &&
+      existing.cwd === cwd &&
+      existing.model === model &&
+      existing.effort === effort &&
+      existing.permissionMode === permissionMode
+    ) {
+      if (existing.idleTimer) {
+        clearTimeout(existing.idleTimer);
+        existing.idleTimer = undefined;
+      }
+      return existing;
+    }
+
+    if (existing) this.#teardownSession(threadId);
+
+    // Resume the session pi announced on this thread's first `get_state`; on the
+    // very first spawn there is none yet and pi creates one.
+    const sessionId = this.#sessionByThread.get(threadId);
     const args = ['--mode', 'rpc'];
-    if (this.#permissionMode === 'default') args.push('--tools', 'read,grep,find,ls');
-    else if (this.#permissionMode === 'bypassPermissions') args.push('--approve');
+    if (permissionMode === 'default') args.push('--tools', 'read,grep,find,ls');
+    else if (permissionMode === 'bypassPermissions') args.push('--approve');
     if (model) args.push('--model', model);
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
     if (effort) args.push('--thinking', effort);
-    // Resume the thread's session (created on the first turn).
     if (sessionId) args.push('--session-id', sessionId);
 
-    let child: SpawnedProcess;
-    try {
-      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
-        stdin: 'pipe',
-      });
-    } catch (err) {
-      this.emit({
-        type: 'turn_error',
-        threadId,
-        turnId,
-        data: { text: `failed to launch pi: ${errorMessage(err)}` },
-      });
-      return Promise.resolve();
-    }
+    const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
+      stdin: 'pipe',
+    });
 
-    /** Write one RPC command as a JSON line. False when the pipe is gone. */
     const send = (command: Record<string, unknown>): boolean => {
       const stdin = child.stdin;
       if (!stdin || !stdin.writable) return false;
@@ -419,103 +591,44 @@ export class PiAdapter extends BaseAgentAdapter {
       }
     };
 
-    /**
-     * Tell pi no more commands are coming. REQUIRED to end the run: in RPC mode
-     * the process stays alive waiting for the next command, and only exits when
-     * stdin ends (`process.stdin.on('end')` → `shutdown()` in pi's rpc-mode).
-     */
-    const endInput = (): void => {
-      try {
-        child.stdin?.end();
-      } catch {
-        /* already gone */
-      }
+    const session: ActiveSession = {
+      child,
+      threadId,
+      sessionId,
+      cwd,
+      model,
+      effort,
+      permissionMode,
+      exited: false,
+      send,
     };
 
-    const run: ActiveRun = { child, threadId, finished: false, send };
-    this.#active.set(turnId, run);
-    this.emit({ type: 'turn_started', threadId, turnId });
-
-    if (!send({ type: 'prompt', message: text })) {
-      this.#active.delete(turnId);
-      this.emit({
-        type: 'turn_error',
-        threadId,
-        turnId,
-        data: { text: 'failed to send the prompt to pi (stdin unavailable)' },
-      });
-      child.kill();
-      return Promise.resolve();
-    }
-
-    let full = '';
-    let currentAssistantText = '';
-    let finalText = '';
-    let tokens: number | undefined;
-    let errored = false;
-    let errorMsg: string | undefined;
-    // toolCallId → its invocation (args), until the matching execution_end pairs.
-    const pendingTools = new Map<string, PiToolUse>();
-    // Non-JSON output (e.g. a startup "No API key found" error) — surfaced if the
-    // turn produces no content.
-    const plainLines: string[] = [];
-    let completed = false;
-
-    const finish = (): void => {
-      if (completed) return;
-      completed = true;
-      run.finished = true;
-      // No more follow-ups can join this turn, and pi is still waiting on the
-      // pipe for another command — close it so the process can exit.
-      endInput();
-      const body = full.length > 0 ? full : finalText;
-      if (errored && body.length === 0) {
-        this.emit({
-          type: 'turn_error',
-          threadId,
-          turnId,
-          data: { text: errorMsg ?? plainText(plainLines) ?? 'pi error' },
-        });
-        return;
-      }
-      if (body.length === 0 && plainLines.length > 0 && !errored) {
-        // No JSON content and no terminal event: surface the plain output.
-        this.emit({
-          type: 'turn_error',
-          threadId,
-          turnId,
-          data: { text: plainText(plainLines) ?? 'pi produced no output' },
-        });
-        return;
-      }
-      const contextWindow = model !== undefined ? this.#contextWindowByModel.get(model) : undefined;
-      const usage =
-        tokens !== undefined
-          ? { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) }
-          : undefined;
-      this.emit({
-        type: 'turn_completed',
-        threadId,
-        turnId,
-        data: { text: body, ...(usage !== undefined ? { usage } : {}) },
-      });
-    };
-
-    const reader = createInterface({ input: child.stdout });
+    const reader = createInterface({ input: child.stdout as unknown as Readable });
     reader.on('line', (line) => {
       const event = parsePiLine(line);
       if (!event) {
         const trimmed = line.trim();
-        if (trimmed.length > 0) plainLines.push(trimmed);
+        if (trimmed.length > 0 && session.activeTurn && !session.activeTurn.completed) {
+          session.activeTurn.plainLines.push(trimmed);
+        }
         return;
       }
-      if (event.kind === 'session' && event.sessionId) {
-        this.#sessionByThread.set(threadId, event.sessionId);
-      } else if (event.kind === 'compaction') {
+      if (event.kind === 'state' || event.kind === 'session') {
+        if (event.sessionId) {
+          session.sessionId = event.sessionId;
+          this.#sessionByThread.set(threadId, event.sessionId);
+        }
+        if (event.contextWindow !== undefined) session.contextWindow = event.contextWindow;
+        return;
+      }
+      const active = session.activeTurn;
+      if (!active || active.completed) return;
+
+      if (event.kind === 'compaction') {
         this.emit({
           type: 'block',
           threadId,
-          turnId,
+          turnId: active.turnId,
           data: {
             content: compactionBlock(event.compactionReason, {
               ...(event.tokensBefore !== undefined ? { tokensBefore: event.tokensBefore } : {}),
@@ -524,21 +637,26 @@ export class PiAdapter extends BaseAgentAdapter {
           },
         });
       } else if (event.kind === 'delta' && event.text) {
-        full += event.text;
-        currentAssistantText += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+        active.full += event.text;
+        active.currentAssistantText += event.text;
+        this.emit({ type: 'delta', threadId, turnId: active.turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
-        this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
+        this.emit({
+          type: 'thinking',
+          threadId,
+          turnId: active.turnId,
+          data: { text: event.text },
+        });
       } else if (event.kind === 'tool_start' && event.tool) {
-        pendingTools.set(event.toolCallId ?? '', event.tool);
+        active.pendingTools.set(event.toolCallId ?? '', event.tool);
       } else if (event.kind === 'tool_end') {
-        const tool = pendingTools.get(event.toolCallId ?? '');
+        const tool = active.pendingTools.get(event.toolCallId ?? '');
         if (tool) {
-          pendingTools.delete(event.toolCallId ?? '');
+          active.pendingTools.delete(event.toolCallId ?? '');
           this.emit({
             type: 'block',
             threadId,
-            turnId,
+            turnId: active.turnId,
             data: {
               content: piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true),
             },
@@ -546,26 +664,26 @@ export class PiAdapter extends BaseAgentAdapter {
         }
       } else if (event.kind === 'final') {
         if (event.text) {
-          finalText = event.text;
-          const unseen = unseenAssistantText(currentAssistantText, event.text);
+          active.finalText = event.text;
+          const unseen = unseenAssistantText(active.currentAssistantText, event.text);
           if (unseen) {
-            full += unseen;
-            this.emit({ type: 'delta', threadId, turnId, data: { text: unseen } });
+            active.full += unseen;
+            this.emit({ type: 'delta', threadId, turnId: active.turnId, data: { text: unseen } });
           }
         }
-        if (currentAssistantText.length > 0 || (event.text?.length ?? 0) > 0) {
+        if (active.currentAssistantText.length > 0 || (event.text?.length ?? 0) > 0) {
           this.emit({
             type: 'block',
             threadId,
-            turnId,
+            turnId: active.turnId,
             data: { content: assistantResponseBoundaryBlock() },
           });
         }
-        currentAssistantText = '';
-        if (event.tokens !== undefined) tokens = event.tokens;
+        active.currentAssistantText = '';
+        if (event.tokens !== undefined) active.tokens = event.tokens;
         if (event.isError) {
-          errored = true;
-          if (event.errorText) errorMsg = event.errorText;
+          active.errored = true;
+          if (event.errorText) active.errorMsg = event.errorText;
         }
       } else if (event.kind === 'command_failed') {
         // Only a rejected `prompt` ends the turn: it means the agent never
@@ -574,25 +692,39 @@ export class PiAdapter extends BaseAgentAdapter {
         // manager already treats a `false` from `steerTurn` as "leave it
         // queued", so it must not take the turn down with it.
         if (event.commandName === 'prompt') {
-          errored = true;
-          errorMsg = event.errorText ?? 'pi rejected the prompt';
-          finish();
+          active.errored = true;
+          active.errorMsg = event.errorText ?? 'pi rejected the prompt';
+          active.finish();
         }
       } else if (event.kind === 'end') {
-        finish();
+        // The run ended, but the turn only ends once pi settles (see the
+        // header); a run pi will retry keeps the turn open with its state intact.
+        return;
+      } else if (event.kind === 'settled') {
+        active.finish();
       }
     });
 
-    child.on('error', (err) => {
+    child.stderr?.on('data', (chunk: unknown) => {
+      const active = session.activeTurn;
+      if (active && !active.completed) {
+        const str = String(chunk).trim();
+        if (str.length > 0) active.plainLines.push(str);
+      }
+    });
+
+    child.on('error', (err: Error) => {
       reader.close();
-      run.finished = true;
-      this.#active.delete(turnId);
-      if (!completed) {
-        completed = true;
+      session.exited = true;
+      this.#sessions.delete(threadId);
+      const active = session.activeTurn;
+      if (active && !active.completed) {
+        active.completed = true;
+        session.activeTurn = undefined;
         this.emit({
           type: 'turn_error',
           threadId,
-          turnId,
+          turnId: active.turnId,
           data: { text: `pi process error: ${err.message}` },
         });
       }
@@ -600,10 +732,112 @@ export class PiAdapter extends BaseAgentAdapter {
 
     child.on('close', () => {
       reader.close();
-      run.finished = true;
-      this.#active.delete(turnId);
-      finish();
+      session.exited = true;
+      this.#sessions.delete(threadId);
+      const active = session.activeTurn;
+      if (active && !active.completed) {
+        active.finish();
+      }
     });
+
+    this.#sessions.set(threadId, session);
+    // Ask for the session id now: pi answers commands in order, so the response
+    // lands before the first prompt's events, and the id is known before any
+    // recycle could need it.
+    send({ type: 'get_state' });
+    return session;
+  }
+
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    const { threadId, turnId, text } = options;
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const model = options.service ?? this.#defaultModel;
+    const effort = reasoningValue(options);
+    const permissionMode = this.#permissionMode;
+
+    let session: ActiveSession;
+    try {
+      session = this.#getOrCreateSession(threadId, cwd, model, effort, permissionMode);
+    } catch (err) {
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: { text: `failed to launch pi: ${errorMessage(err)}` },
+      });
+      return Promise.resolve();
+    }
+
+    const activeTurn: ActiveTurn = {
+      turnId,
+      full: '',
+      currentAssistantText: '',
+      finalText: '',
+      tokens: undefined,
+      errored: false,
+      errorMsg: undefined,
+      pendingTools: new Map(),
+      plainLines: [],
+      completed: false,
+      finish: () => {
+        if (activeTurn.completed) return;
+        activeTurn.completed = true;
+        if (session.activeTurn?.turnId === turnId) session.activeTurn = undefined;
+        if (!session.exited) this.#scheduleIdleTeardown(session);
+
+        const body = activeTurn.full.length > 0 ? activeTurn.full : activeTurn.finalText;
+        if (activeTurn.errored && body.length === 0) {
+          this.emit({
+            type: 'turn_error',
+            threadId,
+            turnId,
+            data: { text: activeTurn.errorMsg ?? plainText(activeTurn.plainLines) ?? 'pi error' },
+          });
+          return;
+        }
+        if (body.length === 0 && activeTurn.plainLines.length > 0 && !activeTurn.errored) {
+          this.emit({
+            type: 'turn_error',
+            threadId,
+            turnId,
+            data: { text: plainText(activeTurn.plainLines) ?? 'pi produced no output' },
+          });
+          return;
+        }
+        // The window pi reported for this very session wins; the `--list-models`
+        // cache covers a process that never answered `get_state`.
+        const contextWindow =
+          session.contextWindow ??
+          (model !== undefined ? this.#contextWindowByModel.get(model) : undefined);
+        const usage =
+          activeTurn.tokens !== undefined
+            ? {
+                tokens: activeTurn.tokens,
+                ...(contextWindow !== undefined ? { contextWindow } : {}),
+              }
+            : undefined;
+        this.emit({
+          type: 'turn_completed',
+          threadId,
+          turnId,
+          data: { text: body, ...(usage !== undefined ? { usage } : {}) },
+        });
+      },
+    };
+
+    session.activeTurn = activeTurn;
+    this.emit({ type: 'turn_started', threadId, turnId });
+
+    if (!session.send({ type: 'prompt', message: text })) {
+      this.#teardownSession(threadId);
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: { text: 'failed to send the prompt to pi (stdin unavailable)' },
+      });
+      return Promise.resolve();
+    }
 
     return Promise.resolve();
   }
@@ -650,19 +884,27 @@ export class PiAdapter extends BaseAgentAdapter {
    * pipe closed underneath us.
    */
   steerTurn(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean> {
-    const run = this.#active.get(options.activeTurnId);
-    if (!run || run.finished) return Promise.resolve(false);
-    if (run.threadId !== options.threadId) return Promise.resolve(false);
-    return Promise.resolve(run.send({ type: 'steer', message: options.text }));
+    const session = this.#sessions.get(options.threadId);
+    if (!session || session.exited || !session.activeTurn || session.activeTurn.completed) {
+      return Promise.resolve(false);
+    }
+    if (session.activeTurn.turnId !== options.activeTurnId) {
+      return Promise.resolve(false);
+    }
+    return Promise.resolve(session.send({ type: 'steer', message: options.text }));
   }
 
+  /**
+   * Cancel = kill the process (see the header): the next turn resumes the
+   * session on a new one.
+   */
   cancelTurn(threadId: string, turnId: string): Promise<void> {
-    const run = this.#active.get(turnId);
-    if (run) {
-      run.finished = true;
-      run.child.kill();
-      this.#active.delete(turnId);
+    const session = this.#sessions.get(threadId);
+    if (session && session.activeTurn?.turnId === turnId) {
+      session.activeTurn.completed = true;
+      session.activeTurn = undefined;
       this.emit({ type: 'turn_aborted', threadId, turnId });
+      this.#teardownSession(threadId);
     }
     return Promise.resolve();
   }

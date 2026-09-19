@@ -2,47 +2,81 @@
  * Antigravity adapter (Google's Antigravity CLI, the `agy` binary — real agent).
  *
  * Antigravity is Google's successor to the now-deprecated standalone Gemini CLI:
- * its models ARE the Gemini family ("Gemini 3.5 Flash", "Gemini 3.1 Pro", …) plus
- * a few hosted others. It does NOT speak the generic bridge agent IPC. Each turn
- * spawns `agy … -p <text>` as a one-shot process (the same one-shot pattern as the
- * pi and Claude Code adapters) and maps its plain-text stdout onto the
- * bridge's agent events. Validated live against `agy` 1.1.4.
+ * its models ARE the Gemini family ("Gemini 3.8 Flash", "Gemini 3.1 Pro", …) plus
+ * a few hosted others. It does NOT speak the generic bridge agent IPC. The bridge
+ * keeps ONE resident `agy` process per thread and drives it over its NDJSON
+ * surface (`--input-format stream-json --output-format stream-json`): a user
+ * message is one JSON line on stdin, and every line on stdout is a JSON event.
+ * Validated live against `agy` 1.2.7.
  *
- * Per-turn command shape:
- *   agy --conversation <uuid> --add-dir <cwd> \
- *       (--dangerously-skip-permissions | --mode plan) [--model <id>] -p <text>
+ * Process shape (spawned on a thread's first turn, reused by the next ones):
+ *   agy [--conversation <id>] --add-dir <cwd> \
+ *       (--dangerously-skip-permissions | --mode plan) \
+ *       --input-format stream-json --output-format stream-json \
+ *       --print-timeout 2h [--model <id>]
  *
- * Why each flag (each verified live — earlier `agy` releases lacked all of them,
- * which is why Antigravity was previously deferred, see bridge/FOR-DEV.md):
- *  - `--conversation <uuid>`: session continuity. `agy` accepts a client-owned
- *    UUID, CREATING the conversation on the first turn and RESUMING it on later
- *    ones (verified), so we generate
- *    the id ourselves and never parse `agy`'s logs. Stored per thread in
- *    {@link AntigravityAdapter.nativeSessionId}.
+ * Why each flag (each verified live — earlier `agy` releases lacked several of
+ * them, which is why Antigravity was previously deferred, see bridge/FOR-DEV.md):
+ *  - `--conversation <id>`: session continuity. `agy` **owns** the conversation
+ *    id: a first turn runs without the flag, `agy` creates the conversation and
+ *    announces the id on its `init` event, and every later spawn for the same
+ *    thread (a recycle, a restart after the idle teardown) passes that id back to
+ *    resume it. A client-minted UUID no longer works — since 1.2.x an unknown id
+ *    is answered with `warning: conversation "<id>" not found` and a NEW
+ *    conversation, so the thread silently lost its history every turn. Stored
+ *    per thread in {@link AntigravityAdapter.nativeSessionId}.
  *  - `--add-dir <cwd>`: workspace targeting. `agy` has NO `-C/--cwd`; without
  *    `--add-dir` it ignores the process cwd and edits a private scratch folder,
  *    so we add the thread's project dir as the workspace root.
- *  - permission flag: `agy`'s headless `-p` mode has NO interactive approval
- *    channel — a tool that needs permission is AUTO-DENIED ("no output produced")
- *    unless we pass `--dangerously-skip-permissions`. So editing turns run with
- *    skip-permissions (autonomous, like pi); a `requestApproval` thread degrades
- *    to read-only `--mode plan` instead (the safe "can't ask you, so I'll only
- *    plan" posture). See {@link AntigravityAdapter.#effectiveMode}.
+ *  - permission flag: `agy`'s headless mode has NO interactive approval channel —
+ *    a tool that needs permission is AUTO-DENIED unless we pass
+ *    `--dangerously-skip-permissions`. So editing turns run with skip-permissions
+ *    (autonomous, like pi); a `requestApproval` thread degrades to read-only
+ *    `--mode plan` instead (the safe "can't ask you, so I'll only plan" posture).
+ *    See {@link AntigravityAdapter.#effectiveMode}.
+ *  - `--input-format stream-json`: "reads one NDJSON message per line from stdin
+ *    and runs a turn for each" (`agy --help`), which is what keeps the process
+ *    resident: the same authenticated process answers turn after turn. It
+ *    requires `--output-format stream-json`.
+ *  - `--print-timeout 2h`: a cap on ONE turn, not on the process — verified: a
+ *    resident process outlived an 8 s cap by 12 s of idling and answered the
+ *    next turn. It only bounds a runaway turn.
  *  - `--model <id>`: the id column of `agy models` (e.g. `gemini-3.7-flash-high`),
  *    which already carries the reasoning tier — a tier-less id is rejected with
  *    "requires --effort", so the bridge never passes `--effort` separately;
  *    omitted → `agy`'s own default.
  *
- * Critical detail: like the other one-shot CLIs, we spawn with stdin IGNORED (the
- * shared {@link defaultSpawn}) and pass the prompt as an argv element with
- * `shell:false`, so it is never interpolated into a shell (no command injection).
- * `agy` streams the answer as plain text on STDOUT (its verbose logs go to a log
- * file, never stderr); STDERR carries only real errors (the headless
- * "no output produced" auto-deny), surfaced as the turn error when stdout is empty.
+ * Why resident instead of one process per turn: every `agy` start re-runs the
+ * Google sign-in check and environment setup. Measured on the same machine, the
+ * first turn of a process answered in 2.5 s and the second in 1.0 s; the one-shot
+ * shape paid the cold start on every turn. The process is torn down after
+ * {@link DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS} without a turn, when the thread's
+ * cwd / model / posture changes (a fresh process resumes the same conversation),
+ * on cancel, and when the thread is archived or deleted.
+ *
+ * What the stream carries (captured from real turns, see bridge/docs/agents.md →
+ * *Drive surface*):
+ *  - `init` — `conversation_id` + the workspace and tool list; once per process.
+ *  - `step_update` — `user_input`, `agent_response` (with `text_delta` while
+ *    `ACTIVE`, and per-model-call `usage` when `DONE`) and `tool` steps
+ *    (`tool_name` + `tool_info.parameters`, then `DONE`/`ERROR`).
+ *  - `result` — `status`, the full `response`, and `usage` **summed over the
+ *    whole conversation** (`num_turns` says how many), NOT the current context.
+ *  - No reasoning text. `thinking_tokens` is a count; the model's thoughts are
+ *    never emitted on this surface, so no `thinking` event is produced for
+ *    Antigravity (they exist in `agy`'s private transcript on disk, which the
+ *    bridge deliberately does not read — bridge/FOR-DEV.md, *native-session
+ *    history*).
+ *
+ * Critical detail: the prompt travels as a JSON line on stdin (never argv, never
+ * a shell — `shell:false`), so it is never interpolated into a shell. `agy`'s
+ * verbose logs go to a log file; STDERR carries only real diagnostics, surfaced
+ * as the turn error when a turn produced no answer.
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
-import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline';
+import type { Readable } from 'node:stream';
 import type {
   AgentCapabilities,
   AgentConfig,
@@ -52,8 +86,24 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './content-blocks.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+
+/**
+ * How long a thread's resident `agy` process may sit without a turn before it is
+ * torn down (24 hours). Every completed turn re-arms the countdown. A later turn
+ * simply spawns a new process on the same conversation, so the timeout costs the
+ * user one cold start, never any history.
+ */
+export const DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * `--print-timeout` for a turn: how long `agy` lets ONE turn run before giving up
+ * on it. Per turn, not per process (verified live) — it bounds a runaway turn
+ * without touching an idle resident process.
+ */
+const TURN_TIMEOUT = '2h';
 
 /** Hard cap on the `agy models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
@@ -77,7 +127,7 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   // `agy --mode plan` gives a real read-only planning mode.
   planMode: true,
   streaming: true,
-  // `agy -p` runs its tools without a per-turn approval RPC (headless mode
+  // `agy` runs its tools without a per-turn approval RPC in headless mode (it
   // cannot prompt), so no interactive approval channel is advertised.
   approvals: false,
   // Antigravity operates autonomously ("YOLO"): with `--dangerously-skip-
@@ -85,20 +135,17 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   // its headless CLI exposes no pre-tool approval channel. The phone surfaces
   // this so the user knows Antigravity won't ask before running tools.
   autonomous: true,
-  // A client-owned `--conversation <uuid>` resumes a thread across turns.
+  // `--conversation <id>` resumes the thread's own conversation on a new process.
   forking: true,
   // The bridge delivers an attachment as a file in the workspace, and `agy`
   // opens it with its own file tools (its models are the multimodal Gemini
-  // family). Verified against `agy --add-dir <cwd> -p` with a four-quadrant
-  // probe image, which it described correctly.
+  // family). Verified against `agy --add-dir <cwd>` with a four-quadrant probe
+  // image, which it described correctly.
   images: true,
-  // `agy` DOES report per-turn usage — but only under `--output-format
-  // stream-json`, and the turn runs on `text`. Captured from a real run, its
-  // `result` event carries `{ input_tokens, output_tokens, thinking_tokens,
-  // cache_read_tokens, total_tokens }`. Surfacing it means migrating the turn's
-  // whole stream parsing to the JSON events, so the meter stays hidden until
-  // then (FOR-DEV: see bridge/FOR-DEV.md).
-  reportsContextUsage: false,
+  // Under `--output-format stream-json` every `agent_response` step reports its
+  // model call's `usage`; the last one of a turn is the context the conversation
+  // occupies (see `contextTokens`). Captured from real runs on `agy` 1.2.7.
+  reportsContextUsage: true,
 };
 
 /**
@@ -107,7 +154,7 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
  *  - `acceptEdits`       → `--dangerously-skip-permissions` (autonomous edits);
  *  - `bypassPermissions` → `--dangerously-skip-permissions` (autonomous edits).
  *
- * `agy`'s headless `-p` has only two effective postures — "act autonomously" and
+ * `agy`'s headless mode has only two effective postures — "act autonomously" and
  * "just plan" — because `--mode accept-edits` still auto-denies writes without a
  * prompt (verified), so both edit-capable modes map to skip-permissions.
  */
@@ -134,6 +181,260 @@ export function antigravityPermissionMode(
     : 'bypassPermissions';
 }
 
+/**
+ * The `usage` block `agy` attaches to a `DONE` `agent_response` step (one model
+ * call) and to `result` (summed over the conversation). Field names verbatim.
+ */
+export interface AntigravityUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  thinking_tokens?: number;
+  cache_read_tokens?: number;
+  total_tokens?: number;
+}
+
+/** `tool_info` of a `tool` step: the call, and its output or error once done. */
+export interface AntigravityToolInfo {
+  name?: string;
+  parameters?: Record<string, unknown>;
+  output?: string;
+  error?: {
+    type?: string;
+    message?: string;
+  };
+}
+
+/**
+ * One `step_update` event. A step is a `user_input`, an `agent_response` or a
+ * `tool` call; it goes `ACTIVE` (with `text_delta` fragments for a response)
+ * and then `DONE` or `ERROR`, the terminal update carrying `duration_seconds`
+ * and — for a response — the model call's `usage`.
+ */
+export interface AntigravityStepUpdate {
+  conversation_id?: string;
+  step_index?: number;
+  state?: 'ACTIVE' | 'DONE' | 'ERROR' | string;
+  step_type?: 'user_input' | 'agent_response' | 'tool' | string;
+  tool_name?: string;
+  tool_info?: AntigravityToolInfo;
+  text_delta?: string;
+  duration_seconds?: number;
+  usage?: AntigravityUsage;
+}
+
+/** The `result` event that ends a turn. `usage` here is conversation-wide. */
+export interface AntigravityResult {
+  conversation_id?: string;
+  status?: string;
+  response?: string;
+  error?: string;
+  duration_seconds?: number;
+  num_turns?: number;
+  usage?: AntigravityUsage;
+}
+
+export type AntigravityStreamEvent =
+  | { kind: 'init'; conversationId?: string; cwd?: string }
+  | { kind: 'step_update'; update: AntigravityStepUpdate }
+  | { kind: 'result'; result: AntigravityResult }
+  | { kind: 'unrecognized'; raw: unknown };
+
+/**
+ * The context a conversation occupies after one model call, in the shape the
+ * phone's meter expects (`TurnUsage.tokens`: "the latest turn's input + the
+ * output it produced"). `agy` splits the prompt into `input_tokens` (fresh) and
+ * `cache_read_tokens` (served from cache) — both are context the model read —
+ * plus the reply's `output_tokens`. `thinking_tokens` are already inside
+ * `output_tokens`, and `total_tokens` is `input + output` without the cache
+ * part, so neither is used.
+ *
+ * NOT `result.usage`: that block is summed over every turn the conversation has
+ * run (turn 2 reported 18 324 input tokens = 13 184 from turn 1 + 5 140 of its
+ * own, `num_turns: 2`), so a meter fed from it would climb forever.
+ *
+ * `undefined` when the step carries no usable numbers.
+ */
+export function contextTokens(usage: AntigravityUsage | undefined): number | undefined {
+  if (!usage) return undefined;
+  const input = usage.input_tokens ?? 0;
+  const cached = usage.cache_read_tokens ?? 0;
+  const output = usage.output_tokens ?? 0;
+  const total = input + cached + output;
+  return total > 0 ? total : undefined;
+}
+
+/**
+ * Map a finished `tool` step onto the bridge's structured content blocks.
+ *
+ * Parameter names are `agy`'s own (captured live): `run_command` carries
+ * `CommandLine`, `write_to_file` carries `TargetFile` + `CodeContent`, and
+ * `replace_file_content` carries `TargetFile` + `TargetContent` +
+ * `ReplacementContent`. Any other tool becomes a generic tool block whose id is
+ * `<tool>_<step_index>` — the step index is unique within a conversation, and
+ * `sequence` only stands in for a step that has none.
+ */
+export function buildAntigravityToolBlock(
+  update: AntigravityStepUpdate,
+  sequence = 0,
+): Record<string, unknown> {
+  const toolName = update.tool_name ?? update.tool_info?.name ?? 'tool';
+  const params = update.tool_info?.parameters ?? {};
+  const out =
+    typeof update.tool_info?.output === 'string'
+      ? update.tool_info.output
+      : (update.tool_info?.error?.message ?? '');
+  const isError = update.state === 'ERROR' || Boolean(update.tool_info?.error);
+
+  switch (toolName) {
+    case 'run_command': {
+      const cmd = typeof params['CommandLine'] === 'string' ? params['CommandLine'] : '';
+      return commandBlock(cmd, out, isError);
+    }
+    case 'write_to_file': {
+      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
+      const code = typeof params['CodeContent'] === 'string' ? params['CodeContent'] : '';
+      return writeDiffBlock(target, code);
+    }
+    case 'replace_file_content': {
+      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
+      const oldText = typeof params['TargetContent'] === 'string' ? params['TargetContent'] : '';
+      const newText =
+        typeof params['ReplacementContent'] === 'string' ? params['ReplacementContent'] : '';
+      return editDiffBlock(target, oldText, newText);
+    }
+    default: {
+      const toolId = `${toolName}_${update.step_index ?? sequence}`;
+      return toolBlock(toolName, toolId, params, out, isError);
+    }
+  }
+}
+
+/**
+ * Parse one line of `agy --output-format stream-json`. `null` for an empty or
+ * non-JSON line (the surface emits only JSON; anything else is noise, never an
+ * answer); `unrecognized` for a JSON event this adapter does not model.
+ */
+export function parseAntigravityLine(line: string): AntigravityStreamEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const obj = parsed as Record<string, unknown>;
+  const event = obj['event'];
+  if (event === 'init') {
+    const init = asObject(obj['init']);
+    return {
+      kind: 'init',
+      conversationId: asString(obj['conversation_id']),
+      cwd: asString(init?.['cwd']),
+    };
+  }
+  if (event === 'step_update') {
+    const su = asObject(obj['step_update']);
+    if (su) return { kind: 'step_update', update: parseStepUpdate(su) };
+  }
+  if (event === 'result') {
+    const result = asObject(obj['result']);
+    if (result) return { kind: 'result', result: parseResult(result) };
+  }
+  return { kind: 'unrecognized', raw: parsed };
+}
+
+function parseStepUpdate(su: Record<string, unknown>): AntigravityStepUpdate {
+  const update: AntigravityStepUpdate = {};
+  const conversationId = asString(su['conversation_id']);
+  if (conversationId !== undefined) update.conversation_id = conversationId;
+  const stepIndex = asNumber(su['step_index']);
+  if (stepIndex !== undefined) update.step_index = stepIndex;
+  const state = asString(su['state']);
+  if (state !== undefined) update.state = state;
+  const stepType = asString(su['step_type']);
+  if (stepType !== undefined) update.step_type = stepType;
+  const toolName = asString(su['tool_name']);
+  if (toolName !== undefined) update.tool_name = toolName;
+  const duration = asNumber(su['duration_seconds']);
+  if (duration !== undefined) update.duration_seconds = duration;
+  const textDelta = asString(su['text_delta']);
+  if (textDelta !== undefined) update.text_delta = textDelta;
+  const usage = parseUsage(su['usage']);
+  if (usage !== undefined) update.usage = usage;
+  const toolInfo = asObject(su['tool_info']);
+  if (toolInfo) {
+    const info: AntigravityToolInfo = {};
+    const name = asString(toolInfo['name']);
+    if (name !== undefined) info.name = name;
+    const parameters = asObject(toolInfo['parameters']);
+    if (parameters) info.parameters = parameters;
+    const output = asString(toolInfo['output']);
+    if (output !== undefined) info.output = output;
+    const error = asObject(toolInfo['error']);
+    if (error) {
+      info.error = {};
+      const type = asString(error['type']);
+      if (type !== undefined) info.error.type = type;
+      const message = asString(error['message']);
+      if (message !== undefined) info.error.message = message;
+    }
+    update.tool_info = info;
+  }
+  return update;
+}
+
+function parseResult(result: Record<string, unknown>): AntigravityResult {
+  const out: AntigravityResult = {};
+  const conversationId = asString(result['conversation_id']);
+  if (conversationId !== undefined) out.conversation_id = conversationId;
+  const status = asString(result['status']);
+  if (status !== undefined) out.status = status;
+  const response = asString(result['response']);
+  if (response !== undefined) out.response = response;
+  const error = asString(result['error']);
+  if (error !== undefined) out.error = error;
+  const duration = asNumber(result['duration_seconds']);
+  if (duration !== undefined) out.duration_seconds = duration;
+  const numTurns = asNumber(result['num_turns']);
+  if (numTurns !== undefined) out.num_turns = numTurns;
+  const usage = parseUsage(result['usage']);
+  if (usage !== undefined) out.usage = usage;
+  return out;
+}
+
+function parseUsage(value: unknown): AntigravityUsage | undefined {
+  const obj = asObject(value);
+  if (!obj) return undefined;
+  const usage: AntigravityUsage = {};
+  for (const key of [
+    'input_tokens',
+    'output_tokens',
+    'thinking_tokens',
+    'cache_read_tokens',
+    'total_tokens',
+  ] as const) {
+    const n = asNumber(obj[key]);
+    if (n !== undefined) usage[key] = n;
+  }
+  return usage;
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 export interface AntigravityAdapterOptions {
   /** Executable to spawn (resolved path; see resolve-antigravity.ts). */
   binaryPath?: string;
@@ -145,11 +446,40 @@ export interface AntigravityAdapterOptions {
   permissionMode?: AntigravityPermissionMode;
   /** Injected spawn function (tests). */
   spawnFn?: SpawnFn;
+  /**
+   * Idle time after which a thread's resident `agy` process is torn down
+   * (default {@link DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS}, 24 hours).
+   */
+  idleTimeoutMs?: number;
 }
 
-interface ActiveRun {
-  child: SpawnedProcess;
+/** The turn currently running on a resident process (at most one per thread). */
+interface ActiveTurn {
+  turnId: string;
+  /** The answer as streamed (`text_delta`s), the text the phone already saw. */
+  fullText: string;
+  /** Context after the latest `agent_response` step — the turn's `usage.tokens`. */
+  contextTokens: number | undefined;
+  /** Diagnostics: stderr plus any non-JSON stdout line, surfaced when no answer came. */
+  diagnostics: string[];
+  completed: boolean;
+  finish: (res?: AntigravityResult) => void;
+}
+
+/** A thread's resident `agy` process and the parameters it was spawned with. */
+interface ActiveSession {
   threadId: string;
+  /** `agy`'s conversation id once announced on `init`; undefined until then. */
+  conversationId: string | undefined;
+  cwd: string;
+  model: string | undefined;
+  mode: AntigravityPermissionMode;
+  child: SpawnedProcess;
+  idleTimer?: NodeJS.Timeout;
+  /** Fallback for a tool block id when a step has no `step_index`. */
+  toolSequence: number;
+  exited: boolean;
+  activeTurn?: ActiveTurn;
 }
 
 /**
@@ -230,10 +560,16 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #permissionMode: AntigravityPermissionMode;
   readonly #spawn: SpawnFn;
-  /** threadId → client-owned `agy` conversation UUID, for `--conversation` continuity. */
+  readonly #idleTimeoutMs: number;
+
+  /**
+   * threadId → the `agy` conversation id announced on the thread's first `init`,
+   * passed back as `--conversation` on every later spawn for that thread.
+   */
   readonly #conversationByThread = new Map<string, string>();
-  /** turnId → in-flight run, for cancellation. */
-  readonly #active = new Map<string, ActiveRun>();
+  /** threadId → the thread's resident process, while one is alive. */
+  readonly #sessions = new Map<string, ActiveSession>();
+
   #defaultCwd = process.cwd();
 
   /**
@@ -245,9 +581,20 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
+  /** The configured idle timeout (observability + tests). */
+  get idleTimeoutMs(): number {
+    return this.#idleTimeoutMs;
+  }
+
   /** Native `agy` conversation id for a thread (surfaced as the thread's session id). */
   nativeSessionId(threadId: string): string | undefined {
     return this.#conversationByThread.get(threadId);
+  }
+
+  /** Whether a resident process is alive for the thread (observability + tests). */
+  hasActiveSession(threadId: string): boolean {
+    const session = this.#sessions.get(threadId);
+    return Boolean(session && !session.exited);
   }
 
   constructor(options: AntigravityAdapterOptions = {}) {
@@ -257,6 +604,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     this.#defaultModel = options.defaultModel;
     this.#permissionMode = options.permissionMode ?? 'bypassPermissions';
     this.#spawn = options.spawnFn ?? defaultSpawn;
+    this.#idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS;
   }
 
   get defaultModel(): string | undefined {
@@ -291,32 +639,206 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   }
 
   stop(): Promise<void> {
-    for (const run of this.#active.values()) run.child.kill();
-    this.#active.clear();
+    for (const threadId of Array.from(this.#sessions.keys())) {
+      this.#teardownSession(threadId);
+    }
     return Promise.resolve();
+  }
+
+  /**
+   * Tear down the thread's resident process now (the thread was archived or
+   * deleted). The conversation id is kept: an unarchived thread's next turn
+   * resumes the same conversation on a fresh process.
+   */
+  closeSession(threadId: string): Promise<void> {
+    this.#teardownSession(threadId);
+    return Promise.resolve();
+  }
+
+  /** (Re)arm the idle countdown after a turn ended. */
+  #scheduleIdleTeardown(session: ActiveSession): void {
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    session.idleTimer = setTimeout(() => {
+      this.#teardownSession(session.threadId);
+    }, this.#idleTimeoutMs);
+    // A pending countdown must never keep the daemon alive on shutdown.
+    session.idleTimer.unref();
+  }
+
+  /**
+   * Kill the thread's process and forget it. A turn still running on it is
+   * marked completed WITHOUT a terminal event — every caller emits its own
+   * (`turn_aborted` on cancel; a recycle only happens between turns).
+   */
+  #teardownSession(threadId: string): void {
+    const session = this.#sessions.get(threadId);
+    if (!session) return;
+    if (session.idleTimer) {
+      clearTimeout(session.idleTimer);
+      session.idleTimer = undefined;
+    }
+    if (session.activeTurn) session.activeTurn.completed = true;
+    this.#sessions.delete(threadId);
+    session.exited = true;
+    try {
+      session.child.stdin?.end();
+      session.child.kill();
+    } catch {
+      /* already exited */
+    }
+  }
+
+  /**
+   * The thread's resident process, spawning one when there is none or when the
+   * live one was started with a different cwd / model / posture — those are
+   * process arguments, so honouring a change means a new process. The new one
+   * resumes the same conversation via `--conversation`.
+   */
+  #getOrCreateSession(
+    threadId: string,
+    cwd: string,
+    model: string | undefined,
+    mode: AntigravityPermissionMode,
+  ): ActiveSession {
+    const existing = this.#sessions.get(threadId);
+    if (
+      existing &&
+      !existing.exited &&
+      existing.cwd === cwd &&
+      existing.model === model &&
+      existing.mode === mode
+    ) {
+      if (existing.idleTimer) {
+        clearTimeout(existing.idleTimer);
+        existing.idleTimer = undefined;
+      }
+      return existing;
+    }
+    if (existing) this.#teardownSession(threadId);
+
+    // Resume the conversation `agy` created on this thread's first turn; on the
+    // very first spawn there is none yet and `agy` mints one (announced on `init`).
+    const conversationId = this.#conversationByThread.get(threadId);
+    const args = [
+      ...(conversationId !== undefined ? ['--conversation', conversationId] : []),
+      '--add-dir',
+      cwd,
+      ...permissionArgs(mode),
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
+      '--print-timeout',
+      TURN_TIMEOUT,
+    ];
+    if (model) args.push('--model', model);
+
+    const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
+      stdin: 'pipe',
+    });
+
+    const session: ActiveSession = {
+      threadId,
+      conversationId,
+      cwd,
+      model,
+      mode,
+      child,
+      toolSequence: 0,
+      exited: false,
+    };
+
+    const adoptConversation = (id: string | undefined): void => {
+      if (id === undefined || id === session.conversationId) return;
+      session.conversationId = id;
+      this.#conversationByThread.set(threadId, id);
+    };
+
+    const rl = createInterface({ input: child.stdout as unknown as Readable, crlfDelay: Infinity });
+    rl.on('line', (line: string) => {
+      const ev = parseAntigravityLine(line);
+      // `init` is per process and may precede any turn: adopt the id regardless.
+      if (ev?.kind === 'init') {
+        adoptConversation(ev.conversationId);
+        return;
+      }
+      const active = session.activeTurn;
+      if (!active || active.completed) return;
+      if (ev === null) {
+        // Not JSON: the surface never puts an answer here, so keep it only as a
+        // diagnostic for a turn that ends with no answer.
+        const trimmed = line.trim();
+        if (trimmed.length > 0) active.diagnostics.push(trimmed);
+        return;
+      }
+      if (ev.kind === 'step_update') {
+        adoptConversation(ev.update.conversation_id);
+        const { update } = ev;
+        if (update.step_type === 'tool' && (update.state === 'DONE' || update.state === 'ERROR')) {
+          const block = buildAntigravityToolBlock(update, session.toolSequence++);
+          this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: block } });
+        }
+        if (update.step_type === 'agent_response') {
+          const delta = update.text_delta;
+          if (delta && delta.length > 0) {
+            active.fullText += delta;
+            this.emit({ type: 'delta', threadId, turnId: active.turnId, data: { text: delta } });
+          }
+          const tokens = contextTokens(update.usage);
+          if (tokens !== undefined) active.contextTokens = tokens;
+        }
+        return;
+      }
+      if (ev.kind === 'result') {
+        adoptConversation(ev.result.conversation_id);
+        active.finish(ev.result);
+      }
+    });
+
+    child.stderr?.on('data', (chunk: unknown) => {
+      const active = session.activeTurn;
+      if (!active || active.completed) return;
+      const text = String(chunk).trim();
+      if (text.length > 0) active.diagnostics.push(text);
+    });
+
+    child.on('error', (err: Error) => {
+      session.exited = true;
+      this.#sessions.delete(threadId);
+      const active = session.activeTurn;
+      if (active && !active.completed) {
+        active.completed = true;
+        session.activeTurn = undefined;
+        this.emit({
+          type: 'turn_error',
+          threadId,
+          turnId: active.turnId,
+          data: { text: `Antigravity process error: ${err.message}` },
+        });
+      }
+    });
+
+    child.on('close', () => {
+      session.exited = true;
+      this.#sessions.delete(threadId);
+      // A process that died mid-turn ends the turn with whatever it streamed.
+      const active = session.activeTurn;
+      if (active && !active.completed) active.finish();
+    });
+
+    this.#sessions.set(threadId, session);
+    return session;
   }
 
   sendTurn(options: SendTurnOptions): Promise<void> {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = normalizeAntigravityModel(options.service ?? this.#defaultModel);
-    // Conversation id: created and owned by us on the first turn, reused after so
-    // `agy` resumes the same conversation (continuity across turns).
-    let conversationId = this.#conversationByThread.get(threadId);
-    if (conversationId === undefined) {
-      conversationId = randomUUID();
-      this.#conversationByThread.set(threadId, conversationId);
-    }
     const mode = this.#effectiveMode(options.accessMode);
 
-    const args = ['--conversation', conversationId, '--add-dir', cwd, ...permissionArgs(mode)];
-    if (model) args.push('--model', model);
-    // The prompt is the final positional, never shell-interpolated (`shell:false`).
-    args.push('-p', text);
-
-    let child: SpawnedProcess;
+    let session: ActiveSession;
     try {
-      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
+      session = this.#getOrCreateSession(threadId, cwd, model, mode);
     } catch (err) {
       this.emit({
         type: 'turn_error',
@@ -327,63 +849,80 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       return Promise.resolve();
     }
 
-    this.#active.set(turnId, { child, threadId });
-    this.emit({ type: 'turn_started', threadId, turnId });
+    const activeTurn: ActiveTurn = {
+      turnId,
+      fullText: '',
+      contextTokens: undefined,
+      diagnostics: [],
+      completed: false,
+      finish: (res?: AntigravityResult): void => {
+        if (activeTurn.completed) return;
+        activeTurn.completed = true;
+        if (session.activeTurn?.turnId === turnId) session.activeTurn = undefined;
+        if (!session.exited) this.#scheduleIdleTeardown(session);
 
-    let full = '';
-    let stderrBuf = '';
-    let completed = false;
-
-    const finish = (): void => {
-      if (completed) return;
-      completed = true;
-      this.#active.delete(turnId);
-      const body = full.trim();
-      if (body.length > 0) {
-        this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
-        return;
-      }
-      // No answer on stdout: `agy` prints a diagnostic to stderr (e.g. the
-      // headless "no output produced — a tool required permission" auto-deny).
-      const errText = stderrBuf.trim();
-      this.emit({
-        type: 'turn_error',
-        threadId,
-        turnId,
-        data: { text: errText.length > 0 ? errText : 'Antigravity produced no output' },
-      });
-    };
-
-    child.stdout.on('data', (chunk: unknown) => {
-      const chunkText = String(chunk);
-      full += chunkText;
-      this.emit({ type: 'delta', threadId, turnId, data: { text: chunkText } });
-    });
-    child.stderr?.on('data', (chunk: unknown) => {
-      stderrBuf += String(chunk);
-    });
-
-    child.on('error', (err) => {
-      this.#active.delete(turnId);
-      if (!completed) {
-        completed = true;
+        const diagnostics = activeTurn.diagnostics.join('\n').trim();
+        if (res?.status === 'ERROR') {
+          this.emit({
+            type: 'turn_error',
+            threadId,
+            turnId,
+            data: { text: res.error || diagnostics || 'Antigravity error' },
+          });
+          return;
+        }
+        // The streamed text is what the phone saw; `response` only fills in for
+        // a CLI that skipped deltas and handed the answer whole.
+        const body = activeTurn.fullText.length > 0 ? activeTurn.fullText : (res?.response ?? '');
+        if (body.trim().length > 0) {
+          const tokens = activeTurn.contextTokens;
+          this.emit({
+            type: 'turn_completed',
+            threadId,
+            turnId,
+            data: { text: body, ...(tokens !== undefined ? { usage: { tokens } } : {}) },
+          });
+          return;
+        }
+        // No answer: surface `agy`'s own diagnostic (e.g. the headless "no output
+        // produced — a tool required permission" auto-deny), or its status.
+        const status = res?.status && res.status !== 'SUCCESS' ? `Antigravity ${res.status}` : '';
         this.emit({
           type: 'turn_error',
           threadId,
           turnId,
-          data: { text: `Antigravity process error: ${err.message}` },
+          data: { text: diagnostics || status || 'Antigravity produced no output' },
         });
-      }
-    });
+      },
+    };
 
-    child.on('close', () => finish());
+    session.activeTurn = activeTurn;
+    this.emit({ type: 'turn_started', threadId, turnId });
 
+    // The turn is one NDJSON line on stdin: `agy` "runs a turn for each".
+    const userMessage = { event: 'user', message: { content: [{ type: 'text', text }] } };
+    const stdin = session.child.stdin;
+    if (!stdin || !stdin.writable) {
+      activeTurn.finish({ status: 'ERROR', error: 'Antigravity stdin is not writable' });
+      this.#teardownSession(threadId);
+      return Promise.resolve();
+    }
+    try {
+      stdin.write(`${JSON.stringify(userMessage)}\n`);
+    } catch (err) {
+      activeTurn.finish({
+        status: 'ERROR',
+        error: `failed to write to Antigravity stdin: ${errorMessage(err)}`,
+      });
+      this.#teardownSession(threadId);
+    }
     return Promise.resolve();
   }
 
   /**
    * Name a conversation with a one-shot `agy -p`, without `--conversation`, so
-   * it never joins the conversation this thread resumes.
+   * it never joins the conversation this thread resumes, and in `--mode plan`
+   * so a naming errand can never touch the workspace.
    *
    * On {@link ANTIGRAVITY_TITLE_MODEL}, not the thread's model: this ran on the
    * account's default (the frontier tier) while both the spec and the desktop
@@ -398,6 +937,8 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       'text',
       '--model',
       ANTIGRAVITY_TITLE_MODEL,
+      '--mode',
+      'plan',
       '--add-dir',
       cwd,
       '-p',
@@ -409,12 +950,17 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     return raw === undefined ? undefined : sanitizeTitle(raw);
   }
 
+  /**
+   * Cancel = kill the process: `agy`'s stream-json surface has no abort message,
+   * and a new process resumes the conversation on the next turn.
+   */
   cancelTurn(threadId: string, turnId: string): Promise<void> {
-    const run = this.#active.get(turnId);
-    if (run) {
-      run.child.kill();
-      this.#active.delete(turnId);
+    const session = this.#sessions.get(threadId);
+    if (session && session.activeTurn?.turnId === turnId) {
+      session.activeTurn.completed = true;
+      session.activeTurn = undefined;
       this.emit({ type: 'turn_aborted', threadId, turnId });
+      this.#teardownSession(threadId);
     }
     return Promise.resolve();
   }
