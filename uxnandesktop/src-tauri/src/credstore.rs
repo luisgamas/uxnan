@@ -36,6 +36,11 @@ pub enum Interaction {
 }
 
 /// Why a credential could not be read.
+///
+/// The set is the platform-neutral contract; which variants a build actually
+/// constructs depends on its store (`Unsupported` only off macOS, the rest only
+/// on it), so dead-code analysis is silenced for the enum as a whole.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CredStoreError {
     /// No item with that service/account exists in the store.
@@ -44,9 +49,7 @@ pub enum CredStoreError {
     /// user, and interaction was [`Interaction::Never`] — or the user denied
     /// the interactive request.
     AccessRequired,
-    /// This platform has no store reader (Windows / Linux today). Only the
-    /// non-macOS stub constructs it, hence the allowance on macOS.
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    /// This platform has no store reader (Windows / Linux today).
     Unsupported,
     /// Any other store failure, with the OS message.
     Other(String),
@@ -66,7 +69,9 @@ impl fmt::Display for CredStoreError {
 }
 
 /// A secret's raw bytes, wiped when dropped. Deliberately has no `Debug`
-/// output of its contents and no `Clone`.
+/// output of its contents and no `Clone`. Only a platform store constructs
+/// it, so builds without one (Windows / Linux) see it as never built.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct Secret(Vec<u8>);
 
 impl Secret {
