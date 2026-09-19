@@ -1,37 +1,61 @@
 /**
  * pi adapter (`@earendil-works/pi-coding-agent`, the `pi` CLI — real agent).
  *
- * ## Architecture — Persistent RPC sessions
+ * pi does NOT speak the generic bridge agent IPC. The bridge keeps ONE resident
+ * `pi --mode rpc` process per thread and drives it over JSON-RPC-style commands
+ * on stdin (`prompt`, `steer`, `get_state`), reading its newline-JSON event
+ * stream on stdout. Validated live against `pi` 0.85.1.
  *
- * pi runs in `--mode rpc` over stdio as a persistent child process per thread,
- * eliminating the cold-start latency and full disk session-history replay that
- * would occur if spawning a fresh process on every turn.
+ * Process shape (spawned on a thread's first turn, reused by the next ones):
+ *   pi --mode rpc [--tools read,grep,find,ls | --approve] [--model <id>]
+ *      [--thinking <level>] [--session-id <id>]
  *
- * Why persistent RPC sessions:
- *  1. **Zero repeat startup & history replay latency**: Spawning a fresh CLI for
- *     every turn forced pi to re-initialize Node.js and reload/parse the entire
- *     on-disk session history JSONL on every single turn (which scales badly as
- *     conversations grow to tens of thousands of tokens). A persistent session
- *     keeps history and state in memory.
- *  2. **Streaming and token reporting**: In `--mode rpc`, pi streams assistant
- *     `message_update` text deltas, thinking deltas, tool executions, and per-turn
- *     token usage in `message_end` events (`reportsContextUsage: true`).
- *  3. **Mid-turn steering**: The persistent RPC channel keeps stdin open, allowing
- *     first-class `steer` commands to reach the agent loop at the next tool boundary.
- *  4. **24-hour idle timeout**: Inactive sessions are automatically dismantled after
- *     24 hours without turns (`DEFAULT_PI_IDLE_TIMEOUT_MS`). The session ID is
- *     persisted (`--session-id <id>`), so subsequent turns seamlessly re-attach.
- *     Each completed interaction automatically refreshes this 24-hour timer.
- *  5. **Workspace & model isolation**: If a thread changes its project directory,
- *     model, or permission mode, the session is recycled cleanly while preserving
- *     session continuity via `--session-id`.
+ * Why `--mode rpc` and not `-p --mode json`: print mode reads ALL of stdin as the
+ * initial prompt and has no input channel while it works; RPC mode leaves stdin
+ * open, which is what lets a follow-up `steer` a running turn — and, kept open
+ * across turns, what makes the process resident: the next `prompt` goes to the
+ * same process, with the session already in memory, instead of a fresh CLI
+ * re-initializing Node and re-reading the session JSONL from disk on every turn.
+ *
+ * Session continuity — read this before touching `--session-id`. RPC mode emits
+ * **no** `session` event (print mode `-p --mode json` does, which is how the id
+ * used to be captured — and why, after the move to RPC, no id was captured at
+ * all and every turn started a new session). The id is asked for instead: the
+ * adapter sends `get_state` right after spawning and reads `sessionId` (and the
+ * model's `contextWindow`) from its response. Later spawns for the same thread
+ * (a recycle after a cwd / model / effort / posture change, or after the idle
+ * teardown) pass `--session-id <id>`, which resumes the session — "creating it
+ * if missing" (`pi --help`), so a stale id degrades to a fresh session, never a
+ * failed turn.
+ *
+ * The process is torn down after {@link DEFAULT_PI_IDLE_TIMEOUT_MS} without a
+ * turn, when a spawn parameter changes, on cancel, and when the thread is
+ * archived or deleted. Cancelling kills the process rather than sending `abort`
+ * — the next turn resumes the session on a new one, and a kill is the only
+ * cancel that cannot leave a half-aborted turn streaming into the next.
  *
  * Captured `--mode rpc` event shapes (one JSON object per line):
- *   { "type":"session", "id":"019…", "cwd":"…" }
+ *   { "type":"response", "command":"get_state", "success":true,
+ *       "data":{ "sessionId":"019…", "sessionFile":"…", "model":{ "contextWindow":200000, … }, … } }
+ *   { "type":"response", "command":"prompt", "success":true }
  *   { "type":"message_update", "assistantMessageEvent":{ "type":"text_delta", "delta":"…" } }
  *   { "type":"message_end", "message":{ "role":"assistant", "content":[{ "type":"text","text":"…" }],
- *       "usage":{ "input":…, "output":…, "totalTokens":… }, "stopReason":"stop"|"error", "errorMessage"?:"…" } }
+ *       "usage":{ "input":…, "output":…, "cacheRead":…, "totalTokens":… },
+ *       "stopReason":"stop"|"error", "errorMessage"?:"…" } }
  *   { "type":"agent_end", "messages":[…], "willRetry":false }
+ *   { "type":"agent_settled" }
+ * (`thinking_*` assistant events carry the model's reasoning and are NOT emitted
+ * as answer text.) A startup failure (e.g. a provider with no API key) prints a
+ * plain-text line instead of JSON; we surface that as the turn error.
+ *
+ * A turn ends on **`agent_settled`**, not on `agent_end`. `agent_end` is the end
+ * of one agent *run*, and pi retries a run on its own: a retryable provider
+ * error (a 5xx, a rate limit) ends the run with `willRetry: true` and starts
+ * another after a backoff, so a prompt written after that `agent_end` is
+ * refused with "Agent is already processing". `agent_settled` is pi's own
+ * "idle" signal — the one its harness waits on — and it follows the run that
+ * really was the last. A rejected `prompt` (`response … success:false`) still
+ * ends the turn at once: no run started, so nothing else will arrive.
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
@@ -54,7 +78,12 @@ import { effortValues, reasoningOption, reasoningValue } from './run-options.js'
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
-/** Default idle timeout before closing an inactive `pi` process (24 hours). */
+/**
+ * How long a thread's resident `pi` process may sit without a turn before it is
+ * torn down (24 hours). Every completed turn re-arms the countdown. A later turn
+ * spawns a new process on the same `--session-id`, so the timeout costs the user
+ * one cold start, never any history.
+ */
 export const DEFAULT_PI_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /** Hard cap on the `--list-models` spawn before giving up. */
@@ -108,28 +137,47 @@ export interface PiAdapterOptions {
   permissionMode?: PiPermissionMode;
   /** Injected spawn function (tests). */
   spawnFn?: SpawnFn;
-  /** Inactivity timeout before dismantling an idle pi process (default 2 hours). */
+  /**
+   * Idle time after which a thread's resident `pi` process is torn down
+   * (default {@link DEFAULT_PI_IDLE_TIMEOUT_MS}, 24 hours).
+   */
   idleTimeoutMs?: number;
 }
 
+/** The turn currently running on a resident process (at most one per thread). */
 interface ActiveTurn {
   turnId: string;
+  /** Everything streamed as answer text (deltas + any unseen final text). */
   full: string;
+  /** The current assistant message's streamed text, reset at each `message_end`. */
   currentAssistantText: string;
+  /** The last assistant message's full text (fallback when nothing streamed). */
   finalText: string;
+  /** Context-occupying tokens from the last `message_end`, for `usage`. */
   tokens?: number;
   errored: boolean;
   errorMsg?: string;
+  /** toolCallId → its invocation (args), until the matching execution_end pairs. */
   pendingTools: Map<string, PiToolUse>;
+  /** Non-JSON output (e.g. a startup "No API key found") — surfaced if no content. */
   plainLines: string[];
+  /**
+   * True once the turn emitted its terminal event. Nothing may be written into
+   * it after that: pi would run a follow-up as a NEW turn, streaming a second
+   * reply into a turn the bridge already closed.
+   */
   completed: boolean;
   finish: () => void;
 }
 
+/** A thread's resident `pi` process and the parameters it was spawned with. */
 interface ActiveSession {
   child: SpawnedProcess;
   threadId: string;
+  /** pi's session id, from `get_state`; undefined until the response arrives. */
   sessionId?: string;
+  /** The model's context window as `get_state` reports it, for `usage`. */
+  contextWindow?: number;
   cwd: string;
   model?: string;
   effort?: string;
@@ -137,25 +185,33 @@ interface ActiveSession {
   idleTimer?: NodeJS.Timeout;
   activeTurn?: ActiveTurn;
   exited: boolean;
+  /** Write one RPC command as a JSON line. False when the pipe is gone. */
   send: (command: Record<string, unknown>) => boolean;
 }
 
 /** A normalized pi event extracted from one RPC/`--mode json` line. */
 export interface PiEvent {
-  kind:
+  kind: /** `-p --mode json` only: RPC mode never emits it (see the header). */
     | 'session'
+    /** RPC `get_state` answered: the session id + the model's context window. */
+    | 'state'
     | 'compaction'
     | 'delta'
     | 'thinking'
     | 'tool_start'
     | 'tool_end'
     | 'final'
+    /** `agent_end`: one agent run ended; `willRetry` says pi will run again. */
     | 'end'
+    /** `agent_settled`: pi is idle — the turn is over. */
+    | 'settled'
     /** An RPC command pi rejected (`{ type:'response', success:false }`). */
     | 'command_failed'
     | 'other';
-  /** Only set for `session`: the session id (for `--session-id` continuity). */
+  /** `session` / `state`: the session id (for `--session-id` continuity). */
   sessionId?: string;
+  /** Only set for `state`: the model's context window in tokens, if reported. */
+  contextWindow?: number;
   /** Only set for `command_failed`: which RPC command was rejected. */
   commandName?: string;
   /**
@@ -167,6 +223,8 @@ export interface PiEvent {
   tokens?: number;
   /** Only set for `final`: whether the assistant message ended in error. */
   isError?: boolean;
+  /** Only set for `end`: pi will retry the run itself, so the turn goes on. */
+  willRetry?: boolean;
   /** Only set for `final`: the error message, when present. */
   errorText?: string;
   /** `tool_start`/`tool_end`: the tool call's id (for pairing args ↔ result). */
@@ -212,7 +270,7 @@ export function parsePiContextWindow(cell: string | undefined): number | undefin
   return Math.round(value * multiplier);
 }
 
-/** Parse one `pi -p --mode json` line, or null if it isn't JSON. */
+/** Parse one `pi --mode rpc` (or `-p --mode json`) line, or null if it isn't JSON. */
 export function parsePiLine(line: string): PiEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -293,12 +351,27 @@ export function parsePiLine(line: string): PiEvent | null {
       };
     }
     case 'agent_end':
-      return { kind: 'end' };
+      return { kind: 'end', willRetry: parsed['willRetry'] === true };
+    case 'agent_settled':
+      return { kind: 'settled' };
     // RPC-mode command acknowledgements. A success is noise, but a FAILED one
     // is the only signal that a command never took effect — a rejected `prompt`
     // would otherwise leave the turn waiting for events that never come.
     case 'response': {
-      if (parsed['success'] !== false) return { kind: 'other' };
+      if (parsed['success'] !== false) {
+        if (parsed['command'] !== 'get_state') return { kind: 'other' };
+        const data = isRecord(parsed['data']) ? parsed['data'] : undefined;
+        const sessionId = typeof data?.['sessionId'] === 'string' ? data['sessionId'] : undefined;
+        const model = data && isRecord(data['model']) ? data['model'] : undefined;
+        const window = model?.['contextWindow'];
+        return {
+          kind: 'state',
+          ...(sessionId !== undefined ? { sessionId } : {}),
+          ...(typeof window === 'number' && window > 0
+            ? { contextWindow: Math.round(window) }
+            : {}),
+        };
+      }
       const message = typeof parsed['error'] === 'string' ? parsed['error'] : undefined;
       const command = typeof parsed['command'] === 'string' ? parsed['command'] : 'command';
       return {
@@ -357,9 +430,9 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #permissionMode: PiPermissionMode;
   readonly #spawn: SpawnFn;
   readonly #idleTimeoutMs: number;
-  /** threadId → pi session id, for `--session-id` continuity across recycles. */
+  /** threadId → pi session id (from `get_state`), passed as `--session-id` on every later spawn. */
   readonly #sessionByThread = new Map<string, string>();
-  /** threadId → active persistent session. */
+  /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
   /** model id → context-window tokens, cached from `--list-models` for `usage`. */
   readonly #contextWindowByModel = new Map<string, number>();
@@ -374,10 +447,12 @@ export class PiAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
+  /** The configured idle timeout (observability + tests). */
   get idleTimeoutMs(): number {
     return this.#idleTimeoutMs;
   }
 
+  /** Whether a resident process is alive for the thread (observability + tests). */
   hasActiveSession(threadId: string): boolean {
     const session = this.#sessions.get(threadId);
     return Boolean(session && !session.exited);
@@ -411,26 +486,36 @@ export class PiAdapter extends BaseAgentAdapter {
     for (const threadId of Array.from(this.#sessions.keys())) {
       this.#teardownSession(threadId);
     }
-    this.#sessions.clear();
     return Promise.resolve();
   }
 
-  /** Dismantle and terminate the active persistent session for a specific thread immediately. */
+  /**
+   * Tear down the thread's resident process now (the thread was archived or
+   * deleted). The session id is kept: an unarchived thread's next turn resumes
+   * the same session on a fresh process.
+   */
   closeSession(threadId: string): Promise<void> {
     this.#teardownSession(threadId);
     return Promise.resolve();
   }
 
+  /** (Re)arm the idle countdown after a turn ended. */
   #scheduleIdleTeardown(session: ActiveSession): void {
     if (session.idleTimer) clearTimeout(session.idleTimer);
     session.idleTimer = setTimeout(() => {
       this.#teardownSession(session.threadId);
     }, this.#idleTimeoutMs);
-    if (typeof session.idleTimer.unref === 'function') {
-      session.idleTimer.unref();
-    }
+    // A pending countdown must never keep the daemon alive on shutdown.
+    session.idleTimer.unref();
   }
 
+  /**
+   * Kill the thread's process and forget it. A turn still running on it is
+   * marked completed WITHOUT a terminal event — every caller emits its own
+   * (`turn_aborted` on cancel; a recycle only happens between turns). Ending
+   * stdin first is what tells pi no more commands are coming (its rpc mode
+   * exits on stdin end); the kill covers a process that does not.
+   */
   #teardownSession(threadId: string): void {
     const session = this.#sessions.get(threadId);
     if (!session) return;
@@ -438,21 +523,23 @@ export class PiAdapter extends BaseAgentAdapter {
       clearTimeout(session.idleTimer);
       session.idleTimer = undefined;
     }
-    if (session.activeTurn && !session.activeTurn.completed) {
-      session.activeTurn.completed = true;
-    }
+    if (session.activeTurn) session.activeTurn.completed = true;
     this.#sessions.delete(threadId);
     session.exited = true;
     try {
-      if (session.child.stdin && typeof session.child.stdin.end === 'function') {
-        session.child.stdin.end();
-      }
+      session.child.stdin?.end();
       session.child.kill();
     } catch {
       /* already gone */
     }
   }
 
+  /**
+   * The thread's resident process, spawning one when there is none or when the
+   * live one was started with a different cwd / model / effort / posture —
+   * those are process arguments, so honouring a change means a new process. The
+   * new one resumes the same session via `--session-id`.
+   */
   #getOrCreateSession(
     threadId: string,
     cwd: string,
@@ -476,15 +563,16 @@ export class PiAdapter extends BaseAgentAdapter {
       return existing;
     }
 
-    if (existing) {
-      this.#teardownSession(threadId);
-    }
+    if (existing) this.#teardownSession(threadId);
 
+    // Resume the session pi announced on this thread's first `get_state`; on the
+    // very first spawn there is none yet and pi creates one.
     const sessionId = this.#sessionByThread.get(threadId);
     const args = ['--mode', 'rpc'];
     if (permissionMode === 'default') args.push('--tools', 'read,grep,find,ls');
     else if (permissionMode === 'bypassPermissions') args.push('--approve');
     if (model) args.push('--model', model);
+    // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
     if (effort) args.push('--thinking', effort);
     if (sessionId) args.push('--session-id', sessionId);
 
@@ -525,9 +613,13 @@ export class PiAdapter extends BaseAgentAdapter {
         }
         return;
       }
-      if (event.kind === 'session' && event.sessionId) {
-        session.sessionId = event.sessionId;
-        this.#sessionByThread.set(threadId, event.sessionId);
+      if (event.kind === 'state' || event.kind === 'session') {
+        if (event.sessionId) {
+          session.sessionId = event.sessionId;
+          this.#sessionByThread.set(threadId, event.sessionId);
+        }
+        if (event.contextWindow !== undefined) session.contextWindow = event.contextWindow;
+        return;
       }
       const active = session.activeTurn;
       if (!active || active.completed) return;
@@ -549,7 +641,12 @@ export class PiAdapter extends BaseAgentAdapter {
         active.currentAssistantText += event.text;
         this.emit({ type: 'delta', threadId, turnId: active.turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
-        this.emit({ type: 'thinking', threadId, turnId: active.turnId, data: { text: event.text } });
+        this.emit({
+          type: 'thinking',
+          threadId,
+          turnId: active.turnId,
+          data: { text: event.text },
+        });
       } else if (event.kind === 'tool_start' && event.tool) {
         active.pendingTools.set(event.toolCallId ?? '', event.tool);
       } else if (event.kind === 'tool_end') {
@@ -589,12 +686,21 @@ export class PiAdapter extends BaseAgentAdapter {
           if (event.errorText) active.errorMsg = event.errorText;
         }
       } else if (event.kind === 'command_failed') {
+        // Only a rejected `prompt` ends the turn: it means the agent never
+        // started, so nothing else will arrive. A rejected `steer` is a
+        // follow-up that did not land — the turn itself is fine, and the
+        // manager already treats a `false` from `steerTurn` as "leave it
+        // queued", so it must not take the turn down with it.
         if (event.commandName === 'prompt') {
           active.errored = true;
           active.errorMsg = event.errorText ?? 'pi rejected the prompt';
           active.finish();
         }
       } else if (event.kind === 'end') {
+        // The run ended, but the turn only ends once pi settles (see the
+        // header); a run pi will retry keeps the turn open with its state intact.
+        return;
+      } else if (event.kind === 'settled') {
         active.finish();
       }
     });
@@ -635,6 +741,10 @@ export class PiAdapter extends BaseAgentAdapter {
     });
 
     this.#sessions.set(threadId, session);
+    // Ask for the session id now: pi answers commands in order, so the response
+    // lands before the first prompt's events, and the id is known before any
+    // recycle could need it.
+    send({ type: 'get_state' });
     return session;
   }
 
@@ -672,10 +782,8 @@ export class PiAdapter extends BaseAgentAdapter {
       finish: () => {
         if (activeTurn.completed) return;
         activeTurn.completed = true;
-        if (session.activeTurn?.turnId === turnId) {
-          session.activeTurn = undefined;
-        }
-        this.#scheduleIdleTeardown(session);
+        if (session.activeTurn?.turnId === turnId) session.activeTurn = undefined;
+        if (!session.exited) this.#scheduleIdleTeardown(session);
 
         const body = activeTurn.full.length > 0 ? activeTurn.full : activeTurn.finalText;
         if (activeTurn.errored && body.length === 0) {
@@ -696,10 +804,17 @@ export class PiAdapter extends BaseAgentAdapter {
           });
           return;
         }
-        const contextWindow = model !== undefined ? this.#contextWindowByModel.get(model) : undefined;
+        // The window pi reported for this very session wins; the `--list-models`
+        // cache covers a process that never answered `get_state`.
+        const contextWindow =
+          session.contextWindow ??
+          (model !== undefined ? this.#contextWindowByModel.get(model) : undefined);
         const usage =
           activeTurn.tokens !== undefined
-            ? { tokens: activeTurn.tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) }
+            ? {
+                tokens: activeTurn.tokens,
+                ...(contextWindow !== undefined ? { contextWindow } : {}),
+              }
             : undefined;
         this.emit({
           type: 'turn_completed',
@@ -779,10 +894,13 @@ export class PiAdapter extends BaseAgentAdapter {
     return Promise.resolve(session.send({ type: 'steer', message: options.text }));
   }
 
+  /**
+   * Cancel = kill the process (see the header): the next turn resumes the
+   * session on a new one.
+   */
   cancelTurn(threadId: string, turnId: string): Promise<void> {
     const session = this.#sessions.get(threadId);
     if (session && session.activeTurn?.turnId === turnId) {
-      session.send({ type: 'abort' });
       session.activeTurn.completed = true;
       session.activeTurn = undefined;
       this.emit({ type: 'turn_aborted', threadId, turnId });
