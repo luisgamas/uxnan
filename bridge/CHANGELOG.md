@@ -4,6 +4,18 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- **`agent/usageStats` — Claude Code reader.** Reports an **expired** access token
+  as `authRequired` with "open Claude Code once so it refreshes it" instead of
+  letting a 401 read as signed-out (the bridge never refreshes a token itself);
+  fills the account's email + organization from `~/.claude.json`
+  (`oauthAccount`, no secrets); honors `CLAUDE_CONFIG_DIR`; and on **macOS**,
+  where Claude Code keeps its token in the login Keychain rather than on disk,
+  says so and points at the desktop app instead of claiming the user is signed
+  out. Opening the Keychain from the bridge is deliberately not done — see
+  `FOR-DEV.md` → *Handlers*. The reader takes an injectable `platform` for
+  tests. Picks up `UsageStatus.accessRequired` from `@uxnan/shared` (not
+  emitted by the bridge yet).
 
 ## [0.0.24-alpha.20260903] - 20260903
 ### Changed

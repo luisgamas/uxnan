@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 810 Rust tests (773 unit + 37
+always wins). 818 Rust tests (781 unit + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,253 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,255 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -255,16 +255,22 @@ started.**
   per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
   a `FOR-HUMAN.md` item.
 - **AI-provider usage statistics (Settings → Providers)** — native Rust reader
-  (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
-  Copilot, Grok**, reading each CLI's own stored token → the provider's official
-  usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
+  (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`/`usage_grant_access`)
+  for **Codex, Claude, Copilot, Grok**, reading each CLI's own stored token → the
+  provider's official usage API (never cookies / pasted keys / refresh tokens).
+  On **macOS, Claude Code's token comes from the login Keychain** through
+  `credstore.rs`: polls run with OS interaction disabled and can never pop a
+  dialog; the one interactive read is the *Grant access* button
+  (`accessRequired` status), and the grant is macOS's own, revocable in Keychain
+  Access — verified by unit tests, still owed a hands-on run on real Apple
+  hardware (see *Providers* below). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Polling starts at boot, catches up on focus, honors
   each provider's interval, and preserves Codex percentage-point semantics around
   resets. Contract-first (`shared` `agent/usageStats`); the
-  bridge/mobile side is Phase 6 (see below). **Antigravity** is researched but not wired (its
-  token lives in the OS keyring, not on disk — see *Providers* below).
+  bridge/mobile side is Phase 6 (see below). **Antigravity** is researched but not
+  wired (its keyring item names are unverified — see *Providers* below).
 - **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
   slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
   Quick commands editor. Commands are persisted flat in `AppData.quickCommands`
@@ -1262,42 +1268,57 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       in the `serverUrl`.
 
 **Providers (usage statistics)**
-- [ ] **Claude Code usage on macOS — blocked on the same keyring decision.**
-      macOS Claude Code writes no `~/.claude/.credentials.json`; the token is in
-      the login Keychain as `Claude Code-credentials` (verified on a real
-      install: the file is absent while the keychain item is present, and
-      `~/.claude.json` exists, so the provider is still *detected*). The reader
-      now reports that honestly instead of "not signed in", but the data stays
-      unavailable. Unblocking it is the identical decision as the Antigravity
-      item below — read the OS keyring — and would cover both providers at once.
-      Site: `src-tauri/src/usage.rs` (`read_claude`).
-- [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
-      data.** Researched against a real install; nothing implemented. The data and
-      the API are within reach: `agy` talks to Google's Code Assist backend (its own
-      logs under `~/.gemini/antigravity-cli/log/` show
+- [ ] **Claude Code Keychain grant — verify the flow on real macOS hardware.**
+      The reader ships (`credstore.rs` + `usage.rs` `read_claude`,
+      `usage_grant_access`), unit-tested for the item derivation, error mapping
+      and a quiet read that returns without prompting; what only a Mac can
+      confirm is the lived sequence in `docs/providers.md` → *Verify*: *Access
+      required* with no dialog → *Grant access* → *Always Allow* → *Live*; a
+      manual Refresh and a restart stay silent; revoking in Keychain Access
+      brings *Access required* back; a rebuilt (ad-hoc signed) binary asks
+      again once. Record the run in `tests/platform-support.json` (macOS
+      checklist) and drop this item.
+- [ ] **OS credential store on Windows / Linux** — `credstore.rs` returns
+      `Unsupported` there today because no wired CLI keeps its token in
+      Credential Manager / Secret Service by default. Two CLIs need it:
+      **Codex in `cli_auth_credentials_store = "keyring" | "auto"`** (service
+      `Codex Auth`, account `cli|<sha256(canonical CODEX_HOME)[..16]>`, value =
+      the `auth.json` JSON; its newer "encrypted auth storage" backend — a key in
+      the store + a local blob — is a moving format and must **not** be
+      reversed) and Antigravity (below). Windows via `windows-sys`
+      `Win32_Security_Credentials` `CredReadW` (no prompt, DPAPI user scope);
+      Linux via Secret Service over `zbus` (already in the lock tree; no prompt
+      while the collection is unlocked; headless → an honest status). Same
+      never-prompt / grant-once contract; verify on real hardware before
+      announcing. Sites: `src-tauri/src/credstore.rs` (`platform` modules),
+      `usage.rs` (`read_codex` fallback), `docs/providers.md`.
+- [ ] **Antigravity (`agy`) as a usage provider — deferred on the item names, not
+      on the data or the posture.** Researched against a real install; nothing
+      implemented. The data and the API are within reach: `agy` talks to Google's
+      Code Assist backend (its own logs under `~/.gemini/antigravity-cli/log/` show
       `daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` /
       `:fetchAvailableModels` plus a `quota_manager.go` refresh loop), and the Gemini
       reader in `usage.rs` already calls the sibling `…/v1internal:retrieveUserQuota`
       and parses its `buckets[]` — that half is reusable as-is. Upstream documents
       `/usage`, `/quota` and `/credits`, but they are **interactive-only** slash
       commands (`agy --help` exposes no usage subcommand), so shelling out is not an
-      option. **The blocker is the credential:** unlike every wired provider, `agy`
-      keeps its OAuth token in the **OS keyring** (Windows Credential Manager, the
-      macOS Keychain item "Antigravity Safe Storage", Linux Secret Service) — the
-      log line `keyring.go: keyringAuth: loaded token, expiry=…` with neither
+      option. `agy` keeps its OAuth token in the **OS keyring** (the log line
+      `keyring.go: keyringAuth: loaded token, expiry=…` with neither
       `~/.gemini/antigravity-cli/credentials.enc` nor `…/antigravity-oauth-token`
-      on disk. The plain-file token
-      (`{auth_method, token:{access_token, refresh_token, expiry}}`) is written
-      **only** when `agy` detects a container/headless environment, so a file-only
-      reader would report `authRequired` on virtually every desktop. **What unblocks
-      it:** a decision to read the OS keyring — a new `keyring` crate plus an
-      undocumented, `agy`-version-fragile entry name (macOS may prompt), stretching
-      the documented "only the token the CLI already left on disk" posture. **Do not**
-      fall back to `~/.gemini/oauth_creds.json` (the Gemini CLI's token): Antigravity
-      bills a **separate** quota pool + AI credits, so those numbers would be Gemini's
-      wearing Antigravity's name. Sites when picked up: `src-tauri/src/usage.rs`
-      (`UsageProvider`, `read_one`, `is_present`), `src/lib/usageCatalog.ts`,
-      `shared/src/models/usage.ts` (contract → bridge + mobile), `docs/providers.md`.
+      on disk; the plain-file token
+      `{auth_method, token:{access_token, refresh_token, expiry}}` is written
+      **only** in a container/headless environment). `credstore.rs` is now the
+      door to that store, so **what remains is the item's service/account names**
+      — undocumented, `agy`-version-fragile, and to be verified per platform on a
+      real install (the macOS item seen so far is "Antigravity Safe Storage",
+      which may be an Electron-style *encryption key* rather than the token
+      itself — check before parsing) — plus the Windows / Linux store halves
+      above. **Do not** fall back to `~/.gemini/oauth_creds.json` (the Gemini
+      CLI's token): Antigravity bills a **separate** quota pool + AI credits, so
+      those numbers would be Gemini's wearing Antigravity's name. Sites when
+      picked up: `src-tauri/src/usage.rs` (`UsageProvider`, `read_one`,
+      `is_present`), `src/lib/usageCatalog.ts`, `shared/src/models/usage.ts`
+      (contract → bridge + mobile), `docs/providers.md`.
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
@@ -1468,7 +1489,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 810 Rust + 1,253 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 818 Rust + 1,255 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -4,6 +4,33 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Claude Code usage on macOS, behind a one-time Keychain grant.** Claude Code
+  keeps its OAuth token in the login Keychain there (`Claude Code-credentials`),
+  not in `~/.claude/.credentials.json`, so Settings → Providers had nothing to
+  show. The reader now reaches the Keychain through Security.framework with a
+  contract that keeps polling honest: every background read runs with **OS user
+  interaction disabled**, so a refresh can never pop a dialog — when macOS would
+  have to ask, the provider reports the new `accessRequired` status and a
+  **Grant access** button, and only that click performs the one interactive read
+  (choose *Always Allow*; the grant lives in the item's access list, revocable in
+  Keychain Access, and Uxnan stores nothing about it). New `credstore.rs` is the
+  single door to credentials other CLIs keep in the OS store (macOS implemented;
+  Windows / Linux return `Unsupported` until a provider needs them), returning
+  bytes that zeroize on drop; new `usage_grant_access` command. Token rules are
+  now written down and enforced for every provider: access token only, never a
+  refresh token, in memory for one call, never across the IPC or in a message.
+  Same posture on Windows / Linux, where the file is read in place as before.
+  `docs/providers.md` → *How Uxnan reaches a token*.
+- **Claude Code: expiry check and identity.** An expired access token now reads
+  *Sign in required* with "open Claude Code once so it refreshes it" instead of
+  a misleading 401 → "signed out"; the "Authenticated as" line fills from
+  `~/.claude.json` (`oauthAccount` email + organization, a file without
+  secrets), blurred until clicked like every other provider. `CLAUDE_CONFIG_DIR`
+  is honored for the file path and the Keychain service suffix, exactly as the
+  CLI derives them.
+
 ### Fixed
 
 - **A plain-folder project that runs `git init` is now recognized as a

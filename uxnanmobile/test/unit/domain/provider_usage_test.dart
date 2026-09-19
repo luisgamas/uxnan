@@ -55,4 +55,16 @@ void main() {
     expect(u.windows, isEmpty);
     expect(u.message, 'run grok login');
   });
+
+  test('accessRequired parses as its own state, not error', () {
+    final u = ProviderUsage.fromJson({
+      'provider': 'claude',
+      'status': 'accessRequired',
+      'windows': <dynamic>[],
+      'updatedAt': 1,
+      'message': 'grant access on the PC',
+    });
+    expect(u!.status, UsageStatus.accessRequired);
+    expect(u.message, 'grant access on the PC');
+  });
 }

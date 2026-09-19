@@ -145,7 +145,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 731 passing unit tests (773 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
+The 739 passing unit tests (781 with the ignored probes) cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -249,7 +249,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,253 passing tests** across both
+ships in every build and is never shown). **1,255 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -336,6 +336,11 @@ instead of quietly agreeing with a mock nobody updated.
   still type-checks and renders an empty `<svg>`. Each assertion is about painted
   geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
   it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
+- `ProviderUsageEditor.svelte.test.ts` — the OS credential-store consent flow
+  (`docs/providers.md` → *How Uxnan reaches a token*): an `accessRequired`
+  snapshot renders **Grant access**, clicking it issues `usage_grant_access` for
+  that provider and re-reads usage; the other non-live states never show the
+  button, so the OS dialog can only ever appear because the user asked.
 
 - `state/pets.svelte.test.ts` — the library the Pets screen renders: every
   bundled pet loads (they are static assets, faked at `fetch`, not a command),
