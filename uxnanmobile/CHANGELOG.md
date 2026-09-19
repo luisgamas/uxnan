@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- `UsageStatus` (domain value object mirroring `shared`) gains `accessRequired`
+  — the PC's CLI token sits in the OS credential store and the desktop still has
+  to be granted access to it. No usage UI renders it yet; the parser no longer
+  folds it into `error`.
 
 ## [0.0.22-alpha.20260815+20260815] - 20260815
 ### Changed — the model shows the name you read, not the id the CLI routes on

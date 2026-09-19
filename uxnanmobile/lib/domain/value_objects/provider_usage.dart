@@ -5,7 +5,7 @@ import 'package:equatable/equatable.dart';
 enum UsageProvider { codex, claude, copilot, grok }
 
 /// Outcome of reading one provider's usage. Mirrors `shared` `UsageStatus`.
-enum UsageStatus { ok, authRequired, notInstalled, error }
+enum UsageStatus { ok, authRequired, accessRequired, notInstalled, error }
 
 /// Parses a wire provider id, or null when unknown.
 UsageProvider? usageProviderFromWire(String id) {
@@ -19,6 +19,7 @@ UsageStatus _statusFromWire(Object? id) {
   return switch (id) {
     'ok' => UsageStatus.ok,
     'authRequired' => UsageStatus.authRequired,
+    'accessRequired' => UsageStatus.accessRequired,
     'notInstalled' => UsageStatus.notInstalled,
     _ => UsageStatus.error,
   };
@@ -186,7 +187,8 @@ class ProviderUsage extends Equatable {
   /// The credit balance, when reported.
   final CreditBalance? credit;
 
-  /// Error/hint message for `error` / `authRequired` / `notInstalled`.
+  /// Error/hint message for `error` / `authRequired` / `accessRequired` /
+  /// `notInstalled`.
   final String? message;
 
   @override

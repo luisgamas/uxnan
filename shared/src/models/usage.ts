@@ -11,8 +11,11 @@
  * over `agent/usageStats`. The Dart equivalents live in uxnanmobile and are kept
  * in sync manually (see 02e-bridge-integration.md §4.2).
  *
- * Posture: only the CLI's own stored token is read — never browser cookies or
- * user-pasted API keys.
+ * Posture: only the token the CLI itself stored is read — from its file, or
+ * from the OS credential store where that is where the CLI keeps it (Claude
+ * Code on macOS), and then only after the user has granted the OS-level
+ * permission once (see `accessRequired`). Never browser cookies, never
+ * user-pasted API keys, never a refresh token.
  */
 
 /** A coding CLI whose usage we read from its own stored token. */
@@ -24,6 +27,11 @@ export type UsageStatus =
   | 'ok'
   /** CLI is present but not signed in (no usable token). */
   | 'authRequired'
+  /** The CLI's token exists in the OS credential store, but the OS has not yet
+   *  authorized the reader to open it. The user grants that once from the
+   *  desktop's Providers panel (the OS shows its own dialog); the reader never
+   *  prompts on its own. A phone shows "grant access on the PC". */
+  | 'accessRequired'
   /** CLI / its config directory is not present on this machine. */
   | 'notInstalled'
   /** Read/network/parse failure — see {@link ProviderUsage.message}. */
@@ -125,7 +133,8 @@ export interface ProviderUsage {
   resetCredits?: ResetCredits;
   /** When this snapshot was produced (epoch ms). */
   updatedAt: number;
-  /** Error/hint message for `error` / `authRequired` / `notInstalled` states. */
+  /** Error/hint message for `error` / `authRequired` / `accessRequired` /
+   *  `notInstalled` states. */
   message?: string;
 }
 
