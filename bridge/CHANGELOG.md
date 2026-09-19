@@ -44,6 +44,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a new process on the same session id, so a teardown costs one cold start,
   never history. `agy` turns run under `--print-timeout 2h`, a per-turn cap
   (verified not to touch an idle process).
+- **`agent/usageStats` — Claude Code reader.** Reports an **expired** access token
+  as `authRequired` with "open Claude Code once so it refreshes it" instead of
+  letting a 401 read as signed-out (the bridge never refreshes a token itself);
+  fills the account's email + organization from `~/.claude.json`
+  (`oauthAccount`, no secrets); honors `CLAUDE_CONFIG_DIR`; and on **macOS**,
+  where Claude Code keeps its token in the login Keychain rather than on disk,
+  says so and points at the desktop app instead of claiming the user is signed
+  out. Opening the Keychain from the bridge is deliberately not done — see
+  `FOR-DEV.md` → *Handlers*. The reader takes an injectable `platform` for
+  tests. Picks up `UsageStatus.accessRequired` from `@uxnan/shared` (not
+  emitted by the bridge yet).
 
 ### Fixed
 
@@ -54,9 +65,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   asked what it had just said, it answered "None"). A thread's first process
   now runs without `--conversation`, the adapter adopts the id `agy` announces
   on `init`, and every later spawn for the thread resumes it.
-- **pi lost its session on every turn.** `--mode rpc` emits no `session` event (verified on pi 0.85.1)
-  — `-p --mode json` does, which is where the id was read before the move
-  to RPC), so no id was ever captured and no `--session-id` was ever passed.
+- **pi lost its session on every turn.** `--mode rpc` emits no `session` event
+  (verified on pi 0.85.1; `-p --mode json` does, which is where the id was read
+  before the move to RPC), so no id was ever captured and no `--session-id` was
+  ever passed.
   The adapter now sends `get_state` right after spawning and reads `sessionId`
   from the response; a recycle passes it as `--session-id`.
 - **pi turns end on `agent_settled`, not `agent_end`.** `agent_end` closes one

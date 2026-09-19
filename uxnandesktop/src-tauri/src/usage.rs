@@ -2,8 +2,17 @@
 //!
 //! Reads quota/rate windows, plan/account and credit balance for the coding CLIs
 //! the user activated, using each CLI's own stored token (→ the provider's
-//! official usage API). Posture: only the CLI's local token is read — never
-//! browser cookies or user-pasted API keys.
+//! official usage API). Posture: only the token the CLI itself stored is read —
+//! from its file, or from the OS credential store where that is where the CLI
+//! keeps it (Claude Code on macOS, via `credstore.rs`, with explicit user
+//! consent) — never browser cookies or user-pasted API keys.
+//!
+//! Token handling rules, every provider, every platform: only the **access**
+//! token is used; a refresh token is never read into a value, never sent
+//! anywhere and never used to mint a new access token (the CLIs detect refresh
+//! reuse as a compromised session). The token lives in this process for the
+//! length of one HTTP call, never crosses the Tauri IPC, is never logged and
+//! never appears in a `message`.
 //!
 //! The wire shape mirrors `shared/src/models/usage.ts` (serde camelCase) so the
 //! bridge can serve the identical `agent/usageStats` payload to the phone later
@@ -16,10 +25,9 @@ use std::path::{Path, PathBuf};
 /// A coding CLI whose usage we can read from local files / its stored token.
 ///
 /// FOR-DEV: Antigravity (`agy`) is missing here on purpose. Its quota lives
-/// behind Code Assist, but `agy` stores its OAuth token in the OS keyring rather
-/// than on disk, so there is
-/// nothing to read without a new keyring dependency and a posture decision — see
-/// `FOR-DEV.md` → "Providers (usage statistics)".
+/// behind Code Assist and `credstore.rs` is the door to its OS-keyring token,
+/// but the entry names it uses are undocumented and unverified per platform —
+/// see `FOR-DEV.md` → "Providers (usage statistics)".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UsageProvider {
@@ -37,6 +45,10 @@ pub enum UsageStatus {
     Ok,
     /// CLI is present but not signed in (no usable token).
     AuthRequired,
+    /// The CLI's token exists in the OS credential store, but the OS has not
+    /// yet authorized Uxnan to read it — the user grants that once from the
+    /// Providers panel (`grant_access`). Never a surprise dialog.
+    AccessRequired,
     /// CLI / its config directory is not present on this machine.
     NotInstalled,
     /// Read/network/parse failure — see `message`.
@@ -250,6 +262,36 @@ pub fn detect_present(providers: &[UsageProvider]) -> Vec<UsageProvider> {
         .collect()
 }
 
+/// Let the OS ask the user to authorize Uxnan to read `provider`'s token from
+/// the credential store — the one interactive read, triggered only by the
+/// *Grant access* button after a poll reported `accessRequired`. Succeeds when
+/// the OS handed the item over (the user chose *Allow* / *Always Allow*); the
+/// secret itself is dropped on the spot — the caller re-reads usage afterwards
+/// through the normal quiet path. Blocks on a dedicated thread for as long as
+/// the OS dialog stays open.
+pub async fn grant_access(provider: UsageProvider) -> Result<(), String> {
+    use crate::credstore::{self, CredStoreError, Interaction};
+    match provider {
+        UsageProvider::Claude => {
+            let (service, account) = claude_keychain_item();
+            tokio::task::spawn_blocking(move || {
+                credstore::read(&service, &account, Interaction::Ask)
+                    .map(|_secret| ())
+                    .map_err(|e| match e {
+                        CredStoreError::AccessRequired => "access was not granted".to_string(),
+                        CredStoreError::NotFound => {
+                            "Claude Code has no stored sign-in on this Mac".to_string()
+                        }
+                        other => other.to_string(),
+                    })
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+        _ => Err("this provider keeps its token on disk — nothing to grant".to_string()),
+    }
+}
+
 async fn read_one(provider: UsageProvider, home: &Path) -> ProviderUsage {
     match provider {
         UsageProvider::Codex => read_codex(home).await,
@@ -263,7 +305,7 @@ fn is_present(provider: UsageProvider, home: &Path) -> bool {
     match provider {
         UsageProvider::Codex => home.join(".codex").join("auth.json").exists(),
         UsageProvider::Claude => {
-            home.join(".claude").join(".credentials.json").exists()
+            claude_config_dir(home).join(".credentials.json").exists()
                 || home.join(".claude.json").exists()
         }
         UsageProvider::Copilot => crate::which::is_command_available("gh"),
@@ -704,26 +746,127 @@ fn codex_base_url(home: &Path) -> String {
 
 // --- Claude -----------------------------------------------------------------
 
+/// Where Claude Code keeps its config — `CLAUDE_CONFIG_DIR` when set, else
+/// `~/.claude`. Both the credentials file and the Keychain service suffix
+/// derive from it, exactly as the CLI derives them.
+fn claude_config_dir(home: &Path) -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".claude"))
+}
+
+/// The Keychain item Claude Code writes on macOS: service
+/// `Claude Code-credentials`, plus `-<sha256(config dir)[..8]>` when the CLI
+/// runs with a custom `CLAUDE_CONFIG_DIR`; account = the login user name, or
+/// `claude-code-user` when it has characters the CLI refuses. Mirrors the CLI's
+/// own derivation, so the reader looks exactly where the CLI wrote.
+fn claude_keychain_item() -> (String, String) {
+    let custom_dir = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|s| !s.is_empty());
+    let service = claude_keychain_service(custom_dir.map(PathBuf::from).as_deref());
+    let account = claude_keychain_account(std::env::var("USER").ok().as_deref());
+    (service, account)
+}
+
+fn claude_keychain_service(custom_config_dir: Option<&Path>) -> String {
+    let suffix = match custom_config_dir {
+        None => String::new(),
+        Some(dir) => {
+            use sha2::Digest as _;
+            let hex = hex::encode(sha2::Sha256::digest(dir.to_string_lossy().as_bytes()));
+            format!("-{}", &hex[..8])
+        }
+    };
+    format!("Claude Code-credentials{suffix}")
+}
+
+fn claude_keychain_account(user: Option<&str>) -> String {
+    user.filter(|u| {
+        !u.is_empty()
+            && u.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    })
+    .map(str::to_string)
+    .unwrap_or_else(|| "claude-code-user".to_string())
+}
+
+/// How Claude Code's stored credentials were (not) obtained.
+enum ClaudeCreds {
+    /// Parsed credentials JSON (`{ claudeAiOauth: { … } }`).
+    Found(serde_json::Value),
+    /// No file and no store item: not signed in on this machine.
+    Missing,
+    /// The store holds the token but the OS has not authorized Uxnan yet.
+    AccessRequired,
+    /// A store failure worth surfacing (OS text, never the secret).
+    StoreError(String),
+}
+
+/// Resolve Claude Code's credentials the way the CLI itself does: the
+/// credentials file first (every platform — it is also the CLI's own fallback
+/// when the Keychain is unavailable), then, on macOS, the login Keychain
+/// through `credstore` **without** user interaction. The raw bytes are parsed
+/// once and zeroized; only the parsed value leaves this function.
+fn claude_credentials(home: &Path) -> ClaudeCreds {
+    use crate::credstore::{self, CredStoreError, Interaction};
+    let creds_path = claude_config_dir(home).join(".credentials.json");
+    if let Some(v) = read_json(&creds_path) {
+        return ClaudeCreds::Found(v);
+    }
+    if !cfg!(target_os = "macos") {
+        return ClaudeCreds::Missing;
+    }
+    let (service, account) = claude_keychain_item();
+    match credstore::read(&service, &account, Interaction::Never) {
+        Ok(secret) => match serde_json::from_slice::<serde_json::Value>(secret.as_bytes()) {
+            Ok(v) => ClaudeCreds::Found(v),
+            Err(_) => ClaudeCreds::StoreError("the stored credentials are not valid JSON".into()),
+        },
+        Err(CredStoreError::NotFound) | Err(CredStoreError::Unsupported) => ClaudeCreds::Missing,
+        Err(CredStoreError::AccessRequired) => ClaudeCreds::AccessRequired,
+        Err(other) => ClaudeCreds::StoreError(other.to_string()),
+    }
+}
+
+/// The signed-in identity Claude Code records in `~/.claude.json`
+/// (`oauthAccount.emailAddress` / `organizationName`) — a settings file that
+/// carries no secrets, so it is safe to read on every platform for the
+/// "Authenticated as" line (the UI blurs it until clicked).
+fn claude_identity(home: &Path) -> (Option<String>, Option<String>) {
+    let Some(cfg) = read_json(&home.join(".claude.json")) else {
+        return (None, None);
+    };
+    let pick = |k: &str| {
+        cfg.get("oauthAccount")
+            .and_then(|a| a.get(k))
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    (pick("emailAddress"), pick("organizationName"))
+}
+
 async fn read_claude(home: &Path) -> ProviderUsage {
-    let creds_path = home.join(".claude").join(".credentials.json");
-    let Some(creds) = read_json(&creds_path) else {
-        // On macOS the file is absent even for a signed-in install: Claude Code
-        // keeps its token in the login Keychain (`Claude Code-credentials`)
-        // instead of on disk. Saying "not signed in" there is simply false — the
-        // user is signed in, we just do not read the OS keyring, which is the
-        // same documented posture that keeps Antigravity out (see
-        // `docs/providers.md` and the FOR-DEV item). Report what is actually
-        // true, so the panel does not send someone off to re-run `claude login`
-        // for a problem that is ours.
-        if cfg!(target_os = "macos") && home.join(".claude.json").exists() {
-            return ProviderUsage::base(UsageProvider::Claude, UsageStatus::AuthRequired)
+    let creds = match claude_credentials(home) {
+        ClaudeCreds::Found(v) => v,
+        ClaudeCreds::AccessRequired => {
+            return ProviderUsage::base(UsageProvider::Claude, UsageStatus::AccessRequired)
                 .with_message(
-                    "Claude Code stores its token in the macOS Keychain, which Uxnan does not \
-                     read — usage is unavailable here even while you are signed in",
+                    "Claude Code keeps its sign-in in the macOS Keychain — grant Uxnan read \
+                     access once to show usage",
                 );
         }
-        return ProviderUsage::base(UsageProvider::Claude, UsageStatus::NotInstalled)
-            .with_message("Claude Code is not signed in (~/.claude/.credentials.json missing)");
+        ClaudeCreds::StoreError(msg) => return errored(UsageProvider::Claude, msg),
+        ClaudeCreds::Missing => {
+            let msg = if cfg!(target_os = "macos") {
+                "Claude Code is not signed in on this Mac (no Keychain item and no \
+                 ~/.claude/.credentials.json)"
+            } else {
+                "Claude Code is not signed in (~/.claude/.credentials.json missing)"
+            };
+            return ProviderUsage::base(UsageProvider::Claude, UsageStatus::NotInstalled)
+                .with_message(msg);
+        }
     };
     let oauth = creds.get("claudeAiOauth");
     let token = oauth
@@ -733,12 +876,22 @@ async fn read_claude(home: &Path) -> ProviderUsage {
         return ProviderUsage::base(UsageProvider::Claude, UsageStatus::AuthRequired)
             .with_message("Claude Code has no OAuth access token");
     };
+    // Claude Code refreshes its access token only while it runs; a stale one
+    // would 401 and read as "signed out", which is the wrong thing to tell the
+    // user. Uxnan never refreshes it itself (see the module docs).
+    if claude_token_expired(oauth, now_ms()) {
+        return ProviderUsage::base(UsageProvider::Claude, UsageStatus::AuthRequired).with_message(
+            "Claude Code's session token has expired — open Claude Code once so it \
+                 refreshes it",
+        );
+    }
     let subscription_type = oauth
         .and_then(|o| o.get("subscriptionType"))
         .and_then(|v| v.as_str())
         .map(str::to_string);
     let plan = subscription_type.as_deref().map(prettify_plan);
     let account_type = subscription_type.as_deref().map(classify_plan);
+    let (email, organization) = claude_identity(home);
 
     let client = match http_client() {
         Ok(c) => c,
@@ -757,9 +910,10 @@ async fn read_claude(home: &Path) -> ProviderUsage {
     let mut usage = ProviderUsage::base(UsageProvider::Claude, UsageStatus::Ok);
     usage.source = Some(UsageSource::Token);
     usage = usage.with_account(Account {
+        email,
+        organization,
         plan,
         account_type,
-        ..Default::default()
     });
 
     // The `limits[]` array is the modern, complete quota picture: each entry has a
@@ -835,6 +989,16 @@ async fn read_claude(home: &Path) -> ProviderUsage {
         usage = usage.with_message("signed in, but the usage API returned no quota windows");
     }
     usage
+}
+
+/// Whether the stored access token is already past its `expiresAt` (epoch ms,
+/// as Claude Code writes it). Unknown/absent expiry counts as not expired — the
+/// API call decides.
+fn claude_token_expired(oauth: Option<&serde_json::Value>, now: i64) -> bool {
+    oauth
+        .and_then(|o| o.get("expiresAt"))
+        .and_then(epoch_ms)
+        .is_some_and(|expires_at| expires_at <= now)
 }
 
 /// A readable label for a Claude `limits[]` entry: a model-scoped window shows
@@ -1294,6 +1458,86 @@ mod tests {
         assert_eq!(label_for_minutes(Some(10080)), "Weekly");
         assert_eq!(label_for_minutes(Some(43200)), "Monthly");
         assert_eq!(label_for_minutes(None), "Usage");
+    }
+
+    #[test]
+    fn claude_keychain_service_matches_the_cli_derivation() {
+        // Default config dir → the plain service name Claude Code writes.
+        assert_eq!(claude_keychain_service(None), "Claude Code-credentials");
+        // A custom `CLAUDE_CONFIG_DIR` → `-<sha256(dir)[..8]>` suffix.
+        let s = claude_keychain_service(Some(Path::new("/tmp/claude-alt")));
+        assert!(s.starts_with("Claude Code-credentials-"), "{s}");
+        assert_eq!(s.len(), "Claude Code-credentials-".len() + 8);
+        assert!(s[s.len() - 8..].chars().all(|c| c.is_ascii_hexdigit()));
+        // Deterministic.
+        assert_eq!(
+            s,
+            claude_keychain_service(Some(Path::new("/tmp/claude-alt")))
+        );
+    }
+
+    #[test]
+    fn claude_keychain_account_falls_back_like_the_cli() {
+        assert_eq!(claude_keychain_account(Some("gamas")), "gamas");
+        assert_eq!(
+            claude_keychain_account(Some("first.last-01_x")),
+            "first.last-01_x"
+        );
+        assert_eq!(claude_keychain_account(Some("")), "claude-code-user");
+        assert_eq!(
+            claude_keychain_account(Some("has space")),
+            "claude-code-user"
+        );
+        assert_eq!(claude_keychain_account(Some("ñandú")), "claude-code-user");
+        assert_eq!(claude_keychain_account(None), "claude-code-user");
+    }
+
+    #[test]
+    fn claude_token_expiry_reads_epoch_ms() {
+        let fresh = serde_json::json!({ "expiresAt": 2_000_000_000_000i64 });
+        let stale = serde_json::json!({ "expiresAt": 1_700_000_000_000i64 });
+        let now = 1_790_000_000_000i64;
+        assert!(!claude_token_expired(Some(&fresh), now));
+        assert!(claude_token_expired(Some(&stale), now));
+        assert!(!claude_token_expired(Some(&serde_json::json!({})), now));
+        assert!(!claude_token_expired(None, now));
+    }
+
+    #[test]
+    fn claude_credentials_prefer_the_file_and_identity_comes_from_claude_json() {
+        let home = tempfile::tempdir().unwrap();
+        // Identity file without secrets.
+        std::fs::write(
+            home.path().join(".claude.json"),
+            r#"{"oauthAccount":{"emailAddress":"dev@example.com","organizationName":"Acme"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            claude_identity(home.path()),
+            (Some("dev@example.com".into()), Some("Acme".into()))
+        );
+        // A credentials file wins on every platform (also the CLI's fallback).
+        std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+        std::fs::write(
+            home.path().join(".claude").join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"t","expiresAt":2000000000000}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            claude_credentials(home.path()),
+            ClaudeCreds::Found(_)
+        ));
+        assert!(is_present(UsageProvider::Claude, home.path()));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn claude_credentials_without_a_file_are_missing_off_macos() {
+        let home = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            claude_credentials(home.path()),
+            ClaudeCreds::Missing
+        ));
     }
 
     #[test]

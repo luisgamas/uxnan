@@ -902,6 +902,11 @@ export const en = {
   "providers.usedCaption": "The bar shows how much of each limit you've consumed.",
   "providers.statusOk": "Live",
   "providers.statusAuthRequired": "Sign in required",
+  "providers.statusAccessRequired": "Access required",
+  "providers.grantAccess": "Grant access",
+  "providers.grantAccessHint":
+    "macOS will ask once — choose “Always Allow” so the meter stays current without asking again. Revoke any time in Keychain Access.",
+  "providers.grantAccessDone": "Access granted",
   "providers.statusNotInstalled": "Not set up",
   "providers.statusError": "Unavailable",
   "ports.statusBarTooltip": "Ports on your hosts",

@@ -79,6 +79,8 @@ export function statusMeta(status: UsageStatus): { dot: string; labelKey: Messag
       return { dot: "bg-emerald-500", labelKey: "providers.statusOk" };
     case "authRequired":
       return { dot: "bg-amber-500", labelKey: "providers.statusAuthRequired" };
+    case "accessRequired":
+      return { dot: "bg-amber-500", labelKey: "providers.statusAccessRequired" };
     case "notInstalled":
       return { dot: "bg-muted-foreground/50", labelKey: "providers.statusNotInstalled" };
     case "error":

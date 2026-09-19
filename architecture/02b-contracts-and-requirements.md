@@ -630,7 +630,10 @@ interface TurnUsage {
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
 type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok';
-type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
+type UsageStatus = 'ok' | 'authRequired' | 'accessRequired' | 'notInstalled' | 'error';
+// accessRequired: el token existe en el almacen de credenciales del SO (Claude
+// Code en macOS: login Keychain) pero el SO aun no autoriza al lector a abrirlo;
+// el usuario lo concede una sola vez desde el desktop (dialogo del propio SO).
 
 type AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise';
 
@@ -664,7 +667,11 @@ interface ProviderUsage {
   updatedAt: number;            // epoch ms
   message?: string;             // hint/error para estados != ok
 }
-// Postura: solo el token que el propio CLI guardo localmente + su API oficial de uso.
+// Postura: solo el token que el propio CLI guardo (su archivo, o el almacen de
+// credenciales del SO donde el CLI lo guarde, tras una autorizacion explicita del
+// usuario mediada por el SO) + su API oficial de uso. Solo el access token: nunca
+// el refresh token, nunca cookies ni keys pegadas. El lector nunca muestra un
+// dialogo por su cuenta: si el SO tendria que preguntar, reporta `accessRequired`.
 // Cada proveedor degrada a un `status`; uno lento/roto no tumba a los demas.
 ```
 
