@@ -33,6 +33,8 @@ must state its gap. Every plan that adds a feature updates its row.
 ```bash
 cd uxnandesktop/src-tauri
 cargo test --workspace         # unit + integration tests, app + the two control crates
+                               # (on Windows/MSVC, build.rs embeds windows-test-manifest.xml
+                               #  into the test binaries — see the note in that file)
 cargo clippy --workspace --all-targets   # lints — must be warning-free
 cargo fmt --all --check        # formatting — must be clean (run `cargo fmt --all` to fix)
 ```

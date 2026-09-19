@@ -36,6 +36,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   per-launch agent config keeps working. `hooks.rs` keeps only what a hook
   report means. The sidebar's `worktree_list` command delegates to the control
   service that answers `worktree/list`, so there is one implementation.
+- **Windows test binaries carry the Common Controls 6.0 manifest.** `build.rs`
+  embeds `windows-test-manifest.xml` into every test target on MSVC: the
+  control surface's end-to-end tests build a Tauri mock app, which links
+  comctl32 v6-only symbols, and without the manifest the test process could
+  not even be loaded on Windows (`STATUS_ENTRYPOINT_NOT_FOUND`).
 - **`src-tauri` is a Cargo workspace.** Two small member crates,
   `uxnan-control-protocol` (the contract: catalog, envelope, discovery record,
   selectors, data-dir rules — no Tauri) and `uxnan-cli` (the console client),

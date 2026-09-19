@@ -5,6 +5,7 @@
 # release bumps all three in the one place the release tooling already edits.
 [workspace]
 members = ["crates/control-protocol", "crates/uxnan-cli"]
+resolver = "2"
 
 [workspace.package]
 version = "0.0.50"
