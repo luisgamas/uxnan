@@ -262,8 +262,9 @@ started.**
   `credstore.rs`: polls run with OS interaction disabled and can never pop a
   dialog; the one interactive read is the *Grant access* button
   (`accessRequired` status), and the grant is macOS's own, revocable in Keychain
-  Access — verified by unit tests, still owed a hands-on run on real Apple
-  hardware (see *Providers* below). Tabbed UI with per-provider quota
+  Access — unit-tested, and the lived flow (grant → *Always Allow* → *Live*,
+  silent polls and restart, revocation) walked on real Apple Silicon by the
+  maintainer on 2026-09-19 (PR #240). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Polling starts at boot, catches up on focus, honors
@@ -1268,16 +1269,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       in the `serverUrl`.
 
 **Providers (usage statistics)**
-- [ ] **Claude Code Keychain grant — verify the flow on real macOS hardware.**
-      The reader ships (`credstore.rs` + `usage.rs` `read_claude`,
-      `usage_grant_access`), unit-tested for the item derivation, error mapping
-      and a quiet read that returns without prompting; what only a Mac can
-      confirm is the lived sequence in `docs/providers.md` → *Verify*: *Access
-      required* with no dialog → *Grant access* → *Always Allow* → *Live*; a
-      manual Refresh and a restart stay silent; revoking in Keychain Access
-      brings *Access required* back; a rebuilt (ad-hoc signed) binary asks
-      again once. Record the run in `tests/platform-support.json` (macOS
-      checklist) and drop this item.
 - [ ] **OS credential store on Windows / Linux** — `credstore.rs` returns
       `Unsupported` there today because no wired CLI keeps its token in
       Credential Manager / Secret Service by default. Two CLIs need it:
