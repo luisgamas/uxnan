@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-  The application manifest of the **test** binaries on Windows (MSVC).
+  The application manifest of every binary this package links on Windows (MSVC): the app and the test harnesses.
 
   tauri-build embeds this same dependency into the app executable, so its
   window-subclassing calls resolve against Common Controls 6.0. A `cargo test`
