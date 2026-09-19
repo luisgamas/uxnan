@@ -560,6 +560,7 @@ pub async fn pty_create(
                     }
                 },
                 move || {
+                    exit_app.state::<AppState>().agent_changes.notify_waiters();
                     let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
                 },
             )
@@ -574,6 +575,7 @@ pub async fn pty_create(
     let exit_app = app.clone();
     let exit_id = id.clone();
     let on_exit = move || {
+        exit_app.state::<AppState>().agent_changes.notify_waiters();
         let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
     };
 

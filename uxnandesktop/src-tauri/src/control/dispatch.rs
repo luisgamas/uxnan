@@ -63,7 +63,10 @@ pub async fn dispatch<R: tauri::Runtime>(
     // A `create` entry is receipted and audited: the same key returns the first
     // receipt instead of doing the thing twice, and every call that reached the
     // service — done or refused by it — leaves a line the person can read later.
-    let audited = entry.group == Group::Create;
+    // `agent/wait` is a read that blocks; it leaves no line. A send and a
+    // screen read do.
+    let audited =
+        entry.group == Group::Create || (entry.group == Group::Converse && method != "agent/wait");
     if audited {
         if let Some(key) = receipts::key_of(&params) {
             let state = app.state::<AppState>();
@@ -122,6 +125,9 @@ async fn run<R: tauri::Runtime>(
         "terminal/create" => services::terminal::create(app, caller, params).await,
         "run/start" => services::run::start(app, caller, params).await,
         "automation/run" => services::automation::run(app, caller, params).await,
+        "agent/send" => services::agent::send(app, caller, params).await,
+        "agent/wait" => services::agent::wait(app, caller, params).await,
+        "terminal/read" => services::terminal::read(app, caller, params).await,
         "orchestration/reportResult" => {
             services::orchestration::report_result(app, caller, params).await
         }
@@ -167,6 +173,9 @@ const IMPLEMENTED: &[&str] = &[
     "terminal/create",
     "run/start",
     "automation/run",
+    "agent/send",
+    "agent/wait",
+    "terminal/read",
     "orchestration/reportResult",
     "orchestration/reportProgress",
 ];

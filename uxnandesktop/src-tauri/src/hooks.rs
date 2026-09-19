@@ -739,6 +739,7 @@ fn emit_agent_status_cleared<R: tauri::Runtime>(
     agent_type: Option<String>,
     session: Option<AgentSession>,
 ) {
+    app.state::<AppState>().agent_changes.notify_waiters();
     let _ = app.emit(
         "agent:status-cleared",
         AgentStatusClearedEvent {
@@ -749,8 +750,10 @@ fn emit_agent_status_cleared<R: tauri::Runtime>(
     );
 }
 
-/// Broadcast a cached agent entry to the frontend as `agent:status-changed`.
+/// Broadcast a cached agent entry to the frontend as `agent:status-changed`,
+/// and wake whoever waits on agent state (`agent/wait`).
 fn emit_agent_status<R: tauri::Runtime>(app: &AppHandle<R>, entry: crate::model::AgentStateEntry) {
+    app.state::<AppState>().agent_changes.notify_waiters();
     let _ = app.emit(
         "agent:status-changed",
         AgentStatusEvent {

@@ -144,6 +144,9 @@ uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <termin
 uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
                           [--idempotency-key <key>]
 uxnan-cli agent ls
+uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
+uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
+uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
 uxnan-cli app focus
@@ -163,6 +166,8 @@ pub const SELECTORS: &str = "- `current` — your own terminal, and from it your
 ";
 
 pub const OUTPUT: &str = "Human-readable output goes to stdout; errors go to stderr. `--json` prints the raw result object, stable across versions: fields may be added, never renamed or removed without a protocol bump. Prefer `--json` from a script or an agent.
+
+`agent send` queues a whole message for a running agent until it is free (`--force` types it now and interrupts); `agent wait --for idle` blocks until the agent's own hooks report its turn finished, printing a heartbeat to stderr every 15 s; `terminal read` returns the screen with secrets redacted and is written to the audit log. Together they are the loop: send, wait, read.
 
 A `create` entry answers with a **receipt**: `{ requestId, idempotencyKey?, … }` plus what was created. Pass `--idempotency-key` (any string you choose, e.g. a UUID) and a retry of the same call returns the first receipt instead of creating a second worktree, terminal or run — so a lost reply is safe to retry. Every `create` call, done or refused, is written to `control-audit.log` in the app's data directory (prompt text is recorded as its length only).
 ";

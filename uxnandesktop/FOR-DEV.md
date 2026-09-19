@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 866 Rust tests (802 unit in the app crate + 17 in `uxnan-control-protocol` + 10 in `uxnan-cli` + 37
+always wins). 871 Rust tests (807 unit in the app crate + 17 in `uxnan-control-protocol` + 10 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,262 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,264 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -805,7 +805,7 @@ the browser MCP; user guide in `docs/browser.md`.
 never raw PTY bytes, never destructive git/filesystem. Spec: `architecture/02d`
 §1.6; guide: `docs/control-api.md`.
 
-**Done (groups `read`, `ui` and `create`, and the surface itself):** the workspace crate
+**Done (groups `read`, `ui`, `create` and `converse`, and the surface itself):** the workspace crate
 `uxnan-control-protocol` (catalog, JSON-RPC envelope + error codes, discovery
 record, selectors, data-dir rules); the app's **one local server**
 (`control/server.rs`: `/hook`, `/browser`, `/mcp`, `/control/v1/rpc`, two gates,
@@ -825,13 +825,20 @@ adoption by the window over the bridge, agent launch + queued first message),
 `terminal/create`, `run/start`, `automation/run` (+ `automation/list`), with
 receipts, idempotency by key (`control/receipts.rs`) and the audit log
 (`control/audit.rs`); `uxnan-cli worktree create` / `terminal create` /
-`run start` / `automation ls|run`, `--prompt-file`, `--idempotency-key`. 35 app
-tests (10 end to end over a real socket with Tauri's mock app, one creating a
-worktree on a real repository), 17 protocol, 10 CLI, 9 window-bridge Vitest.
+`run start` / `automation ls|run`, `--prompt-file`, `--idempotency-key`. The
+`converse` group: `agent/send` (paste-and-submit through the backpressure
+queue, or forced), `agent/wait` on the hook-reported state over a new
+`AppState.agent_changes` notifier, `terminal/read` from the window's terminal
+buffer with secret redaction (`control/redact.rs`) and a per-project opt-out;
+`uxnan-cli agent send|wait`, `terminal read`. 40 app tests (11 end to end over
+a real socket with Tauri's mock app, one creating a worktree on a real
+repository, one waiting on a real PTY), 17 protocol, 10 CLI, 11 window-bridge
+Vitest.
 
 ### Still pending
 - [ ] **Settings → Control.** A section with the group switches
-      (`settings.control.disabledGroups` exists and is honoured; no UI yet), a
+      (`settings.control.disabledGroups` and `terminalReadDisabledProjects`
+      exist and are honoured; no UI yet), a
       *Rotate token* action (the token lives in `AppState.control_token` and the
       server reads it live — rotation only needs to write it and rewrite
       `control.json` via `control::discovery::write`), and an *Install `uxnan-cli`*
@@ -847,11 +854,6 @@ worktree on a real repository), 17 protocol, 10 CLI, 9 window-bridge Vitest.
       nothing is verified. Confirm on the platform matrix (005) that another local
       user cannot read it; if not, set an explicit DACL (`icacls`-equivalent via
       the Windows API) and check it in the CLI.
-- [ ] **Group `converse`** (G3): `agent/send` via `pty_paste_submit` (whole
-      message, byte cap, target must be `waiting`/idle unless `--force`),
-      `agent/wait --for idle|waiting|exit` on the hook state (event-driven, no
-      polling; heartbeat lines on stderr), and `terminal/read` with escape
-      stripping, secret **redaction**, an audit line and a per-project switch.
 - [ ] **Group `orchestrate`** (G4): dynamic tasks, an inbox with ack, `worker.start`
       with an injected preamble that carries `taskId` + `dispatchId`,
       `ask`/`answer` over the run engine's gates; `orchestration/reportResult`
@@ -1537,7 +1539,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 866 Rust + 1,262 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 871 Rust + 1,264 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

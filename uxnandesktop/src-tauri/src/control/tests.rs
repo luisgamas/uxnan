@@ -455,7 +455,7 @@ async fn a_prompt_is_checked_before_the_worktree_exists() {
     assert!(body["error"]["message"]
         .as_str()
         .unwrap()
-        .contains("the most a first message may be"));
+        .contains("the most a message to an agent may be"));
     // The folder that would have been created is not there.
     assert!(
         !dir.path().join("wt").exists()
@@ -486,6 +486,54 @@ async fn saved_things_only() {
     )
     .await;
     assert_eq!(body["error"]["code"], ErrorCode::Unavailable.code());
+}
+
+/// The `converse` entries: a message over the cap is refused before the window
+/// is asked; `for` is validated; the audit records a send attempt — and never
+/// the message itself.
+#[tokio::test]
+async fn converse_entries_validate_before_asking_the_window_and_audit_sends() {
+    let s = server(AppData::default()).await;
+    let auth = [("authorization", "Bearer control-token")];
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc(
+            "agent/wait",
+            json!({ "terminal": "id:t1", "for": "sleepy" }),
+        ),
+    )
+    .await;
+    // The selector is resolved first, and there is no window to list tabs.
+    assert!(
+        body["error"]["code"] == ErrorCode::Unavailable.code()
+            || body["error"]["code"] == ErrorCode::InvalidParams.code(),
+        "{body}"
+    );
+    let big = "x".repeat(super::services::terminal::PROMPT_MAX_BYTES + 1);
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &auth,
+        rpc("agent/send", json!({ "terminal": "id:t1", "message": big })),
+    )
+    .await;
+    // No window either way; what matters is the audit line and its redaction.
+    assert!(body["error"].is_object());
+    let data_dir = s._app.state::<AppState>().data_dir.clone();
+    let log = std::fs::read_to_string(data_dir.join(super::audit::FILE_NAME)).unwrap();
+    let last: Value = serde_json::from_str(log.lines().last().unwrap()).unwrap();
+    assert_eq!(last["method"], "agent/send");
+    assert_eq!(last["ok"], false);
+    assert_eq!(
+        last["params"]["message"]["bytes"],
+        super::services::terminal::PROMPT_MAX_BYTES + 1
+    );
+    assert!(
+        !log.contains("xxxxxxxx"),
+        "the message text must never be logged"
+    );
 }
 
 /// The control token can change while the server runs, and the old one stops

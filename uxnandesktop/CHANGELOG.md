@@ -42,6 +42,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `worktree create`, `terminal create`, `run start`, `automation ls|run`,
   `--prompt-file` and `--idempotency-key`; `launchAgent` now returns the tab
   it opened.
+- **The `converse` group of the control surface: send, wait, read.**
+  `agent/send` types a whole message into a running agent as one
+  paste-and-submit — through the orchestration backpressure queue by default,
+  so it lands only when the agent is free (`force` interrupts) — and refuses a
+  terminal with no agent; `agent/wait` blocks until the agent's own hooks say
+  its turn is over (`idle`), it asked the person something (`waiting`) or its
+  terminal is gone (`exit`), sleeping on a new agent-change notifier rather
+  than polling, at most 15 s per call; `terminal/read` returns the last lines
+  of a terminal's screen with secrets **redacted** before they leave the app
+  (headers, `password=`/`token=`-style assignments, private-key blocks,
+  prefixed tokens), audited, and switchable off per project
+  (`settings.control.terminalReadDisabledProjects`). `uxnan-cli agent send`,
+  `agent wait` (heartbeats on stderr until `--timeout`) and `terminal read`.
 
 ### Changed
 

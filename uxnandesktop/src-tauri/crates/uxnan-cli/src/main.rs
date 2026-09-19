@@ -162,6 +162,13 @@ enum TerminalCmd {
     Show { terminal: String },
     /// Show a terminal tab in the window.
     Reveal { terminal: String },
+    /// Read the last lines of a terminal's screen (secrets redacted).
+    Read {
+        terminal: String,
+        /// How many lines from the bottom (default 120, at most 2000).
+        #[arg(long, default_value_t = 120)]
+        lines: u64,
+    },
     /// Open a new terminal tab in a worktree, optionally with an agent.
     Create {
         /// The worktree (`current`, `path:` or `branch:`).
@@ -179,6 +186,33 @@ enum TerminalCmd {
 enum AgentCmd {
     /// List the agents Uxnan is tracking.
     Ls,
+    /// Send a whole message to a running agent (queued until it is free).
+    Send {
+        /// The agent's terminal (`current` or `id:<terminalId>`).
+        #[arg(long)]
+        to: String,
+        /// A file whose contents are the message.
+        #[arg(long)]
+        message_file: std::path::PathBuf,
+        /// Type it now even if the agent is working (interrupts it).
+        #[arg(long)]
+        force: bool,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Wait until an agent reaches a state reported by its hooks.
+    Wait {
+        /// The agent's terminal (`current` or `id:<terminalId>`).
+        #[arg(long)]
+        to: String,
+        /// `idle` (turn finished), `waiting` (asked the person) or `exit`.
+        #[arg(long = "for")]
+        state: String,
+        /// Give up after this many seconds (default 600). Heartbeats go to stderr.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -269,9 +303,18 @@ enum SkillsCmd {
     },
 }
 
-/// What a command resolves to: a catalog call, or text printed locally.
+/// What a command resolves to: a catalog call, a wait (many calls until the
+/// state or the deadline), or text printed locally.
 enum Plan {
-    Call { method: &'static str, params: Value },
+    Call {
+        method: &'static str,
+        params: Value,
+    },
+    Wait {
+        terminal: String,
+        state: String,
+        timeout: Duration,
+    },
     Text(String),
 }
 
@@ -321,6 +364,10 @@ fn plan(command: Command) -> Result<Plan, String> {
             TerminalCmd::Reveal { terminal } => {
                 with("terminal/reveal", json!({ "terminal": terminal }))
             }
+            TerminalCmd::Read { terminal, lines } => with(
+                "terminal/read",
+                json!({ "terminal": terminal, "lines": lines }),
+            ),
             TerminalCmd::Create {
                 worktree,
                 title,
@@ -336,6 +383,26 @@ fn plan(command: Command) -> Result<Plan, String> {
         },
         Command::Agent { cmd } => match cmd {
             AgentCmd::Ls => with("agent/list", json!({})),
+            AgentCmd::Send {
+                to,
+                message_file,
+                force,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "terminal": to, "message": read_prompt_file(&message_file)? });
+                if force {
+                    p["force"] = json!(true);
+                }
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("agent/send", p)
+            }
+            AgentCmd::Wait { to, state, timeout } => Ok(Plan::Wait {
+                terminal: to,
+                state,
+                timeout: Duration::from_secs(timeout.max(1)),
+            }),
         },
         Command::Run { cmd } => match cmd {
             RunCmd::Ls => with("run/list", json!({})),
@@ -476,6 +543,17 @@ fn main() -> ExitCode {
             print!("{text}");
             ExitCode::SUCCESS
         }
+        Plan::Wait {
+            terminal,
+            state,
+            timeout,
+        } => {
+            let endpoint = match client::discover() {
+                Ok(e) => e,
+                Err(e) => return fail(json, e.code, &e.message),
+            };
+            wait(&endpoint, &terminal, &state, timeout, json)
+        }
         Plan::Call { method, params } => {
             let endpoint = match client::discover() {
                 Ok(e) => e,
@@ -498,6 +576,69 @@ fn main() -> ExitCode {
                 }
                 Err(e) => fail(json, e.code, &e.message),
             }
+        }
+    }
+}
+
+/// The most one `agent/wait` call may block on the app's side; the CLI keeps
+/// calling until the deadline, printing a heartbeat to stderr in between so a
+/// person (or a log) sees it is still alive.
+const WAIT_CHUNK_MS: u64 = 15_000;
+
+/// `agent wait`: repeated bounded waits until the state or the deadline. The
+/// final result goes to stdout; the heartbeats never do.
+fn wait(
+    endpoint: &client::Endpoint,
+    terminal: &str,
+    state: &str,
+    timeout: Duration,
+    json: bool,
+) -> ExitCode {
+    let started = std::time::Instant::now();
+    loop {
+        let left = timeout.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            return fail(
+                json,
+                ErrorCode::Timeout,
+                &format!(
+                    "gave up after {} s: `{state}` not reached",
+                    timeout.as_secs()
+                ),
+            );
+        }
+        let chunk = left.as_millis().min(WAIT_CHUNK_MS as u128) as u64;
+        let params = json!({ "terminal": terminal, "for": state, "timeoutMs": chunk });
+        match client::call(
+            endpoint,
+            "agent/wait",
+            params,
+            Duration::from_millis(chunk + 5_000),
+        ) {
+            Ok(result) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".into())
+                    );
+                } else {
+                    print!("{}", render::render("agent/wait", &result));
+                }
+                return ExitCode::SUCCESS;
+            }
+            Err(e) if e.code == ErrorCode::Timeout => {
+                let current = e
+                    .data
+                    .as_ref()
+                    .and_then(|d| d.get("current"))
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("?");
+                eprintln!(
+                    "waiting for `{state}`… {} s elapsed, agent is `{current}`",
+                    started.elapsed().as_secs()
+                );
+            }
+            Err(e) => return fail(json, e.code, &e.message),
         }
     }
 }

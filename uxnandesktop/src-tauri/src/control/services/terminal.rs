@@ -3,8 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use uxnan_control_protocol::rpc::{ErrorCode, RpcError};
+
+use crate::state::AppState;
 
 use super::agent::AgentView;
 use crate::control::bridge::Bridge;
@@ -30,7 +32,7 @@ pub fn check_prompt(agent: Option<&str>, prompt: Option<&str>) -> Result<(), Rpc
             return Err(RpcError::new(
                 ErrorCode::InvalidParams,
                 format!(
-                    "`prompt` is {} bytes; the most a first message may be is {} — put the rest in a file and tell the agent to read it",
+                    "the message is {} bytes; the most a message to an agent may be is {} — put the rest in a file and tell the agent to read it",
                     p.len(),
                     PROMPT_MAX_BYTES
                 ),
@@ -169,6 +171,70 @@ pub async fn create<R: tauri::Runtime>(
     ))
 }
 
+/// The most lines `terminal/read` returns.
+pub const READ_MAX_LINES: u64 = 2000;
+
+/// `terminal/read`: the last lines of a terminal's screen, from the window
+/// (which owns the terminal buffer), with secrets redacted here before they
+/// leave the app. A project may opt out (`settings.control.terminalReadDisabledProjects`).
+pub async fn read<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    params: &Value,
+) -> Result<Value, RpcError> {
+    let sel = params
+        .get("terminal")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let resolver = Resolver::new(app, caller);
+    let tab = resolver.terminal(sel).await?;
+    if let Some(folder) = tab.workspace_path() {
+        let state = app.state::<AppState>();
+        let disabled = {
+            let data = state.data.read().await;
+            let ids = data
+                .settings
+                .control
+                .terminal_read_disabled_projects
+                .clone();
+            data.repos
+                .iter()
+                .filter(|r| ids.contains(&r.id))
+                .map(|r| r.path.clone())
+                .collect::<Vec<_>>()
+        };
+        if disabled.iter().any(|p| path_within(folder, p)) {
+            return Err(RpcError::new(
+                ErrorCode::GroupDisabled,
+                "reading terminals is switched off for this project in Uxnan's settings",
+            ));
+        }
+    }
+    let lines = params
+        .get("lines")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(120)
+        .clamp(1, READ_MAX_LINES);
+    let answer = Bridge::ask(
+        app,
+        "terminal/read",
+        json!({ "terminal": tab.id, "lines": lines }),
+    )
+    .await?;
+    let Some(text) = answer.get("text").and_then(|v| v.as_str()) else {
+        return Err(RpcError::new(
+            ErrorCode::NotFound,
+            format!("terminal {} has no screen to read (not mounted)", tab.id),
+        ));
+    };
+    let redacted = crate::control::redact::redact(text);
+    Ok(json!({
+        "terminal": tab.id,
+        "lines": redacted.lines().count(),
+        "text": redacted,
+    }))
+}
+
 /// `terminal/show`.
 pub async fn show<R: tauri::Runtime>(
     app: &AppHandle<R>,
@@ -198,7 +264,9 @@ mod tests {
         assert!(no_agent.message.contains("needs `agent`"));
         let big = "x".repeat(PROMPT_MAX_BYTES + 1);
         let too_big = check_prompt(Some("claude"), Some(&big)).unwrap_err();
-        assert!(too_big.message.contains("the most a first message may be"));
+        assert!(too_big
+            .message
+            .contains("the most a message to an agent may be"));
     }
 
     #[test]

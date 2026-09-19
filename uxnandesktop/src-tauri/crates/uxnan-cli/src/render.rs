@@ -55,6 +55,17 @@ pub fn render(method: &str, value: &Value) -> String {
             &[],
             &[],
         ),
+        "terminal/read" => value
+            .get("text")
+            .and_then(|t| t.as_str())
+            .map(|t| format!("{t}\n"))
+            .unwrap_or_default(),
+        "agent/wait" => format!(
+            "{} reached `{}` after {} ms\n",
+            value["terminal"].as_str().unwrap_or("?"),
+            value["reached"].as_str().unwrap_or("?"),
+            value["waitedMs"]
+        ),
         "automation/list" => table(
             value.get("automations"),
             &["id", "name", "enabled", "agent", "cwd"],

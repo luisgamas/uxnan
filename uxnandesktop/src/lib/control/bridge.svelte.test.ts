@@ -217,6 +217,40 @@ describe("the create group, on the window's side", () => {
     expect(broken.error).toContain("claude");
   });
 
+  it("queues a message for a live agent, forces one on request, and refuses a shell", async () => {
+    terminals.setWorkspace(WT);
+    const shell = terminals.create({ cwd: WT, title: "zsh" });
+    const agent = terminals.create({ cwd: WT, title: "claude", agentName: "Claude Code", agentCommand: "claude" });
+
+    const queued = await answer({
+      id: "s1",
+      method: "agent/send",
+      params: { terminal: agent, message: "continue", force: false },
+    });
+    const delivery = (queued.result as { delivery: string }).delivery;
+    expect(["queued", "delivered"]).toContain(delivery);
+
+    const forced = await answer({
+      id: "s2",
+      method: "agent/send",
+      params: { terminal: agent, message: "stop", force: true },
+    });
+    expect((forced.result as { delivery: string }).delivery).toBe("forced");
+    expect(backend.lastCallTo("pty_paste_submit")?.args).toEqual({ id: agent, text: "stop" });
+
+    const refused = await answer({
+      id: "s3",
+      method: "agent/send",
+      params: { terminal: shell, message: "hi", force: false },
+    });
+    expect((refused.result as { error: string }).error).toContain("not a live agent");
+  });
+
+  it("reads a terminal's screen, or says there is none", async () => {
+    const out = await answer({ id: "s4", method: "terminal/read", params: { terminal: "nope", lines: 10 } });
+    expect((out.result as { text: string | null }).text).toBeNull();
+  });
+
   it("starts a saved run through the engine and reports validation refusals", async () => {
     orchestrationRun.runs = [
       { id: "run-empty", title: "Empty", createdAt: 1, updatedAt: 1, status: "draft", seq: 0, steps: [] },

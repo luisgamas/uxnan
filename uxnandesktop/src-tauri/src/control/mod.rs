@@ -24,6 +24,7 @@ mod dispatch;
 pub mod mcp;
 mod params;
 pub mod receipts;
+pub mod redact;
 mod resolve;
 pub mod rpc;
 pub mod server;

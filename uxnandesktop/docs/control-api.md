@@ -23,10 +23,11 @@ worktrees, terminals, the agents in them and their live state), show the person
 a file or a diff, drive the integrated browser to test what it built, report
 its result to an orchestration run — and **give a subtask its own space**:
 create a worktree on a new branch and launch an agent in it with a first
-message, open a terminal, start a saved run or automation. A person can do the
-same from a prompt, and script it. The later groups (sending a message to a
-running agent and waiting for it to go idle; coordinating several agents) build
-on the same surface; the groups and the road are in the spec.
+message, open a terminal, start a saved run or automation — and **talk to a
+running agent**: send it a whole message, wait until its own hooks say its
+turn is over, read its screen. A person can do the same from a prompt, and
+script it. The last group (coordinating several agents) builds on the same
+surface; the groups and the road are in the spec.
 
 What it is **not**: a shell. There is no entry that runs a command, writes raw
 bytes to a terminal, touches the filesystem or git destructively, reads a
@@ -80,7 +81,7 @@ name) without touching the others. Trust order:
 | `read` | `status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `browser/status` | shipped |
 | `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward` | shipped |
 | `create` | `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run`; `automation/list` sits in `read` | shipped |
-| `converse` | send a complete message to an agent, wait for a state, read its screen | planned |
+| `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
 | `orchestrate` | `orchestration/reportResult|reportProgress` (shipped); tasks, inbox, questions | partly |
 
 `uxnan-cli skills get control --full` lists every entry with its arguments —
@@ -125,6 +126,34 @@ What each entry does, and through which existing path:
 
 A `prompt` needs an `agent` and is capped at 64 KiB — a first message, not a
 document; the CLI's `--prompt-file` enforces the same cap before sending.
+
+### The `converse` group: send, wait, read
+
+The loop an agent (or a script) runs with another agent:
+
+- **`agent/send`** — a whole message to a running agent's terminal, as one
+  paste-and-submit (`pty_paste_submit`: bracketed paste plus a distinct Enter),
+  never keystrokes. By default it goes through the same backpressure queue the
+  orchestration console uses, so it is typed only when that agent is free;
+  `force` types it now, which interrupts the agent and should be rare. A
+  terminal with no agent in it is refused — a shell has nobody to read a
+  message. Receipted and audited like a `create`; the same 64 KiB cap.
+- **`agent/wait`** — blocks until the agent reaches `idle` (its turn finished,
+  the `done` its hooks report), `waiting` (it stopped to ask the person
+  something) or `exit` (the terminal is gone), or the call's budget runs out
+  (at most 15 s per call — the app sleeps on its agent-change notifier, no
+  polling). A terminal that exits satisfies every wait, so nobody waits for a
+  turn that will never end. The CLI keeps calling until `--timeout` (default
+  600 s), printing a heartbeat to stderr with the agent's current state.
+  Not audited: it changes nothing.
+- **`terminal/read`** — the last `lines` (default 120, at most 2000) of a
+  terminal's screen as text, from the window's terminal buffer (escapes gone,
+  blank rows dropped), **redacted** before it leaves the app
+  (`control/redact.rs`: `Authorization`/`x-api-key` headers, `password=`,
+  `token=`, `secret=` and their kin, private-key blocks, tokens recognizable
+  by prefix). Every read is audited. A project can opt out with
+  `settings.control.terminalReadDisabledProjects` (its terminals then answer
+  *group disabled*); the Settings control for it is FOR-DEV.
 
 ## Selectors
 
@@ -181,6 +210,9 @@ uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <termin
 uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
                           [--idempotency-key <key>]
 uxnan-cli agent ls
+uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
+uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
+uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
 uxnan-cli app focus
@@ -250,8 +282,12 @@ contract for scripts) and `references/workflows.md` (recipes).
   for `create`: a worktree created on a **real temporary repository** where
   the project's policy puts it, receipted, written to the audit log, not
   created twice under the same key, a prompt refused before anything exists,
-  and saved-only refusals for runs and automations. Receipts and the audit
-  log have their own unit tests.
+  and saved-only refusals for runs and automations; for `converse`: a message
+  over the cap refused and audited as its byte length only, and the wait core
+  (`wait_for`) on a **real PTY** — running out while the agent works and saying
+  so, woken at once by a `done` report, `waiting` as its own state, an unknown
+  terminal as `exit`. Receipts, the audit log and the redaction have their
+  own unit tests.
 - **CLI** (`cargo test -p uxnan-cli`): the HTTP client's round trip against a
   stand-in server, response parsing, the origin derivation, the process
   start-time check, the guide naming every entry and exit status, the table
@@ -262,10 +298,13 @@ contract for scripts) and `references/workflows.md` (recipes).
   worktree adopted like the dialog does (active, agent launched, prompt
   queued), an unknown agent refused with the known ones, a terminal opened
   plain or with an agent named three ways, a run started or refused with its
-  validation errors.
+  validation errors; for `converse`: a message queued or forced through the
+  paste, a shell refused, a screen read that says when there is none.
 - **By hand**: run the app (`npm run tauri dev`), then in another shell
   `uxnan-cli status`, `uxnan-cli terminal ls`, `uxnan-cli file diff <path>
   --worktree path:<folder>`, `uxnan-cli worktree create --project name:<p>
   --branch feat/x --agent claude --prompt-file task.md --idempotency-key k1`
-  (then the same call again: same receipt, one worktree); and from inside a
-  Uxnan terminal, `uxnan-cli terminal show current`.
+  (then the same call again: same receipt, one worktree); `uxnan-cli agent send
+  --to id:<terminal> --message-file msg.md`, `uxnan-cli agent wait --to
+  id:<terminal> --for idle`, `uxnan-cli terminal read id:<terminal>`; and from
+  inside a Uxnan terminal, `uxnan-cli terminal show current`.

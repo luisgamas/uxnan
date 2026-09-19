@@ -654,6 +654,11 @@ pub struct AppSettings {
 pub struct ControlSettings {
     #[serde(default)]
     pub disabled_groups: Vec<String>,
+    /// Projects (by id) whose terminals `terminal/read` may not read. The
+    /// scrollback of an agent often holds what it was shown — a key, a token —
+    /// so a project can opt out of being read even with the `converse` group on.
+    #[serde(default)]
+    pub terminal_read_disabled_projects: Vec<String>,
 }
 
 /// Where the ADE puts a new worktree (spec `02c` §2.1). The layout itself lives

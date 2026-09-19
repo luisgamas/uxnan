@@ -376,7 +376,7 @@ export interface AppSettings {
   worktrees?: WorktreeSettings;
   /** The control surface: capability groups switched off (by their stable name:
    *  `read`, `ui`, `create`, `converse`, `orchestrate`). Absent = all on. */
-  control?: { disabledGroups: string[] };
+  control?: { disabledGroups: string[]; terminalReadDisabledProjects?: string[] };
 }
 
 /** The git identity commits are authored with (mirror of the Rust

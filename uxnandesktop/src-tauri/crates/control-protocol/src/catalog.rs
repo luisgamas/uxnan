@@ -407,6 +407,52 @@ pub fn catalog() -> Vec<Entry> {
             ),
             mutates: true,
         },
+        // ── Converse ─────────────────────────────────────────────────────────
+        Entry {
+            method: "agent/send",
+            tool: "agent_send",
+            group: Group::Converse,
+            summary: "Send a complete message to a running agent, as one paste-and-submit — never as keystrokes. By default the message waits in Uxnan's backpressure queue until that agent is free (not working); `force` types it now, which interrupts whatever the agent is doing and should be rare. Only an agent's terminal can receive a message; a plain shell has nobody to read it. Use `agent/wait` afterwards to learn when the agent has finished.",
+            params: object(
+                json!({
+                    "terminal": terminal_selector(),
+                    "message": { "type": "string", "description": "The whole message, as the person would type it. At most 64 KiB." },
+                    "force": { "type": "boolean", "description": "Type it now even if the agent is working. Default false." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["terminal", "message"],
+            ),
+            mutates: true,
+        },
+        Entry {
+            method: "agent/wait",
+            tool: "agent_wait",
+            group: Group::Converse,
+            summary: "Wait until an agent reaches a state, as reported by its own hooks: `idle` (its turn finished — the state to wait for after sending a message), `waiting` (it stopped to ask the person something), or `exit` (its terminal is gone). Returns the state reached and how long it took, or a timeout. One call waits at most 15 seconds; call again to keep waiting (uxnan-cli does this for you and prints a heartbeat).",
+            params: object(
+                json!({
+                    "terminal": terminal_selector(),
+                    "for": { "type": "string", "description": "`idle`, `waiting` or `exit`." },
+                    "timeoutMs": { "type": "integer", "description": "How long this call may wait, in milliseconds. Capped at 15000. Default 15000." }
+                }),
+                &["terminal", "for"],
+            ),
+            mutates: false,
+        },
+        Entry {
+            method: "terminal/read",
+            tool: "terminal_read",
+            group: Group::Converse,
+            summary: "Read the last lines of a terminal's screen as plain text (escapes removed, blank rows dropped), with secrets redacted — tokens, keys, `Authorization` headers, `password=`. Use it to see what an agent printed or asked. Every read is written to Uxnan's audit log; a project can switch reads off in Settings.",
+            params: object(
+                json!({
+                    "terminal": terminal_selector(),
+                    "lines": { "type": "integer", "description": "How many lines from the bottom. Default 120, at most 2000." }
+                }),
+                &["terminal"],
+            ),
+            mutates: false,
+        },
         // ── Orchestrate ──────────────────────────────────────────────────────
         Entry {
             method: "orchestration/reportResult",
@@ -495,15 +541,21 @@ mod tests {
         }
     }
 
-    /// Reads never mutate; everything else does. The flag is what the client
-    /// uses to decide whether a retry is safe.
+    /// Reads never mutate and creations always do; a `converse` entry may be a
+    /// read (`wait`, `read`) or a send. The flag is what the client uses to
+    /// decide whether a retry is safe.
     #[test]
-    fn read_group_entries_do_not_mutate() {
+    fn the_mutates_flag_follows_the_group() {
         for e in catalog() {
-            if e.group == Group::Read {
-                assert!(!e.mutates, "{} is a read that mutates", e.method);
-            } else {
-                assert!(e.mutates, "{} is a non-read that does not mutate", e.method);
+            match e.group {
+                Group::Read => assert!(!e.mutates, "{} is a read that mutates", e.method),
+                Group::Ui | Group::Create | Group::Orchestrate => {
+                    assert!(e.mutates, "{} does not mutate", e.method)
+                }
+                Group::Converse => {
+                    let sends = e.method == "agent/send";
+                    assert_eq!(e.mutates, sends, "{}", e.method);
+                }
             }
         }
     }

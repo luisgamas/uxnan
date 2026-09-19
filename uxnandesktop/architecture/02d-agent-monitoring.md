@@ -608,7 +608,14 @@ mensaje encolado tras el backpressure del broadcast —, `terminal/create`,
 responde con un **recibo** `{ requestId, idempotencyKey?, … }`, repite el primer
 recibo ante la misma `idempotencyKey` en vez de crear dos veces, y deja una linea
 en `control-audit.log` del directorio de datos con el llamador, la entrada, los
-argumentos — el prompt reducido a su longitud — y el resultado), `converse` y
+argumentos — el prompt reducido a su longitud — y el resultado), `converse`
+(`agent/send`: un mensaje completo como paste-and-submit por la cola con
+backpressure del broadcast, o forzado; `agent/wait --for idle|waiting|exit`
+sobre el estado reportado por los hooks, dormido en el notificador
+`AppState.agent_changes` en vez de sondear, maximo 15 s por llamada;
+`terminal/read`: las ultimas lineas del buffer del terminal de la ventana con
+**redaccion** de secretos en el backend antes de salir, auditado, y desconectable
+por proyecto con `settings.control.terminalReadDisabledProjects`) y
 `orchestrate` (hoy `orchestration/reportResult|reportProgress`, §3.7). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
 para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
 (`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;

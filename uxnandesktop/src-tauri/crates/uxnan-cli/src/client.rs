@@ -42,6 +42,8 @@ pub struct Endpoint {
 pub struct ClientError {
     pub code: ErrorCode,
     pub message: String,
+    /// The error's `data`, when the app attached some (a wait's current state).
+    pub data: Option<Value>,
 }
 
 impl ClientError {
@@ -49,6 +51,7 @@ impl ClientError {
         ClientError {
             code,
             message: message.into(),
+            data: None,
         }
     }
 }
@@ -58,6 +61,7 @@ impl From<RpcError> for ClientError {
         ClientError {
             code: e.code,
             message: e.message,
+            data: e.data,
         }
     }
 }

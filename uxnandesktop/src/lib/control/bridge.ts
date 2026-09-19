@@ -18,6 +18,7 @@ import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { orchestration } from "$lib/state/orchestration.svelte";
 import { projects } from "$lib/state/projects.svelte";
 import { app } from "$lib/state/app.svelte";
+import { readInstanceText } from "$lib/terminal/instances";
 import type { WorktreeEntry } from "$lib/types";
 
 /** What the backend sends. */
@@ -139,6 +140,26 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
     if (!tabId) return { error: "the agent has no command to launch" };
     if (tabId && agent) queuePrompt(tabId, p.prompt);
     return { terminal: { id: tabId, agent: agent?.name } };
+  },
+  "agent/send": async (p) => {
+    const terminal = String(p.terminal ?? "");
+    const message = String(p.message ?? "");
+    if (p.force === true) {
+      // Now, whatever the agent is doing: one paste-and-submit, never keystrokes.
+      await invoke("pty_paste_submit", { id: terminal, text: message });
+      return { delivery: "forced" };
+    }
+    // Through the same backpressure queue the orchestration console uses: the
+    // message leaves when the agent is free, one at a time per agent.
+    const queued = orchestration.send({ kind: "tabs", tabIds: [terminal] }, message);
+    if (queued === 0) return { error: `terminal ${terminal} is not a live agent's` };
+    return { delivery: orchestration.pendingFor(terminal) > 0 ? "queued" : "delivered" };
+  },
+  "terminal/read": (p) => {
+    const terminal = String(p.terminal ?? "");
+    const lines = Number(p.lines ?? 120);
+    const text = readInstanceText(terminal, lines);
+    return text === null ? { text: null } : { text };
   },
   "run/start": (p) => {
     const id = String(p.run ?? "");
