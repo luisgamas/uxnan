@@ -369,9 +369,11 @@ export class AgentManager {
    * id — **or queue it** when the thread already has a turn in flight (or a
    * non-empty queue). Queueing is what the agent CLIs do when you type a
    * follow-up while they work, and here it is also the only safe answer: the
-   * bridge drives one turn per thread, and half the agents run one-shot per turn
-   * (`claude -p --resume`, pi, antigravity), so starting a second turn
-   * concurrently would put two CLI processes on the same session.
+   * bridge drives one turn per thread: the one-shot agent resumes its own
+   * session per turn (`claude -p --resume`), the resident-process agents (pi,
+   * antigravity) read one turn at a time from stdin, and the server-backed ones
+   * serialize prompts per session — so a concurrent second turn would either put
+   * two CLI processes on one session or write into a turn already running.
    */
   async sendTurn(
     threadId: string,
@@ -951,8 +953,15 @@ export class AgentManager {
   }
 
   /**
-   * Release and dismantle any active persistent process/session and clear
-   * queued turns for [threadId] (called when a thread is deleted or archived).
+   * Let go of everything the bridge holds for a thread that is being archived or
+   * deleted: cancel its running turn, drop its queue, and tell every adapter to
+   * tear down the resident process it may keep for the thread (pi, Antigravity
+   * — `closeSession`, an optional adapter capability read structurally like
+   * `nativeSessionId`). Best-effort throughout: the thread's own removal must
+   * not fail because a process was already gone.
+   *
+   * Every adapter is asked, not just the thread's current one: a thread that
+   * switched agents may still have the previous agent's process alive.
    */
   async closeThreadSession(threadId: string): Promise<void> {
     const activeTurnId = this.#activeTurnByThread.get(threadId);
@@ -968,13 +977,16 @@ export class AgentManager {
     this.#activeTurnByThread.delete(threadId);
 
     for (const adapter of this.#adapters.values()) {
-      const closeFn = (adapter as { closeSession?: (id: string) => Promise<void> }).closeSession;
-      if (typeof closeFn === 'function') {
-        try {
-          await closeFn.call(adapter, threadId);
-        } catch {
-          /* best-effort */
-        }
+      const closable = adapter as unknown as {
+        closeSession?(threadId: string): Promise<void>;
+      };
+      if (!closable.closeSession) continue;
+      try {
+        await closable.closeSession(threadId);
+      } catch (err) {
+        this.#options.logger.warn(
+          `close session failed for '${adapter.agentId}': ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     this.#agentByThread.delete(threadId);

@@ -243,8 +243,8 @@ interface AgentCapabilities {
 //   ✅ opencode  (default; `opencode serve` HTTP/SSE; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation)
-//   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
-//   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; active Google CLI; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
+//   ✅ pi-agent  (`pi --mode rpc`, UN proceso residente por thread; `--session-id` con el id leido de `get_state`; `steer` en turno; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
+//   ✅ antigravity-cli (`agy --input-format stream-json --output-format stream-json --add-dir <cwd>`, UN proceso residente por thread; `--conversation <id>` con el id que `agy` anuncia en `init` (no client-owned: 1.2.x rechaza un id desconocido); usage en `stream/turn/completed`; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
 //   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
 ```
@@ -2242,10 +2242,13 @@ Reglas (no negociables, verificadas contra los CLIs reales):
 
 #### 5.8.13 Cola de mensajes por thread (`AgentManager`)
 
-El bridge conduce **un turno por thread**. No es una simplificacion: la mitad
-de los agentes corre one-shot por turno (`claude -p --resume`, pi,
-antigravity), asi que dos turnos concurrentes serian dos procesos CLI sobre la
-misma sesion nativa. Un `turn/send` que llega con un turno en vuelo se
+El bridge conduce **un turno por thread**. No es una simplificacion: el agente
+one-shot reanuda su sesion en cada turno (`claude -p --resume`), asi que dos
+turnos concurrentes serian dos procesos CLI sobre la misma sesion nativa; los
+agentes de **proceso residente por thread** (pi, Antigravity) leen un turno a la
+vez de su stdin, asi que un segundo mensaje lo encolaria la propia CLI como el
+turno *siguiente*, volcandolo en un turno que el bridge ya cerro; y los agentes
+con servidor serializan por sesion. Un `turn/send` que llega con un turno en vuelo se
 **encola** — el mismo comportamiento que las CLI cuando escribes mientras
 trabajan (contrato completo en `02b` §1.2).
 
@@ -2305,7 +2308,7 @@ Que agentes pueden, y por que (verificado contra las CLI reales):
 | **OpenCode** | Si | otro `prompt_async` sobre la sesion ya ocupada |
 | **Codex** | Si | app-server `turn/steer { threadId, expectedTurnId, input }` |
 | **pi** | Si | comando RPC `steer`, drenado por su bucle de agente en el siguiente limite |
-| **Antigravity** | No | `agy -p` es de un disparo; no hay canal de entrada |
+| **Antigravity** | No | `--input-format stream-json` "runs a turn for each" mensaje de stdin: un segundo mensaje es el siguiente turno, no un steer; la CLI no tiene mensaje de steer |
 | **Zero** | No | su ACP serializa con `turnMu`, y su propio TUI tampoco inyecta |
 | **Grok** | No | ACP no define un metodo de steer ni lo anuncia en `initialize` |
 
@@ -2347,7 +2350,7 @@ de su propia CLI y elegida para no dejar rastro en la conversacion que nombra:
 | Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` con `-c model_reasoning_effort=low` |
 | OpenCode | `opencode run` (sin flags de sesion) | por defecto de la CLI |
 | pi | `pi -p --no-session` | por defecto de la CLI |
-| Antigravity | `agy -p` (sin `--conversation`) | `gemini-3.6-flash-low` |
+| Antigravity | `agy -p --mode plan` (sin `--conversation`) | `gemini-3.6-flash-low` |
 | Grok | `grok -p` | por defecto de la CLI |
 | Zero | `zero exec` | por defecto de la CLI |
 
