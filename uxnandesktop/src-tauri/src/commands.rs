@@ -2709,6 +2709,56 @@ pub async fn repo_update(
     Ok(updated)
 }
 
+/// Re-ask whether a project's folder is a git repository. `RepoData::is_git` is
+/// decided once, when the folder is added, and a plain folder does not stay one:
+/// `git init` run in a terminal (or by an agent) turns it into a repository the
+/// record still calls a folder — and everything that trusts the record (the
+/// card, the Changes panel, the worktree affordances) keeps treating it as one,
+/// while the panels that ask git directly (History, GitHub) already show the
+/// repository. Only local projects are probed: a host's folder is asked over SSH
+/// by the layers that read it, and the record is not the authority there.
+///
+/// Returns the updated project when the answer changed, in either direction,
+/// after persisting it; `None` when the record was already right. The frontend
+/// calls it for plain folders from the same reconcile pass that lists worktrees,
+/// so it is one `git rev-parse` per plain folder per pass — cheap, and only
+/// while the answer is still "no".
+#[tauri::command]
+pub async fn repo_probe_git(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<RepoData>, CommandError> {
+    let (path, target) = repo_location_of(&state, &id).await?;
+    if !target.is_local() {
+        return Ok(None);
+    }
+    let is_git = git::is_git_repo(&path).await;
+    let mut data = state.data.write().await;
+    let repo = data
+        .repos
+        .iter_mut()
+        .find(|r| r.id == id)
+        .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {id}"))))?;
+    if !redetect_git(repo, is_git) {
+        return Ok(None);
+    }
+    let updated = repo.clone();
+    state.persistence.save(&data).map_err(CommandError::from)?;
+    Ok(Some(updated))
+}
+
+/// Apply a fresh "is this a repository?" answer to a project record. Returns
+/// whether the record changed — the caller persists only then. Split out so the
+/// rule is testable without a Tauri state: the flag follows the folder in both
+/// directions, and an unchanged answer is not a write.
+fn redetect_git(repo: &mut RepoData, is_git_now: bool) -> bool {
+    if repo.is_git == is_git_now {
+        return false;
+    }
+    repo.is_git = is_git_now;
+    true
+}
+
 /// Set (or clear) a per-branch custom icon for a project. Keyed by branch name
 /// (or the worktree path when detached). Passing `None`/empty removes it. Returns
 /// the updated repo.
@@ -4893,10 +4943,10 @@ mod tests {
     use super::{
         bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat, git_status,
         issue_link_permission_denied, missing_locally, preserve_backend_owned, pty_submit_payload,
-        read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
-        worktree_status, worktrees_without_git, worth_retrying, TargetId,
+        read_term_buffers, rect_on_any_monitor, redetect_git, reorder_by_ids, resting_corner,
+        term_buffers_path, worktree_status, worktrees_without_git, worth_retrying, TargetId,
     };
-    use crate::model::{AppSettings, SshHost, SshHostTombstone};
+    use crate::model::{AppSettings, RepoData, SshHost, SshHostTombstone};
 
     /// A watcher speaks only for its own incarnation.
     #[test]
@@ -5137,6 +5187,35 @@ mod tests {
             .await
             .expect("corrupt");
         assert!(read_term_buffers(&path).await.is_none());
+    }
+
+    /// A plain folder that later runs `git init` must become a repository in
+    /// the record too — and a record that is already right is not rewritten.
+    #[test]
+    fn a_project_record_follows_what_its_folder_became() {
+        let mut repo = RepoData {
+            id: "r".into(),
+            name: "plain".into(),
+            path: "/tmp/plain".into(),
+            target: TargetId::Local,
+            worktrees: Vec::new(),
+            is_git: false,
+            icon: None,
+            branch_icons: std::collections::HashMap::new(),
+            worktree_order: Vec::new(),
+            worktree_root: None,
+        };
+        // Still a folder: nothing to write.
+        assert!(!redetect_git(&mut repo, false));
+        assert!(!repo.is_git);
+        // `git init` happened: the record flips and says so.
+        assert!(redetect_git(&mut repo, true));
+        assert!(repo.is_git);
+        // Asked again with the same answer: no write.
+        assert!(!redetect_git(&mut repo, true));
+        // `.git` removed: it follows the folder back.
+        assert!(redetect_git(&mut repo, false));
+        assert!(!repo.is_git);
     }
 
     /// A registered folder that is not a repository is a valid project with

@@ -4,6 +4,22 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A plain-folder project that runs `git init` is now recognized as a
+  repository without re-adding it.** Whether a folder is a repository was
+  decided once, when it was added, and persisted; a `git init` in a terminal
+  (yours or an agent's) left the record saying "plain folder". History and
+  GitHub ask git directly, so they showed the repository — while the project
+  card, the Changes panel and the worktree affordances trust the record and
+  kept treating it as a folder. The reconcile pass that already lists every
+  project's worktrees (every 3 s, or 10 s on Efficient, and on the sidebar's
+  refresh) now first re-asks the backend about each **local plain folder**
+  (`repo_probe_git`: one `git rev-parse`, only while the answer is still "no")
+  and, when the answer changed, replaces the record in place — so everything
+  derived from it follows at once. The same probe runs at startup, for a
+  folder that became a repository while the app was closed. A project that is
+  already a repository costs nothing here.
 
 ## [0.0.50] - 20260917
 ### Fixed

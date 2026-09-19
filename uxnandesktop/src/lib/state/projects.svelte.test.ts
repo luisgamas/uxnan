@@ -95,6 +95,60 @@ describe('projects.createGitHubWorktree', () => {
   });
 });
 
+describe('a plain folder that became a repository', () => {
+  const PLAIN_ID = 'repo-plain';
+  const PLAIN_PATH = 'C:/projects/plain';
+  const PLAIN_ENTRY: WorktreeEntry = { path: PLAIN_PATH, branch: null, head: null, isMain: true };
+  const NOW_GIT = {
+    id: PLAIN_ID,
+    name: 'plain',
+    path: PLAIN_PATH,
+    worktrees: [],
+    isGit: true,
+  };
+
+  beforeEach(() => {
+    app.repos = [{ id: PLAIN_ID, name: 'plain', path: PLAIN_PATH, worktrees: [], isGit: false }];
+    projects.worktreesByRepo = { [PLAIN_ID]: [PLAIN_ENTRY] };
+  });
+
+  it('is asked again on the reconcile pass, and its record follows the answer', async () => {
+    // `git init` ran in a terminal since the folder was added. The record said
+    // "plain folder" and everything that trusts it (the card, the Changes panel,
+    // the worktree affordances) kept treating it as one.
+    const backend = installFakeBackend({
+      repos_missing: () => [],
+      repo_probe_git: () => NOW_GIT,
+      worktree_list: () => [{ ...PLAIN_ENTRY, branch: 'main', head: 'abc123' }],
+      worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+    });
+
+    await projects.refreshWorktrees(true);
+
+    expect(backend.lastCallTo('repo_probe_git')?.args).toEqual({ id: PLAIN_ID });
+    expect(app.repos[0].isGit).toBe(true);
+    expect(projects.activeGitRepo).toBeNull(); // nothing selected — unchanged
+    expect(projects.worktreesOf(PLAIN_ID)[0]?.branch).toBe('main');
+  });
+
+  it('is not asked once it is a repository, nor when it lives on a host', async () => {
+    app.repos = [
+      { ...NOW_GIT },
+      { id: 'repo-host', name: 'h', path: PLAIN_PATH, target: 'ssh:h1', worktrees: [], isGit: false },
+    ];
+    const backend = installFakeBackend({
+      repos_missing: () => [],
+      repo_probe_git: () => null,
+      worktree_list: () => [PLAIN_ENTRY],
+      worktree_status: () => ({ dirty: 0, ahead: 0, behind: 0 }),
+    });
+
+    await projects.refreshWorktrees(true);
+
+    expect(backend.lastCallTo('repo_probe_git')).toBeUndefined();
+  });
+});
+
 describe('a project that lives on a host', () => {
   const REMOTE_ID = 'repo-remote';
   const REMOTE_PATH = 'C:/Users/gamas/code/sample';

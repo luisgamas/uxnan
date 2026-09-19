@@ -398,6 +398,7 @@ pub fn run() {
             commands::repo_remove,
             commands::repo_list,
             commands::repo_update,
+            commands::repo_probe_git,
             commands::repo_set_branch_icon,
             commands::repo_reorder,
             commands::repo_set_worktree_order,

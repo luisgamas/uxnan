@@ -122,7 +122,7 @@ Representa un repositorio git (o carpeta no-git). Cada repositorio almacena:
 | Destino de ejecucion | En que maquina vive el proyecto (`target`): `local` o `ssh:<hostId>`. Junto con la ruta forma la identidad del workspace (§2.9). Todo lo persistido antes de existir el campo es `local` — migracion de esquema v1→v2 |
 | Ruta en el filesystem | Ruta absoluta al directorio del repositorio en disco. **No es identidad por si sola**: la misma ruta nombra carpetas distintas en maquinas distintas |
 | Nombre visible | Nombre que el usuario ve en la sidebar (editable vía `repo_update`; **solo** cambia la etiqueta de la tarjeta, la carpeta en disco conserva su nombre real) |
-| Tipo | `git` (repositorio git) o `folder` (carpeta simple sin git) |
+| Tipo | `git` (repositorio git) o `folder` (carpeta simple sin git). Se decide al agregar la carpeta (`is_git`) y **sigue a la carpeta**: una carpeta plana que después recibe `git init` (en una terminal, propia o de un agente) se vuelve a preguntar con `repo_probe_git` en cada pasada de reconciliación de worktrees y en el arranque — solo las carpetas planas locales, un `git rev-parse` cada una — y el registro cambia de tipo (en ambos sentidos) y se persiste; todo lo derivado del tipo (tarjeta, panel Cambios, worktrees, GitHub) reacciona sin reiniciar |
 | Icono del proyecto | Icono opcional de la tarjeta (`icon`): un `data:` URL incrustado (imagen de archivo/URL/avatar de la cuenta del host git, rasterizada a un PNG cuadrado pequeño) o vacío = icono por defecto. Se fija con `repo_update`; el avatar del host se resuelve con `repo_remote_owner` + `image_fetch_data_url` |
 | Iconos por rama | Mapa `branchIcons` (rama → `data:` URL o clave de icono integrado), fijado con `repo_set_branch_icon`; permite un icono distinto por worktree/rama |
 | Configuracion de worktrees | Donde se crean los worktrees asociados (directorio destino) |
@@ -650,7 +650,7 @@ Este diagrama muestra como **todos los modulos se conectan** para formar el ADE 
 |                                                                 |
 |  [Tauri Commands (#[tauri::command])]                          |
 |     |-- repo_add / repo_remove / repo_list / repo_update       |
-|     |-- repo_set_branch_icon / repo_remote_owner               |
+|     |-- repo_probe_git / repo_set_branch_icon / repo_remote_owner |
 |     |-- worktree_create / worktree_remove / worktree_list      |
 |     |-- pty_create / pty_write / pty_resize / pty_close        |
 |     |-- fs_rename / image_fetch_data_url                       |
