@@ -1,8 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import {
@@ -13,7 +10,7 @@ import {
   parseAntigravityModelList,
   parseAntigravityLine,
   buildAntigravityToolBlock,
-  getAntigravityTranscriptPath,
+  antigravityContextTokens,
   DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS,
   type AntigravityUsage,
   type SpawnedProcess,
@@ -21,10 +18,42 @@ import {
 import type { SpawnExtra } from '../../src/adapters/spawn.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
-function stepUpdate(delta: string): string {
+// Fixtures mirror `agy` 1.2.7's stream-json, captured live (see the adapter header).
+
+/** The per-process `init` event: `agy` announces the conversation it created or resumed. */
+function initEvent(conversationId: string): string {
+  return JSON.stringify({
+    event: 'init',
+    conversation_id: conversationId,
+    init: { model: 'gemini-3.6-flash-low', cwd: '/proj', tools: ['run_command'] },
+  });
+}
+
+/** An `ACTIVE` `agent_response` step streaming a fragment of the answer. */
+function stepUpdate(delta: string, stepIndex = 1): string {
   return JSON.stringify({
     event: 'step_update',
-    step_update: { text_delta: delta },
+    step_update: {
+      step_index: stepIndex,
+      state: 'ACTIVE',
+      step_type: 'agent_response',
+      text_delta: delta,
+    },
+  });
+}
+
+/** The `DONE` `agent_response` step that closes one model call, with its usage. */
+function stepDone(usage: AntigravityUsage, stepIndex = 1): string {
+  return JSON.stringify({
+    event: 'step_update',
+    step_update: {
+      step_index: stepIndex,
+      state: 'DONE',
+      step_type: 'agent_response',
+      text_delta: '\n',
+      duration_seconds: 0.7,
+      usage,
+    },
   });
 }
 
@@ -200,9 +229,11 @@ test('AntigravityAdapter streams stdout as deltas and completes with the full te
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/proj' });
   last().feed([
+    initEvent('c-1'),
     stepUpdate('Hello '),
     stepUpdate('world'),
-    resultEvent('Hello world', { total_tokens: 128 }),
+    stepDone({ input_tokens: 100, output_tokens: 20, thinking_tokens: 5, cache_read_tokens: 8 }),
+    resultEvent('Hello world\n', { input_tokens: 100, output_tokens: 20, total_tokens: 120 }),
   ]);
 
   const events = await done;
@@ -210,20 +241,22 @@ test('AntigravityAdapter streams stdout as deltas and completes with the full te
   const deltas = events
     .filter((e) => e.type === 'delta')
     .map((e) => (e.data as { text: string }).text);
-  assert.deepEqual(deltas, ['Hello ', 'world']);
+  assert.deepEqual(deltas, ['Hello ', 'world', '\n']);
   const completed = events.find((e) => e.type === 'turn_completed');
-  assert.equal((completed?.data as { text: string }).text, 'Hello world');
+  assert.equal((completed?.data as { text: string }).text, 'Hello world\n');
+  // Context = the last model call's input + cache read + output (128), never
+  // `result.usage` (120, and summed over the conversation on later turns).
   assert.deepEqual((completed?.data as { usage?: unknown }).usage, { tokens: 128 });
 
   // First turn: piped stdin carrying the stream-json message, workspace targeting,
-  // autonomous skip-permissions, and stream-json formats.
+  // autonomous skip-permissions, stream-json both ways, and the per-turn cap.
   assert.equal(last().pipedStdin, true);
-  assert.match(last().stdinData, /"text":"hi"/);
+  assert.match(last().stdinData, /"event":"user".*"text":"hi"/);
 
   const args = last().args;
-  const convIdx = args.indexOf('--conversation');
-  assert.notEqual(convIdx, -1);
-  assert.match(args[convIdx + 1]!, /^[0-9a-f-]{36}$/);
+  // No `--conversation` on a thread's first spawn: `agy` mints the id (`init`).
+  assert.equal(args.includes('--conversation'), false);
+  assert.equal(adapter.nativeSessionId('t1'), 'c-1');
   assert.equal(args[args.indexOf('--add-dir') + 1], '/proj');
   assert.equal(args.includes('--dangerously-skip-permissions'), true);
   assert.equal(args.includes('--input-format'), true);
@@ -234,26 +267,29 @@ test('AntigravityAdapter streams stdout as deltas and completes with the full te
   assert.equal(args[args.indexOf('--print-timeout') + 1], '2h');
 });
 
-test('AntigravityAdapter reuses the same conversation id across turns', async () => {
-  const { spawnFn, last } = fakeSpawner();
+test('AntigravityAdapter resumes the conversation `agy` announced on a later spawn', async () => {
+  const { spawnFn, last, spawns } = fakeSpawner();
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
 
+  // `agy` 1.2.x owns the id: a client-minted uuid is answered with "conversation
+  // not found" and a NEW conversation, so the adapter adopts the `init` id.
   const first = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one', cwd: '/p' });
-  const firstArgs = last().args;
-  last().feedOpen([stepUpdate('a'), resultEvent('a')]);
+  assert.equal(spawns[0]!.args.includes('--conversation'), false);
+  last().feedOpen([initEvent('c-real'), stepUpdate('a'), resultEvent('a')]);
   await first.done;
+  assert.equal(adapter.nativeSessionId('t1'), 'c-real');
 
+  // A new process for the same thread (here: after an archive) resumes it.
+  await adapter.closeSession('t1');
   const second = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'two', cwd: '/p' });
+  assert.equal(spawns.length, 2);
   const secondArgs = last().args;
-  last().feed([stepUpdate('b'), resultEvent('b')]);
+  assert.equal(secondArgs[secondArgs.indexOf('--conversation') + 1], 'c-real');
+  last().feed([initEvent('c-real'), stepUpdate('b'), resultEvent('b')]);
   await second.done;
-
-  const id1 = firstArgs[firstArgs.indexOf('--conversation') + 1];
-  const id2 = secondArgs[secondArgs.indexOf('--conversation') + 1];
-  assert.equal(id1, id2);
-  assert.equal(adapter.nativeSessionId('t1'), id1);
+  assert.equal(adapter.nativeSessionId('t1'), 'c-real');
 });
 
 test('AntigravityAdapter maintains persistent session across multiple turns without re-spawning', async () => {
@@ -283,23 +319,22 @@ test('AntigravityAdapter recycles session when workspace cwd changes', async () 
 
   const first = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'p1', cwd: '/proj1' });
-  last().feedOpen([resultEvent('done 1')]);
+  last().feedOpen([initEvent('c-1'), resultEvent('done 1')]);
   await first.done;
   assert.equal(spawns.length, 1);
   assert.equal(last().cwd, '/proj1');
 
   const second = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'p2', cwd: '/proj2' });
-  last().feedOpen([resultEvent('done 2')]);
+  last().feedOpen([initEvent('c-1'), resultEvent('done 2')]);
   await second.done;
 
-  // New session spawned for the new workspace directory
+  // New process for the new workspace directory — `--add-dir` is a process
+  // argument — resuming the same conversation.
   assert.equal(spawns.length, 2);
   assert.equal(last().cwd, '/proj2');
-  // Conversation continuity preserved
-  const id1 = spawns[0]!.args[spawns[0]!.args.indexOf('--conversation') + 1];
-  const id2 = spawns[1]!.args[spawns[1]!.args.indexOf('--conversation') + 1];
-  assert.equal(id1, id2);
+  assert.equal(spawns[0]!.args.includes('--conversation'), false);
+  assert.equal(spawns[1]!.args[spawns[1]!.args.indexOf('--conversation') + 1], 'c-1');
 });
 
 test('AntigravityAdapter tears down session after idle timeout', async () => {
@@ -361,11 +396,19 @@ test('AntigravityAdapter interaction refreshes the idle timeout countdown', asyn
 
   // Another 30ms -> total elapsed since turn 1 is 60ms (>50ms), but session is still alive
   await new Promise((r) => setTimeout(r, 30));
-  assert.equal(adapter.hasActiveSession('t1'), true, 'session must still be alive because timer was refreshed');
+  assert.equal(
+    adapter.hasActiveSession('t1'),
+    true,
+    'session must still be alive because timer was refreshed',
+  );
 
   // Wait remaining 30ms to exceed refreshed 50ms window
   await new Promise((r) => setTimeout(r, 35));
-  assert.equal(adapter.hasActiveSession('t1'), false, 'session now dismantled after refreshed timeout expires');
+  assert.equal(
+    adapter.hasActiveSession('t1'),
+    false,
+    'session now dismantled after refreshed timeout expires',
+  );
   await adapter.stop();
 });
 
@@ -382,6 +425,48 @@ test('parseAntigravityLine correctly parses stream-json events', () => {
     JSON.stringify({ event: 'step_update', step_update: { text_delta: 'chunk' } }),
   );
   assert.deepEqual(step, { kind: 'step_update', update: { text_delta: 'chunk' } });
+
+  // Only the fields the adapter models survive, with their captured types.
+  const tool = parseAntigravityLine(
+    JSON.stringify({
+      event: 'step_update',
+      step_update: {
+        conversation_id: 'c1',
+        step_index: 2,
+        state: 'ERROR',
+        step_type: 'tool',
+        tool_name: 'run_command',
+        duration_seconds: 0.09,
+        tool_info: {
+          name: 'run_command',
+          parameters: { CommandLine: 'wc -c note.txt' },
+          error: { type: 'TOOL_ERROR', message: 'tool call denied by pre-tool hook:' },
+        },
+        surprise: true,
+      },
+    }),
+  );
+  assert.deepEqual(tool, {
+    kind: 'step_update',
+    update: {
+      conversation_id: 'c1',
+      step_index: 2,
+      state: 'ERROR',
+      step_type: 'tool',
+      tool_name: 'run_command',
+      duration_seconds: 0.09,
+      tool_info: {
+        name: 'run_command',
+        parameters: { CommandLine: 'wc -c note.txt' },
+        error: { type: 'TOOL_ERROR', message: 'tool call denied by pre-tool hook:' },
+      },
+    },
+  });
+
+  assert.deepEqual(parseAntigravityLine(JSON.stringify({ event: 'agent_settled' })), {
+    kind: 'unrecognized',
+    raw: { event: 'agent_settled' },
+  });
 
   const res = parseAntigravityLine(
     JSON.stringify({
@@ -406,7 +491,7 @@ test('AntigravityAdapter passes the selected model', async () => {
     cwd: '/p',
     service: 'gemini-3.1-pro-high',
   });
-  last().feed(['ok']);
+  last().feed([resultEvent('ok')]);
   await done;
   const args = last().args;
   assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.1-pro-high');
@@ -425,7 +510,7 @@ test('AntigravityAdapter repairs a model stored as the whole `agy models` line',
     // `agy` rejects — it must reach the CLI as the id alone.
     service: 'gemini-3.1-pro-high\tGemini 3.1 Pro (High)',
   });
-  last().feed(['ok']);
+  last().feed([resultEvent('ok')]);
   await done;
   const args = last().args;
   assert.equal(args[args.indexOf('--model') + 1], 'gemini-3.1-pro-high');
@@ -442,7 +527,7 @@ test('AntigravityAdapter maps accessMode to plan vs skip-permissions', async () 
     const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
     const { done } = collect(adapter);
     await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p', accessMode });
-    last().feed(['ok']);
+    last().feed([resultEvent('ok')]);
     await done;
     const args = last().args;
     assert.equal(
@@ -614,18 +699,26 @@ test('buildAntigravityToolBlock formats command, diff, and tool blocks', () => {
   });
 });
 
-test('AntigravityAdapter emits tool block events and thinking events during a turn', async () => {
+test('AntigravityAdapter emits a tool block for a finished tool step, and no thinking', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
   const { done } = collect(adapter);
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'run tool', cwd: '/proj' });
   last().feed([
+    initEvent('c-1'),
+    // The model call that decided to run a tool: usage, no text — and no
+    // reasoning text anywhere on this surface, only a `thinking_tokens` count.
+    stepDone({ input_tokens: 13210, output_tokens: 897, thinking_tokens: 782 }, 1),
+    // The tool step goes ACTIVE (no block yet) and then DONE (one block).
     JSON.stringify({
       event: 'step_update',
       step_update: {
-        step_index: 1,
-        thinking: 'I need to check the directory contents first.',
+        step_index: 2,
+        step_type: 'tool',
+        tool_name: 'run_command',
+        state: 'ACTIVE',
+        tool_info: { name: 'run_command', parameters: { CommandLine: 'ls' } },
       },
     }),
     JSON.stringify({
@@ -642,17 +735,13 @@ test('AntigravityAdapter emits tool block events and thinking events during a tu
         },
       },
     }),
-    stepUpdate('Directory checked.\n'),
-    resultEvent('Directory checked.\n'),
+    stepUpdate('Directory checked.', 3),
+    stepDone({ input_tokens: 6065, output_tokens: 425, cache_read_tokens: 8133 }, 3),
+    resultEvent('Directory checked.\n', { input_tokens: 19275, output_tokens: 1322 }),
   ]);
 
   const events = await done;
-  const thinkingEvents = events.filter((e) => e.type === 'thinking');
-  assert.equal(thinkingEvents.length, 1);
-  assert.equal(
-    (thinkingEvents[0]?.data as { text: string }).text,
-    'I need to check the directory contents first.',
-  );
+  assert.equal(events.filter((e) => e.type === 'thinking').length, 0);
 
   const blockEvents = events.filter((e) => e.type === 'block');
   assert.equal(blockEvents.length, 1);
@@ -662,53 +751,69 @@ test('AntigravityAdapter emits tool block events and thinking events during a tu
     status: 'completed',
     output: 'file1\nfile2\n',
   });
+  // The meter shows the LAST model call's context, not the turn's sum.
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.deepEqual((completed?.data as { usage?: unknown }).usage, {
+    tokens: 6065 + 425 + 8133,
+  });
 });
 
-test('AntigravityAdapter streams real-time thinking from transcript.jsonl', async () => {
-  const testDir = join(tmpdir(), `antigravity-test-${Date.now()}`);
-  process.env.ANTIGRAVITY_APP_DATA_DIR = testDir;
-
-  try {
-    const { spawnFn, last } = fakeSpawner();
-    const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
-    const { done } = collect(adapter);
-
-    await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'think deep', cwd: '/proj' });
-    const convId = adapter.nativeSessionId('t1')!;
-    assert.ok(convId);
-
-    const transcriptFile = getAntigravityTranscriptPath(convId);
-    mkdirSync(join(testDir, 'brain', convId, '.system_generated', 'logs'), { recursive: true });
-
-    // Simulate agy writing thinking to transcript.jsonl
-    writeFileSync(
-      transcriptFile,
-      JSON.stringify({
-        step_index: 1,
-        source: 'MODEL',
-        type: 'PLANNER_RESPONSE',
-        status: 'DONE',
-        thinking: 'Deep step reasoning extracted from transcript log.',
-      }) + '\n',
-    );
-
-    // Feed step update and finish
-    last().feed([stepUpdate('Done'), resultEvent('Done')]);
-
-    const events = await done;
-    const thinkingEvents = events.filter((e) => e.type === 'thinking');
-    assert.ok(thinkingEvents.length >= 1);
-    assert.equal(
-      (thinkingEvents[0]?.data as { text: string }).text,
-      'Deep step reasoning extracted from transcript log.',
-    );
-  } finally {
-    delete process.env.ANTIGRAVITY_APP_DATA_DIR;
-    try {
-      rmSync(testDir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
-  }
+test('antigravityContextTokens sums input, cache read and output; never total_tokens', () => {
+  // Captured: turn 2 of a conversation — `total_tokens` omits the cache part.
+  assert.equal(
+    antigravityContextTokens({
+      input_tokens: 5140,
+      output_tokens: 14,
+      thinking_tokens: 0,
+      cache_read_tokens: 8128,
+      total_tokens: 5154,
+    }),
+    13282,
+  );
+  assert.equal(antigravityContextTokens({ total_tokens: 99 }), undefined);
+  assert.equal(antigravityContextTokens(undefined), undefined);
 });
 
+test('AntigravityAdapter keeps a non-JSON stdout line out of the answer', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p' });
+  last().feed([
+    initEvent('c-1'),
+    'Fetching something...',
+    stepUpdate('answer'),
+    resultEvent('answer'),
+  ]);
+  const events = await done;
+  const deltas = events
+    .filter((e) => e.type === 'delta')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(deltas, ['answer']);
+  assert.equal((events.at(-1)?.data as { text: string }).text, 'answer');
+});
+
+test('AntigravityAdapter surfaces a non-JSON line as the diagnostic of an empty turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p' });
+  last().feed(['Error: not signed in']);
+  const events = await done;
+  const error = events.find((e) => e.type === 'turn_error');
+  assert.equal((error?.data as { text: string }).text, 'Error: not signed in');
+});
+
+test('AntigravityAdapter reports `result.status` when a turn ends with no answer and no diagnostic', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi', cwd: '/p' });
+  last().feed([
+    initEvent('c-1'),
+    JSON.stringify({ event: 'result', result: { status: 'TIMEOUT' } }),
+  ]);
+  const events = await done;
+  const error = events.find((e) => e.type === 'turn_error');
+  assert.equal((error?.data as { text: string }).text, 'Antigravity TIMEOUT');
+});

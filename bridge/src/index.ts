@@ -129,7 +129,7 @@ export {
   parseAntigravityModelList,
   parseAntigravityLine,
   buildAntigravityToolBlock,
-  getAntigravityTranscriptPath,
+  contextTokens as antigravityContextTokens,
   DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS,
   permissionArgs as antigravityPermissionArgs,
   type AntigravityAdapterOptions,
