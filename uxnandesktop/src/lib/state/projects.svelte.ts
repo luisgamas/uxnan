@@ -19,6 +19,7 @@ import {
   repoSetBranchIcon,
   repoSetWorktreeRoot,
   reposMissing,
+  repoProbeGit,
   repoUpdate,
   setWorktreeOrder as apiSetWorktreeOrder,
   worktreeCreate,
@@ -685,9 +686,36 @@ class ProjectsStore {
     this.initPromise ??= (async () => {
       // Force the pending workspace-recency stamp on window close (idempotent id).
       registerFlush("workspace-last-active", () => this.flushLastActive());
-      await Promise.all(app.repos.map((r) => this.loadWorktrees(r.id)));
+      await Promise.all(
+        app.repos.map(async (r) => {
+          // A folder that became a repository while the app was closed.
+          await this.reprobeGit(r);
+          await this.loadWorktrees(r.id);
+        }),
+      );
     })();
     return this.initPromise;
+  }
+
+  /** Re-ask the backend whether a plain-folder project is a repository now.
+   *  `isGit` is decided once, when the folder is added, and a folder does not
+   *  stay plain: `git init` in a terminal (yours or an agent's) makes it a
+   *  repository the record still calls a folder — and the card, the Changes
+   *  panel and the worktree affordances trust the record, while History and
+   *  GitHub ask git and already show it. Only local plain folders are asked
+   *  (one `git rev-parse` each), so a project that is already a repository
+   *  costs nothing here. A changed answer replaces the record in place, and
+   *  everything derived from `isGit` follows. */
+  private async reprobeGit(repo: RepoData): Promise<void> {
+    if (repo.isGit !== false || !isLocalTarget(targetOf(repo.target))) return;
+    try {
+      const updated = await repoProbeGit(repo.id);
+      if (!updated) return;
+      const i = app.repos.findIndex((r) => r.id === repo.id);
+      if (i !== -1) app.repos[i] = updated;
+    } catch {
+      // Best-effort: the next pass asks again.
+    }
   }
 
   /** One-shot boot pass linking the restored terminal layout back to the
@@ -767,6 +795,9 @@ class ProjectsStore {
           // failed git and `gh` spawns.
           if (this.isMissing(repo.id)) return;
           try {
+            // Before listing: a plain folder that ran `git init` since the last
+            // pass lists real worktrees only once its record says it can.
+            await this.reprobeGit(repo);
             const list = await worktreeList(repo.id);
             const current = this.worktreesByRepo[repo.id] ?? [];
             const same =

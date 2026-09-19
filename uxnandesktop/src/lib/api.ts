@@ -406,6 +406,14 @@ export function repoList(): Promise<RepoData[]> {
   return invoke<RepoData[]>('repo_list');
 }
 
+/** Re-ask whether a project's folder is a git repository, for a project whose
+ *  record still says "plain folder": `git init` in a terminal turns one into a
+ *  repository the record does not know about. Resolves to the updated project
+ *  when the answer changed (already persisted), `null` when it did not. */
+export function repoProbeGit(id: string): Promise<RepoData | null> {
+  return invoke<RepoData | null>('repo_probe_git', { id });
+}
+
 /** Update a project's display metadata (card `name` and/or `icon`) without
  *  touching the folder on disk. Only the fields present in `changes` are applied
  *  (an omitted field is left unchanged); pass an empty string to reset (`name`

@@ -75,6 +75,7 @@ Cada command es una funcion async de Rust que recibe parametros tipados, ejecuta
 - `repo_add` - Agregar una carpeta al ADE por ruta (git o no; las carpetas no-git son proyectos válidos sin worktrees — `RepoData.is_git` lo registra)
 - `repo_remove` - Eliminar un repositorio de la lista del ADE
 - `repo_list` - Listar todos los repositorios registrados
+- `repo_probe_git` - Volver a preguntar si la carpeta de un proyecto es repositorio git (una carpeta plana que recibió `git init` después de agregarse); devuelve el `RepoData` actualizado y persistido cuando la respuesta cambió, `None` si no. Solo proyectos locales; el frontend lo llama para las carpetas planas en la pasada de reconciliación de worktrees y en el arranque
 
 **Gestion de Worktrees:**
 - `worktree_create` - Crear un worktree nuevo con rama base y configuracion
@@ -361,7 +362,7 @@ pub struct RepoData {
     pub name: String,
     pub path: String,
     pub worktrees: Vec<WorktreeData>,
-    pub is_git: bool, // false = carpeta plana (sin worktrees/branches); paneles git vacíos
+    pub is_git: bool, // false = carpeta plana (sin worktrees/branches); paneles git vacíos. Se re-detecta con `repo_probe_git`
 }
 ```
 
