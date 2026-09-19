@@ -337,19 +337,6 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
-- [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
-      delivers a follow-up as its own turn once the current one ends — uniform
-      across all seven active agents. What the CLIs additionally do is *steer*: inject the
-      message into the running turn at the next tool-call boundary (Claude Code's
-      TUI does this by default; Codex splits it as `Tab` = queue vs `Enter` =
-      steer). The bridge cannot for Antigravity: `agy`'s stream-json surface
-      reads one turn at a time and has no steer message, so a second stdin
-      message becomes the *next* turn. It IS reachable for the
-      server-backed ones (Codex `app-server`, OpenCode `serve`, Zero/Grok ACP), so
-      it belongs behind a new `AgentCapabilities.steering` flag the phone can read,
-      alongside a `turn/steer` (or a `turn/send` mode) that the adapter maps to its
-      protocol. Needs: the capability in `shared/`, per-adapter support, and a
-      mobile affordance distinct from "queue". Unblocked — just not started.
 - [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
       mid-turn delivery is implemented and unit-tested against the published
       protocol schema (`codex app-server generate-json-schema`, codex-cli
