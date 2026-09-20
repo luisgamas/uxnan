@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.51] - 20260920
 ### Added
 
 - **Claude Code usage on macOS, behind a one-time Keychain grant.** Claude Code
