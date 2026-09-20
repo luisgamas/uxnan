@@ -184,6 +184,53 @@ git push origin desktop-nightly-v0.0.30-nightly.20260808.1
 That is deliberate. Pushing a tag that triggers nothing would leave a released
 version with no build behind it — worse than stopping.
 
+## npm: Trusted Publishing, so nothing expires
+
+`release-npm.yml` holds **no npm credential**. It publishes through npm's
+*Trusted Publishing*: the job requests a GitHub OIDC id-token (`permissions:
+id-token: write`) and npm exchanges it for a publish credential that lives only
+for that run — because each package on npmjs.com names this repository and this
+workflow file as its trusted publisher. Provenance attestations come with it.
+
+Why: the previous credential was `NPM_TOKEN`, a granular access token, and npm
+caps those at 90 days. It was set on 2026-06-21 and ran out on 2026-09-19 — the
+day a cut needed it. `npm publish` answered `E404 Not Found - PUT
+…/@uxnan%2fshared` (npm's reply to a token without publish rights), the run
+tagged `shared` and then waited thirty minutes for a version nothing was
+publishing. npm's own token page now steers automation to Trusted Publishing for
+the same reason.
+
+**Set up once per package, on npmjs.com** (there is no API for it):
+*package → Settings → Trusted Publisher → GitHub Actions*, with
+
+| Field | Value |
+|---|---|
+| Organization or user | `luisgamas` |
+| Repository | `uxnan` |
+| Workflow filename | `release-npm.yml` |
+| Environment name | *(leave empty)* |
+
+for each of `@uxnan/shared`, `uxnan-bridge` and `uxnan-relay`. The filename is
+the top-level workflow, not the reusable `verify-node.yml` it calls. A package
+whose publisher is missing fails its publish with `ENEEDAUTH`; the fix is that
+form, never a token. Once all three are registered, delete the `NPM_TOKEN`
+secret: an unused expired token is only a thing to be confused by.
+
+What the workflow needs for the exchange to happen — each is commented in the
+file so it is not "simplified" away: npm 11.5.1 or newer (the runner's Node 22
+bundles an older one, so a step upgrades it), `id-token: write`, no
+`NODE_AUTH_TOKEN` (a token present is used *instead* of OIDC), and a
+`repository.url` in every `package.json` that matches this repository (all
+three have one).
+
+**Publishing a tag that already exists** — after fixing a publisher, or any
+other cause that left a tag without its package — is a dispatch of
+*Release — npm* with the tag as its input (`gh workflow run release-npm.yml -f
+tag=shared-v…`). It verifies and builds **the tagged commit** but runs **this**
+workflow file: a tag push runs the file as it was at the tagged commit, so
+re-running the failed job would repeat the old recipe — the token-based one, in
+the 2026-09-19 case — and could not pick up the fix.
+
 ---
 
 ## The version convention
@@ -395,9 +442,18 @@ line moved → bookkeeping), and `npm run release:status` prints a ⚠ when the 
 tag has not landed on `main`. The fix for the state itself is simply to merge the
 pull request. The wasted version number is not recoverable — bases never repeat.
 
-**npm never served the new shared.** The run fails after tagging shared. Check
-`release-npm.yml`; once it is green and `npm view @uxnan/shared version` reports
-the version, re-run the dispatch for the consumers only.
+**npm never served the new shared.** The run goes red **after** opening the bump
+pull request, which the `land` job still merges, so `main` is level with the
+`shared` tag; the consumers were not tagged (they would have pinned the previous
+shared). The summary says the rest: check `release-npm.yml` on the `shared` tag
+— since Trusted Publishing, the usual cause is a package whose trusted publisher
+is not registered (`ENEEDAUTH`, see *npm: Trusted Publishing*) — once fixed,
+dispatch *Release — npm* with the tag (`-f tag=shared-v…`; a re-run of the old
+job would use the old workflow file), wait for `npm view @uxnan/shared version`
+to report the version, then dispatch the cut again for the consumers only. (Before 2026-09-20
+the run failed *inside* the wait, skipped the pull request and left the tag on a
+commit that was not on `main`; the pull request had to be opened by hand from
+the tag's commit.)
 
 **A nightly published something broken.** Delete the release and its tag, then cut
 a new one — the base must still move forward, so the next nightly gets a higher

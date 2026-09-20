@@ -91,6 +91,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       pr: ${{ steps.pr.outputs.number }}
+      npm_failed: ${{ steps.cut.outputs.npm_failed }}
     steps:
       # A token that is not GITHUB_TOKEN, so the tag push actually starts the
       # release build. Absent, the run still does everything else.
@@ -170,7 +171,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # This step never fails the job on its own. When npm does not serve a
+      # dependency in time it records `npm_failed`, stops tagging (the consumers
+      # must not pin the previous shared) and RETURNS, so the bump pull request
+      # below is still opened for the tags that were created; `Fail if npm …`
+      # then turns the run red. It used to `exit 1` from inside the wait, which
+      # skipped the pull-request step and left `shared-v0.0.16-alpha.20260919`
+      # tagged on a commit that was not on `main` — the very state the 0.0.34
+      # guard exists for — with the pull request opened by hand afterwards.
       - name: Cut each component, in order
+        id: cut
         if: steps.plan.outputs.count != '0'
         env:
           DRY_RUN: ${{ inputs.dry_run }}
@@ -235,7 +245,11 @@ jobs:
                 fi
                 if [ "$attempt" = "60" ]; then
                   echo "::error::$waitFor@$version never appeared on npm; its consumers were NOT tagged."
-                  exit 1
+                  # The loop runs in a subshell of the pipe: a file is the only
+                  # way this reaches the step's outputs.
+                  echo "$waitFor@$version" > .npm-never-served
+                  echo "::endgroup::"
+                  break
                 fi
                 sleep 30
               done
@@ -244,6 +258,18 @@ jobs:
             echo "::endgroup::"
           done
 
+          # Hand the outcome to the steps below: how many bumps exist to land, and
+          # whether a dependency never showed up on npm.
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "bumps=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "bumps=$(git rev-list --count origin/main..HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f .npm-never-served ]; then
+            echo "npm_failed=$(cat .npm-never-served)" >> "$GITHUB_OUTPUT"
+            rm -f .npm-never-served
+          fi
+
       # `main` is protected and stays that way. The bump arrives through a pull
       # request like everything else — the difference is that this one can close
       # itself: the `Uxnan Releases` app is a bypass actor on `main-protection`
@@ -251,9 +277,11 @@ jobs:
       # human approval, while still leaving it unable to push to `main` directly.
       # Ordinary pull requests are untouched by that; only an operation
       # authenticated with the app's installation token gets the exception.
+      # Runs whenever a bump was committed — including after a failed npm wait:
+      # the tags already exist, so `main` must be brought level with them.
       - name: Open the bump pull request
         id: pr
-        if: steps.plan.outputs.count != '0' && inputs.dry_run != true
+        if: steps.plan.outputs.count != '0' && inputs.dry_run != true && steps.cut.outputs.bumps != '0'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token || github.token }}
         run: |
@@ -272,6 +300,26 @@ jobs:
 
           echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
           echo "::notice::Bump PR opened from $branch"
+
+      # Red on purpose, and only now: after the pull request exists. The summary
+      # says how to finish — the npm publish is a separate workflow on the tag.
+      - name: Fail if npm never served a dependency
+        if: steps.cut.outputs.npm_failed != ''
+        env:
+          MISSING: ${{ steps.cut.outputs.npm_failed }}
+        run: |
+          {
+            echo
+            echo "### npm never served \`$MISSING\`"
+            echo
+            echo "Its consumers were NOT tagged. The tags that were created are landing"
+            echo "through the bump pull request. To finish: check \`release-npm.yml\` on the"
+            echo "\`$MISSING\` tag (re-run its \`publish\` job once the cause is fixed), wait for"
+            echo "\`npm view\` to report the version, then dispatch this workflow again for the"
+            echo "consumers only."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::npm never served $MISSING; its consumers were not tagged (see the summary)."
+          exit 1
 
       - name: What happens next
         if: steps.plan.outputs.count != '0'
@@ -294,7 +342,10 @@ jobs:
   # this runs at 00:20 local, with nobody awake to press the button.
   land:
     needs: cut
-    if: needs.cut.outputs.pr != ''
+    # `!cancelled()` rather than the implicit success(): the cut goes red on
+    # purpose when npm never served a dependency, and the pull request it opened
+    # must still land — an unmerged tag is not an ancestor of `main`.
+    if: ${{ !cancelled() && needs.cut.outputs.pr != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
