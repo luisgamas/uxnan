@@ -639,6 +639,26 @@ pub struct AppSettings {
     /// and keep working wherever they are.
     #[serde(default)]
     pub worktrees: WorktreeSettings,
+    /// The control surface (`control/`): which capability groups are switched
+    /// off. All on by default — reading and UI actions are what an agent needs
+    /// from its first launch — and older state loads with nothing disabled.
+    #[serde(default)]
+    pub control: ControlSettings,
+}
+
+/// Control-surface settings. Groups are named by their stable lowercase name
+/// (`uxnan_control_protocol::catalog::Group::name`); an unknown name is kept
+/// verbatim so a newer build's choice survives a round trip through this one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlSettings {
+    #[serde(default)]
+    pub disabled_groups: Vec<String>,
+    /// Projects (by id) whose terminals `terminal/read` may not read. The
+    /// scrollback of an agent often holds what it was shown — a key, a token —
+    /// so a project can opt out of being read even with the `converse` group on.
+    #[serde(default)]
+    pub terminal_read_disabled_projects: Vec<String>,
 }
 
 /// Where the ADE puts a new worktree (spec `02c` §2.1). The layout itself lives
@@ -1017,11 +1037,14 @@ pub struct BrowserSettings {
     /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
     #[serde(default)]
     pub homepage: String,
-    /// Expose the browser-control MCP server (spec `02d` §1.6) to the agents the
-    /// ADE launches, so they discover the `browser_*` tools automatically. The
+    /// Give the agents the ADE launches the control surface as MCP tools (spec
+    /// `02d` §1.6) — the whole catalog, the `browser_*` tools among it. The
     /// server is registered **per launch** — in the process uxnan spawns, never
     /// in a config file the user keeps (see `mcpinject.rs`). When off, nothing is
-    /// registered (the `/mcp` endpoint still exists for manual wiring). Default on.
+    /// registered; the `/mcp` endpoint and `uxnan-cli` keep working. Independent
+    /// of [`enabled`](Self::enabled): the browser being off only makes the
+    /// browser tools answer *unavailable*. Lives here with the other launch
+    /// wiring it grew from; the surface itself has no settings pane. Default on.
     #[serde(default = "default_true")]
     pub mcp_enabled: bool,
     /// Frictionless agent setup. When on (default), app-launched agents skip the
@@ -1268,6 +1291,7 @@ impl Default for AppSettings {
             resources: ResourceSettings::default(),
             resource_mode: ResourceModeSettings::default(),
             worktrees: WorktreeSettings::default(),
+            control: ControlSettings::default(),
         }
     }
 }

@@ -147,10 +147,31 @@ pub struct AppState {
     /// sampler's leases and the aggregated circular buffer (`resources.rs`).
     /// Parked (no timer, no OS handle) unless a consumer subscribes.
     pub resources: Arc<crate::resources::ResourceMonitor>,
+    /// Questions the control surface has asked the window and is waiting on
+    /// (`control::bridge`): tabs, open files and runs are the window's, so a
+    /// caller's request about them is answered by the window.
+    pub control_bridge: crate::control::bridge::Bridge,
+    /// Receipts of the control surface's `create` entries, by idempotency key
+    /// (`control::receipts`): a retried call gets its first answer back.
+    pub control_receipts: crate::control::receipts::Receipts,
+    /// Woken whenever an agent's cached state changes or a terminal exits, so
+    /// `agent/wait` sleeps on it instead of polling.
+    pub agent_changes: Arc<tokio::sync::Notify>,
+    /// The control token (`control::discovery`): what the user's own shell
+    /// presents. Minted here at start, shared with the server, rewritable so
+    /// Settings can rotate it without a restart.
+    pub control_token: Arc<RwLock<String>>,
+    /// The data directory, kept so the exit path can remove the control
+    /// discovery file it wrote at start.
+    pub data_dir: std::path::PathBuf,
 }
 
 impl AppState {
-    pub fn new(persistence: PersistenceManager, data: AppData) -> Self {
+    pub fn new(
+        persistence: PersistenceManager,
+        data: AppData,
+        data_dir: std::path::PathBuf,
+    ) -> Self {
         let resources = crate::resources::ResourceMonitor::new((&data.settings.resources).into());
         Self {
             data: RwLock::new(data),
@@ -174,6 +195,11 @@ impl AppState {
             browser_url: Arc::new(std::sync::Mutex::new(None)),
             mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             resources,
+            control_bridge: crate::control::bridge::Bridge::default(),
+            control_receipts: crate::control::receipts::Receipts::default(),
+            agent_changes: Arc::new(tokio::sync::Notify::new()),
+            control_token: Arc::new(RwLock::new(uuid::Uuid::new_v4().to_string())),
+            data_dir,
         }
     }
 }

@@ -560,6 +560,7 @@ pub async fn pty_create(
                     }
                 },
                 move || {
+                    exit_app.state::<AppState>().agent_changes.notify_waiters();
                     let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
                 },
             )
@@ -574,6 +575,7 @@ pub async fn pty_create(
     let exit_app = app.clone();
     let exit_id = id.clone();
     let on_exit = move || {
+        exit_app.state::<AppState>().agent_changes.notify_waiters();
         let _ = exit_app.emit(&format!("pty:exit:{exit_id}"), ());
     };
 
@@ -660,15 +662,17 @@ pub async fn pty_create(
         }
     }
 
-    // Browser-control MCP (spec `02d` §1.6): expose the `/mcp` endpoint + token so
-    // this terminal's agents can reach it, and register the server **for this
-    // launch only** (see `mcpinject.rs`) — nothing is written to any config the
-    // user keeps, so an agent started outside uxnan never sees the server at all.
-    // Env-registered agents (OpenCode) are covered right here; the flag-registered
-    // ones (Claude, Codex) get their arguments appended to the command the
-    // frontend types (`$lib/mcpLaunch`), which reads the same two switches — so
-    // both halves are gated identically: the browser master switch, then the MCP one.
-    if browser_enabled && mcp_enabled {
+    // The control surface as MCP tools (spec `02d` §1.6): expose the `/mcp`
+    // endpoint + token so this terminal's agents can reach it, and register the
+    // server **for this launch only** (see `mcpinject.rs`) — nothing is written
+    // to any config the user keeps, so an agent started outside uxnan never sees
+    // the server at all. Env-registered agents (OpenCode) are covered right here;
+    // the flag-registered ones (Claude, Codex) get their arguments appended to
+    // the command the frontend types (`$lib/mcpLaunch`), which reads the same
+    // switch — so both halves are gated identically, by the agent-tools switch
+    // alone: the integrated browser being off takes away the `$BROWSER` shim
+    // above, never the catalog (the browser tools then answer *unavailable*).
+    if mcp_enabled {
         if let Some(h) = &hook {
             let endpoint = crate::mcpinject::mcp_endpoint(&h.url);
             env.push(("UXNAN_MCP_URL".to_string(), endpoint.clone()));
@@ -722,6 +726,10 @@ pub struct McpInfo {
     pub token: Option<String>,
     pub token_env: String,
     pub server_name: String,
+    /// The header a launched agent sends with its terminal id, and the env var
+    /// it is expanded from — spelled out in the manual snippet.
+    pub agent_id_header: String,
+    pub agent_id_env: String,
     pub agents: Vec<crate::mcpinject::AgentInfo>,
 }
 
@@ -748,6 +756,8 @@ pub async fn mcp_info(app: AppHandle, state: State<'_, AppState>) -> Result<McpI
         token,
         token_env: crate::mcpinject::TOKEN_ENV.to_string(),
         server_name: crate::mcpinject::SERVER_NAME.to_string(),
+        agent_id_header: crate::mcpinject::AGENT_ID_HEADER.to_string(),
+        agent_id_env: crate::mcpinject::AGENT_ID_ENV.to_string(),
         agents: crate::mcpinject::agent_infos(endpoint.as_deref(), claude_config.as_deref()),
     })
 }
@@ -2958,31 +2968,23 @@ pub async fn branch_list(
     })
 }
 
-/// Resolve where a worktree for `branch` goes, from the settings that apply to
-/// this project: the global layout, plus the effective root — the project's own
-/// override first, then the global custom root (which only a `custom` layout
-/// uses; a leftover value must not silently move a `managed` project).
+/// Where a new worktree of `repo_id` for `branch` goes: the control service's
+/// one implementation of the location policy (`services::worktree::resolve_location`).
 async fn resolve_worktree_location(
     state: &AppState,
     repo_id: &str,
-    repo_path: &str,
+    _repo_path: &str,
     branch: &str,
 ) -> Result<Resolved, CommandError> {
-    let (mode, root) = {
+    let repo = {
         let data = state.data.read().await;
-        let settings = data.settings.worktrees.clone();
-        let project_root = data
-            .repos
+        data.repos
             .iter()
             .find(|r| r.id == repo_id)
-            .and_then(|r| r.worktree_root.clone());
-        let global_root = match settings.location {
-            WorktreeLocationMode::Custom => settings.root.clone(),
-            _ => None,
-        };
-        (settings.location, project_root.or(global_root))
+            .cloned()
+            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
     };
-    worktreeloc::resolve(repo_path, branch, mode, root.as_deref())
+    crate::control::services::worktree::resolve_location(state, &repo, branch)
         .await
         .map_err(CommandError::from)
 }
@@ -3293,7 +3295,7 @@ pub async fn worktree_cleanup_remove(
 /// on a target other than the intended one.
 #[tauri::command]
 pub async fn worktree_create(
-    state: State<'_, AppState>,
+    app: AppHandle,
     repo_id: String,
     branch: String,
     base: Option<String>,
@@ -3301,65 +3303,31 @@ pub async fn worktree_create(
     path: Option<String>,
     expect: Option<TargetExpectation>,
 ) -> Result<WorktreeEntry, CommandError> {
-    let branch = branch.trim().to_string();
-    if branch.is_empty() {
-        return Err(CommandError::from(AppError::Invalid(
-            "branch name is required".to_string(),
-        )));
-    }
-    let repo_path = repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
-    let from_existing = from_existing.unwrap_or(false);
-
-    // Resolve the worktree location: a custom absolute path for this creation,
-    // or the configured layout. A custom path is normalized to forward slashes
-    // (matching git's own spelling) and must be absolute and not already exist.
-    let worktree_path = match path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
-        Some(custom) => {
-            let normalized = custom.replace('\\', "/");
-            let normalized = normalized.trim_end_matches('/').to_string();
-            if !std::path::Path::new(&normalized).is_absolute() {
-                return Err(CommandError::from(AppError::Invalid(
-                    "custom worktree path must be absolute".to_string(),
-                )));
-            }
-            if std::path::Path::new(&normalized).exists() {
-                return Err(CommandError::from(AppError::Invalid(
-                    "a folder already exists at that path".to_string(),
-                )));
-            }
-            normalized
-        }
-        None => {
-            let resolved = resolve_worktree_location(&state, &repo_id, &repo_path, &branch).await?;
-            worktreeloc::prepare(&resolved).await;
-            resolved.path
-        }
+    // The fence stays here: it is about the *caller's* expectation of which
+    // machine this is, which only the window carries. The creation itself is
+    // the control service's, shared with `worktree/create`.
+    let state = app.state::<AppState>();
+    repo_path_for_mutation(&state, &repo_id, expect.as_ref()).await?;
+    let repo = {
+        let data = state.data.read().await;
+        data.repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .cloned()
+            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
     };
-
-    if from_existing {
-        git::add_worktree_from_existing(&repo_path, &branch, &worktree_path)
-            .await
-            .map_err(CommandError::from)?;
-    } else {
-        let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
-            Some(base) => base,
-            None => git::default_base(&repo_path).await,
-        };
-        git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base))
-            .await
-            .map_err(CommandError::from)?;
-    }
-
-    // Prefer git's own listing of the new worktree (canonical path/branch/head);
-    // fall back to a hand-built entry if the re-list misses it for any reason.
-    Ok(git::find_worktree_entry(&repo_path, &worktree_path)
-        .await
-        .unwrap_or(WorktreeEntry {
-            path: worktree_path,
-            branch: Some(branch),
-            head: None,
-            is_main: false,
-        }))
+    crate::control::services::worktree::create(
+        &app,
+        &repo,
+        crate::control::services::worktree::CreateSpec {
+            branch,
+            base,
+            from_existing: from_existing.unwrap_or(false),
+            path,
+        },
+    )
+    .await
+    .map_err(CommandError::from)
 }
 
 /// Remove a worktree (spec §2.3). With `force = false` the backend refuses when
@@ -3407,60 +3375,20 @@ pub async fn worktree_remove(
 #[tauri::command]
 pub async fn worktree_list(
     state: State<'_, AppState>,
+    app: AppHandle,
     repo_id: String,
 ) -> Result<Vec<WorktreeEntry>, CommandError> {
-    let (repo_path, target) = repo_location_of(&state, &repo_id).await?;
-    if let Some(host_id) = target.ssh_host_id() {
-        // Ask the host. Its shell was identified when it connected, so the
-        // arguments are quoted for the shell that will receive them; a host that
-        // could not be named, has no git, or holds a plain folder answers "not a
-        // repository" and the row says the branch was not read — never a branch
-        // this machine made up.
-        let shell = state
-            .ssh_shells
-            .read()
-            .await
-            .get(host_id)
-            .copied()
-            .unwrap_or_default();
-        let conn = session_for(&state, host_id).await;
-        let branch = match conn {
-            Some(conn) => ssh::git::status(&conn, shell, &repo_path).await.branch,
-            None => None,
-        };
-        return Ok(vec![WorktreeEntry {
-            path: repo_path,
-            branch,
-            head: None,
-            is_main: true,
-        }]);
-    }
-    if let Some(entries) = worktrees_without_git(&target, &repo_path) {
-        return Ok(entries);
-    }
-    git::list_worktrees(&repo_path)
+    let repo = {
+        let data = state.data.read().await;
+        data.repos
+            .iter()
+            .find(|r| r.id == repo_id)
+            .cloned()
+            .ok_or_else(|| CommandError::from(AppError::NotFound(format!("repo {repo_id}"))))?
+    };
+    crate::control::services::worktree::list_of(&app, &repo)
         .await
-        .map_err(CommandError::from)
-}
-
-/// The worktree list for a project this machine's git cannot answer for: one
-/// entry, the project's own folder, and **no branch**. `None` means "local — go
-/// ask git".
-///
-/// Split out so the decision is testable on its own, because the invariant is
-/// easy to break and expensive when broken: a project on a host must never
-/// report a branch, or the sidebar would put this machine's answer on another
-/// machine's repository.
-fn worktrees_without_git(target: &TargetId, repo_path: &str) -> Option<Vec<WorktreeEntry>> {
-    if target.is_local() {
-        return None;
-    }
-    Some(vec![WorktreeEntry {
-        path: repo_path.to_string(),
-        branch: None,
-        head: None,
-        is_main: true,
-    }])
+        .map_err(|e| CommandError::from(AppError::Git(e.message)))
 }
 
 /// Summarize a worktree's working-tree status (changed entries + ahead/behind)
@@ -4955,7 +4883,7 @@ mod tests {
         bracketed_paste, ends_the_current_session, fs_path_exists, git_numstat, git_status,
         issue_link_permission_denied, missing_locally, preserve_backend_owned, pty_submit_payload,
         read_term_buffers, rect_on_any_monitor, redetect_git, reorder_by_ids, resting_corner,
-        term_buffers_path, worktree_status, worktrees_without_git, worth_retrying, TargetId,
+        term_buffers_path, worktree_status, worth_retrying, TargetId,
     };
     use crate::model::{AppSettings, RepoData, SshHost, SshHostTombstone};
 
@@ -5072,9 +5000,11 @@ mod tests {
         // Local git must not be run against a path that belongs to another
         // machine: at best it fails, and at worst a folder with the same
         // absolute path exists here and answers for the wrong repository.
-        let entries =
-            worktrees_without_git(&TargetId::parse("ssh:h1").unwrap(), r"C:\Users\dev\code")
-                .expect("a remote project answers without git");
+        let entries = crate::control::services::worktree::worktrees_without_git(
+            &TargetId::parse("ssh:h1").unwrap(),
+            r"C:\Users\dev\code",
+        )
+        .expect("a remote project answers without git");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, r"C:\Users\dev\code");
         assert!(entries[0].is_main);
@@ -5086,7 +5016,11 @@ mod tests {
     fn a_local_project_is_still_asked_of_git() {
         // The guard must be exactly "not local", not "always synthetic" — every
         // local project depends on the real worktree list.
-        assert!(worktrees_without_git(&TargetId::Local, r"C:\code\uxnan").is_none());
+        assert!(crate::control::services::worktree::worktrees_without_git(
+            &TargetId::Local,
+            r"C:\code\uxnan"
+        )
+        .is_none());
     }
 
     #[test]
@@ -5370,7 +5304,11 @@ mod tests {
             }
 
             let dir = tempfile::tempdir().unwrap();
-            let state = AppState::new(PersistenceManager::new(dir.path()), Default::default());
+            let state = AppState::new(
+                PersistenceManager::new(dir.path()),
+                Default::default(),
+                dir.path().to_path_buf(),
+            );
             state
                 .ssh_sessions
                 .write()

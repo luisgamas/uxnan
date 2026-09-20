@@ -1,0 +1,25 @@
+[package]
+name = "uxnan-cli"
+description = "The console client of Uxnan Desktop: operate the running app from any shell — for people, scripts and agents."
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "uxnan-cli"
+path = "src/main.rs"
+
+[dependencies]
+uxnan-control-protocol = { path = "../control-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# Argument parsing. `derive` for the declarative command tree; no color/suggest
+# features — the output contract is plain text on stdout, errors on stderr.
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+# Only to confirm that the process the discovery file names is still the one
+# that wrote it (pid + start time). The same crate the app reads its own start
+# time with, so both sides look at the same clock; `system` is its smallest
+# feature set.
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }

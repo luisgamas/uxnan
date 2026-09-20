@@ -15,6 +15,7 @@
   import { usage } from "$lib/state/usage.svelte";
   import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { ports } from "$lib/state/ports.svelte";
+  import { startControlBridge } from "$lib/control/bridge";
   import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { installErrorReporter } from "$lib/utils/errorReporter";
@@ -73,6 +74,9 @@
     // dev server prints its address once, and a listener that only exists while
     // a popover is open would miss every announcement worth having.
     void ports.start();
+    // Answer the control surface's questions about what this window holds
+    // (terminal tabs, open files, runs) — for `uxnan-cli` and the agents' tools.
+    void startControlBridge();
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);

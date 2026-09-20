@@ -108,10 +108,17 @@ They map onto the same in-app browser and the same link policy as a clicked link
 (Page inspection/interaction — snapshot/click/type — is a planned follow-up; see
 `FOR-DEV.md`.)
 
+The browser tools are six entries of a larger list: the same MCP server carries the
+whole **control surface** — `uxnan_status`, `project_*`, `worktree_*`, `terminal_*`,
+`agent_list`, `run_*`, `file_open`, `file_diff`, `app_focus` and the orchestration
+report tools — and the same catalog is what `uxnan-cli` speaks from a shell. See
+[the control surface](./control-api.md).
+
 ### How it connects — and why it stays inside uxnan
 
-The ADE runs a tiny MCP server at **`/mcp`** on the same local hook server the agent
-monitor already uses (`127.0.0.1`, ephemeral port, `Authorization: Bearer <token>`).
+The ADE runs a tiny MCP server at **`/mcp`** on the app's one local server — the
+one the agent monitor's hooks and the control RPC also use (`127.0.0.1`, ephemeral
+port, `Authorization: Bearer <token>`; `src-tauri/src/control/server.rs`).
 
 The server is registered **per launch**: uxnan points the agent at it *in the process
 it spawns*, and **writes nothing** to `~/.claude.json`, `~/.codex/config.toml`,
@@ -155,11 +162,17 @@ CSRF / DNS-rebinding.
 > uxnan now removes that entry, once, at startup, from all seven config files it used
 > to write. Nothing else in those files is touched.
 
-### Settings → Browser → Agent browser MCP
+### Settings → Browser → Agent tools (MCP)
+
+These switches govern the per-launch wiring of the whole control surface — the
+`browser_*` tools are six of its entries (see
+[the control surface](./control-api.md)); the surface itself has no settings
+pane, by design. The group stands on its own: the integrated browser's master
+switch above it takes away the `$BROWSER` shim, never the tools.
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| **Let agents drive the browser** | Master switch for exposing the `browser_*` tools to the agents uxnan launches. Off → nothing is registered (the `/mcp` endpoint still exists for manual wiring). | On |
+| **Give launched agents the tools** | Master switch for registering the catalog — the `browser_*` tools among it — in the agents uxnan launches. Off → nothing is registered (the `/mcp` endpoint and `uxnan-cli` keep working). | On |
 | **Frictionless launch** | Skip the CLI's "trust this folder?" prompt where supported — currently Codex, via a per-folder `trust_level` seed in its config. Turn off to keep the native prompt. | On |
 | **Agents** | One row per supported agent — its mark, **what its launch is given** (`--mcp-config <file>`, `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`) and a switch. The hooks list shows the config file it writes; this one has none to show, which is the point. | All on |
 | **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one uxnan doesn't auto-configure. That config is yours: it lives in your files and keeps working outside uxnan while the app runs, until you remove it. | — |

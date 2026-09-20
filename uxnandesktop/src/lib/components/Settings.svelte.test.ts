@@ -27,6 +27,8 @@ function browserCommands() {
       token: 'tok',
       tokenEnv: 'UXNAN_MCP_TOKEN',
       serverName: 'uxnan-browser',
+      agentIdHeader: 'x-uxnan-agent-id',
+      agentIdEnv: 'UXNAN_AGENT_ID',
       agents: [
         {
           id: 'claude',
@@ -75,7 +77,7 @@ describe('Settings → Browser', () => {
     // Every agent is on until it is explicitly disabled.
     expect(app.settings.browser?.mcpDisabledAgents ?? []).toEqual([]);
     await user.click(
-      screen.getByRole('switch', { name: 'Set up the browser tools for Codex' }),
+      screen.getByRole('switch', { name: 'Set up the tools for Codex' }),
     );
     await until(() => (app.settings.browser?.mcpDisabledAgents ?? []).length > 0, {
       label: 'disabled list',

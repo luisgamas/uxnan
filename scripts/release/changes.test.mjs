@@ -43,11 +43,11 @@ function writeVersion(version) {
   );
   put(
     'uxnandesktop/src-tauri/Cargo.toml',
-    `[package]\nname = "uxnan-desktop"\nversion = "${version}"\n`,
+    `[workspace.package]\nversion = "${version}"\n\n[package]\nname = "uxnan-desktop"\nversion.workspace = true\n`,
   );
   put(
     'uxnandesktop/src-tauri/Cargo.lock',
-    `[[package]]\nname = "uxnan-desktop"\nversion = "${version}"\n`,
+    `[[package]]\nname = "uxnan-cli"\nversion = "${version}"\n\n[[package]]\nname = "uxnan-control-protocol"\nversion = "${version}"\n\n[[package]]\nname = "uxnan-desktop"\nversion = "${version}"\n`,
   );
   put('uxnandesktop/package.json', JSON.stringify({ name: 'uxnan-desktop', version }, null, 2));
   put(

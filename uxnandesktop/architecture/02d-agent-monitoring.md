@@ -582,27 +582,121 @@ Para evitar que estados obsoletos contaminen la interfaz:
 
 ---
 
-### 1.6 Capa MCP: Navegador Controlable por Agentes
+### 1.6 Superficie de control: MCP y `uxnan-cli` sobre un catalogo
 
-El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un servidor **Model Context Protocol** (transporte Streamable HTTP) que hace **descubrible** el navegador integrado (`architecture/02a` §4.2b) para los agentes CLI. En lugar de que el agente tenga que *conocer* la convencion `$BROWSER`/`curl` al hook `/browser`, las herramientas del navegador aparecen en su lista de tools como cualquier capacidad nativa, y las usa sin leer documentacion.
+El mismo servidor HTTP local (Capa 1) es **el unico servidor local de la app**
+(`src-tauri/src/control/server.rs`): sirve los reportes de hooks (`/hook`), el
+shim del navegador (`/browser`), un servidor **Model Context Protocol** (`/mcp`,
+transporte Streamable HTTP) y un endpoint **JSON-RPC 2.0** de control
+(`/control/v1/rpc`), en un puerto efimero de `127.0.0.1`. Los dos ultimos son los
+dos transportes de **una sola superficie de control**: un catalogo de entradas
+(`uxnan-control-protocol`, `src-tauri/crates/control-protocol`) que el agente
+lanzado por el ADE descubre como tools MCP **sin instalar nada**, y que
+`uxnan-cli` (`src-tauri/crates/uxnan-cli`, un binario sin Tauri) expone a
+cualquier shell del mismo usuario. Una tool MCP `worktree_list` y un metodo
+`worktree/list` son la **misma entrada** con el mismo esquema de argumentos y el
+mismo resultado; ambos terminan en el mismo servicio (`control/services/`) que
+tambien llama el comando Tauri de la ventana. Nada fuera del catalogo es
+alcanzable: no hay shell, ni bytes crudos al PTY, ni filesystem o git
+destructivos, ni credenciales, ni edicion externa de la persistencia.
 
-**Superficie de herramientas (solo control):** `browser_open`, `browser_navigate`, `browser_reload`, `browser_back`, `browser_forward`, `browser_status`. Reusan los mismos caminos del navegador (`browser::route_url` + comandos de ventana) y respetan la misma politica de enlaces que un enlace clicado. La inspeccion/interaccion de pagina (snapshot/evaluate/click/type) queda como fase posterior (requiere un canal de retorno JS desde la `WebviewWindow`).
+**Cada entrada del catalogo declara** su nombre JSON-RPC (`dominio/verbo`), su
+nombre de tool MCP (`dominio_verbo`), su grupo, un esquema **cerrado** de
+argumentos, un **esquema de resultado** (cada campo con su significado; que
+campos son nulos y cuales se omiten) y una peticion de ejemplo. De ese unico
+origen salen las tres lecturas: `tools/list` de MCP (`inputSchema` +
+`outputSchema`), `uxnan-cli skills get control --full` — la **referencia de la
+API** completa: por entrada, forma de CLI, tool MCP, tabla de argumentos,
+campos del resultado, peticion y errores; antes, el contrato de transporte para
+un script (archivo de descubrimiento y sus comprobaciones, sobre JSON-RPC,
+cabeceras, codigos HTTP y de error con su codigo de salida) — y el archivo
+versionado `docs/control-api-reference.md`, que **es** esa salida: un test del
+crate `uxnan-cli` falla cuando queda desactualizado, y otro comprueba cada
+forma de CLI contra el arbol real de subcomandos de clap.
 
-**Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). El **token nunca se escribe en un archivo**: toda registracion lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente.
+**Grupos de capacidad (versionados y desconectables en `settings.control`):**
+`read` (`status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`,
+`agent/list`, `run/list|show`, `automation/list`, `browser/status`), `ui` (`app/focus`,
+`terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`),
+`create` (`worktree/create` — el nucleo del comando `worktree_create` movido al
+servicio, adopcion por la ventana via el puente, lanzamiento del agente y primer
+mensaje encolado tras el backpressure del broadcast —, `terminal/create`,
+`run/start` y `automation/run` **solo sobre definiciones guardadas**; cada entrada
+responde con un **recibo** `{ requestId, idempotencyKey?, … }`, repite el primer
+recibo ante la misma `idempotencyKey` en vez de crear dos veces, y deja una linea
+en `control-audit.log` del directorio de datos con el llamador, la entrada, los
+argumentos — el prompt reducido a su longitud — y el resultado), `converse`
+(`agent/send`: un mensaje completo como paste-and-submit por la cola con
+backpressure del broadcast, o forzado; `agent/wait --for idle|waiting|exit`
+sobre el estado reportado por los hooks, dormido en el notificador
+`AppState.agent_changes` en vez de sondear, maximo 15 s por llamada;
+`terminal/read`: las ultimas lineas del buffer del terminal de la ventana con
+**redaccion** de secretos en el backend antes de salir, auditado, y desconectable
+por proyecto con `settings.control.terminalReadDisabledProjects`) y
+`orchestrate` v2 (`run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` — una corrida conducida por un agente coordinador, §3.9). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
+para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
+(`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;
+`current` se ancla en el `UXNAN_AGENT_ID` del llamador, asi que solo existe
+dentro de una terminal lanzada por el ADE.
+
+**Recursos de la ventana.** Las pestanas de terminal, los archivos abiertos y las
+corridas de orquestacion son estado del webview (el backend persiste su
+serializacion sin interpretarla). Las entradas que los tocan se reenvian a la
+ventana como evento `control:request` y esperan su unica respuesta por el comando
+`control_respond` (`control/bridge.rs` + `src/lib/control/bridge.ts`); una ventana
+que no responde en 5 s produce *unavailable*, distinto de "no".
+
+**Autenticacion y aislamiento:** toda ruta rechaza primero un llamador cuyo
+`Host`/`Origin` no sea loopback y exige despues un token. Hay **dos tokens**,
+ambos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
+referenciado por la config MCP del agente como `UXNAN_MCP_TOKEN`; con
+`UXNAN_HOOK_URL` y `UXNAN_AGENT_ID`) identifica un proceso que el ADE arranco y
+ancla `current` en su terminal; el **token de control** vive solo en el archivo de
+descubrimiento `control.json` del directorio de datos (`0600` en Unix; en Windows
+la ACL del perfil de usuario), junto al pid **y la hora de inicio** del proceso, y
+se borra al salir limpiamente — `uxnan-cli` rechaza un archivo legible por otros,
+una version de protocolo distinta o un pid que ya no es ese proceso. El token de
+control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
+la app); el de lanzamiento, **solo el proyecto de su terminal**, y el resolutor
+lo aplica (`control/resolve.rs` → `Scope`): los listados (`project/list`,
+`worktree/list`, `terminal/list`, `agent/list`, los conteos de `status`) se
+acotan a el, y un selector que nombra un worktree o una terminal de otro
+proyecto responde `-32003` *scope denied* — distinto de *not found*, para que
+el agente deje de insistir. El alcance sale del **estado del backend** (la
+carpeta en la que corre el PTY del propio llamador), nunca de lo que la
+peticion afirme; una peticion de lanzamiento sin la cabecera
+`x-uxnan-agent-id` no alcanza ningun proyecto, ni una terminal del espacio
+Global. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
+**cada config de lanzamiento envia el id de la terminal en cada llamada**,
+expandido de `UXNAN_AGENT_ID` como cada CLI expande variables (tabla abajo);
+`current` se resuelve asi tambien desde una tool. Ninguno de los dos tokens se
+escribe en la config de ningun CLI ni se registra en logs.
+
+**`uxnan-cli`:** resultados en stdout, errores en stderr, `--json` estable, codigos
+de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,
+timeout 6, no encontrado 7, ocupado 8); `skills get control --full` imprime la
+referencia generada desde el catalogo. Encuentra la app por el entorno (dentro de una
+terminal del ADE) o por `control.json` (con las mismas reglas de directorio de
+datos que la app, incluido el perfil `-dev` de una build de desarrollo). Detalle
+operativo en `docs/control-api.md`.
 
 **Registracion por lanzamiento (`mcpinject.rs`) — invariante de diseno:** el servidor se registra **en el proceso que lanza uxnan y solo para ese lanzamiento**; el ADE **no escribe nada** en la config de ningun CLI (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, …). Un agente arrancado fuera de uxnan no descubre el servidor, no intenta conectarse y **no puede avisar de que esta caido**.
 
 | Agente | Mecanismo | Forma |
 |---|---|---|
-| Claude Code | flag de lanzamiento | `--mcp-config <archivo propio del ADE>` (expande `${UXNAN_MCP_TOKEN}` del entorno) |
-| Codex | flags de lanzamiento | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN` |
-| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; expande `{env:UXNAN_MCP_TOKEN}`) |
+| Claude Code | flag de lanzamiento | `--mcp-config <archivo propio del ADE>` (`headers`: `Authorization: Bearer ${UXNAN_MCP_TOKEN}`, `x-uxnan-agent-id: ${UXNAN_AGENT_ID}`, expandidos del entorno) |
+| Codex | flags de lanzamiento | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN -c mcp_servers.<n>.env_http_headers.x-uxnan-agent-id=UXNAN_AGENT_ID` (cabecera → nombre de variable; verificado con `codex mcp get`) |
+| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; `headers` con `{env:UXNAN_MCP_TOKEN}` y `{env:UXNAN_AGENT_ID}`) |
 
 El archivo de Claude vive en `<app-data>/mcp/claude-<puerto>.json` y lleva el puerto de **esa** ventana, de modo que dos ventanas de uxnan abiertas nunca se pisan el endpoint. Los flags se anaden en el unico punto donde el frontend teclea un comando de lanzamiento (`$lib/mcpLaunch` desde `terminal/instances.ts`), asi que cubre por igual un lanzamiento nuevo, una sesion reanudada y una pestana despertada.
 
 **Por que se sustituyo la escritura en la config global de usuario:** era una unica entrada, persistente y compartida, con dos fallos observados. (1) Fuera de uxnan no era inocua: Codex valida `bearer_token_env_var` al arrancar y aborta la fase MCP con *«Environment variable UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set»* en **cada** ejecucion. (2) La entrada llevaba el puerto de una instancia, asi que una **segunda** ventana de uxnan la sobrescribia y rompia los agentes de la primera desde dentro. Al arrancar, el ADE hace un **barrido de limpieza** (solo eliminacion, `sweep_legacy`) que borra esa entrada de las siete configs de usuario que versiones anteriores pudieron escribir.
 
-**Ajustes (Settings → Browser):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable.
+**Ajustes (Settings → Browser → *Herramientas para agentes (MCP)*):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` y `uxnan-cli` siguen funcionando, y el snippet copiable (con la cabecera de id de agente a rellenar) sirve para cablear a mano. El grupo es **independiente del interruptor maestro del navegador integrado**: apagar el navegador retira el shim `$BROWSER`, nunca el catalogo (las tools de navegador responden entonces *unavailable*). Las claves siguen en `BrowserSettings`, de donde el cableado nacio.
+
+**Primer mensaje y espera.** Un `prompt` encolado al lanzar un agente (`worktree/create`, `terminal/create`) sale de la cola de backpressure solo cuando la terminal **ya dibujo y se asento** (`readyToReceive`, `src/lib/orchestration.ts`: salida vista al menos una vez y quieta ≥ 1,5 s; un agente ocupado se retiene hasta el tope de 12 s) — pegar en una shell que aun arranca el agente pierde el mensaje. Y `agent/wait` sobre una pestana que la ventana da por abierta pero cuyo PTY aun no existe lee *no reportado*, no `exit`.
+
+**La superficie no tiene panel de ajustes, por diseno.** Las dos claves que existen (`settings.control.disabledGroups`, `settings.control.terminalReadDisabledProjects`) se respetan desde `state.json` y estan documentadas en `docs/control-api.md` → *Settings*; un panel de interruptores que nadie acciona es coste sin beneficio, y el token de control ya se renueva en cada arranque.
 
 **Fila por agente (misma forma que la lista de Hooks, §1.1):** cada agente del catalogo es una fila `AgentSettingsRow` con su marca, su nombre y su interruptor. Donde Hooks muestra el archivo de config que escribe, esta lista muestra `McpAgentInfo.mechanism` — el flag o la variable que recibe ese lanzamiento (`--mcp-config <archivo>`, `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`) — porque aqui no hay ningun archivo de config que mostrar: ese es justamente el punto.
 
@@ -774,7 +868,7 @@ agentes** corriendo **o** cuando existe alguna corrida):
 > el store reactivo `src/lib/state/orchestrationRun.svelte.ts` (agentes vivos,
 > despacho, timers, persistencia). Backend: `set_orchestration_runs` (persistencia
 > opaca, patron `terminal_layout`), `agent_run_headless` (modo print con exit code
-> verificado, reusa `agentcli`) y tools MCP de orquestacion en `mcp.rs`.
+> verificado, reusa `agentcli`) y tools MCP de orquestacion en `control/` (§1.6).
 
 ### 3.1 Modelo: corrida (`Run`) = grafo de pasos (`Step`)
 
@@ -844,8 +938,9 @@ agentes** corriendo **o** cuando existe alguna corrida):
 ### 3.7 Canal cooperativo agente→ADE (tools MCP de orquestacion)
 
 - El ADE registra en cada agente que lanza (junto a las tools del navegador, §1.6)
-  las tools MCP `orchestration_report_result` / `orchestration_report_progress`. El
-  agente pasa su `UXNAN_AGENT_ID`; el handler en `mcp.rs` emite un evento
+  las tools MCP `orchestration_report_result` / `orchestration_report_progress`
+  (entradas `orchestration/reportResult|reportProgress` del catalogo, §1.6). El
+  agente pasa su `UXNAN_AGENT_ID`; el servicio en `control/services/orchestration.rs` emite un evento
   `agent:orchestration` que el motor frontend atribuye al paso interactivo en curso
   (backend tonto; el modelo de corrida vive 100% en TS). Esto da **salida
   estructurada** de agentes interactivos, mejor que el `summary` grueso. Para que el
@@ -869,6 +964,64 @@ agentes** corriendo **o** cuando existe alguna corrida):
   del agente ni se concatenan envios, y lo multilinea no se envia en el primer salto.
   Un agente que se lee **ocupado** indefinidamente (sin hooks / lector clavado) no
   atasca la cola: tras un tope de espera se **fuerza la entrega** (mejor esfuerzo).
+  Y nunca se entrega a una terminal que **aun no dibujo y se asento**
+  (`readyToReceive`): pegar en una shell que arranca el agente pierde el mensaje.
+
+### 3.9 Corridas conducidas por un coordinador (grupo `orchestrate` v2)
+
+> **Estado: IMPLEMENTADO.** Sin motor paralelo: una corrida conducida **es** una
+> corrida, sus tareas **son** pasos, la pregunta de un worker **es** una compuerta,
+> y todo se ve en la consola de Runs, donde la persona puede intervenir.
+
+- **Quien conduce.** `Run.driven` marca la corrida como conducida (con la terminal
+  del coordinador cuando la creo un agente lanzado; sin ella cuando la conduce una
+  persona desde `uxnan-cli`). Una corrida conducida arranca `running` vacia y
+  **solo termina con `run/finish`** (resultado + resumen): un DAG vacio o todo
+  terminado es "esperando la siguiente tarea", no "hecho". El motor no deriva su
+  estado terminal ni despacha solo sus pasos interactivos: una tarea interactiva
+  espera en `ready` a `worker/start`; una `headless` (con agente) la corre el motor
+  solo, como hoy, y el coordinador lee su resultado en la bandeja.
+- **Despacho y autoridad de finalizacion.** Cada despacho de un paso acuña un
+  `dispatchId` (`<paso>.<intento>`), nuevo en cada reintento. El reporte de un
+  worker (`orchestration/reportResult` con `taskId`, `dispatchId`, `outcome`) cierra
+  la tarea **solo si nombra el despacho vigente**; uno viejo se rechaza como
+  obsoleto (`accepted: false`), asi el reporte tardio de un worker reintentado nunca
+  cierra la tarea nueva. `outcome: failure|blocked` falla la tarea respetando su
+  politica de reintento. Un worker que se queda ocioso sin reportar cierra por la
+  senal de hooks tras una **gracia de 60 s** (un CLI suele terminar el turno un
+  instante antes de la llamada a la tool que lleva el reporte); una terminal que
+  sale falla la tarea.
+- **`worker/start`.** El backend resuelve el worktree (el del coordinador, uno nuevo
+  en rama nueva con la politica de ubicacion del proyecto — rama por defecto
+  `run/<run>/<tarea>` —, o uno dado), abre la terminal con el agente
+  (`terminal/create`), y la ventana ata la tarea a esa pestaña, acuña el despacho y
+  encola el **preambulo** + el prompt resuelto (`workerPreamble`, `run.ts`): quien
+  es dentro de la corrida, reportar exactamente una vez con sus ids, y como
+  preguntar (`question_ask`, con la forma `uxnan-cli` entre parentesis para un
+  agente sin tools). Es una pestaña normal con su TUI completa.
+- **Bandeja.** `Run.inbox` (FIFO, `deliveryId` monotono, persistida con la corrida):
+  `worker_done` (con el resultado), `worker_failed` (con el error), `question`,
+  `status` (progreso, o "intento n fallo; la tarea vuelve a ready"). Un mensaje
+  permanece hasta el `ack`; un reinicio no pierde nada. `inbox/check --wait` duerme
+  en el notificador de cambios de la app (`control_notify` desde la ventana, el mismo
+  `AppState.agent_changes` de `agent/wait`), ≤15 s por llamada, sin sondeo.
+- **Preguntas = compuertas.** `question/ask` (desde la terminal del worker: el
+  backend identifica su tarea por su propio id) crea un paso `gate` con
+  `resolver: coordinator` y `askedBy: {stepId, dispatchId}`, lo pone `running` sin
+  notificacion nativa (es del coordinador; la persona lo ve igual en la consola y
+  puede responderlo) y lo publica en la bandeja con sus opciones; la llamada espera la
+  respuesta (≤15 s, luego *timeout* con `questionId` para seguir esperando).
+  `question/answer` resuelve la compuerta (`approve` con la respuesta como nota, o
+  `reject`); el worker en espera la recibe al instante.
+- **Alcance y auditoria.** Las corridas no son por proyecto; `worker/start` con
+  `new` crea el worktree en el proyecto del llamador (o el indicado), sujeto al
+  alcance del token. Todo movimiento del coordinador salvo las lecturas y las
+  esperas (`task/list`, `inbox/check`) y la linea de progreso queda en
+  `control-audit.log` con recibo e idempotencia.
+- **Verificado en vivo:** un coordinador Claude Code, solo con las tools MCP, creo
+  la corrida y la tarea, lanzo un worker Claude Code en un worktree nuevo, espero la
+  bandeja y cerro con el resultado del worker; y un worker pregunto por `question_ask`,
+  el coordinador respondio y el worker reporto la respuesta textual.
 
 ---
 

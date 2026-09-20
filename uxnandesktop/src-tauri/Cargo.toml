@@ -1,17 +1,33 @@
-[package]
-name = "uxnan-desktop"
+# The desktop app and the two small crates that share its control protocol: the
+# protocol itself (`crates/control-protocol`, no Tauri, no async — the contract)
+# and the console client (`crates/uxnan-cli`). One lockfile, one toolchain, one
+# `cargo test --workspace`. The members take the app's version from here so a
+# release bumps all three in the one place the release tooling already edits.
+[workspace]
+members = ["crates/control-protocol", "crates/uxnan-cli"]
+resolver = "2"
+
+[workspace.package]
 version = "0.0.51"
-description = "Uxnan Desktop — Agent Development Environment (ADE)."
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
+rust-version = "1.85"
+license = "MPL-2.0"
+
+[package]
+name = "uxnan-desktop"
+version.workspace = true
+description = "Uxnan Desktop — Agent Development Environment (ADE)."
+authors.workspace = true
+edition.workspace = true
 # Floor set by `russh` (the SSH client), not by anything in this crate. Raised
 # from 1.77.2 deliberately: nothing consumes this as a contract — every workflow
 # builds on `stable`, `rust-toolchain.toml` says `stable`, there is no MSRV job
 # and this crate is never published — so holding it back would only have meant
 # shipping an SSH/crypto stack eight minor versions behind to protect a claim
 # nobody verifies.
-rust-version = "1.85"
-license = "MPL-2.0"
+rust-version.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -26,6 +42,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# The control protocol (catalog, envelopes, discovery file, selectors) shared with
+# `uxnan-cli`, so the app and its console client cannot disagree on a name.
+uxnan-control-protocol = { path = "crates/control-protocol" }
 # `devtools`: keep web DevTools available in release builds too, so the integrated
 # developer browser (a docked `WebviewWindow`) can debug the pages agents serve.
 # `macos-private-api` exists solely for the desktop pet window: a transparent
@@ -156,6 +175,9 @@ windows-sys = { version = "0.59", features = [
 
 [dev-dependencies]
 tempfile = "3"
+# `test`: Tauri's mock app, so the local server and the control surface can be
+# exercised end to end (real socket, real auth, real dispatch) without a window.
+tauri = { version = "2", features = ["test"] }
 # `test-util` enables tokio's paused virtual clock, which is how the resource
 # sampler's park/wake behavior is tested without real waits (`resources.rs`).
 tokio = { version = "1", features = ["test-util"] }

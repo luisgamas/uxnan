@@ -17,7 +17,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
+**in-app auto-updater**, **a control surface for agents and shells (MCP tools + `uxnan-cli`, `docs/control-api.md`)**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed, its read
 side validated against captured real GitHub data — `docs/github-validation.md`)**,
 **"Open with" external editors/IDEs**, **automations**, **pets**, **a reproducible
@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 818 Rust tests (781 unit + 37
+always wins). 885 Rust tests (818 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,255 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,275 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -752,9 +752,10 @@ hook-server `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-
 clickable terminal links** (`@xterm/addon-web-links`).
 
 **Done — browser-control MCP (backend, spec `02d` §1.6):** the browser is now
-**discoverable** to agents as MCP tools, not just via the `/browser` curl. `mcp.rs`
-serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
-`browser_open/navigate/reload/back/forward/status`, same hook-server token);
+**discoverable** to agents as MCP tools, not just via the `/browser` curl. The
+control surface (`control/`) serves a minimal Streamable-HTTP MCP endpoint at
+`/mcp` whose tool list is the control catalog — the browser entries are
+`browser_open/navigate/reload/back/forward/status` (same launch token);
 `mcpinject.rs` registers that server **per launch, in the process uxnan spawns**,
 and writes to **no config file the user keeps** — Claude via `--mcp-config
 <app-data>/mcp/claude-<port>.json`, Codex via `-c mcp_servers.…` overrides,
@@ -801,7 +802,102 @@ the browser MCP; user guide in `docs/browser.md`.
       `browser_evaluate`, `browser_click`, `browser_type`) needs a JS return-channel
       from the docked `WebviewWindow` (`.eval()` is fire-and-forget) — an injected
       init-script that posts results back, mindful of page CSP. Deferred as a second
-      pass (`FOR-DEV:` marker in `mcp.rs`).
+      pass (`FOR-DEV:` marker in `control/services/browser.rs`); they would be
+      new catalog entries in the `ui` group.
+
+## Control surface — MCP tools + `uxnan-cli` ☐
+
+**Goal:** let the agents Uxnan launches, a person at a shell and scripts
+**operate the app** through one allowlisted, versioned catalog — never a shell,
+never raw PTY bytes, never destructive git/filesystem. Spec: `architecture/02d`
+§1.6; guide: `docs/control-api.md`.
+
+**Done (groups `read`, `ui`, `create` and `converse`, and the surface itself):** the workspace crate
+`uxnan-control-protocol` (catalog, JSON-RPC envelope + error codes, discovery
+record, selectors, data-dir rules); the app's **one local server**
+(`control/server.rs`: `/hook`, `/browser`, `/mcp`, `/control/v1/rpc`, two gates,
+two tokens) — it replaced the server half of `hooks.rs` and the whole of
+`mcp.rs`, which is now the MCP adapter over the catalog (`control/mcp.rs`);
+the dispatcher (catalog → group switch → argument validation → service); the
+services (`status`, `project/*`, `worktree/*`, `terminal/*`, `agent/list`,
+`run/*`, `app/focus`, `file/open|diff`, `browser/*`, `orchestration/report*`),
+with the sidebar's `worktree_list` command delegating to the same service; the
+window bridge (`control:request` → `control_respond`) for tabs, files and runs;
+the discovery file `control.json` (0600, pid + start time, removed on exit) and
+`settings.control.disabledGroups`; the console client `uxnan-cli` (`crates/
+uxnan-cli`: every `read`/`ui` entry, `rpc`, `skills get control [--full]`,
+`--json`, exit codes) with a hand-rolled loopback HTTP client. The `create`
+group: `worktree/create` (the dialog's creation core moved into the service,
+adoption by the window over the bridge, agent launch + queued first message),
+`terminal/create`, `run/start`, `automation/run` (+ `automation/list`), with
+receipts, idempotency by key (`control/receipts.rs`) and the audit log
+(`control/audit.rs`); `uxnan-cli worktree create` / `terminal create` /
+`run start` / `automation ls|run`, `--prompt-file`, `--idempotency-key`. The
+`converse` group: `agent/send` (paste-and-submit through the backpressure
+queue, or forced), `agent/wait` on the hook-reported state over a new
+`AppState.agent_changes` notifier, `terminal/read` from the window's terminal
+buffer with secret redaction (`control/redact.rs`) and a per-project opt-out;
+`uxnan-cli agent send|wait`, `terminal read`. **The reference:** every
+catalog entry carries a result schema and an example request; `uxnan-cli
+skills get control --full` generates the whole API reference (per entry: CLI
+form, MCP tool, params, result fields, request, errors; plus the wire contract
+for a script — discovery file, envelope, HTTP statuses, error codes) and the
+committed `docs/control-api-reference.md` is that output, guarded by a test;
+MCP `tools/list` advertises the same result schema as `outputSchema`. **No
+settings pane, by design** — the two knobs (`settings.control.disabledGroups`,
+`terminalReadDisabledProjects`) are honoured from `state.json` and documented
+in `docs/control-api.md` → *Settings*. **The launch token's scope is
+enforced** (`control/resolve.rs` → `Scope`, from the caller's own PTY folder):
+a launched agent sees and names only its terminal's project, anything else is
+`-32003`; every launch config sends the terminal's id with each MCP call
+(`x-uxnan-agent-id`, expanded from `UXNAN_AGENT_ID` per CLI), so `current`
+works from an agent's tool calls — verified live with Claude Code and Codex.
+The agent-tools switch (Settings → Browser → *Agent tools (MCP)*) stands on
+its own, no longer under the browser's master switch. A first message queued
+at launch is delivered only once the agent's terminal has drawn and settled
+(`readyToReceive`), and a wait right after `terminal/create` reads a tab
+whose PTY is not up yet as *not reported*, not `exit`. **Group `orchestrate`
+v2 — a run driven by a coordinator agent** (no second engine: a driven run is
+a run, tasks are steps, a worker's question is a gate): `run/create|finish`,
+`task/create|list|update`, `worker/start` (worktree — own, new on a new
+branch, or given — + terminal + agent + preamble naming task and dispatch),
+`inbox/check` (durable FIFO with ack; `--wait` on the change notifier),
+`question/ask|answer`; `reportResult` takes `taskId`/`dispatchId`/`outcome`
+and the active dispatch holds the completion authority (a stale report is
+refused); a 60 s report grace before the idle signal closes a worker's task.
+`uxnan-cli run create|finish`, `task create|ls|update`, `worker start`,
+`inbox check`, `ask`, `answer`. Verified live: a Claude Code coordinator
+driving a Claude Code worker in a new worktree through the MCP tools alone;
+a worker's question answered by the coordinator. 42 app tests (13 end to end over a real
+socket with Tauri's mock app, one creating a worktree on a real repository, one
+waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
+
+### Still pending
+- [ ] **Bundle `uxnan-cli` and install it on the PATH.** Today it is built by
+      hand (`cargo build -p uxnan-cli --release`). Ship it in the installers
+      (`bundle.externalBin` with the target-triple suffix, produced by a
+      `beforeBuildCommand`) and add the per-platform PATH shim (macOS/Linux
+      `~/.local/bin`; Windows `%LOCALAPPDATA%\uxnan\bin` + user PATH), with
+      uninstall. `docs/build.md` + `docs/control-api.md` when it lands.
+- [ ] **Windows ACL of `control.json`.** On Unix the file is `0600` and the CLI
+      refuses anything laxer; on Windows it inherits the per-user profile ACL and
+      nothing is verified. Confirm on the platform matrix (005) that another local
+      user cannot read it; if not, set an explicit DACL (`icacls`-equivalent via
+      the Windows API) and check it in the CLI.
+- [ ] **An inbox view for a driven run.** A driven run shows in the Runs console
+      as any run (tasks, gates, outputs), but its inbox — what the coordinator
+      has not yet acknowledged — has no UI: the person sees questions as gates
+      and results as step outputs, not the queue itself. A small "inbox"
+      strip on a driven run's card (count + the unacknowledged messages) would
+      complete the picture. UI → propose-and-review.
+- [ ] **A worker without the tools.** A worker launched from an agent uxnan does
+      not inject the MCP tools into (or with the agent-tools switch off) gets
+      the preamble's `uxnan-cli` forms; that needs `uxnan-cli` on the `PATH`
+      (below). Until the bundling lands, such a worker completes on the hook
+      signal after the report grace, with no structured result.
+- [ ] **Budgets on `create` (plan 023).** `worktree/create` and `terminal/create`
+      apply no concurrency or process budget yet; when 023 lands, the service is
+      where the policy goes (one place, both doors).
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -1480,7 +1576,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 818 Rust + 1,255 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 885 Rust + 1,275 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

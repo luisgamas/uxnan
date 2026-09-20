@@ -374,6 +374,9 @@ export interface AppSettings {
    *  from now on: the ones already on disk are read from git and keep working
    *  wherever they live. */
   worktrees?: WorktreeSettings;
+  /** The control surface: capability groups switched off (by their stable name:
+   *  `read`, `ui`, `create`, `converse`, `orchestrate`). Absent = all on. */
+  control?: { disabledGroups: string[]; terminalReadDisabledProjects?: string[] };
 }
 
 /** The git identity commits are authored with (mirror of the Rust
@@ -637,6 +640,10 @@ export interface McpInfo {
   tokenEnv: string;
   /** MCP server name agents register us under (`uxnan-browser`). */
   serverName: string;
+  /** Header a launched agent sends with its terminal id (`x-uxnan-agent-id`). */
+  agentIdHeader: string;
+  /** Env var that id is expanded from on the terminal (`UXNAN_AGENT_ID`). */
+  agentIdEnv: string;
   /** Supported-agent catalog. */
   agents: McpAgentInfo[];
 }

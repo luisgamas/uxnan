@@ -28,11 +28,6 @@ use serde::{Deserialize, Serialize};
 use super::{Automation, AutomationRun, RunStatus};
 use crate::error::AppError;
 
-/// Bundle identifier from `tauri.conf.json`. The runner has no Tauri app handle,
-/// so it resolves the same data directory Tauri would hand the app — keep this
-/// in sync with `identifier` there.
-const APP_IDENTIFIER: &str = "dev.luisgamas.uxnandesktop";
-
 /// Subdirectory holding everything in this module.
 const DIR: &str = "automations";
 const DEFINITIONS_FILE: &str = "automations.json";
@@ -65,28 +60,11 @@ struct DefinitionsDoc {
 /// the app applies, so a run started from a disposable profile finds that
 /// profile's automations rather than the real ones.
 pub fn app_data_dir() -> Result<PathBuf, AppError> {
-    if let Some(dir) = crate::datadir::override_dir() {
-        return Ok(dir);
-    }
-
-    #[cfg(target_os = "windows")]
-    let base = std::env::var_os("APPDATA").map(PathBuf::from);
-
-    #[cfg(target_os = "macos")]
-    let base = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|h| h.join("Library").join("Application Support"));
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .map(|h| h.join(".local").join("share"))
-        });
-
-    base.map(|b| b.join(APP_IDENTIFIER)).ok_or_else(|| {
+    // The same rules the app and `uxnan-cli` apply, from the one place that
+    // knows them (`uxnan_control_protocol::datadir`) — including the `-dev`
+    // profile of a development build, so a dev build's runner reads the dev
+    // build's automations and never the installed app's.
+    uxnan_control_protocol::datadir::resolve(cfg!(debug_assertions)).ok_or_else(|| {
         AppError::NotFound("could not resolve the application data directory".into())
     })
 }

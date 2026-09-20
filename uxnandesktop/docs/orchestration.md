@@ -187,14 +187,29 @@ remains the fallback when the agent doesn't report.
 To make the common case work without you knowing the tool exists, the ADE **appends a
 short nudge to an interactive step's prompt** asking the agent to report its result —
 but **only** when the step's output actually feeds a later step *and* the agent
-genuinely has the tool (the browser MCP is on and it's one of the agents uxnan
-registers it with: Claude Code / Codex / OpenCode). For any other agent it never
-mentions MCP, so no CLI is ever told to use a tool it doesn't have. (The switch is
-Settings → Browser.) For robust chaining regardless, prefer a **headless** step.
+genuinely has the tool (the agent-tools switch is on and it's one of the agents
+uxnan registers it with: Claude Code / Codex / OpenCode). For any other agent it
+never mentions MCP, so no CLI is ever told to use a tool it doesn't have. (The
+switch is Settings → Browser → Agent tools.) For robust chaining regardless,
+prefer a **headless** step. A worker a coordinator started carries this in its
+preamble instead — with its task and dispatch ids, which give its report
+authority over the task.
 
 ---
 
-## How to test it (end-to-end)
+## A run driven by an agent (coordinator)
+
+Everything above is driven by you at the console. Through the [control
+surface](./control-api.md#the-orchestrate-group-a-coordinator-drives-a-run) an
+**agent** can take that seat: create a run, add tasks with dependencies, start a
+worker for each — an agent of any installed kind, in its own worktree on a new
+branch — read an inbox where workers finish and ask, answer their questions, and
+finish the run. Nothing changes here: a driven run is a run in this console, its
+tasks are steps, a worker's question is a gate you can answer yourself, and each
+worker is a terminal tab with its full TUI. What differs is who advances it: an
+interactive task of a driven run waits as *ready* for the coordinator's
+`worker_start` instead of landing on the first free agent, and the run ends when
+the coordinator says so, not when its DAG happens to be all done.
 
 Run the app in dev (`npm run tauri dev` — see [development](./development.md)). The
 scenarios below map to Stages E1–E3 of the plan.
@@ -269,4 +284,6 @@ scenarios below map to Stages E1–E3 of the plan.
   the launch shell, auto-launch on worktree create.
 - [Agent hooks — precise states](./agent-hooks.md) — make interactive completion exact.
 - [Browser](./browser.md) — the per-launch MCP channel the orchestration tools ride on.
+- [The control surface](./control-api.md) — the same runs driven by an agent (or a
+  script): tasks, workers, inbox, questions.
 - Spec: [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md) §3.

@@ -123,6 +123,13 @@ class AgentMonitor {
     return this.titleState[tabId];
   }
 
+  /** When a tab last produced output (epoch ms), or undefined if it never has
+   *  in this app run — what the orchestration pump reads to tell a terminal
+   *  that is up and settled from one still starting. */
+  lastOutput(tabId: string): number | undefined {
+    return this.lastOutputAt.get(tabId);
+  }
+
   /** Record output on a tab. Sustained output (see [`ACTIVITY_SUSTAIN_MS`]) reads
    *  as "working"; a one-off burst — a redraw answering a click — does not.
    *  Cheap (reactive only on edge). */

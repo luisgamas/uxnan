@@ -277,7 +277,7 @@ committed lock. That is exactly how `uxnandesktop/package-lock.json` sat at
 | Component | Files |
 |---|---|
 | shared / bridge / relay | `<component>/package.json` **and the root `package-lock.json`** — use `npm version <v> -w <ws> --no-git-tag-version`, which updates both |
-| desktop | `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (the `uxnan-desktop` entry), `uxnandesktop/package.json`, `uxnandesktop/package-lock.json` |
+| desktop | `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (the `[workspace.package]` version, which the app and the two member crates `uxnan-control-protocol` / `uxnan-cli` inherit), `src-tauri/Cargo.lock` (the `uxnan-desktop`, `uxnan-control-protocol` and `uxnan-cli` entries), `uxnandesktop/package.json`, `uxnandesktop/package-lock.json` |
 | mobile | `uxnanmobile/pubspec.yaml` (its lock carries no app version) |
 
 Desktop files take the **numeric base only** (`0.0.PATCH`): the Windows MSI

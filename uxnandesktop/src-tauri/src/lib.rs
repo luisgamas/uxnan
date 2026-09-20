@@ -36,10 +36,10 @@ mod gitfast;
 // Public for the same integration tests: they drive the *production* gh layer —
 // against a scripted fake `gh` in the mandatory suite, and against the
 // allowlisted sandbox repository in the ignored live suite.
+pub mod control;
 pub mod github;
 mod hooks;
 pub mod launchenv;
-mod mcp;
 mod mcpinject;
 mod model;
 mod path_env;
@@ -127,12 +127,13 @@ pub fn run() {
             // Whether to auto-install the Claude hooks block this launch (off once
             // the user uninstalls). Captured before `data` moves into the state.
             let auto_install_hooks = data.settings.auto_install_hooks;
-            let state = AppState::new(persistence, data);
+            let state = AppState::new(persistence, data, data_dir.clone());
             let git_watch = state.git_watch.clone();
             let focused = state.focused.clone();
             let hook_slot = state.hook.clone();
             let hook_install_slot = state.hook_install.clone();
             let resources = state.resources.clone();
+            let control_token = state.control_token.clone();
             app.manage(state);
 
             // Resource observability sampler (`resources.rs`). Fully parked —
@@ -179,26 +180,50 @@ pub fn run() {
                 .await;
             });
 
-            // Start the local agent hook server (Layer 1). On success, publish its
-            // url + token (+ the endpoint-file path it writes to `<data>/hooks/`)
-            // so `pty_create` can inject them into every terminal.
+            // Start the app's local server (`control::server`): hook reports,
+            // the browser shim, MCP and the control RPC, on one loopback port.
+            // On success, publish the hook coordinates (+ the endpoint-file path
+            // it writes to `<data>/hooks/`) so `pty_create` can inject them into
+            // every terminal, and write the control discovery file so
+            // `uxnan-cli` can find the app from any shell.
             let hook_handle = app.handle().clone();
             let hooks_dir = data_dir.join("hooks");
             let hooks_dir_for_server = hooks_dir.clone();
+            let discovery_dir = data_dir.clone();
             let mcp_config_handle = hook_handle.clone();
             tauri::async_runtime::spawn(async move {
-                let token = uuid::Uuid::new_v4().to_string();
-                match crate::hooks::start(hook_handle, token, hooks_dir_for_server).await {
-                    Ok(info) => {
+                let launch_token = uuid::Uuid::new_v4().to_string();
+                match crate::control::server::start(
+                    hook_handle,
+                    launch_token,
+                    control_token.clone(),
+                    hooks_dir_for_server,
+                )
+                .await
+                {
+                    Ok(started) => {
                         // Write Claude Code's per-launch MCP config for this
                         // window now that the endpoint is known, so it is on disk
                         // before the first agent is launched (`mcpinject.rs`).
-                        let endpoint = crate::mcpinject::mcp_endpoint(&info.url);
+                        let endpoint = crate::mcpinject::mcp_endpoint(&started.hook.url);
                         crate::mcpinject::ensure_claude_config(&mcp_config_handle, &endpoint);
-                        *hook_slot.write().await = Some(info);
+                        if crate::control::discovery::write(
+                            &discovery_dir,
+                            &started.origin,
+                            &control_token.read().await,
+                        )
+                        .is_none()
+                        {
+                            crate::diagnostics::log(
+                                crate::diagnostics::Level::Error,
+                                "control",
+                                "control discovery file not written; uxnan-cli cannot find this app from outside",
+                            );
+                        }
+                        *hook_slot.write().await = Some(started.hook);
                     }
                     Err(err) => {
-                        let message = format!("agent hook server failed to start: {err}");
+                        let message = format!("local server failed to start: {err}");
                         crate::diagnostics::log(
                             crate::diagnostics::Level::Error,
                             "hooks",
@@ -401,6 +426,8 @@ pub fn run() {
             commands::repo_list,
             commands::repo_update,
             commands::repo_probe_git,
+            control::bridge::control_respond,
+            control::bridge::control_notify,
             commands::repo_set_branch_icon,
             commands::repo_reorder,
             commands::repo_set_worktree_order,
@@ -598,6 +625,10 @@ pub fn run() {
                     // Release any keep-awake helper (kills caffeinate /
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
+                    // The control token dies with the server: remove the file
+                    // that carries it (a client also checks pid + start time,
+                    // so an unclean exit leaves nothing usable either).
+                    crate::control::discovery::remove(&state.data_dir);
                 }
                 // The browser MCP needs no teardown: it is registered per launch,
                 // inside the process uxnan spawns, and never in a config file the

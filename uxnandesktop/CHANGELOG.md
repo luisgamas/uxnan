@@ -4,6 +4,172 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **A control surface: the agents Uxnan launches, a person at a shell and
+  scripts can now operate the app** through one allowlisted, versioned catalog
+  with two transports — MCP tools (with nothing to install, inside every
+  terminal Uxnan spawns) and a new console client, **`uxnan-cli`**. Today the
+  `read` and `ui` groups ship: `status`, `project/list|show`,
+  `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`,
+  `browser/status`, `app/focus`, `terminal/reveal`, `file/open`, `file/diff` and
+  the `browser/*` navigation entries; the orchestration report tools are part
+  of the same catalog. Selectors (`current`, `id:`, `path:`, `branch:`, `name:`)
+  name things without copying ids off the sidebar. Nothing outside the catalog
+  is reachable — no shell, no raw terminal bytes, no destructive git or
+  filesystem entry — and each capability group can be switched off
+  (`settings.control.disabledGroups`). `uxnan-cli` finds the running app by
+  itself (the environment inside a Uxnan terminal; a private `control.json`
+  discovery file — pid + start time checked — from any other shell), prints
+  stable `--json`, exits with a code per kind of failure, and prints the whole
+  guide with `skills get control --full`. Docs: `docs/control-api.md`; spec
+  `architecture/02d` §1.6.
+- **The `create` group of the control surface.** An agent (or a shell) can give
+  a subtask its own space: `worktree/create` makes a worktree on a new branch
+  where the project's location policy puts it — the same service the
+  New-worktree dialog uses — hands it to the window so it is listed and active
+  like one created from the dialog, and, with `agent`, launches that
+  configured agent in it with an optional first message (queued behind the
+  orchestration backpressure, so it is never typed into a TUI still starting);
+  `terminal/create` opens a tab in a worktree, plain or with an agent;
+  `run/start` starts a saved orchestration run; `automation/run` runs a saved
+  automation now (`automation/list` joins the `read` group). Every `create`
+  entry answers with a **receipt** and is **idempotent by key** — a retry with
+  the same `idempotencyKey` returns the first receipt instead of creating a
+  second thing — and every call that reached its service is written to
+  `control-audit.log` in the app's data directory (prompt text as its length
+  only). A prompt needs an agent and is capped at 64 KiB. `uxnan-cli` grows
+  `worktree create`, `terminal create`, `run start`, `automation ls|run`,
+  `--prompt-file` and `--idempotency-key`; `launchAgent` now returns the tab
+  it opened.
+- **A run driven by a coordinator agent — the `orchestrate` group, v2.** An
+  agent (or a script) can now take the console's seat on the orchestration
+  run engine, with no second engine: `run/create` opens an empty run that
+  stays running until `run/finish`; `task/create` adds tasks with
+  dependencies (interactive, waiting for a worker; or headless, run by the
+  engine itself); `worker/start` opens a terminal — in the coordinator's
+  worktree, in a **new worktree on a new branch**, or in a given one — launches
+  the agent and hands it the task behind a preamble naming its task and
+  **dispatch**; `inbox/check` is the coordinator's durable FIFO (`worker_done`,
+  `worker_failed`, `question`, `status`; acknowledged by id; `--wait` sleeps on
+  the app's change notifier, no polling); `question/ask` lets a worker ask the
+  coordinator — as a gate step the person can also answer in the Runs console
+  — and `question/answer` resolves it; `task/update` closes a task by hand.
+  `orchestration/reportResult` takes `taskId`, `dispatchId` and `outcome`: the
+  task's current dispatch holds the completion authority, a stale report is
+  refused, and a worker that goes idle without reporting is closed on the hook
+  signal only after a 60 s grace. Every move but the reads and waits is
+  receipted and audited. `uxnan-cli run create|finish`, `task create|ls|update`,
+  `worker start`, `inbox check [--wait] [--ack]`, `ask`, `answer`. Verified
+  live: a Claude Code coordinator, through the MCP tools alone, created a run
+  and a task, started a Claude Code worker in a new worktree, waited on the
+  inbox and finished with the worker's result; a worker asked through
+  `question_ask`, the coordinator answered, the worker reported the answer.
+- **A launched agent reaches only its own project.** The per-launch token
+  is now scoped the way the spec always said: listings (`project/list`,
+  `worktree/list`, `terminal/list`, `agent/list`, the counts in `status`) are
+  narrowed to the project the caller's terminal runs in, and a selector that
+  names another project's worktree or terminal answers *scope denied*
+  (`-32003`) — distinct from *not found*, so an agent stops rather than
+  retries. The scope is taken from the folder the caller's own PTY runs in,
+  never from the request. To make that work from an agent's tool calls, **every
+  launch config now sends the terminal's id with each MCP call**
+  (`x-uxnan-agent-id`, expanded from `UXNAN_AGENT_ID`: `headers` for Claude
+  Code and OpenCode, `env_http_headers` for Codex) — which also makes `current`
+  resolve from a tool, not only from `uxnan-cli`. The manual config snippet
+  spells the header out. Verified live with Claude Code and Codex.
+- **The control surface's API reference, generated from the catalog.** Every
+  catalog entry now carries a **result schema** (each field with its meaning,
+  which fields are nullable and which are left out) and an example request.
+  `uxnan-cli skills get control --full` is now the full reference — per entry
+  its purpose, group, `uxnan-cli` form, MCP tool, params table, result fields,
+  a JSON-RPC request and the errors it can answer; before them, *Calling the
+  RPC route directly* (the discovery file and the checks to make before
+  trusting it, the envelope, headers, HTTP statuses, every error code with its
+  `uxnan-cli` exit status, the MCP door), all from the protocol's own
+  constants. The committed `docs/control-api-reference.md` is that output and a
+  test fails when it is stale; every CLI form is checked against the real clap
+  command tree. The MCP `tools/list` advertises the same result schema as each
+  tool's `outputSchema`. `docs/control-api.md` gained *Calling from outside
+  Uxnan* (what can reach the surface and from where — same machine, same user,
+  loopback only — with shell, Python and MCP-client examples and the rules a
+  caller from outside should know) and *Settings* (the surface has no settings
+  pane by design; the two `state.json` knobs, documented).
+- **The `converse` group of the control surface: send, wait, read.**
+  `agent/send` types a whole message into a running agent as one
+  paste-and-submit — through the orchestration backpressure queue by default,
+  so it lands only when the agent is free (`force` interrupts) — and refuses a
+  terminal with no agent; `agent/wait` blocks until the agent's own hooks say
+  its turn is over (`idle`), it asked the person something (`waiting`) or its
+  terminal is gone (`exit`), sleeping on a new agent-change notifier rather
+  than polling, at most 15 s per call; `terminal/read` returns the last lines
+  of a terminal's screen with secrets **redacted** before they leave the app
+  (headers, `password=`/`token=`-style assignments, private-key blocks,
+  prefixed tokens), audited, and switchable off per project
+  (`settings.control.terminalReadDisabledProjects`). `uxnan-cli agent send`,
+  `agent wait` (heartbeats on stderr until `--timeout`) and `terminal read`.
+
+### Changed
+
+- **The worktree-cleanup nudge is one status-bar item.** It was a rounded
+  button of its own style plus a separate ✕ to dismiss, next to the bar's
+  flat items. It is now one item in the bar's own style — a broom and the
+  count — that opens Settings → Git and retires itself on that click: once
+  you have looked, the reminder has done its job. The "don't mention this
+  again" control is gone with it.
+- **The agent-tools switch stands on its own.** *Settings → Browser → Agent
+  browser MCP* is now *Agent tools (MCP)*, and its master switch *Give
+  launched agents the tools* registers the whole catalog — no longer gated by
+  the integrated browser's master switch, which only takes away the
+  `$BROWSER` shim (the browser tools then answer *unavailable*). The storage
+  keys are unchanged, so nothing a person set is lost.
+- **The app has one local server.** The axum server that `hooks.rs` used to
+  own, and the standalone `mcp.rs`, are rebuilt as `control/`: one loopback
+  server with the hook, browser, MCP and control-RPC routes behind the same two
+  gates (loopback `Host`/`Origin`, then a token), and the MCP tool list is now
+  the control catalog rather than a second, hand-kept list — the existing tool
+  names (`browser_*`, `orchestration_report_*`) are unchanged, so every
+  per-launch agent config keeps working. `hooks.rs` keeps only what a hook
+  report means. The sidebar's `worktree_list` command delegates to the control
+  service that answers `worktree/list`, so there is one implementation.
+- **Windows test binaries carry the Common Controls 6.0 manifest.** `build.rs`
+  embeds `windows-test-manifest.xml` into every test target on MSVC: the
+  control surface's end-to-end tests build a Tauri mock app, which links
+  comctl32 v6-only symbols, and without the manifest the test process could
+  not even be loaded on Windows (`STATUS_ENTRYPOINT_NOT_FOUND`).
+- **The desktop and Node CI workflows can be run on demand** (`workflow_dispatch`),
+  so a multi-phase branch is verified on the platform matrix per phase instead
+  of only once it is proposed for merge.
+- **`src-tauri` is a Cargo workspace.** Two small member crates,
+  `uxnan-control-protocol` (the contract: catalog, envelope, discovery record,
+  selectors, data-dir rules — no Tauri) and `uxnan-cli` (the console client),
+  inherit the app's version from `[workspace.package]`; the release tooling
+  bumps their `Cargo.lock` entries with the app's. The headless automation
+  runner and the app's `datadir` now take the data-directory rules from the
+  protocol crate, so the runner of a development build reads the `-dev`
+  profile like the app does instead of the installed app's.
+
+### Fixed
+
+- **A first message queued at launch could be lost in a starting agent.**
+  The backpressure pump delivered a queued message the moment the tab read
+  *not busy* — which a shell still starting the agent does — so the paste
+  landed before the TUI existed. A message now waits until the terminal has
+  drawn and sat quiet (`readyToReceive`); the busy hold and its cap are
+  unchanged.
+- **`agent/wait` right after `terminal/create` answered `exit`.** A tab the
+  window had just opened has no PTY for a moment, which the wait read as
+  *gone*. It now reads a tab the window says is open as *not reported* and
+  keeps waiting.
+- **`automation/list` (control surface) answered `cwd: null, agent: null`.**
+  The entry mapped fields the automation record never had. It now returns the
+  record's own: `description`, `tags`, `workingDir`, `worktreePerRun`,
+  `schedule` (as saved) and its `steps` (id, title, agent, model), plus
+  `updatedAt`; `uxnan-cli automation ls` shows the working folder, the
+  schedule kind and the step count.
+- **`worktree/create` without an agent put `terminal: null` in its receipt.**
+  The field is now left out when no agent was asked for, as the reference
+  documents.
 
 ## [0.0.51] - 20260920
 ### Added

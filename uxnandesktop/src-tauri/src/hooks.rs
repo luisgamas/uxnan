@@ -32,29 +32,26 @@
 //! PTY id as `UXNAN_AGENT_ID`; a hook echoes that id back so the frontend can map
 //! the report to the terminal/worktree that produced it. The token (required in
 //! the `X-Uxnan-Token` header) rejects stray local processes.
+//!
+//! The server itself — binding, routing, the loopback and token gates, the
+//! endpoint file — lives in `control::server`, which owns every local route
+//! (`/hook`, `/browser`, `/mcp`, the control RPC). This module is only the
+//! meaning of a hook report: [`normalize_event`] and [`handle_report`].
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, State as AxumState},
-    http::{header, HeaderMap, StatusCode},
-    response::Response,
-    routing::{get, post},
-    Router,
+    http::{HeaderMap, StatusCode},
 };
 use serde::Serialize;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::net::TcpListener;
 
 use crate::model::{AgentReport, AgentSession, AgentStatus, SubagentEntry};
-use crate::state::{AppState, HookServerInfo};
+use crate::state::AppState;
 
-/// Header carrying the shared secret that authorizes a hook report.
-const TOKEN_HEADER: &str = "x-uxnan-token";
 /// Header a shell `curl` script uses to pass the terminal (PTY) id out-of-band.
 const AGENT_ID_HEADER: &str = "x-uxnan-agent-id";
 /// Header a shell `curl` script uses to pass the agent kind out-of-band.
@@ -71,10 +68,6 @@ const EVENT_HEADER: &str = "x-uxnan-event";
 const STATUS_HEADER: &str = "x-uxnan-status";
 /// Header the generic wrapper uses to flag a non-zero (interrupted) exit.
 const INTERRUPTED_HEADER: &str = "x-uxnan-interrupted";
-
-/// Max hook body we read (1 MiB). A hook payload is small; this caps a stray /
-/// malicious local process from pushing us to OOM. Oversized → 413, fail-open.
-const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 /// Max characters of the response preview we attach to a `done` report.
 const PREVIEW_MAX: usize = 240;
@@ -744,12 +737,13 @@ pub struct AgentStatusClearedEvent {
 }
 
 /// Broadcast a session boundary to the frontend as `agent:status-cleared`.
-fn emit_agent_status_cleared(
-    app: &AppHandle,
+fn emit_agent_status_cleared<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     agent_id: String,
     agent_type: Option<String>,
     session: Option<AgentSession>,
 ) {
+    app.state::<AppState>().agent_changes.notify_waiters();
     let _ = app.emit(
         "agent:status-cleared",
         AgentStatusClearedEvent {
@@ -760,8 +754,10 @@ fn emit_agent_status_cleared(
     );
 }
 
-/// Broadcast a cached agent entry to the frontend as `agent:status-changed`.
-fn emit_agent_status(app: &AppHandle, entry: crate::model::AgentStateEntry) {
+/// Broadcast a cached agent entry to the frontend as `agent:status-changed`,
+/// and wake whoever waits on agent state (`agent/wait`).
+fn emit_agent_status<R: tauri::Runtime>(app: &AppHandle<R>, entry: crate::model::AgentStateEntry) {
+    app.state::<AppState>().agent_changes.notify_waiters();
     let _ = app.emit(
         "agent:status-changed",
         AgentStatusEvent {
@@ -780,181 +776,6 @@ fn emit_agent_status(app: &AppHandle, entry: crate::model::AgentStateEntry) {
     );
 }
 
-/// Shared context handed to the axum handlers.
-#[derive(Clone)]
-struct HookCtx {
-    app: AppHandle,
-    token: String,
-}
-
-/// Write the "endpoint file" the hook scripts source to recover live
-/// coordinates after an app restart. POSIX writes `endpoint.env` (sourced with
-/// `.`), Windows writes `endpoint.cmd` (sourced with `call`, so each line is
-/// `set KEY=VALUE`). Values are validated shell-safe before writing (the file is
-/// sourced as shell); an unsafe value aborts the write and the caller falls back
-/// to PTY-env-only injection. Atomic (temp + rename). Returns the file path.
-fn write_endpoint_file(dir: &Path, url: &str, token: &str) -> Option<PathBuf> {
-    fn shell_safe(v: &str) -> bool {
-        !v.is_empty()
-            && v.chars()
-                .all(|c| c.is_ascii_alphanumeric() || "._:/-".contains(c))
-    }
-    if !shell_safe(url) || !shell_safe(token) {
-        return None;
-    }
-    let (name, prefix, eol) = if cfg!(windows) {
-        ("endpoint.cmd", "set ", "\r\n")
-    } else {
-        ("endpoint.env", "", "\n")
-    };
-    let body = format!("{prefix}UXNAN_HOOK_URL={url}{eol}{prefix}UXNAN_HOOK_TOKEN={token}{eol}");
-    if std::fs::create_dir_all(dir).is_err() {
-        return None;
-    }
-    let path = dir.join(name);
-    let tmp = dir.join(format!(".endpoint-{}.tmp", std::process::id()));
-    if std::fs::write(&tmp, body.as_bytes()).is_err() {
-        return None;
-    }
-    // Best-effort 0600 so a co-tenant can't read the token off disk.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
-    }
-    if std::fs::rename(&tmp, &path).is_err() {
-        let _ = std::fs::remove_file(&tmp);
-        return None;
-    }
-    Some(path)
-}
-
-/// Bind the hook server to an ephemeral `127.0.0.1` port and spawn its serve
-/// loop on the Tokio runtime. `hooks_dir` is where the endpoint file is written.
-/// Returns the coordinates (url + token + endpoint-file path) so the caller can
-/// publish them for env injection. Errors if the port can't be bound (the app
-/// still runs — just without precise hook reporting).
-pub async fn start(
-    app: AppHandle,
-    token: String,
-    hooks_dir: PathBuf,
-) -> std::io::Result<HookServerInfo> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let port = listener.local_addr()?.port();
-    let url = format!("http://127.0.0.1:{port}/hook");
-    let endpoint_file =
-        write_endpoint_file(&hooks_dir, &url, &token).map(|p| p.to_string_lossy().into_owned());
-    let ctx = HookCtx {
-        app,
-        token: token.clone(),
-    };
-    let router = Router::new()
-        .route("/hook", post(handle_hook))
-        .route("/browser", post(handle_browser))
-        // Browser-control MCP server (spec `02d` §1.6): makes the integrated
-        // browser discoverable to agents as MCP tools. Same server + token.
-        .route("/mcp", post(handle_mcp).get(mcp_get))
-        .route("/health", get(|| async { "ok" }))
-        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .with_state(ctx);
-    tauri::async_runtime::spawn(async move {
-        if let Err(err) = axum::serve(listener, router).await {
-            eprintln!("[uxnan-desktop] hook server stopped: {err}");
-        }
-    });
-    Ok(HookServerInfo {
-        url,
-        token,
-        endpoint_file,
-    })
-}
-
-/// Constant-time equality for the shared per-launch token. Comparing the
-/// SHA-256 digests of both sides (rather than the raw strings) removes the
-/// short-circuit timing side channel a plain `==` on a secret leaks — the count
-/// of matching leading bytes — because the comparison runs over fixed-length,
-/// unpredictable digest bytes an attacker cannot steer toward the target. `sha2`
-/// is already a dependency (Codex trust hashing), so this adds no crate.
-///
-/// `pub(crate)` because `mcp.rs` authorizes callers against the same token and
-/// must use the same constant-time check.
-pub(crate) fn token_eq(a: &str, b: &str) -> bool {
-    let da = Sha256::digest(a.as_bytes());
-    let db = Sha256::digest(b.as_bytes());
-    // Data-independent fold over the two fixed-length (32-byte) digests.
-    let mut diff = 0u8;
-    for (x, y) in da.iter().zip(db.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
-
-/// Whether the request carries the shared token.
-fn authorized(headers: &HeaderMap, token: &str) -> bool {
-    headers
-        .get(TOKEN_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| token_eq(v, token))
-        .unwrap_or(false)
-}
-
-/// Whether an HTTP authority (`host[:port]`, or a bracketed IPv6 literal) points
-/// at loopback: `127.0.0.1`, `localhost`, or `::1`. Any other host — a real
-/// name a DNS-rebinding/CSRF attacker would use — is rejected. A present but
-/// empty authority is treated as suspicious (rejected).
-fn host_is_loopback(authority: &str) -> bool {
-    let authority = authority.trim();
-    if authority.is_empty() {
-        return false;
-    }
-    let host = if let Some(rest) = authority.strip_prefix('[') {
-        // Bracketed IPv6 literal: `[::1]` or `[::1]:port` → take up to `]`.
-        match rest.split_once(']') {
-            Some((inner, _)) => inner,
-            None => return false,
-        }
-    } else if authority == "::1" {
-        // Bare IPv6 loopback (no brackets, no port).
-        "::1"
-    } else {
-        // `host` or `host:port` → the part before the first `:`.
-        authority.split(':').next().unwrap_or(authority)
-    };
-    matches!(host, "127.0.0.1" | "localhost" | "::1")
-}
-
-/// Whether an `Origin` header value is a loopback `http`/`https` origin. A real
-/// web page (the CSRF / DNS-rebinding vector) always sends its true,
-/// non-loopback `Origin`, so only a loopback one is accepted.
-fn origin_is_loopback(origin: &str) -> bool {
-    origin
-        .trim()
-        .strip_prefix("http://")
-        .or_else(|| origin.trim().strip_prefix("https://"))
-        .map(host_is_loopback)
-        .unwrap_or(false)
-}
-
-/// Reject non-loopback callers by header — an explicit gate against
-/// browser-driven CSRF / DNS-rebinding that does not depend on the token or on
-/// CORS-preflight behavior. `Host` must be absent or loopback; `Origin` must be
-/// absent or a loopback `http(s)` origin. The reporters send a loopback `Host`
-/// and no `Origin`; a browser page always sends its real `Origin`. Every
-/// state-changing route runs this before the token check.
-pub(crate) fn loopback_caller(headers: &HeaderMap) -> bool {
-    if let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) {
-        if !host_is_loopback(host) {
-            return false;
-        }
-    }
-    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
-        if !origin_is_loopback(origin) {
-            return false;
-        }
-    }
-    true
-}
-
 /// Read a header as an owned, trimmed, non-empty string.
 fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
@@ -964,22 +785,16 @@ fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Handle one `POST /hook`: authorize, resolve the report (from headers and/or
-/// body, in any of the three accepted shapes), normalize, cache + persist,
-/// broadcast. Always fails open — an unrecognized event or a malformed body
-/// returns `204` so a broken hook can never break the agent that fired it.
-async fn handle_hook(
-    AxumState(ctx): AxumState<HookCtx>,
+/// Handle one `POST /hook` that the local server has already authorized
+/// (`control::server`): resolve the report (from headers and/or body, in any
+/// of the three accepted shapes), normalize, cache + persist, broadcast. Always
+/// fails open — an unrecognized event or a malformed body returns `204` so a
+/// broken hook can never break the agent that fired it.
+pub(crate) async fn handle_report<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
-    if !loopback_caller(&headers) {
-        return StatusCode::FORBIDDEN;
-    }
-    if !authorized(&headers, &ctx.token) {
-        return StatusCode::UNAUTHORIZED;
-    }
-
     // The body may be: a JSON envelope `{agentId, agentType, event, source, …}`
     // (node relay / JS plugin), a raw provider event (shell curl), or empty
     // (generic wrapper — everything is in headers). Parse leniently.
@@ -1036,7 +851,7 @@ async fn handle_hook(
             return StatusCode::NO_CONTENT;
         };
         let now = now_secs();
-        let state = ctx.app.state::<AppState>();
+        let state = app.state::<AppState>();
         let entry = {
             let mut data = state.data.write().await;
             let entry = data.upsert_subagent(
@@ -1057,7 +872,7 @@ async fn handle_hook(
             let _ = state.persistence.save(&data);
             entry
         };
-        emit_agent_status(&ctx.app, entry);
+        emit_agent_status(app, entry);
         return StatusCode::NO_CONTENT;
     }
 
@@ -1084,7 +899,7 @@ async fn handle_hook(
         })
         .map(str::to_string)
     {
-        let state = ctx.app.state::<AppState>();
+        let state = app.state::<AppState>();
         let is_child = {
             let data = state.data.read().await;
             data.is_subagent_session(&agent_id, &child_id)
@@ -1101,7 +916,7 @@ async fn handle_hook(
                 entry
             };
             if let Some(entry) = entry {
-                emit_agent_status(&ctx.app, entry);
+                emit_agent_status(app, entry);
             }
             return StatusCode::NO_CONTENT;
         }
@@ -1122,13 +937,13 @@ async fn handle_hook(
             (Some(at), Some(ev)) if is_session_boundary(at, ev, source) => {
                 let now = now_secs();
                 let session = source.and_then(|s| extract_session(s, now));
-                let state = ctx.app.state::<AppState>();
+                let state = app.state::<AppState>();
                 {
                     let mut data = state.data.write().await;
                     data.clear_agent_state(&agent_id);
                     let _ = state.persistence.save(&data);
                 }
-                emit_agent_status_cleared(&ctx.app, agent_id, agent_type, session);
+                emit_agent_status_cleared(app, agent_id, agent_type, session);
                 return StatusCode::NO_CONTENT;
             }
             (Some(at), Some(ev)) => match normalize_event(at, ev, source) {
@@ -1196,7 +1011,7 @@ async fn handle_hook(
     // Provider session identity (for resume) — most events repeat it; a miss
     // never clears an id captured earlier (see `upsert_agent_state`).
     let session = source.and_then(|s| extract_session(s, now));
-    let state = ctx.app.state::<AppState>();
+    let state = app.state::<AppState>();
     let entry = {
         let mut data = state.data.write().await;
         let entry = data.upsert_agent_state(
@@ -1217,7 +1032,7 @@ async fn handle_hook(
         entry
     };
 
-    emit_agent_status(&ctx.app, entry);
+    emit_agent_status(app, entry);
     StatusCode::NO_CONTENT
 }
 
@@ -1309,51 +1124,6 @@ fn parse_status(s: &str) -> Option<AgentStatus> {
         "done" => Some(AgentStatus::Done),
         _ => None,
     }
-}
-
-/// The JSON body the agent `BROWSER` shim POSTs to open a URL in-app: `{"url": …}`.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct BrowserRequest {
-    url: String,
-}
-
-/// Handle one `POST /browser`: authorize, then route the URL through the user's
-/// browser policy (in-app tab / OS browser / prompt). Lets an agent open a link in
-/// the integrated browser via `UXNAN_BROWSER_URL` + `UXNAN_BROWSER_TOKEN`.
-async fn handle_browser(
-    AxumState(ctx): AxumState<HookCtx>,
-    headers: HeaderMap,
-    axum::Json(payload): axum::Json<BrowserRequest>,
-) -> StatusCode {
-    if !loopback_caller(&headers) {
-        return StatusCode::FORBIDDEN;
-    }
-    if !authorized(&headers, &ctx.token) {
-        return StatusCode::UNAUTHORIZED;
-    }
-    if payload.url.trim().is_empty() {
-        return StatusCode::BAD_REQUEST;
-    }
-    match crate::browser::route_url(&ctx.app, payload.url).await {
-        Ok(()) => StatusCode::NO_CONTENT,
-        Err(_) => StatusCode::BAD_REQUEST,
-    }
-}
-
-/// Handle a `POST /mcp`: the browser-control MCP endpoint. Thin wrapper that hands
-/// the app handle + token to [`crate::mcp::handle`] (which authorizes and runs the
-/// JSON-RPC handshake). Kept here so it shares the hook server's `HookCtx`/token.
-async fn handle_mcp(
-    AxumState(ctx): AxumState<HookCtx>,
-    headers: HeaderMap,
-    body: axum::body::Bytes,
-) -> Response {
-    crate::mcp::handle(ctx.app.clone(), ctx.token.clone(), headers, body).await
-}
-
-/// Handle a `GET /mcp`: we don't offer the optional server→client SSE stream.
-async fn mcp_get() -> Response {
-    crate::mcp::handle_get().await
 }
 
 #[cfg(test)]
@@ -1960,52 +1730,6 @@ mod tests {
         assert!(json.contains("agentId"));
         assert!(json.contains("firstSeen"));
         assert!(json.contains("\"waiting\""));
-    }
-
-    #[test]
-    fn token_eq_matches_only_equal_strings() {
-        assert!(token_eq("s3cret-token", "s3cret-token"));
-        assert!(token_eq("", ""));
-        // Same length, one differing byte.
-        assert!(!token_eq("s3cret-token", "s3cret-tokeN"));
-        // Prefix of the real token must not pass.
-        assert!(!token_eq("s3cret", "s3cret-token"));
-        assert!(!token_eq("", "x"));
-    }
-
-    #[test]
-    fn loopback_caller_gates_by_host_and_origin() {
-        use axum::http::{HeaderName, HeaderValue};
-        let with = |pairs: &[(HeaderName, &str)]| {
-            let mut h = HeaderMap::new();
-            for (name, value) in pairs {
-                h.insert(name.clone(), HeaderValue::from_str(value).unwrap());
-            }
-            h
-        };
-        // No Host/Origin at all → allowed (programmatic clients may omit both).
-        assert!(loopback_caller(&HeaderMap::new()));
-        // Loopback Host, no Origin → allowed (the reporters' request shape).
-        assert!(loopback_caller(&with(&[(header::HOST, "127.0.0.1:5123")])));
-        assert!(loopback_caller(&with(&[(header::HOST, "localhost")])));
-        assert!(loopback_caller(&with(&[(header::HOST, "[::1]:80")])));
-        assert!(loopback_caller(&with(&[(header::HOST, "::1")])));
-        // A loopback http(s) Origin (a dev page served from localhost) → allowed.
-        assert!(loopback_caller(&with(&[(
-            header::ORIGIN,
-            "http://localhost:1420"
-        )])));
-        // A real, non-loopback Host or Origin → rejected (CSRF / DNS-rebinding).
-        assert!(!loopback_caller(&with(&[(header::HOST, "evil.example")])));
-        assert!(!loopback_caller(&with(&[(
-            header::ORIGIN,
-            "https://evil.example"
-        )])));
-        // A loopback Host paired with a hostile Origin → still rejected.
-        assert!(!loopback_caller(&with(&[
-            (header::HOST, "127.0.0.1:5123"),
-            (header::ORIGIN, "https://evil.example"),
-        ])));
     }
 
     #[test]

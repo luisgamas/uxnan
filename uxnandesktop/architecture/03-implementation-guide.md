@@ -103,6 +103,9 @@ Cada command es una funcion async de Rust que recibe parametros tipados, ejecuta
 - `agent_status_get` - Obtener el ultimo estado conocido de un agente
 - `settings_update` - Actualizar preferencias de la aplicacion
 
+**Superficie de control (`02d` §1.6):**
+- `control_respond` - La respuesta de la ventana a un `control:request` (pestanas, archivos abiertos, corridas): el backend la entrega a la peticion MCP/RPC que esperaba. `control_notify` - la ventana avisa que una corrida cambio (una tarea termino, una pregunta se respondio, un mensaje llego a la bandeja) y despierta a `inbox/check --wait` y `question/ask`. Los demas comandos de la superficie no son comandos Tauri sino entradas del catalogo (`crates/control-protocol`), servidas por `control/services/` a la ventana, a MCP y a `uxnan-cli` por igual
+
 **Bridge Movil:**
 - `bridge_start` - Iniciar el servidor de bridge para conexion movil
 - `bridge_stop` - Detener el servidor de bridge
@@ -198,6 +201,7 @@ Los commands siguen un patron request/response: el frontend pide, el backend res
 |--------|--------|---------|-----------|
 | `git:status-changed` | Timer Tokio (polling cada 3s) | Archivos, ahead/behind y `HEAD` actual | Mantener Cambios al día y refrescar Historial/GitHub tras commits o amends externos |
 | `agent:status-changed` | Servidor de hooks HTTP | ID del agente, nuevo estado (working/waiting/blocked/done) | Actualizar badges e indicadores en sidebar izquierda |
+| `control:request` | Superficie de control (`control/bridge.rs`) | `{ id, method, params }` | La ventana responde con `control_respond` sobre lo que solo ella sabe: pestanas de terminal, archivos abiertos, corridas |
 | `pty:output:{id}` | PTY Manager | Bytes crudos del stdout del PTY | Alimentar xterm.js con output del terminal en tiempo real |
 | `notification:agent-completed` | Modulo de notificaciones | ID del agente, worktree, timestamp | Disparar notificacion nativa del OS |
 | `bridge:connection-changed` | Bridge server | Estado de conexion (connected/disconnected/error) | Actualizar indicador de bridge en la UI |

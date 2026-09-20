@@ -732,8 +732,7 @@ export const en = {
   "settings.worktreeCleanupScan": "Look for old worktrees",
   "settings.worktreeCleanupNotice": "{count} worktrees",
   "settings.worktreeCleanupNoticeHint":
-    "The managed worktree folder has been filling up. Open Settings → Git to see what can go.",
-  "settings.worktreeCleanupNoticeDismiss": "Don't mention this again",
+    "The managed worktree folder has been filling up. Open Settings → Git to see what can go — this reminder goes away once you have looked.",
   "settings.worktreeCleanupIdle":
     "Nothing scanned yet. Only the managed folder is ever looked at, and nothing is removed until you pick it.",
   "settings.worktreeCleanupEmpty": "Nothing to clean up — the managed folder holds only live work.",
@@ -1732,20 +1731,20 @@ export const en = {
   "browser.addressPlaceholder": "Enter a URL",
   "browser.unavailable": "The integrated browser isn't available here.",
   "browser.askPrompt": "Open {url} in the integrated browser? (Cancel opens your system browser.)",
-  "browser.mcpHeading": "Agent browser MCP",
-  "browser.mcpEnabled": "Let agents drive the browser",
+  "browser.mcpHeading": "Agent tools (MCP)",
+  "browser.mcpEnabled": "Give launched agents the tools",
   "browser.mcpEnabledDesc":
-    "Expose the browser as MCP tools so agents launched here discover and drive it automatically — no setup, no docs. Set up per launch, so agents you run outside uxnan never see it.",
+    "Register uxnan's tools in every agent launched here — read the projects, worktrees and terminals it holds, show you a file or a diff, drive the browser, create a worktree for a subtask, talk to another agent — with nothing to install. Set up per launch, so agents you run outside uxnan never see them.",
   "browser.frictionFree": "Frictionless launch",
   "browser.frictionFreeDesc":
     "Skip the CLI's “trust this folder?” prompt for app-launched agents where supported (currently Codex).",
   "browser.mcpAgents": "Agents",
   "browser.mcpAgentsDesc":
-    "Which agents get the browser tools when uxnan launches them, and what each launch is given. Others can be wired by hand below.",
-  "browser.mcpAgentAria": "Set up the browser tools for {agent}",
+    "Which agents get the tools when uxnan launches them, and what each launch is given. Others can be wired by hand below.",
+  "browser.mcpAgentAria": "Set up the tools for {agent}",
   "browser.mcpSnippet": "Manual config",
   "browser.mcpSnippetDesc":
-    "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above). That one lives in your own config, so it stays there until you remove it.",
+    "Copy a ready-to-paste MCP server config to wire an agent yourself (e.g. one not listed above). Fill the agent-id header with the terminal's UXNAN_AGENT_ID the way that CLI expands variables — it is what scopes the agent to its project. That config lives in your own files, so it stays there until you remove it.",
   "browser.mcpCopy": "Copy",
   "browser.mcpCopied": "Copied",
   "browser.mcpWaiting": "Available once the app's local server is running.",

@@ -395,7 +395,7 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
 - **Agentes:** con `enabled && allowAgents`, cada terminal de agente recibe
   `UXNAN_BROWSER_URL` + `UXNAN_BROWSER_TOKEN` y un shim `$BROWSER`
   (`static/hooks/uxnan-browser.{sh,cmd}`). Una URL que el agente abre se hace `POST`
-  a la ruta **`/browser`** del servidor de hooks local (`hooks.rs`), que la enruta
+  a la ruta **`/browser`** del servidor local de la app (`control/server.rs`), que la enruta
   por la misma política. Mismo patrón que `UXNAN_HOOK_*`.
 - **Terminal:** las URLs impresas en la terminal son clicables con **Ctrl/Cmd+clic**
   (`@xterm/addon-web-links`) y pasan por `open_url` (toggle `terminalLinks`).

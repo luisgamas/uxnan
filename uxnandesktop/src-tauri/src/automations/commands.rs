@@ -173,7 +173,10 @@ pub fn automations_runs_dir() -> Result<String, CommandError> {
 /// is launched — progress is read from the run record, which the runner rewrites
 /// as steps advance.
 #[tauri::command]
-pub fn automations_run_now(_app: AppHandle, id: String) -> Result<(), CommandError> {
+pub fn automations_run_now<R: tauri::Runtime>(
+    _app: AppHandle<R>,
+    id: String,
+) -> Result<(), CommandError> {
     let exe = oscheduler::current_exe().map_err(CommandError::from)?;
     let mut args = oscheduler::run_args(&id);
     // Same runner, tagged as manual so the history can tell them apart.

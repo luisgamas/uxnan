@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  ackInbox,
   addStep,
   createRun,
   deriveRunStatus,
+  dispatchIdFor,
+  isDriven,
+  postInbox,
+  workerPreamble,
   hasCycle,
   isRunTerminal,
   isStepTerminal,
@@ -202,5 +207,44 @@ describe("stepsById", () => {
   it("indexes steps by id", () => {
     const r = runOf([step("s1", "ready"), step("s2", "pending")]);
     expect(Object.keys(stepsById(r))).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("driven runs", () => {
+  it("tells a coordinator-driven run from a person's", () => {
+    const r = runOf([]);
+    expect(isDriven(r)).toBe(false);
+    expect(isDriven({ ...r, driven: { coordinator: "t1" } })).toBe(true);
+  });
+
+  it("mints a dispatch id per attempt", () => {
+    const s = { ...step("s3", "running"), attempts: 2 };
+    expect(dispatchIdFor(s)).toBe("s3.2");
+  });
+
+  it("posts inbox messages FIFO with monotonic delivery ids and drops acked ones", () => {
+    let r = runOf([]);
+    r = postInbox(r, { type: "worker_done", stepId: "s1", dispatchId: "s1.1", text: "ok" }, 10);
+    r = postInbox(r, { type: "question", stepId: "s2", text: "which db?" }, 11);
+    expect(r.inbox?.map((m) => m.deliveryId)).toEqual(["m1", "m2"]);
+    expect(r.inbox?.[0]).toMatchObject({ type: "worker_done", at: 10, dispatchId: "s1.1" });
+    r = ackInbox(r, ["m1", "nope"]);
+    expect(r.inbox?.map((m) => m.deliveryId)).toEqual(["m2"]);
+    // The counter never rewinds: a later message cannot reuse an acked id.
+    r = postInbox(r, { type: "status", stepId: "s2", text: "…" }, 12);
+    expect(r.inbox?.map((m) => m.deliveryId)).toEqual(["m2", "m3"]);
+  });
+
+  it("writes a worker preamble that names the dispatch, both doors and the task", () => {
+    const text = workerPreamble(
+      { runId: "run-1", taskId: "s2", dispatchId: "s2.1", title: "Parser" },
+      "Implement the parser.",
+    );
+    expect(text).toContain('task s2 ("Parser"), dispatch s2.1');
+    expect(text).toContain("orchestration_report_result");
+    expect(text).toContain("uxnan-cli rpc orchestration/reportResult");
+    expect(text).toContain('dispatchId "s2.1"');
+    expect(text).toContain("question_ask");
+    expect(text.endsWith("Task:\nImplement the parser.")).toBe(true);
   });
 });

@@ -12,18 +12,19 @@
   // that a directory listing answers well enough. Clicking through runs the
   // real scan, which is where the sizes come from.
   //
-  // Dismissing is permanent (`worktrees.cleanupNoticeDismissed`): a nudge that
-  // comes back after being waved away is nagging.
-  import { Button } from "$lib/components/ui/button";
+  // One status-bar item, in the bar's own style, that opens Settings → Git —
+  // and retires itself on that click: once the person has looked, the nudge
+  // has done its job, and the section is always there to open on purpose. A
+  // nudge that comes back after being looked at is nagging, so the retirement
+  // is permanent (`worktrees.cleanupNoticeDismissed`).
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { Icon } from "$lib/components/ui/icon";
   import { app } from "$lib/state/app.svelte";
   import { worktreeCleanupCount } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon as iconSize } from "$lib/design";
+  import { focus, icon as iconSize, shell } from "$lib/design";
   import BroomIcon from "@hugeicons/core-free-icons/CleanIcon";
-  import CloseIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
   /** Below this the folder is simply in use, and saying anything is noise. */
   const THRESHOLD = 12;
@@ -42,39 +43,31 @@
       .catch(() => (count = 0));
   });
 
-  function dismiss() {
+  /** Open the cleanup section and retire the nudge: it has been looked at. */
+  function lookAndRetire() {
     app.settings.worktrees = { ...app.settings.worktrees, cleanupNoticeDismissed: true };
     void app.persistSettings();
+    app.openSettings("git");
   }
 </script>
 
 {#if show}
-  <div class="flex items-center">
-    <TooltipSimple title={i18n.t("settings.worktreeCleanupNoticeHint")}>
-      {#snippet children(props)}
-        <button
-          {...props}
-          type="button"
-          class={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium",
-            "text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-          )}
-          onclick={() => app.openSettings("git")}
-        >
-          <Icon icon={BroomIcon} class={iconSize.action} />
-          {i18n.t("settings.worktreeCleanupNotice", { count })}
-        </button>
-      {/snippet}
-    </TooltipSimple>
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      class="size-6 text-muted-foreground/70 hover:text-foreground"
-      title={i18n.t("settings.worktreeCleanupNoticeDismiss")}
-      aria-label={i18n.t("settings.worktreeCleanupNoticeDismiss")}
-      onclick={dismiss}
-    >
-      <Icon icon={CloseIcon} class="size-3" />
-    </Button>
-  </div>
+  <TooltipSimple title={i18n.t("settings.worktreeCleanupNoticeHint")}>
+    {#snippet children(props)}
+      <button
+        {...props}
+        type="button"
+        class={cn(
+          shell.statusBarItem,
+          "text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+          focus.ring,
+        )}
+        aria-label={i18n.t("settings.worktreeCleanupNoticeHint")}
+        onclick={lookAndRetire}
+      >
+        <Icon icon={BroomIcon} class={iconSize.action} />
+        {i18n.t("settings.worktreeCleanupNotice", { count })}
+      </button>
+    {/snippet}
+  </TooltipSimple>
 {/if}

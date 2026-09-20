@@ -735,8 +735,7 @@ export const es: Record<MessageKey, string> = {
   "settings.worktreeCleanupScan": "Buscar worktrees viejos",
   "settings.worktreeCleanupNotice": "{count} worktrees",
   "settings.worktreeCleanupNoticeHint":
-    "La carpeta gestionada de worktrees se está llenando. Abre Ajustes → Git para ver qué se puede quitar.",
-  "settings.worktreeCleanupNoticeDismiss": "No volver a avisar",
+    "La carpeta gestionada de worktrees se está llenando. Abre Ajustes → Git para ver qué se puede quitar — este aviso desaparece en cuanto lo hayas mirado.",
   "settings.worktreeCleanupIdle":
     "Todavía no se ha buscado nada. Solo se mira la carpeta gestionada, y no se borra nada hasta que tú lo marques.",
   "settings.worktreeCleanupEmpty":
@@ -1742,20 +1741,20 @@ export const es: Record<MessageKey, string> = {
   "browser.addressPlaceholder": "Escribe una URL",
   "browser.unavailable": "El navegador integrado no está disponible aquí.",
   "browser.askPrompt": "¿Abrir {url} en el navegador integrado? (Cancelar abre tu navegador del sistema.)",
-  "browser.mcpHeading": "MCP de navegador para agentes",
-  "browser.mcpEnabled": "Deja que los agentes usen el navegador",
+  "browser.mcpHeading": "Herramientas para agentes (MCP)",
+  "browser.mcpEnabled": "Dar las herramientas a los agentes lanzados",
   "browser.mcpEnabledDesc":
-    "Expón el navegador como herramientas MCP para que los agentes que lances aquí lo descubran y lo usen solos — sin configurar, sin documentación. Se configura en cada lanzamiento, así que los agentes que uses fuera de uxnan nunca lo ven.",
+    "Registra las herramientas de uxnan en cada agente que lances aquí — leer los proyectos, worktrees y terminales que tiene, mostrarte un archivo o un diff, manejar el navegador, crear un worktree para una subtarea, hablar con otro agente — sin instalar nada. Se configura en cada lanzamiento, así que los agentes que uses fuera de uxnan nunca las ven.",
   "browser.frictionFree": "Lanzamiento sin fricción",
   "browser.frictionFreeDesc":
     "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex).",
   "browser.mcpAgents": "Agentes",
   "browser.mcpAgentsDesc":
-    "Qué agentes reciben las herramientas del navegador cuando uxnan los lanza, y qué recibe cada lanzamiento. Los demás se pueden cablear a mano abajo.",
-  "browser.mcpAgentAria": "Configurar las herramientas del navegador para {agent}",
+    "Qué agentes reciben las herramientas cuando uxnan los lanza, y qué recibe cada lanzamiento. Los demás se pueden cablear a mano abajo.",
+  "browser.mcpAgentAria": "Configurar las herramientas para {agent}",
   "browser.mcpSnippet": "Config manual",
   "browser.mcpSnippetDesc":
-    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba). Esa vive en tu propia config, así que se queda ahí hasta que la quites.",
+    "Copia una config de servidor MCP lista para pegar y cablear un agente tú mismo (p. ej. uno no listado arriba). Rellena la cabecera de id de agente con el UXNAN_AGENT_ID de la terminal como ese CLI expanda variables — es lo que acota al agente a su proyecto. Esa config vive en tus propios archivos, así que se queda ahí hasta que la quites.",
   "browser.mcpCopy": "Copiar",
   "browser.mcpCopied": "Copiado",
   "browser.mcpWaiting": "Disponible cuando el servidor local de la app esté corriendo.",

@@ -50,7 +50,8 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 | `target.rs` | Execution-target identity (`local` / `ssh:<host>`) + the fencing that refuses a mutation aimed at another machine. |
 
 Later phases add the runtime modules that are all present today — `pty.rs`,
-`git.rs` / `gitfast.rs`, `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
+`git.rs` / `gitfast.rs`, `control/` (the one local server, the control catalog's
+services, the window bridge), `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
 `fs.rs` / `fswatch.rs`, `power.rs`, `pets.rs` and `which.rs` — plus the whole
 **`ssh/`** subsystem behind remote hosts (`conn`, `auth`, `hostkey`, `config`,
 `registry`, `inventory`, `shellkind`, `pty`, `browse`, `sftp`, `git`), which is

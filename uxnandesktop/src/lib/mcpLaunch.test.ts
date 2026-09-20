@@ -120,8 +120,9 @@ describe("withMcpLaunch", () => {
     syncMcpLaunchSettings({ ...ON, mcpEnabled: false });
     expect(withMcpLaunch("claude", "cmd.exe")).toBe("claude");
 
+    // The browser's own switch is not a gate: the tools are the whole catalog.
     syncMcpLaunchSettings({ ...ON, enabled: false });
-    expect(withMcpLaunch("claude", "cmd.exe")).toBe("claude");
+    expect(withMcpLaunch("claude", "cmd.exe")).not.toBe("claude");
 
     syncMcpLaunchSettings({ ...ON, mcpDisabledAgents: ["claude"] });
     expect(withMcpLaunch("claude", "cmd.exe")).toBe("claude");

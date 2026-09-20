@@ -80,6 +80,44 @@ export interface Dispatch {
   queued: QueuedMessage;
 }
 
+/** What the backpressure pump knows about one agent when deciding whether its
+ *  queue head may go out now. */
+export interface ReceiveState {
+  /** The agent reads busy (a precise hook state, or sustained output). */
+  busy: boolean;
+  /** When its terminal last produced output (epoch ms); undefined if never. */
+  lastOutputAt: number | undefined;
+  /** When the queue head started waiting (epoch ms); undefined if it just did. */
+  headSince: number | undefined;
+  now: number;
+}
+
+/** A terminal must have drawn and then sat quiet this long before a paste can
+ *  land in it: a message typed into a shell that is still starting the agent,
+ *  or into a TUI still painting its first frame, is lost. */
+export const SETTLE_MS = 1_500;
+
+/** Hard cap on how long a queued message is held back solely because its agent
+ *  reads *busy* or keeps painting. Backpressure is a courtesy (don't flood a
+ *  working agent), not a gate — an agent whose busy signal is unreliable or
+ *  stuck (no hooks, perpetual output activity, a stale status reader) would
+ *  otherwise wedge its queue forever. Past this, the head is force-delivered
+ *  (best-effort). */
+export const MAX_HOLD_MS = 12_000;
+
+/** Whether an agent may receive its queue head now (pure). In order: a terminal
+ *  that has never produced output is not up yet — hold, without a cap, since a
+ *  paste there is simply lost; one still painting (output within
+ *  [`SETTLE_MS`]) or busy is held until it settles and frees, or until the head
+ *  has waited [`MAX_HOLD_MS`], whichever comes first. */
+export function readyToReceive(s: ReceiveState): boolean {
+  if (s.lastOutputAt === undefined) return false;
+  const heldPastCap = s.headSince !== undefined && s.now - s.headSince >= MAX_HOLD_MS;
+  if (heldPastCap) return true;
+  if (s.now - s.lastOutputAt < SETTLE_MS) return false;
+  return !s.busy;
+}
+
 /** Backpressure core (pure): pick the head of every agent's queue that is
  *  available right now, and return the queues with those heads removed. Only the
  *  single head per agent is dispatched — the next waits until the agent reports

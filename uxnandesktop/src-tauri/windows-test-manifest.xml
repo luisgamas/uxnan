@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  The application manifest of every binary this package links on Windows (MSVC): the app and the test harnesses.
+
+  tauri-build embeds this same dependency into the app executable, so its
+  window-subclassing calls resolve against Common Controls 6.0. A `cargo test`
+  binary gets no manifest from tauri-build, and once it links Tauri's mock
+  runtime it imports those same comctl32 v6-only symbols (SetWindowSubclass and
+  friends): the loader then binds the System32 comctl32 5.82 and the process dies
+  at load with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) before a single test
+  runs. `build.rs` embeds this file into every test target to give it the same
+  dependency the app has. Nothing here is specific to the tests' behaviour.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
