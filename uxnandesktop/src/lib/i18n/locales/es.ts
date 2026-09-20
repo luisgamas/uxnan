@@ -735,8 +735,7 @@ export const es: Record<MessageKey, string> = {
   "settings.worktreeCleanupScan": "Buscar worktrees viejos",
   "settings.worktreeCleanupNotice": "{count} worktrees",
   "settings.worktreeCleanupNoticeHint":
-    "La carpeta gestionada de worktrees se está llenando. Abre Ajustes → Git para ver qué se puede quitar.",
-  "settings.worktreeCleanupNoticeDismiss": "No volver a avisar",
+    "La carpeta gestionada de worktrees se está llenando. Abre Ajustes → Git para ver qué se puede quitar — este aviso desaparece en cuanto lo hayas mirado.",
   "settings.worktreeCleanupIdle":
     "Todavía no se ha buscado nada. Solo se mira la carpeta gestionada, y no se borra nada hasta que tú lo marques.",
   "settings.worktreeCleanupEmpty":

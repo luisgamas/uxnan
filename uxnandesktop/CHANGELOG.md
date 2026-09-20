@@ -111,6 +111,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **The worktree-cleanup nudge is one status-bar item.** It was a rounded
+  button of its own style plus a separate ✕ to dismiss, next to the bar's
+  flat items. It is now one item in the bar's own style — a broom and the
+  count — that opens Settings → Git and retires itself on that click: once
+  you have looked, the reminder has done its job. The "don't mention this
+  again" control is gone with it.
 - **The agent-tools switch stands on its own.** *Settings → Browser → Agent
   browser MCP* is now *Agent tools (MCP)*, and its master switch *Give
   launched agents the tools* registers the whole catalog — no longer gated by

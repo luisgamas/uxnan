@@ -168,11 +168,12 @@ inside a managed root. It never deletes a folder just because of where it sits.
 ### The status-bar nudge
 
 Once the managed folder holds 12 or more checkouts, a one-time item appears in
-the status bar linking here. It counts **folders**, not bytes: measuring the
-size means walking every `node_modules`, and that question would be asked at
-every startup. Dismissing it is permanent
-(`worktrees.cleanupNoticeDismissed`) — a reminder that returns after being waved
-away is nagging, and this section is always here to open on purpose.
+the status bar — the bar's usual style, a broom and the count — that opens this
+section. It counts **folders**, not bytes: measuring the size means walking
+every `node_modules`, and that question would be asked at every startup.
+Clicking it retires it for good (`worktrees.cleanupNoticeDismissed`): once you
+have looked, the nudge has done its job — a reminder that returns after being
+looked at is nagging, and this section is always here to open on purpose.
 
 ## When a folder is not there
 

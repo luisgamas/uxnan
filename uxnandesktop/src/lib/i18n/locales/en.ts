@@ -732,8 +732,7 @@ export const en = {
   "settings.worktreeCleanupScan": "Look for old worktrees",
   "settings.worktreeCleanupNotice": "{count} worktrees",
   "settings.worktreeCleanupNoticeHint":
-    "The managed worktree folder has been filling up. Open Settings → Git to see what can go.",
-  "settings.worktreeCleanupNoticeDismiss": "Don't mention this again",
+    "The managed worktree folder has been filling up. Open Settings → Git to see what can go — this reminder goes away once you have looked.",
   "settings.worktreeCleanupIdle":
     "Nothing scanned yet. Only the managed folder is ever looked at, and nothing is removed until you pick it.",
   "settings.worktreeCleanupEmpty": "Nothing to clean up — the managed folder holds only live work.",
