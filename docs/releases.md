@@ -205,16 +205,21 @@ the same reason.
 
 | Field | Value |
 |---|---|
+| Label | optional — `GitHub Actions — release-npm.yml` |
 | Organization or user | `luisgamas` |
 | Repository | `uxnan` |
 | Workflow filename | `release-npm.yml` |
-| Environment name | *(leave empty)* |
+| Environment name | *(leave empty — the workflow declares no `environment:`, and a name here that the job does not carry makes the id-token mismatch)* |
+| Allowed actions | **tick "Allow `npm publish`"** — unticked, the publisher may only `npm stage publish`, and the workflow publishes directly |
 
 for each of `@uxnan/shared`, `uxnan-bridge` and `uxnan-relay`. The filename is
 the top-level workflow, not the reusable `verify-node.yml` it calls. A package
 whose publisher is missing fails its publish with `ENEEDAUTH`; the fix is that
-form, never a token. Once all three are registered, delete the `NPM_TOKEN`
-secret: an unused expired token is only a thing to be confused by.
+form, never a token. On the same page, set *Publishing access* to **"Require
+two-factor authentication and disallow bypass 2fa tokens"**: npm states it is
+compatible with trusted publishers, and with no token in use it closes that
+door entirely. Once all three are registered, delete the `NPM_TOKEN` secret: an
+unused expired token is only a thing to be confused by.
 
 What the workflow needs for the exchange to happen — each is commented in the
 file so it is not "simplified" away: npm 11.5.1 or newer (the runner's Node 22
