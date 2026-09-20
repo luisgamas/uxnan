@@ -442,9 +442,18 @@ line moved → bookkeeping), and `npm run release:status` prints a ⚠ when the 
 tag has not landed on `main`. The fix for the state itself is simply to merge the
 pull request. The wasted version number is not recoverable — bases never repeat.
 
-**npm never served the new shared.** The run fails after tagging shared. Check
-`release-npm.yml`; once it is green and `npm view @uxnan/shared version` reports
-the version, re-run the dispatch for the consumers only.
+**npm never served the new shared.** The run goes red **after** opening the bump
+pull request, which the `land` job still merges, so `main` is level with the
+`shared` tag; the consumers were not tagged (they would have pinned the previous
+shared). The summary says the rest: check `release-npm.yml` on the `shared` tag
+— since Trusted Publishing, the usual cause is a package whose trusted publisher
+is not registered (`ENEEDAUTH`, see *npm: Trusted Publishing*) — once fixed,
+dispatch *Release — npm* with the tag (`-f tag=shared-v…`; a re-run of the old
+job would use the old workflow file), wait for `npm view @uxnan/shared version`
+to report the version, then dispatch the cut again for the consumers only. (Before 2026-09-20
+the run failed *inside* the wait, skipped the pull request and left the tag on a
+commit that was not on `main`; the pull request had to be opened by hand from
+the tag's commit.)
 
 **A nightly published something broken.** Delete the release and its tag, then cut
 a new one — the base must still move forward, so the next nightly gets a higher
