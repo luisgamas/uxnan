@@ -108,6 +108,71 @@ test('a 401 from the usage API maps to authRequired (keeping the account)', asyn
   assert.equal(u?.account?.plan, 'Max');
 });
 
+test('claude on macOS without a credentials file reports the Keychain honestly', async () => {
+  const [u] = await readUsage(
+    ['claude'],
+    deps({
+      platform: 'darwin',
+      readFile: fileMap({ '/.claude.json': { oauthAccount: { emailAddress: 'd@x.io' } } }),
+    }),
+  );
+  assert.equal(u?.status, 'authRequired');
+  assert.match(u?.message ?? '', /Keychain/);
+  // Elsewhere the same state is simply "not signed in".
+  const [v] = await readUsage(
+    ['claude'],
+    deps({
+      platform: 'linux',
+      readFile: fileMap({ '/.claude.json': { oauthAccount: { emailAddress: 'd@x.io' } } }),
+    }),
+  );
+  assert.equal(v?.status, 'notInstalled');
+});
+
+test('claude reports an expired access token as authRequired without calling the API', async () => {
+  let fetched = false;
+  const [u] = await readUsage(
+    ['claude'],
+    deps({
+      readFile: fileMap({
+        '/.claude/.credentials.json': {
+          claudeAiOauth: { accessToken: 'tok', expiresAt: 1_699_999_000_000 },
+        },
+      }),
+      fetchImpl: async () => {
+        fetched = true;
+        return res(200, {});
+      },
+    }),
+  );
+  assert.equal(u?.status, 'authRequired');
+  assert.match(u?.message ?? '', /expired/);
+  assert.equal(fetched, false);
+});
+
+test('claude takes email and organization from ~/.claude.json', async () => {
+  const [u] = await readUsage(
+    ['claude'],
+    deps({
+      readFile: fileMap({
+        '/.claude/.credentials.json': {
+          claudeAiOauth: {
+            accessToken: 'tok',
+            subscriptionType: 'max',
+            expiresAt: 1_800_000_000_000,
+          },
+        },
+        '/.claude.json': { oauthAccount: { emailAddress: 'd@x.io', organizationName: 'Acme' } },
+      }),
+      fetchImpl: async () => res(200, { five_hour: { utilization: 0.2 } }),
+    }),
+  );
+  assert.equal(u?.status, 'ok');
+  assert.equal(u?.account?.email, 'd@x.io');
+  assert.equal(u?.account?.organization, 'Acme');
+  assert.equal(u?.account?.plan, 'Max');
+});
+
 test('grok picks the first keyed credential and maps a credit window', async () => {
   let sentAuth: string | undefined;
   const [u] = await readUsage(

@@ -672,7 +672,7 @@
       {
         "id": "mac-feature-smoke",
         "advancesTo": "smoke",
-        "item": "Walk the platform-sensitive features once: notifications, keep-awake (a caffeinate process appears and disappears), the pet overlay window, the integrated browser, sleep/wake of a workspace."
+        "item": "Walk the platform-sensitive features once: notifications, keep-awake (a caffeinate process appears and disappears), the pet overlay window, the integrated browser, sleep/wake of a workspace, and the Providers Keychain grant for Claude Code (Access required with no dialog \u2192 Grant access \u2192 Always Allow \u2192 Live; walked on a dev build 2026-09-19, to be repeated on the shipped DMG)."
       },
       {
         "id": "mac-scheduler",

@@ -1,16 +1,17 @@
 # Content — every claim and where it comes from
 
 The page is marketing, so it is allowed to be warm, short and confident. It is
-**not** allowed to be wrong. Every number, name, command and capability it states
-lives in [`src/lib/site.ts`](../src/lib/site.ts) and traces back to something in
-the monorepo.
+**not** allowed to be wrong. Static numbers, names, commands and capabilities
+live in [`src/lib/site.ts`](../src/lib/site.ts) and trace back to something in
+the monorepo. The moving star and download counters are sourced from GitHub by
+the Pages Function documented below.
 
 **When one of these facts changes in the product, it changes here in the same
 change set.**
 
 | The page says | Where it comes from |
 |---|---|
-| The star and download counters under the hero badge | GitHub's own API, read **at build time** by `src/lib/github.ts`. Stars are `stargazers_count`; downloads sum the `download_count` of **installer assets only** (`.exe .msi .dmg .deb .rpm .AppImage .apk .aab`) — manifests, signatures and updater bundles are not downloads, and counting them made the figure *drop* after every release because the release workflow re-uploads `latest.json` with `--clobber`. If the call fails the row is omitted rather than guessed |
+| The star and download counters under the hero badge | GitHub's own API, with a build-time fallback in `src/lib/github.ts` and a live, cached refresh from `functions/api/stats.ts`. Stars are `stargazers_count`; downloads sum the `download_count` of **installer assets only** (`.exe .msi .dmg .deb .rpm .AppImage .apk .aab`) across every published release — manifests, signatures and updater bundles are not downloads, and counting them made the figure *drop* after every release because the release workflow re-uploads `latest.json` with `--clobber`. If the live call fails, the last build-time value remains visible |
 | "Windows, Linux · macOS (experimental) · Android on Google Play · iOS coming soon" | root `README.md` → _Install_ — macOS builds are unsigned, iOS is written but unshipped |
 | "22 agents report precise status" + the two agent grids | `uxnandesktop/docs/agent-hooks.md` → the reporter table and _"Nine agents in the catalog have no precise state"_; root `README.md` → _Works with any CLI agent_ |
 | Antigravity is marked _partial support_ | root `README.md` footnote — one-shot per turn, no live approval channel |
@@ -30,8 +31,9 @@ change set.**
 
 ## Claims the page deliberately does **not** make
 
-- **No user, star or download counts.** Numbers that move need a source of truth
-  the site does not have; a stale "1,200 users" is worse than no number.
+- **No user counts.** The site does show stars and installer downloads because
+  those counters now have GitHub as a live source of truth. It does not invent a
+  separate user count.
 - **No telemetry or privacy promise beyond the transport.** The page says the
   relay only sees sealed envelopes, because that is specified and implemented. It
   says nothing about what the apps do or do not collect locally.

@@ -22,25 +22,45 @@ CLI (`claude -p`, `codex app-server`, `opencode serve`) — so it does not requi
 separate paid account beyond what that CLI already has, and it is not an unofficial
 API wrapper. Rate limits are whatever your plan allows.
 
-Prompts are passed as argv elements with `shell:false` (no shell injection); stdin
-is closed (a one-shot CLI hangs on an open stdin pipe). **Claude Code and pi are
-the exceptions among the one-shot agents**: both are run in a mode that reads a
-real message stream (`claude --input-format stream-json`, `pi --mode rpc`), so
-their prompt is written to a stdin pipe that stays open for the length of the
-turn — which is what lets a follow-up reach them mid-run (see below). The
-server-based adapters are the other exception: **Codex** speaks
-JSON-RPC over a long-lived
-`codex app-server` stdio, **Zero** and **Grok** speak JSON-RPC (the Agent Client
-Protocol, NDJSON) over a long-lived `zero acp` / `grok agent stdio` process, and
-**OpenCode** speaks HTTP + SSE to a long-lived `opencode serve` process (their
-prompts travel in the request body / session request, never argv).
+Every spawn is `shell:false` (no shell injection), and a prompt never travels as
+an argv element on the turn path: the three process-driven agents write it to a
+stdin pipe as one message of the CLI's own stream, and the server-based ones put
+it in a request body. What differs is how long a process lives:
+
+- **Claude Code** is **one process per turn**: `claude -p --input-format
+  stream-json` reads the prompt from stdin, keeps the pipe open for the length of
+  the turn — which is what lets a follow-up reach it mid-run (see below) — and
+  exits with the turn; `--resume` joins the next process to the same session.
+- **pi** and **Antigravity** are **one resident process per thread**: `pi --mode
+  rpc` and `agy --input-format stream-json --output-format stream-json` both read
+  one turn at a time from an open stdin, so the same authenticated process, with
+  the session already in memory, answers turn after turn. That is what removes
+  the per-turn cold start (`agy` re-ran its Google sign-in check on every turn:
+  2.5 s cold vs 1.0 s warm, measured; pi re-read its session JSONL from disk).
+  The process is torn down after 24 hours without a turn
+  (`DEFAULT_PI_IDLE_TIMEOUT_MS` / `DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS`, re-armed
+  by every completed turn), when a spawn argument changes (cwd, model, effort or
+  posture — a new process resumes the same session), on cancel, and when the
+  thread is archived or deleted (`thread/archive` / `thread/delete` call
+  `AgentManager.closeThreadSession`). A later turn simply spawns a new process
+  on the same session id, so a teardown costs one cold start, never history.
+- The **server-based** adapters talk to a long-lived server: **Codex** speaks
+  JSON-RPC over `codex app-server` stdio, **Zero** and **Grok** speak JSON-RPC
+  (the Agent Client Protocol, NDJSON) over `zero acp` / `grok agent stdio`, and
+  **OpenCode** speaks HTTP + SSE to `opencode serve`.
+
+The one-shot **side errands** (naming a thread, listing models) still pass their
+prompt as an argv element, still `shell:false`.
 
 ### One turn per thread, and the queue that follows from it
 
 The bridge drives **one turn per thread**, and this is a hard constraint, not a
-policy: half the agents below are spawned fresh for every turn and resume their
-own session (`claude -p --resume`, pi, antigravity), so two concurrent
-turns would be two CLI processes writing to the same session file.
+policy: the one-shot agent resumes its own session per turn (`claude -p
+--resume`), so two concurrent turns would be two CLI processes writing to the
+same session file; the resident-process agents (pi, Antigravity) read one turn
+at a time from stdin, so a second message would be queued by the CLI itself as
+the *next* turn, streaming into a turn the bridge already closed; and the
+server-backed agents serialize prompts per session.
 
 So a `turn/send` that arrives while a turn is in flight is **queued** rather than
 started — the same thing the CLIs themselves do when you type a follow-up while
@@ -73,7 +93,7 @@ Which agents can, and why — verified against the real CLIs:
 | **OpenCode** | yes | another `prompt_async` on the session that is already busy |
 | **Codex** | yes | app-server `turn/steer { threadId, expectedTurnId, input }` |
 | **pi** | yes | RPC `steer` command, drained by its agent loop at the next boundary |
-| **Antigravity** | no | `agy -p` is one-shot with no input channel at all |
+| **Antigravity** | no | `--input-format stream-json` "runs a turn for each" stdin message — a second one is queued as the next turn, not steered into this one; the CLI has no steer message |
 | **Zero** | no | its ACP serializes prompts per session (`turnMu`) — and its own TUI does not inject either: it launches a queued message only once the turn ended |
 | **Grok** | no | ACP defines no steer method and advertises none on `initialize` |
 
@@ -110,7 +130,7 @@ attention to.
 | **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` at `-c model_reasoning_effort=low` |
 | **OpenCode** | `opencode run` (no `--session`/`--continue`) | CLI default |
 | **pi** | `pi -p --no-session` | CLI default |
-| **Antigravity** | `agy -p` (no `--conversation`) | `gemini-3.6-flash-low` |
+| **Antigravity** | `agy -p --mode plan` (no `--conversation`) | `gemini-3.6-flash-low` |
 | **Grok** | `grok -p` | CLI default |
 | **Zero** | `zero exec` | CLI default |
 
@@ -174,24 +194,52 @@ surface it does not drive.**
 | **OpenCode** | `opencode serve` | local HTTP + SSE | yes |
 | **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin | yes |
 | **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
-| **pi** | `pi --mode rpc` | JSON-RPC over stdio | yes |
+| **pi** | `pi --mode rpc`, one resident process per thread | JSON-RPC over stdio (`prompt` / `steer` / `get_state` commands in, JSON events out) | yes — `message_end` `usage.totalTokens`; the model's `contextWindow` comes from the `get_state` response |
 | **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
 | **Zero** | `zero acp` | ACP (JSON-RPC over stdio) | **no** — see below |
-| **Antigravity** | `agy -p` | one process per turn, plain text on stdout | **not on this surface** — see below |
+| **Antigravity** | `agy --input-format stream-json --output-format stream-json`, one resident process per thread | NDJSON both ways (a `user` message in, `init` / `step_update` / `result` events out) | yes — on the **last `agent_response` `step_update`** of the turn, NOT on `result.usage`: see below |
 
-Two agents report no usage, and in both cases the CLI *can* report it somewhere
-else — which is exactly the trap:
+One agent reports no usage, and one reports two different numbers — both are
+the same trap, a real signal that is not the one the meter wants:
 
 - **Zero.** It appends a `provider_usage` event per turn to its session store,
   but only for a session driven by `zero exec`. Verified by running the adapter
   and reading the store it wrote: an **ACP-driven** session holds `message`
   events and nothing else. `reportsContextUsage` is false so the phone hides the
   meter rather than showing one pinned at zero.
-- **Antigravity.** `agy` reports `{input_tokens, output_tokens, thinking_tokens,
-  cache_read_tokens, total_tokens}` on its `result` event — but only under
-  `--output-format stream-json`, while the turn runs on `text`. Surfacing it
-  means migrating the turn's whole stream parse to the JSON events (tracked in
-  [`../FOR-DEV.md`](../FOR-DEV.md)).
+- **Antigravity.** Under `stream-json`, `agy` attaches `{input_tokens,
+  output_tokens, thinking_tokens, cache_read_tokens, total_tokens}` in two
+  places, and only one of them is a context size. Every `DONE` `agent_response`
+  `step_update` carries **that model call's** usage, and the last one of a turn
+  is what the conversation occupies: the adapter emits `input + cache_read +
+  output` from it (`thinking_tokens` are inside `output_tokens`; `total_tokens`
+  leaves the cache part out). The `result` event's `usage` is **summed over the
+  whole conversation** — captured live on `agy` 1.2.7, turn 2 reported 18 324
+  input tokens = 13 184 from turn 1 + 5 140 of its own, with `num_turns: 2`, and
+  a resumed turn 3 kept adding — so a meter fed from it climbs forever. And the
+  surface carries **no reasoning text**: `thinking_tokens` is a count, the
+  model's thoughts never appear on stdout (they live in `agy`'s private
+  transcript on disk, which the bridge does not read — [`../FOR-DEV.md`](../FOR-DEV.md),
+  *Antigravity native-session history*), so Antigravity emits no `thinking`
+  event.
+
+Session ids follow the same rule — take them from what the driven surface says,
+not from what a flag suggests:
+
+- **Antigravity.** `agy` owns the conversation id. Since 1.2.x a client-minted
+  `--conversation <uuid>` is answered with `warning: conversation "<uuid>" not
+  found` and a **new** conversation — on `main` before the resident session this
+  meant the thread silently lost its history on every turn (verified: the second
+  turn answered "None" when asked what it had just said). The adapter therefore
+  runs a thread's first process **without** `--conversation`, adopts the id
+  `agy` announces on its `init` event, and passes that id back on every later
+  spawn for the thread.
+- **pi.** `--mode rpc` emits **no** `session` event (`-p --mode json` does, which
+  is where the id used to be read — and why, after the move to RPC, no id was
+  captured at all and every turn started a new session). The adapter sends
+  `get_state` right after spawning and reads `sessionId` (and the model's
+  `contextWindow`) from the response; a later spawn passes `--session-id <id>`,
+  which resumes the session, "creating it if missing".
 
 ### The environment an agent is spawned with
 
@@ -245,8 +293,8 @@ so a format change there is a **two-app** fix.
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `accessMode` → app-server `approvalPolicy` + `sandbox`, re-applied on **every** `thread/start`/`thread/resume` (so a mid-conversation change lands on the next turn); approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
-| **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
-| **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
+| **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
+| **Antigravity** | `agy [--conversation <id>] --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) --input-format stream-json --output-format stream-json --print-timeout 2h` — one resident process per thread; the turn is a `user` message on stdin | `--conversation <id>`, the id `agy` announced on the first process's `init`, passed on every later spawn for the thread (never client-minted: 1.2.x refuses an unknown id and starts a new conversation) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
 | **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model) |
 
@@ -269,7 +317,7 @@ Compactions use the ordinary structured-content path and therefore persist in
 | OpenCode | `session.compacted` | reason unknown |
 | pi | successful `compaction_end` | reason + before/estimated-after tokens |
 | Zero / Grok | ACP exposes no compaction update | no marker |
-| Antigravity | text-only one-shot output exposes no structured signal | no marker |
+| Antigravity | the stream-json surface exposes no compaction event | no marker |
 
 Never infer a compaction from prose, an overflow error or a token-count drop;
 that would put a false event into durable history.
@@ -388,8 +436,7 @@ An adapter must decide when the agent is done. There are two kinds:
 
 | Ends on | Adapters | Can the CLI emit after that? |
 |---|---|---|
-| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`stopReason`), Grok / Zero (the ACP `session/prompt` reply) | **Yes** — the process is still alive when the event arrives |
-| **Process exit** | Antigravity | No — the turn cannot end before the process does |
+| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`agent_settled` — **not** `agent_end`, which ends one *run*: pi retries a run after a retryable provider error, `willRetry: true`, and a prompt sent in between is refused as "already processing"), Grok / Zero (the ACP `session/prompt` reply), Antigravity (`result`) | **Yes** — the process is still alive when the event arrives |
 
 That distinction matters because **Claude Code really does come back**. When the
 model starts a background task (`Bash` with `run_in_background`) and ends its
@@ -446,9 +493,9 @@ way — asked to leave a shell command running and end its turn — and timed:
 | **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
 | Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
-| Pi | No — no background tool, no wake-up path | Killed on shutdown (tracked pids exist for exactly that) |
+| Pi | No — the turn ends on `agent_settled`; no background tool, no wake-up path | The resident process stays for the thread's next turn (until the 24 h idle teardown, a recycle, a cancel, or the thread's archive/delete); tracked pids exist for exactly that |
 | Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
-| Antigravity | No — the turn ends on process exit | n/a |
+| Antigravity | No — the turn ends on `result` | Same as pi: the resident process stays for the thread's next turn |
 
 Two consequences worth keeping straight, because they need different answers:
 
@@ -477,7 +524,7 @@ the phone renders them generically — Codex discovers them from the app-server
 Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`),
 Zero and Grok (ACP `session/request_permission`);
 **pi** and **Antigravity** have no headless pre-tool channel (both run
-autonomously — Antigravity's `agy -p` auto-denies any tool that needs a prompt,
+autonomously — Antigravity's headless surface auto-denies any tool that needs a prompt,
 so a `requestApproval` thread runs read-only `--mode plan` instead — see
 [`../FOR-DEV.md`](../FOR-DEV.md)).
 
@@ -630,8 +677,10 @@ windows need no edit for a model in an existing tier — `claudeContextWindow()`
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
 real CLI's machine-readable stream once, then copy the closest template — a
-**one-shot per-turn CLI** (`pi-adapter.ts`, which spawns the CLI
-once per turn) or a **server the adapter talks to** (`codex-adapter.ts`/
+**resident process per thread** (`pi-adapter.ts` / `antigravity-adapter.ts`:
+the CLI reads one turn at a time from an open stdin, so one process answers
+turn after turn), a **one-shot per-turn CLI** (`claude-adapter.ts`, which
+spawns the CLI once per turn) or a **server the adapter talks to** (`codex-adapter.ts`/
 `zero-adapter.ts`/`grok-adapter.ts` over stdio JSON-RPC,
 `opencode-adapter.ts` over `opencode serve` HTTP/SSE, when the CLI exposes a
 pre-tool approval channel). If that server takes an exclusive claim on the

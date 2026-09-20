@@ -94,14 +94,18 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ctx.now(),
     ),
   );
-  router.register('thread/archive', (p, ctx: BridgeContext) =>
-    ctx.threadStore.archiveThread(requireString(p, 'threadId'), ctx.now()),
-  );
+  router.register('thread/archive', async (p, ctx: BridgeContext) => {
+    const threadId = requireString(p, 'threadId');
+    await ctx.agentManager.closeThreadSession(threadId);
+    return ctx.threadStore.archiveThread(threadId, ctx.now());
+  });
   router.register('thread/unarchive', (p, ctx: BridgeContext) =>
     ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now()),
   );
   router.register('thread/delete', async (p, ctx: BridgeContext) => {
-    await ctx.threadStore.deleteThread(requireString(p, 'threadId'));
+    const threadId = requireString(p, 'threadId');
+    await ctx.agentManager.closeThreadSession(threadId);
+    await ctx.threadStore.deleteThread(threadId);
     return null;
   });
 

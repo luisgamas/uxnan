@@ -119,7 +119,11 @@ pub fn normalize_event(
         // "working" with nothing left able to move it. Accept both spellings.
         // Antigravity exposes only its execution loop — there is no prompt,
         // permission or notification hook — so it reports `working` and `done`
-        // precisely and can never claim to be waiting on the user.
+        // precisely and can never claim to be waiting on the user. The reporter
+        // registers no `PreToolUse` (it is a permission gate, see
+        // `agent_hooks::ANTIGRAVITY_TOOL_EVENTS`); it is still accepted here so a
+        // config written by an older release keeps reporting until the next
+        // launch rewrites it.
         "antigravity" => match event {
             "PreInvocation" | "PostInvocation" | "PreToolUse" | "PostToolUse" => {
                 Some(AgentStatus::Working)

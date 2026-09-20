@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.16-alpha.20260919] - 20260919
+### Added — `UsageStatus.accessRequired`
+
+`ProviderUsage.status` gains `accessRequired`: the CLI's token exists in the OS
+credential store but the OS has not yet authorized the reader to open it. It is
+distinct from `authRequired` because the user's action is different — grant a
+one-time OS permission from the desktop's Providers panel, not sign in again —
+and because a phone can only point at the PC for it. Introduced for Claude Code
+on macOS, which keeps its OAuth token in the login Keychain rather than in
+`~/.claude/.credentials.json`. Additive; readers that never touch an OS store
+never emit it.
+
 ## [0.0.15-alpha.20260813] - 20260813
 ### Fixed — the README badge undercounted the methods
 

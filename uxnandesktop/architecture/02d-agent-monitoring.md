@@ -56,9 +56,12 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
     habla el vocabulario de eventos de Claude Code, incluido un `StopFailure` que
     da un `blocked` **real**. Antigravity recibe **una entrada con nombre**
     (`uxnan-status`) en `~/.gemini/config/hooks.json`; solo expone su bucle de
-    ejecución (`PreInvocation`, `PostInvocation`, `PreToolUse`, `PostToolUse`,
-    `Stop`) — sin evento de prompt, permiso ni notificación — así que **nunca
-    puede reportar `waiting`**. Ambos CLIs interpretan el comando del hook como
+    ejecución (`PreInvocation`, `PostInvocation`, `PostToolUse`, `Stop`) — sin
+    evento de prompt, permiso ni notificación — así que **nunca puede reportar
+    `waiting`**. `PreToolUse` queda fuera a propósito: en el contrato de
+    Antigravity es una compuerta de permisos cuya respuesta debe llevar una
+    `decision` (sin valor neutro), y `agy` lee el `{}` del reporter como
+    denegación de la tool. Ambos CLIs interpretan el comando del hook como
     una ruta literal **sin quoting**, lo que rompería con un nombre de usuario con
     espacio: Antigravity se resuelve copiando el reporter junto a su config e
     invocándolo **relativo** (`.\uxnan-event-hook.cmd antigravity`, su doc fija el

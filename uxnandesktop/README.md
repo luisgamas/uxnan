@@ -174,7 +174,9 @@ available today are:
   quota you've consumed — session / weekly / monthly windows (with resets), plan,
   account and credit balance — for **Codex, Claude, Copilot and Grok**. It reads
   each CLI's own signed-in token and calls the provider's official usage API (never
-  cookies or pasted keys), polling **only the providers you activate**. A status-bar
+  cookies, pasted keys or refresh tokens), polling **only the providers you
+  activate**; on macOS, Claude Code's token comes from the login Keychain after a
+  one-time grant you give explicitly — polls never open a dialog. A status-bar
   gauge surfaces the meters you pick; startup/focus catch-up and per-provider
   intervals keep reset windows current. See [provider usage](./docs/providers.md).
 - **Integrated developer browser.** A complete in-app browser in a right-side panel

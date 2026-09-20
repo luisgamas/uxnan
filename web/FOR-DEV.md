@@ -27,10 +27,12 @@ What works today:
   Mobile screens (conversation list, live conversation, agent picker, profile
   statistics, devices). Phone screens are drawn once at a canonical 260 × 563 and
   scaled by the frame, so proportions stay real at any size.
-- **Every claim sourced** through `src/lib/site.ts`, with the claim-to-source
-  table in `docs/content.md`.
-- **Star and download counters** read from the GitHub API at build time, counting
-  installer assets only so the total cannot go down (see `src/lib/github.ts`).
+- **Every static claim sourced** through `src/lib/site.ts`, with the
+  claim-to-source table in `docs/content.md`; moving repository counters come
+  from the documented GitHub-backed Pages Function.
+- **Star and download counters** render a build-time fallback and refresh through
+  the cached `functions/api/stats.ts` endpoint, counting installer assets across
+  all paginated releases so the total cannot go down because of updater assets.
 - **Agent marks are the repository's own SVGs**, synced from `assets/agents/`
   before dev and build so the site and the READMEs never diverge.
 - Benchmark figures count down from 999 on first scroll, fading red → green →

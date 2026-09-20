@@ -342,6 +342,11 @@ instead of quietly agreeing with a mock nobody updated.
   still type-checks and renders an empty `<svg>`. Each assertion is about painted
   geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
   it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
+- `ProviderUsageEditor.svelte.test.ts` — the OS credential-store consent flow
+  (`docs/providers.md` → *How Uxnan reaches a token*): an `accessRequired`
+  snapshot renders **Grant access**, clicking it issues `usage_grant_access` for
+  that provider and re-reads usage; the other non-live states never show the
+  button, so the OS dialog can only ever appear because the user asked.
 
 - `state/pets.svelte.test.ts` — the library the Pets screen renders: every
   bundled pet loads (they are static assets, faked at `fetch`, not a command),

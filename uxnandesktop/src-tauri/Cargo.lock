@@ -6580,7 +6580,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-cli"
-version = "0.0.50"
+version = "0.0.51"
 dependencies = [
  "clap",
  "serde",
@@ -6591,7 +6591,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-control-protocol"
-version = "0.0.50"
+version = "0.0.51"
 dependencies = [
  "serde",
  "serde_json",
@@ -6599,7 +6599,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-desktop"
-version = "0.0.50"
+version = "0.0.51"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -6616,6 +6616,7 @@ dependencies = [
  "reqwest",
  "russh",
  "russh-sftp",
+ "security-framework",
  "serde",
  "serde_json",
  "sha1 0.10.7",
@@ -6637,6 +6638,7 @@ dependencies = [
  "uuid",
  "uxnan-control-protocol",
  "windows-sys 0.59.0",
+ "zeroize",
 ]
 
 [[package]]

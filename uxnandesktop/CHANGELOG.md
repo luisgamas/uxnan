@@ -170,6 +170,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **`worktree/create` without an agent put `terminal: null` in its receipt.**
   The field is now left out when no agent was asked for, as the reference
   documents.
+
+## [0.0.51] - 20260920
+### Added
+
+- **Claude Code usage on macOS, behind a one-time Keychain grant.** Claude Code
+  keeps its OAuth token in the login Keychain there (`Claude Code-credentials`),
+  not in `~/.claude/.credentials.json`, so Settings → Providers had nothing to
+  show. The reader now reaches the Keychain through Security.framework with a
+  contract that keeps polling honest: every background read runs with **OS user
+  interaction disabled**, so a refresh can never pop a dialog — when macOS would
+  have to ask, the provider reports the new `accessRequired` status and a
+  **Grant access** button, and only that click performs the one interactive read
+  (choose *Always Allow*; the grant lives in the item's access list, revocable in
+  Keychain Access, and Uxnan stores nothing about it). New `credstore.rs` is the
+  single door to credentials other CLIs keep in the OS store (macOS implemented;
+  Windows / Linux return `Unsupported` until a provider needs them), returning
+  bytes that zeroize on drop; new `usage_grant_access` command. Token rules are
+  now written down and enforced for every provider: access token only, never a
+  refresh token, in memory for one call, never across the IPC or in a message.
+  Same posture on Windows / Linux, where the file is read in place as before.
+  `docs/providers.md` → *How Uxnan reaches a token*.
+- **Claude Code: expiry check and identity.** An expired access token now reads
+  *Sign in required* with "open Claude Code once so it refreshes it" instead of
+  a misleading 401 → "signed out"; the "Authenticated as" line fills from
+  `~/.claude.json` (`oauthAccount` email + organization, a file without
+  secrets), blurred until clicked like every other provider. `CLAUDE_CONFIG_DIR`
+  is honored for the file path and the Keychain service suffix, exactly as the
+  CLI derives them.
+
+### Fixed
+
 - **A plain-folder project that runs `git init` is now recognized as a
   repository without re-adding it.** Whether a folder is a repository was
   decided once, when it was added, and persisted; a `git init` in a terminal
@@ -184,6 +215,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   derived from it follows at once. The same probe runs at startup, for a
   folder that became a repository while the app was closed. A project that is
   already a repository costs nothing here.
+- **Antigravity's status hook no longer denies its tool calls.** The managed
+  `uxnan-status` entry in `~/.gemini/config/hooks.json` registered the reporter
+  on `PreToolUse`, which in Antigravity's hook contract is a **permission
+  gate**: its answer must carry a `decision` (`allow` / `deny` / `ask` /
+  `force_ask`) and there is no "no opinion" value. The reporter answers `{}`,
+  and `agy` (1.2.7) read that as a refusal — every `run_command`, `view_file`
+  and `write_to_file` ended in `tool call denied by pre-tool hook:`, even under
+  `--dangerously-skip-permissions`, from the bridge and from a terminal alike.
+  The entry now registers `PostToolUse` only (whose contract expects exactly
+  `{}`), plus the loop events as before; nothing the ADE shows depended on
+  `PreToolUse`, since `PreInvocation` already marks the turn working before
+  the first tool. The managed entry is rewritten at every launch, so an
+  existing install loses the gate the next time the app starts (#244).
 
 ## [0.0.50] - 20260917
 ### Fixed

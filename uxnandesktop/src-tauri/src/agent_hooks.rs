@@ -180,7 +180,25 @@ const GROK_EVENTS: &[(&str, bool)] = &[
 ];
 
 /// Antigravity's tool events, which take the grouped `matcher` + `hooks` shape.
-const ANTIGRAVITY_TOOL_EVENTS: &[&str] = &["PreToolUse", "PostToolUse"];
+///
+/// **`PostToolUse` only — never `PreToolUse`.** In Antigravity's hook contract
+/// (the `agy-customizations` guide bundled in the CLI) `PreToolUse` is a
+/// permission *gate*, not an observer: its stdout must carry a `decision`
+/// (`allow` / `deny` / `ask` / `force_ask`), and there is no value that means
+/// "no opinion, apply your own permissions". The reporter answers `{}` — right
+/// for `PostToolUse`, whose contract expects exactly that — and `agy` 1.2.7
+/// reads a `PreToolUse` answer without a decision as a refusal: every tool call
+/// ended in `tool call denied by pre-tool hook:` (empty reason), even under
+/// `--dangerously-skip-permissions`, measured on `run_command`, `view_file` and
+/// `write_to_file`. Any decision we could print would change the CLI's
+/// behaviour (`allow` widens permissions, `ask` prompts for tools that never
+/// prompt), so a status hook has no business on that gate. `PostToolUse` fires
+/// once per tool anyway, and `PreInvocation` already marks the turn `working`
+/// before the first tool, so nothing the ADE shows depends on `PreToolUse`.
+/// `install_antigravity_hooks` rewrites the whole managed entry at every
+/// startup, so an install written by an older release loses the gate on the
+/// next launch.
+const ANTIGRAVITY_TOOL_EVENTS: &[&str] = &["PostToolUse"];
 
 /// Antigravity's loop events, which take a **flat** list of handler objects (no
 /// `matcher`/`hooks` wrapper) — its config format differs per event, verified
@@ -189,6 +207,8 @@ const ANTIGRAVITY_TOOL_EVENTS: &[&str] = &["PreToolUse", "PostToolUse"];
 /// There is deliberately no `waiting` source here: Antigravity exposes only
 /// execution-loop events — no prompt, permission or notification hook — so it can
 /// report `working` and `done` precisely and can never claim to need the user.
+/// `{}` is a valid answer to all three: the loop events' output fields are
+/// optional, and `Stop` treats anything but `"continue"` as "let the agent stop".
 const ANTIGRAVITY_LOOP_EVENTS: &[&str] = &["PreInvocation", "PostInvocation", "Stop"];
 
 /// The name our managed Antigravity hook is filed under in its `hooks.json`
@@ -2853,13 +2873,27 @@ mod tests {
     fn antigravity_value_shapes_each_event_group() {
         let v = antigravity_hook_value();
         // Tool events take the grouped `matcher` + `hooks` wrapper…
-        assert!(v["PreToolUse"][0]["matcher"].is_string());
-        assert!(v["PreToolUse"][0]["hooks"].is_array());
+        assert!(v["PostToolUse"][0]["matcher"].is_string());
+        assert!(v["PostToolUse"][0]["hooks"].is_array());
         // …while the loop events take a flat list of handlers.
         assert_eq!(v["Stop"][0]["type"], json!("command"));
         assert!(v["PreInvocation"][0]["command"].is_string());
         // No prompt/permission event exists to subscribe to.
         assert!(v.get("Notification").is_none());
+    }
+
+    #[test]
+    fn antigravity_never_sits_on_the_pre_tool_gate() {
+        // `PreToolUse` is a permission gate whose answer must carry a decision;
+        // the reporter's `{}` is read as a refusal and every tool call is denied
+        // (measured against agy 1.2.7). A status hook must not be registered
+        // there, whatever else the managed entry grows.
+        let v = antigravity_hook_value();
+        assert!(v.get("PreToolUse").is_none(), "{v}");
+        assert!(!ANTIGRAVITY_TOOL_EVENTS.contains(&"PreToolUse"));
+        // The rendered "Show config" body is the same value, so it must agree.
+        let rendered = render_antigravity_hooks_json().expect("rendered");
+        assert!(!rendered.contains("PreToolUse"), "{rendered}");
     }
 
     #[test]

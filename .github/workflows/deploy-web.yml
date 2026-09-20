@@ -1,8 +1,9 @@
 name: Deploy — Web (Cloudflare Pages)
 
 # Builds the marketing site on GitHub's runners (free minutes on a public repo)
-# and uploads the static export to Cloudflare Pages as a Direct Upload — so
-# Cloudflare only serves the artifact and never runs a build of its own.
+# and uploads the static export plus its Pages Function to Cloudflare Pages as a
+# Direct Upload — so Cloudflare only serves the artifact and runs the one small
+# runtime endpoint; it never runs a Next.js build of its own.
 #
 # It verifies the commit FIRST (the same gate PRs run) and deploys only if green,
 # so a broken build never reaches production. Runs on push to main touching the
@@ -64,16 +65,17 @@ jobs:
         run: npm ci
 
       - name: Build the static export
-        # Baked into the export at build time.
+        # The build-time values are only the first-paint fallback; the deployed
+        # Pages Function refreshes them after hydration.
         #   SITE_URL — makes the OG/canonical URLs absolute; falls back to the
         #     Pages subdomain until a custom domain is set.
         #   GOOGLE_SITE_VERIFICATION — optional Search Console token, kept as a
         #     repo *variable* (Settings → Secrets and variables → Actions →
         #     Variables) so it never lives in this public repo's source; it is
         #     only emitted into the built HTML, where it is public by design.
-        #   GITHUB_TOKEN — lifts the anonymous rate limit on the API call that
-        #     bakes the star and download counters into the page; without it the
-        #     build still succeeds and simply omits them.
+        #   GITHUB_TOKEN — lifts the anonymous rate limit on the build-time
+        #     fallback call; without it the build still succeeds and the live
+        #     Pages Function can fill the counters after hydration.
         env:
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://uxnan.pages.dev' }}
           NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${{ vars.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }}
@@ -85,6 +87,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # `web/out` is the export; the working-directory default does not apply
-          # to the action, so the path is repo-relative here.
-          command: pages deploy web/out --project-name=uxnan --branch=main
+          # Run from web/ so Wrangler also discovers web/functions/ beside out/.
+          workingDirectory: web
+          command: pages deploy out --project-name=uxnan --branch=main

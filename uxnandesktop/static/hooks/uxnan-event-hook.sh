@@ -65,5 +65,11 @@ fi
 # parse the hook's stdout and read an unparseable one as a refusal — Cursor gates
 # tool use on it, so a reporter that printed nothing would BLOCK the agent's file
 # reads and shell commands rather than merely fail to report.
+#
+# It is NOT a neutral answer on Antigravity's `PreToolUse`: that event is a
+# permission gate whose reply must carry a `decision`, and `agy` reads `{}` there
+# as "deny" (every tool call fails with "tool call denied by pre-tool hook").
+# So this reporter is never registered on that event — only on `PostToolUse`,
+# whose contract expects exactly `{}` (see `agent_hooks.rs`).
 printf '{}'
 exit 0

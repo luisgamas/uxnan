@@ -243,8 +243,8 @@ interface AgentCapabilities {
 //   ✅ opencode  (default; `opencode serve` HTTP/SSE; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation)
-//   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
-//   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; active Google CLI; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
+//   ✅ pi-agent  (`pi --mode rpc`, UN proceso residente por thread; `--session-id` con el id leido de `get_state`; `steer` en turno; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
+//   ✅ antigravity-cli (`agy --input-format stream-json --output-format stream-json --add-dir <cwd>`, UN proceso residente por thread; `--conversation <id>` con el id que `agy` anuncia en `init` (no client-owned: 1.2.x rechaza un id desconocido); usage en `stream/turn/completed`; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
 //   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
 ```
@@ -2133,15 +2133,28 @@ ver 02b). Surface las ventanas de cuota (% consumido + reinicio), plan/cuenta y
 saldo de credito de los CLIs de IA que el usuario **activo** — nunca de todos, para
 ahorrar recursos.
 
-**Postura de datos:** solo se leen los **archivos locales del CLI** (su token OAuth
-ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
-cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
-**Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
-→ `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-and **Grok**
-(`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
-`status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
-los demas.
+**Postura de datos:** solo se lee el **token OAuth que el propio CLI guardo** —
+su archivo local o, cuando el CLI lo guarda ahi, el **almacen de credenciales del
+SO** — y se llama a la **API oficial de uso** de cada proveedor. **Nunca** cookies
+del navegador, API keys pegadas por el usuario ni el refresh token (solo el access
+token, en memoria durante una llamada; los CLIs tratan la reutilizacion del
+refresh como sesion comprometida). Proveedores wired: **Codex**
+(`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
+en Windows/Linux; en macOS el item `Claude Code-credentials` del login Keychain →
+`api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
+and **Grok** (`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
+`status` (`ok`/`authRequired`/`accessRequired`/`notInstalled`/`error`); uno lento
+o roto no tumba a los demas.
+
+**Almacen de credenciales del SO (consentimiento explicito):** el lector **nunca
+abre un dialogo por su cuenta**. Un poll corre con la interaccion del SO
+desactivada; si el SO tendria que preguntar, el proveedor reporta `accessRequired`
+y la UI ofrece *Grant access* — la unica lectura interactiva, iniciada por el
+usuario, en la que el SO muestra su propio dialogo y (con *Always Allow*) registra
+a la app en la lista de acceso del item. La autorizacion es del SO, revocable desde
+su gestor de credenciales; la app no persiste nada sobre ella. Hoy lo implementa el
+desktop en macOS (`src-tauri/src/credstore.rs`); Windows Credential Manager y
+Linux Secret Service se incorporan en el mismo modulo cuando un CLI wired los use.
 
 **Lectura per-runtime (dual-reader, mismo contrato):** el acceso al disco de la PC
 es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codigo:
@@ -2150,8 +2163,11 @@ es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codi
 - **Bridge (implementado):** lo lee en **TS** (`bridge/src/usage/usage-reader.ts`,
   handler `agent/usageStats`) portando el mismo reader del desktop, y lo sirve al
   telefono, que no ve el disco de la PC directamente — mismo contrato, misma
-  postura de datos. La UI del telefono (seccion "Uso y credito" en el perfil) es
-  el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
+  postura de datos. El bridge **no abre el almacen del SO** (su binario Node
+  necesitaria una autorizacion propia y su binding de keyring no puede silenciar
+  el dialogo): en una Mac reporta el estado honesto y remite al desktop
+  (`bridge/FOR-DEV.md`). La UI del telefono (seccion "Uso y credito" en el perfil)
+  es el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
 
 #### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
 
@@ -2242,10 +2258,13 @@ Reglas (no negociables, verificadas contra los CLIs reales):
 
 #### 5.8.13 Cola de mensajes por thread (`AgentManager`)
 
-El bridge conduce **un turno por thread**. No es una simplificacion: la mitad
-de los agentes corre one-shot por turno (`claude -p --resume`, pi,
-antigravity), asi que dos turnos concurrentes serian dos procesos CLI sobre la
-misma sesion nativa. Un `turn/send` que llega con un turno en vuelo se
+El bridge conduce **un turno por thread**. No es una simplificacion: el agente
+one-shot reanuda su sesion en cada turno (`claude -p --resume`), asi que dos
+turnos concurrentes serian dos procesos CLI sobre la misma sesion nativa; los
+agentes de **proceso residente por thread** (pi, Antigravity) leen un turno a la
+vez de su stdin, asi que un segundo mensaje lo encolaria la propia CLI como el
+turno *siguiente*, volcandolo en un turno que el bridge ya cerro; y los agentes
+con servidor serializan por sesion. Un `turn/send` que llega con un turno en vuelo se
 **encola** — el mismo comportamiento que las CLI cuando escribes mientras
 trabajan (contrato completo en `02b` §1.2).
 
@@ -2305,7 +2324,7 @@ Que agentes pueden, y por que (verificado contra las CLI reales):
 | **OpenCode** | Si | otro `prompt_async` sobre la sesion ya ocupada |
 | **Codex** | Si | app-server `turn/steer { threadId, expectedTurnId, input }` |
 | **pi** | Si | comando RPC `steer`, drenado por su bucle de agente en el siguiente limite |
-| **Antigravity** | No | `agy -p` es de un disparo; no hay canal de entrada |
+| **Antigravity** | No | `--input-format stream-json` "runs a turn for each" mensaje de stdin: un segundo mensaje es el siguiente turno, no un steer; la CLI no tiene mensaje de steer |
 | **Zero** | No | su ACP serializa con `turnMu`, y su propio TUI tampoco inyecta |
 | **Grok** | No | ACP no define un metodo de steer ni lo anuncia en `initialize` |
 
@@ -2347,7 +2366,7 @@ de su propia CLI y elegida para no dejar rastro en la conversacion que nombra:
 | Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` con `-c model_reasoning_effort=low` |
 | OpenCode | `opencode run` (sin flags de sesion) | por defecto de la CLI |
 | pi | `pi -p --no-session` | por defecto de la CLI |
-| Antigravity | `agy -p` (sin `--conversation`) | `gemini-3.6-flash-low` |
+| Antigravity | `agy -p --mode plan` (sin `--conversation`) | `gemini-3.6-flash-low` |
 | Grok | `grok -p` | por defecto de la CLI |
 | Zero | `zero exec` | por defecto de la CLI |
 

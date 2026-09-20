@@ -8,7 +8,7 @@ members = ["crates/control-protocol", "crates/uxnan-cli"]
 resolver = "2"
 
 [workspace.package]
-version = "0.0.50"
+version = "0.0.51"
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
 rust-version = "1.85"
@@ -152,6 +152,19 @@ sha1 = "0.10"
 # together. Already compiled into this binary via axum/hyper/tokio-util/tauri,
 # so making it direct adds nothing to the build. Apache-2.0/MIT.
 futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+# Wipes the raw bytes of a CLI's stored token once the usage reader has parsed
+# them (`credstore::Secret`, `usage.rs`) — a token is only ever in memory for the
+# duration of one API call and must not linger in a freed buffer. RustCrypto,
+# pure Rust, already in the tree via `russh`; MIT/Apache-2.0.
+zeroize = "1"
+
+# The macOS half of `credstore.rs`: reads a token another CLI keeps in the login
+# Keychain (Claude Code's `Claude Code-credentials`) through Security.framework,
+# with user interaction disabled on the polling path so a poll can never pop an
+# OS dialog — access is granted once, explicitly, from Settings → Providers.
+# Already in the tree via `rustls-platform-verifier` (reqwest); MIT/Apache-2.0.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

@@ -5,8 +5,9 @@ are for, and where to get them. It is written to **convince**, not to document �
 the technical detail lives in each component's `README.md` and `docs/`.
 
 > Deployed by `deploy-web.yml` on every push to `main` that touches `web/**`:
-> GitHub's runners build the static export and upload it to Cloudflare Pages as
-> a Direct Upload. See [`docs/deploy.md`](docs/deploy.md).
+> GitHub's runners build the static export and upload it, together with the
+> `functions/` Pages Function, to Cloudflare Pages as a Direct Upload. See
+> [`docs/deploy.md`](docs/deploy.md).
 
 ## What it is
 
@@ -17,18 +18,20 @@ the technical detail lives in each component's `README.md` and `docs/`.
   resolution, cost a few kB instead of a few MB, and never go stale in the way a
   screenshot of an old build does. They are held to the real UI — see
   [`docs/design.md`](docs/design.md).
-- **Every claim is sourced.** Numbers, agent lists, commands and links live in
-  [`src/lib/site.ts`](src/lib/site.ts), each with the file it came from;
+- **Every static claim is sourced.** Agent lists, commands and links live in
+  [`src/lib/site.ts`](src/lib/site.ts), each with the file it came from; the
+  live star/download counters come from GitHub through `/api/stats`.
   [`docs/content.md`](docs/content.md) is the claim-to-source table.
 
 ## Stack
 
-Next.js 15 (App Router) with `output: "export"` — a fully static site, no server
-runtime. React 19, TypeScript, Tailwind CSS v4, Hugeicons for icons — the same
-set the desktop app draws (see [`docs/design.md`](docs/design.md)) — Geist +
-JetBrains Mono self-hosted through `next/font`. No analytics, no third-party
-scripts, no external requests at runtime — the agent marks are the repository's
-own SVGs (see [`docs/design.md`](docs/design.md)).
+Next.js 15 (App Router) with `output: "export"` for the page shell, plus one
+Cloudflare Pages Function for the live public repository counters. React 19,
+TypeScript, Tailwind CSS v4, Hugeicons for icons — the same set the desktop app
+draws (see [`docs/design.md`](docs/design.md)) — Geist + JetBrains Mono
+self-hosted through `next/font`. No analytics or third-party scripts; the only
+runtime data request is the same-origin `/api/stats` endpoint. Agent marks are
+the repository's own SVGs (see [`docs/design.md`](docs/design.md)).
 
 It is a **standalone npm package** — deliberately not part of the root
 `workspaces`. Install and run everything from inside `web/`.
@@ -53,16 +56,19 @@ npm run dev          # http://localhost:3100
 ## Structure
 
 ```
+functions/
+└── api/stats.ts         cached GitHub metrics endpoint
 src/
 ├── app/
-│   ├── layout.tsx      fonts, metadata, <html>
-│   ├── page.tsx        the section order, and nothing else
-│   └── globals.css     design tokens, base styles, keyframes
+│   ├── layout.tsx       fonts, metadata, <html>
+│   ├── page.tsx         the section order, and nothing else
+│   └── globals.css      design tokens, base styles, keyframes
 ├── components/
-│   ├── mockups/        desktop.tsx · phone.tsx — the DOM recreations
-│   ├── sections/       one file per band of the page
+│   ├── repo-stats.tsx   live star/download counter
+│   ├── mockups/         desktop.tsx · phone.tsx — the DOM recreations
+│   ├── sections/        one file per band of the page
 │   ├── nav.tsx  reveal.tsx  download-button.tsx
-└── lib/site.ts         every fact the page states
+└── lib/site.ts          every static fact the page states
 ```
 
 ## Docs

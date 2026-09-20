@@ -5,13 +5,21 @@
  *
  * Posture (identical to the desktop): only each CLI's OWN already-stored OAuth
  * token is read from its `~/.<cli>/…` file (or, for Copilot, `gh auth token`) →
- * the provider's official usage API. Never browser cookies, never a pasted key.
- * Every provider is best-effort and isolated: a slow/failed provider degrades to
- * its own `status` + `message` and never rejects the whole call.
+ * the provider's official usage API. Never browser cookies, never a pasted key,
+ * never a refresh token. Every provider is best-effort and isolated: a
+ * slow/failed provider degrades to its own `status` + `message` and never
+ * rejects the whole call.
+ *
+ * Claude Code on macOS keeps its token in the login Keychain, not in
+ * `~/.claude/.credentials.json`. The desktop reads that item natively behind an
+ * explicit, OS-mediated grant (`credstore.rs`); this reader does not — the
+ * bridge's Node binary would need a grant of its own and its keyring binding
+ * cannot suppress the OS dialog, so a poller could not be kept silent. It
+ * reports the honest state instead (FOR-DEV: bridge/FOR-DEV.md → *Providers*).
  *
  * All I/O is injectable (`homeDir` / `readFile` / `fetchImpl` / `ghAuthToken` /
- * `now`) so each provider's mapping is unit-tested against canned JSON with no
- * disk or network.
+ * `now` / `platform`) so each provider's mapping is unit-tested against canned
+ * JSON with no disk or network.
  */
 import { execFile } from 'node:child_process';
 import { readFile as fsReadFile } from 'node:fs/promises';
@@ -45,6 +53,9 @@ export interface UsageReaderDeps {
   ghAuthToken?: () => Promise<string | undefined>;
   /** Per-request timeout in ms. */
   timeoutMs?: number;
+  /** OS platform (defaults to `process.platform`) — decides how a missing
+   *  Claude Code credentials file is reported. */
+  platform?: NodeJS.Platform;
 }
 
 interface ResolvedDeps {
@@ -54,6 +65,7 @@ interface ResolvedDeps {
   now: () => number;
   ghAuthToken: () => Promise<string | undefined>;
   timeoutMs: number;
+  platform: NodeJS.Platform;
 }
 
 /** Reads usage for exactly [providers] — inactive providers cost nothing. */
@@ -68,6 +80,7 @@ export async function readUsage(
     now: deps.now ?? (() => Date.now()),
     ghAuthToken: deps.ghAuthToken ?? defaultGhAuthToken,
     timeoutMs: deps.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    platform: deps.platform ?? process.platform,
   };
   const out: ProviderUsage[] = [];
   for (const provider of providers) {
@@ -175,8 +188,19 @@ async function codexBaseUrl(deps: ResolvedDeps): Promise<string> {
 
 async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();
-  const creds = await readJson(join(deps.homeDir, '.claude', '.credentials.json'), deps);
+  // `CLAUDE_CONFIG_DIR` moves the whole config dir, credentials file included.
+  const configDir = process.env.CLAUDE_CONFIG_DIR || join(deps.homeDir, '.claude');
+  const creds = await readJson(join(configDir, '.credentials.json'), deps);
   if (!creds) {
+    // On macOS a signed-in install has no file at all — the token lives in the
+    // login Keychain, which this reader does not open (module docs). Say so,
+    // rather than sending the user off to sign in again.
+    if (deps.platform === 'darwin' && (await readJson(join(deps.homeDir, '.claude.json'), deps))) {
+      return withMessage(
+        base('claude', 'authRequired', now),
+        'Claude Code keeps its sign-in in the macOS Keychain, which the bridge does not read — open the desktop app for usage',
+      );
+    }
     return withMessage(
       base('claude', 'notInstalled', now),
       'Claude Code is not signed in (~/.claude/.credentials.json missing)',
@@ -190,8 +214,24 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
       'Claude Code has no OAuth access token',
     );
   }
+  // Claude Code refreshes its access token only while it runs; a stale one would
+  // 401 and read as "signed out". The bridge never refreshes it itself.
+  const expiresAt = epochMs(oauth?.expiresAt);
+  if (expiresAt !== undefined && expiresAt <= now) {
+    return withMessage(
+      base('claude', 'authRequired', now),
+      "Claude Code's session token has expired — open Claude Code once so it refreshes it",
+    );
+  }
   const plan = str(oauth?.subscriptionType);
-  const account = makeAccount({ plan: plan ? prettifyPlan(plan) : undefined });
+  // Identity comes from `~/.claude.json` (`oauthAccount`), a settings file with
+  // no secrets in it.
+  const identity = asObj((await readJson(join(deps.homeDir, '.claude.json'), deps))?.oauthAccount);
+  const account = makeAccount({
+    email: str(identity?.emailAddress),
+    organization: str(identity?.organizationName),
+    plan: plan ? prettifyPlan(plan) : undefined,
+  });
 
   const res = await fetchJson(
     {

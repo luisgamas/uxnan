@@ -58,6 +58,9 @@ REM An empty object: "I observed this, I decide nothing". Several of these CLIs
 REM parse the hook's stdout and read an unparseable one as a refusal - Cursor
 REM gates tool use on it, so a reporter that printed nothing would BLOCK the
 REM agent's file reads and shell commands rather than merely fail to report.
+REM It is NOT neutral on Antigravity's PreToolUse: that event is a permission
+REM gate whose reply must carry a decision, and agy reads {} there as "deny".
+REM So this reporter is only registered on PostToolUse (see agent_hooks.rs).
 echo {}
 exit /b 0
 

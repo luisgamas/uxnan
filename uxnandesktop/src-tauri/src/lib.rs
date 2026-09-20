@@ -17,6 +17,7 @@ mod browser;
 mod codex_trust;
 mod commands;
 mod convtitle;
+mod credstore;
 // Public so the headless runner (`main.rs` → `automations::store`) resolves the
 // data directory through exactly the same override the app does.
 pub mod datadir;
@@ -413,6 +414,7 @@ pub fn run() {
             commands::usage_read,
             commands::usage_detect,
             commands::usage_codex_redeem_reset,
+            commands::usage_grant_access,
             commands::mcp_info,
             commands::pty_create,
             commands::pty_write,

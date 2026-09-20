@@ -98,6 +98,12 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A live `/api/stats` Cloudflare Pages Function refreshes the hero's star and
+  installer-download counters after hydration. It caches successful responses
+  for 15 minutes, follows GitHub release pagination, validates upstream data,
+  and keeps the build-time value as a graceful fallback when GitHub or the
+  function is unavailable.
+
 - DOM recreations of both apps in `src/components/mockups/`: the Uxnan Desktop
   window (one tab per running agent, project rail with its live agent view and
   nested subagents, a Claude Code terminal with session header and composer,

@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 665, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 692, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -85,7 +85,12 @@ push validation (FOR-HUMAN).
   its **official local CLI** with
   `shell:false`, parses the native stream, and emits structured
   `stream/content/block` events (command / diff / tool) plus
-  `stream/thinking/delta` (reasoning). Most spawn the CLI over stdio; the
+  `stream/thinking/delta` (reasoning). **Claude Code** spawns one process per
+  turn (`claude -p --resume`); **pi** and **Antigravity** keep **one resident
+  process per thread** (`pi --mode rpc` / `agy --input-format stream-json`,
+  one turn at a time on an open stdin — no per-turn cold start, torn down after
+  24 h idle, on a spawn-argument change, on cancel, or when the thread is
+  archived / deleted); the
   server-based adapters run a local server process instead — **Codex**
   JSON-RPC over `codex app-server` stdio (one process per turn: Codex holds a
   single writer per thread, so the bridge lets go between turns and the same
@@ -288,6 +293,20 @@ push validation (FOR-HUMAN).
 - [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
       transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
       transport so the phone is dropped immediately.
+- [ ] **`agent/usageStats` — Claude Code on a macOS PC.** The reader
+      (`src/usage/usage-reader.ts` `readClaude`) only opens
+      `~/.claude/.credentials.json`; on macOS Claude Code keeps the token in the
+      login Keychain instead, so the phone sees `authRequired` with an honest
+      "open the desktop app" message while the desktop shows live data. The
+      desktop's answer — Security.framework with user interaction disabled on
+      polls + a user-initiated grant — does not port as-is: the bridge's Node
+      binary would need a Keychain grant of its own, and `@napi-rs/keyring`
+      cannot suppress the OS dialog, so a poll could not be kept silent (and the
+      `security` CLI's silent read is exactly the posture the desktop rejected).
+      Resolve by making the **desktop the reader** and serving the phone through
+      the local desktop↔bridge channel (`uxnandesktop/architecture/02e`)
+      rather than a second Keychain client; emit `accessRequired` (already
+      in the contract) when the desktop reports it. Same contract, one reader.
 
 ## Conversation history
 
@@ -318,19 +337,6 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
-- [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
-      delivers a follow-up as its own turn once the current one ends — uniform
-      across all seven active agents. What the CLIs additionally do is *steer*: inject the
-      message into the running turn at the next tool-call boundary (Claude Code's
-      TUI does this by default; Codex splits it as `Tab` = queue vs `Enter` =
-      steer). The bridge cannot: the one-shot agents (`claude -p --resume`, pi,
-      antigravity) have no input channel while they run — `spawn.ts` closes
-      stdin because those CLIs hang on an open pipe. It IS reachable for the
-      server-backed ones (Codex `app-server`, OpenCode `serve`, Zero/Grok ACP), so
-      it belongs behind a new `AgentCapabilities.steering` flag the phone can read,
-      alongside a `turn/steer` (or a `turn/send` mode) that the adapter maps to its
-      protocol. Needs: the capability in `shared/`, per-adapter support, and a
-      mobile affordance distinct from "queue". Unblocked — just not started.
 - [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
       mid-turn delivery is implemented and unit-tested against the published
       protocol schema (`codex app-server generate-json-schema`, codex-cli
@@ -377,17 +383,6 @@ push validation (FOR-HUMAN).
       `session/set_mode { modeId: <effort> }` actually applies the
       reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
       in `grok-adapter.ts` / `grok-tools.ts`.
-- [ ] **Antigravity token usage** — `AntigravityAdapter` reports
-      `reportsContextUsage:false`, so its card shows no context meter. It is not
-      that `agy` has none: captured from a real run, its `result` event carries
-      `usage:{ input_tokens, output_tokens, thinking_tokens, cache_read_tokens,
-      total_tokens }` — but **only under `--output-format stream-json`**, while
-      the turn currently runs on `text`. Surfacing it means migrating the turn's
-      stream parsing from plain text to the JSON events (`step_update` for
-      deltas, `result` for the final answer + usage), which is why it was not
-      done alongside Grok/Zero/Codex. Once migrated, emit `usage` on
-      `stream/turn/completed` and flip the capability. See the inline marker in
-      `antigravity-adapter.ts`.
 
 ### Adding the next agent (recipe — do these one by one)
 
@@ -401,16 +396,21 @@ running the adapter and reading what it emits — two shipped "fixes" were
 validated against a surface the bridge does not drive, and did nothing.
 
 
-Pick the template that matches the CLI's headless surface. For a **one-shot
-per-turn CLI** (spawns once per turn) copy `pi-adapter.ts`;
-for a **long-lived server** with a pre-tool approval channel copy `codex-adapter.ts`
-or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE over
-`opencode serve`).
+Pick the template that matches the CLI's headless surface. For a **resident
+process per thread** (the CLI reads one turn at a time from an open stdin) copy
+`pi-adapter.ts` or `antigravity-adapter.ts`; for a **one-shot per-turn CLI**
+(spawns once per turn) copy `claude-adapter.ts`; for a **long-lived server** with
+a pre-tool approval channel copy `codex-adapter.ts` or `zero-adapter.ts` (JSON-RPC over
+stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 
 1. Run the real CLI by hand once and capture a turn's machine-readable stream
    (a `--json|--format json` one-shot, or the server's event stream). **Watch for
-   stdin:** the one-shot CLIs hang on an open stdin pipe — spawn with
-   `stdio:['ignore','pipe','pipe']`.
+   stdin:** a one-shot CLI hangs on an open stdin pipe — spawn with
+   `stdio:['ignore','pipe','pipe']` unless the CLI genuinely reads a stream
+   (`stdin: 'pipe'`). **Watch for the session id too:** the same CLI can announce
+   it on one surface and not another (pi's `-p --mode json` emits a `session`
+   event, its `--mode rpc` does not — ask `get_state`), and a flag that looks
+   client-owned may not be (`agy --conversation` refuses an unknown id).
 2. Copy the closest template; adjust the args/request builder (subcommand, model
    flag, session/continue flag, cwd) and the event parser for that CLI's shape.
    Keep `shell:false` and pass the prompt as an argv element / request body (no
@@ -423,8 +423,14 @@ or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE ov
 - [ ] **Antigravity native-session history** — `agy` exposes no history/export
       command and its `~/.gemini/antigravity-cli/conversations/<uuid>.db` stores
       opaque step payloads, so `SessionHistoryReader` deliberately does not infer
-      messages from it. Revisit only if Antigravity exposes a stable supported
-      transcript API or documented payload schema; do not reverse-engineer
+      messages from it. The same goes for
+      `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`,
+      which holds the model's reasoning text (`thinking`) that the driven
+      stream-json surface never emits — a contributed transcript poller was
+      removed on review for exactly this reason (see `AGENTS.md`, *never validate
+      an adapter against a surface the bridge does not drive*). Revisit only if
+      Antigravity exposes a stable supported transcript API or documented payload
+      schema (or emits reasoning on stream-json); do not reverse-engineer
       brittle blobs into user-visible history.
 
 ## Daemon lifecycle & ops

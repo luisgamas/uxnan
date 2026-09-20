@@ -5,6 +5,81 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.25-alpha.20260920] - 20260920
+### Added
+
+- **Antigravity token usage.** `AntigravityAdapter` advertises
+  `reportsContextUsage: true` and every completed turn carries `usage.tokens`:
+  the context the conversation occupies, read from the **last `agent_response`
+  `step_update`** of the turn (`input_tokens + cache_read_tokens +
+  output_tokens`). Not from `result.usage` — captured live on `agy` 1.2.7, that
+  block is summed over the whole conversation (`num_turns`), so a meter fed from
+  it climbs forever. (`docs/agents.md` → *Drive surface*.)
+- **Antigravity tool blocks.** A finished `tool` step becomes a structured
+  `stream/content/block` — `run_command` a command block, `write_to_file` and
+  `replace_file_content` diff blocks, anything else a generic tool block — with
+  `agy`'s own parameter names (`CommandLine`, `TargetFile`, `CodeContent`,
+  `TargetContent`, `ReplacementContent`). No `thinking` event: the stream-json
+  surface carries only a `thinking_tokens` count, never the reasoning text.
+- **pi context window from the session.** The adapter reads the model's
+  `contextWindow` from pi's `get_state` response, so `usage.contextWindow` is
+  right for the session's actual model even when `--list-models` never listed it.
+
+### Changed
+
+- **pi and Antigravity run one resident process per thread** instead of one
+  process per turn (contributed in #234 / #235, integrated with the fixes
+  below). `pi --mode rpc` and `agy --input-format stream-json --output-format
+  stream-json` both read one turn at a time from an open stdin, so the same
+  authenticated process, with the session already in memory, answers turn after
+  turn — no per-turn cold start (`agy` re-ran its sign-in check every turn:
+  2.5 s cold vs 1.0 s warm, measured; pi re-read its session JSONL from disk).
+  A process is torn down after 24 hours without a turn
+  (`DEFAULT_PI_IDLE_TIMEOUT_MS` / `DEFAULT_ANTIGRAVITY_IDLE_TIMEOUT_MS`, re-armed
+  by every completed turn), when a spawn argument changes (cwd, model, effort,
+  posture — the new process resumes the same session), on cancel (a kill is the
+  cancel for both; pi's `abort` is no longer sent into a process about to die),
+  and when the thread is archived or deleted: `thread/archive` and
+  `thread/delete` now call `AgentManager.closeThreadSession`, which cancels the
+  running turn, drops the queue and asks every adapter to release the thread's
+  process (`closeSession`, an optional adapter capability). A later turn spawns
+  a new process on the same session id, so a teardown costs one cold start,
+  never history. `agy` turns run under `--print-timeout 2h`, a per-turn cap
+  (verified not to touch an idle process).
+- **`agent/usageStats` — Claude Code reader.** Reports an **expired** access token
+  as `authRequired` with "open Claude Code once so it refreshes it" instead of
+  letting a 401 read as signed-out (the bridge never refreshes a token itself);
+  fills the account's email + organization from `~/.claude.json`
+  (`oauthAccount`, no secrets); honors `CLAUDE_CONFIG_DIR`; and on **macOS**,
+  where Claude Code keeps its token in the login Keychain rather than on disk,
+  says so and points at the desktop app instead of claiming the user is signed
+  out. Opening the Keychain from the bridge is deliberately not done — see
+  `FOR-DEV.md` → *Handlers*. The reader takes an injectable `platform` for
+  tests. Picks up `UsageStatus.accessRequired` from `@uxnan/shared` (not
+  emitted by the bridge yet).
+
+### Fixed
+
+- **Antigravity lost its conversation on every turn with `agy` ≥ 1.2.** The
+  adapter minted the `--conversation` uuid itself; since 1.2.x `agy` answers an
+  unknown id with `warning: conversation "<id>" not found` and a **new**
+  conversation, so the second turn no longer knew the first (verified live:
+  asked what it had just said, it answered "None"). A thread's first process
+  now runs without `--conversation`, the adapter adopts the id `agy` announces
+  on `init`, and every later spawn for the thread resumes it.
+- **pi lost its session on every turn.** `--mode rpc` emits no `session` event
+  (verified on pi 0.85.1; `-p --mode json` does, which is where the id was read
+  before the move to RPC), so no id was ever captured and no `--session-id` was
+  ever passed.
+  The adapter now sends `get_state` right after spawning and reads `sessionId`
+  from the response; a recycle passes it as `--session-id`.
+- **pi turns end on `agent_settled`, not `agent_end`.** `agent_end` closes one
+  agent *run*, and pi retries a run by itself after a retryable provider error
+  (`willRetry: true`); on a resident process the bridge's next prompt then
+  landed on a busy agent and was refused ("Agent is already processing").
+  `agent_settled` is pi's own idle signal and now ends the turn (verified live
+  with a 521 from a free OpenRouter model, which pi retried and answered).
+
 ## [0.0.24-alpha.20260903] - 20260903
 ### Changed
 
