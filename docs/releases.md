@@ -184,6 +184,53 @@ git push origin desktop-nightly-v0.0.30-nightly.20260808.1
 That is deliberate. Pushing a tag that triggers nothing would leave a released
 version with no build behind it — worse than stopping.
 
+## npm: Trusted Publishing, so nothing expires
+
+`release-npm.yml` holds **no npm credential**. It publishes through npm's
+*Trusted Publishing*: the job requests a GitHub OIDC id-token (`permissions:
+id-token: write`) and npm exchanges it for a publish credential that lives only
+for that run — because each package on npmjs.com names this repository and this
+workflow file as its trusted publisher. Provenance attestations come with it.
+
+Why: the previous credential was `NPM_TOKEN`, a granular access token, and npm
+caps those at 90 days. It was set on 2026-06-21 and ran out on 2026-09-19 — the
+day a cut needed it. `npm publish` answered `E404 Not Found - PUT
+…/@uxnan%2fshared` (npm's reply to a token without publish rights), the run
+tagged `shared` and then waited thirty minutes for a version nothing was
+publishing. npm's own token page now steers automation to Trusted Publishing for
+the same reason.
+
+**Set up once per package, on npmjs.com** (there is no API for it):
+*package → Settings → Trusted Publisher → GitHub Actions*, with
+
+| Field | Value |
+|---|---|
+| Organization or user | `luisgamas` |
+| Repository | `uxnan` |
+| Workflow filename | `release-npm.yml` |
+| Environment name | *(leave empty)* |
+
+for each of `@uxnan/shared`, `uxnan-bridge` and `uxnan-relay`. The filename is
+the top-level workflow, not the reusable `verify-node.yml` it calls. A package
+whose publisher is missing fails its publish with `ENEEDAUTH`; the fix is that
+form, never a token. Once all three are registered, delete the `NPM_TOKEN`
+secret: an unused expired token is only a thing to be confused by.
+
+What the workflow needs for the exchange to happen — each is commented in the
+file so it is not "simplified" away: npm 11.5.1 or newer (the runner's Node 22
+bundles an older one, so a step upgrades it), `id-token: write`, no
+`NODE_AUTH_TOKEN` (a token present is used *instead* of OIDC), and a
+`repository.url` in every `package.json` that matches this repository (all
+three have one).
+
+**Publishing a tag that already exists** — after fixing a publisher, or any
+other cause that left a tag without its package — is a dispatch of
+*Release — npm* with the tag as its input (`gh workflow run release-npm.yml -f
+tag=shared-v…`). It verifies and builds **the tagged commit** but runs **this**
+workflow file: a tag push runs the file as it was at the tagged commit, so
+re-running the failed job would repeat the old recipe — the token-based one, in
+the 2026-09-19 case — and could not pick up the fix.
+
 ---
 
 ## The version convention
