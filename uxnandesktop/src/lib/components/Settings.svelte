@@ -727,7 +727,9 @@
     persistNow();
   }
   // Ready-to-paste MCP server config (standard `mcpServers` http shape) for wiring
-  // an agent by hand. Empty until the endpoint is known.
+  // an agent by hand. Empty until the endpoint is known. The agent-id header is
+  // what scopes the caller to its terminal's project and anchors `current`;
+  // the placeholder is spelled out because each CLI expands variables its own way.
   const mcpSnippet = $derived(
     mcpData?.endpoint
       ? JSON.stringify(
@@ -736,7 +738,10 @@
               [mcpData.serverName]: {
                 type: "http",
                 url: mcpData.endpoint,
-                headers: { Authorization: `Bearer ${mcpData.token ?? ""}` },
+                headers: {
+                  Authorization: `Bearer ${mcpData.token ?? ""}`,
+                  [mcpData.agentIdHeader]: `<the terminal's ${mcpData.agentIdEnv}>`,
+                },
               },
             },
           },
@@ -1608,7 +1613,10 @@
                 </div>
               </div>
 
-              <!-- Agent browser MCP — its own titled group (title outside the card). -->
+              <!-- Agent tools (MCP) — the control surface's per-launch wiring, its own
+                   titled group (title outside the card). Independent of the browser
+                   master switch above: the tools are the whole catalog, of which
+                   the browser tools are six entries. -->
               <div class="space-y-2">
                 <span class={cn("px-1", text.section)}>{i18n.t("browser.mcpHeading")}</span>
                 <div class={panel.settingsBody}>
@@ -1617,7 +1625,6 @@
                     {#snippet control()}
                       <Switch
                         checked={br.mcpEnabled}
-                        disabled={!br.enabled}
                         onCheckedChange={(c) => { setBr({ mcpEnabled: c }); persistNow(); }}
                       />
                     {/snippet}
@@ -1627,7 +1634,7 @@
                     {#snippet control()}
                       <Switch
                         checked={br.frictionFree}
-                        disabled={!br.enabled || !br.mcpEnabled}
+                        disabled={!br.mcpEnabled}
                         onCheckedChange={(c) => { setBr({ frictionFree: c }); persistNow(); }}
                       />
                     {/snippet}
@@ -1659,7 +1666,7 @@
                           {#snippet control()}
                             <Switch
                               checked={mcpAgentOn(agent.id)}
-                              disabled={!br.enabled || !br.mcpEnabled}
+                              disabled={!br.mcpEnabled}
                               aria-label={i18n.t("browser.mcpAgentAria", { agent: agent.label })}
                               onCheckedChange={(c) => toggleMcpAgent(agent.id, c)}
                             />

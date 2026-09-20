@@ -77,6 +77,12 @@ pub const SERVER_NAME: &str = "uxnan-browser";
 /// Environment variable the injected configs read the bearer token from, so the
 /// token itself is never written to a config file.
 pub const TOKEN_ENV: &str = "UXNAN_MCP_TOKEN";
+
+/// The header every launched agent sends with its terminal id — what anchors
+/// `current` and the caller's project scope on the control surface — and the
+/// environment variable each launch config expands it from.
+pub const AGENT_ID_HEADER: &str = uxnan_control_protocol::headers::AGENT_ID;
+pub const AGENT_ID_ENV: &str = uxnan_control_protocol::env::AGENT_ID;
 /// OpenCode's "extra config, merged over the files" environment variable — how
 /// OpenCode (and only OpenCode) is pointed at the server for one launch.
 pub const OPENCODE_CONFIG_ENV: &str = "OPENCODE_CONFIG_CONTENT";
@@ -227,11 +233,19 @@ pub fn launch_args(agent_id: &str, endpoint: &str, claude_config: Option<&str>) 
         // Values are deliberately unquoted: Codex parses each `-c` value as TOML
         // and falls back to the literal string, so a bare URL and a bare
         // variable name need no shell quoting at all.
+        // `env_http_headers` maps a header to the environment variable Codex
+        // reads it from at call time, so every terminal's agent identifies
+        // itself without a per-terminal argument.
         "codex" => vec![
             "-c".to_string(),
             format!("mcp_servers.{SERVER_NAME}.url={endpoint}"),
             "-c".to_string(),
             format!("mcp_servers.{SERVER_NAME}.bearer_token_env_var={TOKEN_ENV}"),
+            "-c".to_string(),
+            format!(
+                "mcp_servers.{SERVER_NAME}.env_http_headers.{}={}",
+                AGENT_ID_HEADER, AGENT_ID_ENV
+            ),
         ],
         _ => Vec::new(),
     }
@@ -252,7 +266,10 @@ pub fn launch_env(agent_id: &str, endpoint: &str) -> Vec<(String, String)> {
                         "type": "remote",
                         "url": endpoint,
                         "enabled": true,
-                        "headers": { "Authorization": format!("Bearer {{env:{TOKEN_ENV}}}") }
+                        "headers": {
+                            "Authorization": format!("Bearer {{env:{TOKEN_ENV}}}"),
+                            AGENT_ID_HEADER: format!("{{env:{AGENT_ID_ENV}}}")
+                        }
                     }
                 }
             })
@@ -283,14 +300,18 @@ pub fn claude_config_path(app: &AppHandle, endpoint: &str) -> Option<PathBuf> {
 
 /// The contents of that file: a standard `mcpServers` entry naming the token's
 /// environment variable (Claude expands `${VAR}` when it loads the config), so
-/// the file itself holds no secret.
+/// the file itself holds no secret — and the terminal's id the same way, so one
+/// file per window serves every terminal and each agent still says which it is.
 fn claude_config_json(endpoint: &str) -> String {
     let doc = json!({
         "mcpServers": {
             SERVER_NAME: {
                 "type": "http",
                 "url": endpoint,
-                "headers": { "Authorization": format!("Bearer ${{{TOKEN_ENV}}}") }
+                "headers": {
+                    "Authorization": format!("Bearer ${{{TOKEN_ENV}}}"),
+                    AGENT_ID_HEADER: format!("${{{AGENT_ID_ENV}}}")
+                }
             }
         }
     });
@@ -363,7 +384,7 @@ pub async fn prepare(app: &AppHandle, cwd: &str) {
         let data = state.data.read().await;
         let b = &data.settings.browser;
         (
-            b.enabled && b.mcp_enabled,
+            b.mcp_enabled,
             b.friction_free,
             b.mcp_disabled_agents.clone(),
         )
@@ -648,6 +669,9 @@ mod tests {
                 "mcp_servers.uxnan-browser.url=http://127.0.0.1:63345/mcp".to_string(),
                 "-c".to_string(),
                 "mcp_servers.uxnan-browser.bearer_token_env_var=UXNAN_MCP_TOKEN".to_string(),
+                "-c".to_string(),
+                "mcp_servers.uxnan-browser.env_http_headers.x-uxnan-agent-id=UXNAN_AGENT_ID"
+                    .to_string(),
             ]
         );
         for a in &args {
@@ -681,6 +705,10 @@ mod tests {
         assert_eq!(doc["mcp"][SERVER_NAME]["type"], "remote");
         assert_eq!(doc["mcp"][SERVER_NAME]["url"], "http://127.0.0.1:9/mcp");
         assert_eq!(doc["mcp"][SERVER_NAME]["enabled"], true);
+        assert_eq!(
+            doc["mcp"][SERVER_NAME]["headers"]["x-uxnan-agent-id"],
+            "{env:UXNAN_AGENT_ID}"
+        );
     }
 
     #[test]
@@ -843,6 +871,10 @@ mod tests {
         assert_eq!(
             doc["mcpServers"][SERVER_NAME]["headers"]["Authorization"],
             "Bearer ${UXNAN_MCP_TOKEN}"
+        );
+        assert_eq!(
+            doc["mcpServers"][SERVER_NAME]["headers"]["x-uxnan-agent-id"],
+            "${UXNAN_AGENT_ID}"
         );
     }
 }

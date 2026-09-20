@@ -10,11 +10,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { terminals } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
+import { agentMonitor } from "./agentMonitor.svelte";
 import {
   agentType,
   drainAvailable,
   enqueueAll,
   pendingCount,
+  readyToReceive,
   resolveTargets,
   type OrchestratorAgent,
   type OrchestrationTarget,
@@ -31,13 +33,6 @@ const PUMP_INTERVAL_MS = 800;
  *  (an agent with no hooks and no output) we release this grace window so the
  *  queue still drains — best-effort backpressure for unmonitored agents. */
 const PICKUP_GRACE_MS = 4000;
-
-/** Hard cap on how long a queued message is held back solely because its agent
- *  reads *busy*. Backpressure is a courtesy (don't flood a working agent), not a
- *  gate — an agent whose busy signal is unreliable or stuck (no hooks, perpetual
- *  output activity, a stale status reader) would otherwise wedge its queue
- *  forever. Past this, the head is force-delivered (best-effort). */
-const MAX_HOLD_MS = 12000;
 
 class OrchestrationStore {
   /** Per-agent message queues (backpressure), keyed by tab id. */
@@ -130,8 +125,9 @@ class OrchestrationStore {
     }
 
     // Track how long each queue's head has been waiting, so a head held back only
-    // by a busy signal can be force-delivered past the hold cap. Empty queues drop
-    // their clock; a consumed head re-clocks on the next pump.
+    // by a busy signal or a painting TUI can be force-delivered past the hold
+    // cap (`readyToReceive`). Empty queues drop their clock; a consumed head
+    // re-clocks on the next pump.
     for (const [id, q] of Object.entries(this.queues)) {
       if (q.length > 0) {
         if (this.headSince[id] === undefined) this.headSince[id] = now;
@@ -145,11 +141,14 @@ class OrchestrationStore {
       if (!a) return false; // agent gone — nothing to deliver to
       const deadline = this.pending[tabId];
       if (deadline && now < deadline) return false; // just delivered, awaiting pickup
-      if (!a.busy) return true; // free → deliver now
-      // Busy: hold, but not forever — force it through once the head has waited
-      // past the cap (the busy signal may be unreliable/stuck).
-      const since = this.headSince[tabId];
-      return since !== undefined && now - since >= MAX_HOLD_MS;
+      // Free, and its terminal has drawn and settled: a first message queued at
+      // launch waits here until the agent's TUI is actually up.
+      return readyToReceive({
+        busy: a.busy,
+        lastOutputAt: agentMonitor.lastOutput(tabId),
+        headSince: this.headSince[tabId],
+        now,
+      });
     };
 
     const { dispatch, queues } = drainAvailable(this.queues, available);

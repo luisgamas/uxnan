@@ -1,4 +1,5 @@
-// Per-launch registration of uxnan's browser MCP server on the command line.
+// Per-launch registration of uxnan's MCP server (the control surface) on the
+// command line.
 //
 // The backend serves the server and owns the *registry* of how each CLI is
 // pointed at it for one launch (`src-tauri/src/mcpinject.rs`); this module is
@@ -66,10 +67,13 @@ export async function ensureMcpLaunch(): Promise<void> {
   await loadMcpLaunch();
 }
 
-/** Mirror the browser settings that decide whether (and for whom) the server is
- *  registered. Pushed from the app store on load and on every settings write. */
+/** Mirror the settings that decide whether (and for whom) the server is
+ *  registered — the agent-tools switch and the per-agent toggles, which live on
+ *  the browser settings object they grew from. The browser's own master switch
+ *  is not a gate: the catalog is far more than the browser tools. Pushed from
+ *  the app store on load and on every settings write. */
 export function syncMcpLaunchSettings(browser: BrowserSettings | undefined): void {
-  enabled = browser?.enabled !== false && browser?.mcpEnabled !== false;
+  enabled = browser?.mcpEnabled !== false;
   disabled = browser?.mcpDisabledAgents ?? [];
 }
 

@@ -167,17 +167,22 @@ enum WaitFor {
 
 /// The agent's current state for a terminal, as the wait sees it: `None`
 /// when the terminal is gone, `Some(None)` when it is alive but its agent has
-/// not reported yet, `Some(Some(status))` otherwise.
+/// not reported yet, `Some(Some(status))` otherwise. `starting` is the
+/// window's word that the tab is open and not exited: a tab just created has
+/// no PTY for a moment, and that moment must read as *not reported yet*, not
+/// as *gone* — or a wait right after `terminal/create` would answer `exit`.
 fn observe(
     state: &AppState,
     data: &crate::model::AppData,
     terminal: &str,
+    starting: bool,
 ) -> Option<Option<AgentStatus>> {
-    let alive = state
-        .pty
-        .live_sessions()
-        .iter()
-        .any(|(id, _)| id == terminal);
+    let alive = starting
+        || state
+            .pty
+            .live_sessions()
+            .iter()
+            .any(|(id, _)| id == terminal);
     if !alive {
         return None;
     }
@@ -231,7 +236,7 @@ pub async fn wait<R: tauri::Runtime>(
         .unwrap_or(WAIT_MAX)
         .min(WAIT_MAX);
     let state = app.state::<AppState>();
-    match wait_for(&state, &tab.id, want, budget).await {
+    match wait_for(&state, &tab.id, want, budget, !tab.exited).await {
         Ok((reached, waited)) => Ok(json!({
             "terminal": tab.id,
             "reached": reached,
@@ -258,6 +263,7 @@ async fn wait_for(
     terminal: &str,
     want: WaitFor,
     budget: Duration,
+    starting: bool,
 ) -> Result<(&'static str, Duration), (String, Duration)> {
     let started = Instant::now();
     loop {
@@ -268,7 +274,7 @@ async fn wait_for(
         notified.as_mut().enable();
         let seen = {
             let data = state.data.read().await;
-            observe(state, &data, terminal)
+            observe(state, &data, terminal, starting)
         };
         if let Some(reached) = reached(want, seen) {
             return Ok((reached, started.elapsed()));
@@ -289,13 +295,31 @@ async fn wait_for(
     }
 }
 
-/// `agent/list`.
+/// `agent/list`: the live agents within the caller's scope (a launch caller
+/// sees the agents of its own project, itself included).
 pub async fn list<R: tauri::Runtime>(
     app: &AppHandle<R>,
-    _caller: &Caller,
+    caller: &Caller,
     _params: &Value,
 ) -> Result<Value, RpcError> {
-    Ok(json!({ "agents": all(app).await }))
+    Ok(json!({ "agents": visible(app, caller).await }))
+}
+
+/// [`all`], narrowed to the caller's scope.
+pub async fn visible<R: tauri::Runtime>(app: &AppHandle<R>, caller: &Caller) -> Vec<AgentView> {
+    let resolver = Resolver::new(app, caller);
+    let scope = resolver.scope().await;
+    let own = match caller {
+        Caller::Launch { agent_id } => agent_id.clone(),
+        Caller::Control => None,
+    };
+    all(app)
+        .await
+        .into_iter()
+        .filter(|a| {
+            own.as_deref() == Some(a.terminal_id.as_str()) || scope.admits_folder(a.cwd.as_deref())
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -355,13 +379,19 @@ mod tests {
             .write()
             .await
             .upsert_agent_state(report(&id, AgentStatus::Working), 1);
-        let err = wait_for(&state, &id, WaitFor::Idle, Duration::from_millis(150))
-            .await
-            .unwrap_err();
+        let err = wait_for(
+            &state,
+            &id,
+            WaitFor::Idle,
+            Duration::from_millis(150),
+            false,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.0, "working");
 
         // Flip to done while a wait is pending.
-        let waiter = wait_for(&state, &id, WaitFor::Idle, Duration::from_secs(5));
+        let waiter = wait_for(&state, &id, WaitFor::Idle, Duration::from_secs(5), false);
         let flipper = async {
             tokio::time::sleep(Duration::from_millis(50)).await;
             state
@@ -381,19 +411,43 @@ mod tests {
             .await
             .upsert_agent_state(report(&id, AgentStatus::Waiting), 3);
         assert_eq!(
-            wait_for(&state, &id, WaitFor::Waiting, Duration::from_millis(50))
-                .await
-                .unwrap()
-                .0,
+            wait_for(
+                &state,
+                &id,
+                WaitFor::Waiting,
+                Duration::from_millis(50),
+                false
+            )
+            .await
+            .unwrap()
+            .0,
             "waiting"
         );
         assert_eq!(
-            wait_for(&state, "gone", WaitFor::Idle, Duration::from_millis(50))
-                .await
-                .unwrap()
-                .0,
+            wait_for(
+                &state,
+                "gone",
+                WaitFor::Idle,
+                Duration::from_millis(50),
+                false
+            )
+            .await
+            .unwrap()
+            .0,
             "exit"
         );
+        // A tab the window says is open but whose PTY is not up yet is
+        // "not reported", never "exit": the wait keeps waiting.
+        let err = wait_for(
+            &state,
+            "gone",
+            WaitFor::Idle,
+            Duration::from_millis(50),
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, "unreported");
         // A live terminal whose agent never reported: the wait runs out and says so.
         state.pty.close(&id).unwrap();
     }

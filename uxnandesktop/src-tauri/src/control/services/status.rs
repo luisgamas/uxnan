@@ -7,6 +7,7 @@ use uxnan_control_protocol::rpc::RpcError;
 use uxnan_control_protocol::PROTOCOL_VERSION;
 
 use crate::control::dispatch::enabled_groups;
+use crate::control::resolve::Resolver;
 use crate::control::Caller;
 use crate::state::AppState;
 
@@ -15,10 +16,21 @@ pub async fn status<R: tauri::Runtime>(
     caller: &Caller,
     _params: &Value,
 ) -> Result<Value, RpcError> {
+    // Counts are the caller's view: a launch caller counts its own project.
+    let resolver = Resolver::new(app, caller);
+    let scope = resolver.scope().await;
     let state = app.state::<AppState>();
-    let terminals = state.pty.live_sessions().len();
-    let agents = super::agent::all(app).await.len();
-    let projects = state.data.read().await.repos.len();
+    let terminals = state
+        .pty
+        .live_sessions()
+        .iter()
+        .filter(|(id, cwd)| {
+            matches!(caller, Caller::Launch { agent_id: Some(own) } if own == id)
+                || scope.admits_folder(Some(cwd))
+        })
+        .count();
+    let agents = super::agent::visible(app, caller).await.len();
+    let projects = resolver.projects().await.len();
     let groups = enabled_groups(app).await;
     let caller_kind = match caller {
         Caller::Launch { agent_id } => json!({ "kind": "launch", "terminalId": agent_id }),

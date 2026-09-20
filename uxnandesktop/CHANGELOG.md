@@ -42,6 +42,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `worktree create`, `terminal create`, `run start`, `automation ls|run`,
   `--prompt-file` and `--idempotency-key`; `launchAgent` now returns the tab
   it opened.
+- **A launched agent reaches only its own project.** The per-launch token
+  is now scoped the way the spec always said: listings (`project/list`,
+  `worktree/list`, `terminal/list`, `agent/list`, the counts in `status`) are
+  narrowed to the project the caller's terminal runs in, and a selector that
+  names another project's worktree or terminal answers *scope denied*
+  (`-32003`) — distinct from *not found*, so an agent stops rather than
+  retries. The scope is taken from the folder the caller's own PTY runs in,
+  never from the request. To make that work from an agent's tool calls, **every
+  launch config now sends the terminal's id with each MCP call**
+  (`x-uxnan-agent-id`, expanded from `UXNAN_AGENT_ID`: `headers` for Claude
+  Code and OpenCode, `env_http_headers` for Codex) — which also makes `current`
+  resolve from a tool, not only from `uxnan-cli`. The manual config snippet
+  spells the header out. Verified live with Claude Code and Codex.
 - **The control surface's API reference, generated from the catalog.** Every
   catalog entry now carries a **result schema** (each field with its meaning,
   which fields are nullable and which are left out) and an example request.
@@ -75,6 +88,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **The agent-tools switch stands on its own.** *Settings → Browser → Agent
+  browser MCP* is now *Agent tools (MCP)*, and its master switch *Give
+  launched agents the tools* registers the whole catalog — no longer gated by
+  the integrated browser's master switch, which only takes away the
+  `$BROWSER` shim (the browser tools then answer *unavailable*). The storage
+  keys are unchanged, so nothing a person set is lost.
 - **The app has one local server.** The axum server that `hooks.rs` used to
   own, and the standalone `mcp.rs`, are rebuilt as `control/`: one loopback
   server with the hook, browser, MCP and control-RPC routes behind the same two
@@ -103,6 +122,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A first message queued at launch could be lost in a starting agent.**
+  The backpressure pump delivered a queued message the moment the tab read
+  *not busy* — which a shell still starting the agent does — so the paste
+  landed before the TUI existed. A message now waits until the terminal has
+  drawn and sat quiet (`readyToReceive`); the busy hold and its cap are
+  unchanged.
+- **`agent/wait` right after `terminal/create` answered `exit`.** A tab the
+  window had just opened has no PTY for a moment, which the wait read as
+  *gone*. It now reads a tab the window says is open as *not reported* and
+  keeps waiting.
 - **`automation/list` (control surface) answered `cwd: null, agent: null`.**
   The entry mapped fields the automation record never had. It now returns the
   record's own: `description`, `tags`, `workingDir`, `worktreePerRun`,

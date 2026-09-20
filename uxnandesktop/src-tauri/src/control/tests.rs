@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use serde_json::{json, Value};
-use tauri::Manager;
+use tauri::{Listener, Manager};
 use tokio::sync::RwLock;
 use uxnan_control_protocol::rpc::ErrorCode;
 use uxnan_control_protocol::{MCP_PATH, RPC_PATH};
@@ -562,4 +562,173 @@ async fn the_control_token_rotates_live() {
     )
     .await;
     assert_eq!(status, 200);
+}
+
+/// A per-launch token reaches only the project its terminal was opened in:
+/// listings are narrowed to it, a selector naming another project is *scope
+/// denied* (not *not found*), and a launch request that did not say which
+/// terminal it is reaches no project at all. The control token sees everything.
+#[tokio::test]
+async fn a_launch_token_reaches_only_its_terminals_project() {
+    let dir_a = tempfile::tempdir().unwrap();
+    let dir_b = tempfile::tempdir().unwrap();
+    let (path_a, repo_a) = repo_in(dir_a.path()).await;
+    let (path_b, mut repo_b) = repo_in(dir_b.path()).await;
+    repo_b.id = "repo-2".into();
+    repo_b.name = "other".into();
+    let mut data = AppData::default();
+    data.repos.push(repo_a);
+    data.repos.push(repo_b);
+    let s = server(data).await;
+    let handle = s._app.handle().clone();
+
+    // The caller's terminal: a real PTY whose folder is project A. Backend
+    // state, so the scope needs no window and cannot be claimed by the request.
+    handle
+        .state::<AppState>()
+        .pty
+        .create(
+            crate::pty::PtySpec {
+                id: "agent-a".into(),
+                cwd: Some(path_a.clone()),
+                shell: None,
+                args: Vec::new(),
+                env: Vec::new(),
+                cols: 80,
+                rows: 24,
+            },
+            |_| {},
+            || {},
+        )
+        .unwrap();
+
+    // A stand-in window: answers the tab list with a tab in each project and
+    // one in the Global space.
+    let tabs = json!({ "tabs": [
+        { "id": "agent-a", "title": "a", "workspace": path_a },
+        { "id": "t-b", "title": "b", "workspace": path_b },
+        { "id": "t-g", "title": "g", "workspace": "" },
+    ] });
+    let answerer = handle.clone();
+    handle.listen_any(super::bridge::REQUEST_EVENT, move |event| {
+        let req: super::bridge::BridgeRequest = serde_json::from_str(event.payload()).unwrap();
+        let answer = match req.method.as_str() {
+            "terminal/list" => tabs.clone(),
+            _ => Value::Null,
+        };
+        answerer
+            .state::<AppState>()
+            .control_bridge
+            .answer(&req.id, Ok(answer));
+    });
+
+    let launch: [(&str, &str); 2] = [("x-uxnan-token", LAUNCH), ("x-uxnan-agent-id", "agent-a")];
+    let anonymous: [(&str, &str); 1] = [("x-uxnan-token", LAUNCH)];
+    let control: [(&str, &str); 1] = [("authorization", "Bearer control-token")];
+    let call = |headers: &[(&str, &str)], method: &str, params: Value| {
+        let origin = s.origin.clone();
+        let headers: Vec<(String, String)> = headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let method = method.to_string();
+        async move {
+            let borrowed: Vec<(&str, &str)> = headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            post(&origin, RPC_PATH, &borrowed, rpc(&method, params))
+                .await
+                .1
+        }
+    };
+
+    // Listings are the caller's project only.
+    let body = call(&launch, "project/list", json!({})).await;
+    let names: Vec<&str> = body["result"]["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["repo"]);
+    let body = call(&launch, "terminal/list", json!({})).await;
+    let ids: Vec<&str> = body["result"]["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["agent-a"], "{body}");
+    let body = call(&launch, "status", json!({})).await;
+    assert_eq!(body["result"]["counts"]["projects"], 1);
+    assert_eq!(body["result"]["counts"]["terminals"], 1);
+
+    // Its own project resolves; the other is scope denied, not not-found.
+    let body = call(&launch, "project/show", json!({ "project": "name:repo" })).await;
+    assert_eq!(body["result"]["name"], "repo", "{body}");
+    let body = call(&launch, "project/show", json!({ "project": "name:other" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::ScopeDenied.code(),
+        "{body}"
+    );
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("outside your scope"));
+    let body = call(&launch, "project/show", json!({ "project": "name:nobody" })).await;
+    assert_eq!(body["error"]["code"], ErrorCode::NotFound.code());
+    let body = call(
+        &launch,
+        "worktree/show",
+        json!({ "worktree": format!("path:{path_b}") }),
+    )
+    .await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::ScopeDenied.code(),
+        "{body}"
+    );
+    let body = call(&launch, "terminal/show", json!({ "terminal": "id:t-b" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::ScopeDenied.code(),
+        "{body}"
+    );
+    let body = call(&launch, "terminal/show", json!({ "terminal": "id:t-g" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::ScopeDenied.code(),
+        "{body}"
+    );
+    let body = call(&launch, "terminal/show", json!({ "terminal": "current" })).await;
+    assert_eq!(body["result"]["id"], "agent-a", "{body}");
+
+    // A launch request that named no terminal reaches no project.
+    let body = call(&anonymous, "project/list", json!({})).await;
+    assert_eq!(body["result"]["projects"].as_array().unwrap().len(), 0);
+    let body = call(
+        &anonymous,
+        "project/show",
+        json!({ "project": "name:repo" }),
+    )
+    .await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::ScopeDenied.code(),
+        "{body}"
+    );
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("agent-id header"));
+
+    // The control token sees both projects and every tab.
+    let body = call(&control, "project/list", json!({})).await;
+    assert_eq!(body["result"]["projects"].as_array().unwrap().len(), 2);
+    let body = call(&control, "terminal/list", json!({})).await;
+    assert_eq!(body["result"]["terminals"].as_array().unwrap().len(), 3);
+    let body = call(&control, "project/show", json!({ "project": "name:other" })).await;
+    assert_eq!(body["result"]["name"], "other");
 }

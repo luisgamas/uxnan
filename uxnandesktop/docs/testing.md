@@ -148,7 +148,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 765 passing unit tests of the app crate (807 with the ignored probes) — plus 17 in
+The 766 passing unit tests of the app crate (808 with the ignored probes) — plus 17 in
 `uxnan-control-protocol` and 13 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -199,7 +199,8 @@ concerns in it. Component tests are `*.svelte.test.ts`, which is also how the
 
 **Vitest** covers the pure, framework-free logic modules (node env, no DOM):
 `shell.ts` (shell-aware agent-launch quoting), `orchestration.ts` (multi-agent
-broadcast routing + backpressure), `orchestration/run.ts` (the run engine's DAG
+broadcast routing + backpressure, and `readyToReceive` — a message goes out
+only to a terminal that has drawn and settled), `orchestration/run.ts` (the run engine's DAG
 readiness, context templates, cycle detection, validation + status derivation),
 `updaterLogic.ts` (download-progress fraction + install-policy decision),
 `diffParse.ts` (unified-diff parsing), `theme.ts` (batch theme-import
@@ -254,7 +255,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,264 passing tests** across both
+ships in every build and is never shown). **1,267 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

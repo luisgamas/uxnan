@@ -453,7 +453,7 @@ const ERROR_MEANINGS: [(ErrorCode, &str, &str); 12] = [
     (
         ErrorCode::ScopeDenied,
         "scope denied",
-        "the token was refused — missing, wrong, or replaced by a restart or a rotation (`uxnan-cli` reports the HTTP `401` under this code)",
+        "the selector names a project, worktree or terminal outside the caller's scope: a launch token reaches only the project its terminal runs in, and a launch request that named no terminal reaches none (`uxnan-cli` also reports a refused token, HTTP `401`, under this code)",
     ),
     (
         ErrorCode::Unavailable,
@@ -523,7 +523,8 @@ uxnan-cli skills get control [--full]           # this guide / the full referenc
 Global: --json (stable machine output), --timeout <seconds>
 ";
 
-pub const SELECTORS: &str = "- `current` — your own terminal, and from it your worktree and project. Works inside a terminal Uxnan launched (it knows `UXNAN_AGENT_ID`); from another shell, use an explicit form.
+pub const SELECTORS: &str = "- `current` — your own terminal, and from it your worktree and project. Works inside a terminal Uxnan launched (it knows `UXNAN_AGENT_ID`, and the MCP tools send it with every call); from another shell, use an explicit form.
+- Scope: from a terminal Uxnan launched, every listing and selector is confined to that terminal's project (anything else is *scope denied*); from the user's shell, `uxnan-cli` reaches every project.
 - `id:<id>` — a project id or a terminal id (from `ls`).
 - `path:<absolute path>` — a project or worktree folder. A bare absolute path is accepted too.
 - `branch:<name>` — a worktree by its branch.

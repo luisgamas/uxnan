@@ -123,9 +123,10 @@ pub async fn list<R: tauri::Runtime>(
     caller: &Caller,
     params: &Value,
 ) -> Result<Value, RpcError> {
-    let mut all = tabs(app).await?;
+    let resolver = Resolver::new(app, caller);
+    let mut all = resolver.tabs().await?;
     if let Some(sel) = params.get("worktree").and_then(|v| v.as_str()) {
-        let (_, entry) = Resolver::new(app, caller).worktree(sel).await?;
+        let (_, entry) = resolver.worktree(sel).await?;
         all.retain(|t| {
             t.workspace_path()
                 .is_some_and(|w| path_within(w, &entry.path))

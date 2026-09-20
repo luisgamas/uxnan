@@ -80,9 +80,10 @@ pub enum ErrorCode {
     GroupDisabled,
     /// A selector named nothing: no such project, worktree or terminal.
     NotFound,
-    /// The token was refused: missing, wrong, or replaced by a restart or a
-    /// rotation. The app answers this at the HTTP layer (`401`); `uxnan-cli`
-    /// reports it under this code.
+    /// The selector names something outside the caller's scope: a per-launch
+    /// token reaches only the project its terminal runs in, and a launch
+    /// request that named no terminal reaches none. (`uxnan-cli` also reports
+    /// a refused token — the HTTP `401` — under this code.)
     ScopeDenied,
     /// The part of the app that owns this resource (its window) is not ready.
     Unavailable,

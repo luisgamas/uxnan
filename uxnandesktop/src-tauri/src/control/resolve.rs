@@ -6,6 +6,13 @@
 //! chain is terminal → its workspace (the worktree folder it was opened in) →
 //! the project that folder belongs to.
 //!
+//! Every selector is also checked against the caller's **scope**: the control
+//! token (the user's own shell) reaches every project, while a per-launch token
+//! reaches only the project its terminal was opened in — the token that travels
+//! in agent processes is the least trusted one, so the app never lets it name a
+//! worktree or a terminal of another project. Naming one is *scope denied*,
+//! distinct from *not found*, so an agent learns to stop rather than retry.
+//!
 //! Paths are compared after normalizing separators and a trailing slash, and
 //! case-insensitively on Windows, the way the sidebar keys them.
 
@@ -81,22 +88,146 @@ fn not_found(what: &str, sel: &str) -> RpcError {
     RpcError::new(ErrorCode::NotFound, format!("no {what} matches `{sel}`"))
 }
 
+/// What a caller may name.
+#[derive(Debug, Clone)]
+pub enum Scope {
+    /// Every registered project — the control token.
+    All,
+    /// One project — a per-launch token, from the folder its terminal runs in.
+    Project(Box<ProjectRef>),
+    /// No project — a per-launch token whose terminal is not inside a
+    /// registered project (the Global space), is not alive, or did not say
+    /// which terminal it is (a request without the agent-id header).
+    None,
+}
+
+impl Scope {
+    /// Whether `project` is within the scope.
+    pub fn admits_project(&self, project: &ProjectRef) -> bool {
+        match self {
+            Scope::All => true,
+            Scope::Project(own) => own.id == project.id,
+            Scope::None => false,
+        }
+    }
+
+    /// Whether a terminal whose workspace (or, failing that, working folder)
+    /// is `folder` is within the scope. A terminal with no local folder — the
+    /// Global space, a host's — belongs to no project.
+    pub fn admits_folder(&self, folder: Option<&str>) -> bool {
+        match self {
+            Scope::All => true,
+            Scope::Project(own) => {
+                folder.is_some_and(|f| project_containing(std::slice::from_ref(own), f).is_some())
+            }
+            Scope::None => false,
+        }
+    }
+}
+
 /// Resolves selectors for one caller.
 pub struct Resolver<'a, R: tauri::Runtime> {
     app: &'a AppHandle<R>,
     caller: &'a Caller,
+    scope: tokio::sync::OnceCell<Scope>,
 }
 
 impl<'a, R: tauri::Runtime> Resolver<'a, R> {
     pub fn new(app: &'a AppHandle<R>, caller: &'a Caller) -> Self {
-        Resolver { app, caller }
+        Resolver {
+            app,
+            caller,
+            scope: tokio::sync::OnceCell::new(),
+        }
     }
 
-    /// Every registered project.
-    pub async fn projects(&self) -> Vec<ProjectRef> {
+    /// Every registered project, whoever asks.
+    async fn all_projects(&self) -> Vec<ProjectRef> {
         let state = self.app.state::<AppState>();
         let data = state.data.read().await;
         data.repos.iter().map(ProjectRef::of).collect()
+    }
+
+    /// The caller's scope, computed once per request. A launch caller's is the
+    /// project containing the folder its own PTY was opened in — backend state,
+    /// so it needs no window and cannot be claimed by the request.
+    pub async fn scope(&self) -> &Scope {
+        self.scope
+            .get_or_init(|| async {
+                let Caller::Launch { agent_id } = self.caller else {
+                    return Scope::All;
+                };
+                let Some(id) = agent_id else {
+                    return Scope::None;
+                };
+                let state = self.app.state::<AppState>();
+                let cwd = state
+                    .pty
+                    .live_sessions()
+                    .into_iter()
+                    .find(|(pty, _)| pty == id)
+                    .map(|(_, cwd)| cwd);
+                let Some(cwd) = cwd else {
+                    return Scope::None;
+                };
+                match project_containing(&self.all_projects().await, &cwd) {
+                    Some(project) => Scope::Project(Box::new(project)),
+                    None => Scope::None,
+                }
+            })
+            .await
+    }
+
+    /// The projects the caller may see.
+    pub async fn projects(&self) -> Vec<ProjectRef> {
+        let scope = self.scope().await;
+        self.all_projects()
+            .await
+            .into_iter()
+            .filter(|p| scope.admits_project(p))
+            .collect()
+    }
+
+    /// The window's tabs the caller may see: its own, and those inside its scope.
+    pub async fn tabs(&self) -> Result<Vec<TabView>, RpcError> {
+        let scope = self.scope().await;
+        let own = self.current_terminal_id().ok();
+        Ok(super::services::terminal::tabs(self.app)
+            .await?
+            .into_iter()
+            .filter(|t| own.as_deref() == Some(t.id.as_str()) || self.admits_tab(scope, t))
+            .collect())
+    }
+
+    /// Whether the caller may name `tab`.
+    fn admits_tab(&self, scope: &Scope, tab: &TabView) -> bool {
+        scope.admits_folder(tab.workspace_path().or(tab.cwd.as_deref()))
+    }
+
+    /// The error a selector outside the scope gets.
+    fn denied(&self, what: &str, sel: &str) -> RpcError {
+        let reach = match self.caller {
+            Caller::Launch {
+                agent_id: Some(_),
+            } => "reaches only the project its terminal runs in",
+            Caller::Launch { agent_id: None } => {
+                "reaches only the project of the terminal it names, and this request named none (send the agent-id header, or use uxnan-cli inside the terminal)"
+            }
+            Caller::Control => "is outside the caller's scope",
+        };
+        RpcError::new(
+            ErrorCode::ScopeDenied,
+            format!("`{sel}` names a {what} outside your scope: a launch token {reach}"),
+        )
+    }
+
+    /// `project` if the caller may name it, else the scope error.
+    async fn admit_project(&self, project: ProjectRef, sel: &str) -> Result<ProjectRef, RpcError> {
+        if self.scope().await.admits_project(&project) {
+            Ok(project)
+        } else {
+            Err(self.denied("project", sel))
+        }
     }
 
     /// The caller's own terminal id, or the error that explains why there is
@@ -132,9 +263,18 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
             Selector::Current => self.current_terminal().await,
             Selector::Id(id) => {
                 let tabs = super::services::terminal::tabs(self.app).await?;
-                tabs.into_iter()
+                let tab = tabs
+                    .into_iter()
                     .find(|t| t.id == id)
-                    .ok_or_else(|| not_found("terminal", sel))
+                    .ok_or_else(|| not_found("terminal", sel))?;
+                let own = self.current_terminal_id().ok();
+                if own.as_deref() == Some(tab.id.as_str())
+                    || self.admits_tab(self.scope().await, &tab)
+                {
+                    Ok(tab)
+                } else {
+                    Err(self.denied("terminal", sel))
+                }
             }
             other => Err(RpcError::new(
                 ErrorCode::InvalidParams,
@@ -143,9 +283,16 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
         }
     }
 
-    /// A project by selector.
+    /// A project by selector. Resolved among every project, then checked
+    /// against the scope, so a project that exists but is not the caller's is
+    /// *scope denied* rather than *not found*.
     pub async fn project(&self, sel: &str) -> Result<ProjectRef, RpcError> {
-        let projects = self.projects().await;
+        let project = self.project_anywhere(sel).await?;
+        self.admit_project(project, sel).await
+    }
+
+    async fn project_anywhere(&self, sel: &str) -> Result<ProjectRef, RpcError> {
+        let projects = self.all_projects().await;
         match parse(sel)? {
             Selector::Current => {
                 let tab = self.current_terminal().await?;
@@ -196,8 +343,15 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
         }
     }
 
-    /// A worktree by selector, with the project it belongs to.
+    /// A worktree by selector, with the project it belongs to — checked against
+    /// the scope like a project.
     pub async fn worktree(&self, sel: &str) -> Result<(ProjectRef, WorktreeEntry), RpcError> {
+        let (project, entry) = self.worktree_anywhere(sel).await?;
+        let project = self.admit_project(project, sel).await?;
+        Ok((project, entry))
+    }
+
+    async fn worktree_anywhere(&self, sel: &str) -> Result<(ProjectRef, WorktreeEntry), RpcError> {
         match parse(sel)? {
             Selector::Current => {
                 let tab = self.current_terminal().await?;
@@ -222,7 +376,7 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                 .ok_or_else(|| not_found("worktree", sel)),
             Selector::Branch(branch) => {
                 let mut hits = Vec::new();
-                for project in self.projects().await {
+                for project in self.all_projects().await {
                     for entry in super::services::worktree::list_of(self.app, &project.repo())
                         .await
                         .unwrap_or_default()
@@ -232,6 +386,14 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                         }
                     }
                 }
+                // A branch name shared across projects is ambiguous only among
+                // the projects the caller may see; the others are denied anyway.
+                let scope = self.scope().await;
+                let visible = hits.iter().filter(|(p, _)| scope.admits_project(p)).count();
+                if visible == 0 && !hits.is_empty() {
+                    return Ok(hits.remove(0));
+                }
+                hits.retain(|(p, _)| scope.admits_project(p));
                 match hits.len() {
                     0 => Err(not_found("worktree", sel)),
                     1 => Ok(hits.remove(0)),
@@ -251,7 +413,7 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
 
     /// The worktree whose folder is `path`, or whose folder contains it.
     async fn worktree_at(&self, path: &str) -> Option<(ProjectRef, WorktreeEntry)> {
-        let projects = self.projects().await;
+        let projects = self.all_projects().await;
         let project = project_containing(&projects, path)?;
         let entries = super::services::worktree::list_of(self.app, &project.repo())
             .await

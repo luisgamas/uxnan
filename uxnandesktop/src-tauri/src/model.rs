@@ -1037,11 +1037,14 @@ pub struct BrowserSettings {
     /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
     #[serde(default)]
     pub homepage: String,
-    /// Expose the browser-control MCP server (spec `02d` §1.6) to the agents the
-    /// ADE launches, so they discover the `browser_*` tools automatically. The
+    /// Give the agents the ADE launches the control surface as MCP tools (spec
+    /// `02d` §1.6) — the whole catalog, the `browser_*` tools among it. The
     /// server is registered **per launch** — in the process uxnan spawns, never
     /// in a config file the user keeps (see `mcpinject.rs`). When off, nothing is
-    /// registered (the `/mcp` endpoint still exists for manual wiring). Default on.
+    /// registered; the `/mcp` endpoint and `uxnan-cli` keep working. Independent
+    /// of [`enabled`](Self::enabled): the browser being off only makes the
+    /// browser tools answer *unavailable*. Lives here with the other launch
+    /// wiring it grew from; the surface itself has no settings pane. Default on.
     #[serde(default = "default_true")]
     pub mcp_enabled: bool,
     /// Frictionless agent setup. When on (default), app-launched agents skip the

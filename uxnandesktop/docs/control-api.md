@@ -187,10 +187,32 @@ Every route first refuses a caller whose `Host` or `Origin` is not loopback
 (the CSRF / DNS-rebinding vector a web page would use), then requires a token.
 Two tokens exist, both minted fresh on every start, neither ever logged:
 
-| Caller | Token | Where it comes from | What `current` means |
-|---|---|---|---|
-| A process the app launched (an agent's MCP client, or `uxnan-cli` run inside that terminal) | **per-launch** token | injected into the terminal as `UXNAN_HOOK_TOKEN` (named to the agent's MCP config as `UXNAN_MCP_TOKEN`), with `UXNAN_HOOK_URL` and `UXNAN_AGENT_ID` | that terminal |
-| The user's own shell, a script, an agent launched elsewhere | **control** token | the discovery file `control.json` under the app's data directory | nothing — use explicit selectors |
+| Caller | Token | Where it comes from | What `current` means | Scope |
+|---|---|---|---|---|
+| A process the app launched (an agent's MCP client, or `uxnan-cli` run inside that terminal) | **per-launch** token | injected into the terminal as `UXNAN_HOOK_TOKEN` (named to the agent's MCP config as `UXNAN_MCP_TOKEN`), with `UXNAN_HOOK_URL` and `UXNAN_AGENT_ID` | that terminal | **its terminal's project** |
+| The user's own shell, a script, an agent launched elsewhere | **control** token | the discovery file `control.json` under the app's data directory | nothing — use explicit selectors | every project |
+
+**Scope.** The per-launch token travels in agent processes — the least trusted
+caller — so it reaches only the project its terminal was opened in: listings
+(`project/list`, `worktree/list`, `terminal/list`, `agent/list`, the counts in
+`status`) are narrowed to it, and a selector that names a worktree or a
+terminal of another project is refused with *scope denied* (`-32003`) —
+distinct from *not found*, so an agent learns to stop rather than retry. The
+scope is taken from **backend state**: the folder the caller's own PTY runs in
+(`control/resolve.rs` → `Scope`), never from anything the request claims. A
+launch request that does not say which terminal it is (no
+`x-uxnan-agent-id` header) reaches no project at all; one whose terminal is in
+the Global space, likewise. The control token — the same OS user that can open
+the app and read its data directory — sees every project, so a project list
+in a settings pane would add friction, not a boundary.
+
+Every launch config the app writes sends the terminal's id with every MCP
+call, expanded from `UXNAN_AGENT_ID` on the terminal the way that CLI expands
+variables — `headers` with `${UXNAN_AGENT_ID}` for Claude Code,
+`env_http_headers` (header → variable name) for Codex, `headers` with
+`{env:UXNAN_AGENT_ID}` for OpenCode — so `current` and the scope work from an
+agent's tool calls, not only from `uxnan-cli`. An agent wired by hand from the
+manual snippet has the header spelled out to fill in.
 
 The discovery file holds the protocol version, the app version, the app's
 **pid and start time**, the server origin and the control token. It is written
@@ -219,14 +241,14 @@ needs them:
 | `terminalReadDisabledProjects` | `string[]` of project ids | `terminal/read` on a terminal of a listed project answers *group disabled*; everything else about the project stays readable. Empty by default. |
 
 Edit them with the app closed (it rewrites `state.json` on its own saves).
-Everything else — which agents get the tools at launch, the frictionless
-launch, the manual MCP config — stays in **Settings → Browser → Agent browser
-MCP**, where it was before the surface grew ([`docs/browser.md`](./browser.md)).
-One inheritance from that origin is worth knowing: the per-launch registration
-is gated by the **integrated browser's** master switch as well as by the MCP
-one (`browser.enabled && browser.mcpEnabled`), so switching the browser off
-also takes the whole catalog away from launched agents — `uxnan-cli` and the
-route are unaffected. Giving the registration its own switch is FOR-DEV.
+Everything else — whether launched agents get the tools at all, which agents,
+the frictionless launch, the manual MCP config — is **Settings → Browser →
+Agent tools (MCP)**, where the wiring grew from ([`docs/browser.md`](./browser.md)).
+That switch stands on its own: the integrated browser's master switch takes
+away the `$BROWSER` shim, never the catalog (the browser tools then answer
+*unavailable*); the storage keys stayed on the browser settings object
+(`browser.mcpEnabled`, `mcpDisabledAgents`, `frictionFree`), so nothing a
+person set is lost.
 
 ## Calling from outside Uxnan
 
@@ -290,7 +312,8 @@ A few things a caller from outside should know:
   and on a `401` read it again. A file whose `pid` is dead, or alive but with a
   different start time, is a leftover — ignore it.
 - **`current` means nothing** from outside: list first, then use `id:`,
-  `path:`, `branch:` or `name:`.
+  `path:`, `branch:` or `name:`. And the control token reaches every project;
+  a per-launch token only its own.
 - **Mutations are receipted**: send an `idempotencyKey` you choose with every
   `create` and `agent/send`, and a retry after a lost reply is safe.
 - **Everything a `create` or `converse` call does is audited** in
@@ -392,15 +415,19 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   (unknown method, misspelled argument, missing selector, `current` from a
   shell, non-JSON-RPC body), a switched-off group refusing only its entries,
   the MCP route listing the catalog and calling through the same dispatcher,
-  a hook report needing the launch token, live control-token rotation — and,
-  for `create`: a worktree created on a **real temporary repository** where
+  a hook report needing the launch token, live control-token rotation, **the
+  launch token's scope** (a real PTY in one of two projects and a stand-in
+  window answering the tab list: listings narrowed, the other project's
+  worktree and terminal *scope denied*, a headerless launch request reaching
+  nothing, the control token seeing all) — and, for `create`: a worktree created on a **real temporary repository** where
   the project's policy puts it, receipted, written to the audit log, not
   created twice under the same key, a prompt refused before anything exists,
   and saved-only refusals for runs and automations; for `converse`: a message
   over the cap refused and audited as its byte length only, and the wait core
   (`wait_for`) on a **real PTY** — running out while the agent works and saying
   so, woken at once by a `done` report, `waiting` as its own state, an unknown
-  terminal as `exit`. Receipts, the audit log and the redaction have their
+  terminal as `exit`, a tab the window says is open but whose PTY is not up
+  yet as *not reported* rather than `exit`. Receipts, the audit log and the redaction have their
   own unit tests.
 - **CLI** (`cargo test -p uxnan-cli`): the HTTP client's round trip against a
   stand-in server, response parsing, the origin derivation, the process
@@ -416,7 +443,10 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   queued), an unknown agent refused with the known ones, a terminal opened
   plain or with an agent named three ways, a run started or refused with its
   validation errors; for `converse`: a message queued or forced through the
-  paste, a shell refused, a screen read that says when there is none.
+  paste, a shell refused, a screen read that says when there is none. The
+  pump's readiness rule (`readyToReceive`: a terminal that has drawn and
+  settled, the busy hold, the cap) is pure and tested in
+  `src/lib/orchestration.test.ts`.
 - **By hand**: run the app (`npm run tauri dev`), then in another shell
   `uxnan-cli status`, `uxnan-cli terminal ls`, `uxnan-cli file diff <path>
   --worktree path:<folder>`, `uxnan-cli worktree create --project name:<p>

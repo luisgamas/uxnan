@@ -654,12 +654,20 @@ la ACL del perfil de usuario), junto al pid **y la hora de inicio** del proceso,
 se borra al salir limpiamente — `uxnan-cli` rechaza un archivo legible por otros,
 una version de protocolo distinta o un pid que ya no es ese proceso. El token de
 control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
-la app); el de lanzamiento, el proyecto de su terminal — alcance declarado en el
-contrato (codigo `-32003` *scope denied*) y **pendiente de aplicar** en los
-servicios, que hoy resuelven cualquier selector para ambos llamadores
-(`FOR-DEV.md`); mientras tanto `-32003` es lo que `uxnan-cli` reporta ante un
-token rechazado (`401`). Ninguno se escribe en la config de ningun CLI ni se
-registra en logs.
+la app); el de lanzamiento, **solo el proyecto de su terminal**, y el resolutor
+lo aplica (`control/resolve.rs` → `Scope`): los listados (`project/list`,
+`worktree/list`, `terminal/list`, `agent/list`, los conteos de `status`) se
+acotan a el, y un selector que nombra un worktree o una terminal de otro
+proyecto responde `-32003` *scope denied* — distinto de *not found*, para que
+el agente deje de insistir. El alcance sale del **estado del backend** (la
+carpeta en la que corre el PTY del propio llamador), nunca de lo que la
+peticion afirme; una peticion de lanzamiento sin la cabecera
+`x-uxnan-agent-id` no alcanza ningun proyecto, ni una terminal del espacio
+Global. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
+**cada config de lanzamiento envia el id de la terminal en cada llamada**,
+expandido de `UXNAN_AGENT_ID` como cada CLI expande variables (tabla abajo);
+`current` se resuelve asi tambien desde una tool. Ninguno de los dos tokens se
+escribe en la config de ningun CLI ni se registra en logs.
 
 **`uxnan-cli`:** resultados en stdout, errores en stderr, `--json` estable, codigos
 de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,
@@ -673,15 +681,17 @@ operativo en `docs/control-api.md`.
 
 | Agente | Mecanismo | Forma |
 |---|---|---|
-| Claude Code | flag de lanzamiento | `--mcp-config <archivo propio del ADE>` (expande `${UXNAN_MCP_TOKEN}` del entorno) |
-| Codex | flags de lanzamiento | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN` |
-| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; expande `{env:UXNAN_MCP_TOKEN}`) |
+| Claude Code | flag de lanzamiento | `--mcp-config <archivo propio del ADE>` (`headers`: `Authorization: Bearer ${UXNAN_MCP_TOKEN}`, `x-uxnan-agent-id: ${UXNAN_AGENT_ID}`, expandidos del entorno) |
+| Codex | flags de lanzamiento | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN -c mcp_servers.<n>.env_http_headers.x-uxnan-agent-id=UXNAN_AGENT_ID` (cabecera → nombre de variable; verificado con `codex mcp get`) |
+| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; `headers` con `{env:UXNAN_MCP_TOKEN}` y `{env:UXNAN_AGENT_ID}`) |
 
 El archivo de Claude vive en `<app-data>/mcp/claude-<puerto>.json` y lleva el puerto de **esa** ventana, de modo que dos ventanas de uxnan abiertas nunca se pisan el endpoint. Los flags se anaden en el unico punto donde el frontend teclea un comando de lanzamiento (`$lib/mcpLaunch` desde `terminal/instances.ts`), asi que cubre por igual un lanzamiento nuevo, una sesion reanudada y una pestana despertada.
 
 **Por que se sustituyo la escritura en la config global de usuario:** era una unica entrada, persistente y compartida, con dos fallos observados. (1) Fuera de uxnan no era inocua: Codex valida `bearer_token_env_var` al arrancar y aborta la fase MCP con *«Environment variable UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set»* en **cada** ejecucion. (2) La entrada llevaba el puerto de una instancia, asi que una **segunda** ventana de uxnan la sobrescribia y rompia los agentes de la primera desde dentro. Al arrancar, el ADE hace un **barrido de limpieza** (solo eliminacion, `sweep_legacy`) que borra esa entrada de las siete configs de usuario que versiones anteriores pudieron escribir.
 
-**Ajustes (Settings → Browser):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable. La registracion sigue condicionada ademas por el interruptor maestro del **navegador integrado** (`browser.enabled && mcp_enabled`), herencia de su origen; darle un interruptor propio es `FOR-DEV`.
+**Ajustes (Settings → Browser → *Herramientas para agentes (MCP)*):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` y `uxnan-cli` siguen funcionando, y el snippet copiable (con la cabecera de id de agente a rellenar) sirve para cablear a mano. El grupo es **independiente del interruptor maestro del navegador integrado**: apagar el navegador retira el shim `$BROWSER`, nunca el catalogo (las tools de navegador responden entonces *unavailable*). Las claves siguen en `BrowserSettings`, de donde el cableado nacio.
+
+**Primer mensaje y espera.** Un `prompt` encolado al lanzar un agente (`worktree/create`, `terminal/create`) sale de la cola de backpressure solo cuando la terminal **ya dibujo y se asento** (`readyToReceive`, `src/lib/orchestration.ts`: salida vista al menos una vez y quieta ≥ 1,5 s; un agente ocupado se retiene hasta el tope de 12 s) — pegar en una shell que aun arranca el agente pierde el mensaje. Y `agent/wait` sobre una pestana que la ventana da por abierta pero cuyo PTY aun no existe lee *no reportado*, no `exit`.
 
 **La superficie no tiene panel de ajustes, por diseno.** Las dos claves que existen (`settings.control.disabledGroups`, `settings.control.terminalReadDisabledProjects`) se respetan desde `state.json` y estan documentadas en `docs/control-api.md` → *Settings*; un panel de interruptores que nadie acciona es coste sin beneficio, y el token de control ya se renueva en cada arranque.
 

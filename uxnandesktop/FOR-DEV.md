@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 874 Rust tests (807 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
+always wins). 875 Rust tests (808 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,264 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,267 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -839,26 +839,21 @@ committed `docs/control-api-reference.md` is that output, guarded by a test;
 MCP `tools/list` advertises the same result schema as `outputSchema`. **No
 settings pane, by design** — the two knobs (`settings.control.disabledGroups`,
 `terminalReadDisabledProjects`) are honoured from `state.json` and documented
-in `docs/control-api.md` → *Settings*. 40 app tests (11 end to end over a real
+in `docs/control-api.md` → *Settings*. **The launch token's scope is
+enforced** (`control/resolve.rs` → `Scope`, from the caller's own PTY folder):
+a launched agent sees and names only its terminal's project, anything else is
+`-32003`; every launch config sends the terminal's id with each MCP call
+(`x-uxnan-agent-id`, expanded from `UXNAN_AGENT_ID` per CLI), so `current`
+works from an agent's tool calls — verified live with Claude Code and Codex.
+The agent-tools switch (Settings → Browser → *Agent tools (MCP)*) stands on
+its own, no longer under the browser's master switch. A first message queued
+at launch is delivered only once the agent's terminal has drawn and settled
+(`readyToReceive`), and a wait right after `terminal/create` reads a tab
+whose PTY is not up yet as *not reported*, not `exit`. 41 app tests (12 end to end over a real
 socket with Tauri's mock app, one creating a worktree on a real repository, one
 waiting on a real PTY), 17 protocol, 13 CLI, 11 window-bridge Vitest.
 
 ### Still pending
-- [ ] **The launch registration's own switch.** The per-launch MCP wiring is
-      gated by `browser.enabled && browser.mcpEnabled` (a leftover of the
-      browser-only origin), so switching the integrated browser off also takes
-      the whole catalog away from launched agents, and the switch's label
-      (*Let agents drive the browser*) describes a sixth of what it does. Give
-      the registration its own key and row (copy change in Settings → Browser →
-      Agent browser MCP; UI → propose-and-review), migrate the old value.
-- [ ] **Enforce the launch token's project scope.** The spec (`02d` §1.6)
-      scopes a per-launch token to its terminal's project and reserves
-      `-32003` *scope denied* for a selector outside it; the services resolve
-      any selector for either caller today, so `-32003` is only what
-      `uxnan-cli` reports for a refused token (`401`). Enforce it in
-      `control/resolve.rs` (a `Caller::Launch` may only name its own project's
-      worktrees and terminals) with e2e tests, and reword the code's meaning in
-      the reference (`guide.rs` → `ERROR_MEANINGS`) in the same change.
 - [ ] **Bundle `uxnan-cli` and install it on the PATH.** Today it is built by
       hand (`cargo build -p uxnan-cli --release`). Ship it in the installers
       (`bundle.externalBin` with the target-triple suffix, produced by a
@@ -877,11 +872,6 @@ waiting on a real PTY), 17 protocol, 13 CLI, 11 window-bridge Vitest.
 - [ ] **Budgets on `create` (plan 023).** `worktree/create` and `terminal/create`
       apply no concurrency or process budget yet; when 023 lands, the service is
       where the policy goes (one place, both doors).
-- [ ] **`current` from an MCP call.** MCP requests carry no terminal id header, so
-      `current` only resolves for `uxnan-cli` (which sends `X-Uxnan-Agent-Id` from
-      `UXNAN_AGENT_ID`). Decide whether tool schemas take an optional `agentId`
-      (the agent knows its `UXNAN_AGENT_ID`) or `mcpinject` can make each CLI send
-      the header; until then an agent uses `id:`/`path:` selectors.
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -1555,7 +1545,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 871 Rust + 1,264 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 875 Rust + 1,267 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

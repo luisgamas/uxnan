@@ -4,8 +4,11 @@ import {
   agentTypes,
   drainAvailable,
   enqueueAll,
+  MAX_HOLD_MS,
   pendingCount,
+  readyToReceive,
   resolveTargets,
+  SETTLE_MS,
   type OrchestratorAgent,
   type Queues,
 } from "./orchestration";
@@ -63,6 +66,31 @@ describe("enqueueAll + pendingCount", () => {
     let q: Queues = enqueueAll({}, ["a"], "first", () => ++id);
     q = enqueueAll(q, ["a"], "second", () => ++id);
     expect(q.a.map((m) => m.message)).toEqual(["first", "second"]);
+  });
+});
+
+describe("readyToReceive (when a queue head may go out)", () => {
+  const now = 100_000;
+  it("holds until the terminal has produced output at all", () => {
+    expect(
+      readyToReceive({ busy: false, lastOutputAt: undefined, headSince: now - 60_000, now }),
+    ).toBe(false);
+  });
+  it("holds while the terminal is still painting, then delivers once it settles", () => {
+    expect(
+      readyToReceive({ busy: false, lastOutputAt: now - 200, headSince: now, now }),
+    ).toBe(false);
+    expect(
+      readyToReceive({ busy: false, lastOutputAt: now - SETTLE_MS, headSince: now, now }),
+    ).toBe(true);
+  });
+  it("holds a busy agent, but not past the cap", () => {
+    expect(
+      readyToReceive({ busy: true, lastOutputAt: now - 5_000, headSince: now - 1_000, now }),
+    ).toBe(false);
+    expect(
+      readyToReceive({ busy: true, lastOutputAt: now - 100, headSince: now - MAX_HOLD_MS, now }),
+    ).toBe(true);
   });
 });
 

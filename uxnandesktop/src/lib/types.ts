@@ -640,6 +640,10 @@ export interface McpInfo {
   tokenEnv: string;
   /** MCP server name agents register us under (`uxnan-browser`). */
   serverName: string;
+  /** Header a launched agent sends with its terminal id (`x-uxnan-agent-id`). */
+  agentIdHeader: string;
+  /** Env var that id is expanded from on the terminal (`UXNAN_AGENT_ID`). */
+  agentIdEnv: string;
   /** Supported-agent catalog. */
   agents: McpAgentInfo[];
 }

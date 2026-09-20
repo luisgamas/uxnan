@@ -662,15 +662,17 @@ pub async fn pty_create(
         }
     }
 
-    // Browser-control MCP (spec `02d` §1.6): expose the `/mcp` endpoint + token so
-    // this terminal's agents can reach it, and register the server **for this
-    // launch only** (see `mcpinject.rs`) — nothing is written to any config the
-    // user keeps, so an agent started outside uxnan never sees the server at all.
-    // Env-registered agents (OpenCode) are covered right here; the flag-registered
-    // ones (Claude, Codex) get their arguments appended to the command the
-    // frontend types (`$lib/mcpLaunch`), which reads the same two switches — so
-    // both halves are gated identically: the browser master switch, then the MCP one.
-    if browser_enabled && mcp_enabled {
+    // The control surface as MCP tools (spec `02d` §1.6): expose the `/mcp`
+    // endpoint + token so this terminal's agents can reach it, and register the
+    // server **for this launch only** (see `mcpinject.rs`) — nothing is written
+    // to any config the user keeps, so an agent started outside uxnan never sees
+    // the server at all. Env-registered agents (OpenCode) are covered right here;
+    // the flag-registered ones (Claude, Codex) get their arguments appended to
+    // the command the frontend types (`$lib/mcpLaunch`), which reads the same
+    // switch — so both halves are gated identically, by the agent-tools switch
+    // alone: the integrated browser being off takes away the `$BROWSER` shim
+    // above, never the catalog (the browser tools then answer *unavailable*).
+    if mcp_enabled {
         if let Some(h) = &hook {
             let endpoint = crate::mcpinject::mcp_endpoint(&h.url);
             env.push(("UXNAN_MCP_URL".to_string(), endpoint.clone()));
@@ -724,6 +726,10 @@ pub struct McpInfo {
     pub token: Option<String>,
     pub token_env: String,
     pub server_name: String,
+    /// The header a launched agent sends with its terminal id, and the env var
+    /// it is expanded from — spelled out in the manual snippet.
+    pub agent_id_header: String,
+    pub agent_id_env: String,
     pub agents: Vec<crate::mcpinject::AgentInfo>,
 }
 
@@ -750,6 +756,8 @@ pub async fn mcp_info(app: AppHandle, state: State<'_, AppState>) -> Result<McpI
         token,
         token_env: crate::mcpinject::TOKEN_ENV.to_string(),
         server_name: crate::mcpinject::SERVER_NAME.to_string(),
+        agent_id_header: crate::mcpinject::AGENT_ID_HEADER.to_string(),
+        agent_id_env: crate::mcpinject::AGENT_ID_ENV.to_string(),
         agents: crate::mcpinject::agent_infos(endpoint.as_deref(), claude_config.as_deref()),
     })
 }

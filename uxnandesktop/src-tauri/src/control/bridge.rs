@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
@@ -32,8 +32,8 @@ pub const REQUEST_EVENT: &str = "control:request";
 /// the webview's side; anything longer means the window is not there.
 const TIMEOUT: Duration = Duration::from_secs(5);
 
-/// What the window receives.
-#[derive(Debug, Clone, Serialize)]
+/// What the window receives (deserialized only by the tests' stand-in window).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeRequest {
     pub id: String,
