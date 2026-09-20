@@ -43,11 +43,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # The same command Cloudflare Pages runs; it must produce `web/out/`.
+      # The same Next build Cloudflare Pages deploys; it must produce `web/out/`.
       - name: Build the static export
-        # The hero's star / download counters are read from the GitHub API at
-        # build time; the token only lifts the anonymous rate limit, and the
-        # build degrades to hiding them if the call fails.
+        # The hero has a build-time fallback. The deployed Pages Function refreshes
+        # the counters after hydration; the token only lifts the build-time rate
+        # limit, and the build still succeeds if that call fails.
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: npm run build

@@ -3,9 +3,10 @@
 ![Host](https://img.shields.io/badge/Cloudflare_Pages-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)
 ![CI](https://img.shields.io/badge/build-GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
 
-The site is built on **GitHub's runners** and the finished static export is
-uploaded to **Cloudflare Pages** as a *Direct Upload*. Cloudflare only serves the
-files; it never runs a build of its own.
+The site is built on **GitHub's runners** and the finished static export plus its
+Pages Function are uploaded to **Cloudflare Pages** as a *Direct Upload*.
+Cloudflare serves the static files and runs the small `/api/stats` function at
+the edge; it never runs the Next.js build itself.
 
 > **Why this way, not Cloudflare's own Git build?** Both are free. Building in
 > GitHub Actions keeps the quality gate and the publish in one place — the exact
@@ -22,7 +23,7 @@ Two workflows, mirroring the rest of the monorepo's "verify → act" pattern:
 | Workflow | Trigger | Does |
 |---|---|---|
 | [`ci-web.yml`](../../.github/workflows/ci-web.yml) | pull requests touching `web/**` | typecheck · lint · build (the merge gate) |
-| [`deploy-web.yml`](../../.github/workflows/deploy-web.yml) | push to `main` touching `web/**`, or manual | re-runs the same verify, then uploads `web/out` to Cloudflare |
+| [`deploy-web.yml`](../../.github/workflows/deploy-web.yml) | push to `main` touching `web/**`, or manual | re-runs the same verify, then uploads `web/out` and `web/functions/` to Cloudflare |
 
 `deploy-web.yml` calls the reusable [`verify-web.yml`](../../.github/workflows/verify-web.yml)
 first and deploys only if it passes, so a broken build never reaches production.
@@ -81,9 +82,11 @@ canonical URLs point at the real host; until it is set, everything resolves to
 1. `deploy-web.yml` fires for a push to `main` that touched `web/**`.
 2. It typechecks, lints and builds the export (`npm run build` → `web/out`), with
    `NEXT_PUBLIC_SITE_URL` baked in.
-3. `cloudflare/wrangler-action` runs `wrangler pages deploy web/out
-   --project-name=uxnan --branch=main`, which uploads the files and, because
-   `main` is the production branch, promotes them to production.
+3. `cloudflare/wrangler-action` runs from `web/`:
+   `wrangler pages deploy out --project-name=uxnan --branch=main`. Wrangler sees
+   `web/functions/` beside `out/`, bundles the Pages Function, and uploads both
+   the static files and the function. Because `main` is the production branch,
+   it promotes them to production.
 4. The Actions run's *production* environment links straight to the live URL.
 
 Trigger it by hand any time from **Actions → Deploy — Web (Cloudflare Pages) → Run
@@ -104,6 +107,9 @@ On the live URL, check the things that behave differently from `localhost`:
 - The **download button** resolves a real installer (it calls the GitHub API from
   the browser; anonymous callers share 60 requests/hour/IP).
 - The header **star and download counters** appear.
+- `https://uxnan.pages.dev/api/stats` returns JSON with current stars and
+  installer-only downloads. The response is cached for 15 minutes and may serve
+  stale data for up to 24 hours while refreshing.
 - A shared link unfurls with the title, description **and the `og.png` image**.
 - `https://uxnan.pages.dev/download/` loads directly (clean URLs come from
   `trailingSlash: true`), and `/sitemap.xml`, `/robots.txt` and `/llms.txt` all
@@ -146,3 +152,16 @@ use: **root directory** `web`, **build command** `npm run build`, **output
 directory** `out`, and set `NEXT_PUBLIC_SITE_URL` as a Pages environment variable.
 Everything else in the project stays the same — nothing in the code is tied to
 either host.
+
+### Pages Functions locally
+
+The regular static server cannot execute `functions/`. To exercise the live
+counter endpoint locally, build first and run Wrangler from `web/`:
+
+```bash
+npx wrangler pages dev out
+```
+
+Cloudflare's dashboard drag-and-drop deployment does not compile a `functions/`
+directory; production deployments must continue to use Wrangler through the
+GitHub workflow.

@@ -18,9 +18,10 @@ npm run build      # static export → out/
 npm run start      # serve out/ on 3100, exactly what a host would serve
 ```
 
-`out/` is the whole deliverable: HTML, CSS, JS, fonts and SVGs, no server
-runtime. **Verify against `npm run start`, not only the dev server** — the dev
-server injects its own overlay and does not exercise the export.
+`out/` is the static part of the deliverable: HTML, CSS, JS, fonts and SVGs.
+The live counter endpoint is the separate `functions/api/stats.ts` Pages
+Function. **Verify the page against `npm run start`, not only the dev server** —
+the dev server injects its own overlay and does not exercise the export.
 
 > **Never run `next build` while `next dev` is running.** Both write to the same
 > `.next/`, and a build landing under a live dev server corrupts it: every request
@@ -65,6 +66,16 @@ npm run build && npm run start
 # 2. drive Edge over the DevTools protocol and screenshot the full page
 #    (any CDP client works; the point is a real render, not a DOM dump)
 ```
+
+To verify the live counter endpoint as well, use Wrangler from `web/` after the
+build instead:
+
+```bash
+npx wrangler pages dev out
+```
+
+Then open `/api/stats` on the local Wrangler URL and confirm it returns numeric
+`stars` and `downloads` fields.
 
 Two traps worth knowing, both of which have produced a "passing" screenshot of a
 broken page:

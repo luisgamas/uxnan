@@ -1,16 +1,15 @@
 /**
- * Repository counters, read once at build time.
+ * Build-time fallback for the repository counters.
  *
- * The site is a static export, so these numbers are baked into the HTML by
- * `next build` — no request happens in the visitor's browser. Every deploy
- * refreshes them. If GitHub is unreachable or rate-limits the build, the
- * caller gets `null` and the page simply omits the row rather than showing a
- * number nobody can vouch for.
+ * The static export uses these numbers for the first paint. After hydration,
+ * `components/repo-stats.tsx` refreshes them from the same-origin Pages
+ * Function. If GitHub is unreachable or rate-limits the build, the caller gets
+ * `null`; the live endpoint can still fill the row in the browser.
  */
 
-const REPO = "luisgamas/uxnan";
+import { isInstallerAsset, type RepoStats } from "./repo-stats";
 
-export type RepoStats = { stars: number; downloads: number };
+const REPO = "luisgamas/uxnan";
 
 type Release = {
   tag_name?: string;
@@ -34,8 +33,6 @@ type Release = {
  * and makes it mean what the label says. Add an extension here when a release
  * starts shipping a new installable format.
  */
-const INSTALLER = /\.(exe|msi|dmg|deb|rpm|AppImage|apk|aab)$/i;
-
 export async function getRepoStats(): Promise<RepoStats | null> {
   /* Anonymous calls are capped at 60/hour per IP, which a CI runner can burn
      through. `GITHUB_TOKEN` is present on Actions and lifts that to 1000. */
@@ -45,7 +42,7 @@ export async function getRepoStats(): Promise<RepoStats | null> {
     "user-agent": "uxnan-site",
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
-  /* One hour of cache keeps `next dev` from re-hitting the API on every reload. */
+  /* One hour of cache keeps the static build from re-hitting the API repeatedly. */
   const init = { headers, next: { revalidate: 3600 } };
 
   try {
@@ -65,7 +62,7 @@ export async function getRepoStats(): Promise<RepoStats | null> {
       (total, release) =>
         total +
         (release.assets ?? [])
-          .filter((asset) => INSTALLER.test(asset.name ?? ""))
+          .filter((asset) => isInstallerAsset(asset.name))
           .reduce((sum, asset) => sum + (asset.download_count ?? 0), 0),
       0,
     );
@@ -74,11 +71,4 @@ export async function getRepoStats(): Promise<RepoStats | null> {
   } catch {
     return null;
   }
-}
-
-/** 1_204 → "1,204"; 12_400 → "12.4k". */
-export function formatCount(value: number): string {
-  if (value < 1000) return String(value);
-  if (value < 10_000) return value.toLocaleString("en-US");
-  return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
 }

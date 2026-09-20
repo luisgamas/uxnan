@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 /**
- * Static export — the site has no server runtime. `next build` writes `out/`,
- * which is what gets uploaded to the host.
+ * Static export — Next writes the page shell to `out/`. The one runtime route
+ * lives separately in `functions/` and is deployed as a Cloudflare Pages
+ * Function by Wrangler.
  */
 const nextConfig: NextConfig = {
   output: "export",
