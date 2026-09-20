@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.16-alpha.20260919] - 20260919
 ### Added — `UsageStatus.accessRequired`
 
 `ProviderUsage.status` gains `accessRequired`: the CLI's token exists in the OS
