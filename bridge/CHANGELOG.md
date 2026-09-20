@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.25-alpha.20260920] - 20260920
 ### Added
 
 - **Antigravity token usage.** `AntigravityAdapter` advertises
