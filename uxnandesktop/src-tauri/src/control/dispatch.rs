@@ -65,8 +65,16 @@ pub async fn dispatch<R: tauri::Runtime>(
     // service — done or refused by it — leaves a line the person can read later.
     // `agent/wait` is a read that blocks; it leaves no line. A send and a
     // screen read do.
-    let audited =
-        entry.group == Group::Create || (entry.group == Group::Converse && method != "agent/wait");
+    // What is receipted and written to the audit log: everything that creates,
+    // every conversation turn but the wait, and every coordinator move but the
+    // reads and waits (`task/list`, `inbox/check`) and the progress line.
+    let audited = entry.group == Group::Create
+        || (entry.group == Group::Converse && method != "agent/wait")
+        || (entry.group == Group::Orchestrate
+            && !matches!(
+                method,
+                "task/list" | "inbox/check" | "orchestration/reportProgress"
+            ));
     if audited {
         if let Some(key) = receipts::key_of(&params) {
             let state = app.state::<AppState>();
@@ -134,6 +142,15 @@ async fn run<R: tauri::Runtime>(
         "orchestration/reportProgress" => {
             services::orchestration::report_progress(app, caller, params).await
         }
+        "run/create" => services::orchestration::run_create(app, caller, params).await,
+        "run/finish" => services::orchestration::run_finish(app, caller, params).await,
+        "task/create" => services::orchestration::task_create(app, caller, params).await,
+        "task/list" => services::orchestration::task_list(app, caller, params).await,
+        "task/update" => services::orchestration::task_update(app, caller, params).await,
+        "worker/start" => services::orchestration::worker_start(app, caller, params).await,
+        "inbox/check" => services::orchestration::inbox_check(app, caller, params).await,
+        "question/ask" => services::orchestration::question_ask(app, caller, params).await,
+        "question/answer" => services::orchestration::question_answer(app, caller, params).await,
         // The catalog and this table are checked against each other by a test;
         // an entry that reaches here is a bug, not a caller's mistake.
         other => Err(RpcError::new(
@@ -178,6 +195,15 @@ const IMPLEMENTED: &[&str] = &[
     "terminal/read",
     "orchestration/reportResult",
     "orchestration/reportProgress",
+    "run/create",
+    "run/finish",
+    "task/create",
+    "task/list",
+    "task/update",
+    "worker/start",
+    "inbox/check",
+    "question/ask",
+    "question/answer",
 ];
 
 #[cfg(test)]

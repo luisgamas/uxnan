@@ -28,9 +28,10 @@ its result to an orchestration run — and **give a subtask its own space**:
 create a worktree on a new branch and launch an agent in it with a first
 message, open a terminal, start a saved run or automation — and **talk to a
 running agent**: send it a whole message, wait until its own hooks say its
-turn is over, read its screen. A person can do the same from a prompt, and
-script it. The last group (coordinating several agents) builds on the same
-surface; the groups and the road are in the spec.
+turn is over, read its screen — and **drive a run as its coordinator**: create
+tasks with dependencies, start a worker for each in its own worktree, read an
+inbox where workers finish and ask, answer their questions, finish the run.
+A person can do the same from a prompt, and script it.
 
 What it is **not**: a shell. There is no entry that runs a command, writes raw
 bytes to a terminal, touches the filesystem or git destructively, reads a
@@ -90,7 +91,7 @@ below) without touching the others. Trust order:
 | `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward` | shipped |
 | `create` | `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run`; `automation/list` sits in `read` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
-| `orchestrate` | `orchestration/reportResult|reportProgress` (shipped); tasks, inbox, questions | partly |
+| `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
 
 [`docs/control-api-reference.md`](./control-api-reference.md) is every entry
 with its arguments, its result and a request — the output of `uxnan-cli skills
@@ -164,6 +165,82 @@ The loop an agent (or a script) runs with another agent:
   by prefix). Every read is audited. A project can opt out with
   `settings.control.terminalReadDisabledProjects` (its terminals then answer
   *group disabled*) — see *Settings* below.
+
+### The `orchestrate` group: a coordinator drives a run
+
+The run engine (`docs/orchestration.md`) is driven by the person at the
+console: they author a DAG of steps, start it, answer its gates. This group
+puts **an agent in that seat** — typically one Uxnan launched, holding the
+tools — without a second engine: a driven run *is* a run, its tasks *are*
+steps, a worker's question *is* a gate, and it all shows in the Runs console
+where the person can watch and intervene.
+
+- **`run/create`** — an empty run, `running` from the start and marked
+  *driven* (with the coordinator's terminal when a launched agent created
+  it). It ends only with `run/finish`: an empty or all-done DAG is "waiting
+  for the next task", not "done".
+- **`task/create`** — a step with a title, a prompt and `dependsOn`. An
+  `interactive` task (default) waits as `ready` for a worker; a `headless`
+  task names an agent and the engine runs it in print mode by itself when it
+  becomes ready — the coordinator only reads its result from the inbox.
+  `{{steps.<id>.output}}` in a prompt takes an earlier task's result, as in
+  any run.
+- **`worker/start`** — the worker: a terminal in the coordinator's worktree,
+  in a **new worktree on a new branch** (`worktree: "new"`, the project's
+  location policy, default branch `run/<run>/<task>`) or in a given one; the
+  agent launched in it; and the task typed in behind a **preamble** that
+  names the run, the task and the **dispatch** (`<task>.<attempt>`), tells the
+  worker to report exactly once with those ids and an outcome, and how to ask
+  a question. The task becomes `running`, bound to that terminal — a normal
+  tab, with its full TUI. Retry mints a new dispatch.
+- **Completion authority is the dispatch.** `orchestration/reportResult`
+  with the task's current `dispatchId` completes the task (or fails it per
+  `outcome`, honouring its retry policy) with the worker's structured result;
+  a report naming another dispatch is stale and refused, so an old worker's
+  late report never closes a retried task. A worker that goes idle without
+  reporting still completes on the hook signal — after a **60 s grace**, because
+  a CLI often ends a turn a moment before the tool call that carries its
+  report; a worker whose terminal exits fails the task.
+- **`inbox/check`** — the coordinator's FIFO, durable with the run:
+  `worker_done` (with the result), `worker_failed` (with the error),
+  `question`, `status` (a progress line, or "attempt n failed; ready again").
+  A message stays until acknowledged by `deliveryId` — a restart loses
+  nothing. With `wait`, the call sleeps on the app's change notifier (no
+  polling), at most 15 s per call; `uxnan-cli inbox check --wait` keeps
+  calling with heartbeats.
+- **`question/ask`** — from a worker's terminal (the caller's own; the app
+  finds the task it works on): files a **gate step** on the run addressed to
+  the coordinator (or to the person when nobody drives the run), posts it to
+  the inbox with its options, and waits for the answer — 15 s per call, then
+  a timeout carrying `questionId` to keep waiting with. The gate shows in the
+  Runs console like any gate, so the person can answer instead.
+  **`question/answer`** resolves it; the waiting worker gets the answer at
+  once. `task/update` lets the coordinator close a task by hand.
+- **`run/finish`** records the outcome and summary and ends the run; running
+  workers keep their terminals.
+
+The loop a coordinator runs, in `uxnan-cli` terms:
+
+```sh
+R=$(uxnan-cli run create --title "Split the parser" --json | jq -r .run.id)
+uxnan-cli task create --run $R --title Lexer  --prompt-file lexer.md
+uxnan-cli task create --run $R --title Parser --prompt-file parser.md --depends-on s1
+uxnan-cli worker start --run $R --task s1 --agent codex --worktree new
+uxnan-cli inbox check --run $R --wait            # … worker_done s1
+uxnan-cli inbox check --run $R --ack m1          # s2 is ready now
+uxnan-cli worker start --run $R --task s2 --agent claude --worktree new
+uxnan-cli inbox check --run $R --wait            # … question s3 → answer it
+uxnan-cli answer --run $R --question s3 --answer "keep the old flag"
+uxnan-cli inbox check --run $R --wait --ack m2   # … worker_done s2
+uxnan-cli run finish $R --outcome success --summary "both merged"
+```
+
+An agent does the same with `run_create`, `task_create`, `worker_start`,
+`inbox_check`, `question_answer`, `run_finish` — verified live with a Claude
+Code coordinator starting a Claude Code worker in a new worktree and
+finishing with its result, and with a worker asking through `question_ask`
+and receiving the answer the coordinator gave. Every move but the reads and
+the waits is receipted and audited with the caller's identity.
 
 ## Selectors
 
@@ -428,7 +505,11 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   so, woken at once by a `done` report, `waiting` as its own state, an unknown
   terminal as `exit`, a tab the window says is open but whose PTY is not up
   yet as *not reported* rather than `exit`. Receipts, the audit log and the redaction have their
-  own unit tests.
+  own unit tests. For `orchestrate`: over the real server with a stand-in
+  window, `inbox/check --wait` waking on the change notifier the moment a
+  message lands, `question/ask` refused from the user's shell, timing out
+  with its `questionId` and answered on the next wait, and the audit log
+  holding the moves but not the reads.
 - **CLI** (`cargo test -p uxnan-cli`): the HTTP client's round trip against a
   stand-in server, response parsing, the origin derivation, the process
   start-time check, the reference naming every entry, every error code and
@@ -443,8 +524,15 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   queued), an unknown agent refused with the known ones, a terminal opened
   plain or with an agent named three ways, a run started or refused with its
   validation errors; for `converse`: a message queued or forced through the
-  paste, a shell refused, a screen read that says when there is none. The
-  pump's readiness rule (`readyToReceive`: a terminal that has drawn and
+  paste, a shell refused, a screen read that says when there is none; for
+  `orchestrate`: the whole coordinator loop (a driven run that stays running
+  while empty, tasks promoted as their dependencies finish, a worker bound
+  with its dispatch and its preamble queued, a stale dispatch's report refused
+  and the current one taken, the inbox delivering until acknowledged, a task
+  closed by hand, the run finished), and a worker's question filed as a
+  coordinator-addressed gate, posted to the inbox and answered. The model
+  (`dispatchIdFor`, `postInbox`/`ackInbox`, `workerPreamble`) is pure and
+  tested in `src/lib/orchestration/run.test.ts`. The pump's readiness rule (`readyToReceive`: a terminal that has drawn and
   settled, the busy hold, the cap) is pure and tested in
   `src/lib/orchestration.test.ts`.
 - **By hand**: run the app (`npm run tauri dev`), then in another shell

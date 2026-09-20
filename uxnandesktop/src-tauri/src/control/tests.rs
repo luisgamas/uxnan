@@ -4,6 +4,7 @@
 //! on — the two gates, the envelope, the error codes — not any one service.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use tauri::{Listener, Manager};
@@ -731,4 +732,170 @@ async fn a_launch_token_reaches_only_its_terminals_project() {
     assert_eq!(body["result"]["terminals"].as_array().unwrap().len(), 3);
     let body = call(&control, "project/show", json!({ "project": "name:other" })).await;
     assert_eq!(body["result"]["name"], "other");
+}
+
+/// The coordinator's entries over the real server, against a stand-in window
+/// that keeps a tiny run: a wait on the inbox wakes on the app's change
+/// notifier the moment a message lands (no polling), a question times out
+/// with its id and is then answered, and the moves are audited.
+#[tokio::test]
+async fn a_coordinator_waits_on_the_inbox_and_a_worker_on_its_question() {
+    let s = server(AppData::default()).await;
+    let handle = s._app.handle().clone();
+
+    // The stand-in window: one run, an inbox, one question.
+    #[derive(Default)]
+    struct Window {
+        inbox: Vec<Value>,
+        answered: Option<String>,
+    }
+    let window = Arc::new(std::sync::Mutex::new(Window::default()));
+    let answerer = handle.clone();
+    let w = window.clone();
+    handle.listen_any(super::bridge::REQUEST_EVENT, move |event| {
+        let req: super::bridge::BridgeRequest = serde_json::from_str(event.payload()).unwrap();
+        let mut win = w.lock().unwrap();
+        let answer = match req.method.as_str() {
+            "run/create" => json!({ "id": "run-1", "status": "running" }),
+            "inbox/check" => {
+                let acked: Vec<String> = req.params["ack"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let before = win.inbox.len();
+                win.inbox
+                    .retain(|m| !acked.contains(&m["deliveryId"].as_str().unwrap().to_string()));
+                json!({ "run": "run-1", "messages": win.inbox, "acked": before - win.inbox.len() })
+            }
+            "question/ask" => json!({ "run": "run-1", "questionId": "s2" }),
+            "question/status" => json!({
+                "run": "run-1",
+                "answered": win.answered.is_some(),
+                "answer": win.answered,
+                "decision": win.answered.as_ref().map(|_| "approve"),
+            }),
+            "question/answer" => {
+                win.answered = req.params["answer"].as_str().map(String::from);
+                json!({ "resolved": true })
+            }
+            _ => Value::Null,
+        };
+        answerer
+            .state::<AppState>()
+            .control_bridge
+            .answer(&req.id, Ok(answer));
+    });
+
+    let control = [("authorization", "Bearer control-token")];
+    let worker = [("x-uxnan-token", LAUNCH), ("x-uxnan-agent-id", "w-1")];
+    let call = |headers: &[(&str, &str)], method: &str, params: Value| {
+        let origin = s.origin.clone();
+        let headers: Vec<(String, String)> = headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let method = method.to_string();
+        async move {
+            let borrowed: Vec<(&str, &str)> = headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            post(&origin, RPC_PATH, &borrowed, rpc(&method, params))
+                .await
+                .1
+        }
+    };
+
+    // A run, receipted.
+    let body = call(
+        &control,
+        "run/create",
+        json!({ "title": "T", "idempotencyKey": "k1" }),
+    )
+    .await;
+    assert_eq!(body["result"]["run"]["id"], "run-1", "{body}");
+    assert!(body["result"]["requestId"].is_string());
+
+    // An empty inbox answers at once without `wait`.
+    let started = std::time::Instant::now();
+    let body = call(&control, "inbox/check", json!({ "run": "run-1" })).await;
+    assert_eq!(
+        body["result"]["messages"].as_array().unwrap().len(),
+        0,
+        "{body}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(2));
+
+    // With `wait`, the call sleeps until a message lands and the window
+    // notifies — well inside the budget.
+    let poster = handle.clone();
+    let w = window.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        w.lock().unwrap().inbox.push(json!({
+            "deliveryId": "m1", "type": "worker_done", "stepId": "s1", "text": "done", "at": 1
+        }));
+        poster.state::<AppState>().agent_changes.notify_waiters();
+    });
+    let started = std::time::Instant::now();
+    let body = call(
+        &control,
+        "inbox/check",
+        json!({ "run": "run-1", "wait": true, "timeoutMs": 10_000 }),
+    )
+    .await;
+    let waited = started.elapsed();
+    assert_eq!(body["result"]["messages"][0]["deliveryId"], "m1", "{body}");
+    assert!(
+        waited >= Duration::from_millis(300) && waited < Duration::from_secs(5),
+        "{waited:?}"
+    );
+    // Acknowledged, it is gone.
+    let body = call(
+        &control,
+        "inbox/check",
+        json!({ "run": "run-1", "ack": ["m1"] }),
+    )
+    .await;
+    assert_eq!(body["result"]["acked"], 1);
+    assert_eq!(body["result"]["messages"].as_array().unwrap().len(), 0);
+
+    // A worker asks: unanswered within a short budget → timeout carrying the
+    // question id; from the user's shell the entry is refused outright.
+    let body = call(&control, "question/ask", json!({ "question": "?" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::InvalidParams.code(),
+        "{body}"
+    );
+    let body = call(
+        &worker,
+        "question/ask",
+        json!({ "question": "Drop the table?", "options": ["yes", "no"], "timeoutMs": 300 }),
+    )
+    .await;
+    assert_eq!(body["error"]["code"], ErrorCode::Timeout.code(), "{body}");
+    assert_eq!(body["error"]["data"]["questionId"], "s2");
+    // The coordinator answers; the worker's next wait returns it at once.
+    let body = call(
+        &control,
+        "question/answer",
+        json!({ "run": "run-1", "question": "s2", "answer": "no" }),
+    )
+    .await;
+    assert_eq!(body["result"]["resolved"], true, "{body}");
+    let body = call(&worker, "question/ask", json!({ "questionId": "s2" })).await;
+    assert_eq!(body["result"]["answered"], true, "{body}");
+    assert_eq!(body["result"]["answer"], "no");
+
+    // Audited: the moves, not the reads or the waits.
+    let log = std::fs::read_to_string(s._dir.path().join("control-audit.log")).unwrap();
+    assert!(log.contains("\"method\":\"run/create\""));
+    assert!(log.contains("\"method\":\"question/answer\""));
+    assert!(log.contains("\"method\":\"question/ask\""));
+    assert!(!log.contains("\"method\":\"inbox/check\""));
 }

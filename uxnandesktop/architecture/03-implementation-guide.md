@@ -104,7 +104,7 @@ Cada command es una funcion async de Rust que recibe parametros tipados, ejecuta
 - `settings_update` - Actualizar preferencias de la aplicacion
 
 **Superficie de control (`02d` §1.6):**
-- `control_respond` - La respuesta de la ventana a un `control:request` (pestanas, archivos abiertos, corridas): el backend la entrega a la peticion MCP/RPC que esperaba. Los demas comandos de la superficie no son comandos Tauri sino entradas del catalogo (`crates/control-protocol`), servidas por `control/services/` a la ventana, a MCP y a `uxnan-cli` por igual
+- `control_respond` - La respuesta de la ventana a un `control:request` (pestanas, archivos abiertos, corridas): el backend la entrega a la peticion MCP/RPC que esperaba. `control_notify` - la ventana avisa que una corrida cambio (una tarea termino, una pregunta se respondio, un mensaje llego a la bandeja) y despierta a `inbox/check --wait` y `question/ask`. Los demas comandos de la superficie no son comandos Tauri sino entradas del catalogo (`crates/control-protocol`), servidas por `control/services/` a la ventana, a MCP y a `uxnan-cli` por igual
 
 **Bridge Movil:**
 - `bridge_start` - Iniciar el servidor de bridge para conexion movil

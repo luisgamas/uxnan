@@ -42,6 +42,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `worktree create`, `terminal create`, `run start`, `automation ls|run`,
   `--prompt-file` and `--idempotency-key`; `launchAgent` now returns the tab
   it opened.
+- **A run driven by a coordinator agent — the `orchestrate` group, v2.** An
+  agent (or a script) can now take the console's seat on the orchestration
+  run engine, with no second engine: `run/create` opens an empty run that
+  stays running until `run/finish`; `task/create` adds tasks with
+  dependencies (interactive, waiting for a worker; or headless, run by the
+  engine itself); `worker/start` opens a terminal — in the coordinator's
+  worktree, in a **new worktree on a new branch**, or in a given one — launches
+  the agent and hands it the task behind a preamble naming its task and
+  **dispatch**; `inbox/check` is the coordinator's durable FIFO (`worker_done`,
+  `worker_failed`, `question`, `status`; acknowledged by id; `--wait` sleeps on
+  the app's change notifier, no polling); `question/ask` lets a worker ask the
+  coordinator — as a gate step the person can also answer in the Runs console
+  — and `question/answer` resolves it; `task/update` closes a task by hand.
+  `orchestration/reportResult` takes `taskId`, `dispatchId` and `outcome`: the
+  task's current dispatch holds the completion authority, a stale report is
+  refused, and a worker that goes idle without reporting is closed on the hook
+  signal only after a 60 s grace. Every move but the reads and waits is
+  receipted and audited. `uxnan-cli run create|finish`, `task create|ls|update`,
+  `worker start`, `inbox check [--wait] [--ack]`, `ask`, `answer`. Verified
+  live: a Claude Code coordinator, through the MCP tools alone, created a run
+  and a task, started a Claude Code worker in a new worktree, waited on the
+  inbox and finished with the worker's result; a worker asked through
+  `question_ask`, the coordinator answered, the worker reported the answer.
 - **A launched agent reaches only its own project.** The per-launch token
   is now scoped the way the spec always said: listings (`project/list`,
   `worktree/list`, `terminal/list`, `agent/list`, the counts in `status`) are

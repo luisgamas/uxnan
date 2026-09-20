@@ -102,6 +102,14 @@ impl Bridge {
     }
 }
 
+/// The window says a run changed (a task finished, a question was answered,
+/// a message reached an inbox): every `inbox/check --wait` and `question/ask`
+/// sleeping on the app's change notifier looks again.
+#[tauri::command]
+pub fn control_notify(state: tauri::State<'_, AppState>) {
+    state.agent_changes.notify_waiters();
+}
+
 /// The window's reply to a [`REQUEST_EVENT`].
 #[tauri::command]
 pub fn control_respond(

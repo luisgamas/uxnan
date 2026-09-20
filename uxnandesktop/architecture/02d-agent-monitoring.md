@@ -630,7 +630,7 @@ sobre el estado reportado por los hooks, dormido en el notificador
 `terminal/read`: las ultimas lineas del buffer del terminal de la ventana con
 **redaccion** de secretos en el backend antes de salir, auditado, y desconectable
 por proyecto con `settings.control.terminalReadDisabledProjects`) y
-`orchestrate` (hoy `orchestration/reportResult|reportProgress`, §3.7). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
+`orchestrate` v2 (`run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` — una corrida conducida por un agente coordinador, §3.9). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
 para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
 (`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;
 `current` se ancla en el `UXNAN_AGENT_ID` del llamador, asi que solo existe
@@ -961,6 +961,64 @@ agentes** corriendo **o** cuando existe alguna corrida):
   del agente ni se concatenan envios, y lo multilinea no se envia en el primer salto.
   Un agente que se lee **ocupado** indefinidamente (sin hooks / lector clavado) no
   atasca la cola: tras un tope de espera se **fuerza la entrega** (mejor esfuerzo).
+  Y nunca se entrega a una terminal que **aun no dibujo y se asento**
+  (`readyToReceive`): pegar en una shell que arranca el agente pierde el mensaje.
+
+### 3.9 Corridas conducidas por un coordinador (grupo `orchestrate` v2)
+
+> **Estado: IMPLEMENTADO.** Sin motor paralelo: una corrida conducida **es** una
+> corrida, sus tareas **son** pasos, la pregunta de un worker **es** una compuerta,
+> y todo se ve en la consola de Runs, donde la persona puede intervenir.
+
+- **Quien conduce.** `Run.driven` marca la corrida como conducida (con la terminal
+  del coordinador cuando la creo un agente lanzado; sin ella cuando la conduce una
+  persona desde `uxnan-cli`). Una corrida conducida arranca `running` vacia y
+  **solo termina con `run/finish`** (resultado + resumen): un DAG vacio o todo
+  terminado es "esperando la siguiente tarea", no "hecho". El motor no deriva su
+  estado terminal ni despacha solo sus pasos interactivos: una tarea interactiva
+  espera en `ready` a `worker/start`; una `headless` (con agente) la corre el motor
+  solo, como hoy, y el coordinador lee su resultado en la bandeja.
+- **Despacho y autoridad de finalizacion.** Cada despacho de un paso acuña un
+  `dispatchId` (`<paso>.<intento>`), nuevo en cada reintento. El reporte de un
+  worker (`orchestration/reportResult` con `taskId`, `dispatchId`, `outcome`) cierra
+  la tarea **solo si nombra el despacho vigente**; uno viejo se rechaza como
+  obsoleto (`accepted: false`), asi el reporte tardio de un worker reintentado nunca
+  cierra la tarea nueva. `outcome: failure|blocked` falla la tarea respetando su
+  politica de reintento. Un worker que se queda ocioso sin reportar cierra por la
+  senal de hooks tras una **gracia de 60 s** (un CLI suele terminar el turno un
+  instante antes de la llamada a la tool que lleva el reporte); una terminal que
+  sale falla la tarea.
+- **`worker/start`.** El backend resuelve el worktree (el del coordinador, uno nuevo
+  en rama nueva con la politica de ubicacion del proyecto — rama por defecto
+  `run/<run>/<tarea>` —, o uno dado), abre la terminal con el agente
+  (`terminal/create`), y la ventana ata la tarea a esa pestaña, acuña el despacho y
+  encola el **preambulo** + el prompt resuelto (`workerPreamble`, `run.ts`): quien
+  es dentro de la corrida, reportar exactamente una vez con sus ids, y como
+  preguntar (`question_ask`, con la forma `uxnan-cli` entre parentesis para un
+  agente sin tools). Es una pestaña normal con su TUI completa.
+- **Bandeja.** `Run.inbox` (FIFO, `deliveryId` monotono, persistida con la corrida):
+  `worker_done` (con el resultado), `worker_failed` (con el error), `question`,
+  `status` (progreso, o "intento n fallo; la tarea vuelve a ready"). Un mensaje
+  permanece hasta el `ack`; un reinicio no pierde nada. `inbox/check --wait` duerme
+  en el notificador de cambios de la app (`control_notify` desde la ventana, el mismo
+  `AppState.agent_changes` de `agent/wait`), ≤15 s por llamada, sin sondeo.
+- **Preguntas = compuertas.** `question/ask` (desde la terminal del worker: el
+  backend identifica su tarea por su propio id) crea un paso `gate` con
+  `resolver: coordinator` y `askedBy: {stepId, dispatchId}`, lo pone `running` sin
+  notificacion nativa (es del coordinador; la persona lo ve igual en la consola y
+  puede responderlo) y lo publica en la bandeja con sus opciones; la llamada espera la
+  respuesta (≤15 s, luego *timeout* con `questionId` para seguir esperando).
+  `question/answer` resuelve la compuerta (`approve` con la respuesta como nota, o
+  `reject`); el worker en espera la recibe al instante.
+- **Alcance y auditoria.** Las corridas no son por proyecto; `worker/start` con
+  `new` crea el worktree en el proyecto del llamador (o el indicado), sujeto al
+  alcance del token. Todo movimiento del coordinador salvo las lecturas y las
+  esperas (`task/list`, `inbox/check`) y la linea de progreso queda en
+  `control-audit.log` con recibo e idempotencia.
+- **Verificado en vivo:** un coordinador Claude Code, solo con las tools MCP, creo
+  la corrida y la tarea, lanzo un worker Claude Code en un worktree nuevo, espero la
+  bandeja y cerro con el resultado del worker; y un worker pregunto por `question_ask`,
+  el coordinador respondio y el worker reporto la respuesta textual.
 
 ---
 

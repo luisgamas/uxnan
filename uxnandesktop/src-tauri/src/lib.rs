@@ -425,6 +425,7 @@ pub fn run() {
             commands::repo_update,
             commands::repo_probe_git,
             control::bridge::control_respond,
+            control::bridge::control_notify,
             commands::repo_set_branch_icon,
             commands::repo_reorder,
             commands::repo_set_worktree_order,

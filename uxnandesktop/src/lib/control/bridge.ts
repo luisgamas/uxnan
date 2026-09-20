@@ -45,14 +45,14 @@ export interface ControlTab {
 
 /** Resolve the `agent` argument of a create entry, or throw the message the
  *  caller reads. `null` when no agent was asked for. */
-function agentFor(selector: unknown): { id: string; name: string } | null {
+function agentFor(selector: unknown): { id: string; name: string; command: string } | null {
   if (selector === undefined || selector === null || String(selector).trim() === "") return null;
   const agent = app.findLaunchableAgent(String(selector));
   if (!agent) {
     const known = app.launchableAgents.map((a) => a.command.trim() || a.name).join(", ");
     throw new Error(`no configured agent matches \`${String(selector)}\`; known: ${known || "none"}`);
   }
-  return { id: agent.id, name: agent.name };
+  return { id: agent.id, name: agent.name, command: agent.command.trim() };
 }
 
 /** Queue a first message for a just-launched agent. The broadcast queue holds it
@@ -189,6 +189,130 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
         output: s.output ?? null,
       })),
     };
+  },
+  // --- The coordinator's entries: a run driven through the control surface ---
+  "orchestration/report": (p) =>
+    orchestrationRun.applyAgentReport({
+      agentId: String(p.agentId ?? ""),
+      type: p.type === "progress" ? "progress" : "result",
+      text: String(p.text ?? ""),
+      summary: typeof p.summary === "string" ? p.summary : null,
+      taskId: typeof p.taskId === "string" ? p.taskId : null,
+      dispatchId: typeof p.dispatchId === "string" ? p.dispatchId : null,
+      outcome: p.outcome === "failure" || p.outcome === "blocked" ? p.outcome : p.outcome === "success" ? "success" : null,
+    }),
+  "run/create": (p) => {
+    const run = orchestrationRun.createDriven(
+      String(p.title ?? ""),
+      typeof p.coordinator === "string" && p.coordinator ? p.coordinator : undefined,
+    );
+    return { id: run.id, status: run.status };
+  },
+  "run/finish": (p) => {
+    const outcome = p.outcome === "failure" || p.outcome === "blocked" ? p.outcome : "success";
+    const run = orchestrationRun.finishRun(
+      String(p.run ?? ""),
+      outcome,
+      typeof p.summary === "string" ? p.summary : undefined,
+    );
+    if (!run) return { error: `no driven run matches \`${String(p.run ?? "")}\`` };
+    return { id: run.id, status: run.status };
+  },
+  "task/create": (p) => {
+    const step = orchestrationRun.createTask(String(p.run ?? ""), {
+      title: String(p.title ?? ""),
+      prompt: String(p.prompt ?? ""),
+      dependsOn: Array.isArray(p.dependsOn) ? p.dependsOn.map(String) : [],
+      kind: p.kind === "headless" ? "headless" : "interactive",
+      agent: typeof p.agent === "string" ? agentFor(p.agent)?.id : undefined,
+      worktree: typeof p.worktree === "string" ? p.worktree : undefined,
+      retry: p.retry === true,
+    });
+    if (!step) return { error: `no running driven run matches \`${String(p.run ?? "")}\`` };
+    return { id: step.id, status: step.status };
+  },
+  "task/list": (p) => {
+    const id = String(p.run ?? "");
+    const run = orchestrationRun.runs.find((r) => r.id === id);
+    if (!run) return { error: `no run matches \`${id}\`` };
+    return {
+      run: { id: run.id, title: run.title, status: run.status, driven: run.driven !== undefined },
+      tasks: run.steps.map((s) => {
+        const task: Record<string, unknown> = {
+          id: s.id,
+          title: s.title,
+          kind: s.kind,
+          status: s.status,
+          dependsOn: s.dependsOn,
+          prompt: s.prompt,
+          attempts: s.attempts,
+          output: s.output ?? null,
+        };
+        if (s.dispatchId) task.dispatchId = s.dispatchId;
+        if (s.outcome) task.outcome = s.outcome;
+        if (s.error) task.error = s.error;
+        if (s.kind === "interactive" && s.target.tabId) task.terminal = s.target.tabId;
+        if (s.kind === "gate" && s.gate) {
+          task.question = {
+            question: s.gate.question,
+            options: s.gate.options,
+            resolver: s.gate.resolver ?? "human",
+            answered: s.gate.decision !== undefined,
+            answer: s.gate.decision !== undefined ? s.gate.note : undefined,
+            askedBy: s.gate.askedBy,
+          };
+        }
+        return task;
+      }),
+      inbox: run.inbox?.length ?? 0,
+    };
+  },
+  "task/update": (p) => {
+    const status =
+      p.status === "completed" || p.status === "failed" || p.status === "skipped" ? p.status : undefined;
+    const step = orchestrationRun.updateTask(String(p.run ?? ""), String(p.task ?? ""), {
+      title: typeof p.title === "string" ? p.title : undefined,
+      prompt: typeof p.prompt === "string" ? p.prompt : undefined,
+      dependsOn: Array.isArray(p.dependsOn) ? p.dependsOn.map(String) : undefined,
+      status,
+      output: typeof p.output === "string" ? p.output : undefined,
+    });
+    if (!step) return { error: `no task \`${String(p.task ?? "")}\` in driven run \`${String(p.run ?? "")}\`` };
+    return { id: step.id, status: step.status };
+  },
+  "worker/start": (p) => {
+    const agent = agentFor(p.agent);
+    const bound = orchestrationRun.startWorker(String(p.run ?? ""), String(p.task ?? ""), {
+      tabId: String(p.terminal ?? ""),
+      agentType: agent?.command ?? String(p.agent ?? ""),
+      workspace: String(p.worktree ?? ""),
+    });
+    return bound;
+  },
+  "inbox/check": (p) => {
+    const box = orchestrationRun.inbox(String(p.run ?? ""), Array.isArray(p.ack) ? p.ack.map(String) : []);
+    if (!box) return { error: `no run matches \`${String(p.run ?? "")}\`` };
+    return { run: String(p.run), messages: box.messages, acked: box.acked };
+  },
+  "question/ask": (p) =>
+    orchestrationRun.ask(
+      String(p.terminal ?? ""),
+      String(p.question ?? ""),
+      Array.isArray(p.options) ? p.options.map(String) : undefined,
+    ),
+  "question/status": (p) => {
+    const q = orchestrationRun.question(String(p.question ?? ""));
+    if (!q) return { error: `no question matches \`${String(p.question ?? "")}\`` };
+    return { run: q.runId, answered: q.answered, answer: q.answer ?? null, decision: q.decision ?? null };
+  },
+  "question/answer": (p) => {
+    const ok = orchestrationRun.answer(
+      String(p.run ?? ""),
+      String(p.question ?? ""),
+      String(p.answer ?? ""),
+      p.decision === "reject" ? "reject" : "approve",
+    );
+    return ok ? { resolved: true } : { error: `no open question \`${String(p.question ?? "")}\` in run \`${String(p.run ?? "")}\`` };
   },
 };
 

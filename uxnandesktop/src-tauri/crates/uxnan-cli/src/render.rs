@@ -66,6 +66,40 @@ pub fn render(method: &str, value: &Value) -> String {
             value["reached"].as_str().unwrap_or("?"),
             value["waitedMs"]
         ),
+        "task/list" => {
+            let head = format!(
+                "run {} · {} · {}{}\n",
+                value["run"]["id"].as_str().unwrap_or("?"),
+                value["run"]["title"].as_str().unwrap_or(""),
+                value["run"]["status"].as_str().unwrap_or("?"),
+                match value["inbox"].as_u64() {
+                    Some(n) if n > 0 => format!(" · {n} in the inbox"),
+                    _ => String::new(),
+                }
+            );
+            head + &table(
+                value.get("tasks"),
+                &["id", "title", "kind", "status", "dispatchId", "outcome"],
+                &[|t: &Value| {
+                    t["dependsOn"]
+                        .as_array()
+                        .map(|d| {
+                            d.iter()
+                                .filter_map(|v| v.as_str())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        })
+                        .unwrap_or_default()
+                }],
+                &["dependsOn"],
+            )
+        }
+        "inbox/check" => table(
+            value.get("messages"),
+            &["deliveryId", "type", "stepId", "dispatchId", "text"],
+            &[],
+            &[],
+        ),
         "automation/list" => table(
             value.get("automations"),
             &["id", "name", "enabled", "workingDir"],

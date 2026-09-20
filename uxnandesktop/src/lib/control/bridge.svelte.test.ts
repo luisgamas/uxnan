@@ -262,3 +262,150 @@ describe("the create group, on the window's side", () => {
     expect((await answer({ id: "c8", method: "run/start", params: { run: "nope" } })).result).toBeNull();
   });
 });
+
+describe("a run driven by a coordinator", () => {
+  async function ask<T>(id: string, method: string, params: Record<string, unknown>): Promise<T> {
+    const out = await answer({ id, method, params });
+    expect(out.error, `${method}: ${out.error}`).toBeUndefined();
+    return out.result as T;
+  }
+
+  it("runs the coordinator loop: create, task, worker, report, inbox, finish", async () => {
+    terminals.setWorkspace(WT);
+    const run = await ask<{ id: string; status: string }>("d1", "run/create", {
+      title: "Split the work",
+      coordinator: "coord-tab",
+    });
+    expect(run.status).toBe("running");
+    // An empty driven run stays running: it is waiting for tasks, not done.
+    const listed = await ask<{ run: { status: string; driven: boolean }; tasks: unknown[]; inbox: number }>(
+      "d2",
+      "task/list",
+      { run: run.id },
+    );
+    expect(listed.run).toMatchObject({ status: "running", driven: true });
+    expect(listed.tasks).toEqual([]);
+
+    const t1 = await ask<{ id: string; status: string }>("d3", "task/create", {
+      run: run.id,
+      title: "Lexer",
+      prompt: "Write the lexer.",
+    });
+    expect(t1).toEqual({ id: "s1", status: "ready" });
+    const t2 = await ask<{ id: string; status: string }>("d4", "task/create", {
+      run: run.id,
+      title: "Parser",
+      prompt: "Use {{steps.s1.output}} to write the parser.",
+      dependsOn: ["s1"],
+    });
+    expect(t2).toEqual({ id: "s2", status: "pending" });
+
+    // The worker: a terminal the backend opened, bound to the task; the
+    // preamble + prompt is queued into it, naming the dispatch.
+    const worker = terminals.create({ cwd: WT, title: "s1", agentName: "Claude Code", agentCommand: "claude" });
+    const bound = await ask<{ dispatchId: string }>("d5", "worker/start", {
+      run: run.id,
+      task: "s1",
+      terminal: worker,
+      agent: "claude",
+      worktree: WT,
+    });
+    expect(bound.dispatchId).toBe("s1.1");
+    expect(orchestration.pendingFor(worker) > 0 || backend.lastCallTo("pty_paste_submit") !== undefined).toBe(true);
+    const tasks = (await ask<{ tasks: { id: string; status: string; dispatchId?: string; terminal?: string }[] }>(
+      "d6",
+      "task/list",
+      { run: run.id },
+    )).tasks;
+    expect(tasks[0]).toMatchObject({ id: "s1", status: "running", dispatchId: "s1.1", terminal: worker });
+
+    // A report from a stale dispatch is refused; the current one completes the
+    // task, the dependent becomes ready, and the inbox says so.
+    const stale = await ask<{ accepted: boolean; reason?: string }>("d7", "orchestration/report", {
+      agentId: worker,
+      type: "result",
+      text: "old",
+      taskId: "s1",
+      dispatchId: "s1.0",
+    });
+    expect(stale.accepted).toBe(false);
+    expect(stale.reason).toContain("stale");
+    const fresh = await ask<{ accepted: boolean; stepId?: string }>("d8", "orchestration/report", {
+      agentId: worker,
+      type: "result",
+      text: "tokens: 12 kinds",
+      summary: "lexer done",
+      taskId: "s1",
+      dispatchId: "s1.1",
+      outcome: "success",
+    });
+    expect(fresh).toMatchObject({ accepted: true, stepId: "s1" });
+    const after = (await ask<{ tasks: { id: string; status: string; output: string | null }[] }>(
+      "d9",
+      "task/list",
+      { run: run.id },
+    )).tasks;
+    expect(after[0]).toMatchObject({ id: "s1", status: "completed", output: "tokens: 12 kinds" });
+    expect(after[1]).toMatchObject({ id: "s2", status: "ready" });
+
+    const box = await ask<{ messages: { deliveryId: string; type: string; stepId: string; dispatchId?: string; text: string }[] }>(
+      "d10",
+      "inbox/check",
+      { run: run.id },
+    );
+    expect(box.messages).toHaveLength(1);
+    expect(box.messages[0]).toMatchObject({ deliveryId: "m1", type: "worker_done", stepId: "s1", dispatchId: "s1.1", text: "tokens: 12 kinds" });
+    // Unacknowledged, it is delivered again; acknowledged, it is gone.
+    expect((await ask<{ messages: unknown[] }>("d11", "inbox/check", { run: run.id })).messages).toHaveLength(1);
+    const acked = await ask<{ messages: unknown[]; acked: number }>("d12", "inbox/check", { run: run.id, ack: ["m1"] });
+    expect(acked).toMatchObject({ messages: [], acked: 1 });
+
+    // Closing a task by hand, and finishing the run.
+    const closed = await ask<{ id: string; status: string }>("d13", "task/update", {
+      run: run.id,
+      task: "s2",
+      status: "skipped",
+      output: "not needed",
+    });
+    expect(closed).toEqual({ id: "s2", status: "skipped" });
+    const done = await ask<{ id: string; status: string }>("d14", "run/finish", {
+      run: run.id,
+      outcome: "success",
+      summary: "all good",
+    });
+    expect(done.status).toBe("completed");
+    expect(orchestrationRun.runById(run.id)?.driven).toMatchObject({ coordinator: "coord-tab", outcome: "success", summary: "all good" });
+  });
+
+  it("carries a worker's question to the coordinator as a gate, and its answer back", async () => {
+    terminals.setWorkspace(WT);
+    const run = await ask<{ id: string }>("q1", "run/create", { title: "Q", coordinator: "coord-tab" });
+    await ask("q2", "task/create", { run: run.id, title: "Migrate", prompt: "Migrate the db." });
+    const worker = terminals.create({ cwd: WT, title: "s1", agentName: "Codex", agentCommand: "codex" });
+    await ask("q3", "worker/start", { run: run.id, task: "s1", terminal: worker, agent: "claude", worktree: WT });
+
+    const filed = await ask<{ runId: string; questionId: string }>("q4", "question/ask", {
+      terminal: worker,
+      question: "Drop the legacy table?",
+      options: ["yes", "no"],
+    });
+    expect(filed).toEqual({ runId: run.id, questionId: "s2" });
+    const pending = await ask<{ answered: boolean }>("q5", "question/status", { question: "s2" });
+    expect(pending.answered).toBe(false);
+    const box = await ask<{ messages: { type: string; stepId: string; text: string }[] }>("q6", "inbox/check", { run: run.id });
+    expect(box.messages[0]).toMatchObject({ type: "question", stepId: "s2" });
+    expect(box.messages[0].text).toContain("Options: yes | no");
+    // The gate is a real step of the run: the person sees it in the console.
+    const gate = orchestrationRun.runById(run.id)?.steps.find((s) => s.id === "s2");
+    expect(gate?.kind).toBe("gate");
+    expect(gate?.gate).toMatchObject({ resolver: "coordinator", askedBy: { stepId: "s1", dispatchId: "s1.1" } });
+
+    await ask("q7", "question/answer", { run: run.id, question: "s2", answer: "no, keep it" });
+    const answered = await ask<{ answered: boolean; answer: string; decision: string }>("q8", "question/status", { question: "s2" });
+    expect(answered).toMatchObject({ answered: true, answer: "no, keep it", decision: "approve" });
+
+    // A terminal that is no worker cannot ask.
+    const stranger = await answer({ id: "q9", method: "question/ask", params: { terminal: "nobody", question: "?" } });
+    expect((stranger.result as { error: string }).error).toContain("not a worker");
+  });
+});

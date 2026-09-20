@@ -42,7 +42,7 @@ impl Group {
             Group::Ui => 1,
             Group::Create => 1,
             Group::Converse => 1,
-            Group::Orchestrate => 1,
+            Group::Orchestrate => 2,
         }
     }
 
@@ -283,6 +283,37 @@ fn project_with_worktrees(with_status: bool) -> Value {
     let mut v = project_ref();
     v["properties"]["worktrees"] = list_of(worktree_view(with_status), "The project's worktrees.");
     v
+}
+
+/// One task of a driven run — a step, as `task/list` describes it.
+fn task_view() -> Value {
+    result(json!({
+        "id": field("string", "The task id, unique within the run (`s1`, `s2`, …) — what `task/update`, `worker/start` and `dependsOn` take."),
+        "title": field("string", "The task's title."),
+        "kind": field("string", "`interactive` (a worker in a terminal, started with `worker/start`), `headless` (the engine runs the agent in print mode by itself once the task is ready) or `gate` (a question waiting for an answer)."),
+        "status": field("string", "`pending` (dependencies unmet), `ready` (dispatchable — an interactive task waits here for `worker/start`), `running`, `blocked`, `completed`, `failed` or `skipped` (a dependency failed)."),
+        "dependsOn": list_of(field("string", "A task id."), "Tasks that must complete first."),
+        "prompt": field("string", "The task's prompt; `{{steps.<id>.output}}` references a finished task's output."),
+        "dispatchId": optional("string", "The current dispatch (`<task>.<attempt>`), once the task has been dispatched — the one a worker's report must name."),
+        "outcome": optional("string", "`success`, `failure` or `blocked`, once a worker reported."),
+        "attempts": field("integer", "How many times it has been dispatched."),
+        "output": nullable("string", "The captured result, once finished."),
+        "error": optional("string", "Why it failed, when it did."),
+        "terminal": optional("string", "The worker's terminal id, for an interactive task that was started."),
+        "question": optional("object", "For a gate: `{ question, options?, resolver, answered, answer?, askedBy? }`."),
+    }))
+}
+
+/// A message in a driven run's inbox.
+fn inbox_message() -> Value {
+    result(json!({
+        "deliveryId": field("string", "What to acknowledge (`m<n>`)."),
+        "type": field("string", "`worker_done` (a task completed; `text` is its result), `worker_failed` (`text` is why), `question` (a worker asks; `stepId` is the question id to answer) or `status` (a progress line)."),
+        "stepId": field("string", "The task — or, for a question, the question — the message is about."),
+        "dispatchId": optional("string", "The dispatch the message came from, for `worker_*`."),
+        "text": field("string", "The message."),
+        "at": field("integer", "Epoch milliseconds."),
+    }))
 }
 
 /// A receipt: what every `create` entry and `agent/send` answer with.
@@ -774,18 +805,26 @@ pub fn catalog() -> Vec<Entry> {
             method: "orchestration/reportResult",
             tool: "orchestration_report_result",
             group: Group::Orchestrate,
-            summary: "Report the final result of the task Uxnan's orchestration run gave you, so the run captures your output verbatim and can feed it to the next step. Call it once, when you are done. Pass your UXNAN_AGENT_ID as agentId.",
+            summary: "Report the final result of the task Uxnan's orchestration run gave you, so the run captures your output verbatim and can feed it to the next step. Call it exactly once, when you are done. Pass your UXNAN_AGENT_ID as agentId; a worker started by a coordinator also passes the taskId and dispatchId its preamble gave it (a report naming a dispatch that is no longer the task's current one is ignored) and an outcome.",
             params: object(
                 json!({
                     "agentId": { "type": "string", "description": "The value of your UXNAN_AGENT_ID environment variable (identifies which run step you are)." },
                     "result": { "type": "string", "description": "Your full result/output for the task, captured verbatim by the run." },
-                    "summary": { "type": "string", "description": "Optional one-line summary of the result." }
+                    "summary": { "type": "string", "description": "Optional one-line summary of the result." },
+                    "taskId": { "type": "string", "description": "The task id from your preamble, when a coordinator started you." },
+                    "dispatchId": { "type": "string", "description": "The dispatch id from your preamble. Holds the completion authority: only the task's current dispatch may finish it." },
+                    "outcome": { "type": "string", "enum": ["success", "failure", "blocked"], "description": "What the task came to. Default `success`. `failure` fails the task (its retry policy applies); `blocked` too, saying you could not proceed." }
                 }),
                 &["agentId", "result"],
             ),
             mutates: true,
-            result: result(json!({ "reported": field("string", "`result`.") })),
-            example: json!({ "agentId": "5f0c…", "result": "Done: parser implemented, 12 tests green.", "summary": "parser done" }),
+            result: result(json!({
+                "reported": field("string", "`result`."),
+                "accepted": field("boolean", "Whether a running task took the report. False when no task is waiting on this agent, or the dispatch is stale."),
+                "task": optional("string", "The task the report went to."),
+                "reason": optional("string", "Why it was not accepted."),
+            })),
+            example: json!({ "agentId": "5f0c…", "taskId": "s2", "dispatchId": "s2.1", "outcome": "success", "result": "Done: parser implemented, 12 tests green.", "summary": "parser done" }),
         },
         Entry {
             method: "orchestration/reportProgress",
@@ -802,6 +841,219 @@ pub fn catalog() -> Vec<Entry> {
             mutates: true,
             result: result(json!({ "reported": field("string", "`progress`.") })),
             example: json!({ "agentId": "5f0c…", "message": "Writing tests" }),
+        },
+        Entry {
+            method: "run/create",
+            tool: "run_create",
+            group: Group::Orchestrate,
+            summary: "Create an orchestration run you will drive as its coordinator: an empty, running run to which you add tasks (`task/create`), start workers (`worker/start`) and read the inbox (`inbox/check`) until you finish it (`run/finish`). It stays running until then, however many tasks it holds. The person sees it in the Runs console like any other run and can intervene.",
+            params: object(
+                json!({
+                    "title": { "type": "string", "description": "The run's title, as the console shows it." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["title"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "run": nested("The new run.", json!({
+                    "id": field("string", "The run id — what every other orchestrate entry takes as `run`."),
+                    "status": field("string", "`running`."),
+                })),
+                "coordinator": optional("string", "Your terminal id, when a launched agent created the run."),
+            })),
+            example: json!({ "title": "Split the parser work", "idempotencyKey": "4b7e…" }),
+        },
+        Entry {
+            method: "run/finish",
+            tool: "run_finish",
+            group: Group::Orchestrate,
+            summary: "Finish a run you drive: record its outcome and summary and end it. Workers still running keep their terminals; the run stops accepting reports.",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id." },
+                    "outcome": { "type": "string", "enum": ["success", "failure", "blocked"], "description": "What the run came to." },
+                    "summary": { "type": "string", "description": "A short closing summary for the person." }
+                }),
+                &["run", "outcome"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "run": nested("The run, ended.", json!({
+                    "id": field("string", "The run id."),
+                    "status": field("string", "`completed` for `success`, `failed` otherwise."),
+                })),
+            })),
+            example: json!({ "run": "run-1a2b", "outcome": "success", "summary": "Parser split in three worktrees, all merged." }),
+        },
+        Entry {
+            method: "task/create",
+            tool: "task_create",
+            group: Group::Orchestrate,
+            summary: "Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id." },
+                    "title": { "type": "string", "description": "A short title." },
+                    "prompt": { "type": "string", "description": "What the worker is asked to do. At most 64 KiB." },
+                    "dependsOn": { "type": "array", "items": { "type": "string" }, "description": "Task ids that must complete first." },
+                    "kind": { "type": "string", "enum": ["interactive", "headless"], "description": "Default `interactive`." },
+                    "agent": { "type": "string", "description": "For `headless`: the agent to run (its profile name, command or id)." },
+                    "worktree": worktree_selector(),
+                    "retry": { "type": "boolean", "description": "Retry once on failure instead of failing the task. Default false." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["run", "title", "prompt"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "task": nested("The new task.", json!({
+                    "id": field("string", "The task id."),
+                    "status": field("string", "`pending` (dependencies unmet) or `ready`."),
+                })),
+            })),
+            example: json!({ "run": "run-1a2b", "title": "Lexer", "prompt": "Write the lexer described in docs/lexer.md; run its tests.", "dependsOn": [] }),
+        },
+        Entry {
+            method: "task/list",
+            tool: "task_list",
+            group: Group::Orchestrate,
+            summary: "The tasks of a run with their state, dispatch, worker terminal, captured output and open questions — what a coordinator reads to decide what to start next.",
+            params: object(json!({ "run": { "type": "string", "description": "The run id." } }), &["run"]),
+            mutates: true,
+            result: result(json!({
+                "run": nested("The run.", json!({
+                    "id": field("string", "The run id."),
+                    "title": field("string", "Its title."),
+                    "status": field("string", "`running` until finished; then `completed`, `failed` or `cancelled`."),
+                    "driven": field("boolean", "Whether a coordinator drives it."),
+                })),
+                "tasks": list_of(task_view(), "Every task, in creation order."),
+                "inbox": field("integer", "How many messages wait in the inbox."),
+            })),
+            example: json!({ "run": "run-1a2b" }),
+        },
+        Entry {
+            method: "task/update",
+            tool: "task_update",
+            group: Group::Orchestrate,
+            summary: "Change a task of a run you drive: its title, prompt or dependencies while it has not started, or close it by hand (`completed`, `failed` or `skipped`) with an output — for work you did yourself or decided to drop.",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id." },
+                    "task": { "type": "string", "description": "The task id." },
+                    "title": { "type": "string" },
+                    "prompt": { "type": "string" },
+                    "dependsOn": { "type": "array", "items": { "type": "string" } },
+                    "status": { "type": "string", "enum": ["completed", "failed", "skipped"], "description": "Close the task with this status." },
+                    "output": { "type": "string", "description": "The result to record when closing it." }
+                }),
+                &["run", "task"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "task": nested("The task, after the change.", json!({
+                    "id": field("string", "The task id."),
+                    "status": field("string", "Its status now."),
+                })),
+            })),
+            example: json!({ "run": "run-1a2b", "task": "s3", "status": "skipped", "output": "Not needed after s2." }),
+        },
+        Entry {
+            method: "worker/start",
+            tool: "worker_start",
+            group: Group::Orchestrate,
+            summary: "Start a worker for a ready task: open a terminal — in the current worktree, in a new worktree on a new branch (`worktree: \"new\"`), or in a given one — launch the agent in it and hand it the task with a preamble that names its task and dispatch, tells it to report exactly once and how to ask you a question. The task becomes `running`; you learn it finished from the inbox (`worker_done` / `worker_failed`). Its terminal is a normal tab the person can watch.",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id." },
+                    "task": { "type": "string", "description": "A `ready` task id." },
+                    "agent": { "type": "string", "description": "Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id." },
+                    "worktree": { "type": "string", "description": "`current` (default: your own worktree), `new` (a new worktree of the project on a new branch), or a selector `path:<folder>` / `branch:<name>`." },
+                    "branch": { "type": "string", "description": "For `new`: the branch name. Default `run/<run>/<task>`." },
+                    "project": project_selector(false),
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["run", "task", "agent"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "task": field("string", "The task id."),
+                "dispatchId": field("string", "The dispatch this worker holds — the only one whose report the task will take."),
+                "terminal": nested("The worker's terminal.", json!({
+                    "id": field("string", "The tab id — read its screen with `terminal/read`, wait on it with `agent/wait`."),
+                    "agent": field("string", "The launched agent's name."),
+                })),
+                "worktree": field("string", "The folder the worker runs in."),
+            })),
+            example: json!({ "run": "run-1a2b", "task": "s1", "agent": "codex", "worktree": "new" }),
+        },
+        Entry {
+            method: "inbox/check",
+            tool: "inbox_check",
+            group: Group::Orchestrate,
+            summary: "Read the inbox of a run you drive: workers finishing or failing, questions waiting for your answer, progress lines. Acknowledge what you have handled with `ack` — an unacknowledged message is delivered again, and survives a restart. With `wait`, the call blocks until a message arrives or its budget runs out (at most 15 seconds per call; call again to keep waiting — uxnan-cli does this for you).",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id." },
+                    "ack": { "type": "array", "items": { "type": "string" }, "description": "Delivery ids to acknowledge first." },
+                    "wait": { "type": "boolean", "description": "Block until a message is there. Default false." },
+                    "timeoutMs": { "type": "integer", "description": "How long this call may wait, in milliseconds. Capped at 15000. Default 15000." }
+                }),
+                &["run"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "run": field("string", "The run id."),
+                "messages": list_of(inbox_message(), "Every unacknowledged message, oldest first."),
+                "acked": field("integer", "How many of `ack` were dropped."),
+            })),
+            example: json!({ "run": "run-1a2b", "ack": ["m1", "m2"], "wait": true }),
+        },
+        Entry {
+            method: "question/ask",
+            tool: "question_ask",
+            group: Group::Orchestrate,
+            summary: "As a worker, ask the run's coordinator a question and wait for the answer — instead of guessing or asking a prompt nobody reads. The question reaches the coordinator's inbox (and the Runs console, where the person can answer too). One call waits at most 15 seconds; on timeout, call again with the returned `questionId` to keep waiting (uxnan-cli does this for you).",
+            params: object(
+                json!({
+                    "question": { "type": "string", "description": "The question." },
+                    "options": { "type": "array", "items": { "type": "string" }, "description": "Choices, when the answer is one of a few." },
+                    "questionId": { "type": "string", "description": "To keep waiting on a question already asked." },
+                    "timeoutMs": { "type": "integer", "description": "How long this call may wait, in milliseconds. Capped at 15000. Default 15000." }
+                }),
+                &[],
+            ),
+            mutates: true,
+            result: result(json!({
+                "run": field("string", "The run the question belongs to."),
+                "questionId": field("string", "The question's id."),
+                "answered": field("boolean", "Whether an answer arrived within this call."),
+                "answer": optional("string", "The answer, when it did."),
+                "decision": optional("string", "`approve` or `reject`, when it did."),
+            })),
+            example: json!({ "question": "Keep the old CLI flag for compatibility?", "options": ["yes", "no"] }),
+        },
+        Entry {
+            method: "question/answer",
+            tool: "question_answer",
+            group: Group::Orchestrate,
+            summary: "Answer a worker's question in a run you drive (it came to your inbox as `question`). The worker waiting on it receives the answer at once.",
+            params: object(
+                json!({
+                    "run": { "type": "string", "description": "The run id." },
+                    "question": { "type": "string", "description": "The question id (the inbox message's `stepId`)." },
+                    "answer": { "type": "string", "description": "The answer." },
+                    "decision": { "type": "string", "enum": ["approve", "reject"], "description": "Default `approve`; `reject` tells the worker not to proceed." }
+                }),
+                &["run", "question", "answer"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "question": field("string", "The question id."),
+                "resolved": field("boolean", "Always true on success."),
+            })),
+            example: json!({ "run": "run-1a2b", "question": "s4", "answer": "yes, keep it" }),
         },
     ]
 }

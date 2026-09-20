@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 875 Rust tests (808 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
+always wins). 876 Rust tests (809 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,267 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,273 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -849,9 +849,21 @@ The agent-tools switch (Settings → Browser → *Agent tools (MCP)*) stands on
 its own, no longer under the browser's master switch. A first message queued
 at launch is delivered only once the agent's terminal has drawn and settled
 (`readyToReceive`), and a wait right after `terminal/create` reads a tab
-whose PTY is not up yet as *not reported*, not `exit`. 41 app tests (12 end to end over a real
+whose PTY is not up yet as *not reported*, not `exit`. **Group `orchestrate`
+v2 — a run driven by a coordinator agent** (no second engine: a driven run is
+a run, tasks are steps, a worker's question is a gate): `run/create|finish`,
+`task/create|list|update`, `worker/start` (worktree — own, new on a new
+branch, or given — + terminal + agent + preamble naming task and dispatch),
+`inbox/check` (durable FIFO with ack; `--wait` on the change notifier),
+`question/ask|answer`; `reportResult` takes `taskId`/`dispatchId`/`outcome`
+and the active dispatch holds the completion authority (a stale report is
+refused); a 60 s report grace before the idle signal closes a worker's task.
+`uxnan-cli run create|finish`, `task create|ls|update`, `worker start`,
+`inbox check`, `ask`, `answer`. Verified live: a Claude Code coordinator
+driving a Claude Code worker in a new worktree through the MCP tools alone;
+a worker's question answered by the coordinator. 42 app tests (13 end to end over a real
 socket with Tauri's mock app, one creating a worktree on a real repository, one
-waiting on a real PTY), 17 protocol, 13 CLI, 11 window-bridge Vitest.
+waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
 
 ### Still pending
 - [ ] **Bundle `uxnan-cli` and install it on the PATH.** Today it is built by
@@ -865,10 +877,17 @@ waiting on a real PTY), 17 protocol, 13 CLI, 11 window-bridge Vitest.
       nothing is verified. Confirm on the platform matrix (005) that another local
       user cannot read it; if not, set an explicit DACL (`icacls`-equivalent via
       the Windows API) and check it in the CLI.
-- [ ] **Group `orchestrate`** (G4): dynamic tasks, an inbox with ack, `worker.start`
-      with an injected preamble that carries `taskId` + `dispatchId`,
-      `ask`/`answer` over the run engine's gates; `orchestration/reportResult`
-      gains `taskId`, `dispatchId` and `outcome`.
+- [ ] **An inbox view for a driven run.** A driven run shows in the Runs console
+      as any run (tasks, gates, outputs), but its inbox — what the coordinator
+      has not yet acknowledged — has no UI: the person sees questions as gates
+      and results as step outputs, not the queue itself. A small "inbox"
+      strip on a driven run's card (count + the unacknowledged messages) would
+      complete the picture. UI → propose-and-review.
+- [ ] **A worker without the tools.** A worker launched from an agent uxnan does
+      not inject the MCP tools into (or with the agent-tools switch off) gets
+      the preamble's `uxnan-cli` forms; that needs `uxnan-cli` on the `PATH`
+      (below). Until the bundling lands, such a worker completes on the hook
+      signal after the report grace, with no structured result.
 - [ ] **Budgets on `create` (plan 023).** `worktree/create` and `terminal/create`
       apply no concurrency or process budget yet; when 023 lands, the service is
       where the policy goes (one place, both doors).
@@ -1545,7 +1564,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 875 Rust + 1,267 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 876 Rust + 1,273 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

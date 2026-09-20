@@ -370,6 +370,34 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
             ErrorCode::Unavailable,
             "the window is not there to receive the report",
         )),
+        "run/finish" | "task/create" | "task/update" | "inbox/check" => out.push((
+            ErrorCode::NotFound,
+            "no driven run (or task) has that id",
+        )),
+        "worker/start" => {
+            out.push((
+                ErrorCode::NotFound,
+                "no driven run has that id, the task is not `ready`, or `agent` names no configured agent",
+            ));
+            out.push((
+                ErrorCode::InvalidParams,
+                "for `new`: the branch name is invalid or already exists",
+            ));
+        }
+        "question/ask" => {
+            out.push((
+                ErrorCode::InvalidParams,
+                "called from outside a terminal Uxnan launched, or from a terminal that is no worker of a running task",
+            ));
+            out.push((
+                ErrorCode::Timeout,
+                "no answer within `timeoutMs` (at most 15 000 per call); `data.questionId` — call again with it to keep waiting",
+            ));
+        }
+        "question/answer" => out.push((
+            ErrorCode::NotFound,
+            "no open question with that id in that run",
+        )),
         _ => {}
     }
     out
@@ -406,6 +434,15 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "browser/back" => "uxnan-cli browser back",
         "browser/forward" => "uxnan-cli browser forward",
         "browser/status" => "uxnan-cli browser status",
+        "run/create" => "uxnan-cli run create --title <t> [--idempotency-key <key>]",
+        "run/finish" => "uxnan-cli run finish <run-id> --outcome success|failure|blocked [--summary <text>]",
+        "task/create" => "uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>] [--worktree <worktree>] [--retry] [--idempotency-key <key>]",
+        "task/list" => "uxnan-cli task ls --run <run-id>",
+        "task/update" => "uxnan-cli task update --run <run-id> <task> [--title <t>] [--prompt-file <file>] [--depends-on <task>]... [--status completed|failed|skipped] [--output <text>]",
+        "worker/start" => "uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--idempotency-key <key>]",
+        "inbox/check" => "uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]",
+        "question/ask" => "uxnan-cli ask --question <text> [--option <o>]... [--timeout <seconds>]",
+        "question/answer" => "uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]",
         _ => return None,
     })
 }
@@ -416,7 +453,7 @@ fn group_blurb(group: Group) -> &'static str {
         Group::Ui => "actions on the window that change nothing on disk or in a process",
         Group::Create => "create a worktree or a terminal, start a saved run or automation",
         Group::Converse => "talk to a running agent",
-        Group::Orchestrate => "a step of a run reports back to it",
+        Group::Orchestrate => "drive a run as its coordinator: tasks, workers, an inbox, questions; a worker reports back",
     }
 }
 
@@ -513,6 +550,13 @@ uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempote
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
+uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
+uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
+uxnan-cli task ls --run <run-id> | update --run <run-id> <task> [--status completed|failed|skipped] [--output <text>]
+uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>]
+uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
+uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
+uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
 uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
 uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>]
@@ -565,7 +609,7 @@ mod tests {
         let root = crate::Cli::command();
         for e in catalog() {
             let form = cli_form(e.method);
-            if e.group == Group::Orchestrate {
+            if e.method.starts_with("orchestration/report") {
                 assert!(form.is_none(), "{} is rpc-only", e.method);
                 continue;
             }

@@ -61,10 +61,55 @@ enum Command {
         #[command(subcommand)]
         cmd: AgentCmd,
     },
-    /// Orchestration runs.
+    /// Orchestration runs — and, for a coordinator, driving one.
     Run {
         #[command(subcommand)]
         cmd: RunCmd,
+    },
+    /// The tasks of a run you drive.
+    Task {
+        #[command(subcommand)]
+        cmd: TaskCmd,
+    },
+    /// Workers: an agent in a terminal, on a task of a run you drive.
+    Worker {
+        #[command(subcommand)]
+        cmd: WorkerCmd,
+    },
+    /// The inbox of a run you drive.
+    Inbox {
+        #[command(subcommand)]
+        cmd: InboxCmd,
+    },
+    /// As a worker: ask the run's coordinator a question and wait for the answer.
+    Ask {
+        /// The question.
+        #[arg(long)]
+        question: Option<String>,
+        /// A choice to offer (repeatable).
+        #[arg(long = "option")]
+        options: Vec<String>,
+        /// Keep waiting on a question already asked.
+        #[arg(long)]
+        question_id: Option<String>,
+        /// Give up after this many seconds (default 600). Heartbeats go to stderr.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
+    /// As a coordinator: answer a worker's question.
+    Answer {
+        /// The run id.
+        #[arg(long)]
+        run: String,
+        /// The question id (the inbox message's stepId).
+        #[arg(long)]
+        question: String,
+        /// The answer.
+        #[arg(long)]
+        answer: String,
+        /// Tell the worker not to proceed.
+        #[arg(long)]
+        reject: bool,
     },
     /// Saved automations (unattended, recurring runs).
     Automation {
@@ -228,6 +273,131 @@ enum RunCmd {
         #[arg(long)]
         idempotency_key: Option<String>,
     },
+    /// Create a run you will drive as its coordinator.
+    Create {
+        /// The run's title.
+        #[arg(long)]
+        title: String,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Finish a run you drive with its outcome.
+    Finish {
+        run: String,
+        /// `success`, `failure` or `blocked`.
+        #[arg(long)]
+        outcome: String,
+        /// A short closing summary.
+        #[arg(long)]
+        summary: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum TaskCmd {
+    /// Add a task to a run you drive.
+    Create {
+        /// The run id.
+        #[arg(long)]
+        run: String,
+        /// A short title.
+        #[arg(long)]
+        title: String,
+        /// A file whose contents are the task's prompt.
+        #[arg(long)]
+        prompt_file: std::path::PathBuf,
+        /// Task ids that must complete first (repeatable).
+        #[arg(long = "depends-on")]
+        depends_on: Vec<String>,
+        /// Run it headless with this agent instead of waiting for a worker.
+        #[arg(long)]
+        headless: Option<String>,
+        /// The worktree a headless task runs in (`current` by default).
+        #[arg(long)]
+        worktree: Option<String>,
+        /// Retry once on failure.
+        #[arg(long)]
+        retry: bool,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// List the tasks of a run with their state, dispatch and output.
+    Ls {
+        /// The run id.
+        #[arg(long)]
+        run: String,
+    },
+    /// Change a task, or close it by hand.
+    Update {
+        /// The run id.
+        #[arg(long)]
+        run: String,
+        /// The task id.
+        task: String,
+        #[arg(long)]
+        title: Option<String>,
+        /// A file whose contents replace the prompt (before it starts).
+        #[arg(long)]
+        prompt_file: Option<std::path::PathBuf>,
+        /// Replace the dependencies (repeatable; before it starts).
+        #[arg(long = "depends-on")]
+        depends_on: Vec<String>,
+        /// Close it: `completed`, `failed` or `skipped`.
+        #[arg(long)]
+        status: Option<String>,
+        /// The result to record when closing it.
+        #[arg(long)]
+        output: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkerCmd {
+    /// Start a worker for a ready task: a terminal, the agent, the task.
+    Start {
+        /// The run id.
+        #[arg(long)]
+        run: String,
+        /// The task id.
+        #[arg(long)]
+        task: String,
+        /// The agent to launch: a profile name, its command (`claude`, `codex`) or id.
+        #[arg(long)]
+        agent: String,
+        /// `current` (default), `new` (a new worktree on a new branch), `path:` or `branch:`.
+        #[arg(long)]
+        worktree: Option<String>,
+        /// For `new`: the branch name (default `run/<run>/<task>`).
+        #[arg(long)]
+        branch: Option<String>,
+        /// For `new`: the project (`current` by default).
+        #[arg(long)]
+        project: Option<String>,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum InboxCmd {
+    /// Read the inbox; with --wait, block until a message arrives.
+    Check {
+        /// The run id.
+        #[arg(long)]
+        run: String,
+        /// Delivery ids to acknowledge first (repeatable).
+        #[arg(long = "ack")]
+        ack: Vec<String>,
+        /// Block until a message is there.
+        #[arg(long)]
+        wait: bool,
+        /// With --wait: give up after this many seconds (default 600).
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -303,19 +473,27 @@ enum SkillsCmd {
     },
 }
 
-/// What a command resolves to: a catalog call, a wait (many calls until the
-/// state or the deadline), or text printed locally.
+/// What a command resolves to: a catalog call, a wait (many bounded calls
+/// until the answer or the deadline), or text printed locally.
 enum Plan {
-    Call {
-        method: &'static str,
-        params: Value,
-    },
-    Wait {
-        terminal: String,
-        state: String,
-        timeout: Duration,
-    },
+    Call { method: &'static str, params: Value },
+    Wait(Repeat),
     Text(String),
+}
+
+/// A wait: the same entry called again and again, each call bounded on the
+/// app's side, until it answers with what was waited for. `settled` says
+/// whether an `Ok` is the answer (an empty inbox is not); `carry` names the
+/// fields of a *timeout* error's `data` to feed into the next call (a
+/// question's id); `state` reads the heartbeat's detail from that `data`.
+struct Repeat {
+    method: &'static str,
+    params: Value,
+    timeout: Duration,
+    what: String,
+    settled: fn(&Value) -> bool,
+    carry: &'static [&'static str],
+    state: &'static str,
 }
 
 fn plan(command: Command) -> Result<Plan, String> {
@@ -398,11 +576,15 @@ fn plan(command: Command) -> Result<Plan, String> {
                 }
                 with("agent/send", p)
             }
-            AgentCmd::Wait { to, state, timeout } => Ok(Plan::Wait {
-                terminal: to,
-                state,
+            AgentCmd::Wait { to, state, timeout } => Ok(Plan::Wait(Repeat {
+                method: "agent/wait",
+                params: json!({ "terminal": to, "for": state.clone() }),
                 timeout: Duration::from_secs(timeout.max(1)),
-            }),
+                what: format!("`{state}`"),
+                settled: |_| true,
+                carry: &[],
+                state: "current",
+            })),
         },
         Command::Run { cmd } => match cmd {
             RunCmd::Ls => with("run/list", json!({})),
@@ -417,7 +599,184 @@ fn plan(command: Command) -> Result<Plan, String> {
                 }
                 with("run/start", p)
             }
+            RunCmd::Create {
+                title,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "title": title });
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("run/create", p)
+            }
+            RunCmd::Finish {
+                run,
+                outcome,
+                summary,
+            } => {
+                let mut p = json!({ "run": run, "outcome": outcome });
+                if let Some(t) = sel(summary) {
+                    p["summary"] = json!(t);
+                }
+                with("run/finish", p)
+            }
         },
+        Command::Task { cmd } => match cmd {
+            TaskCmd::Create {
+                run,
+                title,
+                prompt_file,
+                depends_on,
+                headless,
+                worktree,
+                retry,
+                idempotency_key,
+            } => {
+                let mut p = json!({
+                    "run": run,
+                    "title": title,
+                    "prompt": read_prompt_file(&prompt_file)?,
+                    "dependsOn": depends_on,
+                });
+                if let Some(agent) = sel(headless) {
+                    p["kind"] = json!("headless");
+                    p["agent"] = json!(agent);
+                }
+                if let Some(w) = sel(worktree) {
+                    p["worktree"] = json!(w);
+                }
+                if retry {
+                    p["retry"] = json!(true);
+                }
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("task/create", p)
+            }
+            TaskCmd::Ls { run } => with("task/list", json!({ "run": run })),
+            TaskCmd::Update {
+                run,
+                task,
+                title,
+                prompt_file,
+                depends_on,
+                status,
+                output,
+            } => {
+                let mut p = json!({ "run": run, "task": task });
+                if let Some(t) = sel(title) {
+                    p["title"] = json!(t);
+                }
+                if let Some(path) = prompt_file {
+                    p["prompt"] = json!(read_prompt_file(&path)?);
+                }
+                if !depends_on.is_empty() {
+                    p["dependsOn"] = json!(depends_on);
+                }
+                if let Some(st) = sel(status) {
+                    p["status"] = json!(st);
+                }
+                if let Some(o) = output {
+                    p["output"] = json!(o);
+                }
+                with("task/update", p)
+            }
+        },
+        Command::Worker { cmd } => match cmd {
+            WorkerCmd::Start {
+                run,
+                task,
+                agent,
+                worktree,
+                branch,
+                project,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "run": run, "task": task, "agent": agent });
+                if let Some(w) = sel(worktree) {
+                    p["worktree"] = json!(w);
+                }
+                if let Some(b) = sel(branch) {
+                    p["branch"] = json!(b);
+                }
+                if let Some(pr) = sel(project) {
+                    p["project"] = json!(pr);
+                }
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("worker/start", p)
+            }
+        },
+        Command::Inbox { cmd } => match cmd {
+            InboxCmd::Check {
+                run,
+                ack,
+                wait,
+                timeout,
+            } => {
+                let mut p = json!({ "run": run });
+                if !ack.is_empty() {
+                    p["ack"] = json!(ack);
+                }
+                if !wait {
+                    return with("inbox/check", p);
+                }
+                p["wait"] = json!(true);
+                Ok(Plan::Wait(Repeat {
+                    method: "inbox/check",
+                    params: p,
+                    timeout: Duration::from_secs(timeout.max(1)),
+                    what: "a message".into(),
+                    settled: |v| {
+                        v.get("messages")
+                            .and_then(|m| m.as_array())
+                            .is_some_and(|m| !m.is_empty())
+                    },
+                    carry: &[],
+                    state: "",
+                }))
+            }
+        },
+        Command::Ask {
+            question,
+            options,
+            question_id,
+            timeout,
+        } => {
+            let mut p = json!({});
+            match (sel(question), sel(question_id)) {
+                (_, Some(id)) => p["questionId"] = json!(id),
+                (Some(q), None) => {
+                    p["question"] = json!(q);
+                    if !options.is_empty() {
+                        p["options"] = json!(options);
+                    }
+                }
+                (None, None) => return Err("`ask` needs --question (or --question-id)".into()),
+            }
+            Ok(Plan::Wait(Repeat {
+                method: "question/ask",
+                params: p,
+                timeout: Duration::from_secs(timeout.max(1)),
+                what: "the answer".into(),
+                settled: |_| true,
+                carry: &["questionId"],
+                state: "questionId",
+            }))
+        }
+        Command::Answer {
+            run,
+            question,
+            answer,
+            reject,
+        } => {
+            let mut p = json!({ "run": run, "question": question, "answer": answer });
+            if reject {
+                p["decision"] = json!("reject");
+            }
+            with("question/answer", p)
+        }
         Command::Automation { cmd } => match cmd {
             AutomationCmd::Ls => with("automation/list", json!({})),
             AutomationCmd::Run {
@@ -543,16 +902,12 @@ fn main() -> ExitCode {
             print!("{text}");
             ExitCode::SUCCESS
         }
-        Plan::Wait {
-            terminal,
-            state,
-            timeout,
-        } => {
+        Plan::Wait(repeat) => {
             let endpoint = match client::discover() {
                 Ok(e) => e,
                 Err(e) => return fail(json, e.code, &e.message),
             };
-            wait(&endpoint, &terminal, &state, timeout, json)
+            wait(&endpoint, repeat, json)
         }
         Plan::Call { method, params } => {
             let endpoint = match client::discover() {
@@ -580,61 +935,82 @@ fn main() -> ExitCode {
     }
 }
 
-/// The most one `agent/wait` call may block on the app's side; the CLI keeps
-/// calling until the deadline, printing a heartbeat to stderr in between so a
-/// person (or a log) sees it is still alive.
+/// The most one wait call may block on the app's side; the CLI keeps calling
+/// until the deadline, printing a heartbeat to stderr in between so a person
+/// (or a log) sees it is still alive.
 const WAIT_CHUNK_MS: u64 = 15_000;
 
-/// `agent wait`: repeated bounded waits until the state or the deadline. The
-/// final result goes to stdout; the heartbeats never do.
-fn wait(
-    endpoint: &client::Endpoint,
-    terminal: &str,
-    state: &str,
-    timeout: Duration,
-    json: bool,
-) -> ExitCode {
+/// A wait: repeated bounded calls until the answer or the deadline. The final
+/// result goes to stdout; the heartbeats never do. A timeout on the app's side
+/// is one more turn (carrying what it said to carry); an `Ok` that is not yet
+/// the answer (an empty inbox) is one more turn too.
+fn wait(endpoint: &client::Endpoint, mut repeat: Repeat, json: bool) -> ExitCode {
     let started = std::time::Instant::now();
     loop {
-        let left = timeout.saturating_sub(started.elapsed());
+        let left = repeat.timeout.saturating_sub(started.elapsed());
         if left.is_zero() {
             return fail(
                 json,
                 ErrorCode::Timeout,
                 &format!(
-                    "gave up after {} s: `{state}` not reached",
-                    timeout.as_secs()
+                    "gave up after {} s: {} not reached",
+                    repeat.timeout.as_secs(),
+                    repeat.what
                 ),
             );
         }
         let chunk = left.as_millis().min(WAIT_CHUNK_MS as u128) as u64;
-        let params = json!({ "terminal": terminal, "for": state, "timeoutMs": chunk });
+        let mut params = repeat.params.clone();
+        params["timeoutMs"] = json!(chunk);
         match client::call(
             endpoint,
-            "agent/wait",
+            repeat.method,
             params,
             Duration::from_millis(chunk + 5_000),
         ) {
-            Ok(result) => {
+            Ok(result) if (repeat.settled)(&result) => {
                 if json {
                     println!(
                         "{}",
                         serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".into())
                     );
                 } else {
-                    print!("{}", render::render("agent/wait", &result));
+                    print!("{}", render::render(repeat.method, &result));
                 }
                 return ExitCode::SUCCESS;
             }
+            Ok(_) => {
+                eprintln!(
+                    "waiting for {}… {} s elapsed",
+                    repeat.what,
+                    started.elapsed().as_secs()
+                );
+            }
             Err(e) if e.code == ErrorCode::Timeout => {
-                let current = e
+                if let Some(data) = &e.data {
+                    for key in repeat.carry {
+                        if let Some(v) = data.get(*key) {
+                            repeat.params[*key] = v.clone();
+                        }
+                    }
+                    // A question once asked is only waited on: never re-asked.
+                    if repeat.method == "question/ask" {
+                        repeat.params.as_object_mut().map(|o| {
+                            o.remove("question");
+                            o.remove("options")
+                        });
+                    }
+                }
+                let detail = e
                     .data
                     .as_ref()
-                    .and_then(|d| d.get("current"))
+                    .and_then(|d| d.get(repeat.state))
                     .and_then(|c| c.as_str())
-                    .unwrap_or("?");
+                    .map(|c| format!(", {} is `{c}`", repeat.state))
+                    .unwrap_or_default();
                 eprintln!(
-                    "waiting for `{state}`… {} s elapsed, agent is `{current}`",
+                    "waiting for {}… {} s elapsed{detail}",
+                    repeat.what,
                     started.elapsed().as_secs()
                 );
             }

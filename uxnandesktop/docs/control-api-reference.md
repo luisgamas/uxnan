@@ -18,6 +18,13 @@ uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempote
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
+uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
+uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
+uxnan-cli task ls --run <run-id> | update --run <run-id> <task> [--status completed|failed|skipped] [--output <text>]
+uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>]
+uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
+uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
+uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
 uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
 uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>]
@@ -79,10 +86,19 @@ Global: --json (stable machine output), --timeout <seconds>
 - `agent/wait` (MCP tool `agent_wait`) — Wait until an agent reaches a state, as reported by its own hooks: `idle` (its turn finished — the state to wait for after sending a message), `waiting` (it stopped to ask the person something), or `exit` (its terminal is gone).
 - `terminal/read` (MCP tool `terminal_read`) — Read the last lines of a terminal's screen as plain text (escapes removed, blank rows dropped), with secrets redacted — tokens, keys, `Authorization` headers, `password=`.
 
-### `orchestrate` (v1) — a step of a run reports back to it
+### `orchestrate` (v2) — drive a run as its coordinator: tasks, workers, an inbox, questions; a worker reports back
 
 - `orchestration/reportResult` (MCP tool `orchestration_report_result`) — Report the final result of the task Uxnan's orchestration run gave you, so the run captures your output verbatim and can feed it to the next step.
 - `orchestration/reportProgress` (MCP tool `orchestration_report_progress`) — Report a short progress update for your current orchestration-run step (optional; it surfaces what you are doing in the run view).
+- `run/create` (MCP tool `run_create`) — Create an orchestration run you will drive as its coordinator: an empty, running run to which you add tasks (`task/create`), start workers (`worker/start`) and read the inbox (`inbox/check`) until you finish it (`run/finish`).
+- `run/finish` (MCP tool `run_finish`) — Finish a run you drive: record its outcome and summary and end it.
+- `task/create` (MCP tool `task_create`) — Add a task to a run you drive.
+- `task/list` (MCP tool `task_list`) — The tasks of a run with their state, dispatch, worker terminal, captured output and open questions — what a coordinator reads to decide what to start next.
+- `task/update` (MCP tool `task_update`) — Change a task of a run you drive: its title, prompt or dependencies while it has not started, or close it by hand (`completed`, `failed` or `skipped`) with an output — for work you did yourself or decided to drop.
+- `worker/start` (MCP tool `worker_start`) — Start a worker for a ready task: open a terminal — in the current worktree, in a new worktree on a new branch (`worktree: "new"`), or in a given one — launch the agent in it and hand it the task with a preamble that names its task and dispatch, tells it to report exactly once and how to ask you a question.
+- `inbox/check` (MCP tool `inbox_check`) — Read the inbox of a run you drive: workers finishing or failing, questions waiting for your answer, progress lines.
+- `question/ask` (MCP tool `question_ask`) — As a worker, ask the run's coordinator a question and wait for the answer — instead of guessing or asking a prompt nobody reads.
+- `question/answer` (MCP tool `question_answer`) — Answer a worker's question in a run you drive (it came to your inbox as `question`).
 
 ## Calling the RPC route directly
 
@@ -1326,7 +1342,7 @@ Read the last lines of a terminal's screen as plain text (escapes removed, blank
 
 ### `orchestration/reportResult`
 
-Report the final result of the task Uxnan's orchestration run gave you, so the run captures your output verbatim and can feed it to the next step. Call it once, when you are done. Pass your UXNAN_AGENT_ID as agentId.
+Report the final result of the task Uxnan's orchestration run gave you, so the run captures your output verbatim and can feed it to the next step. Call it exactly once, when you are done. Pass your UXNAN_AGENT_ID as agentId; a worker started by a coordinator also passes the taskId and dispatchId its preamble gave it (a report naming a dispatch that is no longer the task's current one is ignored) and an outcome.
 
 - **Group:** `orchestrate` · mutates (receipted, audited)
 - **MCP:** `orchestration_report_result`
@@ -1339,10 +1355,16 @@ Report the final result of the task Uxnan's orchestration run gave you, so the r
 | `agentId` | string | yes | The value of your UXNAN_AGENT_ID environment variable (identifies which run step you are). |
 | `result` | string | yes | Your full result/output for the task, captured verbatim by the run. |
 | `summary` | string | no | Optional one-line summary of the result. |
+| `taskId` | string | no | The task id from your preamble, when a coordinator started you. |
+| `dispatchId` | string | no | The dispatch id from your preamble. Holds the completion authority: only the task's current dispatch may finish it. |
+| `outcome` | string: `success` \| `failure` \| `blocked` | no | What the task came to. Default `success`. `failure` fails the task (its retry policy applies); `blocked` too, saying you could not proceed. |
 
 **Result**
 
 - `reported` (string) — `result`.
+- `accepted` (boolean) — Whether a running task took the report. False when no task is waiting on this agent, or the dispatch is stale.
+- `task` (string, optional) — The task the report went to.
+- `reason` (string, optional) — Why it was not accepted.
 
 **Request**
 
@@ -1353,6 +1375,9 @@ Report the final result of the task Uxnan's orchestration run gave you, so the r
   "method": "orchestration/reportResult",
   "params": {
     "agentId": "5f0c…",
+    "taskId": "s2",
+    "dispatchId": "s2.1",
+    "outcome": "success",
     "result": "Done: parser implemented, 12 tests green.",
     "summary": "parser done"
   }
@@ -1399,6 +1424,434 @@ Report a short progress update for your current orchestration-run step (optional
 **Errors** (besides the ones every entry can answer — see *Error codes*)
 
 - `-32004` unavailable — the window is not there to receive the report
+
+### `run/create`
+
+Create an orchestration run you will drive as its coordinator: an empty, running run to which you add tasks (`task/create`), start workers (`worker/start`) and read the inbox (`inbox/check`) until you finish it (`run/finish`). It stays running until then, however many tasks it holds. The person sees it in the Runs console like any other run and can intervene.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `run_create`
+- **CLI:** `uxnan-cli run create --title <t> [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `title` | string | yes | The run's title, as the console shows it. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `run` (object) — The new run.
+  - `id` (string) — The run id — what every other orchestrate entry takes as `run`.
+  - `status` (string) — `running`.
+- `coordinator` (string, optional) — Your terminal id, when a launched agent created the run.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "run/create",
+  "params": {
+    "title": "Split the parser work",
+    "idempotencyKey": "4b7e…"
+  }
+}
+```
+
+### `run/finish`
+
+Finish a run you drive: record its outcome and summary and end it. Workers still running keep their terminals; the run stops accepting reports.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `run_finish`
+- **CLI:** `uxnan-cli run finish <run-id> --outcome success|failure|blocked [--summary <text>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+| `outcome` | string: `success` \| `failure` \| `blocked` | yes | What the run came to. |
+| `summary` | string | no | A short closing summary for the person. |
+
+**Result**
+
+- `run` (object) — The run, ended.
+  - `id` (string) — The run id.
+  - `status` (string) — `completed` for `success`, `failed` otherwise.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "run/finish",
+  "params": {
+    "run": "run-1a2b",
+    "outcome": "success",
+    "summary": "Parser split in three worktrees, all merged."
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no saved run or automation has that id
+- `-32002` not found — no driven run (or task) has that id
+
+### `task/create`
+
+Add a task to a run you drive. An `interactive` task (the default) waits, once its dependencies are done, for you to start a worker in a terminal with `worker/start`; a `headless` task names an agent and the engine runs it in print mode by itself when it becomes ready, capturing its output. `dependsOn` builds the graph; a task's prompt may reference an earlier task's result with `{{steps.<id>.output}}`.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `task_create`
+- **CLI:** `uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>] [--worktree <worktree>] [--retry] [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+| `title` | string | yes | A short title. |
+| `prompt` | string | yes | What the worker is asked to do. At most 64 KiB. |
+| `dependsOn` | array of string | no | Task ids that must complete first. |
+| `kind` | string: `interactive` \| `headless` | no | Default `interactive`. |
+| `agent` | string | no | For `headless`: the agent to run (its profile name, command or id). |
+| `worktree` | string | no | Which worktree: `current` (the one your terminal runs in), `path:<absolute folder>`, or `branch:<branch name>`. |
+| `retry` | boolean | no | Retry once on failure instead of failing the task. Default false. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `task` (object) — The new task.
+  - `id` (string) — The task id.
+  - `status` (string) — `pending` (dependencies unmet) or `ready`.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "task/create",
+  "params": {
+    "run": "run-1a2b",
+    "title": "Lexer",
+    "prompt": "Write the lexer described in docs/lexer.md; run its tests.",
+    "dependsOn": []
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — the selector named no project, worktree or terminal
+- `-32002` not found — no saved run or automation has that id
+- `-32002` not found — no driven run (or task) has that id
+
+### `task/list`
+
+The tasks of a run with their state, dispatch, worker terminal, captured output and open questions — what a coordinator reads to decide what to start next.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `task_list`
+- **CLI:** `uxnan-cli task ls --run <run-id>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+
+**Result**
+
+- `run` (object) — The run.
+  - `id` (string) — The run id.
+  - `title` (string) — Its title.
+  - `status` (string) — `running` until finished; then `completed`, `failed` or `cancelled`.
+  - `driven` (boolean) — Whether a coordinator drives it.
+- `tasks` (array of object) — Every task, in creation order.
+  - `id` (string) — The task id, unique within the run (`s1`, `s2`, …) — what `task/update`, `worker/start` and `dependsOn` take.
+  - `title` (string) — The task's title.
+  - `kind` (string) — `interactive` (a worker in a terminal, started with `worker/start`), `headless` (the engine runs the agent in print mode by itself once the task is ready) or `gate` (a question waiting for an answer).
+  - `status` (string) — `pending` (dependencies unmet), `ready` (dispatchable — an interactive task waits here for `worker/start`), `running`, `blocked`, `completed`, `failed` or `skipped` (a dependency failed).
+  - `dependsOn` (array of string) — Tasks that must complete first.
+  - `prompt` (string) — The task's prompt; `{{steps.<id>.output}}` references a finished task's output.
+  - `dispatchId` (string, optional) — The current dispatch (`<task>.<attempt>`), once the task has been dispatched — the one a worker's report must name.
+  - `outcome` (string, optional) — `success`, `failure` or `blocked`, once a worker reported.
+  - `attempts` (integer) — How many times it has been dispatched.
+  - `output` (string | null) — The captured result, once finished.
+  - `error` (string, optional) — Why it failed, when it did.
+  - `terminal` (string, optional) — The worker's terminal id, for an interactive task that was started.
+  - `question` (object, optional) — For a gate: `{ question, options?, resolver, answered, answer?, askedBy? }`.
+- `inbox` (integer) — How many messages wait in the inbox.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "task/list",
+  "params": {
+    "run": "run-1a2b"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no saved run or automation has that id
+
+### `task/update`
+
+Change a task of a run you drive: its title, prompt or dependencies while it has not started, or close it by hand (`completed`, `failed` or `skipped`) with an output — for work you did yourself or decided to drop.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `task_update`
+- **CLI:** `uxnan-cli task update --run <run-id> <task> [--title <t>] [--prompt-file <file>] [--depends-on <task>]... [--status completed|failed|skipped] [--output <text>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+| `task` | string | yes | The task id. |
+| `title` | string | no |  |
+| `prompt` | string | no |  |
+| `dependsOn` | array of string | no |  |
+| `status` | string: `completed` \| `failed` \| `skipped` | no | Close the task with this status. |
+| `output` | string | no | The result to record when closing it. |
+
+**Result**
+
+- `task` (object) — The task, after the change.
+  - `id` (string) — The task id.
+  - `status` (string) — Its status now.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "task/update",
+  "params": {
+    "run": "run-1a2b",
+    "task": "s3",
+    "status": "skipped",
+    "output": "Not needed after s2."
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no saved run or automation has that id
+- `-32002` not found — no driven run (or task) has that id
+
+### `worker/start`
+
+Start a worker for a ready task: open a terminal — in the current worktree, in a new worktree on a new branch (`worktree: "new"`), or in a given one — launch the agent in it and hand it the task with a preamble that names its task and dispatch, tells it to report exactly once and how to ask you a question. The task becomes `running`; you learn it finished from the inbox (`worker_done` / `worker_failed`). Its terminal is a normal tab the person can watch.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `worker_start`
+- **CLI:** `uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+| `task` | string | yes | A `ready` task id. |
+| `agent` | string | yes | Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id. |
+| `worktree` | string | no | `current` (default: your own worktree), `new` (a new worktree of the project on a new branch), or a selector `path:<folder>` / `branch:<name>`. |
+| `branch` | string | no | For `new`: the branch name. Default `run/<run>/<task>`. |
+| `project` | string | no | Which project: `current`, `id:<projectId>`, `path:<absolute folder>`, or `name:<project name>`. Omit for every project. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `task` (string) — The task id.
+- `dispatchId` (string) — The dispatch this worker holds — the only one whose report the task will take.
+- `terminal` (object) — The worker's terminal.
+  - `id` (string) — The tab id — read its screen with `terminal/read`, wait on it with `agent/wait`.
+  - `agent` (string) — The launched agent's name.
+- `worktree` (string) — The folder the worker runs in.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "worker/start",
+  "params": {
+    "run": "run-1a2b",
+    "task": "s1",
+    "agent": "codex",
+    "worktree": "new"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — the selector named no project, worktree or terminal
+- `-32002` not found — no saved run or automation has that id
+- `-32002` not found — no driven run has that id, the task is not `ready`, or `agent` names no configured agent
+- `-32602` invalid params — for `new`: the branch name is invalid or already exists
+
+### `inbox/check`
+
+Read the inbox of a run you drive: workers finishing or failing, questions waiting for your answer, progress lines. Acknowledge what you have handled with `ack` — an unacknowledged message is delivered again, and survives a restart. With `wait`, the call blocks until a message arrives or its budget runs out (at most 15 seconds per call; call again to keep waiting — uxnan-cli does this for you).
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `inbox_check`
+- **CLI:** `uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+| `ack` | array of string | no | Delivery ids to acknowledge first. |
+| `wait` | boolean | no | Block until a message is there. Default false. |
+| `timeoutMs` | integer | no | How long this call may wait, in milliseconds. Capped at 15000. Default 15000. |
+
+**Result**
+
+- `run` (string) — The run id.
+- `messages` (array of object) — Every unacknowledged message, oldest first.
+  - `deliveryId` (string) — What to acknowledge (`m<n>`).
+  - `type` (string) — `worker_done` (a task completed; `text` is its result), `worker_failed` (`text` is why), `question` (a worker asks; `stepId` is the question id to answer) or `status` (a progress line).
+  - `stepId` (string) — The task — or, for a question, the question — the message is about.
+  - `dispatchId` (string, optional) — The dispatch the message came from, for `worker_*`.
+  - `text` (string) — The message.
+  - `at` (integer) — Epoch milliseconds.
+- `acked` (integer) — How many of `ack` were dropped.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "inbox/check",
+  "params": {
+    "run": "run-1a2b",
+    "ack": [
+      "m1",
+      "m2"
+    ],
+    "wait": true
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no saved run or automation has that id
+- `-32002` not found — no driven run (or task) has that id
+
+### `question/ask`
+
+As a worker, ask the run's coordinator a question and wait for the answer — instead of guessing or asking a prompt nobody reads. The question reaches the coordinator's inbox (and the Runs console, where the person can answer too). One call waits at most 15 seconds; on timeout, call again with the returned `questionId` to keep waiting (uxnan-cli does this for you).
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `question_ask`
+- **CLI:** `uxnan-cli ask --question <text> [--option <o>]... [--timeout <seconds>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `question` | string | no | The question. |
+| `options` | array of string | no | Choices, when the answer is one of a few. |
+| `questionId` | string | no | To keep waiting on a question already asked. |
+| `timeoutMs` | integer | no | How long this call may wait, in milliseconds. Capped at 15000. Default 15000. |
+
+**Result**
+
+- `run` (string) — The run the question belongs to.
+- `questionId` (string) — The question's id.
+- `answered` (boolean) — Whether an answer arrived within this call.
+- `answer` (string, optional) — The answer, when it did.
+- `decision` (string, optional) — `approve` or `reject`, when it did.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "question/ask",
+  "params": {
+    "question": "Keep the old CLI flag for compatibility?",
+    "options": [
+      "yes",
+      "no"
+    ]
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32602` invalid params — called from outside a terminal Uxnan launched, or from a terminal that is no worker of a running task
+- `-32006` timeout — no answer within `timeoutMs` (at most 15 000 per call); `data.questionId` — call again with it to keep waiting
+
+### `question/answer`
+
+Answer a worker's question in a run you drive (it came to your inbox as `question`). The worker waiting on it receives the answer at once.
+
+- **Group:** `orchestrate` · mutates (receipted, audited)
+- **MCP:** `question_answer`
+- **CLI:** `uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `run` | string | yes | The run id. |
+| `question` | string | yes | The question id (the inbox message's `stepId`). |
+| `answer` | string | yes | The answer. |
+| `decision` | string: `approve` \| `reject` | no | Default `approve`; `reject` tells the worker not to proceed. |
+
+**Result**
+
+- `question` (string) — The question id.
+- `resolved` (boolean) — Always true on success.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "question/answer",
+  "params": {
+    "run": "run-1a2b",
+    "question": "s4",
+    "answer": "yes, keep it"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no saved run or automation has that id
+- `-32002` not found — no open question with that id in that run
 
 ## Output and exit status
 

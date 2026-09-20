@@ -66,6 +66,11 @@ export interface StepTarget {
   model?: string;
 }
 
+/** Who is expected to resolve a gate: the person at the console (the default,
+ *  with a native notification), or the run's coordinator agent — a worker's
+ *  question travels as a gate, so either can answer it in the same place. */
+export type GateResolver = "human" | "coordinator";
+
 /** A gate step's human-in-the-loop question + resolution (Stage 3). */
 export interface GateSpec {
   /** The question shown to the user. */
@@ -74,6 +79,45 @@ export interface GateSpec {
   decision?: GateDecision;
   /** Optional note/edit the user attached when resolving (feeds later steps). */
   note?: string;
+  /** Who resolves it (default human). */
+  resolver?: GateResolver;
+  /** Choices offered to the resolver, when the asker gave any. */
+  options?: string[];
+  /** The worker step + dispatch that asked, when the gate is a worker's question. */
+  askedBy?: { stepId: string; dispatchId?: string };
+}
+
+/** What a worker says its task came to, in its final report. */
+export type TaskOutcome = "success" | "failure" | "blocked";
+
+/** What a coordinator finds in a driven run's inbox. */
+export type InboxItemType = "worker_done" | "worker_failed" | "question" | "status";
+
+/** One message in a driven run's inbox — FIFO, durable with the run, gone once
+ *  the coordinator acknowledges it by `deliveryId`. */
+export interface InboxItem {
+  /** What to acknowledge (`m<n>`, monotonic within the run). */
+  deliveryId: string;
+  type: InboxItemType;
+  /** The step the message is about (a task, or the gate that carries a question). */
+  stepId: string;
+  /** The dispatch the message came from, for `worker_*` — a stale one is never posted. */
+  dispatchId?: string;
+  text: string;
+  at: number;
+}
+
+/** How a run is driven: by the person at the console (undefined), or by a
+ *  coordinator agent through the control surface. A driven run stays `running`
+ *  until the coordinator finishes it, however many tasks it holds — an empty
+ *  or all-terminal DAG is not "done", it is "waiting for the next task". */
+export interface DrivenSpec {
+  /** The coordinator's terminal id, when a launched agent drives it; absent
+   *  when a person drives it from `uxnan-cli`. */
+  coordinator?: string;
+  /** Recorded when the coordinator finishes the run. */
+  outcome?: TaskOutcome;
+  summary?: string;
 }
 
 /** One node in a run's DAG. */
@@ -104,6 +148,11 @@ export interface RunStep {
   onFailure: OnFailure;
   /** HITL gate spec (kind === "gate"). */
   gate?: GateSpec;
+  /** The current dispatch (`<stepId>.<attempts>`), new on every attempt. Holds
+   *  the completion authority: a report that names another dispatch is stale. */
+  dispatchId?: string;
+  /** What the worker's final report said, when it sent one. */
+  outcome?: TaskOutcome;
   /** When the current attempt was dispatched (epoch ms). */
   startedAt?: number;
   /** When the step reached a terminal state (epoch ms). */
@@ -121,6 +170,12 @@ export interface Run {
    *  deleted step's id can't collide with a later one). */
   seq: number;
   steps: RunStep[];
+  /** Present when a coordinator drives the run (see [`DrivenSpec`]). */
+  driven?: DrivenSpec;
+  /** The coordinator's inbox (driven runs; empty otherwise). */
+  inbox?: InboxItem[];
+  /** Monotonic counter behind `deliveryId`s. */
+  inboxSeq?: number;
 }
 
 /** The persisted shape is just the plain `Run` data (re-exported by `$lib/types`). */
@@ -181,6 +236,56 @@ export function deriveRunStatus(run: Run): RunStatus {
 /** Steps currently dispatchable (status `ready`). */
 export function readySteps(run: Run): RunStep[] {
   return run.steps.filter((s) => s.status === "ready");
+}
+
+/** Whether a coordinator drives the run. */
+export function isDriven(run: Run): boolean {
+  return run.driven !== undefined;
+}
+
+/** The dispatch id of a step's `attempts`-th dispatch: readable, unique within
+ *  the run, and different on every retry — so an old worker's late report can
+ *  be told from the current one's. */
+export function dispatchIdFor(step: RunStep): string {
+  return `${step.id}.${step.attempts}`;
+}
+
+/** Append a message to a driven run's inbox (pure — returns the new run). */
+export function postInbox(
+  run: Run,
+  item: Omit<InboxItem, "deliveryId" | "at">,
+  now: number,
+): Run {
+  const inboxSeq = (run.inboxSeq ?? 0) + 1;
+  const entry: InboxItem = { ...item, deliveryId: `m${inboxSeq}`, at: now };
+  return { ...run, inboxSeq, inbox: [...(run.inbox ?? []), entry] };
+}
+
+/** Drop the acknowledged messages from the inbox (pure). Unknown ids are
+ *  ignored: an ack for a message already acknowledged is not an error. */
+export function ackInbox(run: Run, deliveryIds: readonly string[]): Run {
+  const gone = new Set(deliveryIds);
+  return { ...run, inbox: (run.inbox ?? []).filter((m) => !gone.has(m.deliveryId)) };
+}
+
+/** The text a worker is launched with: who it is inside the run, how to report
+ *  exactly once (with the dispatch that holds its completion authority), how to
+ *  ask the coordinator instead of guessing — then the task itself. The MCP tool
+ *  names are given first and the `uxnan-cli` forms in parentheses, so an agent
+ *  without the tools still knows the door. */
+export function workerPreamble(
+  spec: { runId: string; taskId: string; dispatchId: string; title: string },
+  task: string,
+): string {
+  const { runId, taskId, dispatchId, title } = spec;
+  return [
+    `You are a worker of Uxnan orchestration run ${runId}: task ${taskId} ("${title}"), dispatch ${dispatchId}.`,
+    `When the task is done, report exactly once with the MCP tool orchestration_report_result (or \`uxnan-cli rpc orchestration/reportResult --params '<json>'\`): agentId = your UXNAN_AGENT_ID, taskId "${taskId}", dispatchId "${dispatchId}", outcome "success" or "failure" (or "blocked" if you cannot proceed), and your result. A report without this dispatch id is ignored.`,
+    `If you need a decision you are not entitled to make, ask the coordinator with question_ask (or \`uxnan-cli ask --question "…"\`) and wait for the answer instead of guessing.`,
+    ``,
+    `Task:`,
+    task,
+  ].join("\n");
 }
 
 /** True if the run has a dependency cycle (which would deadlock the engine).
