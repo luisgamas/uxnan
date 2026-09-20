@@ -1,10 +1,8 @@
-import { HugeiconsIcon } from "@hugeicons/react";
-import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
-import StarIcon from "@hugeicons/core-free-icons/StarIcon";
+import { RepoStatsRow } from "@/components/repo-stats";
 import { DownloadButton } from "@/components/download-button";
 import { DesktopWindow } from "@/components/mockups/desktop";
 import { Phone, PhoneConversations } from "@/components/mockups/phone";
-import { formatCount, getRepoStats } from "@/lib/github";
+import { getRepoStats } from "@/lib/github";
 import { LICENSE, LINKS, PLATFORM_LINE } from "@/lib/site";
 
 export async function Hero() {
@@ -39,20 +37,7 @@ export async function Hero() {
           Free and Open Source · {LICENSE}
         </span>
 
-        {stats ? (
-          <p className="mt-3.5 flex items-center justify-center gap-4 text-[12.5px] text-faint">
-            <span className="inline-flex items-center gap-1.5">
-              <HugeiconsIcon icon={StarIcon} className="size-3.5 text-amber" />
-              <span className="text-muted">{formatCount(stats.stars)}</span>
-              stars
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <HugeiconsIcon icon={DownloadIcon} className="size-3.5" />
-              <span className="text-muted">{formatCount(stats.downloads)}</span>
-              downloads
-            </span>
-          </p>
-        ) : null}
+        <RepoStatsRow initialStats={stats} />
 
         <h1 className="display mx-auto mt-7 max-w-[17ch] text-[clamp(2.4rem,6.4vw,4.5rem)]">
           Your agents don&apos;t need you watching.
