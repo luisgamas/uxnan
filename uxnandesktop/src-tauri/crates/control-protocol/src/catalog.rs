@@ -46,7 +46,7 @@ impl Group {
         }
     }
 
-    /// Stable lowercase name, as it appears in `status` and in settings.
+    /// Stable lowercase name, as it appears in `status` and in `settings.control.disabledGroups`.
     pub const fn name(self) -> &'static str {
         match self {
             Group::Read => "read",
@@ -84,6 +84,11 @@ pub struct Entry {
     /// Whether the entry changes anything (a window, a process, the disk). Reads
     /// are safe to retry blindly; a mutation carries a receipt.
     pub mutates: bool,
+    /// JSON Schema of the `result` object: every field, with what it means. The
+    /// reference documentation and the MCP `outputSchema` are both this.
+    pub result: Value,
+    /// Params a caller would plausibly send — the example in the reference.
+    pub example: Value,
 }
 
 /// The schema fragment for a project selector argument.
@@ -139,6 +144,161 @@ fn prompt() -> Value {
     })
 }
 
+/// A result field.
+fn field(ty: &str, description: &str) -> Value {
+    json!({ "type": ty, "description": description })
+}
+
+/// A result field that is always present but may be `null`.
+fn nullable(ty: &str, description: &str) -> Value {
+    json!({ "type": [ty, "null"], "description": description })
+}
+
+/// A result field that is left out when there is nothing to say (never
+/// `null`). Read it with a default.
+fn optional(ty: &str, description: &str) -> Value {
+    json!({ "type": ty, "description": description, ABSENT: true })
+}
+
+/// The private marker [`optional`] sets and [`result`] turns into `required`.
+const ABSENT: &str = "x-absent";
+
+/// A result object. Every property is listed in `required` except the ones
+/// built with [`optional`]; a [`nullable`] one is required but may be `null`.
+fn result(properties: Value) -> Value {
+    let mut properties = properties;
+    let mut required = Vec::new();
+    if let Some(map) = properties.as_object_mut() {
+        for (name, schema) in map.iter_mut() {
+            let absent = schema
+                .as_object_mut()
+                .and_then(|o| o.remove(ABSENT))
+                .is_some();
+            if !absent {
+                required.push(Value::String(name.clone()));
+            }
+        }
+    }
+    json!({ "type": "object", "properties": properties, "required": required })
+}
+
+/// A nested result object, with what it is.
+fn nested(description: &str, properties: Value) -> Value {
+    described(description, result(properties))
+}
+
+/// A shared shape placed as a field: the same schema, with what it is here.
+fn described(description: &str, mut schema: Value) -> Value {
+    schema["description"] = json!(description);
+    schema
+}
+
+/// An array of one shape.
+fn list_of(item: Value, description: &str) -> Value {
+    json!({ "type": "array", "items": item, "description": description })
+}
+
+/// The project record every view names (`ProjectRef`).
+fn project_ref() -> Value {
+    result(json!({
+        "id": field("string", "The project id — what `id:<projectId>` selects."),
+        "name": field("string", "The display name — what `name:<project name>` selects."),
+        "path": field("string", "Absolute folder of the project."),
+        "target": field("string", "`local`, or `ssh:<hostId>` for a project on a host."),
+        "isGit": field("boolean", "Whether the folder is a git repository. A plain folder has one pseudo-worktree and no branches."),
+    }))
+}
+
+/// A tracked agent (`AgentView`).
+fn agent_view() -> Value {
+    result(json!({
+        "terminalId": field("string", "The terminal it runs in — its `UXNAN_AGENT_ID`."),
+        "kind": optional("string", "`claude`, `codex`, … when its hooks said."),
+        "status": field("string", "`working`, `blocked`, `waiting` (asked the person something) or `done` (turn finished)."),
+        "prompt": optional("string", "The prompt it is working on, when reported."),
+        "tool": optional("string", "The tool in use (`file_edit`, `bash`, …), when reported."),
+        "interrupted": field("boolean", "Whether it reported being interrupted."),
+        "summary": optional("string", "A short preview of its latest reply, when reported."),
+        "sessionId": optional("string", "The provider's own session id, when captured — what its `--resume` takes."),
+        "cwd": optional("string", "The folder its terminal was opened in, when known."),
+        "firstSeen": field("integer", "Epoch seconds of its first report."),
+        "lastUpdate": field("integer", "Epoch seconds of its latest report."),
+    }))
+}
+
+/// [`agent_view`] as an optional field: the agent a terminal tracks, once one
+/// has reported.
+fn tracked_agent() -> Value {
+    let mut v = described(
+        "The agent tracked in this tab, once one has reported.",
+        agent_view(),
+    );
+    v[ABSENT] = json!(true);
+    v
+}
+
+/// A worktree with its project and the agents in it (`WorktreeView`).
+fn worktree_view(with_status: bool) -> Value {
+    let mut props = json!({
+        "path": field("string", "Absolute folder of the worktree — what `path:` selects."),
+        "branch": nullable("string", "The checked-out branch — what `branch:` selects; null when detached or not a repository."),
+        "head": nullable("string", "The HEAD commit, when known."),
+        "isMain": field("boolean", "Whether this is the project's primary checkout."),
+        "project": described("The project it belongs to.", project_ref()),
+        "agents": list_of(agent_view(), "The live agents whose terminal was opened inside this worktree."),
+    });
+    if with_status {
+        props["status"] = result(json!({
+            "dirty": field("integer", "Changed entries in the working tree."),
+            "ahead": field("integer", "Commits ahead of the upstream."),
+            "behind": field("integer", "Commits behind the upstream."),
+        }));
+        props["status"]["description"] = json!(
+            "The change counts of a local repository; a plain folder and a host's worktree have none."
+        );
+        props["status"][ABSENT] = json!(true);
+    }
+    result(props)
+}
+
+/// A terminal tab with the agent state the app knows for it (`TerminalView`).
+fn terminal_view() -> Value {
+    result(json!({
+        "id": field("string", "The tab id — also the PTY id and the agent id; what `id:<terminalId>` selects."),
+        "title": field("string", "The tab title (a custom one when the person renamed it)."),
+        "workspace": field("string", "The workspace key: the worktree folder, prefixed `ssh:<hostId>::` on a host, empty for the Global space."),
+        "cwd": optional("string", "The folder the shell was opened in."),
+        "target": field("string", "`local`, or `ssh:<hostId>`."),
+        "agentName": optional("string", "The configured agent launched in this tab, when one was."),
+        "agentCommand": optional("string", "That agent's command (`claude`, `codex`, …)."),
+        "agentModel": optional("string", "The model the launch pinned, when the profile pins one."),
+        "exited": field("boolean", "Whether the shell has exited."),
+        "asleep": field("boolean", "Whether the tab is asleep (its PTY released, restorable)."),
+        "agent": tracked_agent(),
+    }))
+}
+
+/// A project with its worktrees (`ProjectView`).
+fn project_with_worktrees(with_status: bool) -> Value {
+    let mut v = project_ref();
+    v["properties"]["worktrees"] = list_of(worktree_view(with_status), "The project's worktrees.");
+    v
+}
+
+/// A receipt: what every `create` entry and `agent/send` answer with.
+fn receipt(extra: Value) -> Value {
+    let mut props = json!({
+        "requestId": field("string", "A fresh id for this call — the audit line carries it too."),
+        "idempotencyKey": optional("string", "The key the caller sent, when it sent one."),
+    });
+    if let (Some(dst), Some(src)) = (props.as_object_mut(), extra.as_object()) {
+        for (k, v) in src {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+    result(props)
+}
+
 fn object(properties: Value, required: &[&str]) -> Value {
     json!({
         "type": "object",
@@ -161,6 +321,27 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Report the running Uxnan Desktop: its version, the control protocol version, which capability groups are enabled, and how many projects, terminals and live agents it holds. Call this first to learn what you may ask for.",
             params: object(json!({}), &[]),
             mutates: false,
+            result: result(json!({
+                "app": field("string", "`uxnan-desktop`."),
+                "version": field("string", "The app version."),
+                "protocolVersion": field("integer", "The control protocol version the app speaks."),
+                "pid": field("integer", "The app's process id."),
+                "groups": list_of(result(json!({
+                    "name": field("string", "`read`, `ui`, `create`, `converse` or `orchestrate`."),
+                    "version": field("integer", "The group's feature version."),
+                    "enabled": field("boolean", "Whether the group is switched on."),
+                })), "Every capability group, in trust order."),
+                "caller": nested("Who the app takes you for, from the token you presented.", json!({
+                    "kind": field("string", "`launch` (a process the app started) or `control` (the user's shell)."),
+                    "terminalId": optional("string", "For a launch caller: the terminal it said it is (null when it did not say)."),
+                })),
+                "counts": nested("What the app holds right now.", json!({
+                    "projects": field("integer", "Registered projects."),
+                    "terminals": field("integer", "Live terminals."),
+                    "agents": field("integer", "Live agents."),
+                })),
+            })),
+            example: json!({}),
         },
         Entry {
             method: "project/list",
@@ -169,6 +350,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "List the projects registered in Uxnan: id, name, folder, whether it is a git repository, the machine it lives on, and its worktrees with branch and change counts.",
             params: object(json!({}), &[]),
             mutates: false,
+            result: result(json!({ "projects": list_of(project_with_worktrees(false), "Every registered project.") })),
+            example: json!({}),
         },
         Entry {
             method: "project/show",
@@ -177,6 +360,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Describe one project: the same record `project/list` gives, for the project you select.",
             params: object(json!({ "project": project_selector(true) }), &["project"]),
             mutates: false,
+            result: project_with_worktrees(true),
+            example: json!({ "project": "name:uxnan" }),
         },
         Entry {
             method: "worktree/list",
@@ -185,6 +370,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "List worktrees: path, branch, HEAD, whether it is the main checkout, and which live agents run in it. Filter by project or list them all.",
             params: object(json!({ "project": project_selector(false) }), &[]),
             mutates: false,
+            result: result(json!({ "worktrees": list_of(worktree_view(false), "The worktrees, of one project or of all.") })),
+            example: json!({ "project": "current" }),
         },
         Entry {
             method: "worktree/show",
@@ -193,6 +380,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Describe one worktree: path, branch, HEAD, the project it belongs to, its dirty/ahead/behind counts and the agents running in it.",
             params: object(json!({ "worktree": worktree_selector() }), &["worktree"]),
             mutates: false,
+            result: worktree_view(true),
+            example: json!({ "worktree": "branch:feat/x" }),
         },
         Entry {
             method: "terminal/list",
@@ -201,6 +390,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "List the terminal tabs open in Uxnan: id, title, working directory, the worktree it belongs to, and — when an agent runs in it — the agent, its model and its live state (working, waiting, blocked, done).",
             params: object(json!({ "worktree": worktree_selector() }), &[]),
             mutates: false,
+            result: result(json!({ "terminals": list_of(terminal_view(), "Every terminal tab, optionally only those in a worktree.") })),
+            example: json!({ "worktree": "current" }),
         },
         Entry {
             method: "terminal/show",
@@ -209,6 +400,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Describe one terminal tab, including the agent state Uxnan knows for it. Use `current` to learn about your own terminal.",
             params: object(json!({ "terminal": terminal_selector() }), &["terminal"]),
             mutates: false,
+            result: terminal_view(),
+            example: json!({ "terminal": "current" }),
         },
         Entry {
             method: "agent/list",
@@ -217,6 +410,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "List the agents Uxnan is currently tracking: terminal id, agent kind, state (working, waiting, blocked, done), the prompt and tool last reported, and the worktree they run in.",
             params: object(json!({}), &[]),
             mutates: false,
+            result: result(json!({ "agents": list_of(agent_view(), "Every live agent the app tracks.") })),
+            example: json!({}),
         },
         Entry {
             method: "run/list",
@@ -225,6 +420,16 @@ pub fn catalog() -> Vec<Entry> {
             summary: "List the orchestration runs (multi-step, multi-agent plans) with their status and step counts.",
             params: object(json!({}), &[]),
             mutates: false,
+            result: result(json!({ "runs": list_of(result(json!({
+                "id": field("string", "The run id — what `run/show` and `run/start` take."),
+                "title": field("string", "The run's title."),
+                "status": field("string", "`draft`, `running`, `paused`, `completed`, `failed` or `cancelled`."),
+                "createdAt": field("integer", "Epoch milliseconds."),
+                "updatedAt": field("integer", "Epoch milliseconds."),
+                "steps": field("integer", "How many steps the run has."),
+                "completed": field("integer", "How many of them are completed."),
+            })), "Every saved orchestration run.") })),
+            example: json!({}),
         },
         Entry {
             method: "run/show",
@@ -233,6 +438,24 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.",
             params: object(json!({ "run": { "type": "string", "description": "The run id from `run/list`." } }), &["run"]),
             mutates: false,
+            result: result(json!({
+                "id": field("string", "The run id."),
+                "title": field("string", "The run's title."),
+                "status": field("string", "`draft`, `running`, `paused`, `completed`, `failed` or `cancelled`."),
+                "createdAt": field("integer", "Epoch milliseconds."),
+                "updatedAt": field("integer", "Epoch milliseconds."),
+                "steps": list_of(result(json!({
+                    "id": field("string", "The step id, unique within the run (`s1`, `s2`, …)."),
+                    "title": field("string", "The step's title."),
+                    "kind": field("string", "`interactive`, `headless` or `gate`."),
+                    "target": field("object", "Where the step runs (an agent type or a specific terminal)."),
+                    "dependsOn": list_of(field("string", "A step id."), "Steps that must complete first."),
+                    "status": field("string", "`pending`, `ready`, `running`, `blocked`, `completed`, `failed` or `skipped`."),
+                    "prompt": field("string", "The step's prompt template."),
+                    "output": nullable("string", "The captured output, once the step ran."),
+                })), "Every step of the run."),
+            })),
+            example: json!({ "run": "run-1a2b" }),
         },
         Entry {
             method: "automation/list",
@@ -241,6 +464,24 @@ pub fn catalog() -> Vec<Entry> {
             summary: "List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.",
             params: object(json!({}), &[]),
             mutates: false,
+            result: result(json!({ "automations": list_of(result(json!({
+                "id": field("string", "The automation id — what `automation/run` takes."),
+                "name": field("string", "Its name."),
+                "description": field("string", "Its description, possibly empty."),
+                "enabled": field("boolean", "Whether its schedule is active."),
+                "tags": list_of(field("string", "A label."), "Free-form labels the list groups by."),
+                "workingDir": field("string", "The folder a run executes in."),
+                "worktreePerRun": field("boolean", "Whether every run gets its own worktree."),
+                "schedule": field("object", "Its schedule: `{ kind: \"every\", n, unit, startsAt }`, `{ kind: \"dailyAt\", hour, minute }`, `{ kind: \"weekdaysAt\", hour, minute }` or `{ kind: \"weeklyAt\", day, hour, minute }`."),
+                "steps": list_of(result(json!({
+                    "id": field("string", "The step id."),
+                    "title": field("string", "The step's title."),
+                    "agent": field("string", "The agent it runs (`claude`, `codex`, …)."),
+                    "model": field("string", "The model it pins; empty for the CLI's default."),
+                })), "Its steps, in order."),
+                "updatedAt": field("integer", "Epoch milliseconds of the last edit."),
+            })), "Every saved automation.") })),
+            example: json!({}),
         },
         Entry {
             method: "browser/status",
@@ -249,6 +490,13 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Report the integrated browser's state: whether a page is open, the current URL, whether the in-app browser is enabled, and how opens are routed (in-app / external / ask).",
             params: object(json!({}), &[]),
             mutates: false,
+            result: result(json!({
+                "open": field("boolean", "Whether a page is open in the integrated browser."),
+                "url": nullable("string", "The page's URL, when one is open."),
+                "enabled": field("boolean", "Whether the integrated browser is enabled in Settings."),
+                "policy": field("string", "How opens are routed: `internal`, `external` or `ask`."),
+            })),
+            example: json!({}),
         },
         // ── Ui ───────────────────────────────────────────────────────────────
         Entry {
@@ -258,6 +506,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Bring the Uxnan window to the front.",
             params: object(json!({}), &[]),
             mutates: true,
+            result: result(json!({ "focused": field("boolean", "Always true on success.") })),
+            example: json!({}),
         },
         Entry {
             method: "terminal/reveal",
@@ -266,6 +516,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Show a terminal tab: switch to its workspace and make it the active tab, so the person sees what that agent is doing.",
             params: object(json!({ "terminal": terminal_selector() }), &["terminal"]),
             mutates: true,
+            result: result(json!({ "revealed": field("string", "The terminal id now active.") })),
+            example: json!({ "terminal": "id:5f0c…" }),
         },
         Entry {
             method: "file/open",
@@ -280,6 +532,8 @@ pub fn catalog() -> Vec<Entry> {
                 &["path"],
             ),
             mutates: true,
+            result: result(json!({ "opened": field("string", "The absolute path now open in the editor.") })),
+            example: json!({ "path": "src/app.ts", "worktree": "current" }),
         },
         Entry {
             method: "file/diff",
@@ -295,6 +549,11 @@ pub fn catalog() -> Vec<Entry> {
                 &["path"],
             ),
             mutates: true,
+            result: result(json!({
+                "opened": field("string", "The absolute path whose diff is now shown."),
+                "staged": field("boolean", "Which diff: staged (index vs HEAD) or unstaged."),
+            })),
+            example: json!({ "path": "src/app.ts", "worktree": "branch:feat/x", "staged": false }),
         },
         Entry {
             method: "browser/open",
@@ -306,6 +565,8 @@ pub fn catalog() -> Vec<Entry> {
                 &["url"],
             ),
             mutates: true,
+            result: result(json!({ "requested": field("string", "The URL handed to the link policy.") })),
+            example: json!({ "url": "http://localhost:3000" }),
         },
         Entry {
             method: "browser/navigate",
@@ -317,6 +578,8 @@ pub fn catalog() -> Vec<Entry> {
                 &["url"],
             ),
             mutates: true,
+            result: result(json!({ "requested": field("string", "The URL handed to the link policy.") })),
+            example: json!({ "url": "http://localhost:3000/settings" }),
         },
         Entry {
             method: "browser/reload",
@@ -325,6 +588,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Reload the current page in the integrated browser. Use it after you change code and want to see the result. Errors if no page is open.",
             params: object(json!({}), &[]),
             mutates: true,
+            result: result(json!({ "reloaded": field("boolean", "Always true on success.") })),
+            example: json!({}),
         },
         Entry {
             method: "browser/back",
@@ -333,6 +598,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Go back one entry in the integrated browser's history. Errors if no page is open.",
             params: object(json!({}), &[]),
             mutates: true,
+            result: result(json!({ "navigated": field("string", "`back`.") })),
+            example: json!({}),
         },
         Entry {
             method: "browser/forward",
@@ -341,6 +608,8 @@ pub fn catalog() -> Vec<Entry> {
             summary: "Go forward one entry in the integrated browser's history. Errors if no page is open.",
             params: object(json!({}), &[]),
             mutates: true,
+            result: result(json!({ "navigated": field("string", "`forward`.") })),
+            example: json!({}),
         },
         // ── Create ───────────────────────────────────────────────────────────
         Entry {
@@ -361,6 +630,13 @@ pub fn catalog() -> Vec<Entry> {
                 &["project", "branch"],
             ),
             mutates: true,
+            result: receipt(json!({
+                "worktree": described("The worktree, as `worktree/list` describes it.", worktree_view(false)),
+                "adopted": field("boolean", "Whether the window listed it, made it active and launched the agent. False when the window was not there; the worktree exists either way."),
+                "terminal": optional("object", "`{ id, agent }` of the launched agent's terminal — only when `agent` was given and the window adopted."),
+                "warning": optional("string", "Why the window did not adopt, when it did not."),
+            })),
+            example: json!({ "project": "current", "branch": "feat/subtask", "agent": "claude", "prompt": "Implement the parser described in TASK.md.", "idempotencyKey": "3d1f…" }),
         },
         Entry {
             method: "terminal/create",
@@ -378,6 +654,14 @@ pub fn catalog() -> Vec<Entry> {
                 &["worktree"],
             ),
             mutates: true,
+            result: receipt(json!({
+                "terminal": nested("The new tab.", json!({
+                    "id": field("string", "The new tab's id."),
+                    "agent": optional("string", "The launched agent's name, when one was."),
+                })),
+                "worktree": field("string", "The worktree folder the tab opened in."),
+            })),
+            example: json!({ "worktree": "branch:feat/subtask", "title": "build", "idempotencyKey": "9c2e…" }),
         },
         Entry {
             method: "run/start",
@@ -392,6 +676,13 @@ pub fn catalog() -> Vec<Entry> {
                 &["run"],
             ),
             mutates: true,
+            result: receipt(json!({
+                "run": nested("The run, now started.", json!({
+                    "id": field("string", "The run id."),
+                    "status": field("string", "`running` once started."),
+                })),
+            })),
+            example: json!({ "run": "run-1a2b", "idempotencyKey": "77aa…" }),
         },
         Entry {
             method: "automation/run",
@@ -406,6 +697,13 @@ pub fn catalog() -> Vec<Entry> {
                 &["automation"],
             ),
             mutates: true,
+            result: receipt(json!({
+                "automation": nested("The automation, now running.", json!({
+                    "id": field("string", "The automation id."),
+                    "started": field("boolean", "Always true on success: the headless runner was started."),
+                })),
+            })),
+            example: json!({ "automation": "nightly-lint" }),
         },
         // ── Converse ─────────────────────────────────────────────────────────
         Entry {
@@ -423,6 +721,12 @@ pub fn catalog() -> Vec<Entry> {
                 &["terminal", "message"],
             ),
             mutates: true,
+            result: receipt(json!({
+                "terminal": field("string", "The terminal the message was handed to."),
+                "delivery": field("string", "`queued` (waits for the agent to be free), `delivered` (it was free) or `forced`."),
+                "bytes": field("integer", "The message's size."),
+            })),
+            example: json!({ "terminal": "id:5f0c…", "message": "Now add tests for the parser." }),
         },
         Entry {
             method: "agent/wait",
@@ -438,12 +742,18 @@ pub fn catalog() -> Vec<Entry> {
                 &["terminal", "for"],
             ),
             mutates: false,
+            result: result(json!({
+                "terminal": field("string", "The terminal waited on."),
+                "reached": field("string", "`idle`, `waiting` or `exit` — the state reached."),
+                "waitedMs": field("integer", "How long this call waited."),
+            })),
+            example: json!({ "terminal": "id:5f0c…", "for": "idle", "timeoutMs": 15000 }),
         },
         Entry {
             method: "terminal/read",
             tool: "terminal_read",
             group: Group::Converse,
-            summary: "Read the last lines of a terminal's screen as plain text (escapes removed, blank rows dropped), with secrets redacted — tokens, keys, `Authorization` headers, `password=`. Use it to see what an agent printed or asked. Every read is written to Uxnan's audit log; a project can switch reads off in Settings.",
+            summary: "Read the last lines of a terminal's screen as plain text (escapes removed, blank rows dropped), with secrets redacted — tokens, keys, `Authorization` headers, `password=`. Use it to see what an agent printed or asked. Every read is written to Uxnan's audit log; a project can be opted out of reads (`settings.control.terminalReadDisabledProjects`).",
             params: object(
                 json!({
                     "terminal": terminal_selector(),
@@ -452,6 +762,12 @@ pub fn catalog() -> Vec<Entry> {
                 &["terminal"],
             ),
             mutates: false,
+            result: result(json!({
+                "terminal": field("string", "The terminal read."),
+                "lines": field("integer", "How many lines came back."),
+                "text": field("string", "The screen text, escapes removed, blank rows dropped, secrets redacted."),
+            })),
+            example: json!({ "terminal": "id:5f0c…", "lines": 60 }),
         },
         // ── Orchestrate ──────────────────────────────────────────────────────
         Entry {
@@ -468,6 +784,8 @@ pub fn catalog() -> Vec<Entry> {
                 &["agentId", "result"],
             ),
             mutates: true,
+            result: result(json!({ "reported": field("string", "`result`.") })),
+            example: json!({ "agentId": "5f0c…", "result": "Done: parser implemented, 12 tests green.", "summary": "parser done" }),
         },
         Entry {
             method: "orchestration/reportProgress",
@@ -482,6 +800,8 @@ pub fn catalog() -> Vec<Entry> {
                 &["agentId", "message"],
             ),
             mutates: true,
+            result: result(json!({ "reported": field("string", "`progress`.") })),
+            example: json!({ "agentId": "5f0c…", "message": "Writing tests" }),
         },
     ]
 }

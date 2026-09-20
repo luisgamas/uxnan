@@ -42,6 +42,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `worktree create`, `terminal create`, `run start`, `automation ls|run`,
   `--prompt-file` and `--idempotency-key`; `launchAgent` now returns the tab
   it opened.
+- **The control surface's API reference, generated from the catalog.** Every
+  catalog entry now carries a **result schema** (each field with its meaning,
+  which fields are nullable and which are left out) and an example request.
+  `uxnan-cli skills get control --full` is now the full reference — per entry
+  its purpose, group, `uxnan-cli` form, MCP tool, params table, result fields,
+  a JSON-RPC request and the errors it can answer; before them, *Calling the
+  RPC route directly* (the discovery file and the checks to make before
+  trusting it, the envelope, headers, HTTP statuses, every error code with its
+  `uxnan-cli` exit status, the MCP door), all from the protocol's own
+  constants. The committed `docs/control-api-reference.md` is that output and a
+  test fails when it is stale; every CLI form is checked against the real clap
+  command tree. The MCP `tools/list` advertises the same result schema as each
+  tool's `outputSchema`. `docs/control-api.md` gained *Calling from outside
+  Uxnan* (what can reach the surface and from where — same machine, same user,
+  loopback only — with shell, Python and MCP-client examples and the rules a
+  caller from outside should know) and *Settings* (the surface has no settings
+  pane by design; the two `state.json` knobs, documented).
 - **The `converse` group of the control surface: send, wait, read.**
   `agent/send` types a whole message into a running agent as one
   paste-and-submit — through the orchestration backpressure queue by default,

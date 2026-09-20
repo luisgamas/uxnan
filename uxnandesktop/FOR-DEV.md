@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 871 Rust tests (807 unit in the app crate + 17 in `uxnan-control-protocol` + 10 in `uxnan-cli` + 37
+always wins). 874 Rust tests (807 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
@@ -830,19 +830,35 @@ receipts, idempotency by key (`control/receipts.rs`) and the audit log
 queue, or forced), `agent/wait` on the hook-reported state over a new
 `AppState.agent_changes` notifier, `terminal/read` from the window's terminal
 buffer with secret redaction (`control/redact.rs`) and a per-project opt-out;
-`uxnan-cli agent send|wait`, `terminal read`. 40 app tests (11 end to end over
-a real socket with Tauri's mock app, one creating a worktree on a real
-repository, one waiting on a real PTY), 17 protocol, 10 CLI, 11 window-bridge
-Vitest.
+`uxnan-cli agent send|wait`, `terminal read`. **The reference:** every
+catalog entry carries a result schema and an example request; `uxnan-cli
+skills get control --full` generates the whole API reference (per entry: CLI
+form, MCP tool, params, result fields, request, errors; plus the wire contract
+for a script — discovery file, envelope, HTTP statuses, error codes) and the
+committed `docs/control-api-reference.md` is that output, guarded by a test;
+MCP `tools/list` advertises the same result schema as `outputSchema`. **No
+settings pane, by design** — the two knobs (`settings.control.disabledGroups`,
+`terminalReadDisabledProjects`) are honoured from `state.json` and documented
+in `docs/control-api.md` → *Settings*. 40 app tests (11 end to end over a real
+socket with Tauri's mock app, one creating a worktree on a real repository, one
+waiting on a real PTY), 17 protocol, 13 CLI, 11 window-bridge Vitest.
 
 ### Still pending
-- [ ] **Settings → Control.** A section with the group switches
-      (`settings.control.disabledGroups` and `terminalReadDisabledProjects`
-      exist and are honoured; no UI yet), a
-      *Rotate token* action (the token lives in `AppState.control_token` and the
-      server reads it live — rotation only needs to write it and rewrite
-      `control.json` via `control::discovery::write`), and an *Install `uxnan-cli`*
-      action (below). UI change → propose-and-review.
+- [ ] **The launch registration's own switch.** The per-launch MCP wiring is
+      gated by `browser.enabled && browser.mcpEnabled` (a leftover of the
+      browser-only origin), so switching the integrated browser off also takes
+      the whole catalog away from launched agents, and the switch's label
+      (*Let agents drive the browser*) describes a sixth of what it does. Give
+      the registration its own key and row (copy change in Settings → Browser →
+      Agent browser MCP; UI → propose-and-review), migrate the old value.
+- [ ] **Enforce the launch token's project scope.** The spec (`02d` §1.6)
+      scopes a per-launch token to its terminal's project and reserves
+      `-32003` *scope denied* for a selector outside it; the services resolve
+      any selector for either caller today, so `-32003` is only what
+      `uxnan-cli` reports for a refused token (`401`). Enforce it in
+      `control/resolve.rs` (a `Caller::Launch` may only name its own project's
+      worktrees and terminals) with e2e tests, and reword the code's meaning in
+      the reference (`guide.rs` → `ERROR_MEANINGS`) in the same change.
 - [ ] **Bundle `uxnan-cli` and install it on the PATH.** Today it is built by
       hand (`cargo build -p uxnan-cli --release`). Ship it in the installers
       (`bundle.externalBin` with the target-triple suffix, produced by a

@@ -52,6 +52,7 @@ pub fn tool_catalog() -> Value {
                     "name": e.tool,
                     "description": e.summary,
                     "inputSchema": e.params,
+                    "outputSchema": e.result,
                 })
             })
             .collect(),
@@ -215,6 +216,7 @@ mod tests {
             assert_eq!(t["name"], e.tool);
             assert_eq!(t["description"], e.summary);
             assert_eq!(t["inputSchema"], e.params);
+            assert_eq!(t["outputSchema"], e.result);
         }
     }
 

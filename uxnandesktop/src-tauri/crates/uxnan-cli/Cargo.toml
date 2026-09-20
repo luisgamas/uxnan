@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 uxnan-control-protocol = { path = "../control-protocol" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 # Argument parsing. `derive` for the declarative command tree; no color/suggest
 # features — the output contract is plain text on stdout, errors on stderr.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }

@@ -597,6 +597,20 @@ tambien llama el comando Tauri de la ventana. Nada fuera del catalogo es
 alcanzable: no hay shell, ni bytes crudos al PTY, ni filesystem o git
 destructivos, ni credenciales, ni edicion externa de la persistencia.
 
+**Cada entrada del catalogo declara** su nombre JSON-RPC (`dominio/verbo`), su
+nombre de tool MCP (`dominio_verbo`), su grupo, un esquema **cerrado** de
+argumentos, un **esquema de resultado** (cada campo con su significado; que
+campos son nulos y cuales se omiten) y una peticion de ejemplo. De ese unico
+origen salen las tres lecturas: `tools/list` de MCP (`inputSchema` +
+`outputSchema`), `uxnan-cli skills get control --full` — la **referencia de la
+API** completa: por entrada, forma de CLI, tool MCP, tabla de argumentos,
+campos del resultado, peticion y errores; antes, el contrato de transporte para
+un script (archivo de descubrimiento y sus comprobaciones, sobre JSON-RPC,
+cabeceras, codigos HTTP y de error con su codigo de salida) — y el archivo
+versionado `docs/control-api-reference.md`, que **es** esa salida: un test del
+crate `uxnan-cli` falla cuando queda desactualizado, y otro comprueba cada
+forma de CLI contra el arbol real de subcomandos de clap.
+
 **Grupos de capacidad (versionados y desconectables en `settings.control`):**
 `read` (`status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`,
 `agent/list`, `run/list|show`, `automation/list`, `browser/status`), `ui` (`app/focus`,
@@ -640,13 +654,17 @@ la ACL del perfil de usuario), junto al pid **y la hora de inicio** del proceso,
 se borra al salir limpiamente — `uxnan-cli` rechaza un archivo legible por otros,
 una version de protocolo distinta o un pid que ya no es ese proceso. El token de
 control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
-la app); el de lanzamiento, el proyecto de su terminal. Ninguno se escribe en la
-config de ningun CLI ni se registra en logs.
+la app); el de lanzamiento, el proyecto de su terminal — alcance declarado en el
+contrato (codigo `-32003` *scope denied*) y **pendiente de aplicar** en los
+servicios, que hoy resuelven cualquier selector para ambos llamadores
+(`FOR-DEV.md`); mientras tanto `-32003` es lo que `uxnan-cli` reporta ante un
+token rechazado (`401`). Ninguno se escribe en la config de ningun CLI ni se
+registra en logs.
 
 **`uxnan-cli`:** resultados en stdout, errores en stderr, `--json` estable, codigos
 de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,
-timeout 6, no encontrado 7, ocupado 8); `skills get control --full` imprime la guia
-generada desde el catalogo. Encuentra la app por el entorno (dentro de una
+timeout 6, no encontrado 7, ocupado 8); `skills get control --full` imprime la
+referencia generada desde el catalogo. Encuentra la app por el entorno (dentro de una
 terminal del ADE) o por `control.json` (con las mismas reglas de directorio de
 datos que la app, incluido el perfil `-dev` de una build de desarrollo). Detalle
 operativo en `docs/control-api.md`.
@@ -663,7 +681,9 @@ El archivo de Claude vive en `<app-data>/mcp/claude-<puerto>.json` y lleva el pu
 
 **Por que se sustituyo la escritura en la config global de usuario:** era una unica entrada, persistente y compartida, con dos fallos observados. (1) Fuera de uxnan no era inocua: Codex valida `bearer_token_env_var` al arrancar y aborta la fase MCP con *«Environment variable UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set»* en **cada** ejecucion. (2) La entrada llevaba el puerto de una instancia, asi que una **segunda** ventana de uxnan la sobrescribia y rompia los agentes de la primera desde dentro. Al arrancar, el ADE hace un **barrido de limpieza** (solo eliminacion, `sweep_legacy`) que borra esa entrada de las siete configs de usuario que versiones anteriores pudieron escribir.
 
-**Ajustes (Settings → Browser):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable.
+**Ajustes (Settings → Browser):** interruptor maestro `mcp_enabled`, interruptores por agente (`mcp_disabled_agents`) y `friction_free` — que es lo unico que sigue tocando la config propia del usuario: la semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `~/.codex/config.toml` para que Codex no pregunte por la carpeta (silenciosa, desactivable). Con `mcp_enabled` en off no se registra nada; el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable. La registracion sigue condicionada ademas por el interruptor maestro del **navegador integrado** (`browser.enabled && mcp_enabled`), herencia de su origen; darle un interruptor propio es `FOR-DEV`.
+
+**La superficie no tiene panel de ajustes, por diseno.** Las dos claves que existen (`settings.control.disabledGroups`, `settings.control.terminalReadDisabledProjects`) se respetan desde `state.json` y estan documentadas en `docs/control-api.md` → *Settings*; un panel de interruptores que nadie acciona es coste sin beneficio, y el token de control ya se renueva en cada arranque.
 
 **Fila por agente (misma forma que la lista de Hooks, §1.1):** cada agente del catalogo es una fila `AgentSettingsRow` con su marca, su nombre y su interruptor. Donde Hooks muestra el archivo de config que escribe, esta lista muestra `McpAgentInfo.mechanism` — el flag o la variable que recibe ese lanzamiento (`--mcp-config <archivo>`, `-c mcp_servers.uxnan-browser.*`, `OPENCODE_CONFIG_CONTENT`) — porque aqui no hay ningun archivo de config que mostrar: ese es justamente el punto.
 

@@ -164,6 +164,11 @@ CSRF / DNS-rebinding.
 
 ### Settings → Browser → Agent browser MCP
 
+These switches govern the per-launch wiring of the whole control surface — the
+`browser_*` tools are six of its entries (see
+[the control surface](./control-api.md)); the surface itself has no settings
+pane, by design.
+
 | Setting | What it does | Default |
 | --- | --- | --- |
 | **Let agents drive the browser** | Master switch for exposing the `browser_*` tools to the agents uxnan launches. Off → nothing is registered (the `/mcp` endpoint still exists for manual wiring). | On |

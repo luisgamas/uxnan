@@ -194,9 +194,11 @@ available today are:
   things (`file_open`, `file_diff`, `terminal_reveal`, `app_focus`) — nothing to
   install. From any shell, **`uxnan-cli`** (a separate small binary) does the same:
   `uxnan-cli status`, `uxnan-cli terminal ls --json`, `uxnan-cli file diff
-  src/app.ts --worktree branch:feat`. One catalog behind both, no shell access, no
+  src/app.ts --worktree branch:feat` — and any script on the same machine can
+  post the same JSON-RPC. One catalog behind all of it, no shell access, no
   destructive git or filesystem entries by construction. See
-  [the control surface](./docs/control-api.md).
+  [the control surface](./docs/control-api.md) and
+  [its API reference](./docs/control-api-reference.md).
 - **Quick commands.** Program shell commands you run often and launch them from a
   top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.
   Each command carries a scope (**global · project · worktree**, pruned with its
@@ -318,6 +320,7 @@ Detailed docs live in [`docs/`](./docs/):
 [automations (unattended, recurring)](./docs/automations.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [control surface (MCP tools & `uxnan-cli`)](./docs/control-api.md) ·
+[control API reference (every entry, generated)](./docs/control-api-reference.md) ·
 [integrated browser](./docs/browser.md) ·
 [GitHub integration](./docs/github.md) ·
 [GitHub validation status](./docs/github-validation.md) ·

@@ -76,11 +76,13 @@ pub enum ErrorCode {
     InvalidParams,
     /// The app failed while carrying the request out.
     Internal,
-    /// The entry's capability group is switched off in Settings.
+    /// The entry's capability group is switched off (`settings.control.disabledGroups`).
     GroupDisabled,
     /// A selector named nothing: no such project, worktree or terminal.
     NotFound,
-    /// The caller's token is scoped to another project.
+    /// The token was refused: missing, wrong, or replaced by a restart or a
+    /// rotation. The app answers this at the HTTP layer (`401`); `uxnan-cli`
+    /// reports it under this code.
     ScopeDenied,
     /// The part of the app that owns this resource (its window) is not ready.
     Unavailable,

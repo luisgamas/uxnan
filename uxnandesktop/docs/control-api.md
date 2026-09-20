@@ -11,8 +11,11 @@ transports, no shell access and nothing destructive — by construction.
 > **TL;DR.** Inside a terminal Uxnan launched, an agent already has the tools
 > (`uxnan_status`, `worktree_list`, `terminal_show`, `file_diff`, `browser_*`, …)
 > through MCP, with nothing to install. From any shell of the same user,
-> `uxnan-cli status` finds the running app by itself; `uxnan-cli skills get
-> control --full` prints the whole guide. Prefer `--json` from a script.
+> `uxnan-cli status` finds the running app by itself. A script in any language
+> can post JSON-RPC to the same route — see *Calling from outside Uxnan*.
+> Prefer `--json` from a script. **Every entry, with its arguments, its result
+> and a request, is in [the API reference](./control-api-reference.md)** —
+> generated from the catalog by `uxnan-cli skills get control --full`.
 
 ---
 
@@ -53,8 +56,13 @@ catalog is reachable, whatever the transport.
 - **The catalog** lives in the `uxnan-control-protocol` crate
   (`src-tauri/crates/control-protocol`): every entry has a JSON-RPC name
   (`domain/verb`), an MCP tool name (`domain_verb`), a description written for
-  the agent that will read it, a closed argument schema and a group. The app
-  dispatches by the RPC name; the MCP adapter and `uxnan-cli` only translate.
+  the agent that will read it, a closed argument schema, a **result schema**
+  (every field with its meaning, which fields may be absent), an example
+  request and a group. The app dispatches by the RPC name; the MCP adapter
+  (`inputSchema` + `outputSchema` on `tools/list`) and `uxnan-cli` only
+  translate, and [the API reference](./control-api-reference.md) is generated
+  from the same entries — so a field the reference documents is a field the
+  app sends, and a test fails when the committed reference is stale.
 - **The services** (`src-tauri/src/control/services/`) are the one
   implementation each entry has. The Tauri command the window calls (for
   example the sidebar's `worktree_list`), the MCP tool and the RPC method all
@@ -73,8 +81,8 @@ catalog is reachable, whatever the transport.
 ## Capability groups
 
 Entries are grouped, and a group is a feature: it has its own version and can
-be switched off in the app's settings (`settings.control.disabledGroups`, by
-name) without touching the others. Trust order:
+be switched off (`settings.control.disabledGroups`, by name — see *Settings*
+below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
@@ -84,8 +92,10 @@ name) without touching the others. Trust order:
 | `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
 | `orchestrate` | `orchestration/reportResult|reportProgress` (shipped); tasks, inbox, questions | partly |
 
-`uxnan-cli skills get control --full` lists every entry with its arguments —
-generated from the catalog, so it cannot describe something the app does not do.
+[`docs/control-api-reference.md`](./control-api-reference.md) is every entry
+with its arguments, its result and a request — the output of `uxnan-cli skills
+get control --full`, generated from the catalog, so it cannot describe
+something the app does not do.
 
 ### The `create` group: receipts, idempotency, audit
 
@@ -153,7 +163,7 @@ The loop an agent (or a script) runs with another agent:
   `token=`, `secret=` and their kin, private-key blocks, tokens recognizable
   by prefix). Every read is audited. A project can opt out with
   `settings.control.terminalReadDisabledProjects` (its terminals then answer
-  *group disabled*); the Settings control for it is FOR-DEV.
+  *group disabled*) — see *Settings* below.
 
 ## Selectors
 
@@ -191,8 +201,105 @@ pid is gone or was recycled (the start time no longer matches) — so a file lef
 behind by a crash points it nowhere.
 
 Rotation: the control token lives in `AppState.control_token` and the server
-reads it on every request, so it can be replaced without a restart (a Settings
-control for that is FOR-DEV).
+reads it on every request, so it can be replaced without a restart; today the
+one rotation is the new token every start mints. Restarting the app is how a
+person cuts every outside client off.
+
+## Settings
+
+The surface has **no settings pane, by design**: the other apps that offer a
+surface like this do not ask the person to switch pieces of it off, and a pane
+of switches nobody flips is a cost without a benefit. The two knobs that exist
+are honoured from `state.json` (`settings.control`), for the rare setup that
+needs them:
+
+| Key | Type | Effect |
+|---|---|---|
+| `disabledGroups` | `string[]` of group names (`read`, `ui`, `create`, `converse`, `orchestrate`) | Every entry of a listed group is refused for every caller with *group disabled* (`-32001`); `status` reports the group as `enabled: false`. Empty by default. |
+| `terminalReadDisabledProjects` | `string[]` of project ids | `terminal/read` on a terminal of a listed project answers *group disabled*; everything else about the project stays readable. Empty by default. |
+
+Edit them with the app closed (it rewrites `state.json` on its own saves).
+Everything else — which agents get the tools at launch, the frictionless
+launch, the manual MCP config — stays in **Settings → Browser → Agent browser
+MCP**, where it was before the surface grew ([`docs/browser.md`](./browser.md)).
+One inheritance from that origin is worth knowing: the per-launch registration
+is gated by the **integrated browser's** master switch as well as by the MCP
+one (`browser.enabled && browser.mcpEnabled`), so switching the browser off
+also takes the whole catalog away from launched agents — `uxnan-cli` and the
+route are unaffected. Giving the registration its own switch is FOR-DEV.
+
+## Calling from outside Uxnan
+
+The surface is reachable from **anything on the same machine that runs as the
+same user**: a shell, a cron job, an editor task, a CI step on a developer's
+box, an agent Uxnan did not launch. It is **not** reachable from another
+machine — the server listens on loopback only and refuses a non-loopback
+`Host`/`Origin`, and there is no option to bind it wider. To operate a Uxnan on
+another machine, run the client there (over SSH, for instance).
+
+`uxnan-cli` is the door for a shell and for anything that can spawn a process:
+
+```sh
+uxnan-cli status --json | jq '.groups[] | select(.enabled) | .name'
+uxnan-cli worktree ls --project name:uxnan --json | jq -r '.worktrees[].branch'
+uxnan-cli terminal create --worktree branch:feat/x --agent claude --prompt-file task.md --json
+```
+
+Branch on its exit status (`0` success, `3` app not running, `7` nothing
+matched, …) rather than on its text; the whole table is in the reference.
+
+For a program with an HTTP client and no wish to spawn a process, the route the
+CLI itself uses: read the discovery file, post JSON-RPC 2.0 to
+`{endpoint}/control/v1/rpc` with the token as a bearer. The file's location,
+the checks to make before trusting it (mode, protocol version, pid **and**
+start time), the envelope, the HTTP statuses and every error code are in
+[the reference → *Calling the RPC route directly*](./control-api-reference.md#calling-the-rpc-route-directly).
+In Python, the whole client is:
+
+```python
+import json, os, urllib.request
+from pathlib import Path
+
+home = Path.home()
+data_dir = Path(os.environ.get("UXNAN_DATA_DIR") or home / "Library/Application Support/dev.luisgamas.uxnandesktop")
+d = json.loads((data_dir / "control.json").read_text())
+assert d["protocolVersion"] == 1
+
+def call(method, params=None):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
+    req = urllib.request.Request(d["endpoint"] + "/control/v1/rpc", body, {
+        "Content-Type": "application/json", "Authorization": f"Bearer {d['token']}"})
+    reply = json.load(urllib.request.urlopen(req))
+    if "error" in reply:
+        raise RuntimeError(f"{reply['error']['code']}: {reply['error']['message']}")
+    return reply["result"]
+
+for t in call("terminal/list")["terminals"]:
+    print(t["id"], t.get("agentName"), t.get("agent", {}).get("status"))
+```
+
+(`%APPDATA%\dev.luisgamas.uxnandesktop` on Windows, `~/.local/share/…` on
+Linux; a debug build uses the `-dev` sibling.) The same in Node is `fetch` with
+the same body and headers. An MCP client — an agent runtime with its own MCP
+support — points at `{endpoint}/mcp` with the same bearer and gets the catalog
+as tools, `outputSchema` included.
+
+A few things a caller from outside should know:
+
+- **The token changes on every start** of the app: read the file per session,
+  and on a `401` read it again. A file whose `pid` is dead, or alive but with a
+  different start time, is a leftover — ignore it.
+- **`current` means nothing** from outside: list first, then use `id:`,
+  `path:`, `branch:` or `name:`.
+- **Mutations are receipted**: send an `idempotencyKey` you choose with every
+  `create` and `agent/send`, and a retry after a lost reply is safe.
+- **Everything a `create` or `converse` call does is audited** in
+  `control-audit.log` beside the discovery file, with the caller's kind — a
+  person can always see what a script did. Message and prompt text is recorded
+  as its byte length only.
+- **Long text goes through a file** on the CLI (`--prompt-file`,
+  `--message-file`) and through the JSON body on the route, capped at 64 KiB
+  either way; longer material belongs in a file the agent is told to read.
 
 ## `uxnan-cli`
 
@@ -220,7 +327,7 @@ uxnan-cli file open <path> [--worktree <worktree>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
-uxnan-cli skills get control [--full]           # the guide
+uxnan-cli skills get control [--full]           # the guide / the full reference
 Global: --json, --timeout <seconds>
 ```
 
@@ -250,8 +357,15 @@ finds a debug app and never the installed one).
 
 **Building and running it.** `cargo build -p uxnan-cli --release` in
 `src-tauri/` produces `target/release/uxnan-cli`. Put it on the `PATH` by hand
-for now; bundling it with the installers and a Settings → Control → *Install
-`uxnan-cli`* action are FOR-DEV.
+for now; bundling it with the installers is FOR-DEV.
+
+**The reference is its output.** `uxnan-cli skills get control --full >
+docs/control-api-reference.md` (from `uxnandesktop/`) regenerates
+[`docs/control-api-reference.md`](./control-api-reference.md); the same text is
+the published skill's `references/catalog.md`. A test in the CLI crate
+(`the_committed_reference_is_current`) compares the committed file with the
+generator byte for byte, so a catalog change that forgets the doc fails
+`cargo test`.
 
 ## For the agent
 
@@ -260,9 +374,9 @@ tells it what the tools are for, and each tool describes itself. The published
 `uxnan-control` skill is for an agent that runs **outside** Uxnan and reaches the
 app through `uxnan-cli`: a short `SKILL.md` (purpose, commands, selectors, exit
 codes) with `references/catalog.md` — which **is** the output of `uxnan-cli
-skills get control --full`, so when the catalog grows the reference is
-regenerated, never hand-edited — plus `references/protocol.md` (the wire
-contract for scripts) and `references/workflows.md` (recipes).
+skills get control --full`, every entry with its arguments and result plus the
+wire contract for a script, so when the catalog grows the reference is
+regenerated, never hand-edited — and `references/workflows.md` (recipes).
 
 ## Verifying
 
@@ -290,7 +404,10 @@ contract for scripts) and `references/workflows.md` (recipes).
   own unit tests.
 - **CLI** (`cargo test -p uxnan-cli`): the HTTP client's round trip against a
   stand-in server, response parsing, the origin derivation, the process
-  start-time check, the guide naming every entry and exit status, the table
+  start-time check, the reference naming every entry, every error code and
+  exit status, every CLI form resolving to a real clap subcommand, every result
+  field rendering with a meaning, the committed
+  `docs/control-api-reference.md` equal to the generator's output, the table
   and record renderers.
 - **Window** (`npm run test:dom`, `src/lib/control/bridge.svelte.test.ts`):
   the tab listing, reveal/open/diff, run list/show, an unknown method answered
