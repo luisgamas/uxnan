@@ -364,6 +364,8 @@ async fn a_worktree_is_created_receipted_audited_and_not_created_twice() {
         .as_str()
         .unwrap()
         .contains("did not adopt"));
+    // No agent was asked for: the receipt has no `terminal`, rather than a null.
+    assert!(receipt.get("terminal").is_none(), "{receipt}");
     let created = receipt["worktree"]["path"].as_str().unwrap().to_string();
     assert!(std::path::Path::new(&created).join("README.md").exists());
 

@@ -311,7 +311,9 @@ pub async fn create_entry<R: tauri::Runtime>(
     match adoption {
         Ok(v) => {
             body["adopted"] = json!(true);
-            if let Some(t) = v.get("terminal") {
+            // Only a launched agent has a terminal; the window answers `null`
+            // for a plain adoption and the receipt then leaves the field out.
+            if let Some(t) = v.get("terminal").filter(|t| !t.is_null()) {
                 body["terminal"] = t.clone();
             }
         }

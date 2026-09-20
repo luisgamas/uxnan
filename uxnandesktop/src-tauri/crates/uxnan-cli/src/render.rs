@@ -68,9 +68,18 @@ pub fn render(method: &str, value: &Value) -> String {
         ),
         "automation/list" => table(
             value.get("automations"),
-            &["id", "name", "enabled", "agent", "cwd"],
-            &[],
-            &[],
+            &["id", "name", "enabled", "workingDir"],
+            &[
+                |a: &Value| a["schedule"]["kind"].as_str().unwrap_or("").to_string(),
+                |a: &Value| {
+                    a["steps"]
+                        .as_array()
+                        .map(|s| s.len())
+                        .unwrap_or(0)
+                        .to_string()
+                },
+            ],
+            &["schedule", "steps"],
         ),
         _ => record(value, 0),
     }

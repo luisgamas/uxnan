@@ -20,14 +20,22 @@ pub async fn list<R: tauri::Runtime>(
     let items: Vec<Value> = all
         .iter()
         .map(|a| {
-            let v = serde_json::to_value(a).unwrap_or(Value::Null);
             json!({
-                "id": v.get("id").cloned().unwrap_or(Value::Null),
-                "name": v.get("name").cloned().unwrap_or(Value::Null),
-                "enabled": v.get("enabled").cloned().unwrap_or(Value::Null),
-                "schedule": v.get("schedule").cloned().unwrap_or(Value::Null),
-                "cwd": v.get("cwd").cloned().unwrap_or(Value::Null),
-                "agent": v.get("agent").cloned().unwrap_or(Value::Null),
+                "id": a.id,
+                "name": a.name,
+                "description": a.description,
+                "enabled": a.enabled,
+                "tags": a.tags,
+                "workingDir": a.working_dir,
+                "worktreePerRun": a.worktree_per_run,
+                "schedule": a.schedule,
+                "steps": a.steps.iter().map(|s| json!({
+                    "id": s.id,
+                    "title": s.title,
+                    "agent": s.agent,
+                    "model": s.model,
+                })).collect::<Vec<_>>(),
+                "updatedAt": a.updated_at,
             })
         })
         .collect();

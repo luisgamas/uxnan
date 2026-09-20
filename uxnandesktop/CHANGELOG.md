@@ -86,6 +86,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **`automation/list` (control surface) answered `cwd: null, agent: null`.**
+  The entry mapped fields the automation record never had. It now returns the
+  record's own: `description`, `tags`, `workingDir`, `worktreePerRun`,
+  `schedule` (as saved) and its `steps` (id, title, agent, model), plus
+  `updatedAt`; `uxnan-cli automation ls` shows the working folder, the
+  schedule kind and the step count.
+- **`worktree/create` without an agent put `terminal: null` in its receipt.**
+  The field is now left out when no agent was asked for, as the reference
+  documents.
 - **A plain-folder project that runs `git init` is now recognized as a
   repository without re-adding it.** Whether a folder is a repository was
   decided once, when it was added, and persisted; a `git init` in a terminal
