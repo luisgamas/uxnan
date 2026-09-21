@@ -161,30 +161,18 @@ pub fn data_dir() -> Option<PathBuf> {
 }
 
 /// Refuse a discovery file another user could read: the token in it would be
-/// theirs too. On Unix that is the mode; on Windows the file lives in the
-/// per-user profile whose ACL already excludes other users.
+/// theirs too. The mode on Unix, the DACL on Windows — the same test the app
+/// applies when it writes the file (`uxnan_control_protocol::private`).
 fn check_private(path: &std::path::Path) -> Result<(), ClientError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(path)
-            .map_err(|e| ClientError::new(ErrorCode::Unavailable, e.to_string()))?
-            .permissions()
-            .mode()
-            & 0o777;
-        if mode & 0o077 != 0 {
-            return Err(ClientError::new(
-                ErrorCode::ScopeDenied,
-                format!(
-                    "{} is readable by others (mode {:o}); refusing to use its token — fix the permissions or restart Uxnan",
-                    path.display(),
-                    mode
-                ),
-            ));
-        }
-    }
-    let _ = path;
-    Ok(())
+    uxnan_control_protocol::private::check(path).map_err(|why| {
+        ClientError::new(
+            ErrorCode::ScopeDenied,
+            format!(
+                "{} is {why}; refusing to use its token — fix the permissions or restart Uxnan",
+                path.display()
+            ),
+        )
+    })
 }
 
 /// Whether `pid` is alive and started when the file says it did. A pid that

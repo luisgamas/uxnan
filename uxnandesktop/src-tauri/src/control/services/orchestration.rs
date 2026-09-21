@@ -62,8 +62,8 @@ async fn window<R: tauri::Runtime>(
     params: Value,
 ) -> Result<Value, RpcError> {
     let answer = Bridge::ask(app, method, params).await?;
-    if let Some(message) = answer.get("error").and_then(|v| v.as_str()) {
-        return Err(RpcError::new(ErrorCode::NotFound, message));
+    if let Some(refusal) = crate::control::bridge::refused(&answer) {
+        return Err(refusal);
     }
     Ok(answer)
 }
@@ -294,6 +294,7 @@ pub async fn worker_start<R: tauri::Runtime>(
             "agent": agent,
             "title": format!("{task} · {run}", run = short(run)),
             "prompt": Value::Null,
+            "unattended": params.get("unattended"),
         }),
     )
     .await?;
@@ -315,15 +316,16 @@ pub async fn worker_start<R: tauri::Runtime>(
         }),
     )
     .await?;
-    Ok(receipts::receipt(
-        receipts::key_of(params).as_deref(),
-        json!({
-            "task": task,
-            "dispatchId": bound.get("dispatchId").cloned().unwrap_or(Value::Null),
-            "terminal": terminal,
-            "worktree": entry.path,
-        }),
-    ))
+    let mut body = json!({
+        "task": task,
+        "dispatchId": bound.get("dispatchId").cloned().unwrap_or(Value::Null),
+        "terminal": terminal,
+        "worktree": entry.path,
+    });
+    if let Some(mode) = opened.get("unattended") {
+        body["unattended"] = mode.clone();
+    }
+    Ok(receipts::receipt(receipts::key_of(params).as_deref(), body))
 }
 
 /// `inbox/check`: acknowledge, read, and with `wait` sleep on the change

@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 889 Rust tests (822 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
+always wins). 891 Rust tests (823 unit in the app crate + 18 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,278 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,283 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -868,9 +868,21 @@ refused); a 60 s report grace before the idle signal closes a worker's task.
 `uxnan-cli run create|finish`, `task create|ls|update`, `worker start`,
 `inbox check`, `ask`, `answer`. Verified live: a Claude Code coordinator
 driving a Claude Code worker in a new worktree through the MCP tools alone;
-a worker's question answered by the coordinator. 42 app tests (13 end to end over a real
-socket with Tauri's mock app, one creating a worktree on a real repository, one
-waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
+a worker's question answered by the coordinator. **Hardened:** `control.json`
+is owner-only on Windows too (`uxnan_control_protocol::private`, one module
+for the writer and the CLI's check); every launch (`terminal/create` /
+`worktree/create` with `agent`, `worker/start`) is budgeted by the resource
+policy's orchestration concurrency (`launch/admit` over the bridge; `-32005`
+*busy* with `live`/`cap` before anything is created); `unattended: true`
+launches the CLI in its reviewed automatic mode (Claude Code
+`--permission-mode auto`, Codex `--approve-for-me`; receipt `applied` /
+`configured` / `unsupported`) — verified live with an unattended Codex worker
+that ran the MCP tools and reported with no prompt, once its hook trust was
+seeded under the right key (`codex_trust`, group index read back from
+`hooks.json`) and the multi-line preamble submitted (400 ms post-paste
+Enter). 46 app tests (13 end to end over a real socket with Tauri's mock app,
+one creating a worktree on a real repository, one waiting on a real PTY), 18
+protocol, 13 CLI, 15 window-bridge Vitest.
 
 ### Still pending
 - [ ] **The Windows shim on uninstall.** The app keeps a copy of `uxnan-cli`
@@ -880,20 +892,20 @@ waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
       environment component) and verify the PATH edit and its broadcast on the
       platform matrix (005) — this code was written on macOS and only compiled
       on the Windows CI leg.
-- [ ] **Windows ACL of `control.json`.** On Unix the file is `0600` and the CLI
-      refuses anything laxer; on Windows it inherits the per-user profile ACL and
-      nothing is verified. Confirm on the platform matrix (005) that another local
-      user cannot read it; if not, set an explicit DACL (`icacls`-equivalent via
-      the Windows API) and check it in the CLI.
+- [ ] **Windows ACL of `control.json` — run it on real Windows.** The app now
+      writes the file with an explicit owner-only DACL and `uxnan-cli` refuses
+      one whose access list grants anyone else (`uxnan_control_protocol::private`,
+      Win32 `SetEntriesInAclW` / `SetNamedSecurityInfoW` /
+      `GetExplicitEntriesFromAclW`). Written on macOS and compiled by the Windows
+      CI leg only: confirm on the platform matrix (005) that `icacls` shows the
+      single entry, that another local user cannot read the file, and that the
+      CLI's refusal fires on a file re-shared by hand.
 - [ ] **An inbox view for a driven run.** A driven run shows in the Runs console
       as any run (tasks, gates, outputs), but its inbox — what the coordinator
       has not yet acknowledged — has no UI: the person sees questions as gates
       and results as step outputs, not the queue itself. A small "inbox"
       strip on a driven run's card (count + the unacknowledged messages) would
       complete the picture. UI → propose-and-review.
-- [ ] **Budgets on `create` (plan 023).** `worktree/create` and `terminal/create`
-      apply no concurrency or process budget yet; when 023 lands, the service is
-      where the policy goes (one place, both doors).
 
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
@@ -1324,11 +1336,12 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       through `wsl.exe -d <distro>` with the Linux-side CLI (see `wsl.rs` +
       `git.rs`'s WSL path). `FOR-DEV:` marker in `agentrun.rs`.
 - [ ] **Per-agent PTY submit strategy.** `pty_paste_submit` (bracketed paste + a
-      delayed Enter, 150 ms for multi-line) covers standard TUIs, but a Claude
-      Code-family agent with a *long* post-paste Enter guard may still leave a
-      multi-line prompt unsent when driven interactively. Add a per-agent submit
-      override (delay / key) if one is found. `FOR-DEV:` marker in `commands.rs`
-      (`pty_paste_submit`). Headless avoids typing entirely, so it's the workaround.
+      delayed Enter, 400 ms for multi-line — 150 ms was swallowed by Codex's
+      post-paste guard) submits on every driven agent today, but one with a
+      *longer* guard would still leave a multi-line prompt unsent when driven
+      interactively. Add a per-agent submit override (delay / key) if one is
+      found. `FOR-DEV:` marker in `commands.rs` (`pty_paste_submit`). Headless
+      avoids typing entirely, so it's the workaround.
 - [ ] **Remediation + evaluator-optimizer.** `onFailure: "remediate:<stepId>"` (run a
       fix step, then retry) and a `kind: "eval"` step (generate → evaluate → loop) —
       the DAG/model supports them; the scheduler + UI don't yet.
@@ -1572,7 +1585,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 889 Rust + 1,278 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 891 Rust + 1,283 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

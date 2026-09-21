@@ -1323,6 +1323,7 @@ class ProjectsStore {
     created: WorktreeEntry,
     agentId?: string | null,
     background = false,
+    extraArgs?: readonly string[],
   ): Promise<string | null> {
     await this.loadWorktrees(repoId, false);
     if (!background) this.setActiveWorktree(created.path);
@@ -1334,7 +1335,7 @@ class ProjectsStore {
           ? app.launchableAgents.find((a) => a.id === agentId)
           : undefined;
     return agent
-      ? app.launchAgent(agent, { cwd: created.path, workspace: created.path, background })
+      ? app.launchAgent(agent, { cwd: created.path, workspace: created.path, background, extraArgs })
       : null;
   }
 

@@ -789,10 +789,12 @@ pub async fn pty_write(
 const PASTE_SUBMIT_DELAY_MS: u64 = 50;
 
 /// Longer gap before Enter for a **multi-line** (bracketed) paste: some TUIs
-/// (Claude Code-family agents) briefly *guard* the Enter right after a paste — to
-/// stop an accidental multi-line submit — so a too-quick Enter is swallowed and the
-/// text is left in the composer. This gives that guard time to clear.
-const BRACKETED_SUBMIT_DELAY_MS: u64 = 150;
+/// (Claude Code-family agents, Codex) briefly *guard* the Enter right after a
+/// paste — to stop an accidental multi-line submit — so a too-quick Enter is
+/// swallowed and the text is left in the composer. This gives that guard time to
+/// clear. 150 ms was swallowed by Codex's guard (the first message of a launched
+/// worker sat unsent); 400 ms submits it on every driven agent.
+const BRACKETED_SUBMIT_DELAY_MS: u64 = 400;
 
 /// Wrap `text` in bracketed-paste markers (`ESC[200~` … `ESC[201~`), stripping any
 /// terminators already inside it so the payload can't break out of the paste early.
@@ -837,8 +839,9 @@ fn pty_submit_payload(text: &str) -> String {
 ///
 // FOR-DEV: bracketed paste assumes the agent enabled DECSET 2004 (every modern
 // coding TUI — Claude Code, Codex, OpenCode, Pi, Antigravity — does). A multi-line
-// submit into an agent with a *long* post-paste Enter guard may still not fire; if
-// one is found, add a per-agent submit strategy (delay / key) here. See FOR-DEV.md.
+// submit into an agent with a post-paste Enter guard *longer* than
+// `BRACKETED_SUBMIT_DELAY_MS` would still not fire; if one is found, add a
+// per-agent submit strategy (delay / key) here. See FOR-DEV.md.
 #[tauri::command]
 pub async fn pty_paste_submit(
     state: State<'_, AppState>,

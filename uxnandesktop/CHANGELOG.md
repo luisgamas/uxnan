@@ -4,20 +4,6 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
-### Fixed
-
-- **A worktree or terminal an agent creates no longer steals the focus.**
-  `worktree/create` and `terminal/create` (and so `worker/start`) used the
-  dialog's path, which makes the new worktree active and its tab the one on
-  screen — fine for a click, wrong for a coordinator working while you watch
-  it: every worker it started yanked you to its tab. The control surface now
-  creates in the **background** (`NewTabOptions.background`,
-  `adoptWorktree(…, background)`): the worktree is listed, its workspace
-  mounted so the shell spawns and the agent runs, but your active worktree and
-  tab stay put — what an agent creates leaves a trace, it does not take the
-  seat. `terminal/reveal`, `file/open` and `file/diff` are the entries that
-  move the focus, on purpose.
-
 ### Added
 
 - **`uxnan-cli` ships inside the app, and every terminal Uxnan opens has it.**
@@ -35,7 +21,64 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   added once to the user PATH on Windows; a file already there that is not ours
   is left alone. `status` (and `uxnan-cli status`) report `cli.bundled` and
   `cli.shim`. `docs/build.md` → *The `uxnan-cli` sidecar*.
+- **A launch budget on the control surface.** Every agent an agent (or a
+  script) launches — `terminal/create` or `worktree/create` with `agent`,
+  `worker/start` — now counts against the resource policy's orchestration
+  concurrency, the cap the run engine already dispatches by. With as many
+  agents running as the cap allows, the launch is refused as *busy*
+  (`-32005`, with `live` and `cap`) before anything is created, and the caller
+  waits for one to finish. A plain terminal and a person's click are not
+  budgeted. The deterministic half of plan 023, at the one place the three
+  doors share.
+- **Unattended launches.** `worker/start`, `terminal/create` and
+  `worktree/create` with an agent take `unattended: true` (`--unattended` on
+  the CLI) and launch the agent in its CLI's reviewed automatic mode — Claude
+  Code `--permission-mode auto`, Codex `--approve-for-me` — so a worker with
+  nobody at its terminal does not stop at every tool for an "Allow". Per
+  launch and opt-in: profiles are untouched, one whose args already pick a
+  mode is respected, and the receipt says `applied`, `configured` or
+  `unsupported`. Verified live: an unattended Codex worker ran the Uxnan MCP
+  tools and reported its result with no prompt.
 
+### Changed
+
+- **`control.json` is owner-only on Windows too.** The discovery file (the
+  control token) was `0600` on Unix and, on Windows, whatever the profile
+  folder handed down. The app now writes it with an explicit, protected DACL
+  holding one entry for the current user, and `uxnan-cli` refuses a file whose
+  access list grants any account but the user, SYSTEM and Administrators —
+  both through one module (`uxnan_control_protocol::private`), so the writer
+  and the reader cannot disagree about what private means. Compiled by the
+  Windows CI leg; a run on real Windows is recorded in FOR-DEV.
+
+### Fixed
+
+- **A worktree or terminal an agent creates no longer steals the focus.**
+  `worktree/create` and `terminal/create` (and so `worker/start`) used the
+  dialog's path, which makes the new worktree active and its tab the one on
+  screen — fine for a click, wrong for a coordinator working while you watch
+  it: every worker it started yanked you to its tab. The control surface now
+  creates in the **background** (`NewTabOptions.background`,
+  `adoptWorktree(…, background)`): the worktree is listed, its workspace
+  mounted so the shell spawns and the agent runs, but your active worktree and
+  tab stay put — what an agent creates leaves a trace, it does not take the
+  seat. `terminal/reveal`, `file/open` and `file/diff` are the entries that
+  move the focus, on purpose.
+- **Codex no longer asks to review its hooks on every launch.** Codex keys a
+  hook's trust by `<hooks.json>:<event>:<group>:<handler>`, and the app wrote
+  its `trusted_hash` under group `0` regardless of where the install had
+  actually put Uxnan's group — after any group another product keeps in the
+  same file. On such a machine Uxnan's hooks stayed untrusted (Codex's "hooks
+  need review" prompt at every start, a worker stalled on it) and the other
+  product's hook was shown as "modified" because its key now carried our hash.
+  The trust entry now follows the index read back from the file just written,
+  an entry of ours left under another index is dropped, and uninstall removes
+  only the keys whose hash is ours. Nothing else in `config.toml` is touched:
+  Codex launched outside Uxnan sees the same hooks it always did, trusted.
+- **A multi-line first message reaches Codex.** The Enter sent 150 ms after
+  a bracketed paste fell inside Codex's post-paste guard, so the preamble a
+  coordinator gives its worker sat in the composer unsent; the gap is 400 ms
+  now, which every driven agent submits.
 
 ## [0.0.52] - 20260920
 ### Added

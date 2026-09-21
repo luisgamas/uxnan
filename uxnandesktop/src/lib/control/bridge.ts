@@ -19,6 +19,7 @@ import { orchestration } from "$lib/state/orchestration.svelte";
 import { projects } from "$lib/state/projects.svelte";
 import { app } from "$lib/state/app.svelte";
 import { readInstanceText } from "$lib/terminal/instances";
+import { picksPermissionMode, unattendedArgs } from "$lib/agentUnattended";
 import type { WorktreeEntry } from "$lib/types";
 
 /** What the backend sends. */
@@ -45,14 +46,48 @@ export interface ControlTab {
 
 /** Resolve the `agent` argument of a create entry, or throw the message the
  *  caller reads. `null` when no agent was asked for. */
-function agentFor(selector: unknown): { id: string; name: string; command: string } | null {
+function agentFor(selector: unknown): { id: string; name: string; command: string; args: string[] } | null {
   if (selector === undefined || selector === null || String(selector).trim() === "") return null;
   const agent = app.findLaunchableAgent(String(selector));
   if (!agent) {
     const known = app.launchableAgents.map((a) => a.command.trim() || a.name).join(", ");
     throw new Error(`no configured agent matches \`${String(selector)}\`; known: ${known || "none"}`);
   }
-  return { id: agent.id, name: agent.name, command: agent.command.trim() };
+  return { id: agent.id, name: agent.name, command: agent.command.trim(), args: agent.args };
+}
+
+/** What an `unattended` launch adds, and what the receipt says about it:
+ *  `applied` (the CLI's reviewed automatic mode goes on the command line),
+ *  `configured` (the profile's own args already pick a mode — left alone) or
+ *  `unsupported` (no flag known for that CLI — launched as configured). */
+function unattended(
+  agent: { command: string; args: string[] },
+  wanted: unknown,
+): { extraArgs?: readonly string[]; unattended?: "applied" | "configured" | "unsupported" } {
+  if (wanted !== true) return {};
+  if (picksPermissionMode(agent.args)) return { unattended: "configured" };
+  const args = unattendedArgs(agent.command);
+  if (!args) return { unattended: "unsupported" };
+  return { extraArgs: args, unattended: "applied" };
+}
+
+/** The launch budget: an agent started through the surface — a terminal with
+ *  an agent, a worktree with one, a worker — counts against the resource
+ *  policy's orchestration concurrency, the same cap the run engine dispatches
+ *  by (plan 023, deterministic protections). A person clicking is not
+ *  budgeted; a coordinator that would start a fifth worker on a cap of four is
+ *  told *busy*, with the numbers, and waits for one to finish. */
+export function admitAgentLaunch(): { ok: true } | { ok: false; error: string; busy: true; live: number; cap: number } {
+  const live = orchestrationRun.liveAgents.length;
+  const cap = orchestrationRun.concurrencyCap;
+  if (live < cap) return { ok: true };
+  return {
+    ok: false,
+    busy: true,
+    live,
+    cap,
+    error: `the launch budget is spent: ${live} agents are running and the resource policy allows ${cap} at once — wait for one to finish (or raise the orchestration concurrency in Settings → Resources)`,
+  };
 }
 
 /** Queue a first message for a just-launched agent. The broadcast queue holds it
@@ -116,20 +151,36 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
       completed: r.steps.filter((s) => s.status === "completed").length,
     })),
   }),
+  "launch/admit": () => admitAgentLaunch(),
   "worktree/adopt": async (p) => {
     const projectId = String(p.projectId ?? "");
     const worktree = p.worktree as WorktreeEntry;
     const agent = agentFor(p.agent);
+    const mode = agent ? unattended(agent, p.unattended) : {};
     // In the background: the sidebar lists it and the agent runs, the person's
     // focus stays where it is (`terminal/reveal` is the entry that moves it).
-    const tabId = await projects.adoptWorktree(projectId, worktree, agent ? agent.id : null, true);
+    const tabId = await projects.adoptWorktree(
+      projectId,
+      worktree,
+      agent ? agent.id : null,
+      true,
+      mode.extraArgs,
+    );
     if (tabId) queuePrompt(tabId, p.prompt);
-    return { terminal: tabId ? { id: tabId, agent: agent?.name } : null };
+    return {
+      terminal: tabId ? { id: tabId, agent: agent?.name } : null,
+      ...(mode.unattended ? { unattended: mode.unattended } : {}),
+    };
   },
   "terminal/create": (p) => {
     const worktree = String(p.worktree ?? "");
     const target = String(p.target ?? "local");
     const agent = agentFor(p.agent);
+    if (agent) {
+      const admitted = admitAgentLaunch();
+      if (!admitted.ok) return admitted;
+    }
+    const mode = agent ? unattended(agent, p.unattended) : {};
     const title = typeof p.title === "string" && p.title.trim() ? p.title.trim() : undefined;
     const targetOpt = target === "local" ? undefined : target;
     let tabId: string | null;
@@ -141,6 +192,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
         title,
         target: targetOpt,
         background: true,
+        extraArgs: mode.extraArgs,
       });
     } else {
       tabId = terminals.create({
@@ -153,7 +205,10 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
     }
     if (!tabId) return { error: "the agent has no command to launch" };
     if (tabId && agent) queuePrompt(tabId, p.prompt);
-    return { terminal: { id: tabId, agent: agent?.name } };
+    return {
+      terminal: { id: tabId, agent: agent?.name },
+      ...(mode.unattended ? { unattended: mode.unattended } : {}),
+    };
   },
   "agent/send": async (p) => {
     const terminal = String(p.terminal ?? "");

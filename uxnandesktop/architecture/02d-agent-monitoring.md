@@ -443,7 +443,11 @@ corriendolos de verdad y leyendo lo que emiten**:
 
 Codex expone los dos eventos con **el mismo payload que Claude**, asi que basta con
 suscribirse: van en `codex_trust::CODEX_EVENTS` con su etiqueta snake_case, porque su
-`trusted_hash` es **por evento** y una etiqueta equivocada deja el hook sin ejecutar.
+`trusted_hash` es **por evento y por grupo** (`<hooks.json>:<evento>:<índice de
+grupo>:0`, con el índice donde el merge dejó nuestro grupo — detrás de los de
+otros productos en el mismo archivo — leído del archivo recién escrito) y una
+etiqueta o un índice equivocados dejan el hook sin ejecutar y a Codex pidiendo
+revisar los hooks en cada arranque.
 **Droid** dispara `SubagentStop` sin id de hijo, asi que su reporte se descarta.
 **Pi** no tiene subagentes; **Antigravity** y **OMP** si los tienen pero no los
 exponen donde los podamos leer (los hooks de Antigravity son solo su bucle de
@@ -654,8 +658,10 @@ ambos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
 referenciado por la config MCP del agente como `UXNAN_MCP_TOKEN`; con
 `UXNAN_HOOK_URL` y `UXNAN_AGENT_ID`) identifica un proceso que el ADE arranco y
 ancla `current` en su terminal; el **token de control** vive solo en el archivo de
-descubrimiento `control.json` del directorio de datos (`0600` en Unix; en Windows
-la ACL del perfil de usuario), junto al pid **y la hora de inicio** del proceso, y
+descubrimiento `control.json` del directorio de datos (legible solo por su dueno:
+`0600` en Unix; en Windows una DACL explicita y protegida con una sola entrada para
+el usuario actual, `uxnan_control_protocol::private`, el mismo modulo con el que
+`uxnan-cli` lo comprueba), junto al pid **y la hora de inicio** del proceso, y
 se borra al salir limpiamente — `uxnan-cli` rechaza un archivo legible por otros,
 una version de protocolo distinta o un pid que ya no es ese proceso. El token de
 control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
@@ -1026,6 +1032,22 @@ agentes** corriendo **o** cuando existe alguna corrida):
   respuesta (≤15 s, luego *timeout* con `questionId` para seguir esperando).
   `question/answer` resuelve la compuerta (`approve` con la respuesta como nota, o
   `reject`); el worker en espera la recibe al instante.
+- **Presupuesto de lanzamiento.** Cada agente que la superficie lanza
+  (`terminal/create` o `worktree/create` con `agent`, `worker/start`) cuenta contra
+  la **concurrencia de orquestacion de la politica de recursos** — el mismo tope
+  con el que despacha el motor (`orchestrationRun.concurrencyCap`). Con tantos
+  agentes vivos como permite el tope, el lanzamiento se rechaza con `-32005`
+  *busy* (`data.live`, `data.cap`) **antes de crear nada** (`launch/admit` por el
+  puente antes de un worktree con agente); una terminal sin agente y el clic de
+  una persona no se presupuestan. Es la mitad determinista del plan 023 aplicada
+  en el unico sitio que comparten las tres puertas.
+- **Lanzamiento desatendido.** `unattended: true` en `worker/start`,
+  `terminal/create` o `worktree/create` con agente lanza el CLI en su **modo
+  automatico revisado** (Claude Code `--permission-mode auto`, Codex
+  `--approve-for-me`; nunca su bandera de saltarse todo), por lanzamiento y
+  opt-in: los perfiles de la persona no cambian y uno cuyos args ya eligen modo
+  se respeta. El recibo dice `unattended: applied | configured | unsupported`
+  (`src/lib/agentUnattended.ts`).
 - **Alcance y auditoria.** Las corridas no son por proyecto; `worker/start` con
   `new` crea el worktree en el proyecto del llamador (o el indicado), sujeto al
   alcance del token. Todo movimiento del coordinador salvo las lecturas y las

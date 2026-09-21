@@ -191,6 +191,9 @@ struct Launch {
     /// A file whose contents become the agent's first message (needs --agent).
     #[arg(long)]
     prompt_file: Option<std::path::PathBuf>,
+    /// Launch the agent in its CLI's reviewed automatic mode (no per-tool prompts).
+    #[arg(long)]
+    unattended: bool,
     /// A caller-chosen key: repeating the call with it returns the first receipt.
     #[arg(long)]
     idempotency_key: Option<String>,
@@ -375,6 +378,9 @@ enum WorkerCmd {
         /// For `new`: the project (`current` by default).
         #[arg(long)]
         project: Option<String>,
+        /// Launch the worker in its CLI's reviewed automatic mode (no per-tool prompts).
+        #[arg(long)]
+        unattended: bool,
         /// A caller-chosen key: repeating the call with it returns the first receipt.
         #[arg(long)]
         idempotency_key: Option<String>,
@@ -690,9 +696,13 @@ fn plan(command: Command) -> Result<Plan, String> {
                 worktree,
                 branch,
                 project,
+                unattended,
                 idempotency_key,
             } => {
                 let mut p = json!({ "run": run, "task": task, "agent": agent });
+                if unattended {
+                    p["unattended"] = json!(true);
+                }
                 if let Some(w) = sel(worktree) {
                     p["worktree"] = json!(w);
                 }
@@ -861,6 +871,12 @@ impl Launch {
                 );
             }
             params["prompt"] = json!(read_prompt_file(&path)?);
+        }
+        if self.unattended {
+            if params.get("agent").is_none() {
+                return Err("--unattended needs --agent: it is the agent's launch mode".into());
+            }
+            params["unattended"] = json!(true);
         }
         if let Some(key) = self.idempotency_key.filter(|k| !k.trim().is_empty()) {
             params["idempotencyKey"] = json!(key.trim());
@@ -1069,20 +1085,33 @@ mod tests {
         let no_agent = Launch {
             agent: None,
             prompt_file: Some(file.clone()),
+            unattended: false,
             idempotency_key: None,
         };
         assert!(no_agent
             .apply(&mut p)
             .unwrap_err()
             .contains("needs --agent"));
+        let unattended_shell = Launch {
+            agent: None,
+            prompt_file: None,
+            unattended: true,
+            idempotency_key: None,
+        };
+        assert!(unattended_shell
+            .apply(&mut json!({}))
+            .unwrap_err()
+            .contains("--unattended needs --agent"));
         let full = Launch {
             agent: Some(" claude ".into()),
             prompt_file: Some(file),
+            unattended: true,
             idempotency_key: Some("k1".into()),
         };
         full.apply(&mut p).unwrap();
         assert_eq!(p["agent"], "claude");
         assert_eq!(p["prompt"], "hello");
+        assert_eq!(p["unattended"], true);
         assert_eq!(p["idempotencyKey"], "k1");
         let _ = std::fs::remove_dir_all(&dir);
     }

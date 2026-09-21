@@ -415,9 +415,18 @@ The per-agent notes below are what each CLI made us learn the hard way:
 - **Codex trust.** Codex 0.129+ only runs a hook whose exact identity is trusted;
   the ADE also writes the reproduced `trusted_hash` into `~/.codex/config.toml`,
   so the hook actually fires (a raw `hooks.json` alone would sit un-run). The
-  trust is **per event**, keyed by Codex's own snake_case label — so subscribing
-  to a new event means adding it to `codex_trust::CODEX_EVENTS` with that label,
-  never to `hooks.json` alone.
+  trust is **per event and per group**, keyed
+  `<hooks.json>:<snake_case event>:<group index>:0` — the group index is where
+  the merge left our entry in that event's array, *after* the groups other
+  products keep in the same file, so it is `1` on a machine with another hook
+  installed and only `0` when ours is alone. Install reads the index back from
+  the file it just wrote, and drops an entry of ours it finds under another
+  index (a group that moved, or the earlier build that wrote `:0:0` regardless
+  and thereby marked the other product's hook "modified" while leaving ours
+  untrusted — the "hooks need review" prompt on every launch). Uninstall
+  removes only the keys whose hash is ours. Subscribing to a new event means
+  adding it to `codex_trust::CODEX_EVENTS` with its label, never to
+  `hooks.json` alone.
 - **OpenCode / Pi** install a plugin / extension file into the agent's own
   plugin / extension directory (only overwriting a file the ADE itself manages).
 - **Restart the agent afterward** so it re-reads its config (Claude picks up

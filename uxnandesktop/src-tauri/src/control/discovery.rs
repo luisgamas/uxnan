@@ -4,8 +4,8 @@
 //! Written once the server is up, under the app's data directory, holding the
 //! **control** token — minted fresh on every start, never the per-launch token
 //! the terminals get. Readable only by the user who runs the app: `0600` on
-//! Unix; on Windows the file inherits the per-user profile's ACL, which is the
-//! same boundary as the state file beside it. Removed on a clean exit; a
+//! Unix, an explicit owner-only DACL on Windows (`uxnan_control_protocol::private`,
+//! the same code `uxnan-cli` checks with). Removed on a clean exit; a
 //! client also checks the pid **and** its start time, so a file left behind by
 //! a crash cannot point it at a recycled pid.
 
@@ -59,13 +59,9 @@ pub fn write(data_dir: &Path, origin: &str, token: &str) -> Option<PathBuf> {
     if std::fs::write(&tmp, body).is_err() {
         return None;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).is_err() {
-            let _ = std::fs::remove_file(&tmp);
-            return None;
-        }
+    if uxnan_control_protocol::private::restrict(&tmp).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return None;
     }
     if std::fs::rename(&tmp, &path).is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -95,12 +91,7 @@ mod tests {
         assert!(record.process_start > 0);
         assert_eq!(record.endpoint, "http://127.0.0.1:4242");
         assert_eq!(record.token, "tok");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o600);
-        }
+        assert_eq!(uxnan_control_protocol::private::check(&path), Ok(()));
         // No temp file is left beside it.
         let leftovers: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()

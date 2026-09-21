@@ -437,3 +437,76 @@ describe("a run driven by a coordinator", () => {
     expect((stranger.result as { error: string }).error).toContain("not a worker");
   });
 });
+
+describe("the launch budget", () => {
+  it("refuses an agent launch past the resource policy's concurrency, with the numbers", async () => {
+    terminals.setWorkspace(WT);
+    const cap = orchestrationRun.concurrencyCap;
+    expect(cap).toBeGreaterThan(0);
+    for (let i = 0; i < cap; i++) {
+      terminals.create({ cwd: WT, title: `agent ${i}`, agentName: "Claude Code", agentCommand: "claude" });
+    }
+    // A plain terminal is not budgeted; an agent is.
+    const shell = await answer({ id: "b1", method: "terminal/create", params: { worktree: WT, title: "shell" } });
+    expect(shell.error).toBeUndefined();
+    const refused = await answer({ id: "b2", method: "terminal/create", params: { worktree: WT, agent: "claude" } });
+    const out = refused.result as { error?: string; busy?: boolean; live?: number; cap?: number };
+    expect(out.busy).toBe(true);
+    expect(out.live).toBe(cap);
+    expect(out.cap).toBe(cap);
+    expect(out.error).toContain("launch budget");
+    // The same answer the backend asks for before creating a worktree with an agent.
+    const admit = await answer({ id: "b3", method: "launch/admit", params: {} });
+    expect((admit.result as { busy?: boolean }).busy).toBe(true);
+    // Once an agent has exited, the next launch is admitted again.
+    const agents = orchestrationRun.liveAgents;
+    expect(agents).toHaveLength(cap);
+    terminals.handleShellExit(agents[0].tabId);
+    expect((await answer({ id: "b4", method: "launch/admit", params: {} })).result).toEqual({ ok: true });
+  });
+});
+
+describe("unattended launches", () => {
+  it("adds the CLI's reviewed automatic mode on request, and says when it cannot", async () => {
+    terminals.setWorkspace(WT);
+    app.settings.agentProfiles = [
+      { id: "a-claude", name: "Claude Code", command: "claude", args: [] },
+      { id: "a-codex", name: "Codex", command: "codex", args: [] },
+      { id: "a-plan", name: "Planner", command: "claude", args: ["--permission-mode", "plan"] },
+      { id: "a-grok", name: "Grok", command: "grok", args: [] },
+    ];
+    const launch = async (agent: string, unattended?: boolean) => {
+      const out = await answer({
+        id: `u-${agent}-${unattended}`,
+        method: "terminal/create",
+        params: { worktree: WT, agent, unattended },
+      });
+      expect(out.error).toBeUndefined();
+      const r = out.result as { terminal: { id: string }; unattended?: string };
+      const tab = terminals.findTab(r.terminal.id);
+      const cmd = tab?.kind === "terminal" ? (tab.runCommand ?? "") : "";
+      // Each launch counts against the budget: let this one go before the next.
+      terminals.handleShellExit(r.terminal.id);
+      return { mode: r.unattended, cmd };
+    };
+    // Applied: the mode goes on the command line.
+    const claude = await launch("claude", true);
+    expect(claude.mode).toBe("applied");
+    expect(claude.cmd).toContain("--permission-mode auto");
+    const codex = await launch("codex", true);
+    expect(codex.mode).toBe("applied");
+    expect(codex.cmd).toContain("--approve-for-me");
+    // Not asked: nothing added, nothing reported.
+    const plain = await launch("codex");
+    expect(plain.mode).toBeUndefined();
+    expect(plain.cmd).not.toContain("--approve-for-me");
+    // The profile already chose a mode: left alone.
+    const planner = await launch("Planner", true);
+    expect(planner.mode).toBe("configured");
+    expect(planner.cmd).toContain("--permission-mode plan");
+    expect(planner.cmd).not.toContain("auto");
+    // No flag known for this CLI: launched as configured, and said so.
+    const grok = await launch("grok", true);
+    expect(grok.mode).toBe("unsupported");
+  });
+});

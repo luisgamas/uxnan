@@ -110,6 +110,22 @@ pub fn control_notify(state: tauri::State<'_, AppState>) {
     state.agent_changes.notify_waiters();
 }
 
+/// A window answer's `{ "error": … }` as the caller's error: a launch-budget
+/// refusal (`busy: true`, with `live` and `cap`) is *busy* — the caller waits
+/// for an agent to finish; anything else the window declines is *not found*.
+pub fn refused(answer: &Value) -> Option<RpcError> {
+    let message = answer.get("error").and_then(|v| v.as_str())?;
+    if answer.get("busy").and_then(|v| v.as_bool()) == Some(true) {
+        return Some(
+            RpcError::new(ErrorCode::Busy, message).with_data(serde_json::json!({
+                "live": answer.get("live"),
+                "cap": answer.get("cap"),
+            })),
+        );
+    }
+    Some(RpcError::new(ErrorCode::NotFound, message))
+}
+
 /// The window's reply to a [`REQUEST_EVENT`].
 #[tauri::command]
 pub fn control_respond(

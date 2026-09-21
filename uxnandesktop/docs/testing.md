@@ -39,6 +39,19 @@ cargo clippy --workspace --all-targets   # lints — must be warning-free
 cargo fmt --all --check        # formatting — must be clean (run `cargo fmt --all` to fix)
 ```
 
+**Windows-only code from a Mac or Linux.** A `#[cfg(windows)]` module never
+compiles on the host, so a wrong `windows_sys` import path only shows up on the
+Windows CI leg. Type-check it locally first — the control crates need no linker:
+
+```bash
+rustup target add x86_64-pc-windows-msvc            # once
+cargo clippy --target x86_64-pc-windows-msvc -p uxnan-control-protocol -p uxnan-cli --all-targets
+```
+
+(`uxnan_control_protocol::private`, the owner-only DACL of `control.json`, is
+the module this catches; the app crate's own Windows paths — `control::cli`'s
+registry edit — need the full Windows toolchain and stay with CI.)
+
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `control/` (the catalog dispatch, the two
 gates and end-to-end RPC/MCP over a real socket), `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
@@ -148,7 +161,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 780 passing unit tests of the app crate (822 with the ignored probes) — plus 17 in
+The 781 passing unit tests of the app crate (823 with the ignored probes) — plus 18 in
 `uxnan-control-protocol` and 13 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -255,7 +268,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,278 passing tests** across both
+ships in every build and is never shown). **1,283 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

@@ -1261,23 +1261,55 @@ pub fn install_codex_hooks(install: &HookInstall) -> Result<AgentHooksStatus, Ap
     write_json_atomic(&path, &to_pretty(&doc))?;
 
     // Codex 0.129+ only runs a hook whose exact identity is trusted in
-    // config.toml; register the trust so the hook actually fires.
+    // config.toml; register the trust so the hook actually fires — under the
+    // key of the group index the merge actually left ours at.
     if let Some(cfg) = codex_config_path() {
-        let event_commands: Vec<(&str, &str, String)> = codex_trust::CODEX_EVENTS
-            .iter()
-            .map(|(event, label)| (*event, *label, command.clone()))
-            .collect();
-        codex_trust::ensure_trust(&cfg, &path, &event_commands)?;
+        codex_trust::ensure_trust(&cfg, &path, &managed_codex_hooks(&doc))?;
     }
     Ok(read_codex_hooks_status())
+}
+
+/// Our Codex hooks as `hooks.json` holds them: one per event, with the exact
+/// `command` written there (the hash covers it verbatim) and the index of the
+/// group the merge left ours at — other products keep groups in the same file,
+/// so it is not `0` in general.
+fn managed_codex_hooks(doc: &Value) -> Vec<codex_trust::ManagedHook<'static>> {
+    codex_trust::CODEX_EVENTS
+        .iter()
+        .filter_map(|(event, label)| {
+            let groups = doc["hooks"][*event].as_array()?;
+            let (group_index, group) = groups.iter().enumerate().find(|(_, group)| {
+                group
+                    .get("hooks")
+                    .and_then(Value::as_array)
+                    .is_some_and(|hooks| hooks.iter().any(|h| is_managed_hook(h, AgentKind::Codex)))
+            })?;
+            let command = group["hooks"]
+                .as_array()?
+                .iter()
+                .find(|h| is_managed_hook(h, AgentKind::Codex))?
+                .get("command")?
+                .as_str()?
+                .to_string();
+            Some(codex_trust::ManagedHook {
+                label,
+                command,
+                group_index,
+            })
+        })
+        .collect()
 }
 
 pub fn uninstall_codex_hooks() -> Result<AgentHooksStatus, AppError> {
     let path = codex_hooks_path()
         .ok_or_else(|| AppError::Invalid("cannot resolve ~/.codex/hooks.json".into()))?;
+    let mut ours = Vec::new();
     if let Ok(text) = std::fs::read_to_string(&path) {
         if contains_managed(&text, AgentKind::Codex) {
             let mut doc: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({}));
+            // Read our hooks as installed before stripping them: their command
+            // names the trust hashes to remove from config.toml.
+            ours = managed_codex_hooks(&doc);
             strip_managed(&mut doc, AgentKind::Codex);
             let empty = doc
                 .get("hooks")
@@ -1293,7 +1325,7 @@ pub fn uninstall_codex_hooks() -> Result<AgentHooksStatus, AppError> {
         }
     }
     if let Some(cfg) = codex_config_path() {
-        let _ = codex_trust::remove_trust(&cfg, &path);
+        let _ = codex_trust::remove_trust(&cfg, &path, &ours);
     }
     Ok(read_codex_hooks_status())
 }
@@ -3186,6 +3218,43 @@ mod tests {
         let mut doc = json!({ "hooks": { "PreToolUse": [ { "hooks": [ legacy ] } ] } });
         strip_managed(&mut doc, AgentKind::Codex);
         assert!(!contains_managed(&to_pretty(&doc), AgentKind::Codex));
+    }
+
+    #[test]
+    fn codex_trust_keys_follow_the_group_our_hooks_land_in() {
+        // Another product already keeps a group on each event, so the merge
+        // appends ours as group 1: the trust key must say `:1:0`, not `:0:0`
+        // (which names *their* hook). The command is read back verbatim from
+        // the file, because that is what the hash covers.
+        let theirs =
+            json!({ "hooks": [ { "type": "command", "command": "/x/other-product/hook.sh" } ] });
+        let ours = json!({
+            "type": "command",
+            "command": "if [ -x '/x/uxnan-codex-hook.sh' ]; then /bin/sh '/x/uxnan-codex-hook.sh'; fi"
+        });
+        let mut doc = json!({ "hooks": {} });
+        for (event, _) in codex_trust::CODEX_EVENTS {
+            doc["hooks"][*event] = json!([theirs.clone()]);
+        }
+        for (event, _) in codex_trust::CODEX_EVENTS {
+            merge_event(&mut doc, event, None, &ours, AgentKind::Codex);
+        }
+        let hooks = managed_codex_hooks(&doc);
+        assert_eq!(hooks.len(), codex_trust::CODEX_EVENTS.len());
+        for hook in &hooks {
+            assert_eq!(hook.group_index, 1, "{}", hook.label);
+            assert_eq!(hook.command, ours["command"].as_str().unwrap());
+        }
+        // Alone in the file, ours is group 0.
+        let mut alone = json!({ "hooks": {} });
+        for (event, _) in codex_trust::CODEX_EVENTS {
+            merge_event(&mut alone, event, None, &ours, AgentKind::Codex);
+        }
+        assert!(managed_codex_hooks(&alone)
+            .iter()
+            .all(|h| h.group_index == 0));
+        // Not installed: nothing to trust.
+        assert!(managed_codex_hooks(&json!({ "hooks": {} })).is_empty());
     }
 
     #[test]
