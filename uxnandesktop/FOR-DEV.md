@@ -1327,11 +1327,12 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       through `wsl.exe -d <distro>` with the Linux-side CLI (see `wsl.rs` +
       `git.rs`'s WSL path). `FOR-DEV:` marker in `agentrun.rs`.
 - [ ] **Per-agent PTY submit strategy.** `pty_paste_submit` (bracketed paste + a
-      delayed Enter, 150 ms for multi-line) covers standard TUIs, but a Claude
-      Code-family agent with a *long* post-paste Enter guard may still leave a
-      multi-line prompt unsent when driven interactively. Add a per-agent submit
-      override (delay / key) if one is found. `FOR-DEV:` marker in `commands.rs`
-      (`pty_paste_submit`). Headless avoids typing entirely, so it's the workaround.
+      delayed Enter, 400 ms for multi-line — 150 ms was swallowed by Codex's
+      post-paste guard) submits on every driven agent today, but one with a
+      *longer* guard would still leave a multi-line prompt unsent when driven
+      interactively. Add a per-agent submit override (delay / key) if one is
+      found. `FOR-DEV:` marker in `commands.rs` (`pty_paste_submit`). Headless
+      avoids typing entirely, so it's the workaround.
 - [ ] **Remediation + evaluator-optimizer.** `onFailure: "remediate:<stepId>"` (run a
       fix step, then retry) and a `kind: "eval"` step (generate → evaluate → loop) —
       the DAG/model supports them; the scheduler + UI don't yet.

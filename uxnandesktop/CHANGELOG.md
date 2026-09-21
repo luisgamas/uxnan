@@ -39,6 +39,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   an entry of ours left under another index is dropped, and uninstall removes
   only the keys whose hash is ours. Nothing else in `config.toml` is touched:
   Codex launched outside Uxnan sees the same hooks it always did, trusted.
+- **A multi-line first message reaches Codex.** The Enter sent 150 ms after
+  a bracketed paste fell inside Codex's post-paste guard, so the preamble a
+  coordinator gives its worker sat in the composer unsent; the gap is 400 ms
+  now, which every driven agent submits.
 
 ### Added
 
