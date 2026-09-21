@@ -32,7 +32,7 @@ always wins). 896 Rust tests (827 unit in the app crate + 18 in `uxnan-control-p
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,296 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,300 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -892,7 +892,11 @@ agent is done, or any exited one; a person's live tab and a working agent are
 refused). 50 app tests (15 end to end over a real socket with Tauri's mock
 app, one creating a worktree on a real repository, one waiting on a real
 PTY), 18 protocol, 14 CLI, 17 window-bridge Vitest plus 9 for the unattended
-table and 5 for the Settings switch.
+table and 5 for the Settings switch. **In the console**, a driven run's
+detail opens with who drives it (agent + tab, reveal button; "from a shell"
+for `uxnan-cli`; outcome + summary once finished) and its inbox — the
+unacknowledged messages, by kind, step, dispatch and text — and its card in
+the list says `driven · N in inbox` (`RunInbox.svelte`, 4 component tests).
 
 ### Still pending
 - [ ] **The Windows shim on uninstall.** The app keeps a copy of `uxnan-cli`
@@ -910,13 +914,6 @@ table and 5 for the Settings switch.
       CI leg only: confirm on the platform matrix (005) that `icacls` shows the
       single entry, that another local user cannot read the file, and that the
       CLI's refusal fires on a file re-shared by hand.
-- [ ] **An inbox view for a driven run.** A driven run shows in the Runs console
-      as any run (tasks, gates, outputs), but its inbox — what the coordinator
-      has not yet acknowledged — has no UI: the person sees questions as gates
-      and results as step outputs, not the queue itself. A small "inbox"
-      strip on a driven run's card (count + the unacknowledged messages) would
-      complete the picture. UI → propose-and-review.
-
 ## Phase 6 — Bridge integration (embedded bridge / mobile pairing) ☐
 
 **Goal:** let the desktop act as the mobile bridge (single-install). The standalone
@@ -1595,7 +1592,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 896 Rust + 1,296 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 896 Rust + 1,300 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

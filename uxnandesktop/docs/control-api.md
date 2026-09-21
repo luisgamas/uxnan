@@ -273,7 +273,12 @@ where the person can watch and intervene.
   A message stays until acknowledged by `deliveryId` — a restart loses
   nothing. With `wait`, the call sleeps on the app's change notifier (no
   polling), at most 15 s per call; `uxnan-cli inbox check --wait` keeps
-  calling with heartbeats.
+  calling with heartbeats. The person sees the same queue in the Runs
+  console: a driven run's detail opens with who drives it (the
+  coordinator's agent and tab, with a button to show that terminal; "from a
+  shell" for `uxnan-cli`; the outcome and summary once finished) and its
+  **Inbox** — every message not yet acknowledged, with its kind, step,
+  dispatch and text. Empty means read, not idle.
 - **`question/ask`** — from a worker's terminal (the caller's own; the app
   finds the task it works on): files a **gate step** on the run addressed to
   the coordinator (or to the person when nobody drives the run), posts it to

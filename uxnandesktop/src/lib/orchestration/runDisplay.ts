@@ -2,8 +2,13 @@
 // i18n label key and a small dot color class. Kept out of the pure `run.ts`
 // (which must stay free of app/i18n coupling); this is a frontend-only view util.
 
+import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+import CircleXIcon from "@hugeicons/core-free-icons/CircleXIcon";
+import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
+import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
+import type { IconNode } from "$lib/components/ui/icon";
 import type { MessageKey } from "$lib/i18n/locales/en";
-import type { RunStatus, StepStatus } from "./run";
+import type { InboxItemType, RunStatus, StepStatus } from "./run";
 
 /** i18n key for a step status chip. */
 export function stepStatusLabelKey(s: StepStatus): MessageKey {
@@ -80,5 +85,47 @@ export function runStatusDot(s: RunStatus): string {
     case "draft":
     default:
       return "bg-muted-foreground/50";
+  }
+}
+
+/** i18n key for the kind of a driven run's inbox message. */
+export function inboxItemLabelKey(t: InboxItemType): MessageKey {
+  switch (t) {
+    case "worker_done":
+      return "orchestration.inboxWorkerDone";
+    case "worker_failed":
+      return "orchestration.inboxWorkerFailed";
+    case "question":
+      return "orchestration.inboxQuestion";
+    case "status":
+      return "orchestration.inboxStatus";
+  }
+}
+
+/** Glyph for an inbox message kind — the mark of the state it reports. */
+export function inboxItemIcon(t: InboxItemType): IconNode {
+  switch (t) {
+    case "worker_done":
+      return CircleCheckIcon;
+    case "worker_failed":
+      return CircleXIcon;
+    case "question":
+      return HelpCircleIcon;
+    case "status":
+      return CircleDotIcon;
+  }
+}
+
+/** Text color for an inbox message kind's glyph — the step dots' palette. */
+export function inboxItemTone(t: InboxItemType): string {
+  switch (t) {
+    case "worker_done":
+      return "text-emerald-500";
+    case "worker_failed":
+      return "text-destructive";
+    case "question":
+      return "text-amber-500";
+    case "status":
+      return "text-muted-foreground";
   }
 }

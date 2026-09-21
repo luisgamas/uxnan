@@ -14,7 +14,7 @@
   import { aiCommitAgents } from "$lib/api";
   import { runStatusDot, runStatusLabelKey } from "$lib/orchestration/runDisplay";
   import type { ExampleStepSpec } from "$lib/orchestration/examples";
-  import type { Run } from "$lib/orchestration/run";
+  import { isDriven, type Run } from "$lib/orchestration/run";
   import RunDetail from "./RunDetail.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
@@ -113,7 +113,14 @@
 
   function stepSummary(run: Run): string {
     const done = run.steps.filter((s) => s.status === "completed").length;
-    return i18n.t("orchestration.stepsProgress", { done, total: run.steps.length });
+    const parts = [i18n.t("orchestration.stepsProgress", { done, total: run.steps.length })];
+    // A driven run says so, and how much waits for its coordinator.
+    if (isDriven(run)) {
+      parts.push(i18n.t("orchestration.drivenChip"));
+      const waiting = run.inbox?.length ?? 0;
+      if (waiting > 0) parts.push(i18n.t("orchestration.inboxCount", { count: waiting }));
+    }
+    return parts.join(" · ");
   }
 </script>
 

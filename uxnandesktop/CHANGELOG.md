@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **A driven run shows who drives it and what waits for them.** The Runs
+  console rendered a coordinator's run like any other — tasks, gates,
+  outputs — but not the queue the coordinator works from. A driven run's
+  detail now opens with a strip naming the coordinator (its agent and tab,
+  with a button to show that terminal; "from a shell" when `uxnan-cli`
+  drives it; the outcome and summary once it is finished) and an **Inbox**
+  section listing every message the coordinator has not yet acknowledged —
+  worker done, worker failed, question, status — with the step it is about,
+  its dispatch, when it arrived and its text, expandable. Empty means read,
+  not idle. The card in the list says `driven · N in inbox`, and a driven run
+  has no *Rerun*: its tasks were the coordinator's to create.
 - **`terminal/close` — a coordinator can collect the workers it started.**
   The catalog had no way to close a terminal, on purpose: nothing destructive.
   But a worker's tab outlived its job — its shell had exited, the tab sat in

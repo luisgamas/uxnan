@@ -14,10 +14,11 @@
   import { projects } from "$lib/state/projects.svelte";
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
   import { stepStatusDot, stepStatusLabelKey } from "$lib/orchestration/runDisplay";
-  import type { Run, RunStep } from "$lib/orchestration/run";
+  import { isDriven, type Run, type RunStep } from "$lib/orchestration/run";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import StepEditor from "./StepEditor.svelte";
+  import RunInbox from "./RunInbox.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
@@ -38,6 +39,10 @@
   const isTerminal = $derived(
     run.status === "completed" || run.status === "failed" || run.status === "cancelled",
   );
+  // A driven run is a coordinator's: it shows who drives it and what waits
+  // for them, and it is not re-run from here — its tasks were the
+  // coordinator's to create, and a re-run would make it the person's.
+  const driven = $derived(isDriven(run));
 
   // Authoring state: which step is being edited, or whether a new one is added.
   let editingId = $state<string | null>(null);
@@ -153,7 +158,7 @@
         <Icon icon={SquareIcon} data-icon="inline-start" />
         {i18n.t("orchestration.cancel")}
       </Button>
-    {:else if isTerminal}
+    {:else if isTerminal && !driven}
       <Button variant="outline" size="sm" onclick={start}>
         <Icon icon={RotateIcon} data-icon="inline-start" />
         {i18n.t("orchestration.rerun")}
@@ -183,6 +188,10 @@
 
   <!-- Steps -->
   <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1">
+    {#if driven}
+      <RunInbox {run} />
+      <span class={cn(text.section, "pt-1")}>{i18n.t("orchestration.runsSteps")}</span>
+    {/if}
     {#if run.steps.length === 0 && !adding}
       <p class={cn(text.meta, "py-4 text-center")}>{i18n.t("orchestration.noSteps")}</p>
     {/if}

@@ -1031,6 +1031,14 @@ agentes** corriendo **o** cuando existe alguna corrida):
   permanece hasta el `ack`; un reinicio no pierde nada. `inbox/check --wait` duerme
   en el notificador de cambios de la app (`control_notify` desde la ventana, el mismo
   `AppState.agent_changes` de `agent/wait`), ≤15 s por llamada, sin sondeo.
+  **En la consola**, el detalle de una corrida conducida (`RunInbox.svelte`)
+  muestra quien la conduce — el agente y la pestana del coordinador, con un
+  boton para revelarla; "desde una shell" cuando la conduce `uxnan-cli`; el
+  resultado y el resumen cuando el coordinador la termino — y la **bandeja**:
+  cada mensaje aun no acusado con su tipo, el paso, el despacho y su texto
+  (desplegable). Vacia significa "leido", no "inactivo". La tarjeta del listado
+  dice `dirigida` y cuantos mensajes esperan; una corrida conducida no se
+  re-ejecuta desde la consola (sus tareas las creo el coordinador).
 - **Preguntas = compuertas.** `question/ask` (desde la terminal del worker: el
   backend identifica su tarea por su propio id) crea un paso `gate` con
   `resolver: coordinator` y `askedBy: {stepId, dispatchId}`, lo pone `running` sin
