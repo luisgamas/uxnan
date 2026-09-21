@@ -39,6 +39,19 @@ cargo clippy --workspace --all-targets   # lints — must be warning-free
 cargo fmt --all --check        # formatting — must be clean (run `cargo fmt --all` to fix)
 ```
 
+**Windows-only code from a Mac or Linux.** A `#[cfg(windows)]` module never
+compiles on the host, so a wrong `windows_sys` import path only shows up on the
+Windows CI leg. Type-check it locally first — the control crates need no linker:
+
+```bash
+rustup target add x86_64-pc-windows-msvc            # once
+cargo clippy --target x86_64-pc-windows-msvc -p uxnan-control-protocol -p uxnan-cli --all-targets
+```
+
+(`uxnan_control_protocol::private`, the owner-only DACL of `control.json`, is
+the module this catches; the app crate's own Windows paths — `control::cli`'s
+registry edit — need the full Windows toolchain and stay with CI.)
+
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `control/` (the catalog dispatch, the two
 gates and end-to-end RPC/MCP over a real socket), `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,

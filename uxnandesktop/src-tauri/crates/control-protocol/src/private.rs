@@ -59,13 +59,14 @@ mod imp {
     };
     use windows_sys::Win32::Security::Authorization::{
         GetExplicitEntriesFromAclW, GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW,
-        EXPLICIT_ACCESS_W, NO_INHERITANCE, NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT,
-        TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+        EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+        TRUSTEE_IS_USER, TRUSTEE_W,
     };
     use windows_sys::Win32::Security::{
         CreateWellKnownSid, EqualSid, GetTokenInformation, TokenUser, WinBuiltinAdministratorsSid,
-        WinLocalSystemSid, ACL, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-        PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER,
+        WinLocalSystemSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE,
+        PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE,
+        TOKEN_QUERY, TOKEN_USER,
     };
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -121,7 +122,7 @@ mod imp {
 
     pub fn restrict(path: &Path) -> io::Result<()> {
         let user = current_user()?;
-        let mut access = EXPLICIT_ACCESS_W {
+        let access = EXPLICIT_ACCESS_W {
             grfAccessPermissions: GENERIC_ALL,
             grfAccessMode: SET_ACCESS,
             grfInheritance: NO_INHERITANCE,
@@ -136,7 +137,7 @@ mod imp {
         let mut dacl: *mut ACL = ptr::null_mut();
         let name = wide(path);
         unsafe {
-            let rc = SetEntriesInAclW(1, &mut access, ptr::null(), &mut dacl);
+            let rc = SetEntriesInAclW(1, &access, ptr::null(), &mut dacl);
             if rc != ERROR_SUCCESS {
                 return Err(io::Error::from_raw_os_error(rc as i32));
             }
