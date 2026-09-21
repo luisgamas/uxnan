@@ -18,6 +18,7 @@
 pub mod catalog;
 pub mod datadir;
 pub mod discovery;
+pub mod private;
 pub mod rpc;
 pub mod selector;
 

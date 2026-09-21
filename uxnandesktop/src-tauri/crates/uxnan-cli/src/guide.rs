@@ -112,7 +112,7 @@ fn transport() -> String {
     out.push_str(&serde_json::to_string_pretty(&sample).unwrap_or_default());
     out.push_str("\n```\n\n");
     out.push_str(&format!(
-        "Before using it: refuse a file readable by other users (a mode other than `0600` on Unix); refuse a `protocolVersion` other than {PROTOCOL_VERSION}; confirm that `pid` is alive **and** started at `processStart` (±2 s) — a file left behind by a crash then points nowhere. The app writes the file on start, removes it on a clean exit, and mints a new token on every start (and on a rotation), so read the file per session, not once.\n\n"
+        "Before using it: refuse a file readable by other users (a mode other than `0600` on Unix; on Windows an access list granting any account but yours, SYSTEM and Administrators); refuse a `protocolVersion` other than {PROTOCOL_VERSION}; confirm that `pid` is alive **and** started at `processStart` (±2 s) — a file left behind by a crash then points nowhere. The app writes the file on start, removes it on a clean exit, and mints a new token on every start (and on a rotation), so read the file per session, not once.\n\n"
     ));
     out.push_str("### Post a request\n\n");
     out.push_str(&format!(

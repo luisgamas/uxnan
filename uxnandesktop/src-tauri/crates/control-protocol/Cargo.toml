@@ -13,3 +13,16 @@ license.workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+
+# The discovery file's DACL on Windows (`private.rs`): the same crate the app
+# already links, with the security surface the file needs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"

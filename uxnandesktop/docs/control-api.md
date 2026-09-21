@@ -299,9 +299,13 @@ manual snippet has the header spelled out to fill in.
 
 The discovery file holds the protocol version, the app version, the app's
 **pid and start time**, the server origin and the control token. It is written
-atomically, `0600` on Unix (on Windows it inherits the per-user profile's ACL),
-and removed on a clean exit. `uxnan-cli` refuses a file readable by other
-users, refuses a protocol version it does not speak, and refuses a file whose
+atomically and **readable by its owner alone** — `0600` on Unix; on Windows an
+explicit, protected DACL with one entry for the current user, so nothing is
+inherited from the profile folder (`uxnan_control_protocol::private`, the same
+module `uxnan-cli` checks with: on Windows it refuses a file whose access
+list grants any account but the user, SYSTEM and Administrators) — and removed
+on a clean exit. `uxnan-cli` refuses a file readable by other users, refuses a
+protocol version it does not speak, and refuses a file whose
 pid is gone or was recycled (the start time no longer matches) — so a file left
 behind by a crash points it nowhere.
 

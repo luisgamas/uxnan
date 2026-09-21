@@ -4,6 +4,17 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **`control.json` is owner-only on Windows too.** The discovery file (the
+  control token) was `0600` on Unix and, on Windows, whatever the profile
+  folder handed down. The app now writes it with an explicit, protected DACL
+  holding one entry for the current user, and `uxnan-cli` refuses a file whose
+  access list grants any account but the user, SYSTEM and Administrators —
+  both through one module (`uxnan_control_protocol::private`), so the writer
+  and the reader cannot disagree about what private means. Compiled by the
+  Windows CI leg; a run on real Windows is recorded in FOR-DEV.
+
 ### Fixed
 
 - **A worktree or terminal an agent creates no longer steals the focus.**

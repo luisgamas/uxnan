@@ -880,11 +880,14 @@ waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
       environment component) and verify the PATH edit and its broadcast on the
       platform matrix (005) — this code was written on macOS and only compiled
       on the Windows CI leg.
-- [ ] **Windows ACL of `control.json`.** On Unix the file is `0600` and the CLI
-      refuses anything laxer; on Windows it inherits the per-user profile ACL and
-      nothing is verified. Confirm on the platform matrix (005) that another local
-      user cannot read it; if not, set an explicit DACL (`icacls`-equivalent via
-      the Windows API) and check it in the CLI.
+- [ ] **Windows ACL of `control.json` — run it on real Windows.** The app now
+      writes the file with an explicit owner-only DACL and `uxnan-cli` refuses
+      one whose access list grants anyone else (`uxnan_control_protocol::private`,
+      Win32 `SetEntriesInAclW` / `SetNamedSecurityInfoW` /
+      `GetExplicitEntriesFromAclW`). Written on macOS and compiled by the Windows
+      CI leg only: confirm on the platform matrix (005) that `icacls` shows the
+      single entry, that another local user cannot read the file, and that the
+      CLI's refusal fires on a file re-shared by hand.
 - [ ] **An inbox view for a driven run.** A driven run shows in the Runs console
       as any run (tasks, gates, outputs), but its inbox — what the coordinator
       has not yet acknowledged — has no UI: the person sees questions as gates

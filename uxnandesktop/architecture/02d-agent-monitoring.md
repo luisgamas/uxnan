@@ -654,8 +654,10 @@ ambos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
 referenciado por la config MCP del agente como `UXNAN_MCP_TOKEN`; con
 `UXNAN_HOOK_URL` y `UXNAN_AGENT_ID`) identifica un proceso que el ADE arranco y
 ancla `current` en su terminal; el **token de control** vive solo en el archivo de
-descubrimiento `control.json` del directorio de datos (`0600` en Unix; en Windows
-la ACL del perfil de usuario), junto al pid **y la hora de inicio** del proceso, y
+descubrimiento `control.json` del directorio de datos (legible solo por su dueno:
+`0600` en Unix; en Windows una DACL explicita y protegida con una sola entrada para
+el usuario actual, `uxnan_control_protocol::private`, el mismo modulo con el que
+`uxnan-cli` lo comprueba), junto al pid **y la hora de inicio** del proceso, y
 se borra al salir limpiamente — `uxnan-cli` rechaza un archivo legible por otros,
 una version de protocolo distinta o un pid que ya no es ese proceso. El token de
 control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
