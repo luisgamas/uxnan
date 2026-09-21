@@ -161,11 +161,40 @@ struct TrustEntry {
     hash: String,
 }
 
-/// Build every trust entry for the managed hooks in `hooks_json`, given the
-/// command string written for each event. On Windows this emits **both**
-/// separator variants of each key (backslash and forward-slash), because Codex
-/// may expose the key with either depending on how it resolved the path.
-fn trust_entries(hooks_json: &Path, event_commands: &[(&str, &str, String)]) -> Vec<TrustEntry> {
+/// One managed hook as written into `hooks.json`: its event's snake_case
+/// label, the exact `command` string, and the **index of our group** in that
+/// event's array. Codex keys trust by `<file>:<event>:<group>:<handler>`, and
+/// the group index is whatever position the merge left ours at — after the
+/// groups other products keep in the same file, so it is rarely `0`. Writing
+/// `:0:0` regardless (what an earlier build did) put our hash on *their*
+/// group's key — marking their hook "modified" — and left ours untrusted,
+/// which is exactly the "hooks need review" prompt on every launch.
+pub struct ManagedHook<'a> {
+    pub label: &'a str,
+    pub command: String,
+    pub group_index: usize,
+}
+
+/// Build every trust entry for the managed hooks in `hooks_json`. On Windows
+/// this emits **both** separator variants of each key (backslash and
+/// forward-slash), because Codex may expose the key with either depending on
+/// how it resolved the path.
+fn trust_entries(hooks_json: &Path, hooks: &[ManagedHook<'_>]) -> Vec<TrustEntry> {
+    let mut out = Vec::new();
+    for hook in hooks {
+        let hash = managed_hash(hook.label, &hook.command);
+        for path_variant in key_paths(hooks_json) {
+            out.push(TrustEntry {
+                key: format!("{path_variant}:{}:{}:0", hook.label, hook.group_index),
+                hash: hash.clone(),
+            });
+        }
+    }
+    out
+}
+
+/// The path component(s) of a trust key for `hooks_json`.
+fn key_paths(hooks_json: &Path) -> Vec<String> {
     let base_path = canonical_trust_path(hooks_json);
     let mut variants = vec![base_path.clone()];
     if cfg!(windows) {
@@ -174,38 +203,39 @@ fn trust_entries(hooks_json: &Path, event_commands: &[(&str, &str, String)]) -> 
             variants.push(fwd);
         }
     }
-    let mut out = Vec::new();
-    for (_event, label, command) in event_commands {
-        let hash = managed_hash(label, command);
-        for path_variant in &variants {
-            out.push(TrustEntry {
-                key: format!("{path_variant}:{label}:0:0"),
-                hash: hash.clone(),
-            });
-        }
-    }
-    out
+    variants
 }
 
-/// Ensure `config.toml` trusts every managed hook declared for `hooks_json`.
-///
-/// `event_commands` is `(event_name, snake_label, command_string)` for each
-/// managed hook, where `command_string` is the exact `command` written into
-/// `hooks.json` (the hash covers it verbatim). Idempotent and format-preserving
-/// (via `toml_edit`): existing unrelated keys, comments and layout are kept; a
-/// user's explicit `enabled = false` for one of our keys is respected (left
-/// untouched). Returns `Ok(())` even when nothing changed.
+/// Whether a `[hooks.state]` key names a hook in `hooks_json` (any group).
+fn key_is_in(key: &str, hooks_json: &Path) -> bool {
+    key_paths(hooks_json)
+        .iter()
+        .any(|p| key.starts_with(&format!("{p}:")))
+}
+
+/// Ensure `config.toml` trusts every managed hook declared for `hooks_json`,
+/// under the key its real group index gives it. Idempotent and
+/// format-preserving (via `toml_edit`): existing unrelated keys, comments and
+/// layout are kept; a user's explicit `enabled = false` for one of our keys is
+/// respected (left untouched); and an entry of ours left at another index by a
+/// previous install (the group moved, or the old `:0:0` bug) is removed, so it
+/// never sits on another product's key. Returns `Ok(())` even when nothing
+/// changed.
 pub fn ensure_trust(
     config_path: &Path,
     hooks_json: &Path,
-    event_commands: &[(&str, &str, String)],
+    hooks: &[ManagedHook<'_>],
 ) -> Result<(), AppError> {
     use toml_edit::{value, DocumentMut, Item, Table};
 
-    let entries = trust_entries(hooks_json, event_commands);
+    let entries = trust_entries(hooks_json, hooks);
     if entries.is_empty() {
         return Ok(());
     }
+    let ours: Vec<String> = hooks
+        .iter()
+        .map(|h| managed_hash(h.label, &h.command))
+        .collect();
 
     let mut doc: DocumentMut = match std::fs::read_to_string(config_path) {
         Ok(s) => s.parse().unwrap_or_else(|_| DocumentMut::new()),
@@ -221,6 +251,27 @@ pub fn ensure_trust(
         hooks["state"] = Item::Table(Table::new());
     }
     let state = hooks["state"].as_table_mut().expect("state is a table");
+
+    // Our hash under a key that is not ours any more: the group moved (or an
+    // earlier build wrote `:0:0` regardless) — drop it, so the hook that now
+    // lives at that key is not shown as "modified" on our account.
+    let wanted: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+    let stale: Vec<String> = state
+        .iter()
+        .filter(|(k, item)| {
+            key_is_in(k, hooks_json)
+                && !wanted.contains(k)
+                && item
+                    .as_table()
+                    .and_then(|t| t.get("trusted_hash"))
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|h| ours.iter().any(|o| o == h))
+        })
+        .map(|(k, _)| k.to_string())
+        .collect();
+    for key in stale {
+        state.remove(&key);
+    }
 
     for entry in &entries {
         // Respect a user who explicitly disabled our hook.
@@ -248,9 +299,15 @@ pub fn ensure_trust(
     Ok(())
 }
 
-/// Remove every managed trust entry for `hooks_json` from `config.toml` (used on
-/// uninstall). Best-effort and format-preserving; leaves the rest intact.
-pub fn remove_trust(config_path: &Path, hooks_json: &Path) -> Result<(), AppError> {
+/// Remove our trust entries for `hooks_json` from `config.toml` (used on
+/// uninstall): the keys under that file whose hash is one of ours. Another
+/// product's entries for the same file are left alone. Best-effort and
+/// format-preserving; leaves the rest intact.
+pub fn remove_trust(
+    config_path: &Path,
+    hooks_json: &Path,
+    hooks: &[ManagedHook<'_>],
+) -> Result<(), AppError> {
     use toml_edit::DocumentMut;
 
     let text = match std::fs::read_to_string(config_path) {
@@ -261,11 +318,10 @@ pub fn remove_trust(config_path: &Path, hooks_json: &Path) -> Result<(), AppErro
         Ok(d) => d,
         Err(_) => return Ok(()),
     };
-    let base_path = canonical_trust_path(hooks_json);
-    let mut prefixes = vec![base_path.clone()];
-    if cfg!(windows) {
-        prefixes.push(base_path.replace('\\', "/"));
-    }
+    let ours: Vec<String> = hooks
+        .iter()
+        .map(|h| managed_hash(h.label, &h.command))
+        .collect();
     let Some(state) = doc
         .get_mut("hooks")
         .and_then(|h| h.get_mut("state"))
@@ -275,8 +331,15 @@ pub fn remove_trust(config_path: &Path, hooks_json: &Path) -> Result<(), AppErro
     };
     let to_remove: Vec<String> = state
         .iter()
+        .filter(|(k, item)| {
+            key_is_in(k, hooks_json)
+                && item
+                    .as_table()
+                    .and_then(|t| t.get("trusted_hash"))
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|h| ours.iter().any(|o| o == h))
+        })
         .map(|(k, _)| k.to_string())
-        .filter(|k| prefixes.iter().any(|p| k.starts_with(&format!("{p}:"))))
         .collect();
     for key in to_remove {
         state.remove(&key);
@@ -486,11 +549,17 @@ mod tests {
         std::fs::write(&hooks, "{}").unwrap();
         std::fs::write(&cfg, "model = \"gpt-5-codex\"\n# keep my comment\n").unwrap();
         let cmd = "/bin/sh '/x/uxnan-codex-hook.sh'".to_string();
-        let events: Vec<(&str, &str, String)> = CODEX_EVENTS
-            .iter()
-            .map(|(e, l)| (*e, *l, cmd.clone()))
-            .collect();
-        ensure_trust(&cfg, &hooks, &events).unwrap();
+        let at = |index: usize| -> Vec<ManagedHook<'static>> {
+            CODEX_EVENTS
+                .iter()
+                .map(|(_, l)| ManagedHook {
+                    label: l,
+                    command: cmd.clone(),
+                    group_index: index,
+                })
+                .collect()
+        };
+        ensure_trust(&cfg, &hooks, &at(0)).unwrap();
         let out = std::fs::read_to_string(&cfg).unwrap();
         assert!(out.contains("[hooks.state"), "trust table written");
         assert!(out.contains("trusted_hash = \"sha256:"), "hash written");
@@ -504,7 +573,27 @@ mod tests {
             "user content preserved"
         );
         // Second call must not error (idempotent write).
-        ensure_trust(&cfg, &hooks, &events).unwrap();
+        ensure_trust(&cfg, &hooks, &at(0)).unwrap();
+
+        // Another product's group now sits first in the file, so ours is group
+        // 1: the key follows the real index, and the entry we left on `:0:0`
+        // — which now names *their* hook — is dropped rather than left to mark
+        // it modified. Their own entry on another key is untouched.
+        let with_theirs = std::fs::read_to_string(&cfg).unwrap()
+            + "\n[hooks.state.\"/elsewhere/hooks.json:stop:0:0\"]\ntrusted_hash = \"sha256:theirs\"\n";
+        std::fs::write(&cfg, with_theirs).unwrap();
+        ensure_trust(&cfg, &hooks, &at(1)).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        assert!(out.contains("session_start:1:0"), "{out}");
+        assert!(!out.contains("session_start:0:0"), "{out}");
+        assert!(out.contains("/elsewhere/hooks.json:stop:0:0"), "{out}");
+
+        // Uninstall removes ours by hash, nothing else.
+        remove_trust(&cfg, &hooks, &at(1)).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        assert!(!out.contains("session_start:1:0"), "{out}");
+        assert!(out.contains("/elsewhere/hooks.json:stop:0:0"), "{out}");
+        assert!(out.contains("model = \"gpt-5-codex\""));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

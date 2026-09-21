@@ -28,6 +28,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   tab stay put — what an agent creates leaves a trace, it does not take the
   seat. `terminal/reveal`, `file/open` and `file/diff` are the entries that
   move the focus, on purpose.
+- **Codex no longer asks to review its hooks on every launch.** Codex keys a
+  hook's trust by `<hooks.json>:<event>:<group>:<handler>`, and the app wrote
+  its `trusted_hash` under group `0` regardless of where the install had
+  actually put Uxnan's group — after any group another product keeps in the
+  same file. On such a machine Uxnan's hooks stayed untrusted (Codex's "hooks
+  need review" prompt at every start, a worker stalled on it) and the other
+  product's hook was shown as "modified" because its key now carried our hash.
+  The trust entry now follows the index read back from the file just written,
+  an entry of ours left under another index is dropped, and uninstall removes
+  only the keys whose hash is ours. Nothing else in `config.toml` is touched:
+  Codex launched outside Uxnan sees the same hooks it always did, trusted.
 
 ### Added
 

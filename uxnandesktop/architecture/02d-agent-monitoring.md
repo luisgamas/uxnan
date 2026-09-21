@@ -443,7 +443,11 @@ corriendolos de verdad y leyendo lo que emiten**:
 
 Codex expone los dos eventos con **el mismo payload que Claude**, asi que basta con
 suscribirse: van en `codex_trust::CODEX_EVENTS` con su etiqueta snake_case, porque su
-`trusted_hash` es **por evento** y una etiqueta equivocada deja el hook sin ejecutar.
+`trusted_hash` es **por evento y por grupo** (`<hooks.json>:<evento>:<índice de
+grupo>:0`, con el índice donde el merge dejó nuestro grupo — detrás de los de
+otros productos en el mismo archivo — leído del archivo recién escrito) y una
+etiqueta o un índice equivocados dejan el hook sin ejecutar y a Codex pidiendo
+revisar los hooks en cada arranque.
 **Droid** dispara `SubagentStop` sin id de hijo, asi que su reporte se descarta.
 **Pi** no tiene subagentes; **Antigravity** y **OMP** si los tienen pero no los
 exponen donde los podamos leer (los hooks de Antigravity son solo su bucle de
