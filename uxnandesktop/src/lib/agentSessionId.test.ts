@@ -14,18 +14,12 @@ describe("ownedSession", () => {
     });
     expect(ownedSession("grok", [], fixed)?.args).toEqual(["--session-id", ID]);
     expect(ownedSession("pi", [], fixed)?.args).toEqual(["--session-id", ID]);
-    // Antigravity's CLI is `agy`, and it names a *conversation*.
-    expect(ownedSession("agy", [], fixed)).toEqual({
-      agent: "antigravity",
-      id: ID,
-      args: ["--conversation", ID],
-    });
   });
 
   it("produces an id the resume registry can actually reopen", () => {
     // The two tables join on `agent`; a drift between them would silently make
     // every owned session unresumable.
-    for (const command of ["claude", "grok", "pi", "agy"]) {
+    for (const command of ["claude", "grok", "pi"]) {
       const owned = ownedSession(command, [], fixed);
       expect(owned).not.toBeNull();
       expect(
@@ -35,6 +29,10 @@ describe("ownedSession", () => {
   });
 
   it("leaves alone the CLIs that expose no such flag", () => {
+    // Antigravity's `--conversation` only resumes (agy ≥ 1.2): an unknown id is
+    // answered with a warning and a new conversation under agy's own id, so a
+    // launch-named session never matched anything.
+    expect(ownedSession("agy", [], fixed)).toBeNull();
     expect(ownedSession("codex", [], fixed)).toBeNull();
     expect(ownedSession("opencode", [], fixed)).toBeNull();
     expect(ownedSession("unknown", [], fixed)).toBeNull();

@@ -162,11 +162,15 @@ in a POSIX shell and `"fix the bug"` under cmd. Just type the raw values in the
 
 For the CLIs that accept a caller-chosen session id, the ADE picks one and adds
 it to the command line it launches — `claude --session-id <uuid>`,
-`grok --session-id <uuid>`, `pi --session-id <id>`,
-`agy --conversation <uuid>` — and stamps it on the terminal tab straight away.
-That is what lets the tab come back after a restart **even if you never wrote a
-message**: session capture through hooks only learns an id once the agent has
-done something. Codex and OpenCode expose no such flag and stay hook-captured.
+`grok --session-id <uuid>`, `pi --session-id <id>` — and stamps it on the
+terminal tab straight away. That is what lets the tab come back after a restart
+**even if you never wrote a message**: session capture through hooks only learns
+an id once the agent has done something. Codex and OpenCode expose no such flag
+and stay hook-captured; so does **Antigravity** since `agy` 1.2, whose
+`--conversation <id>` only *resumes* — an id it has never seen gets
+`warning: conversation "<id>" not found` and a new conversation under an id of
+its own (verified in the TUI and headless on 1.2.7), so naming one at launch
+stamped an id the agent never used.
 
 Your own arguments always win: if they already choose a session (`--resume`,
 `--continue`, `--session`, `--session-id`, `--fork`, `--conversation`, …) the

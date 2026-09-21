@@ -1324,7 +1324,7 @@ export const en = {
     "Keep the system awake while an agent is working (auto-releases after 2 h). On macOS and Linux this is experimental: it holds the system's own inhibitor (caffeinate / systemd-inhibit), but that has not been confirmed on real hardware yet.",
   "settings.pinAgentSessions": "Name agent sessions at launch",
   "settings.pinAgentSessionsDesc":
-    "Give each session an id when the agent starts, so its tab comes back after a restart even if you never wrote a message. Adds one flag to the launched command, for the CLIs that support it (Claude Code, Grok, Pi, Antigravity).",
+    "Give each session an id when the agent starts, so its tab comes back after a restart even if you never wrote a message. Adds one flag to the launched command, for the CLIs that support it (Claude Code, Grok, Pi).",
   "status.experimental": "{os} — experimental",
   "status.experimentalTooltip":
     "The {os} build is experimental: implemented in full and built in CI, but Uxnan is developed and validated on Windows first, so this one hasn't been put through an end-to-end pass on {os} hardware yet. If something looks wrong here, an issue is genuinely welcome.",
