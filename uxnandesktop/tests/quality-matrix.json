@@ -13,7 +13,7 @@
     "accounts/hardware."
   ],
   "version": 1,
-  "updated": "2026-08-08",
+  "updated": "2026-09-21",
   "layers": {
     "L1": {
       "name": "unit",
@@ -447,6 +447,32 @@
         "linux": "untested"
       },
       "gaps": "No E2E journey switches the preset against the real binary (the same live-instance constraint as the popover journey), and the per-preset efficiency matrix (--resource-profile) is wired but unmeasured for the same reason — it must run with the app closed. Workspace auto-sleep's automatic level needs a multi-platform soak with real live processes before its feature flag can ever be retired (L5), and the maintainer's on-device review of the new Settings section is still owed."
+    },
+    {
+      "id": "control-surface",
+      "flow": "Control surface (MCP tools + uxnan-cli): catalog, scope, create/converse/orchestrate, unattended launches, terminal/close, the run inbox in the console",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2",
+        "L3",
+        "L5"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/orchestration/run.test.ts (driven runs, inbox, dispatch ids), src/lib/agentUnattended.test.ts (the per-CLI tiers, the mode detection, never a bypass flag), src-tauri/crates/control-protocol/src/catalog.rs #[cfg(test)] (every entry has a schema and an example), src-tauri/crates/control-protocol/src/private.rs #[cfg(test)] (owner-only file check), src-tauri/crates/uxnan-cli/src/main.rs #[cfg(test)] (every CLI form parses; the committed reference is current)",
+        "L2": "src/lib/control/bridge.svelte.test.ts (the window bridge: create in the background, the launch budget, unattended launches, terminal/close, a coordinator's loop with questions), src/lib/components/orchestration/RunInbox.svelte.test.ts (who drives a run and what waits), src/lib/components/AgentProfileEditor.svelte.test.ts (the per-agent unattended switch)",
+        "L3": "src-tauri/src/control/tests.rs (the two gates and both transports over a real socket with Tauri's mock app: catalog dispatch, scope of a launch token incl. a linked worktree outside the checkout, receipts and audit, a worktree created on a real repository, agent/wait on a real PTY, inbox wake-ups, terminal/close busy/invalid)",
+        "L5": "docs/control-api.md → Verifying: driven live from inside the app on macOS — a Claude Code coordinator driving a Claude Code worker in a new worktree, an unattended Codex worker with no prompt, a worker that built the unattended-by-design branch end to end"
+      },
+      "platforms": {
+        "windows": "CI-compiled only (the control.json DACL and the uxnan-cli shim were written on macOS; FOR-DEV owes a run on real Windows)",
+        "macos": "verified by hand (2026-09-21)",
+        "linux": "untested"
+      },
+      "gaps": "No E2E journey drives the packaged app through uxnan-cli (the sidecar is bundled but the wdio suite has no control-surface spec yet); the Windows ACL and the shim's uninstall are compiled by CI but unverified on a real Windows machine (FOR-DEV); Linux is untested beyond CI."
     }
   ]
 }
