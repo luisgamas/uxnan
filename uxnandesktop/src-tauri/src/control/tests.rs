@@ -565,6 +565,131 @@ async fn the_control_token_rotates_live() {
     assert_eq!(status, 200);
 }
 
+/// A linked worktree lives outside the project's folder (the app cuts them
+/// under the worktree root), and it is still the project's: a worker launched
+/// there is in the project's scope — `current` resolves to its worktree and
+/// project — and the coordinator back in the checkout sees the worker's
+/// terminal. Before this, both sides asked the persisted record, which knows
+/// nothing of linked worktrees: the coordinator was blind to the worker it had
+/// just started, and the worker had no scope at all.
+#[tokio::test]
+async fn a_linked_worktree_outside_the_project_folder_is_in_its_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let (path, repo) = repo_in(dir.path()).await;
+    let linked = elsewhere.path().join("feat-x");
+    let out = std::process::Command::new("git")
+        .args(["worktree", "add", "-q", "-b", "feat-x"])
+        .arg(&linked)
+        .current_dir(&path)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let linked = crate::worktreeloc::canonical_temp(&linked);
+    assert!(
+        !linked.starts_with(&path),
+        "the linked worktree must sit outside the checkout for this test to mean anything"
+    );
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    let s = server(data).await;
+    let handle = s._app.handle().clone();
+    for (id, cwd) in [("coordinator", path.clone()), ("worker", linked.clone())] {
+        handle
+            .state::<AppState>()
+            .pty
+            .create(
+                crate::pty::PtySpec {
+                    id: id.into(),
+                    cwd: Some(cwd),
+                    shell: None,
+                    args: Vec::new(),
+                    env: Vec::new(),
+                    cols: 80,
+                    rows: 24,
+                },
+                |_| {},
+                || {},
+            )
+            .unwrap();
+    }
+    let tabs = json!({ "tabs": [
+        { "id": "coordinator", "title": "c", "workspace": path },
+        { "id": "worker", "title": "w", "workspace": linked },
+    ] });
+    let answerer = handle.clone();
+    handle.listen_any(super::bridge::REQUEST_EVENT, move |event| {
+        let req: super::bridge::BridgeRequest = serde_json::from_str(event.payload()).unwrap();
+        let answer = match req.method.as_str() {
+            "terminal/list" => tabs.clone(),
+            _ => Value::Null,
+        };
+        answerer
+            .state::<AppState>()
+            .control_bridge
+            .answer(&req.id, Ok(answer));
+    });
+    let call = |agent: &str, method: &str, params: Value| {
+        let origin = s.origin.clone();
+        let agent = agent.to_string();
+        let method = method.to_string();
+        async move {
+            post(
+                &origin,
+                RPC_PATH,
+                &[("x-uxnan-token", LAUNCH), ("x-uxnan-agent-id", &agent)],
+                rpc(&method, params),
+            )
+            .await
+            .1
+        }
+    };
+
+    // The worker: its project and worktree resolve from `current`.
+    let body = call("worker", "project/show", json!({ "project": "current" })).await;
+    assert_eq!(body["result"]["name"], "repo", "{body}");
+    let body = call("worker", "worktree/show", json!({ "worktree": "current" })).await;
+    assert_eq!(body["result"]["path"], linked, "{body}");
+    assert_eq!(body["result"]["branch"], "feat-x", "{body}");
+    let body = call("worker", "terminal/list", json!({})).await;
+    assert_eq!(
+        body["result"]["terminals"].as_array().unwrap().len(),
+        2,
+        "{body}"
+    );
+
+    // The coordinator: the worker's terminal is in its scope, by id and by list.
+    let body = call(
+        "coordinator",
+        "terminal/show",
+        json!({ "terminal": "id:worker" }),
+    )
+    .await;
+    assert_eq!(body["result"]["id"], "worker", "{body}");
+    let body = call("coordinator", "terminal/list", json!({})).await;
+    assert_eq!(
+        body["result"]["terminals"].as_array().unwrap().len(),
+        2,
+        "{body}"
+    );
+    let body = call(
+        "coordinator",
+        "worktree/show",
+        json!({ "worktree": "branch:feat-x" }),
+    )
+    .await;
+    assert_eq!(body["result"]["path"], linked, "{body}");
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "remove", "--force"])
+        .arg(&linked)
+        .current_dir(&path)
+        .output();
+}
+
 /// A per-launch token reaches only the project its terminal was opened in:
 /// listings are narrowed to it, a selector naming another project is *scope
 /// denied* (not *not found*), and a launch request that did not say which

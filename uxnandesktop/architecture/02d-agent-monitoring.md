@@ -672,7 +672,10 @@ acotan a el, y un selector que nombra un worktree o una terminal de otro
 proyecto responde `-32003` *scope denied* — distinto de *not found*, para que
 el agente deje de insistir. El alcance sale del **estado del backend** (la
 carpeta en la que corre el PTY del propio llamador), nunca de lo que la
-peticion afirme; una peticion de lanzamiento sin la cabecera
+peticion afirme; una carpeta es de un proyecto si esta dentro de su checkout,
+de su ubicacion de worktrees registrada **o de cualquier worktree que git le
+lista** — los worktrees enlazados que la app corta bajo la raiz de worktrees
+viven fuera del checkout y son donde corren los workers de un coordinador; una peticion de lanzamiento sin la cabecera
 `x-uxnan-agent-id` no alcanza ningun proyecto, ni una terminal del espacio
 Global. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
 **cada config de lanzamiento envia el id de la terminal en cada llamada**,

@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 891 Rust tests (823 unit in the app crate + 18 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
+always wins). 894 Rust tests (826 unit in the app crate + 18 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
@@ -880,7 +880,7 @@ launches the CLI in its reviewed automatic mode (Claude Code
 that ran the MCP tools and reported with no prompt, once its hook trust was
 seeded under the right key (`codex_trust`, group index read back from
 `hooks.json`) and the multi-line preamble submitted (400 ms post-paste
-Enter). 46 app tests (13 end to end over a real socket with Tauri's mock app,
+Enter). 49 app tests (14 end to end over a real socket with Tauri's mock app,
 one creating a worktree on a real repository, one waiting on a real PTY), 18
 protocol, 13 CLI, 15 window-bridge Vitest.
 
@@ -1585,7 +1585,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 891 Rust + 1,283 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 894 Rust + 1,283 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

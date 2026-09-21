@@ -94,7 +94,15 @@ pub enum Scope {
     /// Every registered project — the control token.
     All,
     /// One project — a per-launch token, from the folder its terminal runs in.
-    Project(Box<ProjectRef>),
+    /// `folders` are the project's checkout and every worktree git lists for
+    /// it, captured when the scope was computed: the linked worktrees the app
+    /// creates live outside the project's folder (under the worktree root), so
+    /// the folder alone would leave a coordinator blind to the worker it just
+    /// started there — and that worker with no scope at all.
+    Project {
+        project: Box<ProjectRef>,
+        folders: Vec<String>,
+    },
     /// No project — a per-launch token whose terminal is not inside a
     /// registered project (the Global space), is not alive, or did not say
     /// which terminal it is (a request without the agent-id header).
@@ -106,19 +114,20 @@ impl Scope {
     pub fn admits_project(&self, project: &ProjectRef) -> bool {
         match self {
             Scope::All => true,
-            Scope::Project(own) => own.id == project.id,
+            Scope::Project { project: own, .. } => own.id == project.id,
             Scope::None => false,
         }
     }
 
     /// Whether a terminal whose workspace (or, failing that, working folder)
-    /// is `folder` is within the scope. A terminal with no local folder — the
-    /// Global space, a host's — belongs to no project.
+    /// is `folder` is within the scope: inside the project's checkout or one
+    /// of its worktrees. A terminal with no local folder — the Global space, a
+    /// host's — belongs to no project.
     pub fn admits_folder(&self, folder: Option<&str>) -> bool {
         match self {
             Scope::All => true,
-            Scope::Project(own) => {
-                folder.is_some_and(|f| project_containing(std::slice::from_ref(own), f).is_some())
+            Scope::Project { folders, .. } => {
+                folder.is_some_and(|f| folders.iter().any(|root| path_within(f, root)))
             }
             Scope::None => false,
         }
@@ -130,6 +139,9 @@ pub struct Resolver<'a, R: tauri::Runtime> {
     app: &'a AppHandle<R>,
     caller: &'a Caller,
     scope: tokio::sync::OnceCell<Scope>,
+    /// Every project with the worktrees git lists for it, computed once per
+    /// request — the one source that knows where a linked worktree lives.
+    worktrees: tokio::sync::OnceCell<Vec<(ProjectRef, Vec<WorktreeEntry>)>>,
 }
 
 impl<'a, R: tauri::Runtime> Resolver<'a, R> {
@@ -138,6 +150,7 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
             app,
             caller,
             scope: tokio::sync::OnceCell::new(),
+            worktrees: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -170,12 +183,72 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                 let Some(cwd) = cwd else {
                     return Scope::None;
                 };
-                match project_containing(&self.all_projects().await, &cwd) {
-                    Some(project) => Scope::Project(Box::new(project)),
+                match self.project_of(&cwd).await {
+                    Some(project) => {
+                        let folders = self.folders_of(&project).await;
+                        Scope::Project {
+                            project: Box::new(project),
+                            folders,
+                        }
+                    }
                     None => Scope::None,
                 }
             })
             .await
+    }
+
+    /// Every project paired with its worktrees as git lists them (the main
+    /// checkout included), computed once per request.
+    async fn worktrees_by_project(&self) -> &Vec<(ProjectRef, Vec<WorktreeEntry>)> {
+        self.worktrees
+            .get_or_init(|| async {
+                let mut out = Vec::new();
+                for project in self.all_projects().await {
+                    let entries = super::services::worktree::list_of(self.app, &project.repo())
+                        .await
+                        .unwrap_or_default();
+                    out.push((project, entries));
+                }
+                out
+            })
+            .await
+    }
+
+    /// The folders that are `project`: its checkout, its registered worktree
+    /// location, and every worktree git lists for it.
+    async fn folders_of(&self, project: &ProjectRef) -> Vec<String> {
+        let mut folders = vec![project.path.clone()];
+        folders.extend(project.repo().worktree_root);
+        if let Some((_, entries)) = self
+            .worktrees_by_project()
+            .await
+            .iter()
+            .find(|(p, _)| p.id == project.id)
+        {
+            folders.extend(entries.iter().map(|e| e.path.clone()));
+        }
+        folders
+    }
+
+    /// The project `path` is in: by its checkout or registered worktree
+    /// location first (no git needed), else by the worktrees git lists — a
+    /// linked worktree under the worktree root is the app's own creation and
+    /// belongs to the project it was cut from. The deepest match wins.
+    async fn project_of(&self, path: &str) -> Option<ProjectRef> {
+        if let Some(project) = project_containing(&self.all_projects().await, path) {
+            return Some(project);
+        }
+        self.worktrees_by_project()
+            .await
+            .iter()
+            .flat_map(|(project, entries)| {
+                entries
+                    .iter()
+                    .filter(|e| path_within(path, &e.path))
+                    .map(move |e| (project, path_key(&e.path).len()))
+            })
+            .max_by_key(|(_, depth)| *depth)
+            .map(|(project, _)| project.clone())
     }
 
     /// The projects the caller may see.
@@ -302,7 +375,7 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                         "the current terminal is not inside a project",
                     )
                 })?;
-                project_containing(&projects, folder).ok_or_else(|| {
+                self.project_of(folder).await.ok_or_else(|| {
                     RpcError::new(
                         ErrorCode::NotFound,
                         format!("the current terminal's folder {folder} is not inside a registered project"),
@@ -376,13 +449,10 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                 .ok_or_else(|| not_found("worktree", sel)),
             Selector::Branch(branch) => {
                 let mut hits = Vec::new();
-                for project in self.all_projects().await {
-                    for entry in super::services::worktree::list_of(self.app, &project.repo())
-                        .await
-                        .unwrap_or_default()
-                    {
+                for (project, entries) in self.worktrees_by_project().await {
+                    for entry in entries {
                         if entry.branch.as_deref() == Some(branch.as_str()) {
-                            hits.push((project.clone(), entry));
+                            hits.push((project.clone(), entry.clone()));
                         }
                     }
                 }
@@ -413,23 +483,26 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
 
     /// The worktree whose folder is `path`, or whose folder contains it.
     async fn worktree_at(&self, path: &str) -> Option<(ProjectRef, WorktreeEntry)> {
-        let projects = self.all_projects().await;
-        let project = project_containing(&projects, path)?;
-        let entries = super::services::worktree::list_of(self.app, &project.repo())
+        let project = self.project_of(path).await?;
+        let (_, entries) = self
+            .worktrees_by_project()
             .await
-            .ok()?;
+            .iter()
+            .find(|(p, _)| p.id == project.id)?;
         // The deepest worktree containing the path wins: a linked worktree under
         // the main checkout's folder is the one the path is really in.
         entries
-            .into_iter()
+            .iter()
             .filter(|e| path_within(path, &e.path))
             .max_by_key(|e| path_key(&e.path).len())
-            .map(|e| (project, e))
+            .map(|e| (project, e.clone()))
     }
 }
 
 /// The project whose folder is, or contains, `path` — or whose registered
-/// worktree location does. The deepest match wins.
+/// worktree location does. The deepest match wins. Linked worktrees elsewhere
+/// are found by `Resolver::project_of`, which asks git; the persisted
+/// `RepoData::worktrees` is never written and is not consulted.
 fn project_containing(projects: &[ProjectRef], path: &str) -> Option<ProjectRef> {
     projects
         .iter()
@@ -439,7 +512,6 @@ fn project_containing(projects: &[ProjectRef], path: &str) -> Option<ProjectRef>
                     .worktree_root
                     .as_deref()
                     .is_some_and(|root| path_within(path, root))
-                || p.repo.worktrees.iter().any(|w| path_within(path, &w.path))
         })
         .max_by_key(|p| path_key(&p.path).len())
         .cloned()
@@ -459,5 +531,68 @@ mod tests {
         assert!(path_within("/a/b/c", "/a/b"));
         assert!(path_within("/a/b", "/a/b/"));
         assert!(!path_within("/a/bc", "/a/b"));
+    }
+
+    fn repo(id: &str, path: &str) -> RepoData {
+        RepoData {
+            id: id.to_string(),
+            name: id.to_string(),
+            path: path.to_string(),
+            target: Default::default(),
+            worktrees: vec![],
+            is_git: true,
+            icon: None,
+            branch_icons: std::collections::HashMap::new(),
+            worktree_order: vec![],
+            worktree_root: None,
+        }
+    }
+
+    fn project(id: &str, path: &str) -> ProjectRef {
+        ProjectRef::of(&repo(id, path))
+    }
+
+    #[test]
+    fn a_project_scope_admits_its_linked_worktrees() {
+        // The folders come from git, not the project's checkout: a worker in a
+        // linked worktree under the worktree root is inside the scope, and so
+        // is a terminal opened there; a sibling project's folder is not.
+        let own = project("p1", "/home/me/code/app");
+        let scope = Scope::Project {
+            project: Box::new(own.clone()),
+            folders: vec![
+                "/home/me/code/app".to_string(),
+                "/home/me/uxnan/worktrees/app/feat-x".to_string(),
+            ],
+        };
+        assert!(scope.admits_folder(Some("/home/me/code/app/src")));
+        assert!(scope.admits_folder(Some("/home/me/uxnan/worktrees/app/feat-x")));
+        assert!(scope.admits_folder(Some("/home/me/uxnan/worktrees/app/feat-x/src")));
+        assert!(!scope.admits_folder(Some("/home/me/uxnan/worktrees/app/feat-y")));
+        assert!(!scope.admits_folder(Some("/home/me/code/other")));
+        assert!(!scope.admits_folder(None));
+        assert!(scope.admits_project(&own));
+        assert!(!scope.admits_project(&project("p2", "/home/me/code/other")));
+    }
+
+    #[test]
+    fn project_containing_matches_the_checkout_and_the_registered_root_only() {
+        let mut with_root = repo("p1", "/home/me/code/app");
+        with_root.worktree_root = Some("/home/me/wt/app".into());
+        let projects = vec![
+            ProjectRef::of(&with_root),
+            project("p2", "/home/me/code/app/vendor"),
+        ];
+        // Deepest wins.
+        assert_eq!(
+            project_containing(&projects, "/home/me/code/app/vendor/x").map(|p| p.id),
+            Some("p2".into())
+        );
+        assert_eq!(
+            project_containing(&projects, "/home/me/wt/app/feat").map(|p| p.id),
+            Some("p1".into())
+        );
+        // A linked worktree elsewhere is git's to answer (`project_of`).
+        assert!(project_containing(&projects, "/home/me/uxnan/worktrees/app/feat").is_none());
     }
 }
