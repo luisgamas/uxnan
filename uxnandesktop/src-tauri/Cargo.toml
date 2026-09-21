@@ -8,7 +8,7 @@ members = ["crates/control-protocol", "crates/uxnan-cli"]
 resolver = "2"
 
 [workspace.package]
-version = "0.0.52"
+version = "0.0.53"
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
 rust-version = "1.85"
