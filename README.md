@@ -214,7 +214,7 @@ discovery, and per-agent run options.
 </p>
 
 <p align="center">
-  <sub>*Antigravity's integration is partial — it runs one-shot per turn with no live approval channel.<br />
+  <sub>*Antigravity's integration is partial — its headless CLI has no live approval channel, so it runs autonomously or in plan mode.<br />
   Zero has no hook surface; its state is read from the session it writes to disk.</sub>
 </p>
 

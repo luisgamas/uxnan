@@ -451,8 +451,6 @@ successful run. Remaining post-publish hardening:
       ./uxnan-bridge-*.tgz`, run `uxnan-bridge qr`.
 - [ ] **Executable bit** — ensure `scripts/*.sh` keep their executable bit on the
       packed tarball.
-- [ ] **OIDC publishing** — migrate from `NPM_TOKEN` to npm Trusted Publishing after
-      the first publish; enable provenance.
 
 ## Ops / nice-to-haves
 

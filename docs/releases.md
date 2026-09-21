@@ -474,8 +474,8 @@ and the defects that found are fixed and pinned by tests.
 | Component | Exercised | What is still unproven |
 |---|---|---|
 | desktop | ✅ 0.0.29 → 0.0.39, both channels: nightlies cut unattended and landing their own pull request, and **0.0.39 as a stable** — draft built, reviewed, published, and the stable updater channel rolled 0.0.28 → 0.0.39 while nightly stayed at 0.0.38 | — |
-| shared | ✅ 0.0.14-alpha.20260810 — tagged, published, `latest` moved | — |
-| bridge | ✅ 0.0.19-alpha.20260810 — **published pinned to the shared cut minutes earlier**, which is the whole reason this is one workflow | — |
+| shared | ✅ 0.0.14-alpha.20260810 — tagged, published, `latest` moved. ✅ 0.0.16-alpha.20260919 — published through **Trusted Publishing** with signed provenance, via the `release-npm.yml` dispatch on an already-existing tag | — |
+| bridge | ✅ 0.0.19-alpha.20260810 — **published pinned to the shared cut minutes earlier**, which is the whole reason this is one workflow. ✅ 0.0.25-alpha.20260920 — Trusted Publishing, pinned to 0.0.16, verified by a clean `npm install uxnan-bridge@latest` (`npm audit signatures` reports the attestations) | — |
 | mobile | ✅ 0.0.19-alpha.20260810+20260810 — pubspec↔tag gate passed on a pubspec `prepare.mjs` wrote, notes gate passed, uploaded to Play open testing | — |
 | relay | ❌ | nothing has changed in `relay/` that reaches a build since the automation existed, so it has never been cut by it |
 
@@ -486,6 +486,17 @@ and only then tagged the bridge. The published bridge resolves
 `"@uxnan/shared": "0.0.14-alpha.20260810"` — the version cut minutes before, not
 the previous one. That is the failure this workflow exists to prevent, and it is
 now observed rather than argued.
+
+**The wait's failure path ran for real too**, on 2026-09-19: `NPM_TOKEN` had
+expired that day, `npm publish` answered `E404`, and the run waited its thirty
+minutes for a version nothing was publishing — then failed from inside the wait
+and left `shared-v0.0.16-alpha.20260919` on a commit that was not on `main`,
+with the bump pull request opened by hand from the tag's commit (#246). That is
+what moved publishing to Trusted Publishing, added the dispatch that publishes an
+existing tag with the current workflow file, and made the cut open its pull
+request before going red (#249). The recovery then ran end to end: the dispatch
+published 0.0.16, a consumers-only cut tagged and published bridge 0.0.25 pinned
+to it, and desktop 0.0.51 went out as a stable the same night.
 
 **Two steps still belong to a person before a mobile cut**, and both fail the
 release rather than degrade it: `.github/whatsnew/whatsnew-{en-US,es-ES}` must

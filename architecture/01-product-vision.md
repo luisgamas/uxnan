@@ -188,8 +188,8 @@ Uxnan no se acopla a un agente específico. El Bridge implementa un **Agent Adap
 | **OpenAI Codex CLI** | `codex app-server` JSON-RPC over stdio | Long-lived thread/turn protocol | Active |
 | **OpenCode** | Local HTTP/SSE server | Long-lived session + permission events | Active |
 | **Claude Code** | Stream JSON over stdio | One process per turn + native resume | Active |
-| **pi** | JSONL over stdio | One process per turn + native session id | Active |
-| **Antigravity** | `agy` one-shot output | Caller-owned conversation id | Active |
+| **pi** | JSON-RPC over stdio (`--mode rpc`) | One resident process per thread + native session id (`get_state`) | Active |
+| **Antigravity** | Stream JSON over stdio (`agy --input-format stream-json`) | One resident process per thread + the conversation id `agy` announces | Active |
 | **Zero** | ACP JSON-RPC over stdio | Long-lived ACP session | Active |
 | **Grok** | ACP JSON-RPC over stdio | Long-lived ACP session | Active |
 | **Custom / future** | — | Extensible adapter interface | Extensible |
