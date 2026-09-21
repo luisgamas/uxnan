@@ -216,7 +216,7 @@ por agente.
 </p>
 
 <p align="center">
-  <sub>*La integración de Antigravity es parcial: corre one-shot por turno y no tiene un canal de aprobación en vivo.<br />
+  <sub>*La integración de Antigravity es parcial: su CLI headless no tiene un canal de aprobación en vivo, así que corre de forma autónoma o en modo plan.<br />
   Zero no expone hooks; su estado se lee de la sesión que escribe en disco.</sub>
 </p>
 
