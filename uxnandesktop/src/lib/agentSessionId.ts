@@ -17,9 +17,15 @@
 //   grok   --session-id <uuid>    "Use a specific session UUID for a **new**
 //                                  conversation … Does not resume existing sessions"
 //   pi     --session-id <id>      "Use exact project session ID, creating it if missing"
-//   agy    --conversation <uuid>  the one flag that both creates and reopens a
-//                                 conversation (as the bridge already drives it)
-// Codex and OpenCode expose no equivalent, so they stay hook-captured.
+// Codex and OpenCode expose no equivalent, so they stay hook-captured — and so
+// does Antigravity since `agy` 1.2: its `--conversation <id>` only RESUMES
+// ("Resume a previous conversation by ID"); an id it has never seen is answered
+// with `warning: conversation "<id>" not found` and a NEW conversation under an
+// id of agy's own, verified in the TUI and headless on 1.2.7. A launch named
+// that way stamped an id the agent never used, printed the warning on every
+// start, and the tab only became right once a hook report replaced it. The
+// resume side is untouched: a hook-captured conversation reopens with
+// `agy --conversation <its id>` (agentResume.ts), which does resume.
 
 /** A session id uxnan chose for a launch it is about to perform. */
 export interface OwnedSession {
@@ -38,7 +44,6 @@ const PINNABLE: Record<string, { agent: string; flag: string }> = {
   claude: { agent: "claude", flag: "--session-id" },
   grok: { agent: "grok", flag: "--session-id" },
   pi: { agent: "pi", flag: "--session-id" },
-  agy: { agent: "antigravity", flag: "--conversation" },
 };
 
 /** Arguments that already decide which session the agent opens. If the user's

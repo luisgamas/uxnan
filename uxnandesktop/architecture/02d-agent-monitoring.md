@@ -210,9 +210,11 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   hook solo aprende el id cuando el agente ya hizo algo, así que un tab abierto
   y nunca usado no tenía nada que recuperar. Para los CLI que aceptan un id
   elegido por el llamador — `claude --session-id <uuid>`,
-  `grok --session-id <uuid>`, `pi --session-id <id>`,
-  `agy --conversation <uuid>` (verificados contra la ayuda de cada CLI) — uxnan
-  elige el id al lanzar y sella el tab en el acto. Ese id queda marcado
+  `grok --session-id <uuid>`, `pi --session-id <id>` (verificados contra la
+  ayuda de cada CLI) — uxnan elige el id al lanzar y sella el tab en el acto.
+  Antigravity queda fuera desde `agy` 1.2: su `--conversation` solo **reanuda**
+  un id que agy creó (uno desconocido produce un aviso y una conversación nueva
+  con otro id), así que se captura por hook como Codex y OpenCode. Ese id queda marcado
   `pending` hasta que el proveedor lo reporta, porque los flags son
   complementarios exactos (cada uno rechaza el caso del otro): un tab `pending`
   se reabre **reclamando** un id en vez de reanudarlo, y reclama uno recién

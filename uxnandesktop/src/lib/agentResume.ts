@@ -98,9 +98,10 @@ export function resumeCommand(s: CapturedAgentSession): string | null {
       return `codex resume ${s.id}`;
     case "opencode":
       return `opencode --session ${s.id}`;
-    // Antigravity reopens a *conversation*, and its one flag both creates and
-    // resumes one — so this is also the command that restores a conversation id
-    // we chose ourselves at launch (see `agentSessionId.ts`).
+    // Antigravity reopens a *conversation* — a hook-captured one, since agy 1.2
+    // only resumes ids it created itself (see `agentSessionId.ts`). A `pending`
+    // one can only come from a tab saved by an older release; claiming it just
+    // starts a fresh conversation, which is all an unused one ever was.
     case "antigravity":
       return `agy --conversation ${s.id}`;
     case "pi": {

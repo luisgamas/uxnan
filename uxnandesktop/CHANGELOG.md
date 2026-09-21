@@ -203,6 +203,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Antigravity sessions are no longer named at launch.** "Name agent sessions
+  at launch" added `--conversation <uuid>` to every `agy` launch, on the
+  understanding that the flag both created and resumed a conversation. Since
+  `agy` 1.2 it only resumes: an id it has never seen is answered with
+  `warning: conversation "<id>" not found` on every start and a new
+  conversation under an id of agy's own (verified in the TUI and headless on
+  1.2.7), so the stamped id never matched the agent's and the tab only became
+  right once a hook report replaced it. Antigravity is now hook-captured like
+  Codex and OpenCode; reopening a captured conversation
+  (`agy --conversation <its id>`) is unchanged and does resume. The setting's
+  description lists the three CLIs it still applies to.
 - **A plain-folder project that runs `git init` is now recognized as a
   repository without re-adding it.** Whether a folder is a repository was
   decided once, when it was added, and persisted; a `git init` in a terminal

@@ -479,7 +479,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub prevent_sleep: bool,
     /// Name each agent session at launch, for the CLIs that accept a
-    /// caller-chosen id (`claude`/`grok`/`pi --session-id`, `agy --conversation`).
+    /// caller-chosen id (`claude`/`grok`/`pi --session-id`; not `agy --conversation`,
+    /// which since agy 1.2 only resumes an id agy itself created).
     /// The tab is then resumable from the moment the agent starts instead of only
     /// once a hook has reported — which is what makes a conversation you never
     /// started come back too. Adds one flag to the launched command line, so it

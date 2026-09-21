@@ -690,8 +690,11 @@ back. For the CLIs that accept a caller-chosen id, uxnan names the session as it
 launches the agent and stamps the tab immediately
 (`src/lib/agentSessionId.ts`) — verified against each CLI's own help:
 `claude --session-id <uuid>`, `grok --session-id <uuid>`,
-`pi --session-id <id>`, `agy --conversation <uuid>`. Codex and OpenCode expose
-no equivalent and stay hook-captured. Such an id is marked `pending` until the
+`pi --session-id <id>`. Codex and OpenCode expose no equivalent and stay
+hook-captured, and so does Antigravity: since `agy` 1.2 its `--conversation`
+only resumes an id agy created (an unknown one is answered with a warning and a
+fresh conversation under agy's own id — measured on 1.2.7), so the hook's
+`conversationId` is the only id that ever reopens it. Such an id is marked `pending` until the
 provider reports it back, because the flags are exact complements —
 `claude --resume <unwritten-id>` answers "No conversation found" and
 `claude --session-id <written-id>` answers "Session ID … is already in use" — so

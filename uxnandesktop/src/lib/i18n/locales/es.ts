@@ -1325,7 +1325,7 @@ export const es: Record<MessageKey, string> = {
     "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). En macOS y Linux es experimental: usa el inhibidor propio del sistema (caffeinate / systemd-inhibit), pero eso aún no se ha confirmado en hardware real.",
   "settings.pinAgentSessions": "Nombrar las sesiones al lanzarlas",
   "settings.pinAgentSessionsDesc":
-    "Asigna un id a cada sesión cuando arranca el agente, para que su pestaña vuelva tras reiniciar aunque no hayas escrito ningún mensaje. Añade un parámetro al comando lanzado, en los CLI que lo permiten (Claude Code, Grok, Pi, Antigravity).",
+    "Asigna un id a cada sesión cuando arranca el agente, para que su pestaña vuelva tras reiniciar aunque no hayas escrito ningún mensaje. Añade un parámetro al comando lanzado, en los CLI que lo permiten (Claude Code, Grok, Pi).",
   "status.experimental": "{os} — experimental",
   "status.experimentalTooltip":
     "La versión para {os} es experimental: está implementada por completo y se compila en CI, pero Uxnan se desarrolla y valida primero en Windows, así que a esta aún le falta una pasada completa en hardware {os}. Si ves algo raro aquí, tu reporte es más que bienvenido.",
