@@ -378,9 +378,14 @@ enum WorkerCmd {
         /// For `new`: the project (`current` by default).
         #[arg(long)]
         project: Option<String>,
-        /// Launch the worker in its CLI's reviewed automatic mode (no per-tool prompts).
-        #[arg(long)]
+        /// Launch the worker in its CLI's reviewed automatic mode, whatever the
+        /// agent's setting says (the default already follows that setting).
+        #[arg(long, conflicts_with = "attended")]
         unattended: bool,
+        /// Launch the worker as configured, with its usual prompts, even when the
+        /// agent's setting makes workers unattended.
+        #[arg(long)]
+        attended: bool,
         /// A caller-chosen key: repeating the call with it returns the first receipt.
         #[arg(long)]
         idempotency_key: Option<String>,
@@ -697,11 +702,12 @@ fn plan(command: Command) -> Result<Plan, String> {
                 branch,
                 project,
                 unattended,
+                attended,
                 idempotency_key,
             } => {
                 let mut p = json!({ "run": run, "task": task, "agent": agent });
-                if unattended {
-                    p["unattended"] = json!(true);
+                if let Some(mode) = worker_mode(unattended, attended) {
+                    p["unattended"] = json!(mode);
                 }
                 if let Some(w) = sel(worktree) {
                     p["worktree"] = json!(w);
@@ -857,6 +863,17 @@ fn plan(command: Command) -> Result<Plan, String> {
 /// The most a prompt file may weigh — the same cap the app enforces, checked
 /// here first so a too-large file is refused before anything is sent.
 const PROMPT_MAX_BYTES: u64 = 64 * 1024;
+
+/// What `worker start` says about `unattended`: nothing when neither flag was
+/// given (the agent's own setting decides), `true` for `--unattended`, `false`
+/// for `--attended`. Clap already refuses both at once.
+fn worker_mode(unattended: bool, attended: bool) -> Option<bool> {
+    match (unattended, attended) {
+        (true, _) => Some(true),
+        (false, true) => Some(false),
+        (false, false) => None,
+    }
+}
 
 impl Launch {
     /// Put the launch arguments into `params`, reading the prompt file.
@@ -1114,5 +1131,32 @@ mod tests {
         assert_eq!(p["unattended"], true);
         assert_eq!(p["idempotencyKey"], "k1");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `worker start` leaves `unattended` out unless a flag says, so the agent's
+    /// own setting decides; `--attended` is an explicit `false`, and the two
+    /// flags refuse each other.
+    #[test]
+    fn worker_start_says_unattended_only_when_a_flag_does() {
+        assert_eq!(worker_mode(false, false), None);
+        assert_eq!(worker_mode(true, false), Some(true));
+        assert_eq!(worker_mode(false, true), Some(false));
+        let base = [
+            "uxnan-cli",
+            "worker",
+            "start",
+            "--run",
+            "r",
+            "--task",
+            "s1",
+            "--agent",
+            "codex",
+        ];
+        assert!(Cli::try_parse_from(base).is_ok());
+        assert!(Cli::try_parse_from(base.iter().chain(["--attended"].iter())).is_ok());
+        assert!(Cli::try_parse_from(base.iter().chain(["--unattended"].iter())).is_ok());
+        assert!(
+            Cli::try_parse_from(base.iter().chain(["--unattended", "--attended"].iter())).is_err()
+        );
     }
 }

@@ -240,6 +240,11 @@ pub async fn task_update<R: tauri::Runtime>(
 /// `worker/start`: the worktree (existing, the caller's own, or a new one on a
 /// new branch), then the terminal with the agent, then the window binds the
 /// task to that terminal, mints the dispatch and queues the preamble + prompt.
+///
+/// The terminal is opened as a worker's (`worker: true`): with no `unattended`
+/// from the caller, the window applies the agent's own default — the per-agent
+/// switch in Settings → Agents, on unless the person turned it off — where a
+/// terminal or a worktree an agent opens stays attended unless asked.
 pub async fn worker_start<R: tauri::Runtime>(
     app: &AppHandle<R>,
     caller: &Caller,
@@ -295,6 +300,7 @@ pub async fn worker_start<R: tauri::Runtime>(
             "title": format!("{task} · {run}", run = short(run)),
             "prompt": Value::Null,
             "unattended": params.get("unattended"),
+            "worker": true,
         }),
     )
     .await?;

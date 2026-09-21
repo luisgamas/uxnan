@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 894 Rust tests (826 unit in the app crate + 18 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
+always wins). 895 Rust tests (826 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,283 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,295 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -873,16 +873,24 @@ is owner-only on Windows too (`uxnan_control_protocol::private`, one module
 for the writer and the CLI's check); every launch (`terminal/create` /
 `worktree/create` with `agent`, `worker/start`) is budgeted by the resource
 policy's orchestration concurrency (`launch/admit` over the bridge; `-32005`
-*busy* with `live`/`cap` before anything is created); `unattended: true`
-launches the CLI in its reviewed automatic mode (Claude Code
-`--permission-mode auto`, Codex `--approve-for-me`; receipt `applied` /
-`configured` / `unsupported`) — verified live with an unattended Codex worker
-that ran the MCP tools and reported with no prompt, once its hook trust was
-seeded under the right key (`codex_trust`, group index read back from
-`hooks.json`) and the multi-line preamble submitted (400 ms post-paste
-Enter). 49 app tests (14 end to end over a real socket with Tauri's mock app,
-one creating a worktree on a real repository, one waiting on a real PTY), 18
-protocol, 13 CLI, 15 window-bridge Vitest.
+*busy* with `live`/`cap` before anything is created); **a worker is
+unattended by design**: `worker/start` launches the CLI in its reviewed
+automatic mode unless the caller says `unattended: false` (`--attended`) or
+the agent's Settings switch (*Automatic mode when launched by an agent*,
+`AgentProfile.workersUnattended`) is off; the table
+(`src/lib/agentUnattended.ts`) covers every catalog CLI with a reviewed or
+edits-only tier (`claude`, `codex`, `qwen`, `ante`, `kimi`, `devin`, `goose`
+by env / `agy`, `grok`, `command-code`, `vibe`, `omp`, `autohand`), receipt
+`applied` / `partial` / `configured` / `unsupported`; `terminal/create` and
+`worktree/create` with an agent stay opt-in — verified live (before the
+default) with an unattended Codex worker that ran the MCP tools and reported
+with no prompt, once its hook trust was seeded under the right key
+(`codex_trust`, group index read back from `hooks.json`) and the multi-line
+preamble submitted (400 ms post-paste Enter). 49 app tests (14 end to end
+over a real socket with Tauri's mock app, one creating a worktree on a real
+repository, one waiting on a real PTY), 18 protocol, 14 CLI, 16
+window-bridge Vitest plus 9 for the unattended table and 5 for the Settings
+switch.
 
 ### Still pending
 - [ ] **The Windows shim on uninstall.** The app keeps a copy of `uxnan-cli`
@@ -1585,7 +1593,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 894 Rust + 1,283 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 895 Rust + 1,295 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

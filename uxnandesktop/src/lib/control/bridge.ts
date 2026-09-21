@@ -19,8 +19,8 @@ import { orchestration } from "$lib/state/orchestration.svelte";
 import { projects } from "$lib/state/projects.svelte";
 import { app } from "$lib/state/app.svelte";
 import { readInstanceText } from "$lib/terminal/instances";
-import { picksPermissionMode, unattendedArgs } from "$lib/agentUnattended";
-import type { WorktreeEntry } from "$lib/types";
+import { planUnattended, type UnattendedOutcome } from "$lib/agentUnattended";
+import type { EnvVar, WorktreeEntry } from "$lib/types";
 
 /** What the backend sends. */
 export interface ControlRequest {
@@ -46,29 +46,38 @@ export interface ControlTab {
 
 /** Resolve the `agent` argument of a create entry, or throw the message the
  *  caller reads. `null` when no agent was asked for. */
-function agentFor(selector: unknown): { id: string; name: string; command: string; args: string[] } | null {
+function agentFor(
+  selector: unknown,
+): { id: string; name: string; command: string; args: string[]; env?: EnvVar[] } | null {
   if (selector === undefined || selector === null || String(selector).trim() === "") return null;
   const agent = app.findLaunchableAgent(String(selector));
   if (!agent) {
     const known = app.launchableAgents.map((a) => a.command.trim() || a.name).join(", ");
     throw new Error(`no configured agent matches \`${String(selector)}\`; known: ${known || "none"}`);
   }
-  return { id: agent.id, name: agent.name, command: agent.command.trim(), args: agent.args };
+  return { id: agent.id, name: agent.name, command: agent.command.trim(), args: agent.args, env: agent.env };
 }
 
-/** What an `unattended` launch adds, and what the receipt says about it:
- *  `applied` (the CLI's reviewed automatic mode goes on the command line),
- *  `configured` (the profile's own args already pick a mode — left alone) or
- *  `unsupported` (no flag known for that CLI — launched as configured). */
+/** What an unattended launch adds — arguments after the profile's own, or
+ *  variables on its environment — and what the receipt says about it:
+ *  `applied` (the CLI's reviewed automatic mode), `partial` (its edits-only
+ *  tier: shell and MCP still prompt), `configured` (the profile's own args or
+ *  env already pick a mode — left alone) or `unsupported` (no tier known for
+ *  that CLI — launched as configured). Nothing when not wanted.
+ *
+ *  `wanted` is the caller's explicit `unattended` (`true`/`false`); anything
+ *  else falls back to `byDefault` — `false` for a terminal or a worktree an
+ *  agent opens, the per-agent Settings switch for a worker a coordinator
+ *  starts (`worker/start` marks its launch with `worker: true`). */
 function unattended(
-  agent: { command: string; args: string[] },
+  agent: { id: string; command: string; args: string[]; env?: EnvVar[] },
   wanted: unknown,
-): { extraArgs?: readonly string[]; unattended?: "applied" | "configured" | "unsupported" } {
-  if (wanted !== true) return {};
-  if (picksPermissionMode(agent.args)) return { unattended: "configured" };
-  const args = unattendedArgs(agent.command);
-  if (!args) return { unattended: "unsupported" };
-  return { extraArgs: args, unattended: "applied" };
+  byDefault = false,
+): { extraArgs?: readonly string[]; extraEnv?: Readonly<Record<string, string>>; unattended?: UnattendedOutcome } {
+  const on = wanted === true || wanted === false ? wanted : byDefault;
+  if (!on) return {};
+  const plan = planUnattended(agent);
+  return { extraArgs: plan.extraArgs, extraEnv: plan.extraEnv, unattended: plan.outcome };
 }
 
 /** The launch budget: an agent started through the surface — a terminal with
@@ -164,7 +173,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
       worktree,
       agent ? agent.id : null,
       true,
-      mode.extraArgs,
+      { extraArgs: mode.extraArgs, extraEnv: mode.extraEnv },
     );
     if (tabId) queuePrompt(tabId, p.prompt);
     return {
@@ -180,7 +189,11 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
       const admitted = admitAgentLaunch();
       if (!admitted.ok) return admitted;
     }
-    const mode = agent ? unattended(agent, p.unattended) : {};
+    // A worker's launch (the backend's `worker/start`) is unattended unless the
+    // caller or the agent's Settings switch says otherwise; any other launch
+    // only on request.
+    const byDefault = p.worker === true && agent ? app.workersUnattended(agent.id) : false;
+    const mode = agent ? unattended(agent, p.unattended, byDefault) : {};
     const title = typeof p.title === "string" && p.title.trim() ? p.title.trim() : undefined;
     const targetOpt = target === "local" ? undefined : target;
     let tabId: string | null;
@@ -193,6 +206,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
         target: targetOpt,
         background: true,
         extraArgs: mode.extraArgs,
+        extraEnv: mode.extraEnv,
       });
     } else {
       tabId = terminals.create({

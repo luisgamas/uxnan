@@ -21,7 +21,7 @@ uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
 uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
 uxnan-cli task ls --run <run-id> | update --run <run-id> <task> [--status completed|failed|skipped] [--output <text>]
-uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--unattended]
+uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--unattended | --attended]
 uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
 uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
@@ -1033,7 +1033,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 | `fromExisting` | boolean | no | Check out an existing branch named `branch` instead of creating it. Default false. |
 | `agent` | string | no | Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id. Omit for no agent (a plain terminal). |
 | `prompt` | string | no | A first message for the launched agent, typed into it once it is ready (queued behind Uxnan's backpressure, so it is never pasted into a busy agent). Requires `agent`. At most 64 KiB. |
-| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`). |
+| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there (`claude --permission-mode auto`, `codex --approve-for-me`, …; some CLIs only reach an edits-only tier where shell and MCP still prompt). Default false: a terminal an agent opens is attended unless asked. A profile whose own args or env already pick a mode is left alone; a CLI with no such tier launches as configured — the receipt says which (`unattended`). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -1066,7 +1066,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 - `adopted` (boolean) — Whether the window listed it and launched the agent. False when the window was not there; the worktree exists either way.
 - `terminal` (object, optional) — `{ id, agent }` of the launched agent's terminal — only when `agent` was given and the window adopted.
 - `warning` (string, optional) — Why the window did not adopt, when it did not.
-- `unattended` (string, optional) — When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured).
+- `unattended` (string, optional) — When the launch was unattended: `applied` (the CLI's reviewed automatic mode went on its command line or environment), `partial` (only its edits-only tier — shell and MCP tools still prompt; read the screen and answer with `agent/send --force` if it stalls), `configured` (the profile's own args or env already pick a mode; left alone) or `unsupported` (no tier known for that CLI; launched as configured).
 
 **Request**
 
@@ -1107,7 +1107,7 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
 | `agent` | string | no | Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id. Omit for no agent (a plain terminal). |
 | `title` | string | no | A tab title. Default: the worktree folder name. |
 | `prompt` | string | no | A first message for the launched agent, typed into it once it is ready (queued behind Uxnan's backpressure, so it is never pasted into a busy agent). Requires `agent`. At most 64 KiB. |
-| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`). |
+| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there (`claude --permission-mode auto`, `codex --approve-for-me`, …; some CLIs only reach an edits-only tier where shell and MCP still prompt). Default false: a terminal an agent opens is attended unless asked. A profile whose own args or env already pick a mode is left alone; a CLI with no such tier launches as configured — the receipt says which (`unattended`). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -1118,7 +1118,7 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
   - `id` (string) — The new tab's id.
   - `agent` (string, optional) — The launched agent's name, when one was.
 - `worktree` (string) — The worktree folder the tab opened in.
-- `unattended` (string, optional) — When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured).
+- `unattended` (string, optional) — When the launch was unattended: `applied` (the CLI's reviewed automatic mode went on its command line or environment), `partial` (only its edits-only tier — shell and MCP tools still prompt; read the screen and answer with `agent/send --force` if it stalls), `configured` (the profile's own args or env already pick a mode; left alone) or `unsupported` (no tier known for that CLI; launched as configured).
 
 **Request**
 
@@ -1673,7 +1673,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
 
 - **Group:** `orchestrate` · mutates (receipted, audited)
 - **MCP:** `worker_start`
-- **CLI:** `uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--unattended] [--idempotency-key <key>]`
+- **CLI:** `uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--unattended | --attended] [--idempotency-key <key>]`
 
 **Params**
 
@@ -1685,7 +1685,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
 | `worktree` | string | no | `current` (default: your own worktree), `new` (a new worktree of the project on a new branch), or a selector `path:<folder>` / `branch:<name>`. |
 | `branch` | string | no | For `new`: the branch name. Default `run/<run>/<task>`. |
 | `project` | string | no | Which project: `current`, `id:<projectId>`, `path:<absolute folder>`, or `name:<project name>`. Omit for every project. |
-| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`). |
+| `unattended` | boolean | no | Whether the worker launches in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there (`claude --permission-mode auto`, `codex --approve-for-me`, …; some CLIs only reach an edits-only tier where shell and MCP still prompt). **Default: the agent's own setting** (Settings → Agents → *Automatic mode when launched by an agent*, on unless the person switched it off) — a worker is unattended by design; pass `false` (the CLI's `--attended`) to launch it as configured. A profile whose own args or env already pick a mode is left alone; a CLI with no such tier launches as configured — the receipt says which (`unattended`). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -1698,7 +1698,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
   - `id` (string) — The tab id — read its screen with `terminal/read`, wait on it with `agent/wait`.
   - `agent` (string) — The launched agent's name.
 - `worktree` (string) — The folder the worker runs in.
-- `unattended` (string, optional) — When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured).
+- `unattended` (string, optional) — When the launch was unattended: `applied` (the CLI's reviewed automatic mode went on its command line or environment), `partial` (only its edits-only tier — shell and MCP tools still prompt; read the screen and answer with `agent/send --force` if it stalls), `configured` (the profile's own args or env already pick a mode; left alone) or `unsupported` (no tier known for that CLI; launched as configured).
 
 **Request**
 

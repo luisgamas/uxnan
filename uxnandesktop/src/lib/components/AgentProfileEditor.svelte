@@ -4,8 +4,10 @@
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import * as Select from "$lib/components/ui/select";
+  import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
+  import { unattendedLevel } from "$lib/agentUnattended";
   import { fileToLogoDataUrl, isCustomLogo } from "$lib/logo";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -51,6 +53,20 @@
     const p = app.terminalProfiles.find((x) => x.id === id);
     return p?.name.trim() || i18n.t("terminal.unnamedProfile");
   });
+
+  // Workers a coordinator starts with this agent launch in the CLI's reviewed
+  // automatic mode (`worker/start`), unless switched off here. What the switch
+  // can promise depends on the CLI: a reviewed tier, only its edits-only tier,
+  // or nothing — then the row is disabled and says why. It follows the command
+  // as typed, so a custom agent pointing at a known CLI gets the right row.
+  const level = $derived(unattendedLevel(agent.command));
+  const workersUnattendedDesc = $derived(
+    level === "reviewed"
+      ? i18n.t("agentEditor.workersUnattendedReviewed")
+      : level === "editsOnly"
+        ? i18n.t("agentEditor.workersUnattendedEditsOnly")
+        : i18n.t("agentEditor.workersUnattendedNone"),
+  );
 
   // Environment variables: a live list bound to `agent.env`. Rows are mutated in
   // place so deep-reactive persistence fires on every keystroke via `onchange`.
@@ -219,6 +235,26 @@
         {/each}
       </Select.Content>
     </Select.Root>
+  </div>
+
+  <!-- Workers a coordinator starts: the CLI's reviewed automatic mode, on by default. -->
+  <div class="flex items-center gap-3">
+    <div class="min-w-0 flex-1">
+      <p class={cn("text-xs font-medium leading-4", level ? "text-foreground" : "text-muted-foreground")}>
+        {i18n.t("agentEditor.workersUnattended")}
+      </p>
+      <p class={text.meta}>{workersUnattendedDesc}</p>
+    </div>
+    <Switch
+      size="sm"
+      checked={level !== null && agent.workersUnattended !== false}
+      disabled={level === null}
+      aria-label={i18n.t("agentEditor.workersUnattended")}
+      onCheckedChange={(c) => {
+        agent.workersUnattended = c;
+        onchange();
+      }}
+    />
   </div>
 
   <!-- Environment variables: set on the agent's shell at launch. -->

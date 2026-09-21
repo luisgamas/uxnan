@@ -467,46 +467,93 @@ describe("the launch budget", () => {
 });
 
 describe("unattended launches", () => {
-  it("adds the CLI's reviewed automatic mode on request, and says when it cannot", async () => {
+  /** Open a terminal with an agent through the bridge, read what went on its
+   *  command line and environment, and let it go so the budget is free again. */
+  async function launch(agent: string, params: Record<string, unknown> = {}) {
+    const out = await answer({
+      id: `u-${agent}-${JSON.stringify(params)}`,
+      method: "terminal/create",
+      params: { worktree: WT, agent, ...params },
+    });
+    expect(out.error).toBeUndefined();
+    const r = out.result as { terminal: { id: string }; unattended?: string };
+    const tab = terminals.findTab(r.terminal.id);
+    const cmd = tab?.kind === "terminal" ? (tab.runCommand ?? "") : "";
+    const env = tab?.kind === "terminal" ? Object.fromEntries(tab.env ?? []) : {};
+    terminals.handleShellExit(r.terminal.id);
+    return { mode: r.unattended, cmd, env };
+  }
+
+  beforeEach(() => {
     terminals.setWorkspace(WT);
     app.settings.agentProfiles = [
       { id: "a-claude", name: "Claude Code", command: "claude", args: [] },
       { id: "a-codex", name: "Codex", command: "codex", args: [] },
       { id: "a-plan", name: "Planner", command: "claude", args: ["--permission-mode", "plan"] },
       { id: "a-grok", name: "Grok", command: "grok", args: [] },
+      { id: "a-goose", name: "Goose", command: "goose", args: [], env: [{ key: "NO_COLOR", value: "1" }] },
+      { id: "a-opencode", name: "OpenCode", command: "opencode", args: [] },
     ];
-    const launch = async (agent: string, unattended?: boolean) => {
-      const out = await answer({
-        id: `u-${agent}-${unattended}`,
-        method: "terminal/create",
-        params: { worktree: WT, agent, unattended },
-      });
-      expect(out.error).toBeUndefined();
-      const r = out.result as { terminal: { id: string }; unattended?: string };
-      const tab = terminals.findTab(r.terminal.id);
-      const cmd = tab?.kind === "terminal" ? (tab.runCommand ?? "") : "";
-      // Each launch counts against the budget: let this one go before the next.
-      terminals.handleShellExit(r.terminal.id);
-      return { mode: r.unattended, cmd };
-    };
+  });
+
+  it("adds the CLI's reviewed automatic mode on request, and says when it cannot", async () => {
     // Applied: the mode goes on the command line.
-    const claude = await launch("claude", true);
+    const claude = await launch("claude", { unattended: true });
     expect(claude.mode).toBe("applied");
     expect(claude.cmd).toContain("--permission-mode auto");
-    const codex = await launch("codex", true);
+    const codex = await launch("codex", { unattended: true });
     expect(codex.mode).toBe("applied");
     expect(codex.cmd).toContain("--approve-for-me");
+    // Applied through the environment, next to the profile's own variables,
+    // for the CLI that reads its mode from there.
+    const goose = await launch("goose", { unattended: true });
+    expect(goose.mode).toBe("applied");
+    expect(goose.env).toEqual({ NO_COLOR: "1", GOOSE_MODE: "smart_approve" });
+    expect(goose.cmd).not.toContain("GOOSE_MODE");
     // Not asked: nothing added, nothing reported.
     const plain = await launch("codex");
     expect(plain.mode).toBeUndefined();
     expect(plain.cmd).not.toContain("--approve-for-me");
+    expect((await launch("goose")).env).toEqual({ NO_COLOR: "1" });
     // The profile already chose a mode: left alone.
-    const planner = await launch("Planner", true);
+    const planner = await launch("Planner", { unattended: true });
     expect(planner.mode).toBe("configured");
     expect(planner.cmd).toContain("--permission-mode plan");
     expect(planner.cmd).not.toContain("auto");
-    // No flag known for this CLI: launched as configured, and said so.
-    const grok = await launch("grok", true);
-    expect(grok.mode).toBe("unsupported");
+    // Only an edits-only tier for this CLI: on the command line, and said so.
+    const grok = await launch("grok", { unattended: true });
+    expect(grok.mode).toBe("partial");
+    expect(grok.cmd).toContain("--permission-mode acceptEdits");
+    // No tier known for this CLI: launched as configured, and said so.
+    const opencode = await launch("opencode", { unattended: true });
+    expect(opencode.mode).toBe("unsupported");
+    expect(opencode.cmd).toBe("opencode");
+  });
+
+  it("launches a worker unattended by default, unless the caller or the agent's switch says otherwise", async () => {
+    // A worker's launch with nothing said: the per-agent default, which is on.
+    const worker = await launch("codex", { worker: true });
+    expect(worker.mode).toBe("applied");
+    expect(worker.cmd).toContain("--approve-for-me");
+    // An explicit `false` wins over the default.
+    const attended = await launch("codex", { worker: true, unattended: false });
+    expect(attended.mode).toBeUndefined();
+    expect(attended.cmd).not.toContain("--approve-for-me");
+    // The agent's Settings switch off: the worker launches as configured, and
+    // the receipt says nothing — unless the caller asks explicitly.
+    app.settings.agentProfiles[1].workersUnattended = false;
+    const off = await launch("codex", { worker: true });
+    expect(off.mode).toBeUndefined();
+    expect(off.cmd).not.toContain("--approve-for-me");
+    const asked = await launch("codex", { worker: true, unattended: true });
+    expect(asked.mode).toBe("applied");
+    // A CLI with no tier launches as configured either way, and the default
+    // says so in the receipt.
+    const opencode = await launch("opencode", { worker: true });
+    expect(opencode.mode).toBe("unsupported");
+    expect(opencode.cmd).toBe("opencode");
+    // The default is only a worker's: a terminal an agent opens stays attended.
+    const terminal = await launch("codex");
+    expect(terminal.mode).toBeUndefined();
   });
 });

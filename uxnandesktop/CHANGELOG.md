@@ -30,15 +30,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   waits for one to finish. A plain terminal and a person's click are not
   budgeted. The deterministic half of plan 023, at the one place the three
   doors share.
-- **Unattended launches.** `worker/start`, `terminal/create` and
-  `worktree/create` with an agent take `unattended: true` (`--unattended` on
-  the CLI) and launch the agent in its CLI's reviewed automatic mode — Claude
-  Code `--permission-mode auto`, Codex `--approve-for-me` — so a worker with
-  nobody at its terminal does not stop at every tool for an "Allow". Per
-  launch and opt-in: profiles are untouched, one whose args already pick a
-  mode is respected, and the receipt says `applied`, `configured` or
-  `unsupported`. Verified live: an unattended Codex worker ran the Uxnan MCP
-  tools and reported its result with no prompt.
+- **Unattended launches, by design.** A worker a coordinator starts
+  (`worker/start`, `uxnan-cli worker start`) now launches in its CLI's
+  **reviewed automatic mode by default**, so a worker with nobody at its
+  terminal does not stop at every tool for an "Allow" — never the CLI's "skip
+  every check" flag. The table (`src/lib/agentUnattended.ts`) grew from two
+  CLIs to every CLI in the catalog that has such a tier, at two levels:
+  `reviewed` (every tool auto-approved under a reviewer — `claude
+  --permission-mode auto`, `codex --approve-for-me`, `qwen --approval-mode
+  auto`, `ante --permission-mode auto`, `kimi --yolo`, `devin
+  --permission-mode smart`, and `goose` through `GOOSE_MODE=smart_approve` in
+  its environment, the one CLI without a flag) and `editsOnly` (file edits
+  auto-approved, shell and MCP still prompt — `agy --mode accept-edits`, `grok
+  --permission-mode acceptEdits`, `command-code --accept-edits`, `vibe --agent
+  accept-edits`, `omp --approval-mode write`, `autohand --yes`). A CLI whose
+  tier exists only on its one-shot `exec` subcommand and not on the TUI Uxnan
+  launches (`zero`, `droid`) is deliberately absent. What is added flows
+  through the launch path the profile's own arguments and environment take
+  (`extraArgs` / `extraEnv`), and the detection of a profile that already
+  picks a mode covers every CLI's flags (`--mode` only for the two CLIs where
+  it is a mode, `--agent` only where it picks the approval agent, `--force`
+  only where it is a bypass) and the environment variables some read one
+  from. The receipt says `applied`, **`partial`** (an edits-only tier: the
+  coordinator may still have to answer a shell prompt), `configured` or
+  `unsupported`. **Settings → Agents** gained a per-agent switch, *Automatic
+  mode when launched by an agent* (on by default; disabled with the reason
+  for a CLI with no tier; the description says when only edits are
+  auto-approved) — a person's own launches are never affected, and
+  `terminal/create` / `worktree/create` with an agent stay opt-in. `uxnan-cli
+  worker start` takes `--attended` next to `--unattended` to override the
+  switch either way. Verified live before the default: an unattended Codex
+  worker ran the Uxnan MCP tools and reported its result with no prompt.
 
 ### Changed
 

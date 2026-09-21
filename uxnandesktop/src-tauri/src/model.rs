@@ -273,6 +273,12 @@ pub struct AgentProfile {
     /// Logo key for the UI (a catalog id, e.g. `claudecode`); `None` → generic.
     #[serde(default)]
     pub icon: Option<String>,
+    /// Whether a worker a coordinator starts with this agent (`worker/start`)
+    /// launches in the CLI's reviewed automatic mode. `None` → on; the window
+    /// reads it (`src/lib/agentUnattended.ts`). The person's own launches are
+    /// never affected.
+    #[serde(default)]
+    pub workers_unattended: Option<bool>,
 }
 
 /// Where a [`QuickCommand`] applies. A flat list of commands is scoped by this:
@@ -1726,17 +1732,21 @@ mod tests {
                 value: "claude-opus-4-8".to_string(),
             }],
             icon: Some("claudecode".to_string()),
+            workers_unattended: Some(false),
         };
         let json = serde_json::to_string(&agent).unwrap();
         assert!(json.contains("terminalProfileId"));
         assert!(json.contains("ANTHROPIC_MODEL"));
+        assert!(json.contains("\"workersUnattended\":false"));
         let back: AgentProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(agent, back);
-        // Older agents (pre-shell/env/icon) still deserialize.
+        // Older agents (pre-shell/env/icon/unattended) still deserialize, and
+        // say nothing about workers — which the window reads as "on".
         let legacy: AgentProfile =
             serde_json::from_str(r#"{"id":"x","name":"X","command":"x"}"#).unwrap();
         assert!(legacy.terminal_profile_id.is_none() && legacy.icon.is_none());
         assert!(legacy.env.is_empty());
+        assert!(legacy.workers_unattended.is_none());
     }
 
     #[test]

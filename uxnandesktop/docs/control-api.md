@@ -158,18 +158,41 @@ share; admission by free memory and process-tree limits remain that plan's.
 
 **Unattended launches.** A worker a coordinator starts has nobody at its
 terminal to click "Allow", so a CLI that stops at every tool for a person's
-approval would stall the run. `unattended: true` (the CLI's `--unattended`) on
-`worker/start`, `terminal/create` or `worktree/create` with an agent launches
-it in its CLI's **reviewed automatic mode** — Claude Code
-`--permission-mode auto`, Codex `--approve-for-me` — never its "skip every
-check" flag, which stays a deliberate choice for the person to put in a
-profile's args. It is per launch and opt-in: the person's profiles and their
-own launches are untouched, and a profile whose args already pick a mode is
-left alone. The receipt says what happened: `unattended: applied`,
-`configured` (the profile decided) or `unsupported` (no flag known for that
-CLI, launched as configured — the caller may have to answer its prompts
-through `terminal/read` + `agent/send --force`). `src/lib/agentUnattended.ts`
-holds the table, verified against each CLI's `--help`.
+approval would stall the run. An unattended launch adds the CLI's **reviewed
+automatic mode** — the tier where tools are auto-approved but a reviewer (a
+classifier model, a reviewer subagent, a sandbox) still gates what runs — and
+never its "skip every check" flag, which stays a deliberate choice for the
+person to put in a profile's args. The table lives in
+`src/lib/agentUnattended.ts`, per command basename, at two levels:
+
+| Level | Meaning | CLIs |
+|---|---|---|
+| `reviewed` | every tool auto-approved under a reviewer | `claude --permission-mode auto`, `codex --approve-for-me`, `qwen --approval-mode auto`, `ante --permission-mode auto`, `kimi --yolo` (that CLI's *ask when needed* tier; its skip-all is `--auto`), `devin --permission-mode smart`, `goose` via `GOOSE_MODE=smart_approve` in its environment (it has no flag) |
+| `editsOnly` | file edits auto-approved; shell commands and MCP tools still prompt | `agy --mode accept-edits`, `grok --permission-mode acceptEdits`, `command-code --accept-edits` (and its `cmd`/`cmdc`/`commandcode` bins), `vibe --agent accept-edits`, `omp --approval-mode write`, `autohand --yes` |
+| — | absent: only a skip-all flag or an allow-list, or the tier exists only on the CLI's one-shot `exec` subcommand and not on the TUI Uxnan launches (`zero`, `droid`), or no approval prompt exists at all | everything else |
+
+What is added flows through the same path as the profile's own configuration:
+arguments after the profile's args, an environment variable next to the
+profile's env — one launch, not a second launch path.
+
+**Who is unattended.** A **worker is unattended by design**: `worker/start`
+with no `unattended` follows the **agent's own setting** — Settings → Agents →
+expand the agent → *Automatic mode when launched by an agent*, **on** unless the
+person switched it off (a CLI with no tier shows the row disabled, with the
+reason). `unattended: false` (the CLI's `--attended`) launches the worker as
+configured; `unattended: true` (`--unattended`) asks for the mode even with the
+switch off. `terminal/create` and `worktree/create` with an agent stay
+**opt-in** (`unattended: true`, the CLI's `--unattended`): a terminal an agent
+opens is attended unless asked. Either way a profile whose own args or
+environment already pick a mode — any mode: a plan mode, a bypass, an
+allow-list, a sandbox — is left alone: the person decided.
+
+The receipt says what happened: `unattended: applied` (the reviewed tier went
+on the command line or environment), `partial` (only the edits-only tier — the
+worker may still stop at a shell command or an MCP tool, which the caller
+answers through `terminal/read` + `agent/send --force`), `configured` (the
+profile decided) or `unsupported` (no tier known for that CLI, launched as
+configured). The field is absent when the launch was not unattended.
 
 ### The `converse` group: send, wait, read
 
@@ -258,10 +281,10 @@ The loop a coordinator runs, in `uxnan-cli` terms:
 R=$(uxnan-cli run create --title "Split the parser" --json | jq -r .run.id)
 uxnan-cli task create --run $R --title Lexer  --prompt-file lexer.md
 uxnan-cli task create --run $R --title Parser --prompt-file parser.md --depends-on s1
-uxnan-cli worker start --run $R --task s1 --agent codex --worktree new
+uxnan-cli worker start --run $R --task s1 --agent codex --worktree new   # unattended by default
 uxnan-cli inbox check --run $R --wait            # … worker_done s1
 uxnan-cli inbox check --run $R --ack m1          # s2 is ready now
-uxnan-cli worker start --run $R --task s2 --agent claude --worktree new
+uxnan-cli worker start --run $R --task s2 --agent claude --worktree new --attended   # this one prompts
 uxnan-cli inbox check --run $R --wait            # … question s3 → answer it
 uxnan-cli answer --run $R --question s3 --answer "keep the old flag"
 uxnan-cli inbox check --run $R --wait --ack m2   # … worker_done s2
@@ -571,7 +594,9 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
 - **CLI** (`cargo test -p uxnan-cli`): the HTTP client's round trip against a
   stand-in server, response parsing, the origin derivation, the process
   start-time check, the reference naming every entry, every error code and
-  exit status, every CLI form resolving to a real clap subcommand, every result
+  exit status, every CLI form resolving to a real clap subcommand, `worker
+  start` saying `unattended` only when `--unattended`/`--attended` does (and
+  refusing both), every result
   field rendering with a meaning, the committed
   `docs/control-api-reference.md` equal to the generator's output, the table
   and record renderers.
@@ -589,7 +614,19 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   with its dispatch and its preamble queued, a stale dispatch's report refused
   and the current one taken, the inbox delivering until acknowledged, a task
   closed by hand, the run finished), and a worker's question filed as a
-  coordinator-addressed gate, posted to the inbox and answered. The model
+  coordinator-addressed gate, posted to the inbox and answered; for unattended
+  launches: the reviewed mode added on request (on the command line, or in the
+  environment for the CLI that reads it there), an edits-only tier reported
+  `partial`, a profile that already picks a mode left `configured`, a CLI with
+  no tier `unsupported`, and a worker's launch unattended by default — the
+  explicit `false` and the agent's Settings switch both turning it off, a
+  terminal an agent opens staying attended. The table itself
+  (`agentUnattended.ts`: every tier, the bypass flags it never carries, the
+  per-CLI detection of `--mode`/`--agent`/`--force`, the environment
+  variables) is pure and tested in `src/lib/agentUnattended.test.ts`; the
+  Settings switch (on by default, disabled with the reason for a CLI with no
+  tier, the edits-only wording, what it writes) in
+  `src/lib/components/AgentProfileEditor.svelte.test.ts`. The model
   (`dispatchIdFor`, `postInbox`/`ackInbox`, `workerPreamble`) is pure and
   tested in `src/lib/orchestration/run.test.ts`. The pump's readiness rule (`readyToReceive`: a terminal that has drawn and
   settled, the busy hold, the cap) is pure and tested in

@@ -16,7 +16,8 @@ For getting **precise** working/done states out of an agent, see
 > **TL;DR.** **Settings → Agents**:
 > - **Add** an installed agent from the catalog, or **Add custom agent**.
 > - Per agent, set its **command**, **arguments**, **Launch in** (shell),
->   **Environment variables**, and **logo**.
+>   **Environment variables**, whether **workers a coordinator starts** run in
+>   the CLI's automatic mode, and **logo**.
 > - **Default agent** auto-launches into new worktrees; **Agent launch shell**
 >   picks the default shell agents run in (Command Prompt on Windows by default).
 
@@ -60,6 +61,7 @@ Each agent profile has:
 | **Arguments** | Space-separated args (e.g. `--model opus`). Quoted automatically — see [quoting](#argument-quoting). |
 | **Launch in** | The shell this agent runs in. *Default agent shell* = the global setting below; or pin a specific terminal profile. |
 | **Environment variables** | Extra env set on the agent's shell — see [below](#per-agent-environment-variables). |
+| **Automatic mode when launched by an agent** | Whether a worker a coordinator starts with this agent runs in the CLI's reviewed automatic mode — see [below](#automatic-mode-when-launched-by-an-agent). On by default. |
 | **Logo** | Optional custom image; otherwise the catalog logo resolves from the command. |
 
 Launch an agent from the **Bot menu** on any project or worktree header in the
@@ -94,6 +96,44 @@ Notes:
   `UXNAN_AGENT_ID`) always **win** over a variable you set with the same name, so
   you can't accidentally break [hooks](./agent-hooks.md).
 - Blank names are ignored.
+
+---
+
+## Automatic mode when launched by an agent
+
+A worker a coordinator starts through the control surface (`worker/start`,
+`uxnan-cli worker start`) has nobody at its terminal to click "Allow", so by
+default it launches in its CLI's **reviewed automatic mode** — the tier where
+tools are auto-approved but a reviewer (a classifier, a reviewer subagent, a
+sandbox) still gates what runs; never the CLI's "skip every check" flag. The
+mode is added to the launch **after** the profile's own arguments (or, for the
+one CLI that reads it from the environment, next to the profile's own
+variables), through the same launch path as everything else here.
+
+**Set it:** Settings → Agents → expand an agent → **Automatic mode when launched
+by an agent**. On by default. What the switch promises depends on the CLI, and
+its description says which:
+
+- a **reviewed** tier — every tool auto-approved under a reviewer;
+- an **edits-only** tier — file edits auto-approved, shell commands and MCP
+  tools still prompt (the coordinator then reads the worker's screen and
+  answers, and its receipt says `partial`);
+- **none** — the row is disabled: *this CLI has no reviewed automatic mode;
+  workers launch as configured*.
+
+Notes:
+
+- **Your own launches are never affected** — the Bot menu, the New worktree
+  dialog, the launcher: only a worker a coordinator starts reads this switch. A
+  terminal or a worktree an agent opens (`terminal/create`, `worktree/create`)
+  is attended unless that call asks with `unattended: true`.
+- A profile whose **arguments or environment already pick a mode** — a plan
+  mode, a bypass, an allow-list, a sandbox — is left alone whatever the switch
+  says: you decided.
+- The coordinator can override the switch per launch (`--unattended` /
+  `--attended` on `uxnan-cli worker start`).
+- The table of modes and what each CLI reaches is in
+  [`control-api.md`](./control-api.md) → *Unattended launches*.
 
 ---
 
@@ -284,6 +324,8 @@ best.
 ## See also
 
 - [Orchestration](./orchestration.md) — drive multiple running agents at once.
+- [Control surface](./control-api.md) — the workers a coordinator starts, and
+  their unattended launch.
 - [Agent hooks — precise states](./agent-hooks.md) — `working`/`waiting`/`done`
   indicators and tighter orchestration backpressure.
 - Spec: [`architecture/02d-agent-monitoring.md`](../architecture/02d-agent-monitoring.md).
