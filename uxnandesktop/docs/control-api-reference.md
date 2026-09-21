@@ -75,7 +75,7 @@ Global: --json (stable machine output), --timeout <seconds>
 
 ### `create` (v1) — create a worktree or a terminal, start a saved run or automation
 
-- `worktree/create` (MCP tool `worktree_create`) — Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — make it the active worktree, and optionally launch an agent in it with a first message.
+- `worktree/create` (MCP tool `worktree_create`) — Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — list it in the sidebar, and optionally launch an agent in it with a first message.
 - `terminal/create` (MCP tool `terminal_create`) — Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message.
 - `run/start` (MCP tool `run_start`) — Start (or re-run) a saved orchestration run by id: every step is reset and the engine begins dispatching.
 - `automation/run` (MCP tool `automation_run`) — Run a saved automation now, as a manual run of the same headless runner its schedule uses.
@@ -192,6 +192,9 @@ Report the running Uxnan Desktop: its version, the control protocol version, whi
   - `projects` (integer) — Registered projects.
   - `terminals` (integer) — Live terminals.
   - `agents` (integer) — Live agents.
+- `cli` (object) — Where `uxnan-cli` is on this machine.
+  - `bundled` (string | null) — The binary shipped inside the app, next to its executable — on the PATH of every terminal Uxnan opens (also named by `UXNAN_CLI` there). Null for a build made without the sidecar.
+  - `shim` (string | null) — The link (macOS/Linux, `~/.local/bin/uxnan-cli`) or copy (Windows, `%LOCALAPPDATA%\uxnan\bin`) the app keeps for your own shell. Null when it could not be written.
 
 **Request**
 
@@ -1014,7 +1017,7 @@ Go forward one entry in the integrated browser's history. Errors if no page is o
 
 ### `worktree/create`
 
-Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — make it the active worktree, and optionally launch an agent in it with a first message. Use it to give a subtask its own isolated space and agent instead of running `git worktree add` yourself: Uxnan then sees, lists and can stop it. Returns a receipt with the worktree and, when an agent was launched, its terminal id.
+Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — list it in the sidebar, and optionally launch an agent in it with a first message. Use it to give a subtask its own isolated space and agent instead of running `git worktree add` yourself: Uxnan then sees, lists and can stop it. It happens in the background: the person's focus stays where it is (`terminal/reveal` moves it). Returns a receipt with the worktree and, when an agent was launched, its terminal id.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `worktree_create`
@@ -1059,7 +1062,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
     - `cwd` (string, optional) — The folder its terminal was opened in, when known.
     - `firstSeen` (integer) — Epoch seconds of its first report.
     - `lastUpdate` (integer) — Epoch seconds of its latest report.
-- `adopted` (boolean) — Whether the window listed it, made it active and launched the agent. False when the window was not there; the worktree exists either way.
+- `adopted` (boolean) — Whether the window listed it and launched the agent. False when the window was not there; the worktree exists either way.
 - `terminal` (object, optional) — `{ id, agent }` of the launched agent's terminal — only when `agent` was given and the window adopted.
 - `warning` (string, optional) — Why the window did not adopt, when it did not.
 
@@ -1087,7 +1090,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 
 ### `terminal/create`
 
-Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message. Returns a receipt with the terminal id.
+Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message. The tab opens in the background — the person's focus stays where it is (`terminal/reveal` moves it). Returns a receipt with the terminal id.
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `terminal_create`

@@ -120,7 +120,9 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
     const projectId = String(p.projectId ?? "");
     const worktree = p.worktree as WorktreeEntry;
     const agent = agentFor(p.agent);
-    const tabId = await projects.adoptWorktree(projectId, worktree, agent ? agent.id : null);
+    // In the background: the sidebar lists it and the agent runs, the person's
+    // focus stays where it is (`terminal/reveal` is the entry that moves it).
+    const tabId = await projects.adoptWorktree(projectId, worktree, agent ? agent.id : null, true);
     if (tabId) queuePrompt(tabId, p.prompt);
     return { terminal: tabId ? { id: tabId, agent: agent?.name } : null };
   },
@@ -133,9 +135,21 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
     let tabId: string | null;
     if (agent) {
       const profile = app.findLaunchableAgent(agent.id)!;
-      tabId = app.launchAgent(profile, { cwd: worktree, workspace: worktree, title, target: targetOpt });
+      tabId = app.launchAgent(profile, {
+        cwd: worktree,
+        workspace: worktree,
+        title,
+        target: targetOpt,
+        background: true,
+      });
     } else {
-      tabId = terminals.create({ cwd: worktree, workspace: worktree, title, target: targetOpt });
+      tabId = terminals.create({
+        cwd: worktree,
+        workspace: worktree,
+        title,
+        target: targetOpt,
+        background: true,
+      });
     }
     if (!tabId) return { error: "the agent has no command to launch" };
     if (tabId && agent) queuePrompt(tabId, p.prompt);

@@ -651,7 +651,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "worktree/create",
             tool: "worktree_create",
             group: Group::Create,
-            summary: "Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — make it the active worktree, and optionally launch an agent in it with a first message. Use it to give a subtask its own isolated space and agent instead of running `git worktree add` yourself: Uxnan then sees, lists and can stop it. Returns a receipt with the worktree and, when an agent was launched, its terminal id.",
+            summary: "Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — list it in the sidebar, and optionally launch an agent in it with a first message. Use it to give a subtask its own isolated space and agent instead of running `git worktree add` yourself: Uxnan then sees, lists and can stop it. It happens in the background: the person's focus stays where it is (`terminal/reveal` moves it). Returns a receipt with the worktree and, when an agent was launched, its terminal id.",
             params: object(
                 json!({
                     "project": project_selector(true),
@@ -667,7 +667,7 @@ pub fn catalog() -> Vec<Entry> {
             mutates: true,
             result: receipt(json!({
                 "worktree": described("The worktree, as `worktree/list` describes it.", worktree_view(false)),
-                "adopted": field("boolean", "Whether the window listed it, made it active and launched the agent. False when the window was not there; the worktree exists either way."),
+                "adopted": field("boolean", "Whether the window listed it and launched the agent. False when the window was not there; the worktree exists either way."),
                 "terminal": optional("object", "`{ id, agent }` of the launched agent's terminal — only when `agent` was given and the window adopted."),
                 "warning": optional("string", "Why the window did not adopt, when it did not."),
             })),
@@ -677,7 +677,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "terminal/create",
             tool: "terminal_create",
             group: Group::Create,
-            summary: "Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message. Returns a receipt with the terminal id.",
+            summary: "Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message. The tab opens in the background — the person's focus stays where it is (`terminal/reveal` moves it). Returns a receipt with the terminal id.",
             params: object(
                 json!({
                     "worktree": worktree_selector(),

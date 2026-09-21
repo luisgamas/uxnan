@@ -4,6 +4,20 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A worktree or terminal an agent creates no longer steals the focus.**
+  `worktree/create` and `terminal/create` (and so `worker/start`) used the
+  dialog's path, which makes the new worktree active and its tab the one on
+  screen — fine for a click, wrong for a coordinator working while you watch
+  it: every worker it started yanked you to its tab. The control surface now
+  creates in the **background** (`NewTabOptions.background`,
+  `adoptWorktree(…, background)`): the worktree is listed, its workspace
+  mounted so the shell spawns and the agent runs, but your active worktree and
+  tab stay put — what an agent creates leaves a trace, it does not take the
+  seat. `terminal/reveal`, `file/open` and `file/diff` are the entries that
+  move the focus, on purpose.
+
 ### Added
 
 - **`uxnan-cli` ships inside the app, and every terminal Uxnan opens has it.**

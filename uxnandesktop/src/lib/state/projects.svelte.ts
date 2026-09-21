@@ -1314,14 +1314,18 @@ class ProjectsStore {
    *  other one.
    *
    *  `agentId`: a specific agent id, `null` for none, or `undefined` to fall back
-   *  to the global default agent. */
+   *  to the global default agent. `background` (the control surface): the
+   *  worktree is listed and its agent launched, but the person's active
+   *  worktree and tab stay where they are — what an agent creates leaves a
+   *  trace in the sidebar, it does not take the seat. */
   async adoptWorktree(
     repoId: string,
     created: WorktreeEntry,
     agentId?: string | null,
+    background = false,
   ): Promise<string | null> {
     await this.loadWorktrees(repoId, false);
-    this.setActiveWorktree(created.path);
+    if (!background) this.setActiveWorktree(created.path);
     void this.refreshStatuses([created.path]);
     const agent =
       agentId === undefined
@@ -1329,7 +1333,9 @@ class ProjectsStore {
         : agentId
           ? app.launchableAgents.find((a) => a.id === agentId)
           : undefined;
-    return agent ? app.launchAgent(agent, { cwd: created.path, workspace: created.path }) : null;
+    return agent
+      ? app.launchAgent(agent, { cwd: created.path, workspace: created.path, background })
+      : null;
   }
 
   /** Remove a worktree. Branch cleanup is opt-in via `cleanup` (delete local /

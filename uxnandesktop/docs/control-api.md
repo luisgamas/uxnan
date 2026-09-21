@@ -122,14 +122,20 @@ What each entry does, and through which existing path:
   New-worktree dialog uses (`worktreeloc`, plus the project's own root); the
   service is the one the dialog's `worktree_create` command calls. The new
   worktree is then handed to the window (`worktree/adopt` over the bridge), which
-  lists it, makes it active and — with `agent` — launches that configured agent
-  in it exactly as the dialog would. A `prompt` is queued for the agent through
+  lists it and — with `agent` — launches that configured agent in it as the
+  dialog would, **in the background**: the person's active worktree and tab
+  stay where they are. What an agent creates leaves a trace (the sidebar, the
+  tab, the unread badge when the agent finishes), it does not take the seat;
+  `terminal/reveal` is the entry that moves the focus, and only a caller that
+  wants to. A `prompt` is queued for the agent through
   the orchestration broadcast queue, so it is typed only once the agent is free,
   never into a TUI that is still starting. If the window is not there to adopt,
   the receipt still comes back with `adopted: false` and a warning — the
   worktree exists and the next reconcile pass lists it.
 - **`terminal/create`** — a tab in a worktree, plain or with an agent (`agent` by
-  profile name, command or id; `prompt` as above). The window mints the tab id.
+  profile name, command or id; `prompt` as above), opened in the background the
+  same way: its workspace is mounted so the shell spawns and the agent runs
+  whether or not anyone is looking. The window mints the tab id.
 - **`run/start`** — the run engine validates and starts a **saved** run; a run
   that is not runnable is refused with its validation errors (exit 8 / *busy*).
 - **`automation/run`** — the same headless runner the schedule starts, as a
@@ -535,9 +541,10 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
 - **Window** (`npm run test:dom`, `src/lib/control/bridge.svelte.test.ts`):
   the tab listing, reveal/open/diff, run list/show, an unknown method answered
   with an error, the reply through `control_respond`; and for `create`: a
-  worktree adopted like the dialog does (active, agent launched, prompt
-  queued), an unknown agent refused with the known ones, a terminal opened
-  plain or with an agent named three ways, a run started or refused with its
+  worktree adopted in the background (listed, its workspace mounted, the agent
+  launched and its prompt queued — the person's worktree, workspace and tab
+  untouched), an unknown agent refused with the known ones, a terminal opened
+  plain or with an agent named three ways (never as the active tab), a run started or refused with its
   validation errors; for `converse`: a message queued or forced through the
   paste, a shell refused, a screen read that says when there is none; for
   `orchestrate`: the whole coordinator loop (a driven run that stays running

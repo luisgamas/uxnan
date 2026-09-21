@@ -19,6 +19,20 @@ const { answer, startControlBridge } = await import("./bridge");
 const WT = "C:/repo";
 let backend: FakeBackend;
 
+/** The tab the person is looking at: the active region's active tab. */
+function activeTab(): string | undefined {
+  const find = (node: { kind: string; id?: string; activeTabId?: string; children?: unknown[] } | null): string | undefined => {
+    if (!node) return undefined;
+    if (node.kind === "group") return node.id === terminals.activeGroupId ? node.activeTabId : undefined;
+    for (const child of (node.children ?? []) as typeof node[]) {
+      const hit = find(child);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  return find(terminals.root as Parameters<typeof find>[0]);
+}
+
 beforeEach(() => {
   backend = installFakeBackend({
     fs_read_file: () => ({ content: "", binary: false, tooLarge: false }),
@@ -144,10 +158,14 @@ describe("the control bridge", () => {
 describe("the create group, on the window's side", () => {
   const created = { path: `${WT}-worktrees/feat-x`, branch: "feat/x", head: "def", isMain: false };
 
-  it("adopts a created worktree like the dialog does, launching the agent and queueing its prompt", async () => {
+  it("adopts a created worktree in the background: listed, agent launched, prompt queued, focus untouched", async () => {
     backend.setCommands({
       worktree_list: () => [{ path: WT, branch: "main", head: "abc", isMain: true }, created],
     });
+    // The person is looking at the main worktree, at a shell of their own.
+    terminals.setWorkspace(WT);
+    const theirs = terminals.create({ cwd: WT, title: "mine" });
+    projects.activeWorktreePath = WT;
     const out = await answer({
       id: "c1",
       method: "worktree/adopt",
@@ -156,10 +174,16 @@ describe("the create group, on the window's side", () => {
     expect(out.error).toBeUndefined();
     const terminal = (out.result as { terminal: { id: string; agent: string } }).terminal;
     expect(terminal.agent).toBe("Claude Code");
-    // The worktree is the active one, the agent's tab lives in it…
-    expect(projects.activeWorktreePath).toBe(created.path);
+    // The agent's tab lives in the new worktree's workspace, which is mounted
+    // (its shell spawns) — but the person's worktree, workspace and tab are
+    // exactly where they were: what an agent creates leaves a trace, it does
+    // not take the seat. `terminal/reveal` is the entry that moves the focus.
     const tab = terminals.findTab(terminal.id);
     expect(tab?.kind === "terminal" && tab.agentName).toBe("Claude Code");
+    expect(terminals.mountedWorkspaceKeys).toContain(created.path);
+    expect(projects.activeWorktreePath).toBe(WT);
+    expect(terminals.activeWorkspace).toBe(WT);
+    expect(activeTab()).toBe(theirs);
     // …and the first message is held for that tab by the backpressure queue
     // (queued, or already in flight through a paste — never typed blindly).
     const delivered = backend.lastCallTo("pty_paste_submit")?.args as { id?: string } | undefined;
@@ -184,6 +208,8 @@ describe("the create group, on the window's side", () => {
   });
 
   it("opens a terminal in a worktree, plain or with an agent by name, command or id", async () => {
+    terminals.setWorkspace(WT);
+    const theirs = terminals.create({ cwd: WT, title: "mine" });
     const plain = await answer({
       id: "c4",
       method: "terminal/create",
@@ -193,6 +219,8 @@ describe("the create group, on the window's side", () => {
     const plainTab = terminals.findTab(plainId);
     expect(plainTab?.kind === "terminal" && plainTab.cwd).toBe(WT);
     expect(plainTab?.title).toBe("build");
+    // Opened in the background: it is in the workspace, not the active tab.
+    expect(activeTab()).toBe(theirs);
 
     for (const agent of ["Claude Code", "claude", "a-claude"]) {
       const out = await answer({
