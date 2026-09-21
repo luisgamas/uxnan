@@ -29,11 +29,13 @@ describe("the sidecar build", () => {
   });
 
   it("names the sidecar the way externalBin expects, per platform", () => {
+    // `path.join` uses the host's separator: match either, the test runs on all three.
+    const sep = "[\\\\/]";
     const mac = paths("aarch64-apple-darwin");
-    expect(mac.built).toMatch(/src-tauri\/target\/aarch64-apple-darwin\/release\/uxnan-cli$/);
-    expect(mac.sidecar).toMatch(/src-tauri\/binaries\/uxnan-cli-aarch64-apple-darwin$/);
+    expect(mac.built).toMatch(new RegExp(`src-tauri${sep}target${sep}aarch64-apple-darwin${sep}release${sep}uxnan-cli$`));
+    expect(mac.sidecar).toMatch(new RegExp(`src-tauri${sep}binaries${sep}uxnan-cli-aarch64-apple-darwin$`));
     const win = paths("x86_64-pc-windows-msvc");
-    expect(win.built).toMatch(/release\/uxnan-cli\.exe$/);
-    expect(win.sidecar).toMatch(/binaries\/uxnan-cli-x86_64-pc-windows-msvc\.exe$/);
+    expect(win.built).toMatch(new RegExp(`release${sep}uxnan-cli\\.exe$`));
+    expect(win.sidecar).toMatch(new RegExp(`binaries${sep}uxnan-cli-x86_64-pc-windows-msvc\\.exe$`));
   });
 });
