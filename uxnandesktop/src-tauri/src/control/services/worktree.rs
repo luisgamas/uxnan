@@ -273,6 +273,14 @@ pub async fn create_entry<R: tauri::Runtime>(
         .and_then(|v| v.as_str())
         .map(str::to_string);
     super::terminal::check_prompt(agent.as_deref(), prompt.as_deref())?;
+    // With an agent, the launch budget is asked before anything exists on
+    // disk: a refused launch must not leave a worktree behind.
+    if agent.is_some() {
+        let admitted = Bridge::ask(app, "launch/admit", json!({})).await?;
+        if let Some(refusal) = crate::control::bridge::refused(&admitted) {
+            return Err(refusal);
+        }
+    }
     let spec = CreateSpec {
         branch: params
             .get("branch")
@@ -303,6 +311,7 @@ pub async fn create_entry<R: tauri::Runtime>(
             "worktree": entry,
             "agent": agent,
             "prompt": prompt,
+            "unattended": params.get("unattended"),
         }),
     )
     .await;
@@ -315,6 +324,9 @@ pub async fn create_entry<R: tauri::Runtime>(
             // for a plain adoption and the receipt then leaves the field out.
             if let Some(t) = v.get("terminal").filter(|t| !t.is_null()) {
                 body["terminal"] = t.clone();
+            }
+            if let Some(mode) = v.get("unattended") {
+                body["unattended"] = mode.clone();
             }
         }
         Err(e) => {

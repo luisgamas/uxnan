@@ -160,16 +160,18 @@ pub async fn create<R: tauri::Runtime>(
             "agent": agent,
             "title": params.get("title").and_then(|v| v.as_str()),
             "prompt": prompt,
+            "unattended": params.get("unattended"),
         }),
     )
     .await?;
-    if let Some(message) = answer.get("error").and_then(|v| v.as_str()) {
-        return Err(RpcError::new(ErrorCode::NotFound, message));
+    if let Some(refusal) = crate::control::bridge::refused(&answer) {
+        return Err(refusal);
     }
-    Ok(receipts::receipt(
-        receipts::key_of(params).as_deref(),
-        json!({ "terminal": answer.get("terminal").cloned().unwrap_or(Value::Null), "worktree": entry.path }),
-    ))
+    let mut body = json!({ "terminal": answer.get("terminal").cloned().unwrap_or(Value::Null), "worktree": entry.path });
+    if let Some(mode) = answer.get("unattended") {
+        body["unattended"] = mode.clone();
+    }
+    Ok(receipts::receipt(receipts::key_of(params).as_deref(), body))
 }
 
 /// The most lines `terminal/read` returns.

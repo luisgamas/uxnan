@@ -9,10 +9,10 @@ uxnan-cli status
 uxnan-cli project ls | show <project>
 uxnan-cli worktree ls [--project <project>] | show <worktree>
 uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing]
-                          [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]
+                          [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]
 uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal>
 uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
-                          [--idempotency-key <key>]
+                          [--unattended] [--idempotency-key <key>]
 uxnan-cli agent ls
 uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
@@ -21,7 +21,7 @@ uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
 uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
 uxnan-cli task ls --run <run-id> | update --run <run-id> <task> [--status completed|failed|skipped] [--output <text>]
-uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>]
+uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--unattended]
 uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
 uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
@@ -153,7 +153,7 @@ At the HTTP layer: `400` with a JSON-RPC error means the body was not JSON (`-32
 | -32002 | not found | 7 | a selector named nothing |
 | -32003 | scope denied | 5 | the selector names a project, worktree or terminal outside the caller's scope: a launch token reaches only the project its terminal runs in, and a launch request that named no terminal reaches none (`uxnan-cli` also reports a refused token, HTTP `401`, under this code) |
 | -32004 | unavailable | 3 | the window that owns the resource did not answer within 5 s |
-| -32005 | busy | 8 | the target is busy: a run that is already running, or cannot start |
+| -32005 | busy | 8 | the target is busy: a run that is already running or cannot start, or an agent launch past the launch budget (`data.live` / `data.cap`) |
 | -32006 | timeout | 6 | a wait ran out of time |
 | -32007 | protocol mismatch | 4 | the app and the client speak different protocol versions |
 
@@ -1021,7 +1021,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `worktree_create`
-- **CLI:** `uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing] [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]`
+- **CLI:** `uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing] [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]`
 
 **Params**
 
@@ -1033,6 +1033,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 | `fromExisting` | boolean | no | Check out an existing branch named `branch` instead of creating it. Default false. |
 | `agent` | string | no | Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id. Omit for no agent (a plain terminal). |
 | `prompt` | string | no | A first message for the launched agent, typed into it once it is ready (queued behind Uxnan's backpressure, so it is never pasted into a busy agent). Requires `agent`. At most 64 KiB. |
+| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -1065,6 +1066,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 - `adopted` (boolean) — Whether the window listed it and launched the agent. False when the window was not there; the worktree exists either way.
 - `terminal` (object, optional) — `{ id, agent }` of the launched agent's terminal — only when `agent` was given and the window adopted.
 - `warning` (string, optional) — Why the window did not adopt, when it did not.
+- `unattended` (string, optional) — When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured).
 
 **Request**
 
@@ -1087,6 +1089,7 @@ Create a git worktree on a new branch of a project — where Uxnan's worktree-lo
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32602` invalid params — the branch name is invalid, the base does not exist, or `prompt` was given without `agent`
+- `-32005` busy — with `agent`: the launch budget is spent — as many agents are running as the resource policy allows at once (`data.live`, `data.cap`); wait for one to finish, or the person raises the orchestration concurrency in Settings → Resources
 
 ### `terminal/create`
 
@@ -1094,7 +1097,7 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
 
 - **Group:** `create` · mutates (receipted, audited)
 - **MCP:** `terminal_create`
-- **CLI:** `uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]`
+- **CLI:** `uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]`
 
 **Params**
 
@@ -1104,6 +1107,7 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
 | `agent` | string | no | Which configured agent to launch, by its profile name, its command (e.g. `claude`, `codex`) or its profile id. Omit for no agent (a plain terminal). |
 | `title` | string | no | A tab title. Default: the worktree folder name. |
 | `prompt` | string | no | A first message for the launched agent, typed into it once it is ready (queued behind Uxnan's backpressure, so it is never pasted into a busy agent). Requires `agent`. At most 64 KiB. |
+| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -1114,6 +1118,7 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
   - `id` (string) — The new tab's id.
   - `agent` (string, optional) — The launched agent's name, when one was.
 - `worktree` (string) — The worktree folder the tab opened in.
+- `unattended` (string, optional) — When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured).
 
 **Request**
 
@@ -1134,6 +1139,7 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32002` not found — `agent` names no configured agent, or the agent has no command to launch
+- `-32005` busy — with `agent`: the launch budget is spent — as many agents are running as the resource policy allows at once (`data.live`, `data.cap`); wait for one to finish, or the person raises the orchestration concurrency in Settings → Resources
 
 ### `run/start`
 
@@ -1667,7 +1673,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
 
 - **Group:** `orchestrate` · mutates (receipted, audited)
 - **MCP:** `worker_start`
-- **CLI:** `uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--idempotency-key <key>]`
+- **CLI:** `uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--unattended] [--idempotency-key <key>]`
 
 **Params**
 
@@ -1679,6 +1685,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
 | `worktree` | string | no | `current` (default: your own worktree), `new` (a new worktree of the project on a new branch), or a selector `path:<folder>` / `branch:<name>`. |
 | `branch` | string | no | For `new`: the branch name. Default `run/<run>/<task>`. |
 | `project` | string | no | Which project: `current`, `id:<projectId>`, `path:<absolute folder>`, or `name:<project name>`. Omit for every project. |
+| `unattended` | boolean | no | Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`). |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
@@ -1691,6 +1698,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
   - `id` (string) — The tab id — read its screen with `terminal/read`, wait on it with `agent/wait`.
   - `agent` (string) — The launched agent's name.
 - `worktree` (string) — The folder the worker runs in.
+- `unattended` (string, optional) — When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured).
 
 **Request**
 
@@ -1714,6 +1722,7 @@ Start a worker for a ready task: open a terminal — in the current worktree, in
 - `-32002` not found — no saved run or automation has that id
 - `-32002` not found — no driven run has that id, the task is not `ready`, or `agent` names no configured agent
 - `-32602` invalid params — for `new`: the branch name is invalid or already exists
+- `-32005` busy — with `agent`: the launch budget is spent — as many agents are running as the resource policy allows at once (`data.live`, `data.cap`); wait for one to finish, or the person raises the orchestration concurrency in Settings → Resources
 
 ### `inbox/check`
 

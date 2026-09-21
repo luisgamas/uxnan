@@ -4,6 +4,42 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`uxnan-cli` ships inside the app, and every terminal Uxnan opens has it.**
+  The console client is now a Tauri sidecar (`bundle.externalBin`), built by
+  `scripts/build-cli.mjs` and declared by the `src-tauri/tauri.cli.conf.json`
+  overlay that the `npm run tauri` wrapper applies to `dev` and `build` (Tauri
+  checks a declared sidecar's file on every `cargo build`, so the main config
+  stays free of it and `cargo test`/`clippy` never need the binary). It lands
+  next to the main executable on every platform — and the dev app's
+  `target/debug/`. From there the app puts it on the PATH of every terminal it
+  opens (the sidecar's folder first, plus `UXNAN_CLI` with the path), so an
+  agent, a worker a coordinator started or a script needs nothing installed,
+  and keeps a shim for your own shell, refreshed on every start: a symlink
+  `~/.local/bin/uxnan-cli` on macOS/Linux, a copy in `%LOCALAPPDATA%\uxnan\bin`
+  added once to the user PATH on Windows; a file already there that is not ours
+  is left alone. `status` (and `uxnan-cli status`) report `cli.bundled` and
+  `cli.shim`. `docs/build.md` → *The `uxnan-cli` sidecar*.
+- **A launch budget on the control surface.** Every agent an agent (or a
+  script) launches — `terminal/create` or `worktree/create` with `agent`,
+  `worker/start` — now counts against the resource policy's orchestration
+  concurrency, the cap the run engine already dispatches by. With as many
+  agents running as the cap allows, the launch is refused as *busy*
+  (`-32005`, with `live` and `cap`) before anything is created, and the caller
+  waits for one to finish. A plain terminal and a person's click are not
+  budgeted. The deterministic half of plan 023, at the one place the three
+  doors share.
+- **Unattended launches.** `worker/start`, `terminal/create` and
+  `worktree/create` with an agent take `unattended: true` (`--unattended` on
+  the CLI) and launch the agent in its CLI's reviewed automatic mode — Claude
+  Code `--permission-mode auto`, Codex `--approve-for-me` — so a worker with
+  nobody at its terminal does not stop at every tool for an "Allow". Per
+  launch and opt-in: profiles are untouched, one whose args already pick a
+  mode is respected, and the receipt says `applied`, `configured` or
+  `unsupported`. Verified live: an unattended Codex worker ran the Uxnan MCP
+  tools and reported its result with no prompt.
+
 ### Changed
 
 - **`control.json` is owner-only on Windows too.** The discovery file (the
@@ -43,25 +79,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a bracketed paste fell inside Codex's post-paste guard, so the preamble a
   coordinator gives its worker sat in the composer unsent; the gap is 400 ms
   now, which every driven agent submits.
-
-### Added
-
-- **`uxnan-cli` ships inside the app, and every terminal Uxnan opens has it.**
-  The console client is now a Tauri sidecar (`bundle.externalBin`), built by
-  `scripts/build-cli.mjs` and declared by the `src-tauri/tauri.cli.conf.json`
-  overlay that the `npm run tauri` wrapper applies to `dev` and `build` (Tauri
-  checks a declared sidecar's file on every `cargo build`, so the main config
-  stays free of it and `cargo test`/`clippy` never need the binary). It lands
-  next to the main executable on every platform — and the dev app's
-  `target/debug/`. From there the app puts it on the PATH of every terminal it
-  opens (the sidecar's folder first, plus `UXNAN_CLI` with the path), so an
-  agent, a worker a coordinator started or a script needs nothing installed,
-  and keeps a shim for your own shell, refreshed on every start: a symlink
-  `~/.local/bin/uxnan-cli` on macOS/Linux, a copy in `%LOCALAPPDATA%\uxnan\bin`
-  added once to the user PATH on Windows; a file already there that is not ours
-  is left alone. `status` (and `uxnan-cli status`) report `cli.bundled` and
-  `cli.shim`. `docs/build.md` → *The `uxnan-cli` sidecar*.
-
 
 ## [0.0.52] - 20260920
 ### Added

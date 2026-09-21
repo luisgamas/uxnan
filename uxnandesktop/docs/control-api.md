@@ -144,6 +144,33 @@ What each entry does, and through which existing path:
 A `prompt` needs an `agent` and is capped at 64 KiB — a first message, not a
 document; the CLI's `--prompt-file` enforces the same cap before sending.
 
+**The launch budget.** Every agent the surface launches — `terminal/create` or
+`worktree/create` with `agent`, `worker/start` — counts against the **resource
+policy's orchestration concurrency**, the same cap the run engine dispatches
+by (Settings → Resources; the preset's number, extended when the machine has
+headroom). With as many agents running as the cap allows, the launch is
+refused with *busy* (`-32005`, `data.live` and `data.cap`) **before anything
+exists** — a worktree is not created for an agent that will not be launched —
+and the caller waits for one to finish. A plain terminal is not budgeted, and
+neither is a person's click: the budget is for the actor that can loop. It is
+the deterministic half of plan 023 applied at the one place all three doors
+share; admission by free memory and process-tree limits remain that plan's.
+
+**Unattended launches.** A worker a coordinator starts has nobody at its
+terminal to click "Allow", so a CLI that stops at every tool for a person's
+approval would stall the run. `unattended: true` (the CLI's `--unattended`) on
+`worker/start`, `terminal/create` or `worktree/create` with an agent launches
+it in its CLI's **reviewed automatic mode** — Claude Code
+`--permission-mode auto`, Codex `--approve-for-me` — never its "skip every
+check" flag, which stays a deliberate choice for the person to put in a
+profile's args. It is per launch and opt-in: the person's profiles and their
+own launches are untouched, and a profile whose args already pick a mode is
+left alone. The receipt says what happened: `unattended: applied`,
+`configured` (the profile decided) or `unsupported` (no flag known for that
+CLI, launched as configured — the caller may have to answer its prompts
+through `terminal/read` + `agent/send --force`). `src/lib/agentUnattended.ts`
+holds the table, verified against each CLI's `--help`.
+
 ### The `converse` group: send, wait, read
 
 The loop an agent (or a script) runs with another agent:

@@ -746,6 +746,13 @@ class OrchestrationRunStore {
    *  (Performance) ceiling applies only against measured headroom — a fresh
    *  budget-lease summary whose uxnan-total CPU is known and low; no evidence
    *  means the base cap. */
+  /** How many agents may run at once under the resource policy right now —
+   *  the same number the engine dispatches by, exposed for the control
+   *  surface's launch budget (`$lib/control/bridge`). */
+  get concurrencyCap(): number {
+    return this.effectiveConcurrency(Date.now());
+  }
+
   private effectiveConcurrency(now: number): number {
     const policy = resourceMode.policy;
     const extendable = policy.capabilities.orchestrationExtendedConcurrency !== null;

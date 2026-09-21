@@ -1032,6 +1032,22 @@ agentes** corriendo **o** cuando existe alguna corrida):
   respuesta (≤15 s, luego *timeout* con `questionId` para seguir esperando).
   `question/answer` resuelve la compuerta (`approve` con la respuesta como nota, o
   `reject`); el worker en espera la recibe al instante.
+- **Presupuesto de lanzamiento.** Cada agente que la superficie lanza
+  (`terminal/create` o `worktree/create` con `agent`, `worker/start`) cuenta contra
+  la **concurrencia de orquestacion de la politica de recursos** — el mismo tope
+  con el que despacha el motor (`orchestrationRun.concurrencyCap`). Con tantos
+  agentes vivos como permite el tope, el lanzamiento se rechaza con `-32005`
+  *busy* (`data.live`, `data.cap`) **antes de crear nada** (`launch/admit` por el
+  puente antes de un worktree con agente); una terminal sin agente y el clic de
+  una persona no se presupuestan. Es la mitad determinista del plan 023 aplicada
+  en el unico sitio que comparten las tres puertas.
+- **Lanzamiento desatendido.** `unattended: true` en `worker/start`,
+  `terminal/create` o `worktree/create` con agente lanza el CLI en su **modo
+  automatico revisado** (Claude Code `--permission-mode auto`, Codex
+  `--approve-for-me`; nunca su bandera de saltarse todo), por lanzamiento y
+  opt-in: los perfiles de la persona no cambian y uno cuyos args ya eligen modo
+  se respeta. El recibo dice `unattended: applied | configured | unsupported`
+  (`src/lib/agentUnattended.ts`).
 - **Alcance y auditoria.** Las corridas no son por proyecto; `worker/start` con
   `new` crea el worktree en el proyecto del llamador (o el indicado), sujeto al
   alcance del token. Todo movimiento del coordinador salvo las lecturas y las

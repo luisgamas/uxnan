@@ -660,6 +660,7 @@ pub fn catalog() -> Vec<Entry> {
                     "fromExisting": { "type": "boolean", "description": "Check out an existing branch named `branch` instead of creating it. Default false." },
                     "agent": agent_selector(),
                     "prompt": prompt(),
+                    "unattended": { "type": "boolean", "description": "Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`)." },
                     "idempotencyKey": idempotency_key()
                 }),
                 &["project", "branch"],
@@ -670,6 +671,7 @@ pub fn catalog() -> Vec<Entry> {
                 "adopted": field("boolean", "Whether the window listed it and launched the agent. False when the window was not there; the worktree exists either way."),
                 "terminal": optional("object", "`{ id, agent }` of the launched agent's terminal — only when `agent` was given and the window adopted."),
                 "warning": optional("string", "Why the window did not adopt, when it did not."),
+                "unattended": optional("string", "When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured)."),
             })),
             example: json!({ "project": "current", "branch": "feat/subtask", "agent": "claude", "prompt": "Implement the parser described in TASK.md.", "idempotencyKey": "3d1f…" }),
         },
@@ -684,6 +686,7 @@ pub fn catalog() -> Vec<Entry> {
                     "agent": agent_selector(),
                     "title": { "type": "string", "description": "A tab title. Default: the worktree folder name." },
                     "prompt": prompt(),
+                    "unattended": { "type": "boolean", "description": "Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`)." },
                     "idempotencyKey": idempotency_key()
                 }),
                 &["worktree"],
@@ -695,6 +698,7 @@ pub fn catalog() -> Vec<Entry> {
                     "agent": optional("string", "The launched agent's name, when one was."),
                 })),
                 "worktree": field("string", "The worktree folder the tab opened in."),
+                "unattended": optional("string", "When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured)."),
             })),
             example: json!({ "worktree": "branch:feat/subtask", "title": "build", "idempotencyKey": "9c2e…" }),
         },
@@ -976,6 +980,7 @@ pub fn catalog() -> Vec<Entry> {
                     "worktree": { "type": "string", "description": "`current` (default: your own worktree), `new` (a new worktree of the project on a new branch), or a selector `path:<folder>` / `branch:<name>`." },
                     "branch": { "type": "string", "description": "For `new`: the branch name. Default `run/<run>/<task>`." },
                     "project": project_selector(false),
+                    "unattended": { "type": "boolean", "description": "Launch the agent in its CLI's reviewed automatic mode, so it does not stop at every tool for a person who is not there: Claude Code `--permission-mode auto`, Codex `--approve-for-me`. Default false. A profile whose own args already pick a mode is left alone; a CLI without such a flag launches as configured — the receipt says which (`unattended`)." },
                     "idempotencyKey": idempotency_key()
                 }),
                 &["run", "task", "agent"],
@@ -989,6 +994,7 @@ pub fn catalog() -> Vec<Entry> {
                     "agent": field("string", "The launched agent's name."),
                 })),
                 "worktree": field("string", "The folder the worker runs in."),
+                "unattended": optional("string", "When `unattended` was asked: `applied` (the mode went on the command line), `configured` (the profile's own args already pick one) or `unsupported` (no flag known for that CLI; launched as configured)."),
             })),
             example: json!({ "run": "run-1a2b", "task": "s1", "agent": "codex", "worktree": "new" }),
         },

@@ -725,7 +725,15 @@ class AppStore {
    *  resolve. No-op for an agent with a blank command. */
   launchAgent(
     agent: AgentProfile,
-    opts: { cwd?: string; workspace?: string; title?: string; target?: string; background?: boolean },
+    opts: {
+      cwd?: string;
+      workspace?: string;
+      title?: string;
+      target?: string;
+      background?: boolean;
+      /** Extra arguments after the profile's own (an unattended launch's mode). */
+      extraArgs?: readonly string[];
+    },
   ): string | null {
     const command = agent.command.trim();
     if (!command) return null;
@@ -766,7 +774,11 @@ class AppStore {
     // Opt-out: Settings → Agents.
     const owned =
       this.settings.pinAgentSessions === false ? null : ownedSession(command, agent.args);
-    const runCommand = buildRunCommand(command, [...agent.args, ...(owned?.args ?? [])], kind);
+    const runCommand = buildRunCommand(
+      command,
+      [...agent.args, ...(opts.extraArgs ?? []), ...(owned?.args ?? [])],
+      kind,
+    );
     // Per-agent env vars → real environment on the spawned shell (inherited by
     // the agent). Blank keys are dropped; the backend prepends them before its
     // own `UXNAN_*` so those always win.

@@ -342,14 +342,20 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
         ));
     }
     match e.method {
-        "worktree/create" => out.push((
-            ErrorCode::InvalidParams,
-            "the branch name is invalid, the base does not exist, or `prompt` was given without `agent`",
-        )),
-        "terminal/create" => out.push((
-            ErrorCode::NotFound,
-            "`agent` names no configured agent, or the agent has no command to launch",
-        )),
+        "worktree/create" => {
+            out.push((
+                ErrorCode::InvalidParams,
+                "the branch name is invalid, the base does not exist, or `prompt` was given without `agent`",
+            ));
+            out.push((ErrorCode::Busy, BUDGET));
+        }
+        "terminal/create" => {
+            out.push((
+                ErrorCode::NotFound,
+                "`agent` names no configured agent, or the agent has no command to launch",
+            ));
+            out.push((ErrorCode::Busy, BUDGET));
+        }
         "agent/send" => out.push((
             ErrorCode::NotFound,
             "the terminal has no live agent to receive the message",
@@ -383,6 +389,7 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
                 ErrorCode::InvalidParams,
                 "for `new`: the branch name is invalid or already exists",
             ));
+            out.push((ErrorCode::Busy, BUDGET));
         }
         "question/ask" => {
             out.push((
@@ -403,6 +410,9 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
     out
 }
 
+/// The launch budget every agent launch through the surface is subject to.
+const BUDGET: &str = "with `agent`: the launch budget is spent — as many agents are running as the resource policy allows at once (`data.live`, `data.cap`); wait for one to finish, or the person raises the orchestration concurrency in Settings → Resources";
+
 /// The `uxnan-cli` form of each entry. `None` for an entry only `rpc` reaches.
 fn cli_form(method: &str) -> Option<&'static str> {
     Some(match method {
@@ -411,11 +421,11 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "project/show" => "uxnan-cli project show <project>",
         "worktree/list" => "uxnan-cli worktree ls [--project <project>]",
         "worktree/show" => "uxnan-cli worktree show <worktree>",
-        "worktree/create" => "uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing] [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]",
+        "worktree/create" => "uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing] [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]",
         "terminal/list" => "uxnan-cli terminal ls [--worktree <worktree>]",
         "terminal/show" => "uxnan-cli terminal show <terminal>",
         "terminal/reveal" => "uxnan-cli terminal reveal <terminal>",
-        "terminal/create" => "uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]",
+        "terminal/create" => "uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]",
         "terminal/read" => "uxnan-cli terminal read <terminal> [--lines <n>]",
         "agent/list" => "uxnan-cli agent ls",
         "agent/send" => "uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]",
@@ -439,7 +449,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "task/create" => "uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>] [--worktree <worktree>] [--retry] [--idempotency-key <key>]",
         "task/list" => "uxnan-cli task ls --run <run-id>",
         "task/update" => "uxnan-cli task update --run <run-id> <task> [--title <t>] [--prompt-file <file>] [--depends-on <task>]... [--status completed|failed|skipped] [--output <text>]",
-        "worker/start" => "uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--idempotency-key <key>]",
+        "worker/start" => "uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--unattended] [--idempotency-key <key>]",
         "inbox/check" => "uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]",
         "question/ask" => "uxnan-cli ask --question <text> [--option <o>]... [--timeout <seconds>]",
         "question/answer" => "uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]",
@@ -500,7 +510,7 @@ const ERROR_MEANINGS: [(ErrorCode, &str, &str); 12] = [
     (
         ErrorCode::Busy,
         "busy",
-        "the target is busy: a run that is already running, or cannot start",
+        "the target is busy: a run that is already running or cannot start, or an agent launch past the launch budget (`data.live` / `data.cap`)",
     ),
     (ErrorCode::Timeout, "timeout", "a wait ran out of time"),
     (
@@ -541,10 +551,10 @@ pub const COMMANDS: &str = "uxnan-cli status
 uxnan-cli project ls | show <project>
 uxnan-cli worktree ls [--project <project>] | show <worktree>
 uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing]
-                          [--agent <agent>] [--prompt-file <file>] [--idempotency-key <key>]
+                          [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]
 uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal>
 uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
-                          [--idempotency-key <key>]
+                          [--unattended] [--idempotency-key <key>]
 uxnan-cli agent ls
 uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
@@ -553,7 +563,7 @@ uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
 uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
 uxnan-cli task ls --run <run-id> | update --run <run-id> <task> [--status completed|failed|skipped] [--output <text>]
-uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>]
+uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--unattended]
 uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
 uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
