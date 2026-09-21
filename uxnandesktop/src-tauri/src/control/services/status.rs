@@ -48,5 +48,9 @@ pub async fn status<R: tauri::Runtime>(
         })).collect::<Vec<_>>(),
         "caller": caller_kind,
         "counts": { "projects": projects, "terminals": terminals, "agents": agents },
+        "cli": {
+            "bundled": crate::control::cli::bundled().map(|p| p.to_string_lossy().into_owned()),
+            "shim": crate::control::cli::shim().map(|p| p.to_string_lossy().into_owned()),
+        },
     }))
 }

@@ -148,7 +148,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 776 passing unit tests of the app crate (818 with the ignored probes) — plus 17 in
+The 780 passing unit tests of the app crate (822 with the ignored probes) — plus 17 in
 `uxnan-control-protocol` and 13 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -240,7 +240,7 @@ the **resource-benchmark harness** under
 `scripts/resources/lib/` (process-tree attribution own/managed/external, the
 result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
-scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — and the **test fixtures**
+scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism), the **`npm run tauri` wrapper and the sidecar build** (`scripts/tauri.test.mjs`: the overlay applied to `dev`/`build` only, the triple Tauri hands over, the sidecar's per-platform name) — and the **test fixtures**
 under `tests/fixtures/` (the fake `gh` — incl. its scripted gh-shaped failure
 outcomes — the PATH shim, the disposable and legacy profiles), the **GitHub
 validation tooling** (`scripts/github/lib.test.mjs`: the sandbox allowlist's
@@ -255,7 +255,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,275 passing tests** across both
+ships in every build and is never shown). **1,278 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

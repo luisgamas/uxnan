@@ -19,6 +19,7 @@
 
 pub mod audit;
 pub mod bridge;
+pub mod cli;
 pub mod discovery;
 mod dispatch;
 pub mod mcp;

@@ -455,9 +455,24 @@ environment (`UXNAN_HOOK_URL` + `UXNAN_HOOK_TOKEN`, and `UXNAN_AGENT_ID` for
 per-user data directory; the `-dev` profile for a debug build, so a debug CLI
 finds a debug app and never the installed one).
 
-**Building and running it.** `cargo build -p uxnan-cli --release` in
-`src-tauri/` produces `target/release/uxnan-cli`. Put it on the `PATH` by hand
-for now; bundling it with the installers is FOR-DEV.
+**Where it is.** `uxnan-cli` ships **inside the app** as a sidecar
+([`docs/build.md`](./build.md) → *The `uxnan-cli` sidecar*), next to the main
+executable, and from there the app puts it within reach twice:
+
+- **Every terminal Uxnan opens has it on the PATH** — the sidecar's folder is
+  put first, and `UXNAN_CLI` names the binary outright. An agent, a worker a
+  coordinator started, a script in that shell: nothing to install, nothing to
+  configure, and the same version as the app that launched it.
+- **Your own shell gets a shim**, refreshed on every start: on macOS and Linux a
+  symlink `~/.local/bin/uxnan-cli` (if that folder is not on your `PATH`, add
+  `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile once); on
+  Windows a copy in `%LOCALAPPDATA%\uxnan\bin`, which the app adds to your
+  user `PATH` once (new consoles see it). A file already at that path that is
+  not ours is left alone. `uxnan-cli status` reports both locations
+  (`cli.bundled`, `cli.shim`).
+
+To build it by hand (a checkout without the app): `cargo build -p uxnan-cli
+--release` in `src-tauri/` produces `target/release/uxnan-cli`.
 
 **The reference is its output.** `uxnan-cli skills get control --full >
 docs/control-api-reference.md` (from `uxnandesktop/`) regenerates

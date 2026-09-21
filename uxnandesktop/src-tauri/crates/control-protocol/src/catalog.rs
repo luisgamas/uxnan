@@ -371,6 +371,10 @@ pub fn catalog() -> Vec<Entry> {
                     "terminals": field("integer", "Live terminals."),
                     "agents": field("integer", "Live agents."),
                 })),
+                "cli": nested("Where `uxnan-cli` is on this machine.", json!({
+                    "bundled": nullable("string", "The binary shipped inside the app, next to its executable — on the PATH of every terminal Uxnan opens (also named by `UXNAN_CLI` there). Null for a build made without the sidecar."),
+                    "shim": nullable("string", "The link (macOS/Linux, `~/.local/bin/uxnan-cli`) or copy (Windows, `%LOCALAPPDATA%\\uxnan\\bin`) the app keeps for your own shell. Null when it could not be written."),
+                })),
             })),
             example: json!({}),
         },

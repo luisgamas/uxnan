@@ -592,6 +592,11 @@ pub async fn pty_create(
         .find(|(k, _)| k.eq_ignore_ascii_case("WSLENV"))
         .map(|(_, v)| v.clone());
     env.push(("UXNAN_AGENT_ID".to_string(), id.clone()));
+    // The bundled `uxnan-cli`, on this terminal's PATH and named by UXNAN_CLI,
+    // so an agent or a script in it needs nothing installed (`control::cli`).
+    if let Some(cli) = crate::control::cli::bundled() {
+        env.extend(crate::control::cli::terminal_env(&cli));
+    }
     let hook = state.hook.read().await.clone();
     if let Some(h) = &hook {
         env.push(("UXNAN_HOOK_URL".to_string(), h.url.clone()));

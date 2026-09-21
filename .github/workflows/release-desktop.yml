@@ -171,6 +171,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: uxnandesktop
+          # The package's own `tauri` script (`scripts/tauri.mjs`): it applies
+          # the sidecar overlay, so the installers carry `uxnan-cli`
+          # (`docs/build.md` → *The `uxnan-cli` sidecar*).
+          tauriScript: npm run tauri
           tagName: ${{ github.ref_name }}
           releaseName: 'Uxnan Desktop ${{ steps.meta.outputs.version }}'
           releaseDraft: true

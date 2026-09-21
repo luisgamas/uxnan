@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 885 Rust tests (818 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
+always wins). 889 Rust tests (822 unit in the app crate + 17 in `uxnan-control-protocol` + 13 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,275 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,278 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -873,12 +873,13 @@ socket with Tauri's mock app, one creating a worktree on a real repository, one
 waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
 
 ### Still pending
-- [ ] **Bundle `uxnan-cli` and install it on the PATH.** Today it is built by
-      hand (`cargo build -p uxnan-cli --release`). Ship it in the installers
-      (`bundle.externalBin` with the target-triple suffix, produced by a
-      `beforeBuildCommand`) and add the per-platform PATH shim (macOS/Linux
-      `~/.local/bin`; Windows `%LOCALAPPDATA%\uxnan\bin` + user PATH), with
-      uninstall. `docs/build.md` + `docs/control-api.md` when it lands.
+- [ ] **The Windows shim on uninstall.** The app keeps a copy of `uxnan-cli`
+      in `%LOCALAPPDATA%\uxnan\bin` and adds that folder to the user `PATH`
+      once (`control::cli`); the NSIS/MSI uninstallers do not remove either.
+      Add an uninstall hook (NSIS `uninstaller` hooks / a WiX `RemoveFolder` +
+      environment component) and verify the PATH edit and its broadcast on the
+      platform matrix (005) — this code was written on macOS and only compiled
+      on the Windows CI leg.
 - [ ] **Windows ACL of `control.json`.** On Unix the file is `0600` and the CLI
       refuses anything laxer; on Windows it inherits the per-user profile ACL and
       nothing is verified. Confirm on the platform matrix (005) that another local
@@ -890,11 +891,6 @@ waiting on a real PTY), 17 protocol, 13 CLI, 13 window-bridge Vitest.
       and results as step outputs, not the queue itself. A small "inbox"
       strip on a driven run's card (count + the unacknowledged messages) would
       complete the picture. UI → propose-and-review.
-- [ ] **A worker without the tools.** A worker launched from an agent uxnan does
-      not inject the MCP tools into (or with the agent-tools switch off) gets
-      the preamble's `uxnan-cli` forms; that needs `uxnan-cli` on the `PATH`
-      (below). Until the bundling lands, such a worker completes on the hook
-      signal after the report grace, with no structured result.
 - [ ] **Budgets on `create` (plan 023).** `worktree/create` and `terminal/create`
       apply no concurrency or process budget yet; when 023 lands, the service is
       where the policy goes (one place, both doors).
@@ -1576,7 +1572,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 885 Rust + 1,275 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 889 Rust + 1,278 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

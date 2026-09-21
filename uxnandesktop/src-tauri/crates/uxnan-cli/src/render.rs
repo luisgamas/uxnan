@@ -153,6 +153,13 @@ fn status(v: &Value) -> String {
             None => out.push_str(&format!("caller: {kind}\n")),
         }
     }
+    if let Some(cli) = v.get("cli") {
+        match (cli["bundled"].as_str(), cli["shim"].as_str()) {
+            (Some(b), Some(s)) => out.push_str(&format!("uxnan-cli: {b} (shim {s})\n")),
+            (Some(b), None) => out.push_str(&format!("uxnan-cli: {b} (no shim)\n")),
+            (None, _) => out.push_str("uxnan-cli: not bundled with this build\n"),
+        }
+    }
     out
 }
 

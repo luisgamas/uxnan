@@ -28,7 +28,7 @@
     "bench": "node scripts/resources/run.mjs",
     "bench:report": "node scripts/resources/report.mjs",
     "bench:compare": "node scripts/resources/compare.mjs",
-    "tauri": "tauri"
+    "tauri": "node scripts/tauri.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

@@ -259,6 +259,27 @@ pub fn run() {
                 }
             }
 
+            // The bundled `uxnan-cli`: a shim in the user's own shell, refreshed
+            // on every start (see `control::cli`). Best-effort: a shim that
+            // cannot be written is logged, never fatal — every terminal the app
+            // opens still gets the sidecar on its PATH.
+            match crate::control::cli::bundled() {
+                Some(bundled) => {
+                    if let Err(err) = crate::control::cli::ensure_shim(&bundled) {
+                        crate::diagnostics::log(
+                            crate::diagnostics::Level::Warn,
+                            "cli",
+                            &format!("uxnan-cli shim not installed: {err}"),
+                        );
+                    }
+                }
+                None => crate::diagnostics::log(
+                    crate::diagnostics::Level::Warn,
+                    "cli",
+                    "uxnan-cli is not bundled with this build (built without the sidecar overlay)",
+                ),
+            }
+
             // Pause the git watcher while the window is unfocused, and take the
             // desktop pet window down with the main window — with the pet still
             // open the app would keep running, headless but for the pet, after

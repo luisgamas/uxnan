@@ -23,10 +23,37 @@ npm run tauri build
 ```
 
 This runs the `beforeBuildCommand` (`npm run build` → SvelteKit SPA into
-`build/`), compiles the Rust backend in **release** mode (optimized), and
-produces the native installers for the **current** platform. Cross-compiling to
-other OSes is not done from one machine — build each target on its own OS/CI
-runner.
+`build/`, then `scripts/build-cli.mjs` → the `uxnan-cli` sidecar), compiles the
+Rust backend in **release** mode (optimized), and produces the native
+installers for the **current** platform. Cross-compiling to other OSes is not
+done from one machine — build each target on its own OS/CI runner.
+
+### The `uxnan-cli` sidecar
+
+The console client of the [control surface](./control-api.md) ships **inside
+the app** as a Tauri sidecar (`bundle.externalBin`), so every installer carries
+it and the app can put it on the PATH of every terminal it opens. Two files
+make that happen, and `npm run tauri` is a small wrapper (`scripts/tauri.mjs`)
+that applies them:
+
+| File | Role |
+|---|---|
+| `scripts/build-cli.mjs` | `cargo build -p uxnan-cli --release --target <triple>` and a copy to `src-tauri/binaries/uxnan-cli-<triple>[.exe]`, the name Tauri expects. The triple is the one Tauri hands its before-commands (`TAURI_ENV_TARGET_TRIPLE`, so it follows `--target`), or the host's when run by hand. `binaries/` is git-ignored. |
+| `src-tauri/tauri.cli.conf.json` | The **sidecar overlay**: `bundle.externalBin` plus before-commands that run the script. The wrapper passes it (`--config`) to `tauri dev` and `tauri build` only. |
+
+Why an overlay rather than `tauri.conf.json`: Tauri validates a declared
+sidecar's file on **every** `cargo build` of the app — `cargo test`, `cargo
+clippy`, an editor's check — so declaring it in the main config would make each
+of those fail until someone built the CLI first. With the overlay, plain cargo
+never hears of the sidecar; the two commands that produce a runnable app do.
+`npm run tauri build -- --no-bundle` (the benchmarks) skips it too. Whatever
+the app is built with the overlay lands `uxnan-cli` next to the main
+executable: `Contents/MacOS/` in the `.app`, the install folder on Windows,
+`/usr/bin` for a deb/rpm, the mounted `usr/bin` of an AppImage, `target/debug/`
+under `tauri dev` — where `control::cli` looks for it.
+
+`release-desktop.yml` names that same script (`tauriScript: npm run tauri`),
+so the released installers carry the sidecar.
 
 ## Output locations
 
