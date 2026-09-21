@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **The quality matrix has a row for the control surface.**
+  `tests/quality-matrix.json` now records what tests the catalog, the scope,
+  the `create`/`converse`/`orchestrate` groups, unattended launches,
+  `terminal/close` and the run inbox at each layer (L1 unit, L2 window
+  bridge and components, L3 both transports over a real socket, L5 driven
+  live from inside the app on macOS), and what does not yet: no E2E journey
+  through the packaged `uxnan-cli`, Windows compiled but unverified, Linux
+  untested beyond CI.
 - **A driven run shows who drives it and what waits for them.** The Runs
   console rendered a coordinator's run like any other — tasks, gates,
   outputs — but not the queue the coordinator works from. A driven run's
