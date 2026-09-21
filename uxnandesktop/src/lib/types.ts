@@ -1528,6 +1528,9 @@ export type SavedTab =
       /** The tab was asleep (PTY killed, layout kept) when the layout was
        *  saved; it restores asleep and wakes on activation. */
       asleep?: boolean;
+      /** `control` when the control surface opened the tab — the tabs
+       *  `terminal/close` may collect once their agent is done. */
+      origin?: "control";
       /** The agent session that lived in this tab (captured from its hooks),
        *  so a restored/woken tab can offer the CLI's own resume command. */
       agentSession?: {

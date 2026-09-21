@@ -703,6 +703,16 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({ "worktree": "branch:feat/subtask", "title": "build", "idempotencyKey": "9c2e…" }),
         },
         Entry {
+            method: "terminal/close",
+            tool: "terminal_close",
+            group: Group::Create,
+            summary: "Close a terminal tab: one the surface opened (`terminal/create`, `worktree/create`, `worker/start`) once its agent is no longer working, or any terminal whose shell has exited — the way a coordinator collects the workers it started. A terminal a person opened and is still using is refused; one whose agent is working is refused as busy until it is done.",
+            params: object(json!({ "terminal": terminal_selector() }), &["terminal"]),
+            mutates: true,
+            result: result(json!({ "closed": field("string", "The terminal id that was closed.") })),
+            example: json!({ "terminal": "id:5f0c…" }),
+        },
+        Entry {
             method: "run/start",
             tool: "run_start",
             group: Group::Create,

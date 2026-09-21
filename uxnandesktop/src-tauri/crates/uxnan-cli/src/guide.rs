@@ -356,6 +356,16 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
             ));
             out.push((ErrorCode::Busy, BUDGET));
         }
+        "terminal/close" => {
+            out.push((
+                ErrorCode::InvalidParams,
+                "the terminal was opened by a person and its shell is alive — only they close it",
+            ));
+            out.push((
+                ErrorCode::Busy,
+                "the terminal's agent is working; `agent wait --for idle` first",
+            ));
+        }
         "agent/send" => out.push((
             ErrorCode::NotFound,
             "the terminal has no live agent to receive the message",
@@ -425,6 +435,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "terminal/list" => "uxnan-cli terminal ls [--worktree <worktree>]",
         "terminal/show" => "uxnan-cli terminal show <terminal>",
         "terminal/reveal" => "uxnan-cli terminal reveal <terminal>",
+        "terminal/close" => "uxnan-cli terminal close <terminal>",
         "terminal/create" => "uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]",
         "terminal/read" => "uxnan-cli terminal read <terminal> [--lines <n>]",
         "agent/list" => "uxnan-cli agent ls",
@@ -552,7 +563,7 @@ uxnan-cli project ls | show <project>
 uxnan-cli worktree ls [--project <project>] | show <worktree>
 uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing]
                           [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]
-uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal>
+uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal> | close <terminal>
 uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
                           [--unattended] [--idempotency-key <key>]
 uxnan-cli agent ls

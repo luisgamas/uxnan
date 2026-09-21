@@ -1324,7 +1324,11 @@ class ProjectsStore {
     created: WorktreeEntry,
     agentId?: string | null,
     background = false,
-    launch?: { extraArgs?: readonly string[]; extraEnv?: Readonly<Record<string, string>> },
+    launch?: {
+      extraArgs?: readonly string[];
+      extraEnv?: Readonly<Record<string, string>>;
+      origin?: "control";
+    },
   ): Promise<string | null> {
     await this.loadWorktrees(repoId, false);
     if (!background) this.setActiveWorktree(created.path);

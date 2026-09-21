@@ -10,7 +10,7 @@ uxnan-cli project ls | show <project>
 uxnan-cli worktree ls [--project <project>] | show <worktree>
 uxnan-cli worktree create --project <project> --branch <name> [--base <ref>] [--from-existing]
                           [--agent <agent>] [--prompt-file <file>] [--unattended] [--idempotency-key <key>]
-uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal>
+uxnan-cli terminal ls [--worktree <worktree>] | show <terminal> | reveal <terminal> | close <terminal>
 uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] [--prompt-file <file>]
                           [--unattended] [--idempotency-key <key>]
 uxnan-cli agent ls
@@ -77,6 +77,7 @@ Global: --json (stable machine output), --timeout <seconds>
 
 - `worktree/create` (MCP tool `worktree_create`) — Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — list it in the sidebar, and optionally launch an agent in it with a first message.
 - `terminal/create` (MCP tool `terminal_create`) — Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message.
+- `terminal/close` (MCP tool `terminal_close`) — Close a terminal tab: one the surface opened (`terminal/create`, `worktree/create`, `worker/start`) once its agent is no longer working, or any terminal whose shell has exited — the way a coordinator collects the workers it started.
 - `run/start` (MCP tool `run_start`) — Start (or re-run) a saved orchestration run by id: every step is reset and the engine begins dispatching.
 - `automation/run` (MCP tool `automation_run`) — Run a saved automation now, as a manual run of the same headless runner its schedule uses.
 
@@ -1140,6 +1141,43 @@ Open a new terminal tab in a worktree, optionally launching a configured agent i
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32002` not found — `agent` names no configured agent, or the agent has no command to launch
 - `-32005` busy — with `agent`: the launch budget is spent — as many agents are running as the resource policy allows at once (`data.live`, `data.cap`); wait for one to finish, or the person raises the orchestration concurrency in Settings → Resources
+
+### `terminal/close`
+
+Close a terminal tab: one the surface opened (`terminal/create`, `worktree/create`, `worker/start`) once its agent is no longer working, or any terminal whose shell has exited — the way a coordinator collects the workers it started. A terminal a person opened and is still using is refused; one whose agent is working is refused as busy until it is done.
+
+- **Group:** `create` · mutates (receipted, audited)
+- **MCP:** `terminal_close`
+- **CLI:** `uxnan-cli terminal close <terminal>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `terminal` | string | yes | Which terminal: `current` (the one you run in, from UXNAN_AGENT_ID), or `id:<terminalId>` from `terminal/list`. |
+
+**Result**
+
+- `closed` (string) — The terminal id that was closed.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "terminal/close",
+  "params": {
+    "terminal": "id:5f0c…"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — the selector named no project, worktree or terminal
+- `-32602` invalid params — the terminal was opened by a person and its shell is alive — only they close it
+- `-32005` busy — the terminal's agent is working; `agent wait --for idle` first
 
 ### `run/start`
 

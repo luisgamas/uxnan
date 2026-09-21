@@ -210,6 +210,9 @@ enum TerminalCmd {
     Show { terminal: String },
     /// Show a terminal tab in the window.
     Reveal { terminal: String },
+    /// Close a terminal tab the surface opened (once its agent is done) or
+    /// whose shell has exited — how a coordinator collects its workers.
+    Close { terminal: String },
     /// Read the last lines of a terminal's screen (secrets redacted).
     Read {
         terminal: String,
@@ -552,6 +555,9 @@ fn plan(command: Command) -> Result<Plan, String> {
             }
             TerminalCmd::Reveal { terminal } => {
                 with("terminal/reveal", json!({ "terminal": terminal }))
+            }
+            TerminalCmd::Close { terminal } => {
+                with("terminal/close", json!({ "terminal": terminal }))
             }
             TerminalCmd::Read { terminal, lines } => with(
                 "terminal/read",

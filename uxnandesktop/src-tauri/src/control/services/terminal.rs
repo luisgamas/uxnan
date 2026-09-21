@@ -180,6 +180,52 @@ pub const READ_MAX_LINES: u64 = 2000;
 /// `terminal/read`: the last lines of a terminal's screen, from the window
 /// (which owns the terminal buffer), with secrets redacted here before they
 /// leave the app. A project may opt out (`settings.control.terminalReadDisabledProjects`).
+/// `terminal/close`: close a tab the caller may collect. The scope check is
+/// the resolver's; a tab whose agent the hooks report as *working* is refused
+/// as busy here, before the window is asked — closing a working agent under
+/// its coordinator is never what a caller means. The window then applies the
+/// ownership rule (exited, or opened by the surface).
+pub async fn close<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    params: &Value,
+) -> Result<Value, RpcError> {
+    let sel = params
+        .get("terminal")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let tab = Resolver::new(app, caller).terminal(sel).await?;
+    let state = app.state::<AppState>();
+    let alive = state
+        .pty
+        .live_sessions()
+        .iter()
+        .any(|(id, _)| *id == tab.id);
+    if alive && !tab.exited {
+        let working = state
+            .data
+            .read()
+            .await
+            .agent_cache
+            .iter()
+            .any(|e| e.agent_id == tab.id && e.status == crate::model::AgentStatus::Working);
+        if working {
+            return Err(RpcError::new(
+                ErrorCode::Busy,
+                format!(
+                    "terminal {}'s agent is working; wait for it (`agent/wait`) before closing",
+                    tab.id
+                ),
+            ));
+        }
+    }
+    let answer = Bridge::ask(app, "terminal/close", json!({ "terminal": tab.id })).await?;
+    if let Some(err) = crate::control::bridge::refused(&answer) {
+        return Err(err);
+    }
+    Ok(json!({ "closed": tab.id }))
+}
+
 pub async fn read<R: tauri::Runtime>(
     app: &AppHandle<R>,
     caller: &Caller,

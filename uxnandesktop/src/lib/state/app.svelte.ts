@@ -736,6 +736,8 @@ class AppStore {
       /** Extra variables on the agent's environment, after the profile's own
        *  (an unattended launch's mode, for the CLI that reads it from there). */
       extraEnv?: Readonly<Record<string, string>>;
+      /** `control` when the control surface launches (a collectable tab). */
+      origin?: "control";
     },
   ): string | null {
     const command = agent.command.trim();
@@ -828,6 +830,7 @@ class AppStore {
         : undefined,
       workspace: opts.workspace,
       target: opts.target,
+      origin: opts.origin,
       background: opts.background,
     });
   }
