@@ -627,7 +627,11 @@ forma de CLI contra el arbol real de subcomandos de clap.
 `create` (`worktree/create` — el nucleo del comando `worktree_create` movido al
 servicio, adopcion por la ventana via el puente, lanzamiento del agente y primer
 mensaje encolado tras el backpressure del broadcast —, `terminal/create`,
-`run/start` y `automation/run` **solo sobre definiciones guardadas**; cada entrada
+`terminal/close` — cierra una pestana que la propia superficie abrio (marcada
+`origin: control`, persistida) cuando su agente ya no trabaja, o cualquiera en
+alcance cuyo shell ya salio; la de una persona con shell vivo se rechaza como
+invalida y una con agente trabajando como *busy* —, `run/start` y
+`automation/run` **solo sobre definiciones guardadas**; cada entrada
 responde con un **recibo** `{ requestId, idempotencyKey?, … }`, repite el primer
 recibo ante la misma `idempotencyKey` en vez de crear dos veces, y deja una linea
 en `control-audit.log` del directorio de datos con el llamador, la entrada, los

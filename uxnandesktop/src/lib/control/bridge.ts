@@ -173,7 +173,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
       worktree,
       agent ? agent.id : null,
       true,
-      { extraArgs: mode.extraArgs, extraEnv: mode.extraEnv },
+      { extraArgs: mode.extraArgs, extraEnv: mode.extraEnv, origin: "control" },
     );
     if (tabId) queuePrompt(tabId, p.prompt);
     return {
@@ -207,6 +207,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
         background: true,
         extraArgs: mode.extraArgs,
         extraEnv: mode.extraEnv,
+        origin: "control",
       });
     } else {
       tabId = terminals.create({
@@ -215,6 +216,7 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
         title,
         target: targetOpt,
         background: true,
+        origin: "control",
       });
     }
     if (!tabId) return { error: "the agent has no command to launch" };
@@ -223,6 +225,24 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
       terminal: { id: tabId, agent: agent?.name },
       ...(mode.unattended ? { unattended: mode.unattended } : {}),
     };
+  },
+  // Close a tab: one whose shell has exited (a dead agent's, kept open for the
+  // person to read), or one the surface itself opened once its agent is not
+  // working — the way a coordinator collects the workers it started. A tab a
+  // person opened and is still using is theirs to close; refused as invalid
+  // (the backend has already refused a working agent as busy).
+  "terminal/close": async (p) => {
+    const id = String(p.terminal ?? "");
+    const tab = terminals.findTab(id);
+    if (!tab || tab.kind !== "terminal") return { error: `no terminal \`${id}\`` };
+    if (!tab.exited && tab.origin !== "control") {
+      return {
+        error: `terminal \`${id}\` was opened by a person and its shell is alive; only they close it`,
+        invalid: true,
+      };
+    }
+    await terminals.closeTabAnywhere(id);
+    return { closed: id };
   },
   "agent/send": async (p) => {
     const terminal = String(p.terminal ?? "");

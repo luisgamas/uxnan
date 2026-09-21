@@ -690,6 +690,126 @@ async fn a_linked_worktree_outside_the_project_folder_is_in_its_scope() {
         .output();
 }
 
+/// `terminal/close` refuses a tab whose agent the hooks report as working —
+/// busy, before the window is even asked — and otherwise hands the window
+/// the id, mapping its `invalid` refusal (a person's live shell) to invalid
+/// params and its success to `{closed}`.
+#[tokio::test]
+async fn terminal_close_refuses_a_working_agent_and_relays_the_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, repo) = repo_in(dir.path()).await;
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    let s = server(data).await;
+    let handle = s._app.handle().clone();
+    for id in ["coordinator", "worker", "theirs"] {
+        handle
+            .state::<AppState>()
+            .pty
+            .create(
+                crate::pty::PtySpec {
+                    id: id.into(),
+                    cwd: Some(path.clone()),
+                    shell: None,
+                    args: Vec::new(),
+                    env: Vec::new(),
+                    cols: 80,
+                    rows: 24,
+                },
+                |_| {},
+                || {},
+            )
+            .unwrap();
+    }
+    let tabs = json!({ "tabs": [
+        { "id": "coordinator", "title": "c", "workspace": path },
+        { "id": "worker", "title": "w", "workspace": path },
+        { "id": "theirs", "title": "t", "workspace": path },
+    ] });
+    let answerer = handle.clone();
+    handle.listen_any(super::bridge::REQUEST_EVENT, move |event| {
+        let req: super::bridge::BridgeRequest = serde_json::from_str(event.payload()).unwrap();
+        let answer = match req.method.as_str() {
+            "terminal/list" => tabs.clone(),
+            // The window's ownership rule: the worker is the surface's, the
+            // other tab a person's with a live shell.
+            "terminal/close" => match req.params["terminal"].as_str() {
+                Some("worker") => json!({ "closed": "worker" }),
+                Some(other) => json!({
+                    "error": format!("terminal `{other}` was opened by a person and its shell is alive; only they close it"),
+                    "invalid": true,
+                }),
+                None => Value::Null,
+            },
+            _ => Value::Null,
+        };
+        answerer
+            .state::<AppState>()
+            .control_bridge
+            .answer(&req.id, Ok(answer));
+    });
+    let call = |method: &str, params: Value| {
+        let origin = s.origin.clone();
+        let method = method.to_string();
+        async move {
+            post(
+                &origin,
+                RPC_PATH,
+                &[
+                    ("x-uxnan-token", LAUNCH),
+                    ("x-uxnan-agent-id", "coordinator"),
+                ],
+                rpc(&method, params),
+            )
+            .await
+            .1
+        }
+    };
+    let report = |status: &'static str| {
+        let origin = s.origin.clone();
+        async move {
+            post(
+                &origin,
+                "/hook",
+                &[
+                    ("x-uxnan-token", LAUNCH),
+                    ("x-uxnan-agent-id", "worker"),
+                    ("x-uxnan-status", status),
+                ],
+                json!({}),
+            )
+            .await
+            .0
+        }
+    };
+
+    // Working: refused as busy, without asking the window.
+    assert_eq!(report("working").await, 204);
+    let body = call("terminal/close", json!({ "terminal": "id:worker" })).await;
+    assert_eq!(body["error"]["code"], ErrorCode::Busy.code(), "{body}");
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("working"));
+
+    // Done: the window closes it.
+    assert_eq!(report("done").await, 204);
+    let body = call("terminal/close", json!({ "terminal": "id:worker" })).await;
+    assert_eq!(body["result"]["closed"], "worker", "{body}");
+
+    // A person's live shell: the window's refusal comes back as invalid params.
+    let body = call("terminal/close", json!({ "terminal": "id:theirs" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::InvalidParams.code(),
+        "{body}"
+    );
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("opened by a person"));
+}
+
 /// A per-launch token reaches only the project its terminal was opened in:
 /// listings are narrowed to it, a selector naming another project is *scope
 /// denied* (not *not found*), and a launch request that did not say which

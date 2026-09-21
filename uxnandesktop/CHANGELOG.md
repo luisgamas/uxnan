@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **`terminal/close` — a coordinator can collect the workers it started.**
+  The catalog had no way to close a terminal, on purpose: nothing destructive.
+  But a worker's tab outlived its job — its shell had exited, the tab sat in
+  the sidebar as *closed*, and only the person could remove it. The new entry
+  (`uxnan-cli terminal close <terminal>`, MCP `terminal_close`) closes a tab
+  the surface itself opened (`terminal/create`, `worktree/create`,
+  `worker/start`; the tab now carries `origin: control`, persisted with the
+  layout) once its agent is no longer working, or any terminal in scope whose
+  shell has exited. A tab a person opened and is still using is refused as
+  invalid; one whose agent the hooks report as working is refused as busy
+  before the window is asked. Audited like every `create` entry. Found by
+  driving a run from inside the app: the coordinator could not clean up
+  after its worker.
 - **`uxnan-cli` ships inside the app, and every terminal Uxnan opens has it.**
   The console client is now a Tauri sidecar (`bundle.externalBin`), built by
   `scripts/build-cli.mjs` and declared by the `src-tauri/tauri.cli.conf.json`

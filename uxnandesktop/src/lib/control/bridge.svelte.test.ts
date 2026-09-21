@@ -466,6 +466,40 @@ describe("the launch budget", () => {
   });
 });
 
+describe("terminal/close", () => {
+  it("closes what the surface opened or what has exited, never a person's live shell", async () => {
+    terminals.setWorkspace(WT);
+    // A tab the surface opened: collectable once its agent is not working.
+    const opened = await answer({ id: "c1", method: "terminal/create", params: { worktree: WT, title: "worker" } });
+    const ours = (opened.result as { terminal: { id: string } }).terminal.id;
+    expect(terminals.findTab(ours)).toBeDefined();
+    expect((terminals.findTab(ours) as { origin?: string }).origin).toBe("control");
+    const closed = await answer({ id: "c2", method: "terminal/close", params: { terminal: ours } });
+    expect(closed.result).toEqual({ closed: ours });
+    expect(terminals.findTab(ours)).toBeUndefined();
+
+    // A person's tab with a live shell: refused, as invalid (not not-found).
+    const theirs = terminals.create({ cwd: WT, title: "mine", agentName: "Claude Code", agentCommand: "claude" });
+    const refused = await answer({ id: "c3", method: "terminal/close", params: { terminal: theirs } });
+    const out = refused.result as { error?: string; invalid?: boolean };
+    expect(out.invalid).toBe(true);
+    expect(out.error).toContain("opened by a person");
+    expect(terminals.findTab(theirs)).toBeDefined();
+
+    // Once its shell has exited (an agent tab is kept open for the person to
+    // read), anyone in scope may close it.
+    terminals.handleShellExit(theirs);
+    expect((terminals.findTab(theirs) as { exited: boolean }).exited).toBe(true);
+    const swept = await answer({ id: "c4", method: "terminal/close", params: { terminal: theirs } });
+    expect(swept.result).toEqual({ closed: theirs });
+    expect(terminals.findTab(theirs)).toBeUndefined();
+
+    // Nothing by that id.
+    const missing = await answer({ id: "c5", method: "terminal/close", params: { terminal: "nope" } });
+    expect((missing.result as { error?: string }).error).toContain("no terminal");
+  });
+});
+
 describe("unattended launches", () => {
   /** Open a terminal with an agent through the bridge, read what went on its
    *  command line and environment, and let it go so the budget is free again. */

@@ -101,6 +101,12 @@ export interface TerminalTab extends BaseTab {
   /** Activity inference: `true` while the tab is producing output (set by the
    *  agent monitor). Transient. */
   working?: boolean;
+  /** `control` when the control surface opened this tab (an agent's
+   *  `terminal/create`, `worktree/create`, `worker/start`) — the only tabs
+   *  `terminal/close` may close while their shell is still alive, once the
+   *  agent is done: what an agent opened it may collect; what a person opened
+   *  is theirs. Persisted, so a restored worker tab is still collectable. */
+  origin?: 'control';
   exited: boolean;
 }
 
@@ -241,6 +247,9 @@ export interface NewTabOptions {
    *  that opens a terminal or a worktree leaves a trace, never steals the
    *  focus; the person goes and looks when they choose to. */
   background?: boolean;
+  /** Who opened the tab: `control` for the control surface (see
+   *  `TerminalTab.origin`). */
+  origin?: 'control';
 }
 
 function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace' | 'background'>): TerminalTab {
@@ -262,6 +271,7 @@ function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace' | 'background
     agentModel: opts?.agentModel,
     agentSession: opts?.agentSession,
     target: opts?.target,
+    origin: opts?.origin,
     exited: false,
   };
 }
@@ -461,6 +471,7 @@ function serializeTab(t: GroupTab): SavedTab {
       sid: t.sid,
       asleep: t.asleep || undefined,
       agentSession: t.agentSession,
+      origin: t.origin,
     };
   }
   return { kind: 'terminal', title: t.title };
@@ -534,6 +545,7 @@ function buildTab(t: SavedTab): GroupTab {
     target: t.target,
     asleep: t.asleep,
     agentSession: session,
+    origin: t.origin,
     ...(resume ? { runCommand: resume, runCommandExecute: session?.live !== false } : {}),
     exited: false,
   };

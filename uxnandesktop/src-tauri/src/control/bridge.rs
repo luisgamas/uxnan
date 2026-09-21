@@ -123,6 +123,9 @@ pub fn refused(answer: &Value) -> Option<RpcError> {
             })),
         );
     }
+    if answer.get("invalid").and_then(|v| v.as_bool()) == Some(true) {
+        return Some(RpcError::new(ErrorCode::InvalidParams, message));
+    }
     Some(RpcError::new(ErrorCode::NotFound, message))
 }
 

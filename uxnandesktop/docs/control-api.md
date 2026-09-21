@@ -136,6 +136,16 @@ What each entry does, and through which existing path:
   profile name, command or id; `prompt` as above), opened in the background the
   same way: its workspace is mounted so the shell spawns and the agent runs
   whether or not anyone is looking. The window mints the tab id.
+- **`terminal/close`** — the way a coordinator collects what it started. It
+  closes a tab the surface itself opened (`terminal/create`,
+  `worktree/create`, `worker/start` — the tab carries `origin: control`,
+  persisted with the layout) once its agent is no longer working, or **any**
+  terminal in scope whose shell has exited (an agent's tab is kept open after
+  its shell dies so the person can read it; sweeping it is harmless). A tab a
+  person opened and is still using is refused as invalid — closing what
+  someone is using is theirs to do — and a tab whose agent the hooks report
+  as *working* is refused as busy, before the window is asked: wait for it
+  (`agent/wait --for idle`) first.
 - **`run/start`** — the run engine validates and starts a **saved** run; a run
   that is not runnable is refused with its validation errors (exit 8 / *busy*).
 - **`automation/run`** — the same headless runner the schedule starts, as a
