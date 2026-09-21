@@ -733,6 +733,9 @@ class AppStore {
       background?: boolean;
       /** Extra arguments after the profile's own (an unattended launch's mode). */
       extraArgs?: readonly string[];
+      /** Extra variables on the agent's environment, after the profile's own
+       *  (an unattended launch's mode, for the CLI that reads it from there). */
+      extraEnv?: Readonly<Record<string, string>>;
     },
   ): string | null {
     const command = agent.command.trim();
@@ -782,7 +785,7 @@ class AppStore {
     // Per-agent env vars → real environment on the spawned shell (inherited by
     // the agent). Blank keys are dropped; the backend prepends them before its
     // own `UXNAN_*` so those always win.
-    const env = (agent.env ?? [])
+    const env = [...(agent.env ?? []), ...Object.entries(opts.extraEnv ?? {}).map(([key, value]) => ({ key, value }))]
       .map((e) => [e.key.trim(), e.value] as [string, string])
       .filter(([k]) => k.length > 0);
     const name = agent.name.trim() || command;
@@ -827,6 +830,13 @@ class AppStore {
       target: opts.target,
       background: opts.background,
     });
+  }
+
+  /** Whether a worker a coordinator starts with this agent launches in its
+   *  CLI's reviewed automatic mode — the per-agent switch in Settings → Agents,
+   *  on unless the person switched it off. */
+  workersUnattended(agentId: string): boolean {
+    return this.agentProfiles.find((a) => a.id === agentId)?.workersUnattended !== false;
   }
 
   /** A launchable agent by what a caller may call it: its profile name, its

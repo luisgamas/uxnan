@@ -449,7 +449,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "task/create" => "uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>] [--worktree <worktree>] [--retry] [--idempotency-key <key>]",
         "task/list" => "uxnan-cli task ls --run <run-id>",
         "task/update" => "uxnan-cli task update --run <run-id> <task> [--title <t>] [--prompt-file <file>] [--depends-on <task>]... [--status completed|failed|skipped] [--output <text>]",
-        "worker/start" => "uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--unattended] [--idempotency-key <key>]",
+        "worker/start" => "uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--branch <name>] [--project <project>] [--unattended | --attended] [--idempotency-key <key>]",
         "inbox/check" => "uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]",
         "question/ask" => "uxnan-cli ask --question <text> [--option <o>]... [--timeout <seconds>]",
         "question/answer" => "uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]",
@@ -563,7 +563,7 @@ uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli run create --title <t> | finish <run-id> --outcome success|failure|blocked [--summary <text>]
 uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>]
 uxnan-cli task ls --run <run-id> | update --run <run-id> <task> [--status completed|failed|skipped] [--output <text>]
-uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--unattended]
+uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree current|new|<worktree>] [--unattended | --attended]
 uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
 uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]

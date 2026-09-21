@@ -1317,13 +1317,14 @@ class ProjectsStore {
    *  to the global default agent. `background` (the control surface): the
    *  worktree is listed and its agent launched, but the person's active
    *  worktree and tab stay where they are — what an agent creates leaves a
-   *  trace in the sidebar, it does not take the seat. */
+   *  trace in the sidebar, it does not take the seat. `launch`: what an
+   *  unattended launch adds to the agent's command line or environment. */
   async adoptWorktree(
     repoId: string,
     created: WorktreeEntry,
     agentId?: string | null,
     background = false,
-    extraArgs?: readonly string[],
+    launch?: { extraArgs?: readonly string[]; extraEnv?: Readonly<Record<string, string>> },
   ): Promise<string | null> {
     await this.loadWorktrees(repoId, false);
     if (!background) this.setActiveWorktree(created.path);
@@ -1335,7 +1336,7 @@ class ProjectsStore {
           ? app.launchableAgents.find((a) => a.id === agentId)
           : undefined;
     return agent
-      ? app.launchAgent(agent, { cwd: created.path, workspace: created.path, background, extraArgs })
+      ? app.launchAgent(agent, { cwd: created.path, workspace: created.path, background, ...launch })
       : null;
   }
 

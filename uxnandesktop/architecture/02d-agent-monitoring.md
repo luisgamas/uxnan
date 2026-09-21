@@ -1044,13 +1044,29 @@ agentes** corriendo **o** cuando existe alguna corrida):
   puente antes de un worktree con agente); una terminal sin agente y el clic de
   una persona no se presupuestan. Es la mitad determinista del plan 023 aplicada
   en el unico sitio que comparten las tres puertas.
-- **Lanzamiento desatendido.** `unattended: true` en `worker/start`,
-  `terminal/create` o `worktree/create` con agente lanza el CLI en su **modo
-  automatico revisado** (Claude Code `--permission-mode auto`, Codex
-  `--approve-for-me`; nunca su bandera de saltarse todo), por lanzamiento y
-  opt-in: los perfiles de la persona no cambian y uno cuyos args ya eligen modo
-  se respeta. El recibo dice `unattended: applied | configured | unsupported`
-  (`src/lib/agentUnattended.ts`).
+- **Lanzamiento desatendido.** Un lanzamiento desatendido anade al CLI su
+  **modo automatico revisado** — nunca su bandera de saltarse todo — en dos
+  niveles (`src/lib/agentUnattended.ts`, por *basename* del comando):
+  `reviewed` (toda herramienta se aprueba bajo un revisor: `claude
+  --permission-mode auto`, `codex --approve-for-me`, `qwen --approval-mode
+  auto`, `ante --permission-mode auto`, `kimi --yolo`, `devin --permission-mode
+  smart`, `goose` via `GOOSE_MODE=smart_approve` en su entorno) o `editsOnly`
+  (solo las ediciones de archivos; shell y MCP siguen preguntando: `agy --mode
+  accept-edits`, `grok --permission-mode acceptEdits`, `command-code
+  --accept-edits`, `vibe --agent accept-edits`, `omp --approval-mode write`,
+  `autohand --yes`). Un CLI sin nivel — solo bandera de saltarse todo, o un
+  nivel que existe solo en su subcomando `exec` y no en la TUI que Uxnan lanza
+  (`zero`, `droid`) — queda ausente. Lo anadido viaja por la misma ruta que la
+  configuracion del perfil: argumentos tras los suyos, una variable junto a su
+  entorno (`extraArgs` / `extraEnv` en `launchAgent`). **Un worker es
+  desatendido por diseno:** `worker/start` sin `unattended` sigue el ajuste del
+  agente (`AgentProfile.workersUnattended`, Settings → Agents → *Automatic mode
+  when launched by an agent*, encendido salvo que la persona lo apague);
+  `unattended: false` (`--attended`) lo lanza tal como esta configurado.
+  `terminal/create` y `worktree/create` con agente siguen siendo opt-in
+  (`unattended: true`). Un perfil cuyos args o entorno ya eligen modo se
+  respeta siempre. El recibo dice `unattended: applied | partial | configured |
+  unsupported`; ausente si el lanzamiento no fue desatendido.
 - **Alcance y auditoria.** Las corridas no son por proyecto; `worker/start` con
   `new` crea el worktree en el proyecto del llamador (o el indicado), sujeto al
   alcance del token. Todo movimiento del coordinador salvo las lecturas y las

@@ -54,6 +54,10 @@ export interface AgentProfile {
   env?: EnvVar[];
   /** Logo key for the UI (a catalog id, e.g. `claudecode`); null → generic. */
   icon?: string | null;
+  /** Whether a worker a coordinator starts with this agent (`worker/start`)
+   *  launches in the CLI's reviewed automatic mode (`agentUnattended.ts`).
+   *  Absent/null → on. The person's own launches are never affected. */
+  workersUnattended?: boolean | null;
 }
 
 // --- Quick commands (top-bar launcher) --------------------------------------
