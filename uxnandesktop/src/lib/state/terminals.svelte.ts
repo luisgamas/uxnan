@@ -230,13 +230,20 @@ export interface NewTabOptions {
    *  tab is resumable before any hook has reported. */
   agentSession?: CapturedAgentSession;
   groupId?: string;
-  /** Workspace to open in (switches the active workspace first). */
+  /** Workspace to open in (switches the active workspace first — unless
+   *  `background`). */
   workspace?: string;
   /** Machine to open the shell on (`ssh:<hostId>`); absent = this one. */
   target?: string;
+  /** Open without taking the person's attention: the tab lands in its
+   *  workspace (mounted, so its shell spawns) but the active workspace and the
+   *  active tab stay where they are. What the control surface uses — an agent
+   *  that opens a terminal or a worktree leaves a trace, never steals the
+   *  focus; the person goes and looks when they choose to. */
+  background?: boolean;
 }
 
-function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TerminalTab {
+function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace' | 'background'>): TerminalTab {
   termCount += 1;
   return {
     kind: 'terminal',
@@ -1047,13 +1054,54 @@ class TerminalStore {
    *  opens its first region. A terminal with no explicit `cwd` inherits the
    *  target workspace's folder (see [`cwdFor`]). */
   create(opts?: NewTabOptions): string {
-    if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
     const workspace = opts?.workspace ?? this.activeWorkspace;
+    if (opts?.background) {
+      this.mountWorkspace(workspace);
+    } else if (opts?.workspace !== undefined) {
+      this.setWorkspace(opts.workspace);
+    }
     const target = opts?.target ?? this.inheritedTarget(workspace, opts?.groupId);
     const cwd = this.cwdFor(opts?.cwd, workspace, target);
     const tab = newTab({ ...opts, cwd, target });
-    this.insertTab(tab, opts?.groupId);
+    if (opts?.background) {
+      this.insertTabInto(workspace, tab);
+    } else {
+      this.insertTab(tab, opts?.groupId);
+    }
     return tab.id;
+  }
+
+  /** Make a workspace's panes mount (so their shells spawn) without showing
+   *  it: the key exists, it is in the mounted list, and its sleeping tabs
+   *  wake as on a switch. The active workspace does not change. */
+  private mountWorkspace(key: string): void {
+    if (!(key in this.workspaces)) {
+      this.workspaces = { ...this.workspaces, [key]: null };
+    }
+    if (!this.mountedKeys.includes(key)) {
+      this.mountedKeys = [...this.mountedKeys, key];
+      noteTopology('workspace mounted in background', wsLabel(key));
+      this.wakeWorkspace(key);
+    }
+  }
+
+  /** Add a tab to a workspace's tree without activating it: appended to that
+   *  workspace's active region (or a new root region), the region's active tab
+   *  untouched unless the tab is the region's first. The tree may belong to a
+   *  workspace that is not the visible one. */
+  private insertTabInto(key: string, tab: GroupTab): void {
+    const tree = this.workspaces[key] ?? null;
+    if (!tree) {
+      const group: TabGroup = { kind: 'group', id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
+      this.workspaces = { ...this.workspaces, [key]: group };
+      this.activeGroups = { ...this.activeGroups, [key]: group.id };
+      return;
+    }
+    const group = findGroup(tree, this.activeGroups[key] ?? '') ?? firstGroup(tree);
+    group.tabs.push(tab);
+    if (!this.activeGroups[key]) {
+      this.activeGroups = { ...this.activeGroups, [key]: group.id };
+    }
   }
 
   /** Which machine a new terminal opens on when the caller does not say.

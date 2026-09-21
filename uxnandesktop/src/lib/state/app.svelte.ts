@@ -725,12 +725,13 @@ class AppStore {
    *  resolve. No-op for an agent with a blank command. */
   launchAgent(
     agent: AgentProfile,
-    opts: { cwd?: string; workspace?: string; title?: string; target?: string },
+    opts: { cwd?: string; workspace?: string; title?: string; target?: string; background?: boolean },
   ): string | null {
     const command = agent.command.trim();
     if (!command) return null;
-    // Launching an agent opens its terminal → leave the inline GitHub view.
-    this.closeGithub();
+    // Launching an agent opens its terminal → leave the inline GitHub view
+    // (not for a background launch, which changes nothing the person sees).
+    if (!opts.background) this.closeGithub();
     // Ask for notification permission now (focused, user-initiated) so an
     // agent-idle alert later isn't lost waiting on the OS prompt.
     primeNotifications();
@@ -812,6 +813,7 @@ class AppStore {
         : undefined,
       workspace: opts.workspace,
       target: opts.target,
+      background: opts.background,
     });
   }
 

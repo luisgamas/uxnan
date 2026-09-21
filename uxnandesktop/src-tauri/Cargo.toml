@@ -170,7 +170,11 @@ security-framework = "3"
 windows-sys = { version = "0.59", features = [
   "Win32_System_Power",
   "Win32_Storage_FileSystem",
+  "Win32_UI_WindowsAndMessaging",
 ] }
+# The user's PATH for the `uxnan-cli` shim (`control/cli.rs`); already in the
+# tree through the updater, so no new code to trust.
+winreg = "0.55"
 
 
 [dev-dependencies]

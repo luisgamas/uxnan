@@ -679,8 +679,19 @@ de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,
 timeout 6, no encontrado 7, ocupado 8); `skills get control --full` imprime la
 referencia generada desde el catalogo. Encuentra la app por el entorno (dentro de una
 terminal del ADE) o por `control.json` (con las mismas reglas de directorio de
-datos que la app, incluido el perfil `-dev` de una build de desarrollo). Detalle
-operativo en `docs/control-api.md`.
+datos que la app, incluido el perfil `-dev` de una build de desarrollo). **Viaja
+dentro de la app** como sidecar de Tauri (`bundle.externalBin`, construido por
+`scripts/build-cli.mjs` y declarado por la superposicion
+`src-tauri/tauri.cli.conf.json`, que el wrapper `npm run tauri` aplica solo a
+`dev` y `build` — declararlo en `tauri.conf.json` haria fallar cada `cargo
+test`/`clippy` sin el binario). Desde ahi (`control/cli.rs`): **toda terminal que
+el ADE abre lo lleva en el PATH** (la carpeta del sidecar primero, y `UXNAN_CLI`
+con la ruta), asi que un agente o un worker no instala nada; y para la shell
+propia del usuario un **shim** renovado en cada arranque — enlace simbolico
+`~/.local/bin/uxnan-cli` en macOS/Linux, copia en `%LOCALAPPDATA%\uxnan\bin`
+mas esa carpeta en el PATH de usuario en Windows —, idempotente y de mejor
+esfuerzo (un archivo ajeno en esa ruta se respeta). `status` reporta ambos
+(`cli.bundled`, `cli.shim`). Detalle operativo en `docs/control-api.md`.
 
 **Registracion por lanzamiento (`mcpinject.rs`) — invariante de diseno:** el servidor se registra **en el proceso que lanza uxnan y solo para ese lanzamiento**; el ADE **no escribe nada** en la config de ningun CLI (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, …). Un agente arrancado fuera de uxnan no descubre el servidor, no intenta conectarse y **no puede avisar de que esta caido**.
 

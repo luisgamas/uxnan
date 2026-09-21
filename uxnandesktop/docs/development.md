@@ -39,10 +39,15 @@ expect a few minutes the first time (Tauri pulls a large dependency tree).
 npm run tauri dev
 ```
 
-This runs the `beforeDevCommand` (`npm run dev` → Vite dev server on
-`http://localhost:1420`), compiles the Rust backend in debug, and launches the
-native window with **hot reload**: edits to `src/**` reload the webview
-instantly; edits to `src-tauri/**` rebuild and restart the app.
+This runs the `beforeDevCommand` (`scripts/build-cli.mjs` → the `uxnan-cli`
+sidecar, then `npm run dev` → Vite dev server on `http://localhost:1420`),
+compiles the Rust backend in debug, and launches the native window with **hot
+reload**: edits to `src/**` reload the webview instantly; edits to
+`src-tauri/**` rebuild and restart the app. `npm run tauri` is a small wrapper
+(`scripts/tauri.mjs`) that applies the sidecar overlay to `dev` and `build` —
+see [`build.md`](build.md) → *The `uxnan-cli` sidecar*; the dev app carries
+the CLI at `target/debug/uxnan-cli` and puts it on the PATH of every terminal
+it opens, like the release does.
 
 **DevTools:** debug builds enable the webview inspector — right-click → *Inspect
 Element* (or your platform's devtools shortcut) to debug the Svelte UI, console,

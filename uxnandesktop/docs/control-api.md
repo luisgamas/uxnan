@@ -122,14 +122,20 @@ What each entry does, and through which existing path:
   New-worktree dialog uses (`worktreeloc`, plus the project's own root); the
   service is the one the dialog's `worktree_create` command calls. The new
   worktree is then handed to the window (`worktree/adopt` over the bridge), which
-  lists it, makes it active and — with `agent` — launches that configured agent
-  in it exactly as the dialog would. A `prompt` is queued for the agent through
+  lists it and — with `agent` — launches that configured agent in it as the
+  dialog would, **in the background**: the person's active worktree and tab
+  stay where they are. What an agent creates leaves a trace (the sidebar, the
+  tab, the unread badge when the agent finishes), it does not take the seat;
+  `terminal/reveal` is the entry that moves the focus, and only a caller that
+  wants to. A `prompt` is queued for the agent through
   the orchestration broadcast queue, so it is typed only once the agent is free,
   never into a TUI that is still starting. If the window is not there to adopt,
   the receipt still comes back with `adopted: false` and a warning — the
   worktree exists and the next reconcile pass lists it.
 - **`terminal/create`** — a tab in a worktree, plain or with an agent (`agent` by
-  profile name, command or id; `prompt` as above). The window mints the tab id.
+  profile name, command or id; `prompt` as above), opened in the background the
+  same way: its workspace is mounted so the shell spawns and the agent runs
+  whether or not anyone is looking. The window mints the tab id.
 - **`run/start`** — the run engine validates and starts a **saved** run; a run
   that is not runnable is refused with its validation errors (exit 8 / *busy*).
 - **`automation/run`** — the same headless runner the schedule starts, as a
@@ -455,9 +461,24 @@ environment (`UXNAN_HOOK_URL` + `UXNAN_HOOK_TOKEN`, and `UXNAN_AGENT_ID` for
 per-user data directory; the `-dev` profile for a debug build, so a debug CLI
 finds a debug app and never the installed one).
 
-**Building and running it.** `cargo build -p uxnan-cli --release` in
-`src-tauri/` produces `target/release/uxnan-cli`. Put it on the `PATH` by hand
-for now; bundling it with the installers is FOR-DEV.
+**Where it is.** `uxnan-cli` ships **inside the app** as a sidecar
+([`docs/build.md`](./build.md) → *The `uxnan-cli` sidecar*), next to the main
+executable, and from there the app puts it within reach twice:
+
+- **Every terminal Uxnan opens has it on the PATH** — the sidecar's folder is
+  put first, and `UXNAN_CLI` names the binary outright. An agent, a worker a
+  coordinator started, a script in that shell: nothing to install, nothing to
+  configure, and the same version as the app that launched it.
+- **Your own shell gets a shim**, refreshed on every start: on macOS and Linux a
+  symlink `~/.local/bin/uxnan-cli` (if that folder is not on your `PATH`, add
+  `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile once); on
+  Windows a copy in `%LOCALAPPDATA%\uxnan\bin`, which the app adds to your
+  user `PATH` once (new consoles see it). A file already at that path that is
+  not ours is left alone. `uxnan-cli status` reports both locations
+  (`cli.bundled`, `cli.shim`).
+
+To build it by hand (a checkout without the app): `cargo build -p uxnan-cli
+--release` in `src-tauri/` produces `target/release/uxnan-cli`.
 
 **The reference is its output.** `uxnan-cli skills get control --full >
 docs/control-api-reference.md` (from `uxnandesktop/`) regenerates
@@ -520,9 +541,10 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
 - **Window** (`npm run test:dom`, `src/lib/control/bridge.svelte.test.ts`):
   the tab listing, reveal/open/diff, run list/show, an unknown method answered
   with an error, the reply through `control_respond`; and for `create`: a
-  worktree adopted like the dialog does (active, agent launched, prompt
-  queued), an unknown agent refused with the known ones, a terminal opened
-  plain or with an agent named three ways, a run started or refused with its
+  worktree adopted in the background (listed, its workspace mounted, the agent
+  launched and its prompt queued — the person's worktree, workspace and tab
+  untouched), an unknown agent refused with the known ones, a terminal opened
+  plain or with an agent named three ways (never as the active tab), a run started or refused with its
   validation errors; for `converse`: a message queued or forced through the
   paste, a shell refused, a screen read that says when there is none; for
   `orchestrate`: the whole coordinator loop (a driven run that stays running
