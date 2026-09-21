@@ -310,6 +310,11 @@ terminal of another project is refused with *scope denied* (`-32003`) —
 distinct from *not found*, so an agent learns to stop rather than retry. The
 scope is taken from **backend state**: the folder the caller's own PTY runs in
 (`control/resolve.rs` → `Scope`), never from anything the request claims. A
+folder is a project's when it is inside its checkout, its registered worktree
+location, **or any worktree git lists for it** — the linked worktrees the app
+cuts under the worktree root live outside the checkout, and they are where a
+coordinator's workers run: a worker there is in the project's scope, and the
+coordinator sees its terminal. A
 launch request that does not say which terminal it is (no
 `x-uxnan-agent-id` header) reaches no project at all; one whose terminal is in
 the Global space, likewise. The control token — the same OS user that can open
@@ -548,7 +553,8 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   launch token's scope** (a real PTY in one of two projects and a stand-in
   window answering the tab list: listings narrowed, the other project's
   worktree and terminal *scope denied*, a headerless launch request reaching
-  nothing, the control token seeing all) — and, for `create`: a worktree created on a **real temporary repository** where
+  nothing, the control token seeing all; and a worker in a **linked worktree
+  outside the checkout** resolving `current` and seen by the coordinator) — and, for `create`: a worktree created on a **real temporary repository** where
   the project's policy puts it, receipted, written to the audit log, not
   created twice under the same key, a prompt refused before anything exists,
   and saved-only refusals for runs and automations; for `converse`: a message

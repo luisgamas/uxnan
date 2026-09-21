@@ -79,6 +79,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   a bracketed paste fell inside Codex's post-paste guard, so the preamble a
   coordinator gives its worker sat in the composer unsent; the gap is 400 ms
   now, which every driven agent submits.
+- **A worker in a linked worktree is in its project's scope — and its
+  coordinator can see it.** The scope of a launch token was decided from the
+  project's persisted record: its checkout, its registered worktree location
+  and a `worktrees` list nothing ever writes. The linked worktrees the app
+  cuts under the worktree root are outside all three, so a worker
+  `worker/start --worktree new` put there had **no scope at all** (`current`
+  named no project, every scoped call was refused) and the coordinator back
+  in the checkout could not `terminal/read` or `agent/send` to the terminal it
+  had just started — `terminal/list` did not even list it, while
+  `worktree/list` showed the worktree and its agent. The resolver now asks git
+  for a project's worktrees (once per request) when the persisted record does
+  not contain a folder, and a project scope carries those folders. Found by
+  driving a run from inside the app.
 
 ## [0.0.52] - 20260920
 ### Added

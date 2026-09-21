@@ -161,7 +161,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 781 passing unit tests of the app crate (823 with the ignored probes) — plus 18 in
+The 784 passing unit tests of the app crate (826 with the ignored probes) — plus 18 in
 `uxnan-control-protocol` and 13 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
