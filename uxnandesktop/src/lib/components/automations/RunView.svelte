@@ -4,6 +4,7 @@
   // sent** (after substitution), the captured output, the verified exit code and
   // the reason for every refusal.
   import { i18n } from "$lib/i18n";
+  import { formatBytes } from "$lib/resources/format";
   import { cn } from "$lib/utils";
   import { icon, panel, row, text } from "$lib/design";
   import { clock, relTime } from "$lib/time.svelte";
@@ -108,7 +109,19 @@
             {/if}
             {#if step.output}
               <div class="flex flex-col gap-1">
-                <span class={text.section}>{i18n.t("automations.output")}</span>
+                <div class="flex items-baseline gap-2">
+                  <span class={text.section}>{i18n.t("automations.output")}</span>
+                  <!-- The capture cap bit: say how much the step really wrote,
+                       so an answer that stops mid-sentence reads as a cap, not
+                       as an agent that gave up. -->
+                  {#if step.truncated}
+                    <span class={text.meta}>
+                      {i18n.t("automations.outputTruncated", {
+                        size: formatBytes(step.outputBytes ?? 0),
+                      })}
+                    </span>
+                  {/if}
+                </div>
                 <pre
                   class="scrollbar-sleek max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-muted/30 p-2 font-mono text-[11px]">{step.output}</pre>
               </div>

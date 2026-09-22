@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 896 Rust tests (827 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 37
+always wins). 901 Rust tests (832 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 37
 integration), of which 50 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,300 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,303 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -237,6 +237,13 @@ started.**
   prompt can carry** — an earlier step's answer, what a step answered in the
   previous run, the working folder — each explained in plain language and inserted
   at the cursor, with an earlier step's answer also making the step wait for it.
+  **Budgeted** (plan 023 phase 1): a run dispatches up to the resource policy's
+  orchestration concurrency — the number the app mirrors into its settings for
+  this process, which has no window to ask (`runner::concurrency_budget`,
+  `resolvedOrchestrationConcurrency`) — and each step's output is captured
+  bounded (512 KiB per stream, head + tail, the pipe still drained so the child
+  cannot block), with the true sizes and a `truncated` flag in the run record
+  and in the run view.
   `src-tauri/src/automations/`, `src/lib/automations/`,
   `src/lib/components/automations/`, [`docs/automations.md`](docs/automations.md).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
@@ -1592,7 +1599,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 896 Rust + 1,300 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 901 Rust + 1,303 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

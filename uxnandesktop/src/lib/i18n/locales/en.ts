@@ -2180,6 +2180,7 @@ export const en = {
   "automations.timedOut": "timed out",
   "automations.promptSent": "Prompt sent",
   "automations.output": "Output",
+  "automations.outputTruncated": "kept the start and the end of {size}",
   "automations.missingRefs": "Nothing was available for {ids}, so that part of the prompt was empty.",
   "automations.allAutomations": "All automations",
   "automations.allOutcomes": "All outcomes",

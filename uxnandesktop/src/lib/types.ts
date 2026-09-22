@@ -493,6 +493,12 @@ export interface ResourceModeSettings {
    *  auto-sleep capability only applies while this is on. */
   autoSleep?: boolean;
   schemaVersion?: number;
+  /** The resolved orchestration concurrency, **mirrored** for the one consumer
+   *  that cannot ask the policy engine: the headless automations runner, which
+   *  is its own process and runs with the app closed. Written by
+   *  `resourceMode` (never by hand, never read back as an input) — see
+   *  `$lib/state/resourceMode.svelte`. */
+  resolvedOrchestrationConcurrency?: number;
 }
 
 /** Local resource observability settings (mirror of the Rust `ResourceSettings`).

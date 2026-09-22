@@ -33,7 +33,8 @@ Persistence (`AppSettings.resourceMode`, mirrored by Rust
 `ResourceModeSettings` in `model.rs` — an additive field, no schema bump):
 
 ```jsonc
-{ "profile": "balanced", "overrides": { "orchestrationConcurrency": null }, "autoSleep": false, "schemaVersion": 1 }
+{ "profile": "balanced", "overrides": { "orchestrationConcurrency": null }, "autoSleep": false, "schemaVersion": 1,
+  "resolvedOrchestrationConcurrency": 4 }
 ```
 
 `null` (or absence) means *inherit from the preset*. Validation is
@@ -45,10 +46,23 @@ limits), and a `schemaVersion` newer than the build understands resolves to
 polling never below 30 s, orchestration concurrency never above 8, monitor
 history never outside 60–600 s.
 
-The backend never resolves policy. Its one consumer — the resource monitor's
-history budget — receives the already-resolved parameter over the
+The backend never resolves policy. Its consumers receive the **already-resolved
+parameter**: the resource monitor's history budget over the
 `resources_set_policy` command (clamped defensively in
-`ResourceMonitor::set_history_seconds`).
+`ResourceMonitor::set_history_seconds`), and the headless automations runner
+through `resolvedOrchestrationConcurrency` — the one derived field in the
+document above.
+
+That field is a **mirror, never an input**: the store writes it on every policy
+change and reconciles it at startup (`resourceMode.syncRunnerBudget()`), and
+nothing reads it back as configuration. It exists because the runner is a
+separate process that runs **with the app closed** (`automations::runner`),
+so it has no window to ask — and re-deriving the preset table in Rust would be
+a second copy free to disagree with this one. The runner clamps what it reads
+to the same ceiling (8) and falls back to 4 when the field is absent, which is
+what every automation used before the policy reached it. The **extended**
+Performance ceiling is not mirrored: it only applies against measured headroom,
+which a process with no monitor cannot observe.
 
 ## What each preset does
 

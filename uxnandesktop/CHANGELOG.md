@@ -11,6 +11,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `claude-fable-5-1` and `claude-opus-5-5` above their predecessors — the same
   twelve entries, in the same order, as the bridge's seeded table.
 
+### Changed
+
+- **An automation's output can no longer grow without bound, and its
+  concurrency follows your resource policy.** A headless step's stdout and
+  stderr were read to the end into memory, so an agent stuck in a loop grew
+  until the timeout killed it — with the app closed, on the machine you are
+  using for something else. Each stream is now captured **bounded**: past
+  512 KiB the pipe is still drained (a full pipe would block the agent, and a
+  blocked agent never exits) but only the head and the tail are kept, with the
+  size of the gap written between them; the record keeps the true sizes and a
+  `truncated` flag, and the run view says "kept the start and the end of
+  340 MB" instead of showing a short output as if that were all. And a run now
+  dispatches up to the **orchestration concurrency of your resource policy** —
+  the same number the Runs engine and the control surface use — instead of a
+  hardcoded 4 that several automations could multiply: the app mirrors the
+  resolved number into its settings for the runner, which has no window to ask
+  the policy engine and must not re-derive it. Nothing recorded still means 4,
+  what every run used before. Plan 023's phase 1.
+
+
 ## [0.0.53] - 20260921
 ### Added
 

@@ -86,6 +86,21 @@ never behave differently.
 Exit codes: `0` the run finished (or was skipped for a legitimate reason), `1` a
 step failed, `2` the automation could not be run at all.
 
+**How much it may run at once, and how much it keeps.** A run's steps are
+dispatched up to the **orchestration concurrency of the person's resource
+policy** — the same number the Runs engine dispatches by and the control
+surface admits launches against. The runner has no window to ask the policy
+engine, so it reads the number the app mirrored into its settings
+(`resolvedOrchestrationConcurrency`, see
+[`resource-mode.md`](./resource-mode.md)), clamped to 8; with nothing recorded
+it uses 4, which is what every run used before. Each step's output is captured
+**bounded**: past 512 KiB per stream the pipe is still drained — a full pipe
+would block the agent and a blocked agent never exits — but only the head and
+the tail are kept, with the size of the gap written between them. The run
+record keeps the true sizes (`outputBytes`, `stderrBytes`, `truncated`), and
+the run view says "kept the start and the end of 340 MB" rather than showing a
+short output as if that was all the agent wrote.
+
 ## Where things live
 
 ```

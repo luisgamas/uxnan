@@ -778,6 +778,19 @@ pub struct ResourceModeSettings {
     /// kills the behavior whatever the profile says (the rollback lever).
     #[serde(default)]
     pub auto_sleep: bool,
+    /// The orchestration concurrency the policy engine resolved, **mirrored**
+    /// for the one consumer that cannot ask it: the headless automations
+    /// runner, which runs as its own process with the app closed
+    /// (`automations::runner`). Everything else reads the live policy.
+    ///
+    /// It is a mirror, never an input: the frontend writes it whenever the
+    /// policy changes (and reconciles it at startup), and re-deriving the
+    /// preset table here instead is exactly the duplication this struct's
+    /// note forbids. Absent — a profile last written by a build that did not
+    /// mirror it — means the runner's own default, which is what every run
+    /// used before this existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_orchestration_concurrency: Option<u32>,
     /// Schema version of this block. The frontend treats a version newer than
     /// it knows as `balanced` with no overrides (rollback safety).
     #[serde(default = "default_resource_mode_schema_version")]
@@ -798,6 +811,7 @@ impl Default for ResourceModeSettings {
             profile: default_resource_profile(),
             overrides: std::collections::HashMap::new(),
             auto_sleep: false,
+            resolved_orchestration_concurrency: None,
             schema_version: default_resource_mode_schema_version(),
         }
     }
@@ -1679,6 +1693,31 @@ mod tests {
         assert!(data.repos.is_empty());
         assert!(data.agent_cache.is_empty());
         assert!(data.orchestration_runs.is_none());
+    }
+
+    #[test]
+    fn the_mirrored_orchestration_concurrency_round_trips_and_is_optional() {
+        // Settings written before the mirror existed must load (the headless
+        // runner then uses its own default), and a mirrored number survives a
+        // save/load — that number is the only way the policy reaches a process
+        // with no window.
+        let legacy: ResourceModeSettings =
+            serde_json::from_str(r#"{"profile":"efficient","overrides":{}}"#).unwrap();
+        assert_eq!(legacy.resolved_orchestration_concurrency, None);
+        let mode = ResourceModeSettings {
+            resolved_orchestration_concurrency: Some(2),
+            ..ResourceModeSettings::default()
+        };
+        let json = serde_json::to_string(&mode).unwrap();
+        assert!(json.contains("resolvedOrchestrationConcurrency"), "{json}");
+        let back: ResourceModeSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.resolved_orchestration_concurrency, Some(2));
+        // Absent stays absent in the document rather than writing a null.
+        let plain = serde_json::to_string(&ResourceModeSettings::default()).unwrap();
+        assert!(
+            !plain.contains("resolvedOrchestrationConcurrency"),
+            "{plain}"
+        );
     }
 
     #[test]

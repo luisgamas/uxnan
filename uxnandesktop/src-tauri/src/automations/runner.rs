@@ -37,6 +37,43 @@ pub struct RunnerArgs {
     pub trigger: RunTrigger,
 }
 
+/// How many steps this run may execute at once: the orchestration concurrency
+/// the app's resource policy resolved, as it mirrored it into the settings
+/// (`ResourceModeSettings::resolved_orchestration_concurrency`).
+///
+/// This process has no window, so it cannot ask the policy engine — and it must
+/// not re-derive the preset table, which would be a second copy free to
+/// disagree. It reads the one number the app left for it, clamped to the
+/// engine's own ceiling so a hand-edited file cannot spawn a swarm, and falls
+/// back to [`graph::DEFAULT_CONCURRENCY`] when there is none (an older profile,
+/// or one whose settings were never written by a build that mirrors it).
+///
+/// A run started while the app is open goes through this same subprocess, so
+/// scheduled and "Run now" runs cannot drift apart here either.
+pub fn concurrency_budget() -> usize {
+    budget_from(
+        super::store::app_data_dir()
+            .ok()
+            .map(crate::persistence::PersistenceManager::new)
+            .and_then(|mgr| mgr.load().ok())
+            .and_then(|data| {
+                data.settings
+                    .resource_mode
+                    .resolved_orchestration_concurrency
+            }),
+    )
+}
+
+/// The budget a mirrored value means: clamped to the engine's own bounds, and
+/// the pre-policy default when there is nothing recorded. Split from the read
+/// so the rule is tested without a data directory.
+fn budget_from(resolved: Option<u32>) -> usize {
+    match resolved {
+        Some(n) => (n as usize).clamp(1, graph::MAX_CONCURRENCY),
+        None => graph::DEFAULT_CONCURRENCY,
+    }
+}
+
 /// The flag that switches the binary into runner mode.
 const FLAG: &str = "--automation-run";
 const TRIGGER_FLAG: &str = "--trigger";
@@ -238,7 +275,15 @@ async fn execute(args: RunnerArgs) -> i32 {
     let _ = store.write_run(&run);
 
     let prev_vars = graph::previous_run_vars(&store, &automation.id);
-    graph::execute(&store, &automation, &mut run, &prev_vars, &cwd).await;
+    graph::execute(
+        &store,
+        &automation,
+        &mut run,
+        &prev_vars,
+        &cwd,
+        concurrency_budget(),
+    )
+    .await;
     log_line(&log, &format!("finished {:?}", run.status));
 
     // FOR-DEV: notify the user natively when a run fails. The runner has no
@@ -393,6 +438,19 @@ fn log_line(path: &std::path::Path, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_concurrency_budget_follows_the_policy_within_its_bounds() {
+        // Nothing mirrored (an older profile): what every run used before.
+        assert_eq!(budget_from(None), graph::DEFAULT_CONCURRENCY);
+        // The policy's own numbers pass through — Efficient's 2, Balanced's 4.
+        assert_eq!(budget_from(Some(2)), 2);
+        assert_eq!(budget_from(Some(4)), 4);
+        // A hand-edited settings file cannot climb past the engine's ceiling,
+        // nor stall every run at zero.
+        assert_eq!(budget_from(Some(99)), graph::MAX_CONCURRENCY);
+        assert_eq!(budget_from(Some(0)), 1);
+    }
 
     fn argv(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_string()).collect()

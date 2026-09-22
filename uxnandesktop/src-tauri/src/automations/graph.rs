@@ -23,9 +23,22 @@ use super::store::AutomationStore;
 use super::{now_ms, template, Automation, AutomationRun, OnFailure, RunStatus, Step, StepStatus};
 use crate::error::AppError;
 
-/// How many steps of one run may execute at the same time. Each step is its own
-/// agent subprocess, so this bounds CPU and provider load, not app threads.
-pub const MAX_CONCURRENCY: usize = 4;
+/// How many steps of one run may execute at the same time when nothing says
+/// otherwise. Each step is its own agent subprocess, so this bounds CPU and
+/// provider load, not app threads.
+///
+/// The live number comes from the person's resource policy — the same cap the
+/// Runs engine dispatches by and the control surface admits launches against
+/// (`orchestrationConcurrency`) — and reaches this process through
+/// [`super::runner::concurrency_budget`]. This constant is what a profile that
+/// has never recorded one falls back to, and it is the value every automation
+/// used before the policy reached here.
+pub const DEFAULT_CONCURRENCY: usize = 4;
+
+/// The ceiling a hand-edited settings file cannot climb past, mirroring the
+/// policy engine's own bound for this capability
+/// (`src/lib/resources/policy.ts` → `LIMITS.orchestrationConcurrency`).
+pub const MAX_CONCURRENCY: usize = 8;
 
 /// Fallback per-step wall-clock cap when a step doesn't pin its own.
 const DEFAULT_STEP_TIMEOUT_MS: u64 = 600_000;
@@ -34,13 +47,28 @@ const DEFAULT_STEP_TIMEOUT_MS: u64 = 600_000;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// The process exited 0.
-    Success { stdout: String, stderr: String },
+    Success {
+        stdout: String,
+        stderr: String,
+        /// What the two streams really were, and whether the capture cap bit
+        /// (`crate::agentrun::MAX_STREAM_BYTES`).
+        capture: Capture,
+    },
     /// Non-zero exit, spawn failure, or timeout.
     Failure {
         stderr: String,
         exit_code: Option<i32>,
         message: String,
+        capture: Capture,
     },
+}
+
+/// How big a step's output was, and whether what is kept is all of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Capture {
+    pub stdout_bytes: usize,
+    pub stderr_bytes: usize,
+    pub truncated: bool,
 }
 
 /// Mark every pending step that can never run — one of its dependencies failed
@@ -102,10 +130,17 @@ pub fn apply_outcome(run: &mut AutomationRun, step: &Step, outcome: Outcome, now
         return;
     };
     match outcome {
-        Outcome::Success { stdout, stderr } => {
+        Outcome::Success {
+            stdout,
+            stderr,
+            capture,
+        } => {
             sr.status = StepStatus::Completed;
             sr.output = stdout.trim().to_string();
             sr.stderr = stderr;
+            sr.output_bytes = capture.stdout_bytes;
+            sr.stderr_bytes = capture.stderr_bytes;
+            sr.truncated = capture.truncated;
             sr.exit_code = Some(0);
             sr.error = None;
             sr.finished_at = Some(now);
@@ -114,8 +149,12 @@ pub fn apply_outcome(run: &mut AutomationRun, step: &Step, outcome: Outcome, now
             stderr,
             exit_code,
             message,
+            capture,
         } => {
             sr.stderr = stderr;
+            sr.output_bytes = capture.stdout_bytes;
+            sr.stderr_bytes = capture.stderr_bytes;
+            sr.truncated = capture.truncated;
             sr.exit_code = exit_code;
             sr.error = Some(message);
             if step.on_failure == OnFailure::Retry && sr.attempts < step.max_attempts {
@@ -163,12 +202,15 @@ fn build_vars(
 ///
 /// `prev_vars` carries the previous run's `prev.<id>.output` values, so a
 /// recurring automation can continue yesterday's work.
+/// `max_concurrency` is how many of its steps may run at once — the resource
+/// policy's number, clamped to [`MAX_CONCURRENCY`] by the caller.
 pub async fn execute(
     store: &AutomationStore,
     automation: &Automation,
     run: &mut AutomationRun,
     prev_vars: &HashMap<String, String>,
     cwd: &str,
+    max_concurrency: usize,
 ) {
     let by_id: HashMap<&str, &Step> = automation
         .steps
@@ -183,7 +225,7 @@ pub async fn execute(
         promote(run);
 
         // Fill the concurrency budget with whatever is dispatchable now.
-        while inflight.len() < MAX_CONCURRENCY {
+        while inflight.len() < max_concurrency.max(1) {
             let Some(id) = ready_steps(run).into_iter().next() else {
                 break;
             };
@@ -223,6 +265,11 @@ pub async fn execute(
                 .await
                 {
                     Ok(res) if res.exit_code == Some(0) => Outcome::Success {
+                        capture: Capture {
+                            stdout_bytes: res.stdout_bytes,
+                            stderr_bytes: res.stderr_bytes,
+                            truncated: res.truncated,
+                        },
                         stdout: res.stdout,
                         stderr: res.stderr,
                     },
@@ -237,6 +284,11 @@ pub async fn execute(
                             detail.to_string()
                         };
                         Outcome::Failure {
+                            capture: Capture {
+                                stdout_bytes: res.stdout_bytes,
+                                stderr_bytes: res.stderr_bytes,
+                                truncated: res.truncated,
+                            },
                             stderr: res.stderr,
                             exit_code: res.exit_code,
                             message,
@@ -246,6 +298,7 @@ pub async fn execute(
                         stderr: String::new(),
                         exit_code: None,
                         message: e.to_string(),
+                        capture: Capture::default(),
                     },
                 };
                 (id, outcome)
@@ -415,6 +468,7 @@ mod tests {
 
     fn ok() -> Outcome {
         Outcome::Success {
+            capture: Capture::default(),
             stdout: "RESULT".into(),
             stderr: String::new(),
         }
@@ -424,6 +478,7 @@ mod tests {
             stderr: "bad".into(),
             exit_code: Some(1),
             message: "the agent exited with code 1".into(),
+            capture: Capture::default(),
         }
     }
 
@@ -519,6 +574,13 @@ mod tests {
             Outcome::Success {
                 stdout: "  FINDINGS\n".into(),
                 stderr: "warn".into(),
+                // A capture that hit the cap: the record must carry the true
+                // sizes, not the length of what was kept.
+                capture: Capture {
+                    stdout_bytes: 4_000_000,
+                    stderr_bytes: 4,
+                    truncated: true,
+                },
             },
             42,
         );
@@ -528,6 +590,11 @@ mod tests {
         assert_eq!(s.exit_code, Some(0));
         assert_eq!(s.finished_at, Some(42));
         assert!(s.error.is_none());
+        // What the step really printed, next to what was kept of it: a record
+        // that says "4 MB, truncated" explains an answer that stops mid-word.
+        assert_eq!(s.output_bytes, 4_000_000);
+        assert_eq!(s.stderr_bytes, 4);
+        assert!(s.truncated);
     }
 
     #[test]
@@ -564,6 +631,7 @@ mod tests {
             Outcome::Success {
                 stdout: "THREE BUGS".into(),
                 stderr: String::new(),
+                capture: Capture::default(),
             },
             10,
         );

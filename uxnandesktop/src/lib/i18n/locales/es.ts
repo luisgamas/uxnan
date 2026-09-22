@@ -2182,6 +2182,7 @@ export const es: Record<MessageKey, string> = {
   "automations.timedOut": "se agoto el tiempo",
   "automations.promptSent": "Prompt enviado",
   "automations.output": "Salida",
+  "automations.outputTruncated": "se conservan el principio y el final de {size}",
   "automations.missingRefs": "No habia nada disponible para {ids}, asi que esa parte del prompt quedo vacia.",
   "automations.allAutomations": "Todas las automatizaciones",
   "automations.allOutcomes": "Todos los resultados",

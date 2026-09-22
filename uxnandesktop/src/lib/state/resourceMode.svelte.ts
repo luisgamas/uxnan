@@ -39,15 +39,33 @@ class ResourceModeStore {
     return freshnessRelaxations(this.policy);
   }
 
-  /** Persist a normalized document (the only writer of `resourceMode`). */
+  /** Persist a normalized document (the only writer of `resourceMode`).
+   *
+   *  The document carries one **derived** field with it: the resolved
+   *  orchestration concurrency, for the headless automations runner. That
+   *  runner is its own process and runs with the app closed, so it cannot read
+   *  this policy — and re-deriving the preset table in Rust would be a second
+   *  copy free to disagree with this one. It reads the number instead. */
   #write(next: NormalizedResourceMode): void {
     app.settings.resourceMode = {
       profile: next.profile,
       overrides: { ...next.overrides },
       autoSleep: next.autoSleep,
       schemaVersion: next.schemaVersion,
+      resolvedOrchestrationConcurrency: resolvePolicy(next).capabilities.orchestrationConcurrency,
     };
     void app.persistSettings();
+  }
+
+  /** Bring the mirrored concurrency in step with the policy — at startup, and
+   *  after anything else rewrote the settings document. A no-op when it already
+   *  agrees, so it costs nothing on the common path; without it a profile saved
+   *  by an older build (or never saved at all) would leave the runner on its
+   *  fallback while the app itself dispatches by another number. */
+  syncRunnerBudget(): void {
+    const want = this.policy.capabilities.orchestrationConcurrency;
+    if (app.settings.resourceMode?.resolvedOrchestrationConcurrency === want) return;
+    this.#write(this.mode);
   }
 
   /** Switch preset. Overrides are kept — they are the user's explicit

@@ -905,7 +905,8 @@ agentes** corriendo **o** cuando existe alguna corrida):
   `headless` (corre un CLI instalado en modo print), `gate` (compuerta HITL).
 - El motor es un **scheduler determinista** (tick ~700 ms + eventos): promueve
   `pending`→`ready` cuando todas las dependencias estan `completed` (o `skipped` si
-  una fallo/omitio), despacha `ready` hasta un tope de concurrencia (4), detecta
+  una fallo/omitio), despacha `ready` hasta el tope de concurrencia de la
+  politica de recursos (`orchestrationConcurrency`), detecta
   completado, y deriva el estado de la corrida. **La logica de control vive en el
   frontend** porque necesita el estado vivo de agentes; el backend aporta primitivos.
 - **Plantillas de ejemplo**: el UI ofrece corridas listas (secuencial, paralelo/

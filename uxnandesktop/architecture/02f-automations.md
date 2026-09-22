@@ -141,8 +141,27 @@ Codigos de salida: `0` corrida terminada o saltada por una razon legitima,
 
 `graph.rs` separa **logica pura** (promocion, listos, aplicacion de resultado,
 derivacion de estado — unit-testeada sin procesos ni reloj ni disco) del
-**pegamento asincrono** (`execute`, que lanza los CLIs con un tope de
-concurrencia de 4 y reescribe el registro tras cada transicion).
+**pegamento asincrono** (`execute`, que lanza los CLIs hasta el tope de
+concurrencia que recibe y reescribe el registro tras cada transicion).
+
+**El tope sale de la politica de recursos**, no de una constante: es la misma
+`orchestrationConcurrency` con la que despacha el motor de Runs y con la que la
+superficie de control admite lanzamientos. El runner headless no tiene ventana
+para preguntarle al motor de politica (vive en el frontend) y **no debe**
+re-derivar la tabla de presets — seria una segunda copia libre de discrepar —,
+asi que lee el numero que la app espeja en sus ajustes
+(`resolvedOrchestrationConcurrency`, ver §2 de `resource-mode.md`),
+acotado al techo del motor (8); sin nada registrado usa 4, que es lo que uso
+toda automation antes de esto (`runner::concurrency_budget`).
+
+**La captura de cada paso esta acotada** (`agentrun::MAX_STREAM_BYTES`, 512 KiB
+por flujo): pasado el tope la tuberia se sigue **vaciando** — una tuberia llena
+bloquea al hijo y un hijo bloqueado no termina — pero solo se conservan la
+cabeza y la cola, con el tamano del hueco escrito entre ambas. El registro
+guarda los tamanos reales (`outputBytes`, `stderrBytes`, `truncated`), de modo
+que una salida corta se distingue de una salida recortada. Antes se acumulaba
+el flujo entero en memoria hasta que el timeout mataba el proceso, con la app
+cerrada y sin nadie mirando.
 
 - **Paralelo y fan-in** salen solo de `depends_on`: los pasos independientes se
   despachan juntos; uno que declara varias dependencias espera a todas.

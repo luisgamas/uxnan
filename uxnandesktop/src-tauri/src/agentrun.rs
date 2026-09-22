@@ -10,8 +10,9 @@
 //! trusting a cooperative "I'm done" signal.
 //!
 //! Built on [`crate::agentcli`] (`resolve` + `build_args`) and the windowless
-//! spawn ([`crate::winproc`]), with a hard timeout, `kill_on_drop`, and a prompt
-//! cap for the agents whose only channel is the command line. **This is the one
+//! spawn ([`crate::winproc`]), with a hard timeout, `kill_on_drop`, a prompt
+//! cap for the agents whose only channel is the command line, and a **cap on
+//! what is kept of each output stream** (see [`MAX_STREAM_BYTES`]). **This is the one
 //! one-shot runner**: AI commit messages and AI PR bodies
 //! ([`crate::aicommit`]) and automation steps go through it too, so they all get
 //! the same prompt-delivery handling instead of each re-deriving it.
@@ -40,6 +41,25 @@ const MAX_PROMPT_BYTES: usize = 28_000;
 /// Headless steps can be real work (not just a model probe), so this is generous.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// How much of **one** stream (stdout, stderr) a headless run keeps in memory.
+///
+/// The process is an agent's, and an agent that loops prints without end. The
+/// previous capture read both pipes to EOF (`wait_with_output`), so a runaway
+/// step grew in memory until the timeout killed it — unwatched, with the app
+/// closed, on the machine the person is using for something else. Past this cap
+/// the pipe is still **drained and discarded**, because a full pipe blocks the
+/// child and a blocked child never exits; only what is *kept* is bounded.
+///
+/// What is kept is the **head and the tail** (half each): the head is where a
+/// CLI says why it refused to start, the tail is where an agent puts its
+/// answer — which is also what a chained step plants in the next prompt.
+/// Between them the text says how much was dropped, and the result carries the
+/// true size of each stream, so nothing is silently smaller than it was.
+///
+/// 512 KiB per stream is far above any real answer (a long one is tens of KiB)
+/// and bounds a full concurrency budget of steps at a few MiB.
+const MAX_STREAM_BYTES: usize = 512 * 1024;
+
 /// The captured result of a headless run — the raw output plus the **verified**
 /// process exit code (the run engine's completion signal).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -49,6 +69,14 @@ pub struct HeadlessResult {
     pub stderr: String,
     /// Process exit code, or `None` if the process was terminated by a signal.
     pub exit_code: Option<i32>,
+    /// What the agent actually wrote, in bytes — which is more than `stdout`
+    /// holds once the cap bit.
+    pub stdout_bytes: usize,
+    /// As `stdout_bytes`, for stderr.
+    pub stderr_bytes: usize,
+    /// Either stream went past [`MAX_STREAM_BYTES`], so its text is head+tail
+    /// with the gap noted inside it.
+    pub truncated: bool,
 }
 
 /// Run `agent_id` in print-mode against `prompt` in `cwd`, capturing stdout,
@@ -212,9 +240,20 @@ async fn run(
         }
     }
 
-    let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+    // Drain both pipes on their own tasks, keeping at most `MAX_STREAM_BYTES`
+    // of each: reading must continue past the cap (a full pipe would block the
+    // child), and it must happen *while* the child runs, not after it exits.
+    let out_task = tokio::spawn(drain(child.stdout.take(), MAX_STREAM_BYTES));
+    let err_task = tokio::spawn(drain(child.stderr.take(), MAX_STREAM_BYTES));
+
+    let status = match tokio::time::timeout(timeout, child.wait()).await {
         Ok(res) => res.map_err(|e| AppError::Agent(e.to_string()))?,
         Err(_) => {
+            // Kill it now rather than leaving it to `kill_on_drop`, so the
+            // readers see EOF and end with the child instead of outliving it.
+            let _ = child.start_kill();
+            out_task.abort();
+            err_task.abort();
             return Err(AppError::Agent(format!(
                 "the agent timed out after {}s",
                 timeout.as_secs()
@@ -222,11 +261,88 @@ async fn run(
         }
     };
 
+    let out = out_task.await.unwrap_or_default();
+    let err = err_task.await.unwrap_or_default();
     Ok(HeadlessResult {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        exit_code: output.status.code(),
+        stdout: out.text,
+        stderr: err.text,
+        exit_code: status.code(),
+        stdout_bytes: out.bytes,
+        stderr_bytes: err.bytes,
+        truncated: out.truncated || err.truncated,
     })
+}
+
+/// One stream's bounded capture.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Capture {
+    /// What is kept: the whole stream, or its head and tail with a note of the
+    /// gap between them.
+    text: String,
+    /// What the stream actually was, in bytes.
+    bytes: usize,
+    truncated: bool,
+}
+
+/// Read `reader` to EOF, keeping at most `cap` bytes (half head, half tail) and
+/// counting every byte that went past. Everything is read whatever the cap, so
+/// the child is never blocked by a pipe nobody empties.
+async fn drain<R>(reader: Option<R>, cap: usize) -> Capture
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+
+    let Some(mut reader) = reader else {
+        return Capture::default();
+    };
+    let head_cap = cap / 2;
+    let tail_cap = cap - head_cap;
+    let mut head: Vec<u8> = Vec::new();
+    let mut tail: std::collections::VecDeque<u8> = std::collections::VecDeque::new();
+    let mut bytes = 0usize;
+    let mut buf = [0u8; 8192];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                bytes += n;
+                for &b in &buf[..n] {
+                    if head.len() < head_cap {
+                        head.push(b);
+                        continue;
+                    }
+                    if tail.len() == tail_cap {
+                        tail.pop_front();
+                    }
+                    tail.push_back(b);
+                }
+            }
+        }
+    }
+    Capture {
+        text: render(&head, &tail, bytes, cap),
+        bytes,
+        truncated: bytes > cap,
+    }
+}
+
+/// The kept text: the stream verbatim while it fits, else head + how much was
+/// dropped + tail. Lossy on purpose — a cap can land mid-character, and a log
+/// with a replacement character beats a runner that panics on one.
+fn render(head: &[u8], tail: &std::collections::VecDeque<u8>, bytes: usize, cap: usize) -> String {
+    if bytes <= cap {
+        let mut all = head.to_vec();
+        all.extend(tail.iter().copied());
+        return String::from_utf8_lossy(&all).into_owned();
+    }
+    let dropped = bytes - head.len() - tail.len();
+    let tail: Vec<u8> = tail.iter().copied().collect();
+    format!(
+        "{}\n…[{dropped} bytes dropped: the output went past the {cap}-byte cap]…\n{}",
+        String::from_utf8_lossy(head),
+        String::from_utf8_lossy(&tail)
+    )
 }
 
 /// Truncate `prompt` to at most `max` bytes on a char boundary, noting the cut so
@@ -271,9 +387,91 @@ mod tests {
             stdout: "out".into(),
             stderr: "err".into(),
             exit_code: Some(0),
+            stdout_bytes: 3,
+            stderr_bytes: 3,
+            truncated: false,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("exitCode"));
         assert!(!json.contains("exit_code"));
+        assert!(json.contains("stdoutBytes"));
+        assert!(json.contains("truncated"));
+    }
+
+    #[tokio::test]
+    async fn a_stream_within_the_cap_is_kept_whole() {
+        let text = "the agent's answer\n".repeat(10);
+        let got = drain(Some(std::io::Cursor::new(text.clone().into_bytes())), 1024).await;
+        assert_eq!(got.text, text);
+        assert_eq!(got.bytes, text.len());
+        assert!(!got.truncated);
+        // And nothing at all is still nothing (a stream the child never opened).
+        let none = drain(None::<std::io::Cursor<Vec<u8>>>, 1024).await;
+        assert_eq!(none, Capture::default());
+    }
+
+    #[tokio::test]
+    async fn a_runaway_stream_keeps_its_head_and_tail_and_says_what_it_dropped() {
+        // What an agent stuck in a loop looks like: far more than the cap, with
+        // the two ends that matter — why it started, and what it ended up
+        // saying. The middle is gone, and the text says so rather than
+        // pretending the output was that short.
+        let mut text = String::from("START launching the model\n");
+        text.push_str(&"noise noise noise\n".repeat(10_000));
+        text.push_str("END the answer is 42\n");
+        let cap = 4096;
+        let got = drain(Some(std::io::Cursor::new(text.clone().into_bytes())), cap).await;
+        assert!(got.truncated);
+        assert_eq!(got.bytes, text.len(), "the true size is reported");
+        assert!(got.text.starts_with("START launching the model"));
+        assert!(got.text.ends_with("END the answer is 42\n"));
+        assert!(got.text.contains("bytes dropped"), "{}", &got.text[..200]);
+        // The kept text is bounded by the cap plus the one-line note.
+        assert!(got.text.len() < cap + 120, "kept {} bytes", got.text.len());
+    }
+
+    #[tokio::test]
+    async fn the_cap_can_land_mid_character_without_panicking() {
+        // A cut inside a multi-byte character is a replacement character in the
+        // log, never a panic in the runner.
+        let text = "é".repeat(5_000); // 2 bytes each
+        let got = drain(Some(std::io::Cursor::new(text.clone().into_bytes())), 101).await;
+        assert!(got.truncated);
+        assert_eq!(got.bytes, 10_000);
+    }
+
+    #[tokio::test]
+    async fn a_child_that_outprints_the_cap_still_finishes() {
+        // The point of draining past the cap: a full pipe blocks the child, and
+        // a blocked child never exits. This one writes ~8 MiB, far past both the
+        // cap and any pipe buffer, and must still be reaped with its exit code.
+        let mut cmd = tokio::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" });
+        if cfg!(windows) {
+            cmd.args([
+                "/C",
+                "for /L %i in (1,1,8000) do @echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ]);
+        } else {
+            cmd.args([
+                "-c",
+                "i=0; while [ $i -lt 8000 ]; do printf '%01000d\\n' $i; i=$((i+1)); done",
+            ]);
+        }
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = cmd.spawn().expect("spawn the shell");
+        let out_task = tokio::spawn(drain(child.stdout.take(), 4096));
+        let err_task = tokio::spawn(drain(child.stderr.take(), 4096));
+        let status = tokio::time::timeout(Duration::from_secs(60), child.wait())
+            .await
+            .expect("the child exits rather than blocking on a full pipe")
+            .expect("wait");
+        let out = out_task.await.unwrap();
+        assert!(status.success());
+        assert!(out.bytes > 4096 * 4, "wrote {} bytes", out.bytes);
+        assert!(out.truncated);
+        assert!(err_task.await.unwrap().bytes == 0);
     }
 }
