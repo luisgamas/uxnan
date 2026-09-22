@@ -125,6 +125,14 @@ export interface StepRun {
   missingRefs: string[];
   output: string;
   stderr: string;
+  /** What the agent actually wrote, in bytes — more than `output` holds when
+   *  the step went past the capture cap. */
+  outputBytes?: number;
+  /** As `outputBytes`, for `stderr`. */
+  stderrBytes?: number;
+  /** The capture cap bit: `output`/`stderr` are head+tail with the gap noted
+   *  inside them. */
+  truncated?: boolean;
   /** The verified completion signal: 0 = done. */
   exitCode?: number | null;
   attempts: number;

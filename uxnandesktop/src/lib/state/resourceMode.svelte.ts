@@ -20,6 +20,7 @@ import {
   type ResourceOverrides,
   type ResourceProfile,
 } from "$lib/resources/policy";
+import type { ResolvedBudget } from "$lib/types";
 import { app } from "./app.svelte";
 
 class ResourceModeStore {
@@ -39,15 +40,57 @@ class ResourceModeStore {
     return freshnessRelaxations(this.policy);
   }
 
-  /** Persist a normalized document (the only writer of `resourceMode`). */
+  /** What the global agent budget (`budget.rs`) should enforce under this
+   *  policy. Derived, never stored as an input. */
+  get budget(): ResolvedBudget {
+    const capabilities = this.policy.capabilities;
+    return {
+      concurrency: capabilities.orchestrationConcurrency,
+      minFreeMemoryMb: capabilities.orchestrationMinFreeMemoryMb,
+      maxAgentMemoryMb: capabilities.orchestrationMaxAgentMemoryMb,
+    };
+  }
+
+  /** Persist a normalized document (the only writer of `resourceMode`).
+   *
+   *  The document carries the **derived** budget with it, for the processes
+   *  that cannot ask this policy: the headless automations runner is its own
+   *  process and runs with the app closed, and the budget is enforced in Rust
+   *  for every process at once. Re-deriving the preset table there would be a
+   *  second copy free to disagree with this one; it reads these numbers
+   *  instead. */
   #write(next: NormalizedResourceMode): void {
+    const capabilities = resolvePolicy(next).capabilities;
     app.settings.resourceMode = {
       profile: next.profile,
       overrides: { ...next.overrides },
       autoSleep: next.autoSleep,
       schemaVersion: next.schemaVersion,
+      resolvedBudget: {
+        concurrency: capabilities.orchestrationConcurrency,
+        minFreeMemoryMb: capabilities.orchestrationMinFreeMemoryMb,
+        maxAgentMemoryMb: capabilities.orchestrationMaxAgentMemoryMb,
+      },
     };
     void app.persistSettings();
+  }
+
+  /** Bring the mirrored budget in step with the policy — at startup, and after
+   *  anything else rewrote the settings document. A no-op when it already
+   *  agrees, so it costs nothing on the common path; without it a profile saved
+   *  by an older build (or never saved at all) would leave the other processes
+   *  on their fallback while this one dispatches by another number. */
+  syncRunnerBudget(): void {
+    const want = this.budget;
+    const have = app.settings.resourceMode?.resolvedBudget;
+    if (
+      have?.concurrency === want.concurrency &&
+      have?.minFreeMemoryMb === want.minFreeMemoryMb &&
+      have?.maxAgentMemoryMb === want.maxAgentMemoryMb
+    ) {
+      return;
+    }
+    this.#write(this.mode);
   }
 
   /** Switch preset. Overrides are kept — they are the user's explicit

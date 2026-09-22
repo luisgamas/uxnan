@@ -1454,6 +1454,7 @@ export function agentRunHeadless(
   prompt: string,
   cwd: string,
   timeoutMs?: number,
+  jobId?: string,
 ): Promise<HeadlessResult> {
   return invoke<HeadlessResult>('agent_run_headless', {
     agent,
@@ -1461,7 +1462,16 @@ export function agentRunHeadless(
     prompt,
     cwd,
     timeoutMs: timeoutMs ?? null,
+    jobId: jobId ?? null,
   });
+}
+
+/** End a named headless run and the whole process tree under it. Resolves to
+ *  whether a run by that name was in flight — a cancel that lands after the run
+ *  finished is a race, not an error. Without this, stopping a run only stopped
+ *  the engine: the agent it had already started kept working and kept spending. */
+export function agentCancelJob(jobId: string): Promise<boolean> {
+  return invoke<boolean>('agent_cancel_job', { jobId });
 }
 
 // --- Auto-updater (Settings → Updates) -------------------------------------

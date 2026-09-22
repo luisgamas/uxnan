@@ -642,6 +642,12 @@ export const en = {
   "resourceMode.effect.intervalRelaxed": "{factor}× your configured interval",
   "resourceMode.effect.intervalFresher": "up to 2× as often (never under 30 s)",
   "resourceMode.effect.orchestration": "Orchestration parallelism",
+  "resourceMode.effect.agentMemory": "Memory before a new agent",
+  "resourceMode.effect.agentMemoryFree": "{mb} MB free required",
+  "resourceMode.effect.agentMemoryOff": "no requirement",
+  "resourceMode.effect.agentCeiling": "Ceiling per agent",
+  "resourceMode.effect.agentCeilingAt": "stopped past {mb} MB",
+  "resourceMode.effect.agentCeilingOff": "measured, never stopped",
   "resourceMode.effect.orchestrationSteps": "{n} steps at once",
   "resourceMode.effect.orchestrationExtended": "{n} steps at once ({max} with measured headroom)",
   "resourceMode.effect.history": "Resource monitor history",
@@ -666,7 +672,13 @@ export const en = {
   "resourceMode.override.gitSweepDesc":
     "How often background worktrees' status badges refresh (5–600 s). Focus, agent activity and your own git actions always refresh immediately.",
   "resourceMode.override.concurrency": "Orchestration parallelism",
-  "resourceMode.override.concurrencyDesc": "Steps one run may execute at once (1–8).",
+  "resourceMode.override.concurrencyDesc": "Agents that may run at once, across runs and automations (1–8).",
+  "resourceMode.override.agentMemory": "Memory before a new agent",
+  "resourceMode.override.agentMemoryDesc":
+    "Free memory a machine needs before another agent starts (MB; 0 to start regardless).",
+  "resourceMode.override.agentCeiling": "Ceiling per agent",
+  "resourceMode.override.agentCeilingDesc":
+    "Stop an agent whose own processes go past this (MB; 0 only measures). Measured while it runs, so it is a limit after the fact — not one the system enforces.",
   "resourceMode.override.history": "Monitor history (seconds)",
   "resourceMode.override.historyDesc":
     "How much resource history the monitor's in-memory buffer keeps (60–600 s).",
@@ -2180,6 +2192,7 @@ export const en = {
   "automations.timedOut": "timed out",
   "automations.promptSent": "Prompt sent",
   "automations.output": "Output",
+  "automations.outputTruncated": "kept the start and the end of {size}",
   "automations.missingRefs": "Nothing was available for {ids}, so that part of the prompt was empty.",
   "automations.allAutomations": "All automations",
   "automations.allOutcomes": "All outcomes",

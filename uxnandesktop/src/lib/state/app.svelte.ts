@@ -33,6 +33,7 @@ import {
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
+import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind, type ShellKind } from "$lib/shell";
@@ -359,6 +360,9 @@ class AppStore {
       restored = true;
       // Re-attach the orchestration engine to its durable runs (spec 02d §3).
       orchestrationRun.hydrate(data.orchestrationRuns ?? null);
+      // Leave the headless automations runner the concurrency this policy
+      // resolves to: it runs with the app closed and has no other way to know.
+      resourceMode.syncRunnerBudget();
       this.syncAgentCommands();
       // Browser MCP: mirror the settings that gate it, and warm the per-launch
       // catalog so the first agent launched already carries its registration

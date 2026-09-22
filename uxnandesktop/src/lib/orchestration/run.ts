@@ -250,6 +250,14 @@ export function dispatchIdFor(step: RunStep): string {
   return `${step.id}.${step.attempts}`;
 }
 
+/** The name a headless dispatch runs under, so it can be cancelled by name
+ *  (`agent_cancel_job`). Keyed by the **dispatch**, not just the step: a retry
+ *  is a new dispatch, and a cancel meant for the attempt that was stopped must
+ *  never reach the one that replaced it. */
+export function headlessJobId(runId: string, stepId: string, dispatchId?: string): string {
+  return `${runId}:${stepId}:${dispatchId ?? "1"}`;
+}
+
 /** Append a message to a driven run's inbox (pure — returns the new run). */
 export function postInbox(
   run: Run,

@@ -86,6 +86,36 @@ never behave differently.
 Exit codes: `0` the run finished (or was skipped for a legitimate reason), `1` a
 step failed, `2` the automation could not be run at all.
 
+**What a step cost.** Every ten seconds a running step's whole process tree is
+measured; the peak lands in the run record (`peakMemoryMb`), so an execution
+nobody watched can still say what it cost. A per-agent ceiling exists and is
+**off by default** — it is advisory (the run is measured and then stopped, not
+prevented from allocating), see [`resource-mode.md`](./resource-mode.md).
+
+**Ending a step.** A run is named per dispatch (`run:step:attempt`) and can be
+ended by name; ending it ends the **whole process tree** under the agent, not
+just the process the app holds — one path, used by a cancel and by a timeout
+alike (`agentrun::cancel` / `kill_tree`). A step ended this way is recorded as
+stopped (skipped, `error: cancelled`), never as failed, and never retried.
+
+**How much it may run at once, and how much it keeps.** A step runs only once
+it holds a **slot in the global agent budget** — the one every process shares
+(`budget.rs`, see [`resource-mode.md`](./resource-mode.md) → *The global agent
+budget*), not a count this run keeps to itself. So two automations running at
+the same time, with or without the app, cannot between them start twice the
+cap; when there is no room the run waits for a slot rather than starting
+anyway, and a run that waits ten minutes without one stops and says so in its
+record. The numbers — how many agents, how much free memory — come from the
+person's resource policy, mirrored into the settings because this process has
+no window to ask; with nothing recorded it uses 4 agents and no memory
+condition, which is what every run used before. Each step's output is captured
+**bounded**: past 512 KiB per stream the pipe is still drained — a full pipe
+would block the agent and a blocked agent never exits — but only the head and
+the tail are kept, with the size of the gap written between them. The run
+record keeps the true sizes (`outputBytes`, `stderrBytes`, `truncated`), and
+the run view says "kept the start and the end of 340 MB" rather than showing a
+short output as if that was all the agent wrote.
+
 ## Where things live
 
 ```

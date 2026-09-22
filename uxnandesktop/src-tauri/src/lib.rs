@@ -7,13 +7,14 @@
 
 mod agent_hooks;
 mod agentcli;
-mod agentrun;
+pub mod agentrun;
 mod aicommit;
 // Public so the binary's headless runner mode (`main.rs`) can reach it without
 // starting Tauri — an automation must run with the app closed.
 pub mod automations;
 mod browse;
 mod browser;
+pub mod budget;
 mod codex_trust;
 mod commands;
 mod convtitle;
@@ -576,6 +577,7 @@ pub fn run() {
             commands::ai_commit_agents,
             commands::ai_commit_models,
             commands::agent_run_headless,
+            commands::agent_cancel_job,
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,

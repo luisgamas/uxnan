@@ -140,6 +140,28 @@
       overridden: overridden.has("orchestrationConcurrency"),
     },
     {
+      key: "orchestrationMinFreeMemoryMb",
+      label: i18n.t("resourceMode.effect.agentMemory"),
+      value:
+        caps.orchestrationMinFreeMemoryMb > 0
+          ? i18n.t("resourceMode.effect.agentMemoryFree", {
+              mb: caps.orchestrationMinFreeMemoryMb,
+            })
+          : i18n.t("resourceMode.effect.agentMemoryOff"),
+      overridden: overridden.has("orchestrationMinFreeMemoryMb"),
+    },
+    {
+      key: "orchestrationMaxAgentMemoryMb",
+      label: i18n.t("resourceMode.effect.agentCeiling"),
+      value:
+        caps.orchestrationMaxAgentMemoryMb > 0
+          ? i18n.t("resourceMode.effect.agentCeilingAt", {
+              mb: caps.orchestrationMaxAgentMemoryMb,
+            })
+          : i18n.t("resourceMode.effect.agentCeilingOff"),
+      overridden: overridden.has("orchestrationMaxAgentMemoryMb"),
+    },
+    {
       key: "resourceHistorySeconds",
       label: i18n.t("resourceMode.effect.history"),
       value: i18n.t("resourceMode.effect.historyMinutes", {
@@ -168,7 +190,13 @@
 
   /** Clamp + set a numeric override from an input's change event. */
   function setNumber(
-    key: "gitSweepIntervalMs" | "orchestrationConcurrency" | "resourceHistorySeconds" | "autoSleepIdleMinutes",
+    key:
+      | "gitSweepIntervalMs"
+      | "orchestrationConcurrency"
+      | "orchestrationMinFreeMemoryMb"
+      | "orchestrationMaxAgentMemoryMb"
+      | "resourceHistorySeconds"
+      | "autoSleepIdleMinutes",
     raw: string,
     scale = 1,
   ): void {
@@ -323,6 +351,58 @@
                     onchange={(e) =>
                       setNumber(
                         "orchestrationConcurrency",
+                        (e.currentTarget as HTMLInputElement).value,
+                      )}
+                  />
+                </span>
+              {/snippet}
+            </SettingsRow>
+
+            <SettingsRow
+              label={i18n.t("resourceMode.override.agentMemory")}
+              description={i18n.t("resourceMode.override.agentMemoryDesc")}
+              for="rm-agent-memory"
+            >
+              {#snippet control()}
+                <span class="flex items-center gap-1.5">
+                  {@render usePreset("orchestrationMinFreeMemoryMb")}
+                  <Input
+                    id="rm-agent-memory"
+                    type="number"
+                    density="compact"
+                    class={field.editorNumber}
+                    min={LIMITS.orchestrationMinFreeMemoryMb.min}
+                    max={LIMITS.orchestrationMinFreeMemoryMb.max}
+                    value={caps.orchestrationMinFreeMemoryMb}
+                    onchange={(e) =>
+                      setNumber(
+                        "orchestrationMinFreeMemoryMb",
+                        (e.currentTarget as HTMLInputElement).value,
+                      )}
+                  />
+                </span>
+              {/snippet}
+            </SettingsRow>
+
+            <SettingsRow
+              label={i18n.t("resourceMode.override.agentCeiling")}
+              description={i18n.t("resourceMode.override.agentCeilingDesc")}
+              for="rm-agent-ceiling"
+            >
+              {#snippet control()}
+                <span class="flex items-center gap-1.5">
+                  {@render usePreset("orchestrationMaxAgentMemoryMb")}
+                  <Input
+                    id="rm-agent-ceiling"
+                    type="number"
+                    density="compact"
+                    class={field.editorNumber}
+                    min={LIMITS.orchestrationMaxAgentMemoryMb.min}
+                    max={LIMITS.orchestrationMaxAgentMemoryMb.max}
+                    value={caps.orchestrationMaxAgentMemoryMb}
+                    onchange={(e) =>
+                      setNumber(
+                        "orchestrationMaxAgentMemoryMb",
                         (e.currentTarget as HTMLInputElement).value,
                       )}
                   />

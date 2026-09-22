@@ -778,10 +778,38 @@ pub struct ResourceModeSettings {
     /// kills the behavior whatever the profile says (the rollback lever).
     #[serde(default)]
     pub auto_sleep: bool,
+    /// What the policy engine resolved for the **global agent budget**
+    /// (`crate::budget`), mirrored for the processes that cannot ask it: the
+    /// headless automations runner runs as its own process with the app
+    /// closed, and the budget is enforced across every process at once.
+    ///
+    /// It is a mirror, never an input: the frontend writes it whenever the
+    /// policy changes (and reconciles it at startup), and re-deriving the
+    /// preset table here instead is exactly the duplication this struct's
+    /// note forbids. Absent — a profile last written by a build that did not
+    /// mirror it — means the budget's own defaults, which are what every run
+    /// used before this existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_budget: Option<ResolvedBudget>,
     /// Schema version of this block. The frontend treats a version newer than
     /// it knows as `balanced` with no overrides (rollback safety).
     #[serde(default = "default_resource_mode_schema_version")]
     pub schema_version: u32,
+}
+
+/// The mirrored agent budget (see [`ResourceModeSettings::resolved_budget`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedBudget {
+    /// Agent subprocesses allowed at once, across every process.
+    pub concurrency: u32,
+    /// Free memory (MiB) required before another agent starts; `0` = no check.
+    #[serde(default)]
+    pub min_free_memory_mb: u64,
+    /// Advisory ceiling (MiB) on one agent's whole process tree; `0` = observe
+    /// only, which is the default.
+    #[serde(default)]
+    pub max_agent_memory_mb: u64,
 }
 
 fn default_resource_profile() -> String {
@@ -798,6 +826,7 @@ impl Default for ResourceModeSettings {
             profile: default_resource_profile(),
             overrides: std::collections::HashMap::new(),
             auto_sleep: false,
+            resolved_budget: None,
             schema_version: default_resource_mode_schema_version(),
         }
     }
@@ -1679,6 +1708,45 @@ mod tests {
         assert!(data.repos.is_empty());
         assert!(data.agent_cache.is_empty());
         assert!(data.orchestration_runs.is_none());
+    }
+
+    #[test]
+    fn the_mirrored_budget_round_trips_and_is_optional() {
+        // Settings written before the mirror existed must load (the other
+        // processes then use the pre-budget defaults), and a mirrored budget
+        // survives a save/load — it is the only way the policy reaches a
+        // process with no window.
+        let legacy: ResourceModeSettings =
+            serde_json::from_str(r#"{"profile":"efficient","overrides":{}}"#).unwrap();
+        assert_eq!(legacy.resolved_budget, None);
+        let mode = ResourceModeSettings {
+            resolved_budget: Some(ResolvedBudget {
+                concurrency: 2,
+                min_free_memory_mb: 1536,
+                max_agent_memory_mb: 4096,
+            }),
+            ..ResourceModeSettings::default()
+        };
+        let json = serde_json::to_string(&mode).unwrap();
+        assert!(json.contains("resolvedBudget"), "{json}");
+        assert!(json.contains("minFreeMemoryMb"), "{json}");
+        let back: ResourceModeSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.resolved_budget.map(|b| b.concurrency), Some(2));
+        assert_eq!(
+            back.resolved_budget.map(|b| b.min_free_memory_mb),
+            Some(1536)
+        );
+        assert_eq!(
+            back.resolved_budget.map(|b| b.max_agent_memory_mb),
+            Some(4096)
+        );
+        // A record from a build that mirrored only the concurrency still loads.
+        let partial: ResolvedBudget = serde_json::from_str(r#"{"concurrency":3}"#).unwrap();
+        assert_eq!(partial.min_free_memory_mb, 0);
+        assert_eq!(partial.max_agent_memory_mb, 0);
+        // Absent stays absent in the document rather than writing a null.
+        let plain = serde_json::to_string(&ResourceModeSettings::default()).unwrap();
+        assert!(!plain.contains("resolvedBudget"), "{plain}");
     }
 
     #[test]

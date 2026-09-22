@@ -41,6 +41,12 @@ describe("presets", () => {
       usageRefreshFactor: 1,
       orchestrationConcurrency: 4,
       orchestrationExtendedConcurrency: null,
+      // New in the global budget: the free memory an agent needs before
+      // another starts. Provisional (conservative) rather than measured — it
+      // gates *starting*, so the default costs a wait at worst.
+      orchestrationMinFreeMemoryMb: 1024,
+      // Advisory and off by default: the peak is recorded, nothing is stopped.
+      orchestrationMaxAgentMemoryMb: 0,
       resourceHistorySeconds: 600,
       petFlavour: true,
       workspaceAutoSleep: "off",

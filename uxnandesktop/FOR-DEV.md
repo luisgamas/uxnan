@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 896 Rust tests (827 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 37
-integration), of which 50 are ignored probes that need something real to talk to
+always wins). 916 Rust tests (839 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,300 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,305 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -237,6 +237,13 @@ started.**
   prompt can carry** — an earlier step's answer, what a step answered in the
   previous run, the working folder — each explained in plain language and inserted
   at the cursor, with an earlier step's answer also making the step wait for it.
+  **Budgeted** (plan 023 phase 1): a run dispatches up to the resource policy's
+  orchestration concurrency — the number the app mirrors into its settings for
+  this process, which has no window to ask (`runner::concurrency_budget`,
+  `resolvedOrchestrationConcurrency`) — and each step's output is captured
+  bounded (512 KiB per stream, head + tail, the pipe still drained so the child
+  cannot block), with the true sizes and a `truncated` flag in the run record
+  and in the run view.
   `src-tauri/src/automations/`, `src/lib/automations/`,
   `src/lib/components/automations/`, [`docs/automations.md`](docs/automations.md).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
@@ -471,6 +478,25 @@ machinery or measurement.
       Resource mode against the real binary (same live-instance constraint as
       the popover journey above); the switch is covered at L1 (policy) + L2
       (component) instead, per `tests/quality-matrix.json` → `resource-mode`.
+- [ ] **Calibrate the agent budget's memory numbers.** The free-memory
+      condition an agent must clear before another starts
+      (`orchestrationMinFreeMemoryMb`: 1536 / 1024 / 512 MB by preset) is
+      **provisional** — chosen to be conservative, not measured. Derive them
+      from plan 001's baselines (what an agent of each family actually holds,
+      on each platform) and say so in `docs/resource-mode.md`, which currently
+      calls them provisional and points here. Too high only costs a wait; too
+      low lets the machine swap, so the number matters.
+      `FOR-DEV:` marker in `src/lib/resources/policy.ts`.
+- [ ] **A real ceiling per agent, imposed by the OS.** The per-agent memory
+      ceiling (`orchestrationMaxAgentMemoryMb`, off by default) is **advisory**:
+      the run's process tree is sampled every 10 s and ended when it goes past,
+      which is not the same as an allocation being refused. Real enforcement is
+      Job Objects (Windows) and cgroups (Linux), with no macOS equivalent —
+      and plan 023 forbids calling a limit hard until enforcement *and*
+      descendant containment are proven on each platform, so this belongs with
+      the platform matrix (005). Until then the UI and the docs must keep
+      saying advisory. `FOR-DEV:` marker in `src-tauri/src/agentrun.rs`
+      (`watch_memory`).
 - [ ] **Ungoverned recurring work, declared:** the 1 s agent-detection tick and
       the OSC title layer are deliberately outside the policy in v1 — pacing
       them risks stale "needs you" states, which the mode must never cause
@@ -1592,7 +1618,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 896 Rust + 1,300 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 916 Rust + 1,305 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

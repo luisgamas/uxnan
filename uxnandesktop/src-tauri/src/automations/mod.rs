@@ -315,6 +315,23 @@ pub struct StepRun {
     pub output: String,
     #[serde(default)]
     pub stderr: String,
+    /// What the agent actually wrote, in bytes. More than `output` holds once
+    /// the capture cap bit — the record then says so rather than reading as a
+    /// step that printed very little.
+    #[serde(default)]
+    pub output_bytes: usize,
+    /// As `output_bytes`, for `stderr`.
+    #[serde(default)]
+    pub stderr_bytes: usize,
+    /// The capture cap bit: `output`/`stderr` hold the head and the tail, with
+    /// the size of the gap written between them.
+    #[serde(default)]
+    pub truncated: bool,
+    /// The most memory this step's whole process tree was seen holding (MiB),
+    /// sampled while it ran. `0` when the step was too short to sample. What
+    /// an execution nobody watched cost, after the fact.
+    #[serde(default)]
+    pub peak_memory_mb: u64,
     /// The verified completion signal: 0 = done, anything else = failed.
     #[serde(default)]
     pub exit_code: Option<i32>,
@@ -384,6 +401,10 @@ impl AutomationRun {
                     missing_refs: Vec::new(),
                     output: String::new(),
                     stderr: String::new(),
+                    output_bytes: 0,
+                    stderr_bytes: 0,
+                    truncated: false,
+                    peak_memory_mb: 0,
                     exit_code: None,
                     attempts: 0,
                     error: None,

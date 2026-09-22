@@ -13,7 +13,7 @@
     "accounts/hardware."
   ],
   "version": 1,
-  "updated": "2026-09-21",
+  "updated": "2026-09-22",
   "layers": {
     "L1": {
       "name": "unit",
@@ -302,21 +302,23 @@
       "owner": "desktop",
       "covered": [
         "L1",
-        "L3"
+        "L3",
+        "L5"
       ],
       "planned": [
         "L4"
       ],
       "evidence": {
         "L1": "src/lib/automations/*.test.ts",
-        "L3": "src-tauri/tests/automations_store.rs, src-tauri/src/automations/*.rs #[cfg(test)]"
+        "L3": "src-tauri/tests/automations_store.rs, src-tauri/src/automations/*.rs #[cfg(test)] (incl. the budget a run is admitted under and a cancelled step recorded as stopped)",
+        "L5": "Driven by hand on macOS (2026-09-22): the headless runner executed a two-step automation with real agents — context passed between steps, output sizes and the tree's peak memory recorded, and the budget ledger empty afterwards; two runner processes with a one-agent budget took turns instead of overlapping."
       },
       "platforms": {
         "windows": "verified by hand",
-        "macos": "untested",
+        "macos": "verified by hand (2026-09-22): headless runs, budget, capture",
         "linux": "untested"
       },
-      "gaps": "Scheduler registration is verified manually on Windows only."
+      "gaps": "Scheduler registration is verified manually on Windows only, and no E2E journey drives an automation through the packaged app. The budget's cross-process behavior is covered by real competing processes (tests/agent_budget.rs) but only on this platform; Windows and Linux are CI-compiled."
     },
     {
       "id": "pets",
@@ -473,6 +475,30 @@
         "linux": "untested"
       },
       "gaps": "No E2E journey drives the packaged app through uxnan-cli (the sidecar is bundled but the wdio suite has no control-surface spec yet); the Windows ACL and the shim's uninstall are compiled by CI but unverified on a real Windows machine (FOR-DEV); Linux is untested beyond CI."
+    },
+    {
+      "id": "agent-budget",
+      "flow": "The global agent budget: slots across processes, the memory condition, cancellation and what a run cost",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3",
+        "L5"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src-tauri/src/budget.rs #[cfg(test)] exercised through src-tauri/tests/agent_budget.rs (the rules), src-tauri/src/automations/runner.rs #[cfg(test)] (what a mirrored budget means, clamped to the engine's bounds), src-tauri/src/model.rs #[cfg(test)] (the mirror round-trips and is optional), src/lib/state/resourceMode.svelte.test.ts (the mirror is written and reconciled), src/lib/resources/policy.test.ts (the presets)",
+        "L3": "src-tauri/tests/agent_budget.rs — real competing **processes**: the cap holds between them, a killed holder's slot is reclaimed, a waiter takes the slot the moment it frees, each refusal names what was in the way. src-tauri/tests/agent_memory.rs — a real allocating process tree is measured through its children. src-tauri/src/agentrun.rs #[cfg(test)] — a real tree is killed to the grandchild, a cancelled run reports itself cancelled, and a child that outprints the capture cap still finishes.",
+        "L5": "Driven by hand on macOS (2026-09-22): two headless runner processes with a one-agent budget serialized their steps (no overlap), and a step's peak tree memory landed in the run record."
+      },
+      "platforms": {
+        "windows": "CI-compiled only; the ledger, the tree kill and the sampler are portable (sysinfo) but unverified there",
+        "macos": "verified by hand and by test (2026-09-22)",
+        "linux": "CI-compiled only"
+      },
+      "gaps": "No E2E journey exercises the budget through the packaged app. The per-agent memory ceiling is advisory — measured and then stopped, never enforced by the OS; real enforcement (Job Objects, cgroups) is owed and belongs with the platform matrix. The preset memory numbers are provisional rather than measured against the low-consumption baselines."
     }
   ]
 }

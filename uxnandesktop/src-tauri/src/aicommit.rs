@@ -223,6 +223,11 @@ async fn run_agent(
         false,
         // The user picked this model themselves; its own effort default stands.
         &[],
+        // Not cancellable by name: the dialog that starts it is modal and the
+        // run is seconds long.
+        None,
+        // No ceiling on a run this short; the peak still comes back.
+        0,
     )
     .await?;
 

@@ -5,6 +5,7 @@ import {
   createRun,
   deriveRunStatus,
   dispatchIdFor,
+  headlessJobId,
   isDriven,
   postInbox,
   workerPreamble,
@@ -220,6 +221,15 @@ describe("driven runs", () => {
   it("mints a dispatch id per attempt", () => {
     const s = { ...step("s3", "running"), attempts: 2 };
     expect(dispatchIdFor(s)).toBe("s3.2");
+  });
+
+  it("names a headless run by its dispatch, so a cancel cannot hit the retry", () => {
+    // The name a cancel searches for. Keyed by the attempt: cancelling the
+    // first attempt must not end the second one, which is a different process.
+    expect(headlessJobId("r1", "s3", "s3.1")).toBe("r1:s3:s3.1");
+    expect(headlessJobId("r1", "s3", "s3.2")).not.toBe(headlessJobId("r1", "s3", "s3.1"));
+    // A step dispatched before dispatch ids existed still gets a stable name.
+    expect(headlessJobId("r1", "s3")).toBe("r1:s3:1");
   });
 
   it("posts inbox messages FIFO with monotonic delivery ids and drops acked ones", () => {

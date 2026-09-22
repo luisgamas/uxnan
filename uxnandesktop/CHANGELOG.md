@@ -11,6 +11,69 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `claude-fable-5-1` and `claude-opus-5-5` above their predecessors — the same
   twelve entries, in the same order, as the bridge's seeded table.
 
+- **What a run cost, in its record — and an advisory ceiling.** Every ten
+  seconds a headless run's **whole process tree** is measured; the peak lands
+  on the result and in the automation's run record (`peakMemoryMb`), so an
+  execution nobody watched can still say what it took. A new capability
+  (Settings → Resources) sets a ceiling per agent: a tree past it is stopped
+  and the run says which limit it hit. It is **off by default**, and it is
+  called *advisory* on purpose — nothing refuses an allocation, the run is
+  measured and then ended. A real limit belongs to the operating system (Job
+  Objects, cgroups) and this project does not claim one until it is proven on
+  each platform. The first measurement is taken a second in, not ten, so a
+  short step is recorded as what it cost rather than as nothing. Plan 023
+  phase 4, honestly scoped.
+
+- **One agent budget for the whole machine.** Every process that starts agent
+  subprocesses — the app, and each automation runner beside it — used to cap
+  itself, so the caps multiplied: three automations at four steps each is
+  twelve agents on a machine that was promised four. There is now one gate
+  (`budget.rs`) that every process asks, holding its claims in one ledger:
+  at most the resource policy's **orchestration concurrency** at a time,
+  and at least its **free-memory** requirement before another starts (a new
+  overridable capability, Settings → Resources; provisional numbers, to be
+  calibrated against the low-consumption baselines). A slot belongs to the
+  process that took it and comes back when that process releases it **or stops
+  existing** — a crashed or killed runner cannot hold one hostage, and a
+  recycled pid cannot inherit one. A step that cannot get a slot **waits**
+  rather than starting anyway; in the app it goes back to ready and keeps its
+  attempt, and an automation that waits ten minutes stops and says so. If the
+  ledger itself cannot be read, work proceeds unbudgeted: bookkeeping must
+  never be what blocks the machine. Plan 023 phases 2 and 3.
+
+### Fixed
+
+- **Stopping a run now stops the agent.** Cancelling an orchestration run
+  stopped the *engine*: a headless step already in flight kept running to the
+  end — still working, still spending, still writing to the folder — because
+  nothing could reach the subprocess. A dispatch is now **named** and can be
+  ended by name (`agent_cancel_job`), and ending it ends its **whole process
+  tree**: an agent CLI is the parent of the tools it spawns, and killing only
+  the process the app held left those behind. The same ending is what a
+  **timeout** now gives a run. A step ended this way is recorded as *stopped*,
+  not failed, and is not retried. The name is keyed by the dispatch, so a
+  cancel can never reach the retry that replaced it.
+
+### Changed
+
+- **An automation's output can no longer grow without bound, and its
+  concurrency follows your resource policy.** A headless step's stdout and
+  stderr were read to the end into memory, so an agent stuck in a loop grew
+  until the timeout killed it — with the app closed, on the machine you are
+  using for something else. Each stream is now captured **bounded**: past
+  512 KiB the pipe is still drained (a full pipe would block the agent, and a
+  blocked agent never exits) but only the head and the tail are kept, with the
+  size of the gap written between them; the record keeps the true sizes and a
+  `truncated` flag, and the run view says "kept the start and the end of
+  340 MB" instead of showing a short output as if that were all. And a run now
+  dispatches up to the **orchestration concurrency of your resource policy** —
+  the same number the Runs engine and the control surface use — instead of a
+  hardcoded 4 that several automations could multiply: the app mirrors the
+  resolved number into its settings for the runner, which has no window to ask
+  the policy engine and must not re-derive it. Nothing recorded still means 4,
+  what every run used before. Plan 023's phase 1.
+
+
 ## [0.0.53] - 20260921
 ### Added
 

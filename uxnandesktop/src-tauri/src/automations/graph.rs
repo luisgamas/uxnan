@@ -23,24 +23,63 @@ use super::store::AutomationStore;
 use super::{now_ms, template, Automation, AutomationRun, OnFailure, RunStatus, Step, StepStatus};
 use crate::error::AppError;
 
-/// How many steps of one run may execute at the same time. Each step is its own
-/// agent subprocess, so this bounds CPU and provider load, not app threads.
-pub const MAX_CONCURRENCY: usize = 4;
+/// How many steps of one run may execute at the same time when nothing says
+/// otherwise. Each step is its own agent subprocess, so this bounds CPU and
+/// provider load, not app threads.
+///
+/// The live number comes from the person's resource policy — the same cap the
+/// Runs engine dispatches by and the control surface admits launches against
+/// (`orchestrationConcurrency`) — and reaches this process through
+/// [`super::runner::concurrency_budget`]. This constant is what a profile that
+/// has never recorded one falls back to, and it is the value every automation
+/// used before the policy reached here.
+pub const DEFAULT_CONCURRENCY: usize = 4;
+
+/// The ceiling a hand-edited settings file cannot climb past, mirroring the
+/// policy engine's own bound for this capability
+/// (`src/lib/resources/policy.ts` → `LIMITS.orchestrationConcurrency`).
+pub const MAX_CONCURRENCY: usize = 8;
 
 /// Fallback per-step wall-clock cap when a step doesn't pin its own.
 const DEFAULT_STEP_TIMEOUT_MS: u64 = 600_000;
+
+/// Where the shared budget ledger lives — the app's data directory, the same
+/// one the app and `uxnan-cli` resolve, so every process counts in one place.
+fn budget_dir() -> std::path::PathBuf {
+    super::store::app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("uxnan-budget"))
+}
 
 /// What a finished step produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// The process exited 0.
-    Success { stdout: String, stderr: String },
+    Success {
+        stdout: String,
+        stderr: String,
+        /// What the two streams really were, and whether the capture cap bit
+        /// (`crate::agentrun::MAX_STREAM_BYTES`).
+        capture: Capture,
+    },
     /// Non-zero exit, spawn failure, or timeout.
     Failure {
         stderr: String,
         exit_code: Option<i32>,
         message: String,
+        capture: Capture,
     },
+    /// Ended on purpose (`agentrun::cancel`). Not a failure: a step somebody
+    /// stopped must not be retried, nor reported as broken.
+    Cancelled,
+}
+
+/// How big a step's output was, and whether what is kept is all of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Capture {
+    pub stdout_bytes: usize,
+    pub stderr_bytes: usize,
+    pub truncated: bool,
+    /// Peak memory of the step's whole process tree, in MiB.
+    pub peak_memory_mb: u64,
 }
 
 /// Mark every pending step that can never run — one of its dependencies failed
@@ -102,20 +141,38 @@ pub fn apply_outcome(run: &mut AutomationRun, step: &Step, outcome: Outcome, now
         return;
     };
     match outcome {
-        Outcome::Success { stdout, stderr } => {
+        Outcome::Success {
+            stdout,
+            stderr,
+            capture,
+        } => {
             sr.status = StepStatus::Completed;
             sr.output = stdout.trim().to_string();
             sr.stderr = stderr;
+            sr.output_bytes = capture.stdout_bytes;
+            sr.stderr_bytes = capture.stderr_bytes;
+            sr.truncated = capture.truncated;
+            sr.peak_memory_mb = capture.peak_memory_mb;
             sr.exit_code = Some(0);
             sr.error = None;
+            sr.finished_at = Some(now);
+        }
+        Outcome::Cancelled => {
+            sr.status = StepStatus::Skipped;
+            sr.error = Some("cancelled".to_string());
             sr.finished_at = Some(now);
         }
         Outcome::Failure {
             stderr,
             exit_code,
             message,
+            capture,
         } => {
             sr.stderr = stderr;
+            sr.output_bytes = capture.stdout_bytes;
+            sr.stderr_bytes = capture.stderr_bytes;
+            sr.truncated = capture.truncated;
+            sr.peak_memory_mb = capture.peak_memory_mb;
             sr.exit_code = exit_code;
             sr.error = Some(message);
             if step.on_failure == OnFailure::Retry && sr.attempts < step.max_attempts {
@@ -163,12 +220,19 @@ fn build_vars(
 ///
 /// `prev_vars` carries the previous run's `prev.<id>.output` values, so a
 /// recurring automation can continue yesterday's work.
+/// `budget` is the **global** agent budget this run must fit inside — the one
+/// every process shares (`crate::budget`), not a count this run keeps to
+/// itself. A step is dispatched only once it holds a slot, and holds it until
+/// it finishes; when there is no room the loop waits and asks again, so two
+/// automations running at once cannot between them start twice the cap.
 pub async fn execute(
     store: &AutomationStore,
     automation: &Automation,
     run: &mut AutomationRun,
     prev_vars: &HashMap<String, String>,
     cwd: &str,
+    budget: crate::budget::Policy,
+    ceiling_mb: u64,
 ) {
     let by_id: HashMap<&str, &Step> = automation
         .steps
@@ -182,12 +246,19 @@ pub async fn execute(
     loop {
         promote(run);
 
-        // Fill the concurrency budget with whatever is dispatchable now.
-        while inflight.len() < MAX_CONCURRENCY {
-            let Some(id) = ready_steps(run).into_iter().next() else {
+        // Dispatch whatever is ready and can have a slot. The slot is the
+        // budget — asked for here, held by the step, given back when it ends.
+        while let Some(id) = ready_steps(run).into_iter().next() {
+            let Some(step) = by_id.get(id.as_str()).copied() else {
                 break;
             };
-            let Some(step) = by_id.get(id.as_str()).copied() else {
+            let Ok(slot) = crate::budget::try_acquire(
+                &budget_dir(),
+                budget,
+                &format!("automation {} step {}", run.id, id),
+            ) else {
+                // No room right now. Anything already running will free a slot;
+                // the loop below waits on it (or on the tick) and asks again.
                 break;
             };
             let vars = build_vars(run, prev_vars, cwd);
@@ -209,7 +280,18 @@ pub async fn execute(
             let dir = cwd.to_string();
             let timeout_ms = step.timeout_ms.or(Some(DEFAULT_STEP_TIMEOUT_MS));
             let autonomous = step.autonomous;
+            // Name the run after the attempt that started it, so a cancel can
+            // never reach a retry that came after it.
+            let attempt = run
+                .steps
+                .iter()
+                .find(|s| s.id == id)
+                .map_or(1, |s| s.attempts + 1);
+            let job = format!("{}:{}:{}", run.id, id, attempt);
+            let memory_ceiling_mb = ceiling_mb;
             inflight.spawn(async move {
+                // The slot lives exactly as long as the step it admitted.
+                let _slot = slot;
                 let outcome = match crate::agentrun::run_headless(
                     &agent,
                     &model,
@@ -219,10 +301,18 @@ pub async fn execute(
                     autonomous,
                     // A step runs its model as configured, effort included.
                     &[],
+                    Some(&job),
+                    memory_ceiling_mb,
                 )
                 .await
                 {
                     Ok(res) if res.exit_code == Some(0) => Outcome::Success {
+                        capture: Capture {
+                            stdout_bytes: res.stdout_bytes,
+                            stderr_bytes: res.stderr_bytes,
+                            truncated: res.truncated,
+                            peak_memory_mb: res.peak_memory_mb,
+                        },
                         stdout: res.stdout,
                         stderr: res.stderr,
                     },
@@ -237,15 +327,23 @@ pub async fn execute(
                             detail.to_string()
                         };
                         Outcome::Failure {
+                            capture: Capture {
+                                stdout_bytes: res.stdout_bytes,
+                                stderr_bytes: res.stderr_bytes,
+                                truncated: res.truncated,
+                                peak_memory_mb: res.peak_memory_mb,
+                            },
                             stderr: res.stderr,
                             exit_code: res.exit_code,
                             message,
                         }
                     }
+                    Err(AppError::Cancelled) => Outcome::Cancelled,
                     Err(e) => Outcome::Failure {
                         stderr: String::new(),
                         exit_code: None,
                         message: e.to_string(),
+                        capture: Capture::default(),
                     },
                 };
                 (id, outcome)
@@ -261,6 +359,28 @@ pub async fn execute(
             promote(run);
             if ready_steps(run).is_empty() {
                 break;
+            }
+            // Ready work that could not get a slot: somebody else's step holds
+            // it. Wait for room rather than spinning on the ledger — and give
+            // up on this run if the wait itself runs out.
+            match crate::budget::acquire(
+                &budget_dir(),
+                budget,
+                &format!("automation {} waiting", run.id),
+            )
+            .await
+            {
+                // Taken and immediately released: the point was to wait until
+                // there was room, and the dispatch above takes the real slot.
+                Ok(slot) => drop(slot),
+                Err(refused) => {
+                    // The machine never had room. Say so in the record — a run
+                    // that stops for want of resources must not read as a run
+                    // that finished, nor as a step that broke.
+                    run.error = Some(format!("no room to run a step: {refused}"));
+                    let _ = store.write_run(run);
+                    break;
+                }
             }
             continue;
         }
@@ -415,6 +535,7 @@ mod tests {
 
     fn ok() -> Outcome {
         Outcome::Success {
+            capture: Capture::default(),
             stdout: "RESULT".into(),
             stderr: String::new(),
         }
@@ -424,6 +545,7 @@ mod tests {
             stderr: "bad".into(),
             exit_code: Some(1),
             message: "the agent exited with code 1".into(),
+            capture: Capture::default(),
         }
     }
 
@@ -519,6 +641,14 @@ mod tests {
             Outcome::Success {
                 stdout: "  FINDINGS\n".into(),
                 stderr: "warn".into(),
+                // A capture that hit the cap: the record must carry the true
+                // sizes, not the length of what was kept.
+                capture: Capture {
+                    stdout_bytes: 4_000_000,
+                    stderr_bytes: 4,
+                    truncated: true,
+                    peak_memory_mb: 512,
+                },
             },
             42,
         );
@@ -528,6 +658,30 @@ mod tests {
         assert_eq!(s.exit_code, Some(0));
         assert_eq!(s.finished_at, Some(42));
         assert!(s.error.is_none());
+        // What the step really printed, next to what was kept of it: a record
+        // that says "4 MB, truncated" explains an answer that stops mid-word.
+        assert_eq!(s.output_bytes, 4_000_000);
+        assert_eq!(s.stderr_bytes, 4);
+        assert!(s.truncated);
+        assert_eq!(s.peak_memory_mb, 512, "what the step cost is in the record");
+    }
+
+    #[test]
+    fn a_cancelled_step_is_stopped_not_failed_and_is_not_retried() {
+        // Someone (or the engine tearing the run down) ended the step. Retrying
+        // it would restart the very work that was stopped, and calling it
+        // failed would put an error in the record for something nobody
+        // considers broken.
+        let a = automation(vec![step("s1", &[], OnFailure::Retry, 3)]);
+        let mut run = run_of(&a);
+        run.steps[0].status = StepStatus::Running;
+        run.steps[0].attempts = 1;
+        apply_outcome(&mut run, &a.steps[0], Outcome::Cancelled, 7);
+        let s = &run.steps[0];
+        assert_eq!(s.status, StepStatus::Skipped);
+        assert_eq!(s.error.as_deref(), Some("cancelled"));
+        assert_eq!(s.attempts, 1, "a cancel does not spend an attempt");
+        assert_eq!(s.finished_at, Some(7));
     }
 
     #[test]
@@ -564,6 +718,7 @@ mod tests {
             Outcome::Success {
                 stdout: "THREE BUGS".into(),
                 stderr: String::new(),
+                capture: Capture::default(),
             },
             10,
         );
