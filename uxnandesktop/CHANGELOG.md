@@ -20,7 +20,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   called *advisory* on purpose — nothing refuses an allocation, the run is
   measured and then ended. A real limit belongs to the operating system (Job
   Objects, cgroups) and this project does not claim one until it is proven on
-  each platform. Plan 023 phase 4, honestly scoped.
+  each platform. The first measurement is taken a second in, not ten, so a
+  short step is recorded as what it cost rather than as nothing. Plan 023
+  phase 4, honestly scoped.
 
 - **One agent budget for the whole machine.** Every process that starts agent
   subprocesses — the app, and each automation runner beside it — used to cap

@@ -466,6 +466,13 @@ impl Drop for Registration {
 /// the process table would cost more than the thing it is watching.
 const WATCH_INTERVAL: Duration = Duration::from_secs(10);
 
+/// When the **first** measurement is taken. Early, because most steps are over
+/// before a ten-second tick: waiting for one left every short run recorded as
+/// having cost nothing, which reads like a measurement rather than the absence
+/// of one. A second is long enough for the CLI to be up and holding its real
+/// footprint.
+const WATCH_FIRST: Duration = Duration::from_secs(1);
+
 /// Watch the memory of the tree under `pid` until the run ends.
 ///
 /// Returns the peak seen, in MiB. When `limit_mb` is non-zero and the tree goes
@@ -479,9 +486,10 @@ const WATCH_INTERVAL: Duration = Duration::from_secs(10);
 async fn watch_memory(pid: u32, limit_mb: u64, stop: tokio::sync::watch::Receiver<bool>) -> u64 {
     let mut peak = 0u64;
     let mut stop = stop;
+    let mut next = WATCH_FIRST;
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(WATCH_INTERVAL) => {}
+            _ = tokio::time::sleep(next) => next = WATCH_INTERVAL,
             _ = stop.changed() => return peak,
         }
         let used = tree_memory_mb(pid);
