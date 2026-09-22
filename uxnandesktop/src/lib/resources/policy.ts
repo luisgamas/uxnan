@@ -51,6 +51,14 @@ export interface ResourceCapabilities {
   /** Extra concurrency ceiling used **only while measured headroom exists**
    *  (see [`orchestrationHeadroom`]); `null` = never extend. */
   orchestrationExtendedConcurrency: number | null;
+  /** Free memory (MiB) an agent subprocess needs before another one starts.
+   *  `0` = start regardless. Checked by the global budget every process shares
+   *  (`budget.rs`), not by the dispatcher, so it holds with the app closed.
+   *
+   *  Provisional numbers: they are deliberately conservative rather than
+   *  measured — calibrating them against plan 001's baselines is a FOR-DEV
+   *  item. Too high only means a step waits; too low means the machine swaps. */
+  orchestrationMinFreeMemoryMb: number;
   /** How much aggregated history the resource monitor's buffer retains (s). */
   resourceHistorySeconds: number;
   /** Whether the pet plays decorative idle one-shots (state changes always
@@ -67,6 +75,7 @@ export interface ResourceCapabilities {
 export const OVERRIDABLE_KEYS = [
   "gitSweepIntervalMs",
   "orchestrationConcurrency",
+  "orchestrationMinFreeMemoryMb",
   "resourceHistorySeconds",
   "petFlavour",
   "workspaceAutoSleep",
@@ -80,6 +89,9 @@ export type ResourceOverrides = Partial<Pick<ResourceCapabilities, OverridableKe
 export const LIMITS = {
   gitSweepIntervalMs: { min: 5_000, max: 600_000 },
   orchestrationConcurrency: { min: 1, max: 8 },
+  /** A floor of 0 (off) up to 8 GiB: past that nothing would ever start on a
+   *  normal machine, which is a broken setting, not a careful one. */
+  orchestrationMinFreeMemoryMb: { min: 0, max: 8192 },
   resourceHistorySeconds: { min: 60, max: 600 },
   autoSleepIdleMinutes: { min: 5, max: 480 },
   /** Effective GitHub poll floor (s) — "more frequent" must never mean
@@ -100,6 +112,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     usageRefreshFactor: 3,
     orchestrationConcurrency: 2,
     orchestrationExtendedConcurrency: null,
+    orchestrationMinFreeMemoryMb: 1536,
     resourceHistorySeconds: 180,
     petFlavour: false,
     workspaceAutoSleep: "suggest",
@@ -112,6 +125,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     usageRefreshFactor: 1,
     orchestrationConcurrency: 4,
     orchestrationExtendedConcurrency: null,
+    orchestrationMinFreeMemoryMb: 1024,
     resourceHistorySeconds: 600,
     petFlavour: true,
     workspaceAutoSleep: "off",
@@ -126,6 +140,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     // "Fresher / more parallel" is allowed only against measured headroom —
     // the budget-lease summary must show uxnan itself has CPU to spare.
     orchestrationExtendedConcurrency: 6,
+    orchestrationMinFreeMemoryMb: 512,
     resourceHistorySeconds: 600,
     petFlavour: true,
     workspaceAutoSleep: "off",

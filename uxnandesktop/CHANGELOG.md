@@ -11,6 +11,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `claude-fable-5-1` and `claude-opus-5-5` above their predecessors — the same
   twelve entries, in the same order, as the bridge's seeded table.
 
+- **One agent budget for the whole machine.** Every process that starts agent
+  subprocesses — the app, and each automation runner beside it — used to cap
+  itself, so the caps multiplied: three automations at four steps each is
+  twelve agents on a machine that was promised four. There is now one gate
+  (`budget.rs`) that every process asks, holding its claims in one ledger:
+  at most the resource policy's **orchestration concurrency** at a time,
+  and at least its **free-memory** requirement before another starts (a new
+  overridable capability, Settings → Resources; provisional numbers, to be
+  calibrated against the low-consumption baselines). A slot belongs to the
+  process that took it and comes back when that process releases it **or stops
+  existing** — a crashed or killed runner cannot hold one hostage, and a
+  recycled pid cannot inherit one. A step that cannot get a slot **waits**
+  rather than starting anyway; in the app it goes back to ready and keeps its
+  attempt, and an automation that waits ten minutes stops and says so. If the
+  ledger itself cannot be read, work proceeds unbudgeted: bookkeeping must
+  never be what blocks the machine. Plan 023 phases 2 and 3.
+
 ### Fixed
 
 - **Stopping a run now stops the agent.** Cancelling an orchestration run

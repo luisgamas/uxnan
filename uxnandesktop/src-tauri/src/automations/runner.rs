@@ -22,6 +22,7 @@ use std::process::Stdio;
 
 use super::store::AutomationStore;
 use super::{graph, now_ms, validate, Automation, AutomationRun, Overlap, RunStatus, RunTrigger};
+use crate::budget;
 
 /// Exit code: the run finished, or was skipped for a legitimate reason.
 pub const EXIT_OK: i32 = 0;
@@ -37,42 +38,55 @@ pub struct RunnerArgs {
     pub trigger: RunTrigger,
 }
 
-/// How many steps this run may execute at once: the orchestration concurrency
-/// the app's resource policy resolved, as it mirrored it into the settings
-/// (`ResourceModeSettings::resolved_orchestration_concurrency`).
+/// The budget this run must fit inside: the agent concurrency and the free
+/// memory the person's resource policy resolved, as the app mirrored them into
+/// the settings (`ResourceModeSettings::resolved_budget`).
 ///
 /// This process has no window, so it cannot ask the policy engine — and it must
 /// not re-derive the preset table, which would be a second copy free to
-/// disagree. It reads the one number the app left for it, clamped to the
-/// engine's own ceiling so a hand-edited file cannot spawn a swarm, and falls
-/// back to [`graph::DEFAULT_CONCURRENCY`] when there is none (an older profile,
-/// or one whose settings were never written by a build that mirrors it).
+/// disagree. It reads the numbers the app left for it, clamped to the engine's
+/// own bounds so a hand-edited file cannot spawn a swarm, and falls back to the
+/// pre-budget behavior when there is nothing recorded.
 ///
 /// A run started while the app is open goes through this same subprocess, so
 /// scheduled and "Run now" runs cannot drift apart here either.
-pub fn concurrency_budget() -> usize {
-    budget_from(
+pub fn budget_policy() -> budget::Policy {
+    policy_from(
         super::store::app_data_dir()
             .ok()
             .map(crate::persistence::PersistenceManager::new)
             .and_then(|mgr| mgr.load().ok())
-            .and_then(|data| {
-                data.settings
-                    .resource_mode
-                    .resolved_orchestration_concurrency
-            }),
+            .and_then(|data| data.settings.resource_mode.resolved_budget),
     )
 }
 
-/// The budget a mirrored value means: clamped to the engine's own bounds, and
-/// the pre-policy default when there is nothing recorded. Split from the read
+/// The budget a mirrored record means: clamped to the engine's own bounds, and
+/// the pre-budget defaults when there is nothing recorded. Split from the read
 /// so the rule is tested without a data directory.
-fn budget_from(resolved: Option<u32>) -> usize {
+fn policy_from(resolved: Option<crate::model::ResolvedBudget>) -> budget::Policy {
     match resolved {
-        Some(n) => (n as usize).clamp(1, graph::MAX_CONCURRENCY),
-        None => graph::DEFAULT_CONCURRENCY,
+        Some(mirror) => budget::Policy {
+            capacity: (mirror.concurrency as usize).clamp(1, graph::MAX_CONCURRENCY),
+            min_free_mb: mirror.min_free_memory_mb.min(MAX_MIN_FREE_MB),
+            wait: STEP_ADMISSION_WAIT,
+        },
+        None => budget::Policy {
+            capacity: graph::DEFAULT_CONCURRENCY,
+            min_free_mb: 0,
+            wait: STEP_ADMISSION_WAIT,
+        },
     }
 }
+
+/// The ceiling on the memory condition, mirroring the policy engine's own
+/// bound (`LIMITS.orchestrationMinFreeMemoryMb`): past this nothing would ever
+/// start on a normal machine, which is a broken setting, not a careful one.
+const MAX_MIN_FREE_MB: u64 = 8192;
+
+/// How long a step waits for room before the run gives up on it. Long enough to
+/// ride out another run's step (they are minutes, not hours), short enough that
+/// a wedged machine does not hold an automation open all night.
+const STEP_ADMISSION_WAIT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
 /// The flag that switches the binary into runner mode.
 const FLAG: &str = "--automation-run";
@@ -281,7 +295,7 @@ async fn execute(args: RunnerArgs) -> i32 {
         &mut run,
         &prev_vars,
         &cwd,
-        concurrency_budget(),
+        budget_policy(),
     )
     .await;
     log_line(&log, &format!("finished {:?}", run.status));
@@ -439,17 +453,36 @@ fn log_line(path: &std::path::Path, message: &str) {
 mod tests {
     use super::*;
 
+    fn mirror(concurrency: u32, min_free_memory_mb: u64) -> crate::model::ResolvedBudget {
+        crate::model::ResolvedBudget {
+            concurrency,
+            min_free_memory_mb,
+        }
+    }
+
     #[test]
-    fn the_concurrency_budget_follows_the_policy_within_its_bounds() {
-        // Nothing mirrored (an older profile): what every run used before.
-        assert_eq!(budget_from(None), graph::DEFAULT_CONCURRENCY);
-        // The policy's own numbers pass through — Efficient's 2, Balanced's 4.
-        assert_eq!(budget_from(Some(2)), 2);
-        assert_eq!(budget_from(Some(4)), 4);
-        // A hand-edited settings file cannot climb past the engine's ceiling,
+    fn the_budget_follows_the_policy_within_its_bounds() {
+        // Nothing mirrored (an older profile): what every run used before —
+        // the old concurrency, and no memory condition, because a build that
+        // never wrote one cannot have meant to impose it.
+        let fallback = policy_from(None);
+        assert_eq!(fallback.capacity, graph::DEFAULT_CONCURRENCY);
+        assert_eq!(fallback.min_free_mb, 0);
+        // The policy's own numbers pass through — Efficient's 2 / 1536 MB.
+        let efficient = policy_from(Some(mirror(2, 1536)));
+        assert_eq!(efficient.capacity, 2);
+        assert_eq!(efficient.min_free_mb, 1536);
+        // A hand-edited settings file cannot climb past the engine's bounds,
         // nor stall every run at zero.
-        assert_eq!(budget_from(Some(99)), graph::MAX_CONCURRENCY);
-        assert_eq!(budget_from(Some(0)), 1);
+        assert_eq!(
+            policy_from(Some(mirror(99, 0))).capacity,
+            graph::MAX_CONCURRENCY
+        );
+        assert_eq!(policy_from(Some(mirror(0, 0))).capacity, 1);
+        assert_eq!(
+            policy_from(Some(mirror(4, u64::MAX))).min_free_mb,
+            MAX_MIN_FREE_MB
+        );
     }
 
     fn argv(items: &[&str]) -> Vec<String> {

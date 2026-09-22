@@ -14,6 +14,7 @@ mod aicommit;
 pub mod automations;
 mod browse;
 mod browser;
+pub mod budget;
 mod codex_trust;
 mod commands;
 mod convtitle;

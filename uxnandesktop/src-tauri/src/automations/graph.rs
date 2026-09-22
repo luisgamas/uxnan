@@ -43,6 +43,12 @@ pub const MAX_CONCURRENCY: usize = 8;
 /// Fallback per-step wall-clock cap when a step doesn't pin its own.
 const DEFAULT_STEP_TIMEOUT_MS: u64 = 600_000;
 
+/// Where the shared budget ledger lives — the app's data directory, the same
+/// one the app and `uxnan-cli` resolve, so every process counts in one place.
+fn budget_dir() -> std::path::PathBuf {
+    super::store::app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("uxnan-budget"))
+}
+
 /// What a finished step produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -210,15 +216,18 @@ fn build_vars(
 ///
 /// `prev_vars` carries the previous run's `prev.<id>.output` values, so a
 /// recurring automation can continue yesterday's work.
-/// `max_concurrency` is how many of its steps may run at once — the resource
-/// policy's number, clamped to [`MAX_CONCURRENCY`] by the caller.
+/// `budget` is the **global** agent budget this run must fit inside — the one
+/// every process shares (`crate::budget`), not a count this run keeps to
+/// itself. A step is dispatched only once it holds a slot, and holds it until
+/// it finishes; when there is no room the loop waits and asks again, so two
+/// automations running at once cannot between them start twice the cap.
 pub async fn execute(
     store: &AutomationStore,
     automation: &Automation,
     run: &mut AutomationRun,
     prev_vars: &HashMap<String, String>,
     cwd: &str,
-    max_concurrency: usize,
+    budget: crate::budget::Policy,
 ) {
     let by_id: HashMap<&str, &Step> = automation
         .steps
@@ -232,12 +241,19 @@ pub async fn execute(
     loop {
         promote(run);
 
-        // Fill the concurrency budget with whatever is dispatchable now.
-        while inflight.len() < max_concurrency.max(1) {
-            let Some(id) = ready_steps(run).into_iter().next() else {
+        // Dispatch whatever is ready and can have a slot. The slot is the
+        // budget — asked for here, held by the step, given back when it ends.
+        while let Some(id) = ready_steps(run).into_iter().next() {
+            let Some(step) = by_id.get(id.as_str()).copied() else {
                 break;
             };
-            let Some(step) = by_id.get(id.as_str()).copied() else {
+            let Ok(slot) = crate::budget::try_acquire(
+                &budget_dir(),
+                budget,
+                &format!("automation {} step {}", run.id, id),
+            ) else {
+                // No room right now. Anything already running will free a slot;
+                // the loop below waits on it (or on the tick) and asks again.
                 break;
             };
             let vars = build_vars(run, prev_vars, cwd);
@@ -268,6 +284,8 @@ pub async fn execute(
                 .map_or(1, |s| s.attempts + 1);
             let job = format!("{}:{}:{}", run.id, id, attempt);
             inflight.spawn(async move {
+                // The slot lives exactly as long as the step it admitted.
+                let _slot = slot;
                 let outcome = match crate::agentrun::run_headless(
                     &agent,
                     &model,
@@ -332,6 +350,28 @@ pub async fn execute(
             promote(run);
             if ready_steps(run).is_empty() {
                 break;
+            }
+            // Ready work that could not get a slot: somebody else's step holds
+            // it. Wait for room rather than spinning on the ledger — and give
+            // up on this run if the wait itself runs out.
+            match crate::budget::acquire(
+                &budget_dir(),
+                budget,
+                &format!("automation {} waiting", run.id),
+            )
+            .await
+            {
+                // Taken and immediately released: the point was to wait until
+                // there was room, and the dispatch above takes the real slot.
+                Ok(slot) => drop(slot),
+                Err(refused) => {
+                    // The machine never had room. Say so in the record — a run
+                    // that stops for want of resources must not read as a run
+                    // that finished, nor as a step that broke.
+                    run.error = Some(format!("no room to run a step: {refused}"));
+                    let _ = store.write_run(run);
+                    break;
+                }
             }
             continue;
         }

@@ -4093,6 +4093,17 @@ pub async fn agent_run_headless(
     // dispatches; a caller that passes none simply cannot cancel.
     job_id: Option<String>,
 ) -> Result<crate::agentrun::HeadlessResult, CommandError> {
+    // The app's steps count against the same budget every other process
+    // shares, or "four at a time" would mean four *here* and four in each
+    // automation running beside it. The slot is held for exactly as long as
+    // the run (`_slot`), and a refusal is reported as busy — the engine puts
+    // the step back and tries again, rather than failing work that was never
+    // started.
+    let dir = crate::automations::store::app_data_dir().map_err(CommandError::from)?;
+    let policy = crate::automations::runner::budget_policy();
+    let _slot = crate::budget::acquire(&dir, policy, &job_id.clone().unwrap_or_default())
+        .await
+        .map_err(|refused| CommandError::new("BUDGET_BUSY", refused.to_string()))?;
     crate::agentrun::run_headless(
         &agent,
         &model,

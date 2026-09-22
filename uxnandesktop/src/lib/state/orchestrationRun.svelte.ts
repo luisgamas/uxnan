@@ -122,6 +122,17 @@ const INJECTABLE_MCP_TYPES: ReadonlySet<string> = new Set([
   "opencode",
 ]);
 
+/** Whether a rejected `agent_run_headless` was refused by the global agent
+ *  budget (no slot, or not enough free memory) rather than having failed. A
+ *  refusal means the step never started. */
+function isBudgetBusy(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === "BUDGET_BUSY"
+  );
+}
+
 class OrchestrationRunStore {
   /** All runs (draft / active / past), most-recent last. Durable. */
   runs = $state<Run[]>([]);
@@ -976,9 +987,31 @@ class OrchestrationRunStore {
     const job = headlessJobId(runId, stepId, step.dispatchId);
     void agentRunHeadless(agent, model, text, cwd, undefined, job)
       .then((res) => this.onHeadlessDone(runId, stepId, res, null))
-      .catch((err: unknown) =>
-        this.onHeadlessDone(runId, stepId, null, err instanceof Error ? err.message : String(err)),
-      );
+      .catch((err: unknown) => {
+        // The global budget had no room: the step never started, so it goes
+        // back to ready and keeps its attempt. Failing it here would spend a
+        // retry on a machine that was merely busy.
+        if (isBudgetBusy(err)) {
+          this.onHeadlessDeferred(runId, stepId);
+          return;
+        }
+        this.onHeadlessDone(runId, stepId, null, err instanceof Error ? err.message : String(err));
+      });
+  }
+
+  /** A headless step that never started: the machine had no room for another
+   *  agent. Put it back where it was — ready, with its attempt unspent — and
+   *  let the next tick try again. Nothing is recorded as failed, because
+   *  nothing ran. */
+  private onHeadlessDeferred(runId: string, stepId: string): void {
+    const run = this.runById(runId);
+    const step = run?.steps.find((s) => s.id === stepId);
+    if (!run || !step || step.status !== "running") return;
+    step.status = "ready";
+    step.attempts = Math.max(0, step.attempts - 1);
+    step.startedAt = undefined;
+    step.dispatchId = undefined;
+    this.changed();
   }
 
   /** Resolve a finished headless run: exit 0 completes the step with the full

@@ -34,7 +34,7 @@ Persistence (`AppSettings.resourceMode`, mirrored by Rust
 
 ```jsonc
 { "profile": "balanced", "overrides": { "orchestrationConcurrency": null }, "autoSleep": false, "schemaVersion": 1,
-  "resolvedOrchestrationConcurrency": 4 }
+  "resolvedBudget": { "concurrency": 4, "minFreeMemoryMb": 1024 } }
 ```
 
 `null` (or absence) means *inherit from the preset*. Validation is
@@ -49,20 +49,43 @@ history never outside 60–600 s.
 The backend never resolves policy. Its consumers receive the **already-resolved
 parameter**: the resource monitor's history budget over the
 `resources_set_policy` command (clamped defensively in
-`ResourceMonitor::set_history_seconds`), and the headless automations runner
-through `resolvedOrchestrationConcurrency` — the one derived field in the
-document above.
+`ResourceMonitor::set_history_seconds`), and the **global agent budget**
+through `resolvedBudget` — the one derived field in the document above.
 
 That field is a **mirror, never an input**: the store writes it on every policy
 change and reconciles it at startup (`resourceMode.syncRunnerBudget()`), and
-nothing reads it back as configuration. It exists because the runner is a
-separate process that runs **with the app closed** (`automations::runner`),
-so it has no window to ask — and re-deriving the preset table in Rust would be
-a second copy free to disagree with this one. The runner clamps what it reads
-to the same ceiling (8) and falls back to 4 when the field is absent, which is
-what every automation used before the policy reached it. The **extended**
-Performance ceiling is not mirrored: it only applies against measured headroom,
-which a process with no monitor cannot observe.
+nothing reads it back as configuration. It exists because the budget is
+enforced in Rust for **every process at once** (`budget.rs`) — including a
+headless automations runner that runs with the app closed and has no window to
+ask — and re-deriving the preset table there would be a second copy free to
+disagree with this one. What is read is clamped to the same bounds (8 agents,
+8 GiB), and an absent mirror means the pre-budget behavior: 4 agents, no
+memory condition. The **extended** Performance ceiling is not mirrored: it
+only applies against measured headroom, which a process with no monitor cannot
+observe.
+
+### The global agent budget
+
+Two conditions, one gate, one place ([`budget.rs`](../src-tauri/src/budget.rs)):
+
+- **A slot.** At most `concurrency` agent subprocesses at a time **across every
+  process** — the app's orchestration steps and every automation runner beside
+  it. Before this the cap was per process, so three automations at four steps
+  each put twelve agents on a machine that was promised four.
+- **Memory.** At least `minFreeMemoryMb` free when a step starts, so a run does
+  not push the machine into swap for a step it would then run slowly. These
+  numbers are **provisional** — conservative rather than measured; calibrating
+  them against plan 001's baselines is a FOR-DEV item.
+
+Slots live in one ledger under the app's data directory, guarded by a lock only
+one process can hold. A slot belongs to the process that took it, and is given
+back when that process releases it **or stops existing**: the owner's pid and
+start time are recorded, so a crashed or killed runner's slot is reclaimed by
+the next caller that looks (and a recycled pid cannot inherit it). There are no
+heartbeats to keep — liveness is the truth, with a six-hour backstop for a
+process that is alive but wedged. If the ledger itself cannot be read or
+written, work proceeds unbudgeted rather than stopping: bookkeeping must never
+be what blocks the machine.
 
 ## What each preset does
 

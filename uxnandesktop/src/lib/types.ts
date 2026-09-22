@@ -493,12 +493,21 @@ export interface ResourceModeSettings {
    *  auto-sleep capability only applies while this is on. */
   autoSleep?: boolean;
   schemaVersion?: number;
-  /** The resolved orchestration concurrency, **mirrored** for the one consumer
-   *  that cannot ask the policy engine: the headless automations runner, which
-   *  is its own process and runs with the app closed. Written by
-   *  `resourceMode` (never by hand, never read back as an input) — see
+  /** The resolved agent budget, **mirrored** for the processes that cannot ask
+   *  the policy engine: the headless automations runner is its own process and
+   *  runs with the app closed, and the budget itself is enforced in Rust
+   *  (`budget.rs`) for every process at once. Written by `resourceMode` (never
+   *  by hand, never read back as an input) — see
    *  `$lib/state/resourceMode.svelte`. */
-  resolvedOrchestrationConcurrency?: number;
+  resolvedBudget?: ResolvedBudget;
+}
+
+/** What the policy engine resolved for the global agent budget. */
+export interface ResolvedBudget {
+  /** Agent subprocesses allowed at once, across every process. */
+  concurrency: number;
+  /** Free memory (MiB) required before another agent starts; `0` = no check. */
+  minFreeMemoryMb: number;
 }
 
 /** Local resource observability settings (mirror of the Rust `ResourceSettings`).

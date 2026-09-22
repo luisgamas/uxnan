@@ -144,15 +144,23 @@ derivacion de estado — unit-testeada sin procesos ni reloj ni disco) del
 **pegamento asincrono** (`execute`, que lanza los CLIs hasta el tope de
 concurrencia que recibe y reescribe el registro tras cada transicion).
 
-**El tope sale de la politica de recursos**, no de una constante: es la misma
-`orchestrationConcurrency` con la que despacha el motor de Runs y con la que la
-superficie de control admite lanzamientos. El runner headless no tiene ventana
-para preguntarle al motor de politica (vive en el frontend) y **no debe**
-re-derivar la tabla de presets — seria una segunda copia libre de discrepar —,
-asi que lee el numero que la app espeja en sus ajustes
-(`resolvedOrchestrationConcurrency`, ver §2 de `resource-mode.md`),
-acotado al techo del motor (8); sin nada registrado usa 4, que es lo que uso
-toda automation antes de esto (`runner::concurrency_budget`).
+**El tope no es de esta corrida: es de la maquina.** Cada paso corre solo
+cuando obtiene una **ranura del presupuesto global de agentes** (`budget.rs`),
+el mismo que comparten la app y cualquier otro runner — antes cada proceso se
+limitaba a si mismo, asi que tres automations a cuatro pasos ponian doce
+agentes en una maquina a la que se le habian prometido cuatro. La ranura se
+toma antes de lanzar y se suelta cuando el paso termina; si no hay, la corrida
+**espera** en vez de arrancar igual, y si la espera se agota lo dice en su
+registro. Las cifras (cuantos agentes, cuanta memoria libre) salen de la
+politica de recursos, espejadas en los ajustes porque este proceso no tiene
+ventana para preguntar (`runner::budget_policy`, `resolvedBudget`); sin nada
+registrado: 4 agentes y sin condicion de memoria, la conducta previa.
+
+Una ranura pertenece al **proceso** que la tomo y vuelve cuando ese proceso la
+suelta **o deja de existir** (pid + hora de arranque en el registro, asi que
+un pid reciclado no hereda la ranura de otro). No hay latidos que mantener:
+la liveness es la verdad, con un tope absoluto de seis horas para un proceso
+vivo pero colgado.
 
 **Cada paso corre con nombre** (`corrida:paso:intento`) y puede terminarse por
 ese nombre (`agentrun::cancel`), lo que termina **todo el arbol de procesos**

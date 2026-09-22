@@ -1,11 +1,12 @@
-// The mirror the headless automations runner reads.
+// The mirror the other processes read.
 //
-// That runner is its own process and runs with the app closed, so it cannot ask
-// the policy engine what concurrency the person's profile allows — it reads the
-// number this store leaves in the settings. These tests pin the two things that
-// make the mirror trustworthy: every policy write refreshes it, and a startup
-// reconcile fixes a document written before it existed (or by a build that did
-// not write it), without rewriting settings that already agree.
+// The headless automations runner is its own process and runs with the app
+// closed, and the budget itself is enforced in Rust for every process at once
+// (`budget.rs`) — neither can ask this policy engine, which lives here. They
+// read the numbers this store leaves in the settings. These tests pin the two
+// things that make that mirror trustworthy: every policy write refreshes it,
+// and a startup reconcile fixes a document written before it existed (or by a
+// build that did not write it), without rewriting settings that already agree.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,34 +19,47 @@ vi.mock("./app.svelte", () => ({ app: { settings, persistSettings: () => persist
 
 const { resourceMode } = await import("./resourceMode.svelte");
 
-describe("the runner's concurrency mirror", () => {
+describe("the mirrored agent budget", () => {
   beforeEach(() => {
     delete settings.resourceMode;
     persistSettings.mockClear();
   });
 
-  it("is written with every policy change, carrying that profile's number", () => {
+  it("is written with every policy change, carrying that profile's numbers", () => {
     resourceMode.setProfile("efficient");
     expect(settings.resourceMode?.profile).toBe("efficient");
-    expect(settings.resourceMode?.resolvedOrchestrationConcurrency).toBe(2);
+    expect(settings.resourceMode?.resolvedBudget).toEqual({
+      concurrency: 2,
+      minFreeMemoryMb: 1536,
+    });
 
     resourceMode.setProfile("performance");
-    expect(settings.resourceMode?.resolvedOrchestrationConcurrency).toBe(4);
+    expect(settings.resourceMode?.resolvedBudget).toEqual({
+      concurrency: 4,
+      minFreeMemoryMb: 512,
+    });
 
-    // An override is the person's explicit choice, so it is what the runner
-    // gets too — not the preset it overrode.
+    // An override is the person's explicit choice, so it is what the other
+    // processes get too — not the preset it overrode.
     resourceMode.setOverride("orchestrationConcurrency", 7);
-    expect(settings.resourceMode?.resolvedOrchestrationConcurrency).toBe(7);
+    expect(settings.resourceMode?.resolvedBudget?.concurrency).toBe(7);
+    resourceMode.setOverride("orchestrationMinFreeMemoryMb", 0);
+    expect(settings.resourceMode?.resolvedBudget?.minFreeMemoryMb).toBe(0);
     resourceMode.clearOverride("orchestrationConcurrency");
-    expect(settings.resourceMode?.resolvedOrchestrationConcurrency).toBe(4);
+    expect(settings.resourceMode?.resolvedBudget?.concurrency).toBe(4);
   });
 
   it("reconciles a document that predates it, and leaves an agreeing one alone", () => {
-    // What an older build wrote: a profile, no mirror. The runner would fall
-    // back to 4 while this app dispatches by 2.
-    settings.resourceMode = { profile: "efficient", overrides: {}, autoSleep: false, schemaVersion: 1 };
+    // What an older build wrote: a profile, no mirror. The other processes
+    // would fall back to 4 while this app dispatches by 2.
+    settings.resourceMode = {
+      profile: "efficient",
+      overrides: {},
+      autoSleep: false,
+      schemaVersion: 1,
+    };
     resourceMode.syncRunnerBudget();
-    expect(settings.resourceMode?.resolvedOrchestrationConcurrency).toBe(2);
+    expect(settings.resourceMode?.resolvedBudget?.concurrency).toBe(2);
     expect(settings.resourceMode?.profile).toBe("efficient");
     expect(persistSettings).toHaveBeenCalledTimes(1);
 
@@ -55,9 +69,29 @@ describe("the runner's concurrency mirror", () => {
     expect(persistSettings).not.toHaveBeenCalled();
   });
 
-  it("reconciles missing settings to the default profile's number", () => {
+  it("reconciles a mirror that is only half right", () => {
+    // A build that mirrored the concurrency but not the memory condition: the
+    // reconcile must notice the missing half rather than call it a match.
+    settings.resourceMode = {
+      profile: "balanced",
+      overrides: {},
+      autoSleep: false,
+      schemaVersion: 1,
+      resolvedBudget: { concurrency: 4, minFreeMemoryMb: 0 },
+    };
+    resourceMode.syncRunnerBudget();
+    expect(settings.resourceMode?.resolvedBudget).toEqual({
+      concurrency: 4,
+      minFreeMemoryMb: 1024,
+    });
+  });
+
+  it("reconciles missing settings to the default profile's numbers", () => {
     resourceMode.syncRunnerBudget();
     expect(settings.resourceMode?.profile).toBe("balanced");
-    expect(settings.resourceMode?.resolvedOrchestrationConcurrency).toBe(4);
+    expect(settings.resourceMode?.resolvedBudget).toEqual({
+      concurrency: 4,
+      minFreeMemoryMb: 1024,
+    });
   });
 });

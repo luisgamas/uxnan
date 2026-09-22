@@ -140,6 +140,17 @@
       overridden: overridden.has("orchestrationConcurrency"),
     },
     {
+      key: "orchestrationMinFreeMemoryMb",
+      label: i18n.t("resourceMode.effect.agentMemory"),
+      value:
+        caps.orchestrationMinFreeMemoryMb > 0
+          ? i18n.t("resourceMode.effect.agentMemoryFree", {
+              mb: caps.orchestrationMinFreeMemoryMb,
+            })
+          : i18n.t("resourceMode.effect.agentMemoryOff"),
+      overridden: overridden.has("orchestrationMinFreeMemoryMb"),
+    },
+    {
       key: "resourceHistorySeconds",
       label: i18n.t("resourceMode.effect.history"),
       value: i18n.t("resourceMode.effect.historyMinutes", {
@@ -168,7 +179,12 @@
 
   /** Clamp + set a numeric override from an input's change event. */
   function setNumber(
-    key: "gitSweepIntervalMs" | "orchestrationConcurrency" | "resourceHistorySeconds" | "autoSleepIdleMinutes",
+    key:
+      | "gitSweepIntervalMs"
+      | "orchestrationConcurrency"
+      | "orchestrationMinFreeMemoryMb"
+      | "resourceHistorySeconds"
+      | "autoSleepIdleMinutes",
     raw: string,
     scale = 1,
   ): void {
@@ -323,6 +339,32 @@
                     onchange={(e) =>
                       setNumber(
                         "orchestrationConcurrency",
+                        (e.currentTarget as HTMLInputElement).value,
+                      )}
+                  />
+                </span>
+              {/snippet}
+            </SettingsRow>
+
+            <SettingsRow
+              label={i18n.t("resourceMode.override.agentMemory")}
+              description={i18n.t("resourceMode.override.agentMemoryDesc")}
+              for="rm-agent-memory"
+            >
+              {#snippet control()}
+                <span class="flex items-center gap-1.5">
+                  {@render usePreset("orchestrationMinFreeMemoryMb")}
+                  <Input
+                    id="rm-agent-memory"
+                    type="number"
+                    density="compact"
+                    class={field.editorNumber}
+                    min={LIMITS.orchestrationMinFreeMemoryMb.min}
+                    max={LIMITS.orchestrationMinFreeMemoryMb.max}
+                    value={caps.orchestrationMinFreeMemoryMb}
+                    onchange={(e) =>
+                      setNumber(
+                        "orchestrationMinFreeMemoryMb",
                         (e.currentTarget as HTMLInputElement).value,
                       )}
                   />

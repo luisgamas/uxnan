@@ -92,14 +92,17 @@ just the process the app holds — one path, used by a cancel and by a timeout
 alike (`agentrun::cancel` / `kill_tree`). A step ended this way is recorded as
 stopped (skipped, `error: cancelled`), never as failed, and never retried.
 
-**How much it may run at once, and how much it keeps.** A run's steps are
-dispatched up to the **orchestration concurrency of the person's resource
-policy** — the same number the Runs engine dispatches by and the control
-surface admits launches against. The runner has no window to ask the policy
-engine, so it reads the number the app mirrored into its settings
-(`resolvedOrchestrationConcurrency`, see
-[`resource-mode.md`](./resource-mode.md)), clamped to 8; with nothing recorded
-it uses 4, which is what every run used before. Each step's output is captured
+**How much it may run at once, and how much it keeps.** A step runs only once
+it holds a **slot in the global agent budget** — the one every process shares
+(`budget.rs`, see [`resource-mode.md`](./resource-mode.md) → *The global agent
+budget*), not a count this run keeps to itself. So two automations running at
+the same time, with or without the app, cannot between them start twice the
+cap; when there is no room the run waits for a slot rather than starting
+anyway, and a run that waits ten minutes without one stops and says so in its
+record. The numbers — how many agents, how much free memory — come from the
+person's resource policy, mirrored into the settings because this process has
+no window to ask; with nothing recorded it uses 4 agents and no memory
+condition, which is what every run used before. Each step's output is captured
 **bounded**: past 512 KiB per stream the pipe is still drained — a full pipe
 would block the agent and a blocked agent never exits — but only the head and
 the tail are kept, with the size of the gap written between them. The run
