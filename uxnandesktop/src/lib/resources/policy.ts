@@ -55,10 +55,14 @@ export interface ResourceCapabilities {
    *  `0` = start regardless. Checked by the global budget every process shares
    *  (`budget.rs`), not by the dispatcher, so it holds with the app closed.
    *
-   *  FOR-DEV: the per-preset numbers are provisional — deliberately
-   *  conservative rather than measured. Derive them from plan 001's baselines
-   *  (what an agent actually holds, per platform); too high only means a step
-   *  waits, too low means the machine swaps. See FOR-DEV.md → *Resource mode*. */
+   *  **Measured, not guessed** (`scripts/resources/agent-footprint.mjs`): what
+   *  a *newly started* agent's process tree holds, which is what this gate has
+   *  to make room for. On macOS the worst of the installed CLIs was ~560 MB
+   *  (OpenCode; Claude Code ~255, Codex ~195, Antigravity ~133), so the presets
+   *  are that worst case with the headroom each one's posture implies —
+   *  Efficient keeps most of the machine free, Performance keeps least. The
+   *  numbers are re-derived by re-running that script; see
+   *  `docs/resource-mode.md` → *The global agent budget*. */
   orchestrationMinFreeMemoryMb: number;
   /** Advisory ceiling (MiB) on one agent's **whole process tree** — the agent
    *  and everything it spawns. `0` = observe only, which is the default: the
@@ -126,7 +130,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     usageRefreshFactor: 3,
     orchestrationConcurrency: 2,
     orchestrationExtendedConcurrency: null,
-    orchestrationMinFreeMemoryMb: 1536,
+    orchestrationMinFreeMemoryMb: 1024,
     orchestrationMaxAgentMemoryMb: 0,
     resourceHistorySeconds: 180,
     petFlavour: false,
@@ -140,7 +144,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     usageRefreshFactor: 1,
     orchestrationConcurrency: 4,
     orchestrationExtendedConcurrency: null,
-    orchestrationMinFreeMemoryMb: 1024,
+    orchestrationMinFreeMemoryMb: 768,
     orchestrationMaxAgentMemoryMb: 0,
     resourceHistorySeconds: 600,
     petFlavour: true,

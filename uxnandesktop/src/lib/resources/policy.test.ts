@@ -44,7 +44,9 @@ describe("presets", () => {
       // New in the global budget: the free memory an agent needs before
       // another starts. Provisional (conservative) rather than measured — it
       // gates *starting*, so the default costs a wait at worst.
-      orchestrationMinFreeMemoryMb: 1024,
+      // Measured: ~1.4x the worst footprint an installed CLI showed on macOS
+      // (~560 MB), which is the room a newly started agent needs.
+      orchestrationMinFreeMemoryMb: 768,
       // Advisory and off by default: the peak is recorded, nothing is stopped.
       orchestrationMaxAgentMemoryMb: 0,
       resourceHistorySeconds: 600,

@@ -4,6 +4,20 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The agent budget's memory numbers are measured now, not guessed.** The
+  free memory an agent must find before another starts was set conservatively
+  by hand (1536 / 1024 / 512 MB). A new script,
+  `node scripts/resources/agent-footprint.mjs`, runs each installed CLI through
+  the real headless path and reads the peak its **process tree** holds — the
+  app's own sampler, the number that lands in a run record. On macOS the worst
+  was OpenCode at 562 MB (Claude Code 255, Codex 195, Antigravity 133), so the
+  presets become **1024 / 768 / 512 MB**: the worst case plus the headroom each
+  posture implies. Efficient asks for less than it did, which means fewer steps
+  waiting on a machine that was fine. The table and the method are in
+  `docs/resource-mode.md`; Windows and Linux still need their own pass.
+
 ### Added
 
 - **Fable 5.1 and Opus 5.5 in the Claude model picker.** `CLAUDE_MODELS` in

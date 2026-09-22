@@ -413,6 +413,7 @@ one.
 ```
 uxnandesktop/scripts/resources/
 ├── run.mjs                 # run scenarios → result documents
+├── agent-footprint.mjs     # what one agent's process tree holds → the budget's memory numbers
 ├── report.mjs              # aggregates → Markdown report
 ├── compare.mjs             # baseline vs candidate → verdict
 ├── lib/
