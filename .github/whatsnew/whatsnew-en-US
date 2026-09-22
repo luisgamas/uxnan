@@ -1,3 +1,1 @@
-The model you are talking to now reads by name — "Gemini 3.7 Flash (High)" instead of a technical id — both in a conversation's top bar and when you start a new one. The exact id is still one tap away: press and hold the model name, or read it under the name in the model list.
-
-Session info also makes clear that a conversation's ids open it in the agent's desktop app, not only in its command line.
+Nothing changes on screen in this one. It keeps the app in step with how the PC app now reports each AI provider's usage: when a provider's token lives in the computer's credential store, the PC has to be granted access to it first, and the app understands that answer instead of treating it as an error.
