@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.23-alpha.20260922+20260922] - 20260922
 ### Changed
 - `UsageStatus` (domain value object mirroring `shared`) gains `accessRequired`
   — the PC's CLI token sits in the OS credential store and the desktop still has
