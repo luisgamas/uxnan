@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.26-alpha.20260922] - 20260922
 ### Added
 
 - **Claude Code offers Fable 5.1 and Opus 5.5 by version.** The seeded
