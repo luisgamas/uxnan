@@ -1,3 +1,1 @@
-El modelo con el que hablas ahora se lee por su nombre —«Gemini 3.7 Flash (High)» en vez de un id técnico— tanto en la barra superior de una conversación como al crear una nueva. El id exacto sigue a un toque: mantén pulsado el nombre del modelo o léelo bajo el nombre en la lista de modelos.
-
-Info de sesión también deja claro que los ids de una conversación la abren en la app de escritorio del agente, no solo en su línea de comandos.
+En esta versión no cambia nada en pantalla. Pone la app al día con cómo la app de PC informa el uso de cada proveedor de IA: cuando el token de un proveedor vive en el almacén de credenciales del equipo, la PC necesita permiso para leerlo, y la app entiende esa respuesta en lugar de tratarla como un error.
