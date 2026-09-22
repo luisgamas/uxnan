@@ -327,6 +327,11 @@ pub struct StepRun {
     /// the size of the gap written between them.
     #[serde(default)]
     pub truncated: bool,
+    /// The most memory this step's whole process tree was seen holding (MiB),
+    /// sampled while it ran. `0` when the step was too short to sample. What
+    /// an execution nobody watched cost, after the fact.
+    #[serde(default)]
+    pub peak_memory_mb: u64,
     /// The verified completion signal: 0 = done, anything else = failed.
     #[serde(default)]
     pub exit_code: Option<i32>,
@@ -399,6 +404,7 @@ impl AutomationRun {
                     output_bytes: 0,
                     stderr_bytes: 0,
                     truncated: false,
+                    peak_memory_mb: 0,
                     exit_code: None,
                     attempts: 0,
                     error: None,

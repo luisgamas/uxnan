@@ -78,6 +78,8 @@ pub struct Capture {
     pub stdout_bytes: usize,
     pub stderr_bytes: usize,
     pub truncated: bool,
+    /// Peak memory of the step's whole process tree, in MiB.
+    pub peak_memory_mb: u64,
 }
 
 /// Mark every pending step that can never run — one of its dependencies failed
@@ -150,6 +152,7 @@ pub fn apply_outcome(run: &mut AutomationRun, step: &Step, outcome: Outcome, now
             sr.output_bytes = capture.stdout_bytes;
             sr.stderr_bytes = capture.stderr_bytes;
             sr.truncated = capture.truncated;
+            sr.peak_memory_mb = capture.peak_memory_mb;
             sr.exit_code = Some(0);
             sr.error = None;
             sr.finished_at = Some(now);
@@ -169,6 +172,7 @@ pub fn apply_outcome(run: &mut AutomationRun, step: &Step, outcome: Outcome, now
             sr.output_bytes = capture.stdout_bytes;
             sr.stderr_bytes = capture.stderr_bytes;
             sr.truncated = capture.truncated;
+            sr.peak_memory_mb = capture.peak_memory_mb;
             sr.exit_code = exit_code;
             sr.error = Some(message);
             if step.on_failure == OnFailure::Retry && sr.attempts < step.max_attempts {
@@ -228,6 +232,7 @@ pub async fn execute(
     prev_vars: &HashMap<String, String>,
     cwd: &str,
     budget: crate::budget::Policy,
+    ceiling_mb: u64,
 ) {
     let by_id: HashMap<&str, &Step> = automation
         .steps
@@ -283,6 +288,7 @@ pub async fn execute(
                 .find(|s| s.id == id)
                 .map_or(1, |s| s.attempts + 1);
             let job = format!("{}:{}:{}", run.id, id, attempt);
+            let memory_ceiling_mb = ceiling_mb;
             inflight.spawn(async move {
                 // The slot lives exactly as long as the step it admitted.
                 let _slot = slot;
@@ -296,6 +302,7 @@ pub async fn execute(
                     // A step runs its model as configured, effort included.
                     &[],
                     Some(&job),
+                    memory_ceiling_mb,
                 )
                 .await
                 {
@@ -304,6 +311,7 @@ pub async fn execute(
                             stdout_bytes: res.stdout_bytes,
                             stderr_bytes: res.stderr_bytes,
                             truncated: res.truncated,
+                            peak_memory_mb: res.peak_memory_mb,
                         },
                         stdout: res.stdout,
                         stderr: res.stderr,
@@ -323,6 +331,7 @@ pub async fn execute(
                                 stdout_bytes: res.stdout_bytes,
                                 stderr_bytes: res.stderr_bytes,
                                 truncated: res.truncated,
+                                peak_memory_mb: res.peak_memory_mb,
                             },
                             stderr: res.stderr,
                             exit_code: res.exit_code,
@@ -638,6 +647,7 @@ mod tests {
                     stdout_bytes: 4_000_000,
                     stderr_bytes: 4,
                     truncated: true,
+                    peak_memory_mb: 512,
                 },
             },
             42,
@@ -653,6 +663,7 @@ mod tests {
         assert_eq!(s.output_bytes, 4_000_000);
         assert_eq!(s.stderr_bytes, 4);
         assert!(s.truncated);
+        assert_eq!(s.peak_memory_mb, 512, "what the step cost is in the record");
     }
 
     #[test]

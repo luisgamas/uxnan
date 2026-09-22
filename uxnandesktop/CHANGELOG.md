@@ -11,6 +11,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `claude-fable-5-1` and `claude-opus-5-5` above their predecessors — the same
   twelve entries, in the same order, as the bridge's seeded table.
 
+- **What a run cost, in its record — and an advisory ceiling.** Every ten
+  seconds a headless run's **whole process tree** is measured; the peak lands
+  on the result and in the automation's run record (`peakMemoryMb`), so an
+  execution nobody watched can still say what it took. A new capability
+  (Settings → Resources) sets a ceiling per agent: a tree past it is stopped
+  and the run says which limit it hit. It is **off by default**, and it is
+  called *advisory* on purpose — nothing refuses an allocation, the run is
+  measured and then ended. A real limit belongs to the operating system (Job
+  Objects, cgroups) and this project does not claim one until it is proven on
+  each platform. Plan 023 phase 4, honestly scoped.
+
 - **One agent budget for the whole machine.** Every process that starts agent
   subprocesses — the app, and each automation runner beside it — used to cap
   itself, so the caps multiplied: three automations at four steps each is

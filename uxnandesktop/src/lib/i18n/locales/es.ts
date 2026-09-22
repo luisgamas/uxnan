@@ -647,6 +647,9 @@ export const es: Record<MessageKey, string> = {
   "resourceMode.effect.agentMemory": "Memoria antes de un agente nuevo",
   "resourceMode.effect.agentMemoryFree": "{mb} MB libres requeridos",
   "resourceMode.effect.agentMemoryOff": "sin requisito",
+  "resourceMode.effect.agentCeiling": "Tope por agente",
+  "resourceMode.effect.agentCeilingAt": "se detiene pasando {mb} MB",
+  "resourceMode.effect.agentCeilingOff": "se mide, no se detiene",
   "resourceMode.effect.orchestrationSteps": "{n} pasos a la vez",
   "resourceMode.effect.orchestrationExtended": "{n} pasos a la vez ({max} con margen medido)",
   "resourceMode.effect.history": "Historial del monitor de recursos",
@@ -675,6 +678,9 @@ export const es: Record<MessageKey, string> = {
   "resourceMode.override.agentMemory": "Memoria antes de un agente nuevo",
   "resourceMode.override.agentMemoryDesc":
     "Memoria libre que la máquina necesita antes de arrancar otro agente (MB; 0 para arrancar sin condición).",
+  "resourceMode.override.agentCeiling": "Tope por agente",
+  "resourceMode.override.agentCeilingDesc":
+    "Detener un agente cuyos procesos pasen de esto (MB; 0 solo mide). Se mide mientras corre, así que es un límite a posteriori, no uno que imponga el sistema.",
   "resourceMode.override.history": "Historial del monitor (segundos)",
   "resourceMode.override.historyDesc":
     "Cuánto historial de recursos conserva el buffer en memoria del monitor (60–600 s).",

@@ -806,6 +806,10 @@ pub struct ResolvedBudget {
     /// Free memory (MiB) required before another agent starts; `0` = no check.
     #[serde(default)]
     pub min_free_memory_mb: u64,
+    /// Advisory ceiling (MiB) on one agent's whole process tree; `0` = observe
+    /// only, which is the default.
+    #[serde(default)]
+    pub max_agent_memory_mb: u64,
 }
 
 fn default_resource_profile() -> String {
@@ -1719,6 +1723,7 @@ mod tests {
             resolved_budget: Some(ResolvedBudget {
                 concurrency: 2,
                 min_free_memory_mb: 1536,
+                max_agent_memory_mb: 4096,
             }),
             ..ResourceModeSettings::default()
         };
@@ -1731,9 +1736,14 @@ mod tests {
             back.resolved_budget.map(|b| b.min_free_memory_mb),
             Some(1536)
         );
+        assert_eq!(
+            back.resolved_budget.map(|b| b.max_agent_memory_mb),
+            Some(4096)
+        );
         // A record from a build that mirrored only the concurrency still loads.
         let partial: ResolvedBudget = serde_json::from_str(r#"{"concurrency":3}"#).unwrap();
         assert_eq!(partial.min_free_memory_mb, 0);
+        assert_eq!(partial.max_agent_memory_mb, 0);
         // Absent stays absent in the document rather than writing a null.
         let plain = serde_json::to_string(&ResourceModeSettings::default()).unwrap();
         assert!(!plain.contains("resolvedBudget"), "{plain}");

@@ -4100,8 +4100,8 @@ pub async fn agent_run_headless(
     // the step back and tries again, rather than failing work that was never
     // started.
     let dir = crate::automations::store::app_data_dir().map_err(CommandError::from)?;
-    let policy = crate::automations::runner::budget_policy();
-    let _slot = crate::budget::acquire(&dir, policy, &job_id.clone().unwrap_or_default())
+    let limits = crate::automations::runner::limits();
+    let _slot = crate::budget::acquire(&dir, limits.policy, &job_id.clone().unwrap_or_default())
         .await
         .map_err(|refused| CommandError::new("BUDGET_BUSY", refused.to_string()))?;
     crate::agentrun::run_headless(
@@ -4114,6 +4114,7 @@ pub async fn agent_run_headless(
         // An automation step runs the model as configured, effort included.
         &[],
         job_id.as_deref(),
+        limits.memory_ceiling_mb,
     )
     .await
     .map_err(CommandError::from)

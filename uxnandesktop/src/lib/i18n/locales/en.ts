@@ -645,6 +645,9 @@ export const en = {
   "resourceMode.effect.agentMemory": "Memory before a new agent",
   "resourceMode.effect.agentMemoryFree": "{mb} MB free required",
   "resourceMode.effect.agentMemoryOff": "no requirement",
+  "resourceMode.effect.agentCeiling": "Ceiling per agent",
+  "resourceMode.effect.agentCeilingAt": "stopped past {mb} MB",
+  "resourceMode.effect.agentCeilingOff": "measured, never stopped",
   "resourceMode.effect.orchestrationSteps": "{n} steps at once",
   "resourceMode.effect.orchestrationExtended": "{n} steps at once ({max} with measured headroom)",
   "resourceMode.effect.history": "Resource monitor history",
@@ -673,6 +676,9 @@ export const en = {
   "resourceMode.override.agentMemory": "Memory before a new agent",
   "resourceMode.override.agentMemoryDesc":
     "Free memory a machine needs before another agent starts (MB; 0 to start regardless).",
+  "resourceMode.override.agentCeiling": "Ceiling per agent",
+  "resourceMode.override.agentCeilingDesc":
+    "Stop an agent whose own processes go past this (MB; 0 only measures). Measured while it runs, so it is a limit after the fact — not one the system enforces.",
   "resourceMode.override.history": "Monitor history (seconds)",
   "resourceMode.override.historyDesc":
     "How much resource history the monitor's in-memory buffer keeps (60–600 s).",

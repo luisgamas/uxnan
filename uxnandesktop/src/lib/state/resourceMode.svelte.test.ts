@@ -31,12 +31,16 @@ describe("the mirrored agent budget", () => {
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 2,
       minFreeMemoryMb: 1536,
+      // Advisory and off by default on every preset: the peak is recorded,
+      // nothing is stopped for it.
+      maxAgentMemoryMb: 0,
     });
 
     resourceMode.setProfile("performance");
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 4,
       minFreeMemoryMb: 512,
+      maxAgentMemoryMb: 0,
     });
 
     // An override is the person's explicit choice, so it is what the other
@@ -77,12 +81,13 @@ describe("the mirrored agent budget", () => {
       overrides: {},
       autoSleep: false,
       schemaVersion: 1,
-      resolvedBudget: { concurrency: 4, minFreeMemoryMb: 0 },
+      resolvedBudget: { concurrency: 4, minFreeMemoryMb: 0, maxAgentMemoryMb: 0 },
     };
     resourceMode.syncRunnerBudget();
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 4,
       minFreeMemoryMb: 1024,
+      maxAgentMemoryMb: 0,
     });
   });
 
@@ -92,6 +97,7 @@ describe("the mirrored agent budget", () => {
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 4,
       minFreeMemoryMb: 1024,
+      maxAgentMemoryMb: 0,
     });
   });
 });

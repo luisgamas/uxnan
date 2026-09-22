@@ -51,7 +51,13 @@ pub struct RunnerArgs {
 /// A run started while the app is open goes through this same subprocess, so
 /// scheduled and "Run now" runs cannot drift apart here either.
 pub fn budget_policy() -> budget::Policy {
-    policy_from(
+    limits().policy
+}
+
+/// Everything the resolved budget says about running an agent here: what to be
+/// admitted under, and the advisory ceiling to watch a run against.
+pub fn limits() -> Limits {
+    limits_from(
         super::store::app_data_dir()
             .ok()
             .map(crate::persistence::PersistenceManager::new)
@@ -60,20 +66,37 @@ pub fn budget_policy() -> budget::Policy {
     )
 }
 
+/// What the mirrored budget means for this process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// What a run must be admitted under (`crate::budget`).
+    pub policy: budget::Policy,
+    /// Advisory ceiling on one run's whole process tree, in MiB; `0` = observe
+    /// only (`agentrun`). Advisory: the run is measured and then ended, which
+    /// is not the same as an allocation being refused.
+    pub memory_ceiling_mb: u64,
+}
+
 /// The budget a mirrored record means: clamped to the engine's own bounds, and
 /// the pre-budget defaults when there is nothing recorded. Split from the read
 /// so the rule is tested without a data directory.
-fn policy_from(resolved: Option<crate::model::ResolvedBudget>) -> budget::Policy {
+fn limits_from(resolved: Option<crate::model::ResolvedBudget>) -> Limits {
     match resolved {
-        Some(mirror) => budget::Policy {
-            capacity: (mirror.concurrency as usize).clamp(1, graph::MAX_CONCURRENCY),
-            min_free_mb: mirror.min_free_memory_mb.min(MAX_MIN_FREE_MB),
-            wait: STEP_ADMISSION_WAIT,
+        Some(mirror) => Limits {
+            policy: budget::Policy {
+                capacity: (mirror.concurrency as usize).clamp(1, graph::MAX_CONCURRENCY),
+                min_free_mb: mirror.min_free_memory_mb.min(MAX_MIN_FREE_MB),
+                wait: STEP_ADMISSION_WAIT,
+            },
+            memory_ceiling_mb: mirror.max_agent_memory_mb.min(MAX_CEILING_MB),
         },
-        None => budget::Policy {
-            capacity: graph::DEFAULT_CONCURRENCY,
-            min_free_mb: 0,
-            wait: STEP_ADMISSION_WAIT,
+        None => Limits {
+            policy: budget::Policy {
+                capacity: graph::DEFAULT_CONCURRENCY,
+                min_free_mb: 0,
+                wait: STEP_ADMISSION_WAIT,
+            },
+            memory_ceiling_mb: 0,
         },
     }
 }
@@ -82,6 +105,10 @@ fn policy_from(resolved: Option<crate::model::ResolvedBudget>) -> budget::Policy
 /// bound (`LIMITS.orchestrationMinFreeMemoryMb`): past this nothing would ever
 /// start on a normal machine, which is a broken setting, not a careful one.
 const MAX_MIN_FREE_MB: u64 = 8192;
+
+/// The ceiling on the ceiling, mirroring the policy engine's own bound
+/// (`LIMITS.orchestrationMaxAgentMemoryMb`).
+const MAX_CEILING_MB: u64 = 65_536;
 
 /// How long a step waits for room before the run gives up on it. Long enough to
 /// ride out another run's step (they are minutes, not hours), short enough that
@@ -289,13 +316,15 @@ async fn execute(args: RunnerArgs) -> i32 {
     let _ = store.write_run(&run);
 
     let prev_vars = graph::previous_run_vars(&store, &automation.id);
+    let limits = limits();
     graph::execute(
         &store,
         &automation,
         &mut run,
         &prev_vars,
         &cwd,
-        budget_policy(),
+        limits.policy,
+        limits.memory_ceiling_mb,
     )
     .await;
     log_line(&log, &format!("finished {:?}", run.status));
@@ -453,35 +482,46 @@ fn log_line(path: &std::path::Path, message: &str) {
 mod tests {
     use super::*;
 
-    fn mirror(concurrency: u32, min_free_memory_mb: u64) -> crate::model::ResolvedBudget {
+    fn mirror(
+        concurrency: u32,
+        min_free_memory_mb: u64,
+        max_agent_memory_mb: u64,
+    ) -> crate::model::ResolvedBudget {
         crate::model::ResolvedBudget {
             concurrency,
             min_free_memory_mb,
+            max_agent_memory_mb,
         }
     }
 
     #[test]
-    fn the_budget_follows_the_policy_within_its_bounds() {
+    fn the_limits_follow_the_policy_within_its_bounds() {
         // Nothing mirrored (an older profile): what every run used before —
-        // the old concurrency, and no memory condition, because a build that
-        // never wrote one cannot have meant to impose it.
-        let fallback = policy_from(None);
-        assert_eq!(fallback.capacity, graph::DEFAULT_CONCURRENCY);
-        assert_eq!(fallback.min_free_mb, 0);
+        // the old concurrency, no memory condition and no ceiling, because a
+        // build that never wrote them cannot have meant to impose them.
+        let fallback = limits_from(None);
+        assert_eq!(fallback.policy.capacity, graph::DEFAULT_CONCURRENCY);
+        assert_eq!(fallback.policy.min_free_mb, 0);
+        assert_eq!(fallback.memory_ceiling_mb, 0);
         // The policy's own numbers pass through — Efficient's 2 / 1536 MB.
-        let efficient = policy_from(Some(mirror(2, 1536)));
-        assert_eq!(efficient.capacity, 2);
-        assert_eq!(efficient.min_free_mb, 1536);
+        let efficient = limits_from(Some(mirror(2, 1536, 4096)));
+        assert_eq!(efficient.policy.capacity, 2);
+        assert_eq!(efficient.policy.min_free_mb, 1536);
+        assert_eq!(efficient.memory_ceiling_mb, 4096);
         // A hand-edited settings file cannot climb past the engine's bounds,
         // nor stall every run at zero.
         assert_eq!(
-            policy_from(Some(mirror(99, 0))).capacity,
+            limits_from(Some(mirror(99, 0, 0))).policy.capacity,
             graph::MAX_CONCURRENCY
         );
-        assert_eq!(policy_from(Some(mirror(0, 0))).capacity, 1);
+        assert_eq!(limits_from(Some(mirror(0, 0, 0))).policy.capacity, 1);
         assert_eq!(
-            policy_from(Some(mirror(4, u64::MAX))).min_free_mb,
+            limits_from(Some(mirror(4, u64::MAX, 0))).policy.min_free_mb,
             MAX_MIN_FREE_MB
+        );
+        assert_eq!(
+            limits_from(Some(mirror(4, 0, u64::MAX))).memory_ceiling_mb,
+            MAX_CEILING_MB
         );
     }
 

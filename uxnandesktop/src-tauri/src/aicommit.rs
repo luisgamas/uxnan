@@ -226,6 +226,8 @@ async fn run_agent(
         // Not cancellable by name: the dialog that starts it is modal and the
         // run is seconds long.
         None,
+        // No ceiling on a run this short; the peak still comes back.
+        0,
     )
     .await?;
 

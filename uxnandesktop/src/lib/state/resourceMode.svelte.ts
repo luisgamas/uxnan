@@ -47,6 +47,7 @@ class ResourceModeStore {
     return {
       concurrency: capabilities.orchestrationConcurrency,
       minFreeMemoryMb: capabilities.orchestrationMinFreeMemoryMb,
+      maxAgentMemoryMb: capabilities.orchestrationMaxAgentMemoryMb,
     };
   }
 
@@ -68,6 +69,7 @@ class ResourceModeStore {
       resolvedBudget: {
         concurrency: capabilities.orchestrationConcurrency,
         minFreeMemoryMb: capabilities.orchestrationMinFreeMemoryMb,
+        maxAgentMemoryMb: capabilities.orchestrationMaxAgentMemoryMb,
       },
     };
     void app.persistSettings();
@@ -83,7 +85,8 @@ class ResourceModeStore {
     const have = app.settings.resourceMode?.resolvedBudget;
     if (
       have?.concurrency === want.concurrency &&
-      have?.minFreeMemoryMb === want.minFreeMemoryMb
+      have?.minFreeMemoryMb === want.minFreeMemoryMb &&
+      have?.maxAgentMemoryMb === want.maxAgentMemoryMb
     ) {
       return;
     }

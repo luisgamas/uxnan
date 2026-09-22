@@ -179,6 +179,11 @@ pub struct HeadlessResult {
     /// Either stream went past [`MAX_STREAM_BYTES`], so its text is head+tail
     /// with the gap noted inside it.
     pub truncated: bool,
+    /// The most memory the run's **process tree** was ever seen holding, in
+    /// MiB — the agent and everything it spawned, sampled while it ran
+    /// ([`WATCH_INTERVAL`]). `0` when nothing was sampled (a run shorter than
+    /// the first sample).
+    pub peak_memory_mb: u64,
 }
 
 /// Run `agent_id` in print-mode against `prompt` in `cwd`, capturing stdout,
@@ -202,6 +207,9 @@ pub async fn run_headless(
     autonomous: bool,
     extra: &[String],
     job: Option<&str>,
+    // Advisory ceiling on the run's whole process tree, in MiB; `0` observes
+    // without acting. See `watch_memory`.
+    memory_limit_mb: u64,
 ) -> Result<HeadlessResult, AppError> {
     let Some(resolved) = agentcli::resolve(agent_id) else {
         return Err(AppError::Agent(format!(
@@ -224,7 +232,16 @@ pub async fn run_headless(
                 autonomous,
                 extra,
             )?;
-            run(&resolved, &args, cwd, timeout, Some(prompt), job).await
+            run(
+                &resolved,
+                &args,
+                cwd,
+                timeout,
+                Some(prompt),
+                job,
+                memory_limit_mb,
+            )
+            .await
         }
         agentcli::PromptDelivery::File => {
             let file = PromptFile::write(prompt)?;
@@ -236,7 +253,7 @@ pub async fn run_headless(
                 extra,
             )?;
             // The file must outlive the run; `PromptFile` removes it on drop.
-            run(&resolved, &args, cwd, timeout, None, job).await
+            run(&resolved, &args, cwd, timeout, None, job, memory_limit_mb).await
         }
         agentcli::PromptDelivery::Argv => {
             let capped = truncate_prompt(prompt, MAX_PROMPT_BYTES);
@@ -247,7 +264,7 @@ pub async fn run_headless(
                 autonomous,
                 extra,
             )?;
-            run(&resolved, &args, cwd, timeout, None, job).await
+            run(&resolved, &args, cwd, timeout, None, job, memory_limit_mb).await
         }
     }
 }
@@ -304,6 +321,7 @@ async fn run(
     timeout: Duration,
     stdin_prompt: Option<&str>,
     job: Option<&str>,
+    memory_limit_mb: u64,
 ) -> Result<HeadlessResult, AppError> {
     use tokio::io::AsyncWriteExt;
 
@@ -335,6 +353,13 @@ async fn run(
     // Named runs can be cancelled; the guard takes the name out of the registry
     // however this function leaves — returning, erroring, or being dropped.
     let _registration = job.and_then(|name| child.id().map(|pid| Registration::new(name, pid)));
+    // Watch what the run actually costs: the peak goes in the record, and an
+    // advisory ceiling (0 = observe only) ends a tree that runs away with the
+    // machine. Stopped by the channel the moment the run is over.
+    let (watch_stop, watch_stopped) = tokio::sync::watch::channel(false);
+    let watcher = child
+        .id()
+        .map(|pid| tokio::spawn(watch_memory(pid, memory_limit_mb, watch_stopped)));
 
     if let Some(text) = stdin_prompt {
         // Take the handle so it drops here: the close is the CLI's EOF, and
@@ -365,6 +390,7 @@ async fn run(
             let _ = child.start_kill();
             out_task.abort();
             err_task.abort();
+            let _ = watch_stop.send(true);
             return Err(AppError::Agent(format!(
                 "the agent timed out after {}s",
                 timeout.as_secs()
@@ -373,10 +399,25 @@ async fn run(
     };
     // Ended by a cancel, not by its own hand: say so, so the step reads as
     // stopped rather than failed.
+    let _ = watch_stop.send(true);
+    let peak_memory_mb = match watcher {
+        Some(handle) => handle.await.unwrap_or(0),
+        None => 0,
+    };
     if job.is_some_and(was_cancelled) {
         out_task.abort();
         err_task.abort();
         return Err(AppError::Cancelled);
+    }
+    // Ended by the ceiling rather than by itself: say which, because "the
+    // agent exited" explains nothing about a process the app killed.
+    if memory_limit_mb > 0 && peak_memory_mb > memory_limit_mb {
+        out_task.abort();
+        err_task.abort();
+        return Err(AppError::Agent(format!(
+            "the agent and the processes it started reached {peak_memory_mb} MB, \
+             past the {memory_limit_mb} MB ceiling, and were stopped"
+        )));
     }
 
     let out = out_task.await.unwrap_or_default();
@@ -388,6 +429,7 @@ async fn run(
         stdout_bytes: out.bytes,
         stderr_bytes: err.bytes,
         truncated: out.truncated || err.truncated,
+        peak_memory_mb,
     })
 }
 
@@ -417,6 +459,75 @@ impl Drop for Registration {
     fn drop(&mut self) {
         JOBS.lock().expect("jobs").remove(&self.name);
     }
+}
+
+/// How often a run's process tree is measured. Slow on purpose: this is for
+/// the record and for an advisory ceiling, not for control — a tight loop over
+/// the process table would cost more than the thing it is watching.
+const WATCH_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Watch the memory of the tree under `pid` until the run ends.
+///
+/// Returns the peak seen, in MiB. When `limit_mb` is non-zero and the tree goes
+/// past it, the tree is ended the same way a cancel ends it and the peak is
+/// still reported — the caller turns that into the error the person reads.
+///
+/// **Advisory, not enforced.** Nothing here stops a process from allocating;
+/// it observes and then acts. A real ceiling is the operating system's to
+/// impose (Job Objects, cgroups) and is not claimed until it is proven on each
+/// platform — see `docs/resource-mode.md`.
+async fn watch_memory(pid: u32, limit_mb: u64, stop: tokio::sync::watch::Receiver<bool>) -> u64 {
+    let mut peak = 0u64;
+    let mut stop = stop;
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(WATCH_INTERVAL) => {}
+            _ = stop.changed() => return peak,
+        }
+        let used = tree_memory_mb(pid);
+        peak = peak.max(used);
+        if limit_mb > 0 && used > limit_mb {
+            kill_tree(pid);
+            return peak;
+        }
+    }
+}
+
+/// The memory held by `pid` and everything descended from it, in MiB.
+pub fn tree_memory_mb(pid: u32) -> u64 {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+    let mut children: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for (child, proc) in sys.processes() {
+        if let Some(parent) = proc.parent() {
+            children
+                .entry(parent.as_u32())
+                .or_default()
+                .push(child.as_u32());
+        }
+    }
+    let mut total = 0u64;
+    let mut stack = vec![pid];
+    let mut seen = 0usize;
+    while let Some(current) = stack.pop() {
+        seen += 1;
+        if seen > 4096 {
+            break;
+        }
+        if let Some(proc) = sys.process(Pid::from_u32(current)) {
+            total += proc.memory();
+        }
+        if let Some(kids) = children.get(&current) {
+            stack.extend(kids.iter().copied());
+        }
+    }
+    total / (1024 * 1024)
 }
 
 /// One stream's bounded capture.
@@ -519,6 +630,7 @@ mod tests {
             false,
             &[],
             None,
+            0,
         )
         .await
         .unwrap_err();
@@ -545,12 +657,14 @@ mod tests {
             stdout_bytes: 3,
             stderr_bytes: 3,
             truncated: false,
+            peak_memory_mb: 12,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("exitCode"));
         assert!(!json.contains("exit_code"));
         assert!(json.contains("stdoutBytes"));
         assert!(json.contains("truncated"));
+        assert!(json.contains("peakMemoryMb"));
     }
 
     #[tokio::test]
@@ -737,6 +851,7 @@ mod tests {
                 Duration::from_secs(120),
                 None,
                 Some(job),
+                0,
             )
             .await
         });
@@ -751,5 +866,35 @@ mod tests {
         assert!(matches!(err, AppError::Cancelled), "got {err:?}");
         // And the name is free again.
         assert!(!JOBS.lock().unwrap().contains_key(job));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_run_past_its_ceiling_is_stopped_and_says_so() {
+        // The advisory ceiling: the run is measured and then ended. The error
+        // must name the ceiling — "the agent exited" explains nothing about a
+        // process the app itself killed.
+        let resolved = agentcli::Resolved {
+            program: "sh".into(),
+            prepend: vec!["-c".into()],
+        };
+        let args = vec!["x=$(head -c 200000000 /dev/zero | tr \\0 a); sleep 120".to_string()];
+        let err = run(
+            &resolved,
+            &args,
+            "",
+            Duration::from_secs(120),
+            None,
+            None,
+            // 1 MB: anything the shell allocates goes past it.
+            1,
+        )
+        .await
+        .unwrap_err();
+        let AppError::Agent(message) = err else {
+            panic!("expected an agent error, got {err:?}");
+        };
+        assert!(message.contains("ceiling"), "{message}");
+        assert!(message.contains("stopped"), "{message}");
     }
 }

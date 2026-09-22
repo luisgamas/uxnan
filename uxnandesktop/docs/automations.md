@@ -86,6 +86,12 @@ never behave differently.
 Exit codes: `0` the run finished (or was skipped for a legitimate reason), `1` a
 step failed, `2` the automation could not be run at all.
 
+**What a step cost.** Every ten seconds a running step's whole process tree is
+measured; the peak lands in the run record (`peakMemoryMb`), so an execution
+nobody watched can still say what it cost. A per-agent ceiling exists and is
+**off by default** — it is advisory (the run is measured and then stopped, not
+prevented from allocating), see [`resource-mode.md`](./resource-mode.md).
+
 **Ending a step.** A run is named per dispatch (`run:step:attempt`) and can be
 ended by name; ending it ends the **whole process tree** under the agent, not
 just the process the app holds — one path, used by a cancel and by a timeout

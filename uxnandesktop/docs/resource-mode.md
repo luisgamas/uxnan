@@ -77,6 +77,17 @@ Two conditions, one gate, one place ([`budget.rs`](../src-tauri/src/budget.rs)):
   numbers are **provisional** — conservative rather than measured; calibrating
   them against plan 001's baselines is a FOR-DEV item.
 
+Beside the gate, a run is **watched**: every ten seconds its whole process tree
+is measured, and the peak is recorded with the run (`peakMemoryMb`) — what an
+execution nobody saw actually cost. With `maxAgentMemoryMb` set, a tree past
+that ceiling is stopped and the run says so.
+
+That ceiling is **advisory, and the word is exact**: nothing refuses an
+allocation, the run is measured and then ended. A real limit is the operating
+system's to impose (Job Objects on Windows, cgroups on Linux) and this project
+does not claim one until it is proven on each platform — so the default is `0`,
+measure and never stop.
+
 Slots live in one ledger under the app's data directory, guarded by a lock only
 one process can hold. A slot belongs to the process that took it, and is given
 back when that process releases it **or stops existing**: the owner's pid and

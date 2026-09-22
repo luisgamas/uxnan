@@ -59,6 +59,15 @@ export interface ResourceCapabilities {
    *  measured — calibrating them against plan 001's baselines is a FOR-DEV
    *  item. Too high only means a step waits; too low means the machine swaps. */
   orchestrationMinFreeMemoryMb: number;
+  /** Advisory ceiling (MiB) on one agent's **whole process tree** — the agent
+   *  and everything it spawns. `0` = observe only, which is the default: the
+   *  peak is always recorded, but nothing is stopped for it.
+   *
+   *  Advisory is the honest word. Nothing here prevents an allocation; the run
+   *  is measured and then ended if it goes past. A real ceiling belongs to the
+   *  operating system (Job Objects, cgroups) and is not claimed until it is
+   *  proven on each platform. */
+  orchestrationMaxAgentMemoryMb: number;
   /** How much aggregated history the resource monitor's buffer retains (s). */
   resourceHistorySeconds: number;
   /** Whether the pet plays decorative idle one-shots (state changes always
@@ -76,6 +85,7 @@ export const OVERRIDABLE_KEYS = [
   "gitSweepIntervalMs",
   "orchestrationConcurrency",
   "orchestrationMinFreeMemoryMb",
+  "orchestrationMaxAgentMemoryMb",
   "resourceHistorySeconds",
   "petFlavour",
   "workspaceAutoSleep",
@@ -92,6 +102,9 @@ export const LIMITS = {
   /** A floor of 0 (off) up to 8 GiB: past that nothing would ever start on a
    *  normal machine, which is a broken setting, not a careful one. */
   orchestrationMinFreeMemoryMb: { min: 0, max: 8192 },
+  /** 0 (observe only) up to 64 GiB — a ceiling above the machine is not a
+   *  ceiling, and one below what an agent needs to start is a broken run. */
+  orchestrationMaxAgentMemoryMb: { min: 0, max: 65_536 },
   resourceHistorySeconds: { min: 60, max: 600 },
   autoSleepIdleMinutes: { min: 5, max: 480 },
   /** Effective GitHub poll floor (s) — "more frequent" must never mean
@@ -113,6 +126,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     orchestrationConcurrency: 2,
     orchestrationExtendedConcurrency: null,
     orchestrationMinFreeMemoryMb: 1536,
+    orchestrationMaxAgentMemoryMb: 0,
     resourceHistorySeconds: 180,
     petFlavour: false,
     workspaceAutoSleep: "suggest",
@@ -126,6 +140,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     orchestrationConcurrency: 4,
     orchestrationExtendedConcurrency: null,
     orchestrationMinFreeMemoryMb: 1024,
+    orchestrationMaxAgentMemoryMb: 0,
     resourceHistorySeconds: 600,
     petFlavour: true,
     workspaceAutoSleep: "off",
@@ -141,6 +156,7 @@ export const PRESETS: Record<ResourceProfile, ResourceCapabilities> = {
     // the budget-lease summary must show uxnan itself has CPU to spare.
     orchestrationExtendedConcurrency: 6,
     orchestrationMinFreeMemoryMb: 512,
+    orchestrationMaxAgentMemoryMb: 0,
     resourceHistorySeconds: 600,
     petFlavour: true,
     workspaceAutoSleep: "off",

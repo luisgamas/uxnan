@@ -508,6 +508,9 @@ export interface ResolvedBudget {
   concurrency: number;
   /** Free memory (MiB) required before another agent starts; `0` = no check. */
   minFreeMemoryMb: number;
+  /** Advisory ceiling (MiB) on one agent's whole process tree; `0` = observe
+   *  only. */
+  maxAgentMemoryMb: number;
 }
 
 /** Local resource observability settings (mirror of the Rust `ResourceSettings`).
