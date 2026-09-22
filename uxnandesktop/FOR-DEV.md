@@ -478,15 +478,17 @@ machinery or measurement.
       Resource mode against the real binary (same live-instance constraint as
       the popover journey above); the switch is covered at L1 (policy) + L2
       (component) instead, per `tests/quality-matrix.json` → `resource-mode`.
-- [ ] **Calibrate the agent budget's memory numbers.** The free-memory
-      condition an agent must clear before another starts
-      (`orchestrationMinFreeMemoryMb`: 1536 / 1024 / 512 MB by preset) is
-      **provisional** — chosen to be conservative, not measured. Derive them
-      from plan 001's baselines (what an agent of each family actually holds,
-      on each platform) and say so in `docs/resource-mode.md`, which currently
-      calls them provisional and points here. Too high only costs a wait; too
-      low lets the machine swap, so the number matters.
-      `FOR-DEV:` marker in `src/lib/resources/policy.ts`.
+- [ ] **Measure the agent footprint on Windows and Linux.** The budget's
+      free-memory numbers (`orchestrationMinFreeMemoryMb`: 1024 / 768 / 512 MB)
+      are derived from what an agent's process tree actually holds, measured on
+      **macOS** with `scripts/resources/agent-footprint.mjs` (OpenCode 562 MB
+      was the worst of the installed CLIs; the table is in
+      `docs/resource-mode.md`). The same script runs anywhere the runner does:
+      run it on the other two platforms with the matrix (005), and if a CLI
+      costs materially more there, the presets need a per-platform answer
+      rather than one number. Pi was not measurable here (its provider refused
+      for want of credits) and Grok, Qwen and Kimi are not installed on this
+      machine — they are the other gaps in the table.
 - [ ] **A real ceiling per agent, imposed by the OS.** The per-agent memory
       ceiling (`orchestrationMaxAgentMemoryMb`, off by default) is **advisory**:
       the run's process tree is sampled every 10 s and ended when it goes past,

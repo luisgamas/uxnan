@@ -30,7 +30,7 @@ describe("the mirrored agent budget", () => {
     expect(settings.resourceMode?.profile).toBe("efficient");
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 2,
-      minFreeMemoryMb: 1536,
+      minFreeMemoryMb: 1024,
       // Advisory and off by default on every preset: the peak is recorded,
       // nothing is stopped for it.
       maxAgentMemoryMb: 0,
@@ -86,7 +86,7 @@ describe("the mirrored agent budget", () => {
     resourceMode.syncRunnerBudget();
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 4,
-      minFreeMemoryMb: 1024,
+      minFreeMemoryMb: 768,
       maxAgentMemoryMb: 0,
     });
   });
@@ -96,7 +96,7 @@ describe("the mirrored agent budget", () => {
     expect(settings.resourceMode?.profile).toBe("balanced");
     expect(settings.resourceMode?.resolvedBudget).toEqual({
       concurrency: 4,
-      minFreeMemoryMb: 1024,
+      minFreeMemoryMb: 768,
       maxAgentMemoryMb: 0,
     });
   });

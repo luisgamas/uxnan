@@ -73,10 +73,30 @@ Two conditions, one gate, one place ([`budget.rs`](../src-tauri/src/budget.rs)):
   it. Before this the cap was per process, so three automations at four steps
   each put twelve agents on a machine that was promised four.
 - **Memory.** At least `minFreeMemoryMb` free when a step starts, so a run does
-  not push the machine into swap for a step it would then run slowly. These
-  numbers are **provisional** — conservative rather than measured; calibrating
-  them against plan 001's baselines is tracked in
-  [`FOR-DEV.md`](../FOR-DEV.md) → *Resource mode*.
+  not push the machine into swap for a step it would then run slowly.
+
+**Where the memory numbers come from.** They are measured, not guessed:
+`node scripts/resources/agent-footprint.mjs` runs each installed CLI through
+the real headless path with a one-word prompt and reads the peak its process
+tree held — the app's own sampler, the same number that lands in a run record.
+What matters for this gate is what a **newly started** agent needs, not what a
+long session grows to, which is exactly what that measurement is.
+
+| CLI | peak of the tree (3 runs, macOS arm64, 18 GB) |
+|---|---|
+| OpenCode | **562 MB** (mean 559) |
+| Claude Code | 255 MB (mean 245) |
+| Codex | 195 MB (mean 184) |
+| Antigravity | 133 MB (mean 88) |
+
+The worst case is what a preset has to make room for, plus the headroom its
+posture implies: Efficient yields the machine soonest (**1024 MB**, ~1.8×),
+Balanced sits above the worst case (**768 MB**, ~1.4×), Performance asks for
+about what one agent takes (**512 MB**). Re-run the script to re-derive them —
+it prints the same table. Pi could not be measured (its provider refused the
+request for want of credits, which is not a memory result), and these are
+**macOS** numbers: Windows and Linux need their own pass with the platform
+matrix ([`FOR-DEV.md`](../FOR-DEV.md) → *Resource mode*).
 
 Beside the gate, a run is **watched**: every ten seconds its whole process tree
 is measured, and the peak is recorded with the run (`peakMemoryMb`) — what an
