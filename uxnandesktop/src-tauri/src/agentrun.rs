@@ -480,9 +480,14 @@ const WATCH_FIRST: Duration = Duration::from_secs(1);
 /// still reported — the caller turns that into the error the person reads.
 ///
 /// **Advisory, not enforced.** Nothing here stops a process from allocating;
-/// it observes and then acts. A real ceiling is the operating system's to
-/// impose (Job Objects, cgroups) and is not claimed until it is proven on each
-/// platform — see `docs/resource-mode.md`.
+/// it observes and then acts.
+///
+// FOR-DEV: a real ceiling is the operating system's to impose — Job Objects on
+// Windows, cgroups on Linux, nothing equivalent on macOS. Plan 023 forbids
+// calling a limit hard until enforcement *and* descendant containment are
+// proven per platform, so it waits for the platform matrix (005). Until then
+// the UI and the docs say advisory, and they must keep saying it. See
+// FOR-DEV.md → *Resource mode*.
 async fn watch_memory(pid: u32, limit_mb: u64, stop: tokio::sync::watch::Receiver<bool>) -> u64 {
     let mut peak = 0u64;
     let mut stop = stop;

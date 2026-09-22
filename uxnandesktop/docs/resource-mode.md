@@ -75,7 +75,8 @@ Two conditions, one gate, one place ([`budget.rs`](../src-tauri/src/budget.rs)):
 - **Memory.** At least `minFreeMemoryMb` free when a step starts, so a run does
   not push the machine into swap for a step it would then run slowly. These
   numbers are **provisional** — conservative rather than measured; calibrating
-  them against plan 001's baselines is a FOR-DEV item.
+  them against plan 001's baselines is tracked in
+  [`FOR-DEV.md`](../FOR-DEV.md) → *Resource mode*.
 
 Beside the gate, a run is **watched**: every ten seconds its whole process tree
 is measured, and the peak is recorded with the run (`peakMemoryMb`) — what an
@@ -84,9 +85,11 @@ that ceiling is stopped and the run says so.
 
 That ceiling is **advisory, and the word is exact**: nothing refuses an
 allocation, the run is measured and then ended. A real limit is the operating
-system's to impose (Job Objects on Windows, cgroups on Linux) and this project
-does not claim one until it is proven on each platform — so the default is `0`,
-measure and never stop.
+system's to impose (Job Objects on Windows, cgroups on Linux; macOS has no
+equivalent) and this project does not claim one until enforcement *and*
+descendant containment are proven on each platform — so the default is `0`,
+measure and never stop, and the enforcement half is tracked in
+[`FOR-DEV.md`](../FOR-DEV.md) → *Resource mode*, with the platform matrix.
 
 Slots live in one ledger under the app's data directory, guarded by a lock only
 one process can hold. A slot belongs to the process that took it, and is given

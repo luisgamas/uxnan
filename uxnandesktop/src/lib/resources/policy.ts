@@ -55,9 +55,10 @@ export interface ResourceCapabilities {
    *  `0` = start regardless. Checked by the global budget every process shares
    *  (`budget.rs`), not by the dispatcher, so it holds with the app closed.
    *
-   *  Provisional numbers: they are deliberately conservative rather than
-   *  measured — calibrating them against plan 001's baselines is a FOR-DEV
-   *  item. Too high only means a step waits; too low means the machine swaps. */
+   *  FOR-DEV: the per-preset numbers are provisional — deliberately
+   *  conservative rather than measured. Derive them from plan 001's baselines
+   *  (what an agent actually holds, per platform); too high only means a step
+   *  waits, too low means the machine swaps. See FOR-DEV.md → *Resource mode*. */
   orchestrationMinFreeMemoryMb: number;
   /** Advisory ceiling (MiB) on one agent's **whole process tree** — the agent
    *  and everything it spawns. `0` = observe only, which is the default: the

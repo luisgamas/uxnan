@@ -478,6 +478,25 @@ machinery or measurement.
       Resource mode against the real binary (same live-instance constraint as
       the popover journey above); the switch is covered at L1 (policy) + L2
       (component) instead, per `tests/quality-matrix.json` → `resource-mode`.
+- [ ] **Calibrate the agent budget's memory numbers.** The free-memory
+      condition an agent must clear before another starts
+      (`orchestrationMinFreeMemoryMb`: 1536 / 1024 / 512 MB by preset) is
+      **provisional** — chosen to be conservative, not measured. Derive them
+      from plan 001's baselines (what an agent of each family actually holds,
+      on each platform) and say so in `docs/resource-mode.md`, which currently
+      calls them provisional and points here. Too high only costs a wait; too
+      low lets the machine swap, so the number matters.
+      `FOR-DEV:` marker in `src/lib/resources/policy.ts`.
+- [ ] **A real ceiling per agent, imposed by the OS.** The per-agent memory
+      ceiling (`orchestrationMaxAgentMemoryMb`, off by default) is **advisory**:
+      the run's process tree is sampled every 10 s and ended when it goes past,
+      which is not the same as an allocation being refused. Real enforcement is
+      Job Objects (Windows) and cgroups (Linux), with no macOS equivalent —
+      and plan 023 forbids calling a limit hard until enforcement *and*
+      descendant containment are proven on each platform, so this belongs with
+      the platform matrix (005). Until then the UI and the docs must keep
+      saying advisory. `FOR-DEV:` marker in `src-tauri/src/agentrun.rs`
+      (`watch_memory`).
 - [ ] **Ungoverned recurring work, declared:** the 1 s agent-detection tick and
       the OSC title layer are deliberately outside the policy in v1 — pacing
       them risks stale "needs you" states, which the mode must never cause
