@@ -625,7 +625,9 @@ control:
     "claude-code": {
       "model": "opus",                 // default: the latest Opus alias
       "models": [                       // extra concrete versions in the picker
+        { "id": "claude-fable-5-1", "displayName": "Fable 5.1" },
         { "id": "claude-fable-5",   "displayName": "Fable 5" },
+        { "id": "claude-opus-5-5",  "displayName": "Opus 5.5" },
         { "id": "claude-opus-5",    "displayName": "Opus 5" },
         { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },

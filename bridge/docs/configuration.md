@@ -125,7 +125,9 @@ reserved and not yet consumed.)
       "permissionMode": "acceptEdits",
       "model": "opus",
       "models": [
+        { "id": "claude-fable-5-1", "displayName": "Fable 5.1" },
         { "id": "claude-fable-5", "displayName": "Fable 5" },
+        { "id": "claude-opus-5-5", "displayName": "Opus 5.5" },
         { "id": "claude-opus-5", "displayName": "Opus 5" },
         { "id": "claude-opus-4-8", "displayName": "Opus 4.8" },
         { "id": "claude-sonnet-5", "displayName": "Sonnet 5" },
