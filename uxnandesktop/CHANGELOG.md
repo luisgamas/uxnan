@@ -4,6 +4,12 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Fable 5.1 and Opus 5.5 in the Claude model picker.** `CLAUDE_MODELS` in
+  `agentcli.rs`, which feeds the AI commit-message and PR-body pickers, gains
+  `claude-fable-5-1` and `claude-opus-5-5` above their predecessors — the same
+  twelve entries, in the same order, as the bridge's seeded table.
 
 ## [0.0.53] - 20260921
 ### Added

@@ -507,8 +507,10 @@ pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
 /// Keep newest/most-capable first (that's the picker order). The user can always
 /// pick "Default" in the UI to let the CLI choose its own configured model.
 /// Source of truth for current ids: the Claude API model catalog.
-const CLAUDE_MODELS: [(&str, &str); 10] = [
+const CLAUDE_MODELS: [(&str, &str); 12] = [
+    ("claude-fable-5-1", "Fable 5.1"),
     ("claude-fable-5", "Fable 5"),
+    ("claude-opus-5-5", "Opus 5.5"),
     ("claude-opus-5", "Opus 5"),
     ("claude-opus-4-8", "Opus 4.8"),
     ("claude-opus-4-7", "Opus 4.7"),
@@ -985,8 +987,10 @@ Available models:
         let claude = static_models("claude");
         // Exact concrete model ids (no "latest" aliases), newest first — the same
         // order as the bridge's twin list (see the CLAUDE_MODELS doc comment).
-        assert_eq!(claude.first().unwrap().id, "claude-fable-5");
-        assert_eq!(claude[1].id, "claude-opus-5");
+        assert_eq!(claude.first().unwrap().id, "claude-fable-5-1");
+        assert_eq!(claude[1].id, "claude-fable-5");
+        assert_eq!(claude[2].id, "claude-opus-5-5");
+        assert_eq!(claude[3].id, "claude-opus-5");
         assert!(claude.iter().any(|m| m.id == "claude-sonnet-5"));
         assert!(claude.iter().any(|m| m.id == "claude-sonnet-4-5"));
         assert!(claude.iter().all(|m| m.id.starts_with("claude-")));
