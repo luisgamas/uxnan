@@ -4,6 +4,14 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Claude Code offers Fable 5.1 and Opus 5.5 by version.** The seeded
+  `claude-code` model table in `daemon-config.ts` gains `claude-fable-5-1` and
+  `claude-opus-5-5`, each placed above its predecessor, so the phone's picker
+  lists twelve pinned versions headed by the newest. The `fable`/`opus` aliases
+  were already routing to them; this makes the concrete versions pickable. The
+  desktop's twin table (`agentcli.rs` → `CLAUDE_MODELS`) gets the same two.
 
 ## [0.0.25-alpha.20260920] - 20260920
 ### Added

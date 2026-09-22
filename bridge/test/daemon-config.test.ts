@@ -18,7 +18,9 @@ test('resolveDaemonConfig seeds Claude Code with concrete pinned models', () => 
   const ids = (resolveDaemonConfig({}).agents['claude-code']?.models ?? []).map((m) =>
     typeof m === 'string' ? m : m.id,
   );
+  assert.ok(ids.includes('claude-fable-5-1'));
   assert.ok(ids.includes('claude-fable-5'));
+  assert.ok(ids.includes('claude-opus-5-5'));
   assert.ok(ids.includes('claude-opus-5'));
   assert.ok(ids.includes('claude-opus-4-8'));
   assert.ok(ids.includes('claude-opus-4-6'));
@@ -33,8 +35,10 @@ test('resolveDaemonConfig seeds Claude Code with concrete pinned models', () => 
   assert.ok(ids.every((id) => !/-\d{8}$/.test(id)));
   // Newest/most capable first — the phone renders the seed order verbatim, and
   // the desktop's twin list (agentcli.rs CLAUDE_MODELS) mirrors it.
-  assert.equal(ids[0], 'claude-fable-5');
-  assert.equal(ids[1], 'claude-opus-5');
+  assert.equal(ids[0], 'claude-fable-5-1');
+  assert.equal(ids[1], 'claude-fable-5');
+  assert.equal(ids[2], 'claude-opus-5-5');
+  assert.equal(ids[3], 'claude-opus-5');
 });
 
 test('a partial per-agent override preserves seeded defaults like models', () => {
