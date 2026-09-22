@@ -11,6 +11,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `claude-fable-5-1` and `claude-opus-5-5` above their predecessors — the same
   twelve entries, in the same order, as the bridge's seeded table.
 
+### Fixed
+
+- **Stopping a run now stops the agent.** Cancelling an orchestration run
+  stopped the *engine*: a headless step already in flight kept running to the
+  end — still working, still spending, still writing to the folder — because
+  nothing could reach the subprocess. A dispatch is now **named** and can be
+  ended by name (`agent_cancel_job`), and ending it ends its **whole process
+  tree**: an agent CLI is the parent of the tools it spawns, and killing only
+  the process the app held left those behind. The same ending is what a
+  **timeout** now gives a run. A step ended this way is recorded as *stopped*,
+  not failed, and is not retried. The name is keyed by the dispatch, so a
+  cancel can never reach the retry that replaced it.
+
 ### Changed
 
 - **An automation's output can no longer grow without bound, and its

@@ -576,6 +576,7 @@ pub fn run() {
             commands::ai_commit_agents,
             commands::ai_commit_models,
             commands::agent_run_headless,
+            commands::agent_cancel_job,
             commands::set_agent_commands,
             commands::get_hook_info,
             commands::agent_states,

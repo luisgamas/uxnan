@@ -14,7 +14,12 @@
 // re-attaches on load.
 
 import { invoke } from "@tauri-apps/api/core";
-import { agentRunHeadless, setOrchestrationRuns, type HeadlessResult } from "$lib/api";
+import {
+  agentCancelJob,
+  agentRunHeadless,
+  setOrchestrationRuns,
+  type HeadlessResult,
+} from "$lib/api";
 import { registerFlush } from "./flushRegistry";
 import { terminals } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
@@ -36,6 +41,7 @@ import {
   createRun,
   deriveRunStatus,
   dispatchIdFor,
+  headlessJobId,
   isDriven,
   isStepTerminal,
   nextStatusForPending,
@@ -683,6 +689,12 @@ class OrchestrationRunStore {
     const run = this.runById(runId);
     if (!run) return;
     for (const s of run.steps) {
+      // A headless step that is running owns a subprocess: end it, or the
+      // agent keeps working (and spending) for a run nobody is watching any
+      // more. Best-effort — a run that just finished is a race, not an error.
+      if (s.status === "running" && s.kind === "headless") {
+        void agentCancelJob(headlessJobId(runId, s.id, s.dispatchId)).catch(() => {});
+      }
       if (s.status !== "completed" && s.status !== "failed") s.status = "skipped";
     }
     run.status = "cancelled";
@@ -959,7 +971,10 @@ class OrchestrationRunStore {
     step.error = undefined;
     const runId = run.id;
     const stepId = step.id;
-    void agentRunHeadless(agent, model, text, cwd)
+    // Name the run after the dispatch that started it, so a cancel ends this
+    // attempt and can never reach the retry that follows it.
+    const job = headlessJobId(runId, stepId, step.dispatchId);
+    void agentRunHeadless(agent, model, text, cwd, undefined, job)
       .then((res) => this.onHeadlessDone(runId, stepId, res, null))
       .catch((err: unknown) =>
         this.onHeadlessDone(runId, stepId, null, err instanceof Error ? err.message : String(err)),

@@ -61,6 +61,9 @@ pub enum Outcome {
         message: String,
         capture: Capture,
     },
+    /// Ended on purpose (`agentrun::cancel`). Not a failure: a step somebody
+    /// stopped must not be retried, nor reported as broken.
+    Cancelled,
 }
 
 /// How big a step's output was, and whether what is kept is all of it.
@@ -143,6 +146,11 @@ pub fn apply_outcome(run: &mut AutomationRun, step: &Step, outcome: Outcome, now
             sr.truncated = capture.truncated;
             sr.exit_code = Some(0);
             sr.error = None;
+            sr.finished_at = Some(now);
+        }
+        Outcome::Cancelled => {
+            sr.status = StepStatus::Skipped;
+            sr.error = Some("cancelled".to_string());
             sr.finished_at = Some(now);
         }
         Outcome::Failure {
@@ -251,6 +259,14 @@ pub async fn execute(
             let dir = cwd.to_string();
             let timeout_ms = step.timeout_ms.or(Some(DEFAULT_STEP_TIMEOUT_MS));
             let autonomous = step.autonomous;
+            // Name the run after the attempt that started it, so a cancel can
+            // never reach a retry that came after it.
+            let attempt = run
+                .steps
+                .iter()
+                .find(|s| s.id == id)
+                .map_or(1, |s| s.attempts + 1);
+            let job = format!("{}:{}:{}", run.id, id, attempt);
             inflight.spawn(async move {
                 let outcome = match crate::agentrun::run_headless(
                     &agent,
@@ -261,6 +277,7 @@ pub async fn execute(
                     autonomous,
                     // A step runs its model as configured, effort included.
                     &[],
+                    Some(&job),
                 )
                 .await
                 {
@@ -294,6 +311,7 @@ pub async fn execute(
                             message,
                         }
                     }
+                    Err(AppError::Cancelled) => Outcome::Cancelled,
                     Err(e) => Outcome::Failure {
                         stderr: String::new(),
                         exit_code: None,
@@ -595,6 +613,24 @@ mod tests {
         assert_eq!(s.output_bytes, 4_000_000);
         assert_eq!(s.stderr_bytes, 4);
         assert!(s.truncated);
+    }
+
+    #[test]
+    fn a_cancelled_step_is_stopped_not_failed_and_is_not_retried() {
+        // Someone (or the engine tearing the run down) ended the step. Retrying
+        // it would restart the very work that was stopped, and calling it
+        // failed would put an error in the record for something nobody
+        // considers broken.
+        let a = automation(vec![step("s1", &[], OnFailure::Retry, 3)]);
+        let mut run = run_of(&a);
+        run.steps[0].status = StepStatus::Running;
+        run.steps[0].attempts = 1;
+        apply_outcome(&mut run, &a.steps[0], Outcome::Cancelled, 7);
+        let s = &run.steps[0];
+        assert_eq!(s.status, StepStatus::Skipped);
+        assert_eq!(s.error.as_deref(), Some("cancelled"));
+        assert_eq!(s.attempts, 1, "a cancel does not spend an attempt");
+        assert_eq!(s.finished_at, Some(7));
     }
 
     #[test]

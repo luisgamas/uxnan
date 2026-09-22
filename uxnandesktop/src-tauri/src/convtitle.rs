@@ -158,6 +158,7 @@ pub async fn generate(agent_id: &str, transcript: &str, cwd: &str) -> Result<Str
         // A title is read-only work: never let it act on the workspace.
         false,
         &title_effort_args(agent_id),
+        None,
     )
     .await
     .inspect_err(|e| fail(agent_id, &format!("could not run the CLI: {e}")))?;

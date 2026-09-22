@@ -154,6 +154,13 @@ asi que lee el numero que la app espeja en sus ajustes
 acotado al techo del motor (8); sin nada registrado usa 4, que es lo que uso
 toda automation antes de esto (`runner::concurrency_budget`).
 
+**Cada paso corre con nombre** (`corrida:paso:intento`) y puede terminarse por
+ese nombre (`agentrun::cancel`), lo que termina **todo el arbol de procesos**
+bajo el agente — no solo el proceso que la app sostiene, que es lo que dejaba
+vivas las herramientas que el agente habia lanzado. Es el mismo final que da el
+timeout. Un paso terminado asi queda como **detenido** (`skipped`, `error:
+cancelled`), no como fallido, y no se reintenta.
+
 **La captura de cada paso esta acotada** (`agentrun::MAX_STREAM_BYTES`, 512 KiB
 por flujo): pasado el tope la tuberia se sigue **vaciando** — una tuberia llena
 bloquea al hijo y un hijo bloqueado no termina — pero solo se conservan la

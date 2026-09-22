@@ -86,6 +86,12 @@ never behave differently.
 Exit codes: `0` the run finished (or was skipped for a legitimate reason), `1` a
 step failed, `2` the automation could not be run at all.
 
+**Ending a step.** A run is named per dispatch (`run:step:attempt`) and can be
+ended by name; ending it ends the **whole process tree** under the agent, not
+just the process the app holds — one path, used by a cancel and by a timeout
+alike (`agentrun::cancel` / `kill_tree`). A step ended this way is recorded as
+stopped (skipped, `error: cancelled`), never as failed, and never retried.
+
 **How much it may run at once, and how much it keeps.** A run's steps are
 dispatched up to the **orchestration concurrency of the person's resource
 policy** — the same number the Runs engine dispatches by and the control

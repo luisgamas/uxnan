@@ -10,9 +10,16 @@
 //! trusting a cooperative "I'm done" signal.
 //!
 //! Built on [`crate::agentcli`] (`resolve` + `build_args`) and the windowless
-//! spawn ([`crate::winproc`]), with a hard timeout, `kill_on_drop`, a prompt
-//! cap for the agents whose only channel is the command line, and a **cap on
-//! what is kept of each output stream** (see [`MAX_STREAM_BYTES`]). **This is the one
+//! spawn ([`crate::winproc`]), with a hard timeout, a prompt cap for the agents
+//! whose only channel is the command line, and a **cap on what is kept of each
+//! output stream** (see [`MAX_STREAM_BYTES`]).
+//!
+//! A run can be **named** ([`RunHandle`]) and then **cancelled**
+//! ([`cancel`]) — the one place that ends a headless run before its time,
+//! shared by the caller who asks and by the timeout that gives up. Ending it
+//! means ending its **whole process tree** ([`kill_tree`]): an agent CLI is a
+//! parent of the tools it spawns, and killing only the process we hold leaves
+//! them running with nobody watching. **This is the one
 //! one-shot runner**: AI commit messages and AI PR bodies
 //! ([`crate::aicommit`]) and automation steps go through it too, so they all get
 //! the same prompt-delivery handling instead of each re-deriving it.
@@ -60,6 +67,101 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 /// and bounds a full concurrency budget of steps at a few MiB.
 const MAX_STREAM_BYTES: usize = 512 * 1024;
 
+/// Every headless run in flight, by the name its caller gave it: the pid to end
+/// if that name is cancelled, and whether the cancel already happened (so the
+/// run reports *cancelled* rather than a mysterious failure).
+///
+/// Process-wide because the thing it tracks is process-wide — the children this
+/// process owns. A run with no name is not registered and cannot be cancelled;
+/// the app names every step it dispatches.
+static JOBS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Job>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+#[derive(Debug, Clone, Copy)]
+struct Job {
+    pid: u32,
+    cancelled: bool,
+}
+
+/// Cancel the named run: end its process tree now. Returns whether a run by
+/// that name was in flight — a cancel of something already finished is not an
+/// error, it is a race the caller does not have to think about.
+///
+/// The run's own future then returns [`AppError::Cancelled`], so a step that a
+/// person stopped is never recorded as a step that failed.
+pub fn cancel(job: &str) -> bool {
+    let pid = {
+        let mut jobs = JOBS.lock().expect("jobs");
+        match jobs.get_mut(job) {
+            Some(entry) => {
+                entry.cancelled = true;
+                entry.pid
+            }
+            None => return false,
+        }
+    };
+    kill_tree(pid);
+    true
+}
+
+/// Whether the named run was cancelled while it ran.
+fn was_cancelled(job: &str) -> bool {
+    JOBS.lock()
+        .expect("jobs")
+        .get(job)
+        .is_some_and(|entry| entry.cancelled)
+}
+
+/// End `pid` and every process descended from it, deepest first.
+///
+/// One implementation for every platform, over the process table this app
+/// already samples (`sysinfo`): a snapshot is taken, the descendants of `pid`
+/// are walked from it, and each is asked to end — children before their parent,
+/// so a parent cannot spawn more while its children are being ended. Killing
+/// only the process we hold is what left an agent's tools (a `git`, a language
+/// server, another agent) running after a cancel.
+///
+/// Best-effort by nature: a process may exit between the snapshot and the kill,
+/// and one that ignores termination outlives it. Both are fine here — the
+/// caller's own child is always ended, so the run always finishes.
+pub fn kill_tree(pid: u32) {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    // parent → children, from the one snapshot: the walk must not race the
+    // table it walks.
+    let mut children: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for (child, proc) in sys.processes() {
+        if let Some(parent) = proc.parent() {
+            children
+                .entry(parent.as_u32())
+                .or_default()
+                .push(child.as_u32());
+        }
+    }
+    // Depth-first, collecting before killing, so the order is deepest-first.
+    let mut order = Vec::new();
+    let mut stack = vec![pid];
+    while let Some(current) = stack.pop() {
+        order.push(current);
+        if let Some(kids) = children.get(&current) {
+            stack.extend(kids.iter().copied());
+        }
+        // A tree deeper or wider than this is a runaway of its own; stop
+        // walking rather than spin forever on a cycle a borrowed table could
+        // (in principle) show.
+        if order.len() > 4096 {
+            break;
+        }
+    }
+    for victim in order.into_iter().rev() {
+        if let Some(proc) = sys.process(Pid::from_u32(victim)) {
+            proc.kill();
+        }
+    }
+}
+
 /// The captured result of a headless run — the raw output plus the **verified**
 /// process exit code (the run engine's completion signal).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -99,6 +201,7 @@ pub async fn run_headless(
     timeout_ms: Option<u64>,
     autonomous: bool,
     extra: &[String],
+    job: Option<&str>,
 ) -> Result<HeadlessResult, AppError> {
     let Some(resolved) = agentcli::resolve(agent_id) else {
         return Err(AppError::Agent(format!(
@@ -121,7 +224,7 @@ pub async fn run_headless(
                 autonomous,
                 extra,
             )?;
-            run(&resolved, &args, cwd, timeout, Some(prompt)).await
+            run(&resolved, &args, cwd, timeout, Some(prompt), job).await
         }
         agentcli::PromptDelivery::File => {
             let file = PromptFile::write(prompt)?;
@@ -133,7 +236,7 @@ pub async fn run_headless(
                 extra,
             )?;
             // The file must outlive the run; `PromptFile` removes it on drop.
-            run(&resolved, &args, cwd, timeout, None).await
+            run(&resolved, &args, cwd, timeout, None, job).await
         }
         agentcli::PromptDelivery::Argv => {
             let capped = truncate_prompt(prompt, MAX_PROMPT_BYTES);
@@ -144,7 +247,7 @@ pub async fn run_headless(
                 autonomous,
                 extra,
             )?;
-            run(&resolved, &args, cwd, timeout, None).await
+            run(&resolved, &args, cwd, timeout, None, job).await
         }
     }
 }
@@ -200,6 +303,7 @@ async fn run(
     cwd: &str,
     timeout: Duration,
     stdin_prompt: Option<&str>,
+    job: Option<&str>,
 ) -> Result<HeadlessResult, AppError> {
     use tokio::io::AsyncWriteExt;
 
@@ -228,6 +332,9 @@ async fn run(
     let mut child = cmd
         .spawn()
         .map_err(|e| AppError::Agent(format!("failed to start the agent: {e}")))?;
+    // Named runs can be cancelled; the guard takes the name out of the registry
+    // however this function leaves — returning, erroring, or being dropped.
+    let _registration = job.and_then(|name| child.id().map(|pid| Registration::new(name, pid)));
 
     if let Some(text) = stdin_prompt {
         // Take the handle so it drops here: the close is the CLI's EOF, and
@@ -249,8 +356,12 @@ async fn run(
     let status = match tokio::time::timeout(timeout, child.wait()).await {
         Ok(res) => res.map_err(|e| AppError::Agent(e.to_string()))?,
         Err(_) => {
-            // Kill it now rather than leaving it to `kill_on_drop`, so the
-            // readers see EOF and end with the child instead of outliving it.
+            // Out of time: end the whole tree, not just the process we hold —
+            // the same ending a cancel gives it — so the tools the agent
+            // spawned do not outlive the run that started them.
+            if let Some(pid) = child.id() {
+                kill_tree(pid);
+            }
             let _ = child.start_kill();
             out_task.abort();
             err_task.abort();
@@ -260,6 +371,13 @@ async fn run(
             )));
         }
     };
+    // Ended by a cancel, not by its own hand: say so, so the step reads as
+    // stopped rather than failed.
+    if job.is_some_and(was_cancelled) {
+        out_task.abort();
+        err_task.abort();
+        return Err(AppError::Cancelled);
+    }
 
     let out = out_task.await.unwrap_or_default();
     let err = err_task.await.unwrap_or_default();
@@ -271,6 +389,34 @@ async fn run(
         stderr_bytes: err.bytes,
         truncated: out.truncated || err.truncated,
     })
+}
+
+/// Keeps a named run in [`JOBS`] for as long as it runs, and takes it out
+/// again however the run ends — including a panic or a dropped future, which is
+/// what a plain "remove at the end" misses.
+struct Registration {
+    name: String,
+}
+
+impl Registration {
+    fn new(name: &str, pid: u32) -> Self {
+        JOBS.lock().expect("jobs").insert(
+            name.to_string(),
+            Job {
+                pid,
+                cancelled: false,
+            },
+        );
+        Self {
+            name: name.to_string(),
+        }
+    }
+}
+
+impl Drop for Registration {
+    fn drop(&mut self) {
+        JOBS.lock().expect("jobs").remove(&self.name);
+    }
 }
 
 /// One stream's bounded capture.
@@ -364,9 +510,18 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_agent_errors_without_spawning() {
-        let err = run_headless("definitely-not-an-agent", "", "hi", "", None, false, &[])
-            .await
-            .unwrap_err();
+        let err = run_headless(
+            "definitely-not-an-agent",
+            "",
+            "hi",
+            "",
+            None,
+            false,
+            &[],
+            None,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, AppError::Agent(_)));
     }
 
@@ -473,5 +628,128 @@ mod tests {
         assert!(out.bytes > 4096 * 4, "wrote {} bytes", out.bytes);
         assert!(out.truncated);
         assert!(err_task.await.unwrap().bytes == 0);
+    }
+    /// A real tree: a shell that spawns a child which spawns a grandchild, all
+    /// three sleeping. Killing the process we hold is not enough — the point of
+    /// `kill_tree` is that the grandchild goes too, because that is where an
+    /// agent's actual work (a `git`, a build, another agent) lives.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn kill_tree_takes_the_grandchildren_too() {
+        use std::time::Instant;
+
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("grandchild.pid");
+        let script = format!(
+            // sh → sh → sleep: the innermost writes its pid where the test can
+            // find it, then sleeps well past the test's own patience.
+            "sh -c 'sh -c \"echo \\$\\$ > {}; sleep 300\" & sleep 300'",
+            marker.display()
+        );
+        let mut child = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn the tree");
+        let root = child.id().expect("pid");
+
+        // Wait for the grandchild to exist (it writes its pid).
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let grandchild = loop {
+            if let Ok(text) = std::fs::read_to_string(&marker) {
+                if let Ok(pid) = text.trim().parse::<u32>() {
+                    break pid;
+                }
+            }
+            assert!(Instant::now() < deadline, "the grandchild never started");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        };
+        assert!(alive(grandchild), "the grandchild should be running");
+
+        kill_tree(root);
+        let _ = child.wait().await;
+
+        // The whole tree is gone, not just the process we held.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while alive(grandchild) {
+            assert!(
+                Instant::now() < deadline,
+                "the grandchild outlived the kill"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(!alive(root), "the root outlived the kill");
+    }
+
+    /// Whether a pid is a live process, asked the same way the killer asks.
+    #[cfg(unix)]
+    fn alive(pid: u32) -> bool {
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+        let mut sys = System::new();
+        let target = Pid::from_u32(pid);
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[target]),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        // A zombie is not alive: it has been killed and is only waiting to be
+        // reaped by a parent that is itself gone.
+        sys.process(target)
+            .is_some_and(|p| !matches!(p.status(), sysinfo::ProcessStatus::Zombie))
+    }
+
+    #[test]
+    fn cancelling_a_name_nobody_is_running_is_not_an_error() {
+        assert!(!cancel("no-such-run"));
+    }
+
+    #[tokio::test]
+    async fn a_registration_lasts_exactly_as_long_as_its_run() {
+        // The registry is what a cancel searches; an entry that outlived its
+        // run would send a kill to a pid the OS may have given to someone else.
+        assert!(!JOBS.lock().unwrap().contains_key("job-1"));
+        {
+            let _registration = Registration::new("job-1", std::process::id());
+            assert!(JOBS.lock().unwrap().contains_key("job-1"));
+        }
+        assert!(!JOBS.lock().unwrap().contains_key("job-1"));
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_cancelled_run_reports_itself_cancelled_not_failed() {
+        // A step somebody stopped must not be recorded as a step that broke.
+        let resolved = agentcli::Resolved {
+            program: "sh".into(),
+            prepend: vec!["-c".into()],
+        };
+        let args = vec!["sleep 300".to_string()];
+        let job = "cancel-me";
+        let running = tokio::spawn(async move {
+            run(
+                &resolved,
+                &args,
+                "",
+                Duration::from_secs(120),
+                None,
+                Some(job),
+            )
+            .await
+        });
+        // Wait until it is registered, then cancel it by name.
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while !JOBS.lock().unwrap().contains_key(job) {
+            assert!(std::time::Instant::now() < deadline, "never registered");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(cancel(job), "the run was in flight");
+        let err = running.await.unwrap().unwrap_err();
+        assert!(matches!(err, AppError::Cancelled), "got {err:?}");
+        // And the name is free again.
+        assert!(!JOBS.lock().unwrap().contains_key(job));
     }
 }

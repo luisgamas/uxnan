@@ -4088,6 +4088,10 @@ pub async fn agent_run_headless(
     timeout_ms: Option<u64>,
     // Opt-in auto-approve; absent means the safe default.
     autonomous: Option<bool>,
+    // The caller's name for this run, so it can cancel it
+    // (`agent_cancel_job`). The orchestration engine names every step it
+    // dispatches; a caller that passes none simply cannot cancel.
+    job_id: Option<String>,
 ) -> Result<crate::agentrun::HeadlessResult, CommandError> {
     crate::agentrun::run_headless(
         &agent,
@@ -4098,9 +4102,22 @@ pub async fn agent_run_headless(
         autonomous.unwrap_or(false),
         // An automation step runs the model as configured, effort included.
         &[],
+        job_id.as_deref(),
     )
     .await
     .map_err(CommandError::from)
+}
+
+/// End a headless run the caller named, and the whole process tree under it.
+///
+/// This is what makes cancelling a run real: without it, stopping a run in the
+/// console only stopped the *engine* — the agent it had already started kept
+/// working, kept spending, and kept writing to the folder. Returns whether a
+/// run by that name was in flight; a cancel that arrives after the run
+/// finished is a race, not an error.
+#[tauri::command]
+pub async fn agent_cancel_job(job_id: String) -> Result<bool, CommandError> {
+    Ok(crate::agentrun::cancel(&job_id))
 }
 
 /// Payload of the `agent:detected` event: which agent command (if any) the

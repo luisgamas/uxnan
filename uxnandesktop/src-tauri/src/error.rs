@@ -36,6 +36,11 @@ pub enum AppError {
     /// another (see `target::check`). Always fatal to the call: nothing runs.
     #[error("execution target mismatch: {0}")]
     TargetMismatch(String),
+    /// A run was ended on purpose — by the person, or by the engine tearing a
+    /// run down. Its own variant because it is not a failure to report: a step
+    /// somebody stopped must not read as a step that broke.
+    #[error("cancelled")]
+    Cancelled,
     #[error("updater error: {0}")]
     Updater(String),
     #[error("github error: {0}")]
@@ -73,6 +78,7 @@ impl From<AppError> for CommandError {
             AppError::Invalid(_) => "INVALID_INPUT",
             AppError::NotConnected(_) => "NOT_CONNECTED",
             AppError::TargetMismatch(_) => "TARGET_MISMATCH",
+            AppError::Cancelled => "CANCELLED",
             AppError::Updater(_) => "UPDATER_ERROR",
             AppError::Github(_) => "GITHUB_ERROR",
         };
