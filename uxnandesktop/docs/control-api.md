@@ -402,8 +402,9 @@ Everything else — whether launched agents get the tools at all, which agents,
 the frictionless launch, the manual MCP config — is **Settings → Browser →
 Agent tools (MCP)**, where the wiring grew from ([`docs/browser.md`](./browser.md)).
 That switch stands on its own: the integrated browser's master switch takes
-away the `$BROWSER` shim, never the catalog (the browser tools then answer
-*unavailable*); the storage keys stayed on the browser settings object
+away the `$BROWSER` shim, never the catalog (`browser_open` then sends the URL
+to the system browser and says `routed: "external"`, and the tools that need a
+page find none); the storage keys stayed on the browser settings object
 (`browser.mcpEnabled`, `mcpDisabledAgents`, `frictionFree`), so nothing a
 person set is lost.
 

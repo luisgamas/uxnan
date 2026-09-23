@@ -46,10 +46,15 @@ tauri-build = { version = "2", features = [] }
 # `uxnan-cli`, so the app and its console client cannot disagree on a name.
 uxnan-control-protocol = { path = "crates/control-protocol" }
 # `devtools`: keep web DevTools available in release builds too, so the integrated
-# developer browser (a docked `WebviewWindow`) can debug the pages agents serve.
+# developer browser can debug the pages agents serve.
 # `macos-private-api` exists solely for the desktop pet window: a transparent
 # webview window needs it on macOS (it is a no-op on Windows/Linux).
-tauri = { version = "2", features = ["devtools", "macos-private-api"] }
+# `unstable` is Tauri's multi-webview API (`Window::add_child`): the integrated
+# browser's pages are child webviews *inside* the main window, so they move,
+# minimize and change desktop with it and never float over other apps. Every
+# child webview is created from an `async` command — a synchronous one deadlocks
+# WebView2 creation on Windows (see `browser/host.rs`).
+tauri = { version = "2", features = ["devtools", "macos-private-api", "unstable"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"

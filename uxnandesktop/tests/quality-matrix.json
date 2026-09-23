@@ -238,7 +238,7 @@
         "L2"
       ],
       "evidence": {
-        "L3": "src-tauri/src/browser.rs #[cfg(test)] (scheme gate)",
+        "L3": "src-tauri/src/browser/mod.rs #[cfg(test)] (URL gate), src-tauri/src/browser/host.rs #[cfg(test)]",
         "L4": "tests/e2e/specs/browser.e2e.mjs"
       },
       "platforms": {
@@ -246,7 +246,7 @@
         "macos": "untested",
         "linux": "untested"
       },
-      "gaps": "The journey opens a loopback page in the browser window — the only multi-window coverage in the suite. Closing it, and the routing preference, are not covered."
+      "gaps": "The journey opens, loads and closes a loopback page (a child webview of the main window). Switching workspace, overlays over the page and the routing preference are not covered end to end; the per-workspace store has no component test yet."
     },
     {
       "id": "settings-persistence",

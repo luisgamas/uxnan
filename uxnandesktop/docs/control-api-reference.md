@@ -59,7 +59,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `run/list` (MCP tool `run_list`) — List the orchestration runs (multi-step, multi-agent plans) with their status and step counts.
 - `run/show` (MCP tool `run_show`) — Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.
 - `automation/list` (MCP tool `automation_list`) — List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.
-- `browser/status` (MCP tool `browser_status`) — Report the integrated browser's state: whether a page is open, the current URL, whether the in-app browser is enabled, and how opens are routed (in-app / external / ask).
+- `browser/status` (MCP tool `browser_status`) — Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask).
 
 ### `ui` (v1) — actions on the window that change nothing on disk or in a process
 
@@ -67,11 +67,11 @@ Global: --json (stable machine output), --timeout <seconds>
 - `terminal/reveal` (MCP tool `terminal_reveal`) — Show a terminal tab: switch to its workspace and make it the active tab, so the person sees what that agent is doing.
 - `file/open` (MCP tool `file_open`) — Open a file in Uxnan's editor tab (or reveal it if already open).
 - `file/diff` (MCP tool `file_diff`) — Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the person can review what changed.
-- `browser/open` (MCP tool `browser_open`) — Open the integrated in-app browser and load a URL.
-- `browser/navigate` (MCP tool `browser_navigate`) — Navigate the integrated browser to a new URL (opening the panel first if it is not open).
-- `browser/reload` (MCP tool `browser_reload`) — Reload the current page in the integrated browser.
-- `browser/back` (MCP tool `browser_back`) — Go back one entry in the integrated browser's history.
-- `browser/forward` (MCP tool `browser_forward`) — Go forward one entry in the integrated browser's history.
+- `browser/open` (MCP tool `browser_open`) — Open the integrated in-app browser of your workspace and load a URL; answers once the page has loaded (or 15 s passed).
+- `browser/navigate` (MCP tool `browser_navigate`) — Navigate your workspace's integrated browser to a new URL (opening it first if it is not open).
+- `browser/reload` (MCP tool `browser_reload`) — Reload your workspace's page in the integrated browser and answer once it has loaded again.
+- `browser/back` (MCP tool `browser_back`) — Go back one entry in your workspace's browser history and answer with the page it landed on.
+- `browser/forward` (MCP tool `browser_forward`) — Go forward one entry in your workspace's browser history and answer with the page it landed on.
 
 ### `create` (v1) — create a worktree or a terminal, start a saved run or automation
 
@@ -714,7 +714,7 @@ List the saved automations (unattended, recurring agent runs): id, name, whether
 
 ### `browser/status`
 
-Report the integrated browser's state: whether a page is open, the current URL, whether the in-app browser is enabled, and how opens are routed (in-app / external / ask).
+Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask). Each workspace has its own page; yours is the one of the worktree your terminal runs in (a caller outside a Uxnan terminal gets the workspace on screen).
 
 - **Group:** `read` · read-only
 - **MCP:** `browser_status`
@@ -724,10 +724,18 @@ Report the integrated browser's state: whether a page is open, the current URL, 
 
 **Result**
 
-- `open` (boolean) — Whether a page is open in the integrated browser.
-- `url` (string | null) — The page's URL, when one is open.
 - `enabled` (boolean) — Whether the integrated browser is enabled in Settings.
 - `policy` (string) — How opens are routed: `internal`, `external` or `ask`.
+- `workspace` (string) — The workspace these calls act on (see `page.workspace`).
+- `open` (boolean) — Whether a page is open in that workspace.
+- `page` (object | null) — The page, when one is open.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
 
 **Request**
 
@@ -881,7 +889,7 @@ Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the p
 
 ### `browser/open`
 
-Open the integrated in-app browser and load a URL. Use it to preview or test a web app, page or dev server you are building (for example http://localhost:3000). Uxnan routes the open per the user's setting (in-app, external browser, or ask).
+Open the integrated in-app browser of your workspace and load a URL; answers once the page has loaded (or 15 s passed). Use it to preview or test a web app, page or dev server you are building (for example http://localhost:3000). The page opens in the workspace your terminal belongs to — when that is not the one on screen it loads hidden, without disturbing the person. Uxnan routes the open per the user's setting (in-app, external browser, or ask). Only http(s) addresses open.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `browser_open`
@@ -896,6 +904,15 @@ Open the integrated in-app browser and load a URL. Use it to preview or test a w
 **Result**
 
 - `requested` (string) — The URL handed to the link policy.
+- `routed` (string) — Where it went: `browser` (the in-app browser — `page` says what loaded), `external` (the person's system browser) or `ask` (the person is choosing).
+- `page` (object | null) — The page once loaded, when `routed` is `browser`.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
 
 **Request**
 
@@ -912,7 +929,7 @@ Open the integrated in-app browser and load a URL. Use it to preview or test a w
 
 ### `browser/navigate`
 
-Navigate the integrated browser to a new URL (opening the panel first if it is not open). Same routing as browser/open.
+Navigate your workspace's integrated browser to a new URL (opening it first if it is not open). Same routing, waiting and result as browser/open.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `browser_navigate`
@@ -927,6 +944,15 @@ Navigate the integrated browser to a new URL (opening the panel first if it is n
 **Result**
 
 - `requested` (string) — The URL handed to the link policy.
+- `routed` (string) — `browser`, `external` or `ask` — see browser/open.
+- `page` (object | null) — The page once loaded, when `routed` is `browser`.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
 
 **Request**
 
@@ -943,7 +969,7 @@ Navigate the integrated browser to a new URL (opening the panel first if it is n
 
 ### `browser/reload`
 
-Reload the current page in the integrated browser. Use it after you change code and want to see the result. Errors if no page is open.
+Reload your workspace's page in the integrated browser and answer once it has loaded again. Use it after you change code and want to see the result. Errors if no page is open.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `browser_reload`
@@ -954,6 +980,14 @@ Reload the current page in the integrated browser. Use it after you change code 
 **Result**
 
 - `reloaded` (boolean) — Always true on success.
+- `page` (object | null) — The page after the reload.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
 
 **Request**
 
@@ -968,7 +1002,7 @@ Reload the current page in the integrated browser. Use it after you change code 
 
 ### `browser/back`
 
-Go back one entry in the integrated browser's history. Errors if no page is open.
+Go back one entry in your workspace's browser history and answer with the page it landed on. Errors if no page is open.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `browser_back`
@@ -979,6 +1013,15 @@ Go back one entry in the integrated browser's history. Errors if no page is open
 **Result**
 
 - `navigated` (string) — `back`.
+- `moved` (boolean) — Whether the page actually changed (false at the start of the history).
+- `page` (object | null) — The page after the step.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
 
 **Request**
 
@@ -993,7 +1036,7 @@ Go back one entry in the integrated browser's history. Errors if no page is open
 
 ### `browser/forward`
 
-Go forward one entry in the integrated browser's history. Errors if no page is open.
+Go forward one entry in your workspace's browser history and answer with the page it landed on. Errors if no page is open.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `browser_forward`
@@ -1004,6 +1047,15 @@ Go forward one entry in the integrated browser's history. Errors if no page is o
 **Result**
 
 - `navigated` (string) — `forward`.
+- `moved` (boolean) — Whether the page actually changed (false at the end of the history).
+- `page` (object | null) — The page after the step.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
 
 **Request**
 

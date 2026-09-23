@@ -3,7 +3,7 @@
 > Documento de arquitectura del sistema para el Uxnan Desktop ADE.
 > Cubre el modelo de tres actores, modelo de datos, navegacion, layout, review, conexiones, persistencia y diagnostico post-mortem (§7.3.1).
 > Derivado de las secciones 2, 3, 4, 6.3 y 7 del documento de arquitectura original.
-> Browser layout (§4.2b) temporarily hides the review panel while preserving its saved visibility.
+> Navegador integrado (§4.2b): una página por workspace, como webview hijo de la ventana principal (no flota sobre otras apps); oculta temporalmente el panel de revisión preservando su visibilidad guardada.
 
 ---
 
@@ -373,18 +373,42 @@ El tipo de contenido `browser` (webview embebido) **está implementado** como un
 navegador *de desarrollo* ligero: para previsualizar/depurar lo que construyen los
 agentes y abrir los enlaces que generan — no un navegador de uso general.
 
-- **Motor:** un `WebviewWindow` sin marco, **propiedad de** (owner = la ventana
-  principal) y **acoplado a** uxnan, que contiene la página (`src-tauri/src/browser.rs`
-  + `BrowserPanel.svelte`). Es un webview real del SO (Chromium/WebView2 en Windows)
-  → **carga cualquier sitio** (Google incluido, sin el bloqueo de iframe) y trae
-  **DevTools reales**, reusando el motor que la app ya carga (ligero). La barra de
-  herramientas vive en el DOM del panel; la ventana de la página se posiciona sobre
-  el rect del panel y se re-posiciona en cada move/resize de la app (mediante
-  `set_position`/`set_size`, API estable). Se crea perezosamente al abrir y se
-  destruye al cerrar (no persiste al reiniciar). *Decisión de diseño:* se
-  descartaron (a) el *child webview* nativo (multiwebview `unstable`) porque
-  **congelaba la app** en Windows (`add_child` bloqueaba el hilo principal), y (b)
-  un `<iframe>` por ser limitado (lo bloquea `X-Frame-Options`, sin DevTools).
+- **Motor:** cada página es un **webview hijo de la ventana principal**
+  (`Window::add_child`, la API multi-webview de Tauri — feature `unstable`), no una
+  ventana aparte (`src-tauri/src/browser/host.rs` + `BrowserPanel.svelte` +
+  `state/browser.svelte.ts`). Es un webview real del SO (WKWebView / WebView2 /
+  WebKitGTK) → **carga cualquier sitio** (sin el bloqueo de iframe) y trae
+  **DevTools reales**, reusando el motor que la app ya carga (ligero). Al vivir
+  dentro de la ventana se mueve, minimiza y cambia de escritorio con ella y **nunca
+  flota sobre otras aplicaciones**. La barra de herramientas vive en el DOM del
+  panel; la página se coloca sobre el rect del slot (coordenadas lógicas relativas a
+  la ventana). *Decisión de diseño:* la primera prueba de webview hijo **congelaba
+  Windows** porque el webview se creaba desde un comando **síncrono** — un comando
+  síncrono corre en el hilo principal, dentro del callback IPC del webview de la
+  app, y WebView2 no puede terminar de crear un controlador ahí. Todos los comandos
+  que crean o tocan páginas son `async`. La versión intermedia (un `WebviewWindow`
+  *owned* acoplado encima del panel) flotaba sobre todas las ventanas y
+  escritorios, y se retiró. Un `<iframe>` sigue descartado (`X-Frame-Options`, sin
+  DevTools).
+- **Una página por workspace:** la sesión del navegador es por workspace (la
+  clave de workspace del store de terminales: la ruta del worktree, `""` = Global):
+  panel abierto/cerrado, página, historial y zoom propios. Solo se muestra la del
+  workspace en pantalla; cambiar de workspace oculta una y muestra la otra. Un
+  enlace que abre la persona va al workspace en pantalla; uno que abre un
+  **agente** (shim `$BROWSER` con `X-Uxnan-Agent-Id`, o las herramientas
+  `browser_*`) va al workspace de **su propia terminal**, cargándose oculto si no
+  es el que está en pantalla. Como mucho **3 páginas** vivas a la vez
+  (`MAX_LIVE_PAGES`); abrir otra libera la mostrada hace más tiempo (conserva su
+  URL y recarga al volver), y dormir un workspace libera la suya. El backend es la
+  fuente de verdad de la página (URL, título, carga, historial, zoom, `generation`
+  = documentos confirmados) y la empuja con el evento `browser:state`.
+- **Puerta de URLs:** solo `http(s)` (y `about:blank`); nunca el **origen propio
+  de la app** (`tauri.localhost`, `ipc.localhost`, `asset.localhost` y, en build de
+  desarrollo, el `devUrl`), porque Tauri trata ese origen como local y le da los
+  comandos de la app sin ACL. La misma puerta filtra las navegaciones que inicia la
+  página, incluidas redirecciones e iframes (que además admiten `about:srcdoc` y
+  `blob:`). `target=_blank`/`window.open` cargan en la misma página; las descargas
+  van a la carpeta de Descargas sin sobrescribir.
 - **Política de enlaces (`BrowserSettings`):** un único punto de decisión
   (`browser::route_url`, expuesto como el comando `open_url`) enruta cada enlace
   según `linkPolicy` (`internal` → tab interno vía el evento `browser:open-url`,
@@ -399,12 +423,14 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   por la misma política. Mismo patrón que `UXNAN_HOOK_*`.
 - **Terminal:** las URLs impresas en la terminal son clicables con **Ctrl/Cmd+clic**
   (`@xterm/addon-web-links`) y pasan por `open_url` (toggle `terminalLinks`).
-- **Apilamiento (la ventana nativa gana siempre):** una ventana *owned* pinta por
-  encima del contenido web de su owner, así que **ningún `z-index` del DOM de uxnan
-  puede quedar delante de la página**. La única salida es ocultar la ventana
-  mientras algo del DOM deba estar al frente, y ese es el contrato de
-  `browser_window_hide`. El panel lo aplica en cada frame de su tick: oculta la
-  ventana si el slot desaparece o mide ~0, si el documento está oculto, si una
+- **Apilamiento (la vista nativa gana siempre):** un webview nativo pinta por
+  encima del contenido web de la app, así que **ningún `z-index` del DOM de uxnan
+  puede quedar delante de la página**. La única salida es ocultarla mientras algo
+  del DOM deba estar al frente (`browser_set_visible`), devolviendo el teclado a la
+  app si la página lo tenía. El panel mide su slot **solo cuando algo cambia**
+  (`ResizeObserver`, resize de la ventana, visibilidad y altas/bajas de capas; cuadro
+  a cuadro únicamente mientras hay una capa flotante montada) y oculta la página si
+  el slot desaparece o mide ~0, si el documento está oculto, si una
   vista a pantalla completa cubre los paneles (**Settings o Automations**), o si
   una **capa flotante** (diálogo, menú, popover, select) **solapa** el rect del
   slot. Las capas se auto-registran desde las primitivas compartidas de `ui/` en

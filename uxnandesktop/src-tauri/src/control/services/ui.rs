@@ -11,12 +11,14 @@ use crate::control::Caller;
 
 /// `app/focus`: bring the main window to the front. Done here — the window is a
 /// backend object — and unminimized first, which `set_focus` alone does not do.
+/// Looked up as a `Window`: once a browser page is open the main window holds
+/// more than one webview, and `get_webview_window` no longer finds it.
 pub async fn focus<R: tauri::Runtime>(
     app: &AppHandle<R>,
     _caller: &Caller,
     _params: &Value,
 ) -> Result<Value, RpcError> {
-    let Some(window) = app.get_webview_window("main") else {
+    let Some(window) = app.get_window("main") else {
         return Err(RpcError::new(ErrorCode::Unavailable, "no main window"));
     };
     let _ = window.unminimize();

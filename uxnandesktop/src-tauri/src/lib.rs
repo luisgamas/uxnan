@@ -136,6 +136,7 @@ pub fn run() {
             let resources = state.resources.clone();
             let control_token = state.control_token.clone();
             app.manage(state);
+            app.manage(browser::BrowserHost::default());
 
             // Resource observability sampler (`resources.rs`). Fully parked —
             // no timer, no process-table walks — until a consumer subscribes
@@ -285,7 +286,7 @@ pub fn run() {
             // desktop pet window down with the main window — with the pet still
             // open the app would keep running, headless but for the pet, after
             // the main window is gone.
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_window("main") {
                 let focused_for_event = focused.clone();
                 let handle_for_close = app.handle().clone();
                 window.on_window_event(move |event| match event {
@@ -541,16 +542,19 @@ pub fn run() {
             fonts::list_system_fonts,
             commands::open_url,
             commands::open_external,
-            browser::browser_window_open,
-            browser::browser_window_set_bounds,
-            browser::browser_window_navigate,
-            browser::browser_window_reload,
-            browser::browser_window_back,
-            browser::browser_window_forward,
-            browser::browser_window_show,
-            browser::browser_window_hide,
-            browser::browser_window_close,
-            browser::browser_window_devtools,
+            browser::host::browser_open,
+            browser::host::browser_navigate,
+            browser::host::browser_set_bounds,
+            browser::host::browser_set_visible,
+            browser::host::browser_back,
+            browser::host::browser_forward,
+            browser::host::browser_reload,
+            browser::host::browser_stop,
+            browser::host::browser_zoom,
+            browser::host::browser_devtools,
+            browser::host::browser_refresh,
+            browser::host::browser_close,
+            browser::host::browser_sessions,
             commands::git_diff_head,
             commands::set_terminal_layout,
             commands::set_orchestration_runs,

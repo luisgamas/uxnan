@@ -64,7 +64,7 @@ back), **terminal** (two panes in a split, a real shell behind each),
 **sleep-wake** (a sleeping workspace spawns nothing), **worktree** (a real git
 repository is recognised, listed and read), **agent** (the agent runs under a
 shell; the hook server refuses an untokened report and records a valid one),
-**browser** (a loopback page in a second window) and **migration** (a profile
+**browser** (a loopback page opens in the workspace's browser, loads, and closes) and **migration** (a profile
 from an older build still opens with its projects).
 
 A ninth is **opt-in** and self-skips by default: **github-fake** (enable with

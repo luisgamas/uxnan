@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 916 Rust tests (839 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins). 919 Rust tests (842 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,305 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,321 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -761,23 +761,44 @@ as a right-side "4th panel" (`architecture/02a` §4.2b). Agent link interception
 **on by default**; one central link-policy decision point with an always-working OS
 fallback.
 
-**Engine decision:** a frameless `WebviewWindow` **owned by + docked to** the main
-window (stable Tauri API), holding the page; the toolbar lives in the panel's DOM
-and the window is glued over the panel's content rect. Chosen after two rejected
-attempts: a native child webview (Tauri `unstable` multiwebview) **froze the app**
-on Windows (`add_child` blocked the main thread), and a plain `<iframe>` was too
-limited (blocked by `X-Frame-Options`, no DevTools). The owned window loads any
-site + has real DevTools while staying light.
+**Engine decision:** every page is a **child webview of the main window**
+(`Window::add_child`, Tauri's multi-webview API behind the `unstable` feature), one
+per workspace, placed over the panel slot; the toolbar lives in the panel's DOM.
+Inside the window it moves, minimizes and changes desktop with the app and never
+floats over other applications — the owned `WebviewWindow` it replaced did, on
+every desktop. The first child-webview attempt froze Windows because the webview
+was created from a **synchronous** command (it runs on the main thread, inside the
+app webview's IPC callback, where WebView2 cannot finish creating a controller):
+every command that creates or touches a page is `async`. A plain `<iframe>` stays
+rejected (`X-Frame-Options`, no DevTools).
 
-**Done (code-complete, validated by clippy/fmt/tests + svelte-check + vite build):**
-`BrowserSettings`/`BrowserLinkPolicy` + `browserPanelWidth` model + Settings →
-Browser pane; the `browser_window_*` backend (`browser.rs`) + `BrowserPanel.svelte`
-(toolbar + glued window: back/forward/reload/address/open-external/DevTools) + the
-right-side panel + status-bar toggle; `open_url`/`open_external` routing (shared
-`browser::route_url`) + the `browser:open-url` listener; **agent auto-interception**
-(`UXNAN_BROWSER_*` env + `$BROWSER` shim `static/hooks/uxnan-browser.{sh,cmd}` + the
-hook-server `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-
-clickable terminal links** (`@xterm/addon-web-links`).
+**Done (code-complete, validated by clippy/fmt/tests + svelte-check + a dev-build
+run on macOS, including a real agent opening its page hidden in a background
+worktree):** `BrowserSettings`/`BrowserLinkPolicy` + `browserPanelWidth` model +
+Settings → Browser pane; the page host (`browser/host.rs`: `browser_open` /
+`_navigate` / `_set_bounds` / `_set_visible` / `_back` / `_forward` / `_reload` /
+`_stop` / `_zoom` / `_devtools` / `_refresh` / `_close` / `_sessions`, the
+`browser:state` event, downloads to the Downloads folder, `target=_blank` in
+place) + the URL gate (`browser/mod.rs`: http(s) only, never the app's own
+origin) + the per-workspace store (`state/browser.svelte.ts`: one session per
+workspace, `MAX_LIVE_PAGES` = 3 with LRU release, sleep releases the page) +
+`BrowserPanel.svelte` (back/forward with history state, reload/stop, address bar
+with lock + progress, zoom, open-external, DevTools, keyboard shortcuts, slot
+measured on change) + the right-side panel + status-bar toggle;
+`open_url`/`open_external` routing (shared `browser::route_url`) + the
+`browser:open-url` listener (with the target workspace); **agent
+auto-interception** (`UXNAN_BROWSER_*` env + `$BROWSER` shim
+`static/hooks/uxnan-browser.{sh,cmd}`, which names its terminal, + the hook-server
+`/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-clickable
+terminal links** (`@xterm/addon-web-links`).
+
+- [ ] **Browser — validate the child-webview engine on Windows and Linux.** It was
+      run on macOS only (dev build). Windows is the platform that froze the first
+      attempt (see the engine decision): run `npm run test:e2e -- --spec browser`
+      (the journey now opens, loads and closes a page) and walk the panel by hand —
+      workspace switch, a dialog over the page, the window minimized/moved to
+      another desktop. Linux (WebKitGTK child views) has never been seen at all.
+      Record the result in `tests/platform-support.json` → `browser`.
 
 **Done — browser-control MCP (backend, spec `02d` §1.6):** the browser is now
 **discoverable** to agents as MCP tools, not just via the `/browser` curl. The
@@ -1620,7 +1641,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 916 Rust + 1,305 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 919 Rust + 1,321 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

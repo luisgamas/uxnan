@@ -330,6 +330,26 @@ fn receipt(extra: Value) -> Value {
     result(props)
 }
 
+/// A browser page (`browser/*`): the one of the caller's workspace.
+fn browser_page() -> Value {
+    result(json!({
+        "workspace": field("string", "The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page."),
+        "url": field("string", "The page's current URL."),
+        "title": field("string", "The document title; empty until the page sets one."),
+        "loading": field("boolean", "Whether the page is still loading (a wait ran out before it finished)."),
+        "visible": field("boolean", "Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden."),
+        "canGoBack": nullable("boolean", "Whether history can go back; null when the engine does not say."),
+        "canGoForward": nullable("boolean", "Whether history can go forward; null when the engine does not say."),
+    }))
+}
+
+/// [`browser_page`] as a field that is `null` when there is no page.
+fn browser_page_or_null(description: &str) -> Value {
+    let mut v = described(description, browser_page());
+    v["type"] = json!(["object", "null"]);
+    v
+}
+
 fn object(properties: Value, required: &[&str]) -> Value {
     json!({
         "type": "object",
@@ -522,14 +542,15 @@ pub fn catalog() -> Vec<Entry> {
             method: "browser/status",
             tool: "browser_status",
             group: Group::Read,
-            summary: "Report the integrated browser's state: whether a page is open, the current URL, whether the in-app browser is enabled, and how opens are routed (in-app / external / ask).",
+            summary: "Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask). Each workspace has its own page; yours is the one of the worktree your terminal runs in (a caller outside a Uxnan terminal gets the workspace on screen).",
             params: object(json!({}), &[]),
             mutates: false,
             result: result(json!({
-                "open": field("boolean", "Whether a page is open in the integrated browser."),
-                "url": nullable("string", "The page's URL, when one is open."),
                 "enabled": field("boolean", "Whether the integrated browser is enabled in Settings."),
                 "policy": field("string", "How opens are routed: `internal`, `external` or `ask`."),
+                "workspace": field("string", "The workspace these calls act on (see `page.workspace`)."),
+                "open": field("boolean", "Whether a page is open in that workspace."),
+                "page": browser_page_or_null("The page, when one is open."),
             })),
             example: json!({}),
         },
@@ -594,56 +615,75 @@ pub fn catalog() -> Vec<Entry> {
             method: "browser/open",
             tool: "browser_open",
             group: Group::Ui,
-            summary: "Open the integrated in-app browser and load a URL. Use it to preview or test a web app, page or dev server you are building (for example http://localhost:3000). Uxnan routes the open per the user's setting (in-app, external browser, or ask).",
+            summary: "Open the integrated in-app browser of your workspace and load a URL; answers once the page has loaded (or 15 s passed). Use it to preview or test a web app, page or dev server you are building (for example http://localhost:3000). The page opens in the workspace your terminal belongs to — when that is not the one on screen it loads hidden, without disturbing the person. Uxnan routes the open per the user's setting (in-app, external browser, or ask). Only http(s) addresses open.",
             params: object(
                 json!({ "url": { "type": "string", "description": "Absolute URL to open, e.g. http://localhost:3000 or https://example.com." } }),
                 &["url"],
             ),
             mutates: true,
-            result: result(json!({ "requested": field("string", "The URL handed to the link policy.") })),
+            result: result(json!({
+                "requested": field("string", "The URL handed to the link policy."),
+                "routed": field("string", "Where it went: `browser` (the in-app browser — `page` says what loaded), `external` (the person's system browser) or `ask` (the person is choosing)."),
+                "page": browser_page_or_null("The page once loaded, when `routed` is `browser`."),
+            })),
             example: json!({ "url": "http://localhost:3000" }),
         },
         Entry {
             method: "browser/navigate",
             tool: "browser_navigate",
             group: Group::Ui,
-            summary: "Navigate the integrated browser to a new URL (opening the panel first if it is not open). Same routing as browser/open.",
+            summary: "Navigate your workspace's integrated browser to a new URL (opening it first if it is not open). Same routing, waiting and result as browser/open.",
             params: object(
                 json!({ "url": { "type": "string", "description": "Absolute URL to navigate to." } }),
                 &["url"],
             ),
             mutates: true,
-            result: result(json!({ "requested": field("string", "The URL handed to the link policy.") })),
+            result: result(json!({
+                "requested": field("string", "The URL handed to the link policy."),
+                "routed": field("string", "`browser`, `external` or `ask` — see browser/open."),
+                "page": browser_page_or_null("The page once loaded, when `routed` is `browser`."),
+            })),
             example: json!({ "url": "http://localhost:3000/settings" }),
         },
         Entry {
             method: "browser/reload",
             tool: "browser_reload",
             group: Group::Ui,
-            summary: "Reload the current page in the integrated browser. Use it after you change code and want to see the result. Errors if no page is open.",
+            summary: "Reload your workspace's page in the integrated browser and answer once it has loaded again. Use it after you change code and want to see the result. Errors if no page is open.",
             params: object(json!({}), &[]),
             mutates: true,
-            result: result(json!({ "reloaded": field("boolean", "Always true on success.") })),
+            result: result(json!({
+                "reloaded": field("boolean", "Always true on success."),
+                "page": browser_page_or_null("The page after the reload."),
+            })),
             example: json!({}),
         },
         Entry {
             method: "browser/back",
             tool: "browser_back",
             group: Group::Ui,
-            summary: "Go back one entry in the integrated browser's history. Errors if no page is open.",
+            summary: "Go back one entry in your workspace's browser history and answer with the page it landed on. Errors if no page is open.",
             params: object(json!({}), &[]),
             mutates: true,
-            result: result(json!({ "navigated": field("string", "`back`.") })),
+            result: result(json!({
+                "navigated": field("string", "`back`."),
+                "moved": field("boolean", "Whether the page actually changed (false at the start of the history)."),
+                "page": browser_page_or_null("The page after the step."),
+            })),
             example: json!({}),
         },
         Entry {
             method: "browser/forward",
             tool: "browser_forward",
             group: Group::Ui,
-            summary: "Go forward one entry in the integrated browser's history. Errors if no page is open.",
+            summary: "Go forward one entry in your workspace's browser history and answer with the page it landed on. Errors if no page is open.",
             params: object(json!({}), &[]),
             mutates: true,
-            result: result(json!({ "navigated": field("string", "`forward`.") })),
+            result: result(json!({
+                "navigated": field("string", "`forward`."),
+                "moved": field("boolean", "Whether the page actually changed (false at the end of the history)."),
+                "page": browser_page_or_null("The page after the step."),
+            })),
             example: json!({}),
         },
         // ── Create ───────────────────────────────────────────────────────────

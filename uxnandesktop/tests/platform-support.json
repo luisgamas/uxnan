@@ -311,13 +311,9 @@
       "name": "Integrated browser and DevTools",
       "status": {
         "windows-x64": {
-          "level": "smoke",
-          "date": "2026-07-30",
-          "sha": "5d05643b",
-          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
-          "tester": "maintainer",
-          "evidence": "E2E browser journey opens a loopback page in the docked second window — the suite's only multi-window coverage (tests/e2e/specs/browser.e2e.mjs, 2026-07-30); scheme gate unit-tested (src-tauri/src/browser.rs).",
-          "gaps": "R07 (browser cost) still needs an operator; DevTools and real-site browsing are on the manual checklist (docs/testing.md, L5 row 11)."
+          "level": "code-only",
+          "evidence": "The engine was rewritten as child webviews of the main window (src-tauri/src/browser/host.rs) and has not run on Windows yet — the previous smoke result was for the separate docked window it replaced. The E2E journey (tests/e2e/specs/browser.e2e.mjs) now opens, loads and closes a page; the URL gate is unit-tested (src-tauri/src/browser/mod.rs).",
+          "gaps": "Run the browser journey and walk the panel by hand (workspace switch, a dialog over the page, minimize / another desktop) — Windows is where the first child-webview attempt froze; R07 (browser cost) still needs an operator."
         },
         "macos-aarch64": {
           "level": "builds",
@@ -325,23 +321,19 @@
           "sha": "5d05643b",
           "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
           "tester": "ci",
-          "evidence": "browser.rs suites green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); the docked-window glue has never been seen on macOS."
+          "evidence": "The child-webview engine compiles and its unit suites are green locally (src-tauri/src/browser/mod.rs, src-tauri/src/browser/host.rs); the last CI verify leg predates it (.github/workflows/ci-desktop.yml run 30608531497)."
         },
         "macos-x64": {
-          "level": "builds",
+          "level": "code-only",
           "date": "2026-07-29",
           "sha": "039866bb",
           "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
           "tester": "ci",
-          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+          "evidence": "Not built since the child-webview engine (src-tauri/src/browser/host.rs) replaced the docked window; the x86_64 DMG before it compiled the old engine."
         },
         "linux-x64": {
-          "level": "builds",
-          "date": "2026-07-31",
-          "sha": "5d05643b",
-          "hardware": "GitHub-hosted ubuntu-latest runner",
-          "tester": "ci",
-          "evidence": "browser.rs suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); the docked-window glue has never been seen on a Linux desktop."
+          "level": "code-only",
+          "evidence": "The child-webview engine (src-tauri/src/browser/host.rs) has never been built or seen on Linux; WebKitGTK child views are unverified."
         }
       }
     },

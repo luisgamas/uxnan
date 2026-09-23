@@ -198,7 +198,7 @@ evidence points at the benchmark scenarios
 | Updater check / download | `updater.start` | once per launch + on channel change; download opt-in | Settings → Updates | — | not governed |
 | Keep-awake | `power.rs` | none (a held OS request) | opt-in && agent working; 2 h cap | — | not governed — opt-in already |
 | Terminal PTYs / xterm | user-owned | — | workspace sleep/wake lifecycle | R02–R04 | auto-sleep (above); manual sleep unchanged |
-| Browser panel webview | `browser.rs` | — | destroyed on close in every preset | R07 | already minimal; no preloading in v1 |
+| Browser page webviews | `browser/host.rs` | — | one per workspace with its panel open; at most 3 alive (`MAX_LIVE_PAGES`), the oldest released; destroyed on close and when its workspace sleeps, in every preset | R07 | already minimal; no preloading in v1 |
 | Broadcast console pacing | `orchestration` store | while the console is open | open/close | — | not governed — interactive |
 
 Known gaps (tracked in [`FOR-DEV.md`](../FOR-DEV.md)): the 1 s agent-detection

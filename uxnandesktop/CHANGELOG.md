@@ -7,10 +7,59 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **The integrated browser lives inside the window, one per workspace.** Its
+  page used to be a separate window glued over the panel, which floated above
+  every other application and followed you onto every desktop. Each page is now
+  a child view of the app window: it moves, minimizes and changes desktop with
+  the app and is shown only while its workspace is on screen. Every workspace —
+  each worktree, and the Global space — has its own browser (panel, page,
+  history, zoom); switching workspace swaps them, and coming back finds the page
+  where you left it. A link an agent opens lands in the workspace **its own
+  terminal** runs in — hidden, when that is not the one on screen — so an agent
+  can load its dev server in a background worktree without disturbing what you
+  are looking at. At most three pages stay alive at once; the oldest is released
+  (its URL kept) and a sleeping workspace releases its page.
+- **A fuller browser toolbar.** Reload turns into Stop while a page loads
+  (Shift-click reloads bypassing the cache); Back and Forward disable themselves
+  when there is no history that way; the address bar shows a lock for https and
+  a progress line, follows in-app (`pushState`) navigations, never overwrites
+  what you type, and Esc restores it; a zoom level appears when it is not 100 %.
+  Keyboard: Ctrl/Cmd+L, Ctrl/Cmd+R, Ctrl/Cmd+[ / ], Ctrl/Cmd+= / − / 0. Links
+  that open a new window load in place, and downloads go to your Downloads
+  folder (never overwriting a file).
+- **The `browser_*` tools answer with the page.** `browser_open`,
+  `browser_navigate` and `browser_reload` wait for the page to load (up to
+  15 s) and return its URL, title, load state, history and whether the person
+  can see it; `browser_back` / `browser_forward` say whether the page moved;
+  `browser_status` reports the page of the caller's workspace. `browser_open`
+  also says where the open went (`browser`, `external` or `ask`). The
+  `$BROWSER` shim now names its terminal (`X-Uxnan-Agent-Id`), so its links
+  land in that terminal's workspace too.
 - **Tauri updated to 2.11.6** (runtime 2.11.4, with the plugins, `@tauri-apps/api`
   2.11.1 and `@tauri-apps/cli` 2.11.5), the latest 2.x: deadlock fixes in
   listeners and cookie reads, an HDC handle leak on Windows, faster custom
   protocol loads.
+
+### Fixed
+
+- **The browser no longer floats over other apps and desktops.** See above.
+- **The panel no longer polls every frame.** The page slot is measured when
+  something changes (a resize, the window, an overlay opening or closing), and
+  frame by frame only while a menu or dialog is up.
+- **Opening the browser with no home page no longer fails.** The empty page is
+  a valid address again.
+- **An agent reopening the URL the page already showed navigates again**
+  instead of doing nothing, and the page URL is no longer taken from an iframe
+  that navigated.
+
+### Security
+
+- **The integrated browser refuses the app's own origin.** Tauri trusts a page
+  on `tauri.localhost` / `ipc.localhost` / `asset.localhost` (and, in a
+  development build, the dev server the app is served from) as the app itself,
+  with its commands reachable without an ACL check. The browser — and every
+  navigation a page starts, iframes included — now refuses those origins, on top
+  of refusing every non-http(s) scheme.
 
 ## [0.0.54] - 20260922
 ### Changed

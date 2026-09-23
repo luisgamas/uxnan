@@ -1203,12 +1203,13 @@ export function openInEditor(command: string, args: string[], path: string): Pro
 }
 
 // --- Integrated browser ----------------------------------------------------
-// The browser is a docked, frameless `WebviewWindow` (a real system webview, so it
-// loads any site + has DevTools), positioned by the frontend over uxnan's browser
-// panel. `openUrl` is the single decision point: in-app window / OS browser / ask.
-// Window geometry is in CSS (logical) px relative to the main window content area.
+// Each workspace owns at most one browser page: a child webview inside the main
+// window (a real system webview, so it loads any site and has DevTools), placed
+// by the frontend over the browser panel's slot. `openUrl` is the single
+// decision point for links: in-app / OS browser / ask. Bounds are CSS (logical)
+// px relative to the main window's content area. See `src-tauri/src/browser/`.
 
-/** Route a URL per the user's browser settings (in-app window / OS browser / ask). */
+/** Route a URL per the user's browser settings (in-app / OS browser / ask). */
 export function openUrl(url: string): Promise<void> {
   return invoke('open_url', { url });
 }
@@ -1218,66 +1219,93 @@ export function openExternal(url: string): Promise<void> {
   return invoke('open_external', { url });
 }
 
-/** Open (or reuse + navigate) the docked browser window at `url`, glued to the
- *  panel rect (CSS px relative to the main window content area). */
-export function browserWindowOpen(
+/** A panel slot, in CSS px relative to the main window's content. */
+export interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** What a workspace's browser page is (mirrors `browser::host::SessionState`). */
+export interface BrowserPageState {
+  workspace: string;
+  live: boolean;
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean | null;
+  canGoForward: boolean | null;
+  zoom: number;
+  visible: boolean;
+  generation: number;
+}
+
+/** Open (or navigate) a workspace's page, creating it on first use. */
+export function browserOpen(
+  workspace: string,
   url: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): Promise<void> {
-  return invoke('browser_window_open', { url, x, y, width, height });
+  bounds: BrowserBounds,
+  visible: boolean,
+): Promise<BrowserPageState> {
+  return invoke('browser_open', { workspace, url, bounds, visible });
 }
 
-/** Reposition / resize the browser window to track the panel rect. */
-export function browserWindowSetBounds(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): Promise<void> {
-  return invoke('browser_window_set_bounds', { x, y, width, height });
+/** Navigate a workspace's page. */
+export function browserNavigate(workspace: string, url: string): Promise<void> {
+  return invoke('browser_navigate', { workspace, url });
 }
 
-/** Navigate the browser window to a new URL. */
-export function browserWindowNavigate(url: string): Promise<void> {
-  return invoke('browser_window_navigate', { url });
+/** Place a workspace's page over the panel slot. */
+export function browserSetBounds(workspace: string, bounds: BrowserBounds): Promise<void> {
+  return invoke('browser_set_bounds', { workspace, bounds });
 }
 
-/** Reload the current page. */
-export function browserWindowReload(): Promise<void> {
-  return invoke('browser_window_reload');
+/** Show or hide a workspace's page. */
+export function browserSetVisible(workspace: string, visible: boolean): Promise<BrowserPageState> {
+  return invoke('browser_set_visible', { workspace, visible });
 }
 
-/** Go back in the page's history. */
-export function browserWindowBack(): Promise<void> {
-  return invoke('browser_window_back');
+export function browserBack(workspace: string): Promise<void> {
+  return invoke('browser_back', { workspace });
 }
 
-/** Go forward in the page's history. */
-export function browserWindowForward(): Promise<void> {
-  return invoke('browser_window_forward');
+export function browserForward(workspace: string): Promise<void> {
+  return invoke('browser_forward', { workspace });
 }
 
-/** Show the browser window (its panel became visible again). */
-export function browserWindowShow(): Promise<void> {
-  return invoke('browser_window_show');
+/** Reload; `hard` bypasses the cache where the engine allows it. */
+export function browserReload(workspace: string, hard = false): Promise<void> {
+  return invoke('browser_reload', { workspace, hard });
 }
 
-/** Hide the browser window without destroying it. */
-export function browserWindowHide(): Promise<void> {
-  return invoke('browser_window_hide');
+export function browserStop(workspace: string): Promise<void> {
+  return invoke('browser_stop', { workspace });
 }
 
-/** Destroy the browser window (the panel closed). */
-export function browserWindowClose(): Promise<void> {
-  return invoke('browser_window_close');
+/** Set a page's zoom factor (1 = 100 %; clamped by the backend). */
+export function browserZoom(workspace: string, zoom: number): Promise<BrowserPageState> {
+  return invoke('browser_zoom', { workspace, zoom });
 }
 
-/** Open the browser window's DevTools. */
-export function browserWindowDevtools(): Promise<void> {
-  return invoke('browser_window_devtools');
+/** Toggle a page's web DevTools. */
+export function browserDevtools(workspace: string): Promise<void> {
+  return invoke('browser_devtools', { workspace });
+}
+
+/** Re-read what the engine does not push (in-page URL changes, history). */
+export function browserRefresh(workspace: string): Promise<BrowserPageState> {
+  return invoke('browser_refresh', { workspace });
+}
+
+/** Close a workspace's page. */
+export function browserClose(workspace: string): Promise<void> {
+  return invoke('browser_close', { workspace });
+}
+
+/** Every live page (re-sync after a frontend reload). */
+export function browserSessions(): Promise<BrowserPageState[]> {
+  return invoke('browser_sessions');
 }
 
 /** Browser-control MCP coordinates + supported-agent catalog for Settings →

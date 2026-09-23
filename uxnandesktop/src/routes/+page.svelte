@@ -390,8 +390,9 @@
       {#if app.browserOpen}
         {@render resizeHandle("browser")}
 
-        <!-- 4th panel: the integrated developer browser. The toolbar is here; the
-             page is a docked WebviewWindow positioned over the panel's content. -->
+        <!-- 4th panel: the integrated developer browser of the workspace on
+             screen. The toolbar is here; the page is a native child webview
+             placed over the panel's content (state/browser.svelte.ts). -->
         <aside
           class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
           style="width: {browserWidth()}px"

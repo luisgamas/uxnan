@@ -18,6 +18,7 @@ import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { orchestration } from "$lib/state/orchestration.svelte";
 import { projects } from "$lib/state/projects.svelte";
 import { app } from "$lib/state/app.svelte";
+import { browser } from "$lib/state/browser.svelte";
 import { readInstanceText } from "$lib/terminal/instances";
 import { planUnattended, type UnattendedOutcome } from "$lib/agentUnattended";
 import type { EnvVar, WorktreeEntry } from "$lib/types";
@@ -111,6 +112,16 @@ function queuePrompt(tabId: string, prompt: unknown): void {
 /** The handlers, by method. Exported for the tests, which call them directly. A
  *  handler may return a promise; the bridge awaits it. */
 export const handlers: Record<string, (params: Record<string, unknown>) => unknown> = {
+  // The integrated browser: which workspace is on screen (what a caller with
+  // no terminal acts on), and opening a URL in a workspace's browser — the
+  // window owns the panel and the slot a page is placed in.
+  "browser/active": () => ({ workspace: browser.activeKey }),
+  "browser/open": async (p) => {
+    const url = String(p.url ?? "");
+    const workspace = typeof p.workspace === "string" ? p.workspace : browser.activeKey;
+    await app.openBrowser(url, workspace);
+    return { workspace };
+  },
   "terminal/list": () => {
     const tabs: ControlTab[] = [];
     for (const { tab, workspace } of terminals.tabsWithWorkspace()) {
