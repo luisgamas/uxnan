@@ -311,17 +311,21 @@
       "name": "Integrated browser and DevTools",
       "status": {
         "windows-x64": {
-          "level": "code-only",
-          "evidence": "The engine was rewritten as child webviews of the main window (src-tauri/src/browser/host.rs) and has not run on Windows yet — the previous smoke result was for the separate docked window it replaced. The E2E journey (tests/e2e/specs/browser.e2e.mjs) now opens, loads and closes a page; the URL gate is unit-tested (src-tauri/src/browser/mod.rs).",
-          "gaps": "Run the browser journey and walk the panel by hand (workspace switch, a dialog over the page, minimize / another desktop) — Windows is where the first child-webview attempt froze; R07 (browser cost) still needs an operator."
+          "level": "builds",
+          "date": "2026-09-23",
+          "sha": "a7b5b9f5",
+          "tester": "ci",
+          "hardware": "GitHub-hosted windows-latest runner",
+          "evidence": "The child-webview engine, the agent page tools and the WebView2 page capture build, pass clippy and their unit suites on windows-latest (.github/workflows/ci-desktop.yml run 35927031616) (src-tauri/src/browser/host.rs, src-tauri/src/browser/capture.rs). Not run on a Windows machine since the rewrite — the previous smoke result was for the separate docked window it replaced.",
+          "gaps": "Run the browser journey (tests/e2e/specs/browser.e2e.mjs) and walk the panel by hand (workspace switch, a dialog over the page, minimize / another desktop, a screenshot) — Windows is where the first child-webview attempt froze; R07 (browser cost) still needs an operator."
         },
         "macos-aarch64": {
           "level": "builds",
-          "date": "2026-07-31",
-          "sha": "5d05643b",
-          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "date": "2026-09-23",
+          "sha": "a7b5b9f5",
           "tester": "ci",
-          "evidence": "The child-webview engine compiles and its unit suites are green locally (src-tauri/src/browser/mod.rs, src-tauri/src/browser/host.rs); the last CI verify leg predates it (.github/workflows/ci-desktop.yml run 30608531497)."
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "evidence": "Suites green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 35927031616). Beyond builds, a dev build ran on Apple Silicon (maintainer's Mac, 2026-09-23): pages per workspace, a hidden background page, the page tools driven by a real agent over MCP, the WebKit capture (src-tauri/src/browser/capture.rs) — a functional run, not yet the visual walk a smoke level needs."
         },
         "macos-x64": {
           "level": "code-only",
@@ -332,8 +336,12 @@
           "evidence": "Not built since the child-webview engine (src-tauri/src/browser/host.rs) replaced the docked window; the x86_64 DMG before it compiled the old engine."
         },
         "linux-x64": {
-          "level": "code-only",
-          "evidence": "The child-webview engine (src-tauri/src/browser/host.rs) has never been built or seen on Linux; WebKitGTK child views are unverified."
+          "level": "builds",
+          "date": "2026-09-23",
+          "sha": "a7b5b9f5",
+          "tester": "ci",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "evidence": "The child-webview engine, the agent page tools and the WebKitGTK page capture build, pass clippy and their unit suites on ubuntu-latest (.github/workflows/ci-desktop.yml run 35927031616) (src-tauri/src/browser/host.rs, src-tauri/src/browser/capture.rs); never run on a Linux desktop."
         }
       }
     },

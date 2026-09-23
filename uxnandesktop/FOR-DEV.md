@@ -806,8 +806,9 @@ params validator now enforcing `enum` / `minimum` / `maximum` / `maxLength`; pag
 actions in the control audit log with typed text by length; a still image of the
 page under dialogs.
 
-- [ ] **Browser — validate the child-webview engine on Windows and Linux.** It was
-      run on macOS only (dev build). Windows is the platform that froze the first
+- [ ] **Browser — validate the child-webview engine on Windows and Linux.** It
+      builds and its suites are green on every CI leg (run 35927031616), but it
+      was run on macOS only (dev build). Windows is the platform that froze the first
       attempt (see the engine decision): run `npm run test:e2e -- --spec browser`
       (the journey now opens, loads and closes a page) and walk the panel by hand —
       workspace switch, a dialog over the page, the window minimized/moved to
