@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **Tauri updated to 2.11.6** (runtime 2.11.4, with the plugins, `@tauri-apps/api`
+  2.11.1 and `@tauri-apps/cli` 2.11.5), the latest 2.x: deadlock fixes in
+  listeners and cookie reads, an HDC handle leak on Windows, faster custom
+  protocol loads.
+
 ## [0.0.54] - 20260922
 ### Changed
 
