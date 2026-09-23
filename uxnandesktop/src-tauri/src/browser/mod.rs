@@ -13,7 +13,11 @@
 //!   window), so it moves, minimizes and changes desktop with the app and is
 //!   shown only while its workspace is the one on screen.
 
+pub mod approval;
+pub mod capture;
 pub mod host;
+pub mod page;
+pub mod policy;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};

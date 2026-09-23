@@ -23,3 +23,7 @@ clap = { version = "4", default-features = false, features = ["std", "derive", "
 # time with, so both sides look at the same clock; `system` is its smallest
 # feature set.
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+# Decodes a browser page screenshot (`browser screenshot --out`) from the
+# base64 the protocol carries it in. Already in the workspace through the app;
+# pure Rust, MIT/Apache-2.0.
+base64 = "0.22"

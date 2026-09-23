@@ -3,6 +3,7 @@
   import { app } from "$lib/state/app.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { browser } from "$lib/state/browser.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
   import { sessions } from "$lib/state/sessions.svelte";
@@ -142,6 +143,23 @@
     app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
     void app.persistSettings();
   }
+  /** An agent's approval request the person cannot see right now: waiting in
+   *  another workspace, or in this one with its browser panel closed. */
+  const pendingApproval = $derived(
+    browser.approvals.find((a) => a.workspace !== browser.activeKey || !app.browserOpen) ?? null,
+  );
+
+  /** The globe: go to a waiting approval first, else toggle the browser. */
+  function onGlobe() {
+    const waiting = pendingApproval;
+    if (!waiting) return app.toggleBrowser();
+    if (waiting.workspace !== browser.activeKey) {
+      if (waiting.workspace) projects.setActiveWorktree(waiting.workspace);
+      else terminals.setWorkspace(waiting.workspace);
+    }
+    if (!app.browserOpen) void app.openBrowser(undefined, waiting.workspace).catch(() => {});
+  }
+
   function toggleRightSidebar() {
     app.toggleRightSidebar();
   }
@@ -541,22 +559,29 @@
         {/snippet}
       </TooltipSimple>
       {#if app.settings.browser?.enabled ?? true}
-        <TooltipSimple title={i18n.t("browser.toggle")}>
+        <TooltipSimple title={pendingApproval ? i18n.t("browser.approvalPending") : i18n.t("browser.toggle")}>
           {#snippet children(props)}
             <button
               {...props}
               class={cn(
                 shell.statusBarAction,
                 focus.ring,
+                "relative",
                 app.browserOpen
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
-              aria-label={i18n.t("browser.toggle")}
+              aria-label={pendingApproval ? i18n.t("browser.approvalPending") : i18n.t("browser.toggle")}
               aria-pressed={app.browserOpen}
-              onclick={() => app.toggleBrowser()}
+              onclick={onGlobe}
             >
               <Icon icon={GlobeIcon} class={iconSize.action} />
+              {#if pendingApproval}
+                <span
+                  class="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-amber-500"
+                  aria-hidden="true"
+                ></span>
+              {/if}
             </button>
           {/snippet}
         </TooltipSimple>

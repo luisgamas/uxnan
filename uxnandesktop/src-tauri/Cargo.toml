@@ -170,6 +170,16 @@ zeroize = "1"
 # Already in the tree via `rustls-platform-verifier` (reqwest); MIT/Apache-2.0.
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
+# The macOS half of `browser/capture.rs`: a browser page's screenshot through
+# WebKit's own `takeSnapshotWithConfiguration:` and AppKit's PNG encoder. The
+# same Objective-C bindings the webview itself is built on (wry), at the versions
+# already in the tree — only a few more framework classes are compiled in.
+# MIT/Apache-2.0/Zlib.
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSError"] }
+objc2-app-kit = { version = "0.3", features = ["NSImage", "NSImageRep", "NSBitmapImageRep"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKSnapshotConfiguration", "block2", "objc2-app-kit"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

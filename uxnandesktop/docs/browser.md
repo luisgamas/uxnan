@@ -101,6 +101,7 @@ redirects and iframes (which may additionally use `about:srcdoc` and `blob:`).
 | **Open links** | Where links open: *in the integrated browser* (`internal`), *in my system browser* (`external`), or *ask each time* (`ask`). | Internal |
 | **Let agents open links** | Inject a `$BROWSER` shim so agents' links land in-app automatically (see below). | On |
 | **Clickable terminal links** | Make URLs printed in the terminal **Ctrl/Cmd-clickable** (applies to terminals opened afterwards). | On |
+| **Let agents use other sites** | Let agents read and act on pages outside this machine. Off: the page tools work only on local pages (their dev servers). On: each site still needs your approval once, and high-risk actions every time (see *Agents reading and using the page*). | Off |
 | **Home page** | Opened when the browser panel has no target. Blank if empty. | — |
 
 The setting is one **decision point**: links from the UI, the terminal, and agents
@@ -157,13 +158,18 @@ no documentation**.
 | `browser_reload` | Reload the page and answer once it has loaded again (e.g. after the agent changes code). |
 | `browser_back` / `browser_forward` | Move through history; answers with the page it landed on and whether it moved. |
 | `browser_status` | Report the page of your workspace (URL, title, loading, whether the person can see it, history) and how opens are routed. |
+| `browser_snapshot` | Read the page as a compact outline, every interactive element carrying a `ref`. |
+| `browser_screenshot` | See the page: a PNG taken by the engine itself (macOS today). |
+| `browser_console` | Read what the page logged — messages, warnings, errors, uncaught exceptions. |
+| `browser_wait` | Wait until the page shows some text (up to 30 s). |
+| `browser_click` / `browser_type` / `browser_press` / `browser_scroll` | Use the page: click, type into a field (or pick a select option), press a key, scroll — by `ref`. |
 
 "Your workspace" is the one your terminal runs in; a caller outside a Uxnan
 terminal (a script with the control token) acts on the workspace on screen. The
 answer says `visible: false` when the page loaded hidden in a workspace the person
-is not looking at — it works the same, they just do not see it yet.
-(Page inspection/interaction — snapshot/click/type — is a planned follow-up; see
-`FOR-DEV.md`.)
+is not looking at — it works the same, they just do not see it yet. How the page
+tools behave, and what they may not do, is in *Agents reading and using the page*
+below.
 
 The browser tools are six entries of a larger list: the same MCP server carries the
 whole **control surface** — `uxnan_status`, `project_*`, `worktree_*`, `terminal_*`,
@@ -275,6 +281,65 @@ The registry is small, so wiring a new CLI is one row plus one arm in
 The frontend needs no change: the per-agent toggles and the launch path both read the
 registry from the backend.
 
+## Agents reading and using the page
+
+An agent building a web app needs to *see* what it built and *try* it: open the
+dev server, read what rendered, fill a form, press the button, check the console.
+The page tools do exactly that, and nothing more — there is no "run this
+JavaScript" tool, no CSS selectors and no screen coordinates.
+
+**Snapshot, then act by reference.** `browser_snapshot` returns the page as an
+outline — one line per heading, text, link, button or field, with its state and
+value (a password field says only that it is filled) — and gives every
+interactive element a reference like `k3p9:e12`. The actions take that
+reference. A reference names an element of **one document**: after a navigation
+or a reload the old ones are refused ("take a new snapshot"), so an agent can
+never act on a page it has not looked at. Before acting, the element is scrolled
+into view and must be visible, enabled and not covered by something else — a
+click that would land on an overlay is refused and says what covers the element.
+Actions answer once any navigation they caused has loaded, and can return the new
+snapshot in the same call (`snapshot: true`).
+
+**Evidence, not proof.** The outline and the screenshot are what the page
+produced about itself; a page can misdescribe its own buttons. That is why the
+safety rules below lean cautious.
+
+### What needs the person
+
+| | reading (snapshot, screenshot, console, wait) | ordinary actions (links, buttons, typing, scrolling, keys) | high-risk actions |
+| --- | --- | --- | --- |
+| **A page on this machine** — `localhost`, `127.0.0.1`, `*.localhost`, a forwarded SSH port | allowed | allowed | **you approve each one** |
+| **Another site**, while *Let agents use other sites* is off (the default) | refused | refused | refused |
+| **Another site**, with it on | **you approve the site once** | **you approve the site once** | **you approve each one** |
+
+**High-risk** is submitting a form (a submit button, Enter in a form field) or
+clicking anything whose name reads as deleting, removing, paying, buying,
+publishing, deploying, sending, confirming, signing in or up, granting,
+authorizing or merging (English and Spanish). **Typing into a password or file
+field is refused everywhere, always** — an agent never handles a credential or a
+file for you; it asks you to do it.
+
+**Approving.** The request appears as an amber bar above the page, in the browser
+panel of the agent's workspace, naming the agent, the element (highlighted in
+the page), what it would do and the site: **Deny**, **Allow** (this action), or —
+for a site outside this machine — **Allow on *site*** (reads and ordinary actions
+there stop asking until the page closes). When the request is in a workspace you
+are not looking at, or its panel is closed, the status-bar **globe** gets an
+amber dot; clicking it takes you there. The agent waits **45 seconds**, then its
+call is refused with a message telling it to explain what it wants and ask
+again. Nothing about approvals is remembered: closing the page, a restart or a
+navigation ends them, and an approval is for the document the agent looked at —
+if the page navigated meanwhile, the action is refused.
+
+**What is logged.** Every action an agent takes in a page — done or refused —
+leaves a line in the control audit log (`control-audit.log` in the app's data
+folder): who, which action, which reference, whether it ran. Typed text is
+recorded by length only.
+
+**Platform notes.** The screenshot is taken by the engine itself; today that is
+**macOS** (WebKit). On Windows and Linux `browser_screenshot` answers that it is
+not available yet, and the rest of the tools work the same.
+
 ## Dialogs and menus over the browser
 
 The page is a real **native view**, not DOM, and on every platform a native view
@@ -286,7 +351,9 @@ takes it back while the page is hidden.
 
 That is why adding a project, picking a folder, opening a context menu or any
 other overlay works normally with the browser open, instead of the dialog opening
-*behind* the page and being unclickable.
+*behind* the page and being unclickable. Where the platform can capture the page
+(macOS today), the panel keeps showing a **still image** of it under the dialog
+instead of going blank.
 
 Two details worth knowing:
 
@@ -318,7 +385,7 @@ what the engine does not push (an in-page URL change, the history state) every
   workspace's page.
 - Because the page is a native view, anything uxnan draws over it has to hide it
   first (see *Dialogs and menus over the browser*): while a dialog is open the
-  panel shows an empty slot instead of the page.
+  panel shows a still image of the page (macOS) or an empty slot (elsewhere).
 - Keyboard shortcuts of the app do not reach it while the page itself has the
   keyboard; click the toolbar (or anywhere in the app) to give it back.
 - The `$BROWSER` auto-interception only covers tools that honor that convention; for

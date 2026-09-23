@@ -18,11 +18,12 @@ pub const FILE_NAME: &str = "control-audit.log";
 const ROTATE_AT: u64 = 1024 * 1024;
 
 /// A copy of `params` with the fields that may carry free text reduced to
-/// their length, so the log records *that* something was sent, not what.
+/// their length, so the log records *that* something was sent (or typed into a
+/// browser page), not what.
 pub fn redact(params: &Value) -> Value {
     let mut out = params.clone();
     if let Some(obj) = out.as_object_mut() {
-        for field in ["prompt", "message"] {
+        for field in ["prompt", "message", "text"] {
             if let Some(v) = obj.get(field).and_then(|v| v.as_str()) {
                 let n = v.len();
                 obj.insert(field.to_string(), json!({ "bytes": n }));

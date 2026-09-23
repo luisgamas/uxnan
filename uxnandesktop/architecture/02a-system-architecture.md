@@ -409,6 +409,30 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   página, incluidas redirecciones e iframes (que además admiten `about:srcdoc` y
   `blob:`). `target=_blank`/`window.open` cargan en la misma página; las descargas
   van a la carpeta de Descargas sin sobrescribir.
+- **Herramientas de página para agentes (planes 018/019):** `browser_snapshot`
+  (esquema compacto de la página con referencias efímeras `<doc>:e<n>` por
+  elemento interactivo), `browser_screenshot` (captura del propio motor; macOS vía
+  `WKWebView takeSnapshot`, `browser/capture.rs`), `browser_console`,
+  `browser_wait`, y las acciones `browser_click|type|press|scroll`. El lado de la
+  página es un script fijo (`browser/page.js`) inyectado antes que el código de la
+  página; el backend lo invoca solo por la evaluación del motor y lee una cadena
+  JSON acotada (`browser/page.rs`) — la página no puede llamar a la app ni se
+  ofrece `evaluate` general. Una referencia vale para **un documento**: tras navegar
+  o recargar se rechaza. Antes de actuar, el elemento debe estar visible,
+  habilitado y sin nada encima (prueba de impacto en su centro). **Política**
+  (`browser/policy.rs`, pura): página local (loopback) → lecturas y acciones
+  bajas/medias permitidas, altas con aprobación por acción; sitio externo →
+  rechazado salvo que el ajuste `agentExternalSites` esté activo, y entonces
+  aprobación del sitio una vez (lecturas y acciones bajas/medias) y aprobación por
+  acción para las altas. Alto = enviar un formulario o un nombre que se lee como
+  borrar/pagar/publicar/iniciar sesión… Escribir en campos de contraseña o archivo
+  se rechaza siempre. **Aprobación** (`browser/approval.rs`): evento
+  `browser:approval` → barra en el panel del workspace del agente con el elemento
+  resaltado; espera máx. 45 s (bajo el timeout de herramientas de los CLI); si la
+  página navegó entre la petición y la aprobación, la acción se rechaza. Error
+  `-32008` *refused* (salida 9 del CLI). Cada acción queda en el log de auditoría
+  de control con el texto reducido a su longitud. Bajo un diálogo, el panel
+  muestra una captura fija de la página en vez de un hueco.
 - **Política de enlaces (`BrowserSettings`):** un único punto de decisión
   (`browser::route_url`, expuesto como el comando `open_url`) enruta cada enlace
   según `linkPolicy` (`internal` → tab interno vía el evento `browser:open-url`,

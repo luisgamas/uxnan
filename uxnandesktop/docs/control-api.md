@@ -87,8 +87,8 @@ below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
-| `read` | `status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `browser/status` | shipped |
-| `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward` | shipped |
+| `read` | `status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
+| `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
 | `create` | `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run`; `automation/list` sits in `read` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
@@ -528,6 +528,7 @@ content never travels as an argument. The token is never printed. Exit status:
 | 6 | timed out |
 | 7 | the selector named nothing |
 | 8 | the target is busy |
+| 9 | refused by a safety policy or by the person (a browser page action; see [the browser](./browser.md#agents-reading-and-using-the-page)) |
 
 **How it finds the app.** Inside a terminal Uxnan launched, from the
 environment (`UXNAN_HOOK_URL` + `UXNAN_HOOK_TOKEN`, and `UXNAN_AGENT_ID` for

@@ -191,7 +191,9 @@ available today are:
   choose (in-app · system browser · ask); when allowed, agents open URLs in it
   automatically — and, through the **MCP server** registered on each agent uxnan
   launches (and only there — your agent configs are never touched), discover
-  `browser_*` tools to preview and test what they build with no setup. See
+  `browser_*` tools to open, read, use and screenshot what they build with no
+  setup — their own local pages freely; other sites and anything that submits,
+  deletes or signs in only with your approval. See
   [the integrated browser](./docs/browser.md).
 - **A control surface for agents and shells.** The same MCP server gives every
   agent uxnan launches tools to read the app (`uxnan_status`, `project_list`,

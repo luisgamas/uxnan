@@ -13,7 +13,7 @@ describe('phase five work-surface batch B contracts', () => {
     expect(browser).toContain('size="icon-xs"');
     expect(browser).toContain('density="compact"');
     expect(browser).toContain('overlayCovers(r)');
-    expect(browser).toContain('browser.setSlot(bounds, showable)');
+    expect(browser).toContain('browser.setSlot(bounds, showable, covered)');
     expect(browser).not.toMatch(/<button\b/);
   });
 

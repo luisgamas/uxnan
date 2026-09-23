@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can read and use the pages they build.** Eight new tools in the
+  control surface (MCP and `uxnan-cli browser …`): `browser_snapshot` reads the
+  page as a compact outline where every link, button and field carries a
+  reference; `browser_click`, `browser_type` (also picks a select option),
+  `browser_press` and `browser_scroll` act on those references;
+  `browser_screenshot` returns what the page looks like (an image the model can
+  see; macOS today); `browser_console` returns what the page logged, uncaught
+  errors included; `browser_wait` waits for text to appear. There is no
+  "run JavaScript" tool, no selectors and no coordinates: a reference names an
+  element of one document and is refused after a navigation, and an action is
+  refused when its element is hidden, disabled or covered by something else.
+- **What an agent may do in a page is a policy, and some of it is yours to
+  approve.** On a page on this machine (the agent's dev server) reading and
+  ordinary actions just run; submitting a form or anything that reads as
+  deleting, paying, publishing or signing in waits for you. A site outside this
+  machine is off limits unless you turn on **Settings → Browser → Let agents use
+  other sites** — and then each site needs your approval once. Typing into a
+  password or file field is refused everywhere. Approvals appear as an amber bar
+  above the page, with the element highlighted; the status-bar globe shows a dot
+  when one is waiting elsewhere. An agent waits 45 seconds, then is told to ask
+  again. Every page action is written to the control audit log, typed text by
+  length only.
+- **A still image of the page under dialogs** (macOS): the browser panel keeps
+  showing the page behind a dialog or menu instead of going blank.
+- **`refused` error code** (`-32008`, `uxnan-cli` exit status 9) for anything a
+  safety policy or the person turned down, and the control surface now enforces
+  the `enum`, `minimum`, `maximum` and `maxLength` its schemas declare.
+
 ### Changed
 
 - **The integrated browser lives inside the window, one per workspace.** Its

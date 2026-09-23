@@ -55,6 +55,33 @@ pub fn render(method: &str, value: &Value) -> String {
             &[],
             &[],
         ),
+        "browser/snapshot" => format!(
+            "{} — {}\n{}\n{}",
+            value["title"].as_str().unwrap_or(""),
+            value["url"].as_str().unwrap_or(""),
+            value["outline"].as_str().unwrap_or(""),
+            if value["truncated"].as_bool().unwrap_or(false) {
+                "(outline truncated — scroll for more)\n"
+            } else {
+                ""
+            }
+        ),
+        "browser/console" => value["entries"]
+            .as_array()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| {
+                        format!(
+                            "{:>5} {:<5} {}\n",
+                            e["seq"],
+                            e["level"].as_str().unwrap_or(""),
+                            e["text"].as_str().unwrap_or("")
+                        )
+                    })
+                    .collect::<String>()
+            })
+            .unwrap_or_default(),
         "terminal/read" => value
             .get("text")
             .and_then(|t| t.as_str())

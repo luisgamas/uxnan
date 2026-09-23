@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 919 Rust tests (842 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins). 937 Rust tests (860 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,321 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,323 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -792,6 +792,20 @@ auto-interception** (`UXNAN_BROWSER_*` env + `$BROWSER` shim
 `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-clickable
 terminal links** (`@xterm/addon-web-links`).
 
+**Done — agents read and use the page (plans 018/019), validated end to end on
+macOS by a real Claude Code agent over MCP:** the page script
+(`browser/page.js`, injected before the page's code; one frozen entry point, no
+general eval) and its channel (`browser/page.rs`, bounded JSON over the engine's
+own evaluation); `browser/snapshot|screenshot|console|wait` (read) and
+`browser/click|type|press|scroll` (ui) in the catalog, the CLI and MCP (a
+screenshot is an MCP image block); references bound to one document; the risk
+policy (`browser/policy.rs`) and the person's approval (`browser/approval.rs`,
+the amber bar in `BrowserApprovalBar.svelte`, the globe's dot, 45 s wait); the
+`agentExternalSites` setting; the `Refused` error code (`-32008`, exit 9); the
+params validator now enforcing `enum` / `minimum` / `maximum` / `maxLength`; page
+actions in the control audit log with typed text by length; a still image of the
+page under dialogs (macOS).
+
 - [ ] **Browser — validate the child-webview engine on Windows and Linux.** It was
       run on macOS only (dev build). Windows is the platform that froze the first
       attempt (see the engine decision): run `npm run test:e2e -- --spec browser`
@@ -846,13 +860,19 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
-- [ ] **Browser MCP — interaction tools (control-only for now).** The tool surface is
-      navigation-only. Page inspection/interaction (`browser_snapshot`,
-      `browser_evaluate`, `browser_click`, `browser_type`) needs a JS return-channel
-      from the docked `WebviewWindow` (`.eval()` is fire-and-forget) — an injected
-      init-script that posts results back, mindful of page CSP. Deferred as a second
-      pass (`FOR-DEV:` marker in `control/services/browser.rs`); they would be
-      new catalog entries in the `ui` group.
+- [ ] **Browser — page screenshots on Windows and Linux.** `browser/capture.rs`
+      captures on macOS only (WebKit's `takeSnapshotWithConfiguration:`), so
+      `browser_screenshot` answers *unavailable* elsewhere and the panel shows an
+      empty slot under a dialog instead of a still image. Windows:
+      `ICoreWebView2::CapturePreview` (PNG into an `IStream`) through
+      `with_webview`; Linux: `webkit_web_view_get_snapshot`. Each needs a run on
+      that platform before `capture::supported()` may say true there (inline
+      `FOR-DEV:` in `browser/capture.rs`).
+- [ ] **Browser — approve from the approval bar, on a real screen.** The bar,
+      the highlight and the globe's amber dot were built and type-checked, and
+      the backend's wait/timeout path was exercised by a real agent (a submit
+      click refused after the wait); a person clicking **Allow** / **Allow on
+      site** / **Deny** has not been walked yet.
 
 ## Control surface — MCP tools + `uxnan-cli` ☐
 
@@ -1641,7 +1661,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 919 Rust + 1,321 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 937 Rust + 1,323 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

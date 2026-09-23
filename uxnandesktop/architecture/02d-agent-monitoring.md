@@ -622,8 +622,10 @@ forma de CLI contra el arbol real de subcomandos de clap.
 
 **Grupos de capacidad (versionados y desconectables en `settings.control`):**
 `read` (`status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`,
-`agent/list`, `run/list|show`, `automation/list`, `browser/status`), `ui` (`app/focus`,
-`terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`),
+`agent/list`, `run/list|show`, `automation/list`, `browser/status|snapshot|screenshot|console|wait`), `ui` (`app/focus`,
+`terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`,
+`browser/click|type|press|scroll` — acciones en la pagina, bajo la politica de riesgo
+y aprobacion de `02a` §4.2b; codigo de error `-32008` *refused*, salida 9 del CLI),
 `create` (`worktree/create` — el nucleo del comando `worktree_create` movido al
 servicio, adopcion por la ventana via el puente, lanzamiento del agente y primer
 mensaje encolado tras el backpressure del broadcast —, `terminal/create`,

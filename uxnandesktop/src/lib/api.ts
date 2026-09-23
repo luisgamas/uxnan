@@ -1303,6 +1303,38 @@ export function browserClose(workspace: string): Promise<void> {
   return invoke('browser_close', { workspace });
 }
 
+/** Something an agent wants to do in a page that needs the person's OK
+ *  (mirrors `browser::approval::ApprovalRequest`). */
+export interface BrowserApproval {
+  id: string;
+  workspace: string;
+  agent: string;
+  action: "read" | "screenshot" | "console" | "click" | "type" | "press" | "scroll";
+  risk: "low" | "medium" | "high" | null;
+  host: string;
+  url: string;
+  /** `once` (this action) or `site` (the whole site may be allowed). */
+  scope: "once" | "site";
+  target: string | null;
+  detail: string | null;
+}
+
+/** Answer an approval: this action, the whole site (for `site` requests), or no. */
+export function browserApprovalAnswer(id: string, answer: "once" | "site" | "deny"): Promise<void> {
+  return invoke('browser_approval_answer', { id, answer });
+}
+
+/** Every approval still waiting (re-sync after a frontend reload). */
+export function browserApprovals(): Promise<BrowserApproval[]> {
+  return invoke('browser_approvals');
+}
+
+/** A still image of what a page shows now (`data:` URL), for the slot while
+ *  an overlay covers it. Rejects where the platform cannot capture. */
+export function browserCapture(workspace: string): Promise<string> {
+  return invoke('browser_capture', { workspace });
+}
+
 /** Every live page (re-sync after a frontend reload). */
 export function browserSessions(): Promise<BrowserPageState[]> {
   return invoke('browser_sessions');

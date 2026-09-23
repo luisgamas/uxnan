@@ -93,6 +93,10 @@ pub enum ErrorCode {
     Timeout,
     /// A caller-supplied `protocolVersion` the app does not speak.
     ProtocolMismatch,
+    /// Refused by a safety policy or by the person: an action in a browser
+    /// page that is not allowed there, or that the person declined (or did not
+    /// answer in time).
+    Refused,
 }
 
 impl ErrorCode {
@@ -110,6 +114,7 @@ impl ErrorCode {
             ErrorCode::Busy => -32005,
             ErrorCode::Timeout => -32006,
             ErrorCode::ProtocolMismatch => -32007,
+            ErrorCode::Refused => -32008,
         }
     }
 
@@ -125,6 +130,7 @@ impl ErrorCode {
             ErrorCode::Timeout => 6,
             ErrorCode::NotFound => 7,
             ErrorCode::Busy => 8,
+            ErrorCode::Refused => 9,
         }
     }
 }
@@ -151,6 +157,7 @@ impl TryFrom<i64> for ErrorCode {
             -32005 => ErrorCode::Busy,
             -32006 => ErrorCode::Timeout,
             -32007 => ErrorCode::ProtocolMismatch,
+            -32008 => ErrorCode::Refused,
             other => return Err(format!("unknown error code {other}")),
         })
     }

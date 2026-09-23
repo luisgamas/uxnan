@@ -455,6 +455,14 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "browser/back" => "uxnan-cli browser back",
         "browser/forward" => "uxnan-cli browser forward",
         "browser/status" => "uxnan-cli browser status",
+        "browser/snapshot" => "uxnan-cli browser snapshot",
+        "browser/screenshot" => "uxnan-cli browser screenshot --out <file.png>",
+        "browser/console" => "uxnan-cli browser console [--since <n>] [--level all|warn|error]",
+        "browser/wait" => "uxnan-cli browser wait <text> [--for <seconds>]",
+        "browser/click" => "uxnan-cli browser click <ref> [--snapshot]",
+        "browser/type" => "uxnan-cli browser type <ref> <text> [--append] [--snapshot]",
+        "browser/press" => "uxnan-cli browser press <key> [--shift]",
+        "browser/scroll" => "uxnan-cli browser scroll [--direction down|up|left|right] [--amount <n>] [--ref <ref>]",
         "run/create" => "uxnan-cli run create --title <t> [--idempotency-key <key>]",
         "run/finish" => "uxnan-cli run finish <run-id> --outcome success|failure|blocked [--summary <text>]",
         "task/create" => "uxnan-cli task create --run <run-id> --title <t> --prompt-file <file> [--depends-on <task>]... [--headless <agent>] [--worktree <worktree>] [--retry] [--idempotency-key <key>]",
@@ -480,7 +488,7 @@ fn group_blurb(group: Group) -> &'static str {
 
 /// Every error code, its name and its meaning — the one table the reference
 /// prints and the CLI's exit codes derive from.
-const ERROR_MEANINGS: [(ErrorCode, &str, &str); 12] = [
+const ERROR_MEANINGS: [(ErrorCode, &str, &str); 13] = [
     (ErrorCode::ParseError, "parse error", "the body was not JSON"),
     (
         ErrorCode::InvalidRequest,
@@ -529,10 +537,15 @@ const ERROR_MEANINGS: [(ErrorCode, &str, &str); 12] = [
         "protocol mismatch",
         "the app and the client speak different protocol versions",
     ),
+    (
+        ErrorCode::Refused,
+        "refused",
+        "a safety policy or the person refused it: a browser page action that is never allowed (typing into a password field), a site outside this machine the person has not allowed, or an approval the person declined or did not answer in time",
+    ),
 ];
 
 /// The exit-status table, one row per status, worded for a script's author.
-const EXIT_MEANINGS: [(ErrorCode, &str); 8] = [
+const EXIT_MEANINGS: [(ErrorCode, &str); 9] = [
     (
         ErrorCode::Internal,
         "the app failed while carrying the request out",
@@ -556,6 +569,10 @@ const EXIT_MEANINGS: [(ErrorCode, &str); 8] = [
     (ErrorCode::Timeout, "timed out"),
     (ErrorCode::NotFound, "the selector named nothing"),
     (ErrorCode::Busy, "the target is busy"),
+    (
+        ErrorCode::Refused,
+        "refused by a safety policy or by the person",
+    ),
 ];
 
 pub const COMMANDS: &str = "uxnan-cli status
@@ -583,6 +600,7 @@ uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
+uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
 uxnan-cli skills get control [--full]           # this guide / the full reference
 Global: --json (stable machine output), --timeout <seconds>

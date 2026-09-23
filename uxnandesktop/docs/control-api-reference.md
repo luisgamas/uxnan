@@ -30,6 +30,7 @@ uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
+uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
 uxnan-cli skills get control [--full]           # this guide / the full reference
 Global: --json (stable machine output), --timeout <seconds>
@@ -60,6 +61,10 @@ Global: --json (stable machine output), --timeout <seconds>
 - `run/show` (MCP tool `run_show`) — Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.
 - `automation/list` (MCP tool `automation_list`) — List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.
 - `browser/status` (MCP tool `browser_status`) — Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask).
+- `browser/snapshot` (MCP tool `browser_snapshot`) — Read your workspace's browser page as a compact outline of what is visible — headings, text, links, buttons, fields with their values and state — where every interactive element carries a `ref` for browser_click / browser_type.
+- `browser/screenshot` (MCP tool `browser_screenshot`) — Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show.
+- `browser/console` (MCP tool `browser_console`) — Read what your workspace's browser page logged to its console since it loaded — messages, warnings, errors and uncaught exceptions — to debug the web app you are building.
+- `browser/wait` (MCP tool `browser_wait`) — Wait until your workspace's browser page shows some text (case-insensitive), or the time runs out — for content that appears after a request or an animation, instead of guessing a delay.
 
 ### `ui` (v1) — actions on the window that change nothing on disk or in a process
 
@@ -72,6 +77,10 @@ Global: --json (stable machine output), --timeout <seconds>
 - `browser/reload` (MCP tool `browser_reload`) — Reload your workspace's page in the integrated browser and answer once it has loaded again.
 - `browser/back` (MCP tool `browser_back`) — Go back one entry in your workspace's browser history and answer with the page it landed on.
 - `browser/forward` (MCP tool `browser_forward`) — Go forward one entry in your workspace's browser history and answer with the page it landed on.
+- `browser/click` (MCP tool `browser_click`) — Click an element of your workspace's browser page, by the `ref` browser_snapshot gave it; answers once any navigation it caused has loaded.
+- `browser/type` (MCP tool `browser_type`) — Type text into a field of your workspace's browser page (a text input, textarea or editable element), by its `ref`; replaces what is there unless `clear` is false.
+- `browser/press` (MCP tool `browser_press`) — Press a key in your workspace's browser page, on the element that has focus: `Enter` (submits a form field's form — which the person approves — or activates a focused button), `Tab` (`shift` for back), `Escape`, arrows, `PageUp`/`PageDown`, `Home`/`End`, `Backspace`, `Delete`, `Space`.
+- `browser/scroll` (MCP tool `browser_scroll`) — Scroll your workspace's browser page — or one scrollable element, by its `ref` — by a fraction of its visible height or width, to reach content a snapshot left out.
 
 ### `create` (v1) — create a worktree or a terminal, start a saved run or automation
 
@@ -157,6 +166,7 @@ At the HTTP layer: `400` with a JSON-RPC error means the body was not JSON (`-32
 | -32005 | busy | 8 | the target is busy: a run that is already running or cannot start, or an agent launch past the launch budget (`data.live` / `data.cap`) |
 | -32006 | timeout | 6 | a wait ran out of time |
 | -32007 | protocol mismatch | 4 | the app and the client speak different protocol versions |
+| -32008 | refused | 9 | a safety policy or the person refused it: a browser page action that is never allowed (typing into a password field), a site outside this machine the person has not allowed, or an approval the person declined or did not answer in time |
 
 ### The MCP door
 
@@ -748,6 +758,154 @@ Report the integrated browser of your workspace: whether a page is open there, i
 }
 ```
 
+### `browser/snapshot`
+
+Read your workspace's browser page as a compact outline of what is visible — headings, text, links, buttons, fields with their values and state — where every interactive element carries a `ref` for browser_click / browser_type. Use it after browser_open to check what rendered, and before acting. Pages on this machine (your dev server) are read freely; a site outside it needs the person to allow it. The outline is what the page says about itself: evidence, not proof.
+
+- **Group:** `read` · read-only
+- **MCP:** `browser_snapshot`
+- **CLI:** `uxnan-cli browser snapshot`
+
+**Params** — none (send `{}`).
+
+**Result**
+
+- `url` (string) — The page's URL.
+- `title` (string) — The document title.
+- `outline` (string) — The page as an indented outline, one line per element: `role "name" [ref=…] [state] value="…" -> href`. Interactive elements carry a `ref` to pass to browser_click / browser_type; text is quoted. Password values never appear.
+- `nodes` (integer) — Lines in the outline.
+- `interactive` (integer) — Elements with a `ref`.
+- `truncated` (boolean) — Whether the outline was cut at its size limit (scroll, or act on what is there).
+- `consoleErrors` (integer) — Errors logged by the page since it loaded (read them with browser_console).
+- `viewport` (object) — The visible area, in CSS pixels.
+  - `width` (integer) — Viewport width.
+  - `height` (integer) — Viewport height.
+  - `scrollX` (integer) — Horizontal scroll offset.
+  - `scrollY` (integer) — Vertical scroll offset.
+  - `scrollHeight` (integer) — Height of the whole document.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/snapshot",
+  "params": {}
+}
+```
+
+### `browser/screenshot`
+
+Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show. Taken by the engine itself; works while the page is hidden in a background workspace. Same site rule as browser_snapshot. Not available on every platform yet (the error says so).
+
+- **Group:** `read` · read-only
+- **MCP:** `browser_screenshot`
+- **CLI:** `uxnan-cli browser screenshot --out <file.png>`
+
+**Params** — none (send `{}`).
+
+**Result**
+
+- `url` (string) — The page's URL when captured.
+- `visible` (boolean) — Whether the person could see the page at the time.
+- `image` (object) — The capture.
+  - `mimeType` (string) — `image/png`.
+  - `width` (integer) — Width in pixels.
+  - `height` (integer) — Height in pixels.
+  - `data` (string) — The PNG, base64. MCP callers receive it as an image content block instead.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/screenshot",
+  "params": {}
+}
+```
+
+### `browser/console`
+
+Read what your workspace's browser page logged to its console since it loaded — messages, warnings, errors and uncaught exceptions — to debug the web app you are building. Pass `since` (the `last` of a previous call) to get only newer entries, and `level` to filter.
+
+- **Group:** `read` · read-only
+- **MCP:** `browser_console`
+- **CLI:** `uxnan-cli browser console [--since <n>] [--level all|warn|error]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `since` | integer | no | Only entries after this sequence number (the `last` a previous call returned). Default 0: everything kept. |
+| `level` | string: `all` \| `warn` \| `error` | no | `error` (errors only), `warn` (warnings and errors) or `all` (default). |
+
+**Result**
+
+- `entries` (array of object) — The entries, oldest first (the page keeps the latest 300).
+  - `seq` (integer) — Sequence number, increasing.
+  - `level` (string) — `info`, `debug`, `warn` or `error`.
+  - `text` (string) — The message (cut at 1000 characters).
+  - `at` (integer) — Epoch milliseconds.
+- `dropped` (integer) — Entries discarded because the page logged more than it keeps.
+- `last` (integer) — The newest sequence number — pass it as `since` next time.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/console",
+  "params": {
+    "level": "error"
+  }
+}
+```
+
+### `browser/wait`
+
+Wait until your workspace's browser page shows some text (case-insensitive), or the time runs out — for content that appears after a request or an animation, instead of guessing a delay.
+
+- **Group:** `read` · read-only
+- **MCP:** `browser_wait`
+- **CLI:** `uxnan-cli browser wait <text> [--for <seconds>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `text` | string | yes | The text to wait for. |
+| `timeout` | number | no | Seconds to wait, at most 30. Default 10. |
+
+**Result**
+
+- `found` (boolean) — Whether the text appeared.
+- `waitedMs` (integer) — How long it waited.
+- `page` (object | null) — The page when the wait ended.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/wait",
+  "params": {
+    "text": "Saved",
+    "timeout": 5
+  }
+}
+```
+
 ### `app/focus`
 
 Bring the Uxnan window to the front.
@@ -1065,6 +1223,249 @@ Go forward one entry in your workspace's browser history and answer with the pag
   "id": 1,
   "method": "browser/forward",
   "params": {}
+}
+```
+
+### `browser/click`
+
+Click an element of your workspace's browser page, by the `ref` browser_snapshot gave it; answers once any navigation it caused has loaded. The element is scrolled into view and must be visible, enabled and not covered by something else. On your own local pages ordinary clicks just run; submitting a form or anything that reads as deleting, paying, publishing or signing in waits for the person to approve it (the call blocks up to 45 s, then is refused — tell the person and call again).
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `browser_click`
+- **CLI:** `uxnan-cli browser click <ref> [--snapshot]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `ref` | string | yes | The element, by the `ref` a browser_snapshot of the current page gave it (e.g. `k3p9:e12`). A reference from before a navigation or reload is refused — take a new snapshot. |
+| `snapshot` | boolean | no | Also return the page's new snapshot (as browser_snapshot would) in `snapshot`, saving a call. Default false. |
+
+**Result**
+
+- `done` (string) — `click`.
+- `navigated` (boolean) — Whether a new document loaded as a result (the action's navigation is waited for, up to 10 s).
+- `page` (object | null) — The page after the action.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
+- `effect` (string, optional) — What happened beyond the action itself: for browser_press, `focus` (moved focus), `submit` (submitted the form), `click` (activated the focused element) or `none`; for browser_click, `opened here` when a link meant for a new window loaded in this page (the browser has no tabs).
+- `chosen` (string, optional) — For browser_type into a select: the option chosen.
+- `scrollX` (integer, optional) — For browser_scroll: the page's horizontal offset after it.
+- `scrollY` (integer, optional) — For browser_scroll: the page's vertical offset after it.
+- `snapshot` (object, optional) — The new snapshot, when `snapshot: true` was passed.
+  - `url` (string) — The page's URL.
+  - `title` (string) — The document title.
+  - `outline` (string) — The page as an indented outline, one line per element: `role "name" [ref=…] [state] value="…" -> href`. Interactive elements carry a `ref` to pass to browser_click / browser_type; text is quoted. Password values never appear.
+  - `nodes` (integer) — Lines in the outline.
+  - `interactive` (integer) — Elements with a `ref`.
+  - `truncated` (boolean) — Whether the outline was cut at its size limit (scroll, or act on what is there).
+  - `consoleErrors` (integer) — Errors logged by the page since it loaded (read them with browser_console).
+  - `viewport` (object) — The visible area, in CSS pixels.
+    - `width` (integer) — Viewport width.
+    - `height` (integer) — Viewport height.
+    - `scrollX` (integer) — Horizontal scroll offset.
+    - `scrollY` (integer) — Vertical scroll offset.
+    - `scrollHeight` (integer) — Height of the whole document.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/click",
+  "params": {
+    "ref": "k3p9:e12"
+  }
+}
+```
+
+### `browser/type`
+
+Type text into a field of your workspace's browser page (a text input, textarea or editable element), by its `ref`; replaces what is there unless `clear` is false. For a select, `text` picks the option with that label or value. Never works on password or file fields — ask the person. The text is not logged, only its length.
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `browser_type`
+- **CLI:** `uxnan-cli browser type <ref> <text> [--append] [--snapshot]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `ref` | string | yes | The element, by the `ref` a browser_snapshot of the current page gave it (e.g. `k3p9:e12`). A reference from before a navigation or reload is refused — take a new snapshot. |
+| `text` | string | yes | What to type (or, for a select, the option's label or value). |
+| `clear` | boolean | no | Replace the field's current value (default true); false appends. |
+| `snapshot` | boolean | no | Also return the page's new snapshot (as browser_snapshot would) in `snapshot`, saving a call. Default false. |
+
+**Result**
+
+- `done` (string) — `type`.
+- `navigated` (boolean) — Whether a new document loaded as a result (the action's navigation is waited for, up to 10 s).
+- `page` (object | null) — The page after the action.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
+- `effect` (string, optional) — What happened beyond the action itself: for browser_press, `focus` (moved focus), `submit` (submitted the form), `click` (activated the focused element) or `none`; for browser_click, `opened here` when a link meant for a new window loaded in this page (the browser has no tabs).
+- `chosen` (string, optional) — For browser_type into a select: the option chosen.
+- `scrollX` (integer, optional) — For browser_scroll: the page's horizontal offset after it.
+- `scrollY` (integer, optional) — For browser_scroll: the page's vertical offset after it.
+- `snapshot` (object, optional) — The new snapshot, when `snapshot: true` was passed.
+  - `url` (string) — The page's URL.
+  - `title` (string) — The document title.
+  - `outline` (string) — The page as an indented outline, one line per element: `role "name" [ref=…] [state] value="…" -> href`. Interactive elements carry a `ref` to pass to browser_click / browser_type; text is quoted. Password values never appear.
+  - `nodes` (integer) — Lines in the outline.
+  - `interactive` (integer) — Elements with a `ref`.
+  - `truncated` (boolean) — Whether the outline was cut at its size limit (scroll, or act on what is there).
+  - `consoleErrors` (integer) — Errors logged by the page since it loaded (read them with browser_console).
+  - `viewport` (object) — The visible area, in CSS pixels.
+    - `width` (integer) — Viewport width.
+    - `height` (integer) — Viewport height.
+    - `scrollX` (integer) — Horizontal scroll offset.
+    - `scrollY` (integer) — Vertical scroll offset.
+    - `scrollHeight` (integer) — Height of the whole document.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/type",
+  "params": {
+    "ref": "k3p9:e7",
+    "text": "ada@example.com"
+  }
+}
+```
+
+### `browser/press`
+
+Press a key in your workspace's browser page, on the element that has focus: `Enter` (submits a form field's form — which the person approves — or activates a focused button), `Tab` (`shift` for back), `Escape`, arrows, `PageUp`/`PageDown`, `Home`/`End`, `Backspace`, `Delete`, `Space`.
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `browser_press`
+- **CLI:** `uxnan-cli browser press <key> [--shift]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `key` | string: `Enter` \| `Tab` \| `Escape` \| `Backspace` \| `Delete` \| `ArrowUp` \| `ArrowDown` \| `ArrowLeft` \| `ArrowRight` \| `Home` \| `End` \| `PageUp` \| `PageDown` \| `Space` | yes | The key. |
+| `shift` | boolean | no | Hold Shift (e.g. Shift+Tab). Default false. |
+| `snapshot` | boolean | no | Also return the page's new snapshot (as browser_snapshot would) in `snapshot`, saving a call. Default false. |
+
+**Result**
+
+- `done` (string) — `press`.
+- `navigated` (boolean) — Whether a new document loaded as a result (the action's navigation is waited for, up to 10 s).
+- `page` (object | null) — The page after the action.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
+- `effect` (string, optional) — What happened beyond the action itself: for browser_press, `focus` (moved focus), `submit` (submitted the form), `click` (activated the focused element) or `none`; for browser_click, `opened here` when a link meant for a new window loaded in this page (the browser has no tabs).
+- `chosen` (string, optional) — For browser_type into a select: the option chosen.
+- `scrollX` (integer, optional) — For browser_scroll: the page's horizontal offset after it.
+- `scrollY` (integer, optional) — For browser_scroll: the page's vertical offset after it.
+- `snapshot` (object, optional) — The new snapshot, when `snapshot: true` was passed.
+  - `url` (string) — The page's URL.
+  - `title` (string) — The document title.
+  - `outline` (string) — The page as an indented outline, one line per element: `role "name" [ref=…] [state] value="…" -> href`. Interactive elements carry a `ref` to pass to browser_click / browser_type; text is quoted. Password values never appear.
+  - `nodes` (integer) — Lines in the outline.
+  - `interactive` (integer) — Elements with a `ref`.
+  - `truncated` (boolean) — Whether the outline was cut at its size limit (scroll, or act on what is there).
+  - `consoleErrors` (integer) — Errors logged by the page since it loaded (read them with browser_console).
+  - `viewport` (object) — The visible area, in CSS pixels.
+    - `width` (integer) — Viewport width.
+    - `height` (integer) — Viewport height.
+    - `scrollX` (integer) — Horizontal scroll offset.
+    - `scrollY` (integer) — Vertical scroll offset.
+    - `scrollHeight` (integer) — Height of the whole document.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/press",
+  "params": {
+    "key": "Tab"
+  }
+}
+```
+
+### `browser/scroll`
+
+Scroll your workspace's browser page — or one scrollable element, by its `ref` — by a fraction of its visible height or width, to reach content a snapshot left out.
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `browser_scroll`
+- **CLI:** `uxnan-cli browser scroll [--direction down|up|left|right] [--amount <n>] [--ref <ref>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `direction` | string: `down` \| `up` \| `left` \| `right` | no | Which way. Default `down`. |
+| `amount` | number | no | How far, in visible heights (or widths). Default 0.8. |
+| `ref` | string | no | The element, by the `ref` a browser_snapshot of the current page gave it (e.g. `k3p9:e12`). A reference from before a navigation or reload is refused — take a new snapshot. |
+| `snapshot` | boolean | no | Also return the page's new snapshot (as browser_snapshot would) in `snapshot`, saving a call. Default false. |
+
+**Result**
+
+- `done` (string) — `scroll`.
+- `navigated` (boolean) — Whether a new document loaded as a result (the action's navigation is waited for, up to 10 s).
+- `page` (object | null) — The page after the action.
+  - `workspace` (string) — The workspace the page belongs to: the worktree folder of your terminal (`ssh:<hostId>::` on a host), empty for the Global space. Every workspace has its own page.
+  - `url` (string) — The page's current URL.
+  - `title` (string) — The document title; empty until the page sets one.
+  - `loading` (boolean) — Whether the page is still loading (a wait ran out before it finished).
+  - `visible` (boolean) — Whether the person can see it right now: its workspace is on screen and its panel open. A page in another workspace loads and works hidden.
+  - `canGoBack` (boolean | null) — Whether history can go back; null when the engine does not say.
+  - `canGoForward` (boolean | null) — Whether history can go forward; null when the engine does not say.
+- `effect` (string, optional) — What happened beyond the action itself: for browser_press, `focus` (moved focus), `submit` (submitted the form), `click` (activated the focused element) or `none`; for browser_click, `opened here` when a link meant for a new window loaded in this page (the browser has no tabs).
+- `chosen` (string, optional) — For browser_type into a select: the option chosen.
+- `scrollX` (integer, optional) — For browser_scroll: the page's horizontal offset after it.
+- `scrollY` (integer, optional) — For browser_scroll: the page's vertical offset after it.
+- `snapshot` (object, optional) — The new snapshot, when `snapshot: true` was passed.
+  - `url` (string) — The page's URL.
+  - `title` (string) — The document title.
+  - `outline` (string) — The page as an indented outline, one line per element: `role "name" [ref=…] [state] value="…" -> href`. Interactive elements carry a `ref` to pass to browser_click / browser_type; text is quoted. Password values never appear.
+  - `nodes` (integer) — Lines in the outline.
+  - `interactive` (integer) — Elements with a `ref`.
+  - `truncated` (boolean) — Whether the outline was cut at its size limit (scroll, or act on what is there).
+  - `consoleErrors` (integer) — Errors logged by the page since it loaded (read them with browser_console).
+  - `viewport` (object) — The visible area, in CSS pixels.
+    - `width` (integer) — Viewport width.
+    - `height` (integer) — Viewport height.
+    - `scrollX` (integer) — Horizontal scroll offset.
+    - `scrollY` (integer) — Vertical scroll offset.
+    - `scrollHeight` (integer) — Height of the whole document.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "browser/scroll",
+  "params": {
+    "direction": "down",
+    "amount": 1
+  }
 }
 ```
 
@@ -1974,3 +2375,4 @@ A `create` entry answers with a **receipt**: `{ requestId, idempotencyKey?, … 
 | 6 | timed out |
 | 7 | the selector named nothing |
 | 8 | the target is busy |
+| 9 | refused by a safety policy or by the person |

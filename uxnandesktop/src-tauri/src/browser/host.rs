@@ -318,6 +318,9 @@ async fn create<R: tauri::Runtime>(
         .zoom_hotkeys_enabled(false)
         // Files dropped on the page go to the page, not to the app.
         .disable_drag_drop_handler()
+        // The agent tools' page side (`page.js`), in every main-frame document
+        // before the page's own scripts.
+        .initialization_script(super::page::SCRIPT)
         .on_navigation(move |u| super::nav_allowed(u, dev.as_ref()))
         .on_page_load(move |wv, payload| {
             let app = load_app.clone();
@@ -477,6 +480,7 @@ fn set_visible<R: tauri::Runtime>(
 /// a new page.
 pub fn close<R: tauri::Runtime>(app: &AppHandle<R>, workspace: &str) {
     let host = app.state::<BrowserHost>();
+    super::approval::forget(app, workspace);
     let Some(session) = host.with(|s| s.remove(workspace)) else {
         return;
     };
@@ -702,6 +706,24 @@ pub async fn browser_close<R: tauri::Runtime>(
 ) -> Result<(), CommandError> {
     close(&app, &workspace);
     Ok(())
+}
+
+/// A still image of what a page shows now, as a `data:` URL — drawn in the
+/// panel slot while something of the app covers it and the page itself has to
+/// hide (a native view cannot sit under a dialog). `BROWSER_UNSUPPORTED` where
+/// the platform cannot capture; the panel then shows an empty slot.
+#[tauri::command]
+pub async fn browser_capture<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    workspace: String,
+) -> Result<String, CommandError> {
+    use base64::Engine;
+    let wv = webview(&app, &workspace)?;
+    let shot = super::capture::png(&wv).await?;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&shot.png)
+    ))
 }
 
 /// Every live page — the frontend re-syncs from this after a reload.

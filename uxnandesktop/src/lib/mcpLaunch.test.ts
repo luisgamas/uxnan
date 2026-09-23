@@ -52,6 +52,7 @@ const ON: BrowserSettings = {
   allowAgents: true,
   terminalLinks: true,
   homepage: "",
+  agentExternalSites: false,
   mcpEnabled: true,
   frictionFree: true,
   mcpDisabledAgents: [],

@@ -249,6 +249,29 @@
       "gaps": "The journey opens, loads and closes a loopback page (a child webview of the main window). Switching workspace, overlays over the page and the routing preference are not covered end to end; the per-workspace store has no component test yet."
     },
     {
+      "id": "browser-agent-tools",
+      "flow": "Agents read and use a browser page: snapshot, actions, policy, approvals",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3"
+      ],
+      "planned": [
+        "L2",
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/state/browser.svelte.test.ts",
+        "L3": "src-tauri/src/browser/policy.rs #[cfg(test)] (risk and site decisions), src-tauri/src/browser/page.rs #[cfg(test)] (the page channel), src-tauri/src/browser/approval.rs #[cfg(test)], src-tauri/src/control/params.rs #[cfg(test)] (schema bounds)"
+      },
+      "platforms": {
+        "windows": "untested",
+        "macos": "verified",
+        "linux": "untested"
+      },
+      "gaps": "The page script (src-tauri/src/browser/page.js) is exercised only against a real page, by hand and by a real agent on macOS — there is no fixture journey for snapshot/click/type yet, nor a component test of the approval bar. Screenshots exist on macOS only."
+    },
+    {
       "id": "settings-persistence",
       "flow": "Settings, persistence and schema migration",
       "owner": "desktop",

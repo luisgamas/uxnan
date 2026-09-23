@@ -473,6 +473,69 @@ enum BrowserCmd {
     Forward,
     /// Report the browser's state.
     Status,
+    /// Print the page as an outline, with a `ref` on every interactive element.
+    Snapshot,
+    /// Save a PNG of what the page looks like.
+    Screenshot {
+        /// Where to write the PNG.
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
+    /// Print what the page logged to its console.
+    Console {
+        /// Only entries after this sequence number (a previous `last`).
+        #[arg(long)]
+        since: Option<u64>,
+        /// `all` (default), `warn` or `error`.
+        #[arg(long)]
+        level: Option<String>,
+    },
+    /// Wait until the page shows some text.
+    Wait {
+        text: String,
+        /// Seconds to wait, at most 30 (default 10).
+        #[arg(long = "for", value_name = "SECONDS")]
+        seconds: Option<f64>,
+    },
+    /// Click an element by its `ref` from `browser snapshot`.
+    Click {
+        #[arg(value_name = "REF")]
+        reference: String,
+        /// Also print the page's new snapshot.
+        #[arg(long)]
+        snapshot: bool,
+    },
+    /// Type text into a field by its `ref` (replacing its value).
+    Type {
+        #[arg(value_name = "REF")]
+        reference: String,
+        text: String,
+        /// Append instead of replacing.
+        #[arg(long)]
+        append: bool,
+        /// Also print the page's new snapshot.
+        #[arg(long)]
+        snapshot: bool,
+    },
+    /// Press a key (Enter, Tab, Escape, arrows, PageUp/PageDown, Home/End, …).
+    Press {
+        key: String,
+        /// Hold Shift.
+        #[arg(long)]
+        shift: bool,
+    },
+    /// Scroll the page (or one element) by a fraction of its visible size.
+    Scroll {
+        /// `down` (default), `up`, `left` or `right`.
+        #[arg(long)]
+        direction: Option<String>,
+        /// Visible heights (or widths) to scroll (default 0.8).
+        #[arg(long)]
+        amount: Option<f64>,
+        /// Scroll this element instead of the page.
+        #[arg(long = "ref", value_name = "REF")]
+        reference: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -490,7 +553,17 @@ enum SkillsCmd {
 /// What a command resolves to: a catalog call, a wait (many bounded calls
 /// until the answer or the deadline), or text printed locally.
 enum Plan {
-    Call { method: &'static str, params: Value },
+    Call {
+        method: &'static str,
+        params: Value,
+    },
+    /// A call whose result carries an `image` to write to `out`
+    /// (`browser screenshot`).
+    Save {
+        method: &'static str,
+        params: Value,
+        out: std::path::PathBuf,
+    },
     Wait(Repeat),
     Text(String),
 }
@@ -838,6 +911,65 @@ fn plan(command: Command) -> Result<Plan, String> {
             BrowserCmd::Back => with("browser/back", json!({})),
             BrowserCmd::Forward => with("browser/forward", json!({})),
             BrowserCmd::Status => with("browser/status", json!({})),
+            BrowserCmd::Snapshot => with("browser/snapshot", json!({})),
+            BrowserCmd::Screenshot { out } => Ok(Plan::Save {
+                method: "browser/screenshot",
+                params: json!({}),
+                out,
+            }),
+            BrowserCmd::Console { since, level } => {
+                let mut p = json!({});
+                if let Some(n) = since {
+                    p["since"] = json!(n);
+                }
+                if let Some(l) = sel(level) {
+                    p["level"] = json!(l);
+                }
+                with("browser/console", p)
+            }
+            BrowserCmd::Wait { text, seconds } => {
+                let mut p = json!({ "text": text });
+                if let Some(s) = seconds {
+                    p["timeout"] = json!(s);
+                }
+                with("browser/wait", p)
+            }
+            BrowserCmd::Click {
+                reference,
+                snapshot,
+            } => with(
+                "browser/click",
+                json!({ "ref": reference, "snapshot": snapshot }),
+            ),
+            BrowserCmd::Type {
+                reference,
+                text,
+                append,
+                snapshot,
+            } => with(
+                "browser/type",
+                json!({ "ref": reference, "text": text, "clear": !append, "snapshot": snapshot }),
+            ),
+            BrowserCmd::Press { key, shift } => {
+                with("browser/press", json!({ "key": key, "shift": shift }))
+            }
+            BrowserCmd::Scroll {
+                direction,
+                amount,
+                reference,
+            } => {
+                let mut p = json!({});
+                if let Some(d) = sel(direction) {
+                    p["direction"] = json!(d);
+                }
+                if let Some(a) = amount {
+                    p["amount"] = json!(a);
+                }
+                if let Some(r) = sel(reference) {
+                    p["ref"] = json!(r);
+                }
+                with("browser/scroll", p)
+            }
         },
         Command::Rpc { method, params } => {
             let params: Value = serde_json::from_str(&params)
@@ -928,6 +1060,26 @@ fn read_prompt_file(path: &std::path::Path) -> Result<String, String> {
     Ok(text)
 }
 
+/// Write the `image` a result carries to `out`; answer with the result minus
+/// the image data, plus where it went.
+fn save_image(result: &Value, out: &std::path::Path) -> Result<Value, String> {
+    use base64::Engine;
+    let data = result["image"]["data"]
+        .as_str()
+        .ok_or("the answer carried no image")?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| format!("the image is not valid base64: {e}"))?;
+    std::fs::write(out, &bytes).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
+    Ok(json!({
+        "saved": out.display().to_string(),
+        "bytes": bytes.len(),
+        "width": result["image"]["width"],
+        "height": result["image"]["height"],
+        "url": result["url"],
+    }))
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let json = cli.json;
@@ -947,6 +1099,39 @@ fn main() -> ExitCode {
                 Err(e) => return fail(json, e.code, &e.message),
             };
             wait(&endpoint, repeat, json)
+        }
+        Plan::Save {
+            method,
+            params,
+            out,
+        } => {
+            let endpoint = match client::discover() {
+                Ok(e) => e,
+                Err(e) => return fail(json, e.code, &e.message),
+            };
+            match client::call(&endpoint, method, params, timeout) {
+                Ok(result) => match save_image(&result, &out) {
+                    Ok(summary) => {
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&summary)
+                                    .unwrap_or_else(|_| "{}".into())
+                            );
+                        } else {
+                            println!(
+                                "saved {} ({}×{})",
+                                out.display(),
+                                summary["width"],
+                                summary["height"]
+                            );
+                        }
+                        ExitCode::SUCCESS
+                    }
+                    Err(message) => fail(json, ErrorCode::Internal, &message),
+                },
+                Err(e) => fail(json, e.code, &e.message),
+            }
         }
         Plan::Call { method, params } => {
             let endpoint = match client::discover() {

@@ -24,6 +24,7 @@ vi.mock("$lib/api", async (importOriginal) => {
     ),
     browserSetBounds: vi.fn(async () => {}),
     browserClose: vi.fn(async () => {}),
+    browserCapture: vi.fn(async () => "data:image/png;base64,AAAA"),
   };
 });
 
@@ -109,6 +110,26 @@ describe("the per-workspace browser", () => {
     vi.mocked(api.browserSetVisible).mockClear();
     browser.setSlot(SLOT, false);
     expect(api.browserSetVisible).toHaveBeenCalledWith("", false);
+  });
+
+  it("leaves a still image of the page under a dialog that covers it", async () => {
+    await browser.open("http://localhost:3000");
+    vi.mocked(api.browserSetVisible).mockClear();
+    browser.setSlot(SLOT, false, true);
+    await vi.waitFor(() => expect(api.browserSetVisible).toHaveBeenCalledWith("", false));
+    expect(api.browserCapture).toHaveBeenCalledWith("");
+    expect(browser.placeholder).toEqual({ workspace: "", src: "data:image/png;base64,AAAA" });
+    // The dialog closes: the page comes back and the image goes.
+    browser.setSlot(SLOT, true);
+    await vi.waitFor(() => expect(browser.placeholder).toBeNull());
+  });
+
+  it("does not freeze the page for something that is not an overlay", async () => {
+    await browser.open("http://localhost:3000");
+    vi.mocked(api.browserCapture).mockClear();
+    browser.setSlot(SLOT, false, false);
+    expect(api.browserCapture).not.toHaveBeenCalled();
+    expect(browser.placeholder).toBeNull();
   });
 
   it(`keeps at most ${MAX_LIVE_PAGES} pages alive`, async () => {

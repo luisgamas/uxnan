@@ -343,6 +343,65 @@ fn browser_page() -> Value {
     }))
 }
 
+/// The schema fragment for an element reference from `browser/snapshot`.
+fn element_ref() -> Value {
+    json!({
+        "type": "string",
+        "description": "The element, by the `ref` a browser_snapshot of the current page gave it (e.g. `k3p9:e12`). A reference from before a navigation or reload is refused — take a new snapshot."
+    })
+}
+
+/// The schema fragment for returning a fresh snapshot with an action.
+fn snapshot_flag() -> Value {
+    json!({
+        "type": "boolean",
+        "description": "Also return the page's new snapshot (as browser_snapshot would) in `snapshot`, saving a call. Default false."
+    })
+}
+
+/// A page's outline (`browser/snapshot`).
+fn page_outline() -> Value {
+    result(json!({
+        "url": field("string", "The page's URL."),
+        "title": field("string", "The document title."),
+        "outline": field("string", "The page as an indented outline, one line per element: `role \"name\" [ref=…] [state] value=\"…\" -> href`. Interactive elements carry a `ref` to pass to browser_click / browser_type; text is quoted. Password values never appear."),
+        "nodes": field("integer", "Lines in the outline."),
+        "interactive": field("integer", "Elements with a `ref`."),
+        "truncated": field("boolean", "Whether the outline was cut at its size limit (scroll, or act on what is there)."),
+        "consoleErrors": field("integer", "Errors logged by the page since it loaded (read them with browser_console)."),
+        "viewport": nested("The visible area, in CSS pixels.", json!({
+            "width": field("integer", "Viewport width."),
+            "height": field("integer", "Viewport height."),
+            "scrollX": field("integer", "Horizontal scroll offset."),
+            "scrollY": field("integer", "Vertical scroll offset."),
+            "scrollHeight": field("integer", "Height of the whole document."),
+        })),
+    }))
+}
+
+/// What a page action answers.
+fn page_action_result(done: &str) -> Value {
+    let mut v = result(json!({
+        "done": field("string", done),
+        "navigated": field("boolean", "Whether a new document loaded as a result (the action's navigation is waited for, up to 10 s)."),
+        "page": browser_page_or_null("The page after the action."),
+        "effect": optional("string", "What happened beyond the action itself: for browser_press, `focus` (moved focus), `submit` (submitted the form), `click` (activated the focused element) or `none`; for browser_click, `opened here` when a link meant for a new window loaded in this page (the browser has no tabs)."),
+        "chosen": optional("string", "For browser_type into a select: the option chosen."),
+        "scrollX": optional("integer", "For browser_scroll: the page's horizontal offset after it."),
+        "scrollY": optional("integer", "For browser_scroll: the page's vertical offset after it."),
+    }));
+    v["properties"]["snapshot"] = {
+        let mut s = described(
+            "The new snapshot, when `snapshot: true` was passed.",
+            page_outline(),
+        );
+        s[ABSENT] = json!(true);
+        s
+    };
+    // `snapshot` was added after `result()` ran, so it is absent from `required` already.
+    v
+}
+
 /// [`browser_page`] as a field that is `null` when there is no page.
 fn browser_page_or_null(description: &str) -> Value {
     let mut v = described(description, browser_page());
@@ -554,6 +613,80 @@ pub fn catalog() -> Vec<Entry> {
             })),
             example: json!({}),
         },
+        Entry {
+            method: "browser/snapshot",
+            tool: "browser_snapshot",
+            group: Group::Read,
+            summary: "Read your workspace's browser page as a compact outline of what is visible — headings, text, links, buttons, fields with their values and state — where every interactive element carries a `ref` for browser_click / browser_type. Use it after browser_open to check what rendered, and before acting. Pages on this machine (your dev server) are read freely; a site outside it needs the person to allow it. The outline is what the page says about itself: evidence, not proof.",
+            params: object(json!({}), &[]),
+            mutates: false,
+            result: page_outline(),
+            example: json!({}),
+        },
+        Entry {
+            method: "browser/screenshot",
+            tool: "browser_screenshot",
+            group: Group::Read,
+            summary: "Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show. Taken by the engine itself; works while the page is hidden in a background workspace. Same site rule as browser_snapshot. Not available on every platform yet (the error says so).",
+            params: object(json!({}), &[]),
+            mutates: false,
+            result: result(json!({
+                "url": field("string", "The page's URL when captured."),
+                "visible": field("boolean", "Whether the person could see the page at the time."),
+                "image": nested("The capture.", json!({
+                    "mimeType": field("string", "`image/png`."),
+                    "width": field("integer", "Width in pixels."),
+                    "height": field("integer", "Height in pixels."),
+                    "data": field("string", "The PNG, base64. MCP callers receive it as an image content block instead."),
+                })),
+            })),
+            example: json!({}),
+        },
+        Entry {
+            method: "browser/console",
+            tool: "browser_console",
+            group: Group::Read,
+            summary: "Read what your workspace's browser page logged to its console since it loaded — messages, warnings, errors and uncaught exceptions — to debug the web app you are building. Pass `since` (the `last` of a previous call) to get only newer entries, and `level` to filter.",
+            params: object(
+                json!({
+                    "since": { "type": "integer", "minimum": 0, "description": "Only entries after this sequence number (the `last` a previous call returned). Default 0: everything kept." },
+                    "level": { "type": "string", "enum": ["all", "warn", "error"], "description": "`error` (errors only), `warn` (warnings and errors) or `all` (default)." }
+                }),
+                &[],
+            ),
+            mutates: false,
+            result: result(json!({
+                "entries": list_of(result(json!({
+                    "seq": field("integer", "Sequence number, increasing."),
+                    "level": field("string", "`info`, `debug`, `warn` or `error`."),
+                    "text": field("string", "The message (cut at 1000 characters)."),
+                    "at": field("integer", "Epoch milliseconds."),
+                })), "The entries, oldest first (the page keeps the latest 300)."),
+                "dropped": field("integer", "Entries discarded because the page logged more than it keeps."),
+                "last": field("integer", "The newest sequence number — pass it as `since` next time."),
+            })),
+            example: json!({ "level": "error" }),
+        },
+        Entry {
+            method: "browser/wait",
+            tool: "browser_wait",
+            group: Group::Read,
+            summary: "Wait until your workspace's browser page shows some text (case-insensitive), or the time runs out — for content that appears after a request or an animation, instead of guessing a delay.",
+            params: object(
+                json!({
+                    "text": { "type": "string", "description": "The text to wait for." },
+                    "timeout": { "type": "number", "minimum": 0, "maximum": 30, "description": "Seconds to wait, at most 30. Default 10." }
+                }),
+                &["text"],
+            ),
+            mutates: false,
+            result: result(json!({
+                "found": field("boolean", "Whether the text appeared."),
+                "waitedMs": field("integer", "How long it waited."),
+                "page": browser_page_or_null("The page when the wait ended."),
+            })),
+            example: json!({ "text": "Saved", "timeout": 5 }),
+        },
         // ── Ui ───────────────────────────────────────────────────────────────
         Entry {
             method: "app/focus",
@@ -685,6 +818,72 @@ pub fn catalog() -> Vec<Entry> {
                 "page": browser_page_or_null("The page after the step."),
             })),
             example: json!({}),
+        },
+        Entry {
+            method: "browser/click",
+            tool: "browser_click",
+            group: Group::Ui,
+            summary: "Click an element of your workspace's browser page, by the `ref` browser_snapshot gave it; answers once any navigation it caused has loaded. The element is scrolled into view and must be visible, enabled and not covered by something else. On your own local pages ordinary clicks just run; submitting a form or anything that reads as deleting, paying, publishing or signing in waits for the person to approve it (the call blocks up to 45 s, then is refused — tell the person and call again).",
+            params: object(
+                json!({ "ref": element_ref(), "snapshot": snapshot_flag() }),
+                &["ref"],
+            ),
+            mutates: true,
+            result: page_action_result("`click`."),
+            example: json!({ "ref": "k3p9:e12" }),
+        },
+        Entry {
+            method: "browser/type",
+            tool: "browser_type",
+            group: Group::Ui,
+            summary: "Type text into a field of your workspace's browser page (a text input, textarea or editable element), by its `ref`; replaces what is there unless `clear` is false. For a select, `text` picks the option with that label or value. Never works on password or file fields — ask the person. The text is not logged, only its length.",
+            params: object(
+                json!({
+                    "ref": element_ref(),
+                    "text": { "type": "string", "maxLength": 10000, "description": "What to type (or, for a select, the option's label or value)." },
+                    "clear": { "type": "boolean", "description": "Replace the field's current value (default true); false appends." },
+                    "snapshot": snapshot_flag()
+                }),
+                &["ref", "text"],
+            ),
+            mutates: true,
+            result: page_action_result("`type`."),
+            example: json!({ "ref": "k3p9:e7", "text": "ada@example.com" }),
+        },
+        Entry {
+            method: "browser/press",
+            tool: "browser_press",
+            group: Group::Ui,
+            summary: "Press a key in your workspace's browser page, on the element that has focus: `Enter` (submits a form field's form — which the person approves — or activates a focused button), `Tab` (`shift` for back), `Escape`, arrows, `PageUp`/`PageDown`, `Home`/`End`, `Backspace`, `Delete`, `Space`.",
+            params: object(
+                json!({
+                    "key": { "type": "string", "enum": ["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Space"], "description": "The key." },
+                    "shift": { "type": "boolean", "description": "Hold Shift (e.g. Shift+Tab). Default false." },
+                    "snapshot": snapshot_flag()
+                }),
+                &["key"],
+            ),
+            mutates: true,
+            result: page_action_result("`press`."),
+            example: json!({ "key": "Tab" }),
+        },
+        Entry {
+            method: "browser/scroll",
+            tool: "browser_scroll",
+            group: Group::Ui,
+            summary: "Scroll your workspace's browser page — or one scrollable element, by its `ref` — by a fraction of its visible height or width, to reach content a snapshot left out.",
+            params: object(
+                json!({
+                    "direction": { "type": "string", "enum": ["down", "up", "left", "right"], "description": "Which way. Default `down`." },
+                    "amount": { "type": "number", "minimum": 0.05, "maximum": 5, "description": "How far, in visible heights (or widths). Default 0.8." },
+                    "ref": element_ref(),
+                    "snapshot": snapshot_flag()
+                }),
+                &[],
+            ),
+            mutates: true,
+            result: page_action_result("`scroll`."),
+            example: json!({ "direction": "down", "amount": 1 }),
         },
         // ── Create ───────────────────────────────────────────────────────────
         Entry {

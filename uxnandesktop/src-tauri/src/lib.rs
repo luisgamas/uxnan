@@ -137,6 +137,7 @@ pub fn run() {
             let control_token = state.control_token.clone();
             app.manage(state);
             app.manage(browser::BrowserHost::default());
+            app.manage(browser::approval::Approvals::default());
 
             // Resource observability sampler (`resources.rs`). Fully parked —
             // no timer, no process-table walks — until a consumer subscribes
@@ -555,6 +556,9 @@ pub fn run() {
             browser::host::browser_refresh,
             browser::host::browser_close,
             browser::host::browser_sessions,
+            browser::host::browser_capture,
+            browser::approval::browser_approval_answer,
+            browser::approval::browser_approvals,
             commands::git_diff_head,
             commands::set_terminal_layout,
             commands::set_orchestration_runs,

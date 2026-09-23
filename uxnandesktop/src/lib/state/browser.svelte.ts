@@ -26,11 +26,14 @@
 import { untrack } from "svelte";
 import { listen } from "@tauri-apps/api/event";
 import {
+  browserApprovals,
+  browserCapture,
   browserClose,
   browserOpen,
   browserSessions,
   browserSetBounds,
   browserSetVisible,
+  type BrowserApproval,
   type BrowserBounds,
   type BrowserPageState,
 } from "$lib/api";
@@ -38,6 +41,10 @@ import { terminals } from "$lib/state/terminals.svelte";
 
 /** How many pages may be alive at once, across every workspace. */
 export const MAX_LIVE_PAGES = 3;
+
+/** How long a page about to be covered waits for its still image before it
+ *  hides anyway (a dialog should not open late for it). */
+const FREEZE_WAIT_MS = 180;
 
 /** The size a page is laid out at before any panel slot has been measured. */
 const DEFAULT_BOUNDS: BrowserBounds = { x: 0, y: 0, width: 520, height: 720 };
@@ -102,10 +109,24 @@ export function pageToEvict(
 class BrowserStore {
   /** Every workspace's session, by workspace key. */
   sessions = $state<Record<string, BrowserSession>>({});
+  /** What agents are waiting for the person to approve, oldest first. */
+  approvals = $state<BrowserApproval[]>([]);
+  /** A still image of the page on screen, drawn in its slot while a dialog or
+   *  menu covers the panel and the page itself has to hide — so the panel
+   *  keeps showing the page behind the dialog instead of going blank. */
+  placeholder = $state<{ workspace: string; src: string } | null>(null);
+
+  /** The oldest approval waiting in `workspace`, if any. */
+  approvalFor(workspace = this.activeKey): BrowserApproval | null {
+    return this.approvals.find((a) => a.workspace === workspace) ?? null;
+  }
 
   /** The panel slot on screen, and whether a page can be drawn in it now. */
   private slot: BrowserBounds | null = null;
   private slotShowable = false;
+  /** Whether the slot is hidden because an overlay covers it (as opposed to
+   *  Settings, the window hidden, no panel). */
+  private covered = false;
   /** What was last asked of the backend, per workspace — so `sync()` only
    *  calls when something actually changes. */
   private shown = new Map<string, boolean>();
@@ -225,12 +246,32 @@ class BrowserStore {
     }
   }
 
-  /** The panel on screen reports its slot: where a page goes, and whether one
-   *  may be drawn now. `null` = no panel. */
-  setSlot(bounds: BrowserBounds | null, showable: boolean): void {
+  /** The panel on screen reports its slot: where a page goes, whether one may
+   *  be drawn now, and — when not — whether a dialog or menu is the reason.
+   *  `null` = no panel. */
+  setSlot(bounds: BrowserBounds | null, showable: boolean, covered = false): void {
     this.slot = bounds ?? this.slot;
     this.slotShowable = !!bounds && showable;
+    this.covered = !!bounds && !showable && covered;
+    if (!this.covered && !this.slotShowable) this.placeholder = null;
     this.sync();
+  }
+
+  /** Hide a page an overlay is about to cover, leaving a still image of it in
+   *  the slot. The capture gets a moment; the page hides either way. */
+  private async freezeThenHide(workspace: string): Promise<void> {
+    const capture = browserCapture(workspace).then(
+      (src) => {
+        if (this.covered && this.shown.get(workspace) === false) this.placeholder = { workspace, src };
+      },
+      () => {},
+    );
+    await Promise.race([capture, new Promise((r) => setTimeout(r, FREEZE_WAIT_MS))]);
+    // The overlay may have gone while the image was taken.
+    if (this.shown.get(workspace) !== false) return;
+    await browserSetVisible(workspace, false)
+      .then((s) => this.apply(s))
+      .catch(() => {});
   }
 
   /** Bring every page in line with what should be on screen. */
@@ -254,11 +295,24 @@ class BrowserStore {
         void browserSetBounds(ws, bounds).catch(() => {});
       }
       if (this.shown.get(ws) !== visible) {
+        const wasShown = this.shown.get(ws) === true;
         this.shown.set(ws, visible);
-        if (visible) session.lastShown = Date.now();
-        void browserSetVisible(ws, visible)
-          .then((s) => this.apply(s))
-          .catch(() => {});
+        if (visible) {
+          session.lastShown = Date.now();
+          void browserSetVisible(ws, true)
+            .then((s) => {
+              this.apply(s);
+              if (this.placeholder?.workspace === ws) this.placeholder = null;
+            })
+            .catch(() => {});
+        } else if (wasShown && ws === active && this.covered) {
+          void this.freezeThenHide(ws);
+        } else {
+          if (this.placeholder?.workspace === ws) this.placeholder = null;
+          void browserSetVisible(ws, false)
+            .then((s) => this.apply(s))
+            .catch(() => {});
+        }
       }
     }
   }
@@ -283,6 +337,13 @@ class BrowserStore {
     });
     try {
       await listen<BrowserPageState>("browser:state", (e) => this.apply(e.payload));
+      await listen<BrowserApproval>("browser:approval", (e) => {
+        this.approvals = [...this.approvals.filter((a) => a.id !== e.payload.id), e.payload];
+      });
+      await listen<{ id: string }>("browser:approval-done", (e) => {
+        this.approvals = this.approvals.filter((a) => a.id !== e.payload.id);
+      });
+      this.approvals = await browserApprovals();
       for (const state of await browserSessions()) {
         this.apply(state);
         this.ensure(state.workspace).open = true;

@@ -611,6 +611,7 @@
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,
     mcpDisabledAgents: [],
@@ -1584,6 +1585,15 @@
                       checked={br.allowAgents}
                       disabled={!br.enabled}
                       onCheckedChange={(c) => { setBr({ allowAgents: c }); persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+
+                <SettingsRow label={i18n.t("browser.agentExternalSites")} description={i18n.t("browser.agentExternalSitesDesc")}>
+                  {#snippet control()}
+                    <Switch
+                      checked={br.agentExternalSites}
+                      onCheckedChange={(c) => { setBr({ agentExternalSites: c }); persistNow(); }}
                     />
                   {/snippet}
                 </SettingsRow>

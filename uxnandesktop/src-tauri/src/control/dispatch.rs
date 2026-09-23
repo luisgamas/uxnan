@@ -66,9 +66,15 @@ pub async fn dispatch<R: tauri::Runtime>(
     // `agent/wait` is a read that blocks; it leaves no line. A send and a
     // screen read do.
     // What is receipted and written to the audit log: everything that creates,
-    // every conversation turn but the wait, and every coordinator move but the
-    // reads and waits (`task/list`, `inbox/check`) and the progress line.
+    // every conversation turn but the wait, every coordinator move but the
+    // reads and waits (`task/list`, `inbox/check`) and the progress line, and
+    // every action an agent takes inside a browser page (typed text is logged
+    // by length only).
     let audited = entry.group == Group::Create
+        || matches!(
+            method,
+            "browser/click" | "browser/type" | "browser/press" | "browser/scroll"
+        )
         || (entry.group == Group::Converse && method != "agent/wait")
         || (entry.group == Group::Orchestrate
             && !matches!(
@@ -121,6 +127,10 @@ async fn run<R: tauri::Runtime>(
         "run/show" => services::run::show(app, caller, params).await,
         "automation/list" => services::automation::list(app, caller, params).await,
         "browser/status" => services::browser::status(app, caller, params).await,
+        "browser/snapshot" => services::browser::snapshot(app, caller, params).await,
+        "browser/screenshot" => services::browser::screenshot(app, caller, params).await,
+        "browser/console" => services::browser::console(app, caller, params).await,
+        "browser/wait" => services::browser::wait(app, caller, params).await,
         "app/focus" => services::ui::focus(app, caller, params).await,
         "terminal/reveal" => services::ui::reveal(app, caller, params).await,
         "file/open" => services::ui::open_file(app, caller, params).await,
@@ -129,6 +139,10 @@ async fn run<R: tauri::Runtime>(
         "browser/reload" => services::browser::reload(app, caller, params).await,
         "browser/back" => services::browser::back(app, caller, params).await,
         "browser/forward" => services::browser::forward(app, caller, params).await,
+        "browser/click" => services::browser::click(app, caller, params).await,
+        "browser/type" => services::browser::type_text(app, caller, params).await,
+        "browser/press" => services::browser::press(app, caller, params).await,
+        "browser/scroll" => services::browser::scroll(app, caller, params).await,
         "worktree/create" => services::worktree::create_entry(app, caller, params).await,
         "terminal/create" => services::terminal::create(app, caller, params).await,
         "terminal/close" => services::terminal::close(app, caller, params).await,
@@ -177,6 +191,10 @@ const IMPLEMENTED: &[&str] = &[
     "run/list",
     "run/show",
     "browser/status",
+    "browser/snapshot",
+    "browser/screenshot",
+    "browser/console",
+    "browser/wait",
     "app/focus",
     "terminal/reveal",
     "file/open",
@@ -186,6 +204,10 @@ const IMPLEMENTED: &[&str] = &[
     "browser/reload",
     "browser/back",
     "browser/forward",
+    "browser/click",
+    "browser/type",
+    "browser/press",
+    "browser/scroll",
     "automation/list",
     "worktree/create",
     "terminal/create",

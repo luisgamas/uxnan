@@ -39,6 +39,7 @@
   import { normalizeAddress, displayAddress, isSecureAddress, stepZoom } from "$lib/browserAddress";
   import { overlayCovers, onOverlayChange, overlayLayerCount } from "$lib/overlayLayer";
   import { toast } from "$lib/toast";
+  import BrowserApprovalBar from "$lib/components/BrowserApprovalBar.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -73,6 +74,7 @@
   const loading = $derived(session?.loading ?? false);
   const secure = $derived(isSecureAddress(session?.url ?? ""));
   const zoom = $derived(session?.zoom ?? 1);
+  const approval = $derived(browser.approvalFor(workspace));
 
   // Keep the address bar on the page's URL unless the person is typing.
   $effect(() => {
@@ -97,20 +99,21 @@
       width: Math.round(r.width),
       height: Math.round(r.height),
     };
+    // A dialog/menu/popover over the slot has to win: only layers that
+    // actually OVERLAP it count — a menu in the left sidebar has no business
+    // blanking the page on the far right.
+    const covered = overlayCovers(r);
     const showable =
       !app.settingsOpen &&
       !app.automationsOpen &&
       document.visibilityState !== "hidden" &&
       bounds.width > 1 &&
       bounds.height > 1 &&
-      // A dialog/menu/popover over the slot has to win: only layers that
-      // actually OVERLAP it count — a menu in the left sidebar has no business
-      // blanking the page on the far right.
-      !overlayCovers(r);
-    const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height},${showable}`;
+      !covered;
+    const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height},${showable},${covered}`;
     if (key !== lastKey) {
       lastKey = key;
-      browser.setSlot(bounds, showable);
+      browser.setSlot(bounds, showable, covered);
     }
     // Floating layers move and animate while mounted: follow them frame by
     // frame, and only while one is up.
@@ -422,8 +425,22 @@
     </TooltipSimple>
   </div>
 
+  {#if approval}
+    <BrowserApprovalBar {approval} />
+  {/if}
+
   <!-- The page slot: the workspace's page is placed over this element. -->
   <div bind:this={slot} class="relative min-h-0 flex-1 bg-muted/40">
+    {#if browser.placeholder?.workspace === workspace}
+      <!-- The page, frozen, while a dialog or menu covers the panel. -->
+      <img
+        src={browser.placeholder.src}
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+        class="pointer-events-none absolute inset-0 size-full select-none object-fill"
+      />
+    {/if}
     {#if unavailable}
       <div
         class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"

@@ -613,6 +613,10 @@ export interface BrowserSettings {
   terminalLinks: boolean;
   /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
   homepage: string;
+  /** Let agents read and act on pages of sites outside this machine. Off (the
+   *  default): the page tools work only on local pages; on: each site still
+   *  needs the person's approval once, and high-risk actions every time. */
+  agentExternalSites: boolean;
   /** Expose the browser-control MCP server to the agents the ADE launches, so
    *  they discover the `browser_*` tools automatically. The server is registered
    *  **per launch** (flags/env on the process uxnan spawns), never in a config
@@ -1782,6 +1786,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,
     mcpDisabledAgents: [],
