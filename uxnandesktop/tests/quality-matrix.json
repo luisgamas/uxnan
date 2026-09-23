@@ -254,14 +254,15 @@
       "owner": "desktop",
       "covered": [
         "L1",
+        "L2",
         "L3"
       ],
       "planned": [
-        "L2",
         "L4"
       ],
       "evidence": {
         "L1": "src/lib/state/browser.svelte.test.ts",
+        "L2": "src/lib/components/BrowserApprovalBar.svelte.test.ts",
         "L3": "src-tauri/src/browser/policy.rs #[cfg(test)] (risk and site decisions), src-tauri/src/browser/page.rs #[cfg(test)] (the page channel), src-tauri/src/browser/approval.rs #[cfg(test)], src-tauri/src/control/params.rs #[cfg(test)] (schema bounds)"
       },
       "platforms": {
@@ -269,7 +270,7 @@
         "macos": "verified",
         "linux": "untested"
       },
-      "gaps": "The page script (src-tauri/src/browser/page.js) is exercised only against a real page, by hand and by a real agent on macOS — there is no fixture journey for snapshot/click/type yet, nor a component test of the approval bar. Screenshots exist on macOS only."
+      "gaps": "The page script (src-tauri/src/browser/page.js) is exercised only against a real page, by hand and by a real agent on macOS — there is no fixture journey for snapshot/click/type yet. The page capture has run on macOS only; its Windows and Linux halves only build."
     },
     {
       "id": "settings-persistence",

@@ -159,7 +159,7 @@ no documentation**.
 | `browser_back` / `browser_forward` | Move through history; answers with the page it landed on and whether it moved. |
 | `browser_status` | Report the page of your workspace (URL, title, loading, whether the person can see it, history) and how opens are routed. |
 | `browser_snapshot` | Read the page as a compact outline, every interactive element carrying a `ref`. |
-| `browser_screenshot` | See the page: a PNG taken by the engine itself (macOS today). |
+| `browser_screenshot` | See the page: a PNG taken by the engine itself. |
 | `browser_console` | Read what the page logged — messages, warnings, errors, uncaught exceptions. |
 | `browser_wait` | Wait until the page shows some text (up to 30 s). |
 | `browser_click` / `browser_type` / `browser_press` / `browser_scroll` | Use the page: click, type into a field (or pick a select option), press a key, scroll — by `ref`. |
@@ -336,9 +336,11 @@ leaves a line in the control audit log (`control-audit.log` in the app's data
 folder): who, which action, which reference, whether it ran. Typed text is
 recorded by length only.
 
-**Platform notes.** The screenshot is taken by the engine itself; today that is
-**macOS** (WebKit). On Windows and Linux `browser_screenshot` answers that it is
-not available yet, and the rest of the tools work the same.
+**Platform notes.** The screenshot is taken by the engine itself: WebKit's
+snapshot on **macOS** (verified), WebView2's `CapturePreview` on **Windows** and
+WebKitGTK's snapshot on **Linux** — those two build and are unit-tested on CI but
+have not been run on a real machine yet. If a capture fails, `browser_screenshot`
+says so; the rest of the tools do not depend on it.
 
 ## Dialogs and menus over the browser
 
@@ -351,8 +353,8 @@ takes it back while the page is hidden.
 
 That is why adding a project, picking a folder, opening a context menu or any
 other overlay works normally with the browser open, instead of the dialog opening
-*behind* the page and being unclickable. Where the platform can capture the page
-(macOS today), the panel keeps showing a **still image** of it under the dialog
+*behind* the page and being unclickable. Where the page can be captured, the
+panel keeps showing a **still image** of it under the dialog
 instead of going blank.
 
 Two details worth knowing:
@@ -385,7 +387,7 @@ what the engine does not push (an in-page URL change, the history state) every
   workspace's page.
 - Because the page is a native view, anything uxnan draws over it has to hide it
   first (see *Dialogs and menus over the browser*): while a dialog is open the
-  panel shows a still image of the page (macOS) or an empty slot (elsewhere).
+  panel shows a still image of the page (an empty slot if the capture fails).
 - Keyboard shortcuts of the app do not reach it while the page itself has the
   keyboard; click the toolbar (or anywhere in the app) to give it back.
 - The `$BROWSER` auto-interception only covers tools that honor that convention; for

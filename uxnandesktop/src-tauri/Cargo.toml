@@ -190,6 +190,20 @@ windows-sys = { version = "0.59", features = [
 # The user's PATH for the `uxnan-cli` shim (`control/cli.rs`); already in the
 # tree through the updater, so no new code to trust.
 winreg = "0.55"
+# The Windows half of `browser/capture.rs`: a browser page's screenshot through
+# WebView2's own `CapturePreview` into an in-memory stream. The same WebView2 and
+# Windows bindings the webview is built on (wry), at the versions already in the
+# tree. MIT/Apache-2.0.
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+
+# The Linux half of `browser/capture.rs`: a browser page's screenshot through
+# WebKitGTK's `webkit_web_view_get_snapshot`, written as PNG by cairo. Both are
+# what the webview is built on (wry), at the versions already in the tree; `png`
+# compiles in cairo's own PNG writer. MIT.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+cairo-rs = { version = "0.18", features = ["png"] }
 
 
 [dev-dependencies]

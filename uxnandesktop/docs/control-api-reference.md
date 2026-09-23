@@ -797,7 +797,7 @@ Read your workspace's browser page as a compact outline of what is visible — h
 
 ### `browser/screenshot`
 
-Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show. Taken by the engine itself; works while the page is hidden in a background workspace. Same site rule as browser_snapshot. Not available on every platform yet (the error says so).
+Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show. Taken by the engine itself; works while the page is hidden in a background workspace. Same site rule as browser_snapshot. If the platform's engine cannot capture, the error says so — use browser_snapshot then.
 
 - **Group:** `read` · read-only
 - **MCP:** `browser_screenshot`

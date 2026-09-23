@@ -13,7 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   reference; `browser_click`, `browser_type` (also picks a select option),
   `browser_press` and `browser_scroll` act on those references;
   `browser_screenshot` returns what the page looks like (an image the model can
-  see; macOS today); `browser_console` returns what the page logged, uncaught
+  see — verified on macOS; Windows and Linux build on CI, first real run
+  pending); `browser_console` returns what the page logged, uncaught
   errors included; `browser_wait` waits for text to appear. There is no
   "run JavaScript" tool, no selectors and no coordinates: a reference names an
   element of one document and is refused after a navigation, and an action is
@@ -29,7 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   when one is waiting elsewhere. An agent waits 45 seconds, then is told to ask
   again. Every page action is written to the control audit log, typed text by
   length only.
-- **A still image of the page under dialogs** (macOS): the browser panel keeps
+- **A still image of the page under dialogs**: the browser panel keeps
   showing the page behind a dialog or menu instead of going blank.
 - **`refused` error code** (`-32008`, `uxnan-cli` exit status 9) for anything a
   safety policy or the person turned down, and the control surface now enforces

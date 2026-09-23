@@ -411,8 +411,10 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   van a la carpeta de Descargas sin sobrescribir.
 - **Herramientas de página para agentes (planes 018/019):** `browser_snapshot`
   (esquema compacto de la página con referencias efímeras `<doc>:e<n>` por
-  elemento interactivo), `browser_screenshot` (captura del propio motor; macOS vía
-  `WKWebView takeSnapshot`, `browser/capture.rs`), `browser_console`,
+  elemento interactivo), `browser_screenshot` (captura del propio motor, `browser/capture.rs`:
+  `WKWebView takeSnapshot` en macOS — verificado —, `CapturePreview` de WebView2
+  en Windows y el snapshot de WebKitGTK en Linux — compilados en CI, sin ejecutar
+  aún en una máquina real), `browser_console`,
   `browser_wait`, y las acciones `browser_click|type|press|scroll`. El lado de la
   página es un script fijo (`browser/page.js`) inyectado antes que el código de la
   página; el backend lo invoca solo por la evaluación del motor y lee una cadena

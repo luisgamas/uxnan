@@ -484,7 +484,7 @@ pub async fn screenshot<R: tauri::Runtime>(
     if !capture::supported() {
         return Err(RpcError::new(
             ErrorCode::Unavailable,
-            "page screenshots are not available on this platform yet — use browser_snapshot",
+            "page screenshots are not available on this platform — use browser_snapshot",
         ));
     }
     let (workspace, page) = current_page(app, caller).await?;

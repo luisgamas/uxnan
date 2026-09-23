@@ -627,7 +627,7 @@ pub fn catalog() -> Vec<Entry> {
             method: "browser/screenshot",
             tool: "browser_screenshot",
             group: Group::Read,
-            summary: "Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show. Taken by the engine itself; works while the page is hidden in a background workspace. Same site rule as browser_snapshot. Not available on every platform yet (the error says so).",
+            summary: "Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show. Taken by the engine itself; works while the page is hidden in a background workspace. Same site rule as browser_snapshot. If the platform's engine cannot capture, the error says so — use browser_snapshot then.",
             params: object(json!({}), &[]),
             mutates: false,
             result: result(json!({
