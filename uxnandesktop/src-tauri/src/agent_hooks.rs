@@ -519,6 +519,69 @@ fn may_write_shared(dir: &Path) -> bool {
     }
 }
 
+/// Rewrite a reporter path that names **this profile's** hooks directory so it
+/// names the machine-wide one, or `None` when the value is something else.
+///
+/// The one thing the move does not carry by itself: an agent the person wired
+/// **by hand** with the generic wrapper has that script's path as its *launch
+/// command* (`docs/agent-hooks.md` → *Install — any other agent*). Clearing the
+/// profile's copies would leave that agent naming a file that is gone — not a
+/// lost status report, an agent that does not start. The setting belongs to the
+/// app, so the app moves it.
+///
+/// Deliberately narrow: only a path **inside that directory**, whose file name
+/// is one of ours (`uxnan-…`). A command that merely lives near it, or a
+/// reporter the person copied somewhere of their own, is theirs and is left
+/// exactly as it is.
+pub fn repointed_reporter(value: &str, profile_hooks_dir: &Path, shared: &Path) -> Option<String> {
+    let norm = |s: &str| {
+        let s = s.replace('\\', "/");
+        if cfg!(windows) {
+            s.to_lowercase()
+        } else {
+            s
+        }
+    };
+    let trimmed = value.trim();
+    let haystack = norm(trimmed);
+    let prefix = format!("{}/", norm(&profile_hooks_dir.to_string_lossy()));
+    let rest = haystack.strip_prefix(&prefix)?;
+    // One segment only: a nested path is not something this ever wrote.
+    if rest.is_empty() || rest.contains('/') || !rest.starts_with("uxnan-") {
+        return None;
+    }
+    // Take the file name from the original, so its case survives on Windows.
+    let name = trimmed
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()?;
+    Some(shared.join(name).to_string_lossy().into_owned())
+}
+
+/// Move every hand-wired reporter path in the agent profiles to the shared
+/// directory. Answers how many values changed, for the log — and for the
+/// caller to know whether the settings are worth saving.
+pub fn repoint_profiles(
+    profiles: &mut [crate::model::AgentProfile],
+    profile_hooks_dir: &Path,
+    shared: &Path,
+) -> usize {
+    let mut moved = 0;
+    for profile in profiles.iter_mut() {
+        if let Some(next) = repointed_reporter(&profile.command, profile_hooks_dir, shared) {
+            profile.command = next;
+            moved += 1;
+        }
+        for arg in profile.args.iter_mut() {
+            if let Some(next) = repointed_reporter(arg, profile_hooks_dir, shared) {
+                *arg = next;
+                moved += 1;
+            }
+        }
+    }
+    moved
+}
+
 /// Write the bundled scripts to the machine's shared directory and resolve
 /// every path the Settings UI needs — the call the app makes at startup.
 ///
@@ -3244,6 +3307,118 @@ mod tests {
             "an older build must not sweep a script it simply does not know"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// The half of the move that the files cannot do for themselves: an agent
+    /// wired by hand names the wrapper as its **launch command**, and the
+    /// reporters are no longer where that command says.
+    /// The two directories as this OS writes them, so an expectation is built
+    /// the way the code builds its answer. A hard-coded `/` only passes where
+    /// the separator happens to be one — on Windows it is not, which is exactly
+    /// what CI caught.
+    fn migration_dirs() -> (PathBuf, PathBuf) {
+        (
+            PathBuf::from("data").join("uxnan").join("hooks"),
+            PathBuf::from("home").join(".uxnan").join("hooks"),
+        )
+    }
+
+    #[test]
+    fn a_hand_wired_reporter_path_moves_with_the_scripts() {
+        let (profile, shared) = migration_dirs();
+        let in_profile = |name: &str| profile.join(name).to_string_lossy().into_owned();
+        let in_shared = |name: &str| shared.join(name).to_string_lossy().into_owned();
+        let moved = |v: &str| repointed_reporter(v, &profile, &shared);
+
+        assert_eq!(
+            moved(&in_profile("uxnan-hook-wrapper.sh")),
+            Some(in_shared("uxnan-hook-wrapper.sh"))
+        );
+        // Every reporter, not just the wrapper, and a value the person padded.
+        assert_eq!(
+            moved(&format!("  {}  ", in_profile("uxnan-status-relay.cjs"))),
+            Some(in_shared("uxnan-status-relay.cjs"))
+        );
+        // Written with the other separator: a person types what the docs showed
+        // them, and Windows takes either.
+        assert_eq!(
+            moved(&in_profile("uxnan-codex-hook.sh").replace('\\', "/")),
+            Some(in_shared("uxnan-codex-hook.sh"))
+        );
+    }
+
+    /// What it must **not** touch. A command that merely resembles ours, or a
+    /// copy the person made somewhere of their own, is theirs.
+    #[test]
+    fn nothing_but_our_own_reporters_in_that_directory_is_rewritten() {
+        let (profile, shared) = migration_dirs();
+        let p = |name: &str| profile.join(name).to_string_lossy().into_owned();
+        for untouched in [
+            "claude".to_string(),                                          // a plain command
+            profile.to_string_lossy().into_owned(),                        // the directory itself
+            p("notes.txt"),                                                // not a reporter
+            p("nested") + "/uxnan-hook-wrapper.sh",                        // never written there
+            format!("{}uxnan-hook-wrapper.sh", profile.to_string_lossy()), // not inside it
+            PathBuf::from("home")
+                .join("bin")
+                .join("uxnan-hook-wrapper.sh")
+                .to_string_lossy()
+                .into_owned(), // the person's own copy
+            shared
+                .join("uxnan-hook-wrapper.sh")
+                .to_string_lossy()
+                .into_owned(), // already moved
+            String::new(),
+        ] {
+            assert_eq!(
+                repointed_reporter(&untouched, &profile, &shared),
+                None,
+                "{untouched} must be left alone"
+            );
+        }
+    }
+
+    /// Over the profiles themselves: the command *and* the arguments, because
+    /// the Windows wrapper forms put paths in both, and the count is what tells
+    /// the caller whether the settings are worth saving.
+    #[test]
+    fn profiles_move_their_commands_and_arguments_once() {
+        let (profile_dir, shared) = migration_dirs();
+        let in_profile = |name: &str| profile_dir.join(name).to_string_lossy().into_owned();
+        let in_shared = |name: &str| shared.join(name).to_string_lossy().into_owned();
+        let mk = |command: &str, args: &[&str]| crate::model::AgentProfile {
+            id: "a".into(),
+            name: "Custom".into(),
+            command: command.into(),
+            args: args.iter().map(|a| a.to_string()).collect(),
+            terminal_profile_id: None,
+            env: Vec::new(),
+            icon: None,
+            workers_unattended: None,
+        };
+        let wrapper_sh = in_profile("uxnan-hook-wrapper.sh");
+        let wrapper_cmd = in_profile("uxnan-hook-wrapper.cmd");
+        let mut profiles = vec![
+            mk(&wrapper_sh, &["-Type", "codex"]),
+            mk("claude", &["--model", "opus"]),
+            mk("cmd", &["/c", &wrapper_cmd]),
+        ];
+
+        assert_eq!(repoint_profiles(&mut profiles, &profile_dir, &shared), 2);
+        assert_eq!(profiles[0].command, in_shared("uxnan-hook-wrapper.sh"));
+        assert_eq!(
+            profiles[0].args,
+            vec!["-Type", "codex"],
+            "arguments that are not paths stay"
+        );
+        assert_eq!(
+            profiles[1].command, "claude",
+            "an ordinary agent is untouched"
+        );
+        assert_eq!(profiles[2].args[0], "/c", "a flag that is not a path stays");
+        assert_eq!(profiles[2].args[1], in_shared("uxnan-hook-wrapper.cmd"));
+        // Idempotent: a second launch finds nothing left to move.
+        assert_eq!(repoint_profiles(&mut profiles, &profile_dir, &shared), 0);
     }
 
     /// The migration: a profile keeps its coordinates and loses the reporters,

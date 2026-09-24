@@ -236,6 +236,16 @@ Reporters an older build left inside a profile are removed on the next startup �
 the registrations are rewritten to the shared path, so those copies are orphans.
 The `endpoint.*` file is *not* a reporter and stays where it is.
 
+**A hand-wired agent is migrated too.** If you set the generic wrapper as a
+custom agent's *Command* (below), that path is what launches the agent, not a
+reporting detail — deleting the file it names would stop the agent from
+starting. The first launch after the upgrade rewrites those commands and
+arguments to the shared directory and saves them, so the value you see in
+Settings → Agents is the one that runs. It is deliberately narrow: only a path
+**inside the app's own hooks folder** whose file name is one of the ADE's
+(`uxnan-…`). A reporter you copied somewhere of your own is yours, and is left
+exactly as it is.
+
 Setting **`UXNAN_DATA_DIR`** to an absolute path moves `<app-data>` — and with it
 this instance's state and coordinates — for that one process. It exists so a
 launch can be given a disposable profile: the
