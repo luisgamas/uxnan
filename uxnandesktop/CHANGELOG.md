@@ -40,6 +40,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **⌘W on macOS closes the tab instead of the app.** The default menu bar bound
+  Close Window to ⌘W, and a menu shortcut runs before the app sees the key — so
+  closing a tab closed the whole window, with every terminal in it. The app now
+  installs its own menu bar with Close Window on ⌘⇧W, as tabbed Mac apps do.
 - **Hidden side panels no longer put the window controls on top of the tabs.**
   With the left sidebar hidden, the macOS traffic lights sat over the first
   terminal tabs; with the right panel hidden, the tab strip's scroll chevron sat

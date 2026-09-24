@@ -42,6 +42,8 @@ pub mod github;
 mod hooks;
 pub mod launchenv;
 mod mcpinject;
+#[cfg(target_os = "macos")]
+mod menu;
 mod model;
 mod path_env;
 mod persistence;
@@ -102,6 +104,13 @@ pub fn run() {
         // window config provides the first-run defaults.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            // macOS: our own menu bar, so ⌘W reaches the app's "close tab"
+            // shortcut instead of closing the window (`menu.rs`).
+            #[cfg(target_os = "macos")]
+            {
+                app.set_menu(crate::menu::build(app.handle())?)?;
+                app.on_menu_event(|app, event| crate::menu::on_event(app, event.id().as_ref()));
+            }
             // Resolve the app data directory (the OS-specific one, unless
             // `UXNAN_DATA_DIR` points the process at a disposable profile) and
             // load (or default) the persisted state, then publish it as managed

@@ -385,7 +385,10 @@ Sustituye los dos `switch` hardcodeados previos (uno en `+page.svelte`, otro en
   token `Mod` (⌘ en macOS, Ctrl en Win/Linux) y `Alt` (⌥) vía `isMac`.
   On macOS, without a custom override, an action bound through `Mod` always
   wins (`defaultTerminalPolicy`): ⌘ never reaches a shell, so yielding it would
-  only make ⌘W / ⌘B / ⌘S do nothing while a terminal is focused.
+  only make ⌘W / ⌘B / ⌘S do nothing while a terminal is focused. The app also
+  installs its own macOS menu bar (`src-tauri/src/menu.rs`) whose Close Window is
+  on ⌘⇧W, because a menu key equivalent fires before the webview and the default
+  menu's ⌘W closed the window instead of the tab.
 - **Modo foco (passthrough)** por-terminal (`terminalKeyboard.svelte.ts`): con él
   activo, **todas** las teclas van al TUI (excepto el propio toggle, para poder
   salir); un badge en la terminal lo indica y lo alterna.
