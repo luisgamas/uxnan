@@ -17,6 +17,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Asks before closing over unfinished work.** Closing the window — its button,
   Alt+F4, ⌘Q, Close Window — now asks first when an agent is mid-turn or a file
   has unsaved edits.
+- **Find and replace in the file editor** (Mod+F): the app's own bar — its
+  inputs, buttons and switches — with a match count, match case / whole word /
+  regex, and replace on demand.
 - **Clear terminal** (⌘K on macOS; off macOS Ctrl+K stays the shell's
   kill-line unless you choose otherwise).
 - **Ctrl+Shift+C / Ctrl+Shift+V copy and paste in a terminal** on Windows and

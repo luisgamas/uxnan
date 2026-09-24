@@ -337,6 +337,11 @@ square glyph button named by its tooltip. A switch is not a tab: tabs
 (`tab.*`) are for places you navigate, a segmented control for how you look at
 the same thing. A test fails if a component draws its own copy again.
 
+The file editor's **find bar** (Mod+F, `EditorFindPanel.svelte`) is built from
+the same parts — `Input`, ghost icon buttons with tooltips, `SegmentedToggles` —
+and mounted as CodeMirror's top panel (`lib/editorFind.svelte.ts`); CodeMirror
+still runs the search and draws the match highlights.
+
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays
   `text-muted-foreground` and un-bold. Reserve `text-foreground` / `font-medium`
