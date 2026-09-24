@@ -8,7 +8,7 @@
 
 import { app } from "$lib/state/app.svelte";
 import type { MessageKey } from "$lib/i18n/locales/en";
-import { DEFAULT_TERMINAL_POLICY, decideTerminalKey } from "./terminalArbiter";
+import { DEFAULT_TERMINAL_POLICY, decideTerminalKey, defaultTerminalPolicy } from "./terminalArbiter";
 import type { TerminalPolicy, KeyDisposition, ArbiterContext } from "./terminalArbiter";
 
 // Re-exported so existing importers can keep pulling these from `keybindings`.
@@ -352,11 +352,11 @@ export function toCodeMirrorKey(chord: string): string | null {
 // --- Terminal keyboard arbitration (app shortcut vs TUI/agent) ---------------
 
 /** The active terminal-focus policy for an action (custom override, else the
- *  default). */
+ *  default for its chord on this platform — see [`defaultTerminalPolicy`]). */
 export function resolveTerminalPolicy(id: string): TerminalPolicy {
   const custom = app.settings.terminalKeyPolicy?.[id];
   if (custom === "app" || custom === "terminal") return custom;
-  return DEFAULT_TERMINAL_POLICY[id] ?? "terminal";
+  return defaultTerminalPolicy(id, resolveBinding(id), isMac);
 }
 
 /** Whether an action's chord wins over the TUI/agent while a terminal is focused. */

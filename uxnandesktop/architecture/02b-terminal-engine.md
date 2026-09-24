@@ -383,6 +383,9 @@ Sustituye los dos `switch` hardcodeados previos (uno en `+page.svelte`, otro en
   shells/TUIs necesitan (Ctrl+W borrar-palabra, Ctrl+P historial, Ctrl+S XOFF,
   Ctrl+J newline, Ctrl+B prefijo tmux). **Multiplataforma:** los chords usan el
   token `Mod` (⌘ en macOS, Ctrl en Win/Linux) y `Alt` (⌥) vía `isMac`.
+  On macOS, without a custom override, an action bound through `Mod` always
+  wins (`defaultTerminalPolicy`): ⌘ never reaches a shell, so yielding it would
+  only make ⌘W / ⌘B / ⌘S do nothing while a terminal is focused.
 - **Modo foco (passthrough)** por-terminal (`terminalKeyboard.svelte.ts`): con él
   activo, **todas** las teclas van al TUI (excepto el propio toggle, para poder
   salir); un badge en la terminal lo indica y lo alterna.

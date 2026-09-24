@@ -39,6 +39,16 @@ export const DEFAULT_TERMINAL_POLICY: Record<string, TerminalPolicy> = {
   toggleTerminalPassthrough: "app",
 };
 
+/** The default terminal-focus policy of an action bound to `chord`. The table
+ *  above yields the chords a shell or TUI uses — which are **Ctrl** chords. On
+ *  macOS `Mod` is ⌘, and ⌘ never reaches a shell (the terminal has nothing to
+ *  do with it), so there an action bound through `Mod` always wins: yielding it
+ *  would only make ⌘W, ⌘B or ⌘S do nothing while a terminal has focus. */
+export function defaultTerminalPolicy(id: string, chord: string, mac: boolean): TerminalPolicy {
+  if (mac && chord.split("+").includes("Mod")) return "app";
+  return DEFAULT_TERMINAL_POLICY[id] ?? "terminal";
+}
+
 /** What should happen to a keydown while a terminal is focused. */
 export type KeyDisposition =
   | { kind: "app"; action: string } // uxnan runs it; swallow the key

@@ -33,6 +33,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   dock only hides the page — it is there when you come back — and the browser
   toolbar's ✕ now closes the page itself. The browser keeps its own, wider
   width.
+- **On macOS, ⌘ shortcuts win while a terminal has focus.** ⌘ never reaches a
+  shell, so an app shortcut bound through it (⌘W, ⌘B, ⌘S…) no longer does
+  nothing because a terminal was focused. Ctrl chords still go to the terminal,
+  and a custom per-shortcut setting still decides.
 
 ### Fixed
 

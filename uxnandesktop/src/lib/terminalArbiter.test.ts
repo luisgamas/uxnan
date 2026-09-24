@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { decideTerminalKey, DEFAULT_TERMINAL_POLICY, type ArbiterContext } from "./terminalArbiter";
+import {
+  decideTerminalKey,
+  defaultTerminalPolicy,
+  DEFAULT_TERMINAL_POLICY,
+  type ArbiterContext,
+} from "./terminalArbiter";
 
 const ctx = (over: Partial<ArbiterContext> = {}): ArbiterContext => ({
   passthrough: false,
@@ -82,5 +87,25 @@ describe("DEFAULT_TERMINAL_POLICY", () => {
     expect(DEFAULT_TERMINAL_POLICY.newTerminal).toBe("app");
     expect(DEFAULT_TERMINAL_POLICY.cycleTabNext).toBe("app");
     expect(DEFAULT_TERMINAL_POLICY.toggleTerminalPassthrough).toBe("app");
+  });
+});
+
+describe("defaultTerminalPolicy", () => {
+  it("lets a ⌘ shortcut win on macOS — ⌘ never reaches a shell", () => {
+    // closeCenter yields Ctrl+W to the shell elsewhere; on a Mac it is ⌘W.
+    expect(defaultTerminalPolicy("closeCenter", "Mod+W", true)).toBe("app");
+    expect(defaultTerminalPolicy("toggleLeftSidebar", "Mod+B", true)).toBe("app");
+    expect(defaultTerminalPolicy("saveFile", "Mod+S", true)).toBe("app");
+  });
+
+  it("keeps yielding Ctrl chords to the terminal off macOS", () => {
+    expect(defaultTerminalPolicy("closeCenter", "Mod+W", false)).toBe("terminal");
+    expect(defaultTerminalPolicy("toggleLeftSidebar", "Mod+B", false)).toBe("terminal");
+  });
+
+  it("keeps the table for a literal Ctrl chord on macOS", () => {
+    // Rebound to Ctrl on a Mac, it is a shell's chord again.
+    expect(defaultTerminalPolicy("closeCenter", "Ctrl+W", true)).toBe("terminal");
+    expect(defaultTerminalPolicy("splitRight", "Ctrl+D", true)).toBe("app");
   });
 });
