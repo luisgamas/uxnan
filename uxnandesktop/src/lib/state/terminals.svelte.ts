@@ -1398,9 +1398,10 @@ class TerminalStore {
     return id;
   }
 
-  /** A chat tab's first message started a thread: point the tab at it, so a
-   *  restart reopens the conversation. */
-  bindChatThread(tabId: string, threadId: string): void {
+  /** Point a chat tab at a thread — the one its first message started, or one
+   *  picked to continue — so a restart reopens that conversation. `undefined`
+   *  sends it back to the new-chat setup (its thread was deleted elsewhere). */
+  bindChatThread(tabId: string, threadId: string | undefined): void {
     for (const { tab } of this.tabsWithWorkspace()) {
       if (tab.kind === 'chat' && tab.id === tabId) {
         // Reactive: the layout-persistence effect picks the change up.

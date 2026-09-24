@@ -2537,6 +2537,7 @@ export const en = {
   "chat.queueResume": "Resume",
   "chat.queueClear": "Discard",
   "chat.noLongerPending": "No longer waiting for an answer",
+  "chat.threadGone": "This conversation no longer exists — it was deleted on another device.",
   "chat.context": "{percent}% of context used",
 } as const;
 

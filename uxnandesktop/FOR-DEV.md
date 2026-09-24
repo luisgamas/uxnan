@@ -34,7 +34,7 @@ the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridg
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,408 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,409 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1005,9 +1005,40 @@ the list says `driven · N in inbox` (`RunInbox.svelte`, 4 component tests).
 
 **Goal:** let the desktop act as the mobile bridge (single-install). The standalone
 bridge (`../bridge/`) is already implemented and is the contract reference
-(`architecture/02e-bridge-integration.md`); this phase embeds it. **Nothing exists
-yet on either side** — the bridge's `desktop/*` handler is also an empty stub
-(`bridge/FOR-DEV.md`).
+(`architecture/02e-bridge-integration.md`); this phase embeds it.
+
+**Done so far (plans 029 + 030 stages B–C, see `## Status`):** the desktop is a
+**client** of an installed bridge over its loopback local control channel
+(`src-tauri/src/bridgeclient/`, modes off / attach / managed, `02e` §3.5), and
+**chat tabs** drive the bridge's conversations next to the phone
+(`docs/chat.md`). What remains is below.
+
+### Chat tabs — parity with the phone's conversation screen
+- [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
+      chat tab, the new-chat setup and Settings → Bridge & mobile were built and
+      exercised against a real bridge in a browser harness, never on the
+      maintainer's screen. Iterate on sizes/spacing/copy from that review.
+- [ ] **Not yet validated in the packaged app with a real agent + a paired
+      phone.** The Rust client is tested against the real built bridge and the
+      UI against a real bridge (echo agent); the full loop — `npm run tauri dev`,
+      a real CLI (Claude Code is the recommended pilot, plan 030 decision 3) and
+      the phone on the same thread — still needs a supervised run.
+- [ ] Image attachments in the composer (`turn/send { attachments }`, gated on
+      `AgentCapabilities.images`), the `/` command palette (`agent/commands` +
+      `turn/send { command }`) and `@` file mentions — the phone has all three.
+      Site: `src/lib/components/chat/ChatComposer.svelte` (`FOR-DEV:` marker).
+- [ ] Fork and "session info" (the agent's native session id, for resuming it
+      from its own CLI) in the chat header's menu — the phone offers both.
+- [ ] Chats in the left sidebar: bridge threads do not show as agent rows under
+      their worktree (a running or waiting chat is only visible in its tab and in
+      the "+" menu's recent list). Needs a design decision on how chat rows sit
+      beside terminal agent rows.
+
+### Terminal-launched sessions (plan 030 stages D–E, absorbing plans 010/011)
+- [ ] Publish terminal sessions to the bridge's catalog, mirror them read-only
+      to the phone (`agentSession/watch`), and the hand-off both ways (desktop →
+      bridge after the TUI exits; bridge → desktop via `agentResume.ts`). Needs
+      phase 0 of plan 030 first: the per-agent surface matrix, measured.
 
 
 ### Backend (Rust)
@@ -1710,7 +1741,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 981 Rust + 1,408 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 981 Rust + 1,409 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

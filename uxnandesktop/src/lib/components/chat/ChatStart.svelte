@@ -11,7 +11,8 @@
   import ChatComposer from "./ChatComposer.svelte";
   import ChatModelPicker from "./ChatModelPicker.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
-  import { bridgeAgentLogo } from "$lib/bridge/agents";
+  import { bridgeAgentForCommand, bridgeAgentLogo } from "$lib/bridge/agents";
+  import { app } from "$lib/state/app.svelte";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
   import { toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
@@ -26,10 +27,15 @@
   let optionValues = $state<Record<string, string | boolean>>({});
   let starting = $state(false);
 
-  // Preselect: the agent the launcher asked for, else the first one installed.
+  // Preselect: the agent the launcher asked for, else the desktop's default
+  // agent (Settings → Agents) when the bridge drives that CLI, else the first
+  // one installed.
   $effect(() => {
     if (agentId && agents.some((a) => a.agentId === agentId)) return;
-    const wanted = agents.find((a) => a.agentId === tab.agentId && a.available);
+    const preferred = [tab.agentId, bridgeAgentForCommand(app.defaultAgent()?.command)];
+    const wanted = preferred
+      .map((id) => agents.find((a) => a.agentId === id && a.available))
+      .find((a) => a !== undefined);
     agentId = (wanted ?? agents.find((a) => a.available))?.agentId;
   });
 

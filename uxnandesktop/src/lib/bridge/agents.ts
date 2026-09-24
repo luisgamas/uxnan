@@ -29,3 +29,25 @@ export function bridgeAgentLogo(agentId: string | null | undefined): string | nu
 export function isUserFacingAgent(agentId: string): boolean {
   return agentId !== 'echo';
 }
+
+/** Desktop agent executable (a profile's `command`) → bridge agent id, for the
+ *  seven CLIs the bridge drives. Anything else has no chat equivalent. */
+const AGENT_BY_COMMAND: Record<string, AgentId> = {
+  claude: 'claude-code',
+  codex: 'codex',
+  opencode: 'opencode',
+  pi: 'pi-agent',
+  agy: 'antigravity-cli',
+  antigravity: 'antigravity-cli',
+  zero: 'zero',
+  grok: 'grok',
+};
+
+/** The bridge agent a desktop agent profile runs, by its executable (a path or
+ *  a bare name, with or without a Windows extension). */
+export function bridgeAgentForCommand(command: string | null | undefined): AgentId | null {
+  if (!command) return null;
+  const base = command.trim().split(/[\\/]/).pop() ?? '';
+  const name = base.replace(/\.(exe|cmd|bat|ps1)$/i, '').toLowerCase();
+  return AGENT_BY_COMMAND[name] ?? null;
+}

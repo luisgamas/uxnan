@@ -24,7 +24,7 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import TabRenameDialog from "$lib/components/TabRenameDialog.svelte";
-  import type { ChatTab } from "$lib/state/terminals.svelte";
+  import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
 
   let {
     tab,
@@ -42,6 +42,8 @@
 
   const conversation = $derived(chat.conversation(threadId));
   const thread = $derived(chat.threads.get(threadId));
+  /** Deleted on another client (or the bridge lost it): nothing to show. */
+  const missing = $derived(chat.threadsLoaded && !thread);
   const agent = $derived(chat.agent(thread?.agentId));
   const model = $derived(chat.cachedModels(thread?.agentId).find((m) => m.id === thread?.model));
   let optionValues = $state<Record<string, string | boolean>>({});
@@ -135,6 +137,14 @@
   }
 </script>
 
+{#if missing}
+  <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+    <p class={text.meta}>{i18n.t("chat.threadGone")}</p>
+    <Button size="sm" variant="outline" onclick={() => terminals.bindChatThread(tab.id, undefined)}>
+      {i18n.t("launcher.newChat")}
+    </Button>
+  </div>
+{:else}
 <div class="flex h-full min-h-0 flex-col">
   <!-- Header: who drives it (fixed), which model (switchable), how much it may do. -->
   <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3">
@@ -318,6 +328,7 @@
     {/if}
   </div>
 </div>
+{/if}
 
 {#if renaming}
   <TabRenameDialog {tab} onclose={() => (renaming = false)} />

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Thread } from '$shared/models/thread';
 import { BridgeClientStore } from './client.svelte';
 import { ChatStore, normalizeCwd, provisionalTitle } from './chat.svelte';
-import { bridgeAgentLogo, isUserFacingAgent } from './agents';
+import { bridgeAgentForCommand, bridgeAgentLogo, isUserFacingAgent } from './agents';
 
 function thread(id: string, cwd: string, updatedAt: number, extra: Partial<Thread> = {}): Thread {
   return {
@@ -182,5 +182,13 @@ describe('helpers', () => {
     expect(bridgeAgentLogo(undefined)).toBeNull();
     expect(isUserFacingAgent('echo')).toBe(false);
     expect(isUserFacingAgent('grok')).toBe(true);
+  });
+
+  it('maps a desktop agent profile to the bridge agent that drives the same CLI', () => {
+    expect(bridgeAgentForCommand('claude')).toBe('claude-code');
+    expect(bridgeAgentForCommand('C:\\tools\\codex.cmd')).toBe('codex');
+    expect(bridgeAgentForCommand('/usr/local/bin/agy')).toBe('antigravity-cli');
+    expect(bridgeAgentForCommand('aider')).toBeNull();
+    expect(bridgeAgentForCommand(undefined)).toBeNull();
   });
 });

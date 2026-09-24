@@ -4,6 +4,12 @@
   // it; typing meanwhile sends a follow-up the bridge queues behind the running
   // turn — or hands to it directly, on agents that take input mid-turn — which
   // is exactly what the phone does with the same message.
+  //
+  // FOR-DEV: image attachments (`turn/send { attachments }`, when the agent
+  // advertises `images`), the `/` command palette (`agent/commands` +
+  // `turn/send { command }`) and `@` file mentions, which the phone's composer
+  // has. Deferred to keep the first chat release reviewable; see FOR-DEV.md →
+  // Phase 6 → Chat tabs.
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
   import * as Select from "$lib/components/ui/select";

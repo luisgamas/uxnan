@@ -2539,5 +2539,6 @@ export const es: Record<MessageKey, string> = {
   "chat.queueResume": "Reanudar",
   "chat.queueClear": "Descartar",
   "chat.noLongerPending": "Ya no espera respuesta",
+  "chat.threadGone": "Esta conversación ya no existe — se borró en otro dispositivo.",
   "chat.context": "{percent}% del contexto usado",
 };
