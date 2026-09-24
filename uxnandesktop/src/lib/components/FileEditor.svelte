@@ -27,7 +27,7 @@
   } from "@codemirror/commands";
   import type { FileEditorState } from "$lib/state/files.svelte";
   import { languageFor, syntaxHighlight } from "$lib/editorLang";
-  import { resolveBinding, toCodeMirrorKey } from "$lib/keybindings";
+  import { resolveBinding, toCodeMirrorKey } from "$lib/keyboard";
   import { parseHeadDiff } from "$lib/diff";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";

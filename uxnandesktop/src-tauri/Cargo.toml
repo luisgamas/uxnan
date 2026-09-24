@@ -186,6 +186,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_Power",
   "Win32_Storage_FileSystem",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
 ] }
 # The user's PATH for the `uxnan-cli` shim (`control/cli.rs`); already in the
 # tree through the updater, so no new code to trust.
@@ -204,6 +205,10 @@ windows = { version = "0.61", features = ["Win32_System_Com", "Win32_UI_Shell"] 
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
 cairo-rs = { version = "0.18", features = ["png"] }
+# `keyboard.rs` hears the app's global shortcuts inside a browser page through
+# the page's GTK widget. The GTK the webview is built on (wry), at the version
+# already in the tree. MIT.
+gtk = "0.18"
 
 
 [dev-dependencies]

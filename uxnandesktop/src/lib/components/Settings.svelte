@@ -79,7 +79,7 @@
     resolveTerminalPolicy,
     resolveLeaderChord,
     type TerminalPolicy,
-  } from "$lib/keybindings";
+  } from "$lib/keyboard";
   import { cn } from "$lib/utils";
   import { divider, field, focus, icon, iconButton, panel, row, tab, text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";

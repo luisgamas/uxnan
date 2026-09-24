@@ -28,6 +28,13 @@ export const es: Record<MessageKey, string> = {
 
   // Common
   "common.cancel": "Cancelar",
+  "closeGuard.title": "¿Cerrar Uxnan Desktop?",
+  "closeGuard.workingOne": "{n} agente sigue trabajando",
+  "closeGuard.workingOther": "{n} agentes siguen trabajando",
+  "closeGuard.unsavedOne": "{n} archivo tiene cambios sin guardar",
+  "closeGuard.unsavedOther": "{n} archivos tienen cambios sin guardar",
+  "closeGuard.consequence": "Al cerrar se detienen los agentes y se descartan los cambios.",
+  "closeGuard.confirm": "Cerrar de todos modos",
   "common.back": "Atrás",
   "common.remove": "Eliminar",
   "common.add": "Agregar",
@@ -238,7 +245,29 @@ export const es: Record<MessageKey, string> = {
     "Un comando no pudo seguir un symlink o junction en esta carpeta (Redirection Guard de Windows). Mueve el proyecto a una ruta local fuera de OneDrive — p. ej. C:\\dev\\… — para ejecutarlo dentro de Uxnan.",
   "shortcuts.sleepWorkspace": "Dormir espacio",
   "shortcuts.sleepWorkspaceDesc":
-    "Detiene las terminales del espacio activo (conservando pestañas e historial) para liberar recursos.",
+    "Detiene las terminales del espacio activo (conservando pestañas e historial) para liberar recursos. Sin atajo por defecto: termina las shells y los agentes inactivos del espacio.",
+
+  // macOS menu bar (the native layer, `src-tauri/src/menu.rs`)
+  "menu.about": "Acerca de Uxnan Desktop",
+  "menu.services": "Servicios",
+  "menu.hide": "Ocultar Uxnan Desktop",
+  "menu.hideOthers": "Ocultar otros",
+  "menu.showAll": "Mostrar todo",
+  "menu.quit": "Salir de Uxnan Desktop",
+  "menu.file": "Archivo",
+  "menu.closeWindow": "Cerrar ventana",
+  "menu.edit": "Edición",
+  "menu.undo": "Deshacer",
+  "menu.redo": "Rehacer",
+  "menu.cut": "Cortar",
+  "menu.copy": "Copiar",
+  "menu.paste": "Pegar",
+  "menu.selectAll": "Seleccionar todo",
+  "menu.view": "Visualización",
+  "menu.fullscreen": "Entrar en pantalla completa",
+  "menu.window": "Ventana",
+  "menu.minimize": "Minimizar",
+  "menu.zoom": "Zoom",
 
   // New-worktree dialog
   "newWorktree.title": "Nuevo worktree",
@@ -1124,6 +1153,8 @@ export const es: Record<MessageKey, string> = {
   "shortcuts.closeCenter": "Cerrar pestaña",
   "shortcuts.closeCenterDesc": "Cierra la pestaña activa del panel central (terminal, archivo o diff); pide guardar si un archivo tiene cambios sin guardar.",
   "shortcuts.saveFile": "Guardar archivo",
+  "shortcuts.clearTerminal": "Limpiar terminal",
+  "shortcuts.clearTerminalDesc": "Limpia la pantalla y el historial de la terminal enfocada (la shell conserva su Ctrl+K salvo que elijas otra cosa).",
   "shortcuts.toggleTerminalPassthrough": "Alternar modo foco de terminal",
   "shortcuts.toggleTerminalPassthroughDesc": "Envía todas las teclas al TUI/agente en la terminal enfocada (incluso los atajos reservados de uxnan).",
   "shortcuts.catTerminalKeyboard": "Teclado de terminal",

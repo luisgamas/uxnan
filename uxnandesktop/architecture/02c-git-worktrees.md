@@ -914,7 +914,7 @@ permite ocultar detectados, **explorar** el equipo para añadir cualquier app
 fijar el **icono** de cada editor (favicon automático o imagen/glifo propio).
 Los atajos de teclado de la app son configurables
 en **Configuración → Atajos de teclado** (`AppSettings.keybindings`,
-`keybindings.ts`); p. ej. `Ctrl/Cmd+W` cierra la pestaña activa del área central
+`src/lib/keyboard/`, `02b` §4.b); p. ej. `Ctrl/Cmd+W` cierra la pestaña activa del área central
 (con la guarda de cambios sin guardar si es un archivo sucio).
 
 Acceso de archivos no confinado (la propia máquina del usuario, igual que

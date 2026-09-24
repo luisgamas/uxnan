@@ -9,7 +9,7 @@
   import { deferModalOpen } from "$lib/utils/pointerLock";
   import { icon, text, divider, row, focus } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { resolveBinding } from "$lib/keybindings";
+  import { resolveBinding } from "$lib/keyboard";
   import KeyChord from "./KeyChord.svelte";
   import EntityIcon from "./EntityIcon.svelte";
   import SidebarProfileDialog from "./SidebarProfileDialog.svelte";

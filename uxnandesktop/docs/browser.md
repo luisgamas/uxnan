@@ -104,7 +104,12 @@ makes with `history.pushState` — and never overwrites what you are typing. For
 With the keyboard in the panel's toolbar: **Ctrl/Cmd+L** focuses the address bar,
 **Ctrl/Cmd+R** reloads (**Shift** bypasses the cache), **Ctrl/Cmd+[** / **]** go
 back / forward, **Ctrl/Cmd+=** / **−** / **0** zoom in / out / reset. Once you click
-into the page, the page has the keyboard.
+into the page, the page has the keyboard — its own keys first (find, reload and
+the other browser keys work there) — and the app's **global** shortcuts still
+work from inside it: the dock toggle, the dock surfaces, the sidebar, new
+terminals, the palettes, Settings. Shortcuts that act on the focused tab or
+split (close tab, cycle tabs) need the app's UI focused. How that is routed per
+platform is in [the keyboard guide](keyboard.md).
 
 A link that opens a new window (`target="_blank"`, `window.open`) loads in the same
 page — a developer browser has no tabs. **Downloads** go to your Downloads folder
@@ -416,7 +421,8 @@ what the engine does not push (an in-page URL change, the history state) every
 - Because the page is a native view, anything uxnan draws over it has to hide it
   first (see *Dialogs and menus over the browser*): while a dialog is open the
   panel shows a still image of the page (an empty slot if the capture fails).
-- Keyboard shortcuts of the app do not reach it while the page itself has the
-  keyboard; click the toolbar (or anywhere in the app) to give it back.
+- With the page focused, only the app's global shortcuts work (see
+  [the keyboard guide](keyboard.md)); click the toolbar (or anywhere in the app)
+  for the rest.
 - The `$BROWSER` auto-interception only covers tools that honor that convention; for
   others, use the explicit `curl` call above.

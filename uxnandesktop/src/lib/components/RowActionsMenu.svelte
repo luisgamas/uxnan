@@ -14,7 +14,7 @@
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
   import { agentLogoKey } from "$lib/agentCatalog";
-  import { resolveBinding } from "$lib/keybindings";
+  import { resolveBinding } from "$lib/keyboard";
   import { deferModalOpen } from "$lib/utils/pointerLock";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";

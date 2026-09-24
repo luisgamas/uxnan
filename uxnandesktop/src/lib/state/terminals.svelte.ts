@@ -579,6 +579,8 @@ export interface TermController {
   paste: () => Promise<void>;
   hasSelection: () => boolean;
   focus: () => void;
+  /** Clear the screen and scrollback, keeping the prompt line. */
+  clear: () => void;
   /** Respawn this pane's shell in place, keeping the xterm and its scrollback.
    *  `resume` re-arms the one-shot launch (an agent's resume command). */
   restart: (resume?: { command: string; execute?: boolean }) => Promise<void>;
@@ -732,6 +734,22 @@ class TerminalStore {
       if (!tab.asleep) return false;
     }
     return terminalTabs > 0;
+  }
+
+  /** Work closing the app would lose, across every workspace: agents in the
+   *  middle of a turn and files with unsaved edits. Asked before the window
+   *  closes (`closeGuard`). */
+  unfinishedWork(): { working: number; unsaved: number } {
+    let working = 0;
+    let unsaved = 0;
+    for (const tree of Object.values(this.workspaces)) {
+      if (!tree) continue;
+      for (const tab of allTabs(tree)) {
+        if (tab.kind === 'terminal' && tab.agentName && tab.working && !tab.asleep) working += 1;
+        if (tab.kind === 'file' && this.fileStates.get(tab.id)?.dirty) unsaved += 1;
+      }
+    }
+    return { working, unsaved };
   }
 
   /** Titles of this workspace's agent tabs that are still working — surfaced as

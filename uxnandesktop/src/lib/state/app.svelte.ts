@@ -32,6 +32,7 @@ import {
   type TerminalProfile,
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
+import { closeGuard, closeMatters } from "$lib/state/closeGuard.svelte";
 import { browser } from "$lib/state/browser.svelte";
 import { dock } from "$lib/state/dock.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
@@ -399,20 +400,32 @@ class AppStore {
     }
   }
 
-  /** Flush pending debounced writes (terminal layout, orchestration runs,
-   *  workspace-recency stamps) before the window actually closes, so a change
-   *  made inside a debounce window at quit time isn't dropped. `preventDefault`
-   *  holds the close, then `destroy()` closes for real (it does not re-fire this
-   *  handler). Wrapped in try/catch so the web preview (no Tauri window) — where
-   *  debounced writes are best-effort — keeps working. */
+  /** Close the window — which quits the app — without losing work: ask first
+   *  when an agent is mid-turn or a file has unsaved edits (`closeGuard`), then
+   *  flush pending debounced writes (terminal layout, orchestration runs,
+   *  workspace-recency stamps) so a change made inside a debounce window at
+   *  quit time isn't dropped. Every way of closing lands here: the close
+   *  button, Alt+F4, ⌘Q and Close Window (the macOS menu closes the window).
+   *  `preventDefault` holds the close, then `destroy()` closes for real (it
+   *  does not re-fire this handler). Wrapped in try/catch so the web preview
+   *  (no Tauri window) — where debounced writes are best-effort — keeps working. */
   private async listenCloseRequested(): Promise<void> {
     try {
       const win = getCurrentWindow();
       let closing = false;
       await win.onCloseRequested(async (event) => {
+        event.preventDefault(); // hold the close while we ask and flush
         if (closing) return; // re-entry guard
         closing = true;
-        event.preventDefault(); // hold the close while we flush
+        const work = terminals.unfinishedWork();
+        if (closeMatters(work)) {
+          // A hidden or minimized window still has to show the question.
+          await Promise.allSettled([win.unminimize(), win.show(), win.setFocus()]);
+          if (!(await closeGuard.request(work))) {
+            closing = false;
+            return;
+          }
+        }
         try {
           // Bound the wait so the window ALWAYS closes: `flushAll` already
           // contains a *throw* (`allSettled`), but a flush whose backend `invoke`

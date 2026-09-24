@@ -26,7 +26,7 @@
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import { isMac, resolveBinding } from "$lib/keybindings";
+  import { isMac, resolveBinding } from "$lib/keyboard";
   import { regionEdges, titlebarInsets } from "$lib/titlebar";
   import { dock } from "$lib/state/dock.svelte";
   import KeyChord from "./KeyChord.svelte";

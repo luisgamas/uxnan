@@ -13,7 +13,7 @@
   import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
   import { focus, icon, shell } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { formatChord, resolveBinding } from "$lib/keybindings";
+  import { formatChord, resolveBinding } from "$lib/keyboard";
   import { cn } from "$lib/utils";
   import PanelRightIcon from "@hugeicons/core-free-icons/PanelRightIcon";
 

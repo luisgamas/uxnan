@@ -23,7 +23,7 @@
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import { formatChord, isMac, resolveBinding } from "$lib/keybindings";
+  import { formatChord, isMac, resolveBinding } from "$lib/keyboard";
   import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
   import FolderPlusIcon from "@hugeicons/core-free-icons/FolderAddIcon";
   import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";

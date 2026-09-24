@@ -218,7 +218,8 @@ readiness, context templates, cycle detection, validation + status derivation),
 `updaterLogic.ts` (download-progress fraction + install-policy decision),
 `diffParse.ts` (unified-diff parsing), `theme.ts` (batch theme-import
 normalization), `quickCommands.ts` (quick-command token substitution + scope
-filters), `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration),
+filters), `keyboard/` (the chord model, the per-focus key router and the per-platform
+bindings — `docs/keyboard.md`),
 `branchName.ts` (GitHub branch-name slugging + friendly auto-generated
 worktree branch names with collision-proof uniqueness), `filePreview.ts`
 (extension-to-view capability), `markdown.ts` (GitHub-flavored Markdown: alerts,

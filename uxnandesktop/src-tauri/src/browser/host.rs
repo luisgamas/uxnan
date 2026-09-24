@@ -431,6 +431,8 @@ async fn create<R: tauri::Runtime>(
             return Err(CommandError::new("BROWSER_CREATE_FAILED", e.to_string()));
         }
     };
+    // The app's global shortcuts still work with the page focused.
+    crate::keyboard::watch_page(&webview);
     if !visible {
         let _ = webview.hide();
     }

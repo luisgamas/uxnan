@@ -46,7 +46,7 @@
   import { cn } from "$lib/utils";
   import { focus, icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import { Icon } from "$lib/components/ui/icon";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";

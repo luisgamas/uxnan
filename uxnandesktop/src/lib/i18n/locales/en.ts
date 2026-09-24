@@ -31,6 +31,13 @@ export const en = {
 
   // Common
   "common.cancel": "Cancel",
+  "closeGuard.title": "Close Uxnan Desktop?",
+  "closeGuard.workingOne": "{n} agent is still working",
+  "closeGuard.workingOther": "{n} agents are still working",
+  "closeGuard.unsavedOne": "{n} file has unsaved changes",
+  "closeGuard.unsavedOther": "{n} files have unsaved changes",
+  "closeGuard.consequence": "Closing stops the agents and discards the changes.",
+  "closeGuard.confirm": "Close anyway",
   "common.back": "Back",
   "common.remove": "Remove",
   "common.add": "Add",
@@ -241,7 +248,29 @@ export const en = {
     "A command couldn't follow a symlink or junction in this folder (Windows Redirection Guard). Move the project to a local path outside OneDrive — e.g. C:\\dev\\… — to run it inside Uxnan.",
   "shortcuts.sleepWorkspace": "Sleep workspace",
   "shortcuts.sleepWorkspaceDesc":
-    "Stop the active workspace's terminals (keeping tabs and scrollback) to free resources.",
+    "Stop the active workspace's terminals (keeping tabs and scrollback) to free resources. No shortcut by default: it ends the shells and idle agents in the workspace.",
+
+  // macOS menu bar (the native layer, `src-tauri/src/menu.rs`)
+  "menu.about": "About Uxnan Desktop",
+  "menu.services": "Services",
+  "menu.hide": "Hide Uxnan Desktop",
+  "menu.hideOthers": "Hide Others",
+  "menu.showAll": "Show All",
+  "menu.quit": "Quit Uxnan Desktop",
+  "menu.file": "File",
+  "menu.closeWindow": "Close Window",
+  "menu.edit": "Edit",
+  "menu.undo": "Undo",
+  "menu.redo": "Redo",
+  "menu.cut": "Cut",
+  "menu.copy": "Copy",
+  "menu.paste": "Paste",
+  "menu.selectAll": "Select All",
+  "menu.view": "View",
+  "menu.fullscreen": "Enter Full Screen",
+  "menu.window": "Window",
+  "menu.minimize": "Minimize",
+  "menu.zoom": "Zoom",
 
   // New-worktree dialog
   "newWorktree.title": "New worktree",
@@ -1121,6 +1150,8 @@ export const en = {
   "shortcuts.closeCenterDesc": "Close the active center tab (terminal, file, or diff); prompts to save when a file has unsaved changes.",
   "shortcuts.saveFile": "Save file",
   "shortcuts.saveFileDesc": "Save the file open in the editor.",
+  "shortcuts.clearTerminal": "Clear terminal",
+  "shortcuts.clearTerminalDesc": "Clear the focused terminal's screen and scrollback (the shell keeps its Ctrl+K unless you choose otherwise).",
   "shortcuts.toggleTerminalPassthrough": "Toggle terminal focus mode",
   "shortcuts.toggleTerminalPassthroughDesc": "Send every key to the TUI/agent in the focused terminal (even reserved uxnan shortcuts).",
   "shortcuts.catTerminalKeyboard": "Terminal keyboard",

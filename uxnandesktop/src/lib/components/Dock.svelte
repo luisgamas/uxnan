@@ -28,7 +28,7 @@
   import { BADGE_TEXT, BADGE_TONE, SURFACE_META } from "$lib/dockSurfaces";
   import { shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { isMac, resolveBinding } from "$lib/keybindings";
+  import { isMac, resolveBinding } from "$lib/keyboard";
   import { titlebarInsets } from "$lib/titlebar";
   import { cn } from "$lib/utils";
   import type { DockSurface } from "$lib/types";

@@ -2,6 +2,7 @@
 
 > Documento de diseño del motor de terminal, gestión de pseudoterminales, sistema de layout (splits y tabs), ciclo de vida de sesiones, y control de agentes CLI.
 > Extraído y expandido de la arquitectura general del ADE (secciones 3 y 6).
+> Keyboard layer (§4.b): one router decides every key by where the focus is — terminal (per-action app/TUI policy, leader key, focus mode), editor, text field or app — and a native layer carries the global shortcuts into browser pages and the macOS menu bar.
 > Fecha: 2026-06-05
 
 ---
@@ -367,41 +368,63 @@ encima del prompt nuevo. Si el tab tiene sesión reanudable, su comando de
 
 ---
 
-## 4.b Arbitraje de teclado (atajo de app vs TUI/agente)
+## 4.b Keyboard layer (app shortcut vs TUI/agent, per focus)
 
-Con una terminal enfocada, xterm entrega cada tecla al handler
-`attachCustomKeyEventHandler` (`Terminal.svelte`), que decide —vía el arbitrador
-**puro** `decideTerminalKey` (`terminalArbiter.ts`)— si la maneja uxnan
-(`preventDefault`, no va al PTY) o se envía al TUI/agente (`return true`).
-Sustituye los dos `switch` hardcodeados previos (uno en `+page.svelte`, otro en
-`Terminal.svelte`) por **una sola política por-atajo**:
+One layer decides who gets every key the app can hear — `src/lib/keyboard/`
+(the full guide is `docs/keyboard.md`):
 
-- **Política por-atajo** (`DEFAULT_TERMINAL_POLICY` en `terminalArbiter.ts`,
-  override en `AppSettings.terminalKeyPolicy`): cada acción es `app` (uxnan gana en
-  la terminal — el "set reservado") o `terminal` (la tecla va al TUI). El default
-  reserva los atajos de baja colisión (Mod+Shift / Mod+Alt) y cede los que
-  shells/TUIs necesitan (Ctrl+W borrar-palabra, Ctrl+P historial, Ctrl+S XOFF,
-  Ctrl+J newline, Ctrl+B prefijo tmux). **Multiplataforma:** los chords usan el
-  token `Mod` (⌘ en macOS, Ctrl en Win/Linux) y `Alt` (⌥) vía `isMac`.
-  On macOS, without a custom override, an action bound through `Mod` always
-  wins (`defaultTerminalPolicy`): ⌘ never reaches a shell, so yielding it would
-  only make ⌘W / ⌘B / ⌘S do nothing while a terminal is focused. The app also
-  installs its own macOS menu bar (`src-tauri/src/menu.rs`) whose Close Window is
-  on ⌘⇧W, because a menu key equivalent fires before the webview and the default
-  menu's ⌘W closed the window instead of the tab.
-- **Modo foco (passthrough)** por-terminal (`terminalKeyboard.svelte.ts`): con él
-  activo, **todas** las teclas van al TUI (excepto el propio toggle, para poder
-  salir); un badge en la terminal lo indica y lo alterna.
-- **Tecla líder** (tmux-style, `AppSettings.leaderKey`, opt-in): en una terminal,
-  tras la tecla líder, el **siguiente** atajo va a uxnan sea cual sea su política —
-  determinismo bajo demanda.
-- **Despachador compartido** (`keyactions.ts` `runAppAction`): las acciones se
-  ejecutan en un solo lugar, consultado tanto por el handler global (`+page`) como
-  por el de la terminal, evitando que los dos caminos deriven.
+- **Registry** (`actions.ts`): every action with its default chord **per
+  platform** (`Mod` = ⌘ on macOS, Ctrl elsewhere; a `{ mac, other }` default
+  where a platform already spends the natural chord), its **scope** (`global` —
+  heard anywhere, including a browser page — or `focused` — acts on what has
+  focus) and its **terminal policy** default (`app` = Uxnan wins in a focused
+  terminal, `terminal` = the key goes to the TUI). The shell's chords are
+  yielded: Ctrl+W delete-word, Ctrl+P history, Ctrl+S XOFF, Ctrl+J newline,
+  Ctrl+B tmux prefix, Ctrl+K kill-line, Ctrl+O. On macOS an action bound
+  through `Mod` wins by default (`defaultTerminalPolicy`): ⌘ never reaches a
+  shell. Chords are canonical (`chords.ts`): Ctrl folds into `Mod` off macOS,
+  modifiers in one order, and an Option/AltGr character reads as its key.
+- **Router** (`router.ts`, pure): the focus context — `terminal` (xterm),
+  `editor` (CodeMirror), `text` (an input, a textarea, contenteditable) or
+  `app` — decides.
+  - *Terminal* (xterm's `attachCustomKeyEventHandler`, before xterm acts): the
+    focus-mode (passthrough) toggle always wins; after the **leader key** the
+    next shortcut goes to Uxnan whatever its policy; in **focus mode** every key
+    goes to the TUI; otherwise the action's policy (`AppSettings.terminalKeyPolicy`
+    override, else the registry). A ⌘ chord left to the terminal on macOS is
+    *claimed* (marked handled), so the menu bar cannot run it behind the
+    terminal's back.
+  - *Everywhere else* (the window's `keydown`): a key a focused widget already
+    handled is left alone (the editor's keymap, a menu, a dialog); a text field
+    or the editor keeps typing, caret movement, selection, deletion, undo/redo,
+    select-all and the clipboard (so ⌘⇧Z redoes and ⌘⇧→ selects there); any
+    other bound chord runs its action.
+- **Dispatcher** (`run.ts` `runAppAction`): one place runs an action, whoever
+  heard the key.
+- **Native layer** (`src-tauri/src/keyboard.rs`, `menu.rs`): a browser page is
+  a separate native webview whose keys never reach the UI, so the `global`
+  actions are heard natively and sent back as `keyboard:action`: through the
+  **macOS menu bar**, which carries the app's commands with the person's
+  bindings (rebuilt when they or the language change, `keyboard_set_commands`)
+  and whose key equivalents run only for a key the focused webview left
+  unhandled; through the page's **WebView2 accelerator-key event** on Windows;
+  and through its **GTK key-press** on Linux. The menu also moves Close Window to
+  **⌘⇧W** (⌘W is the app's close-tab) and replaces Quit with one that closes the
+  main window, so quitting takes the close path below.
+- **Engine keys**: in release builds the main window has no web inspector
+  (F12 / Ctrl+Shift+I) and, on Windows, WebView2's browser accelerator keys are
+  off (F5/Ctrl+R would reload the UI, Ctrl+F/P find and print, Alt+← navigate) —
+  a browser page keeps its own.
+- **Closing**: every way of closing the window (its button, Alt+F4, ⌘Q, Close
+  Window) goes through `CloseRequested`, which asks first when an agent is
+  mid-turn or a file has unsaved edits (`closeGuard`), then flushes pending
+  writes. A quit that bypasses the window (the Dock's Quit, logging out) still
+  runs the backend teardown (`RunEvent::Exit`).
 
-Se configura en **Settings → Atajos de teclado** (un toggle uxnan/TUI por acción +
-la tecla líder). La decisión pura (`decideTerminalKey`) tiene tests unitarios
-(`terminalArbiter.test.ts`).
+Configured in **Settings → Keyboard shortcuts** (the binding and the
+Uxnan/TUI toggle per action, plus the leader key). The router, the chord model
+and the native chord/key mapping are unit-tested (`src/lib/keyboard/*.test.ts`,
+`keyboard.rs`, `menu.rs`).
 
 ### Inferencia de interrupción (fallback de `done`)
 

@@ -51,6 +51,11 @@ started.**
   backups + sequential schema migrations). The right side is **one dock per
   workspace** offering only the surfaces that workspace has (Files · Git ·
   GitHub · Browser), with a first-open chooser and a surface selector.
+- **One keyboard layer** (`src/lib/keyboard/`, `docs/keyboard.md`): a router
+  that decides every key by focus (terminal with its per-shortcut Uxnan/TUI
+  policy, focus mode and leader key; editor; text field; app), per-platform
+  defaults, and a native half that carries the global shortcuts into browser
+  pages and the macOS menu bar; closing asks over unfinished work.
 - **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions (each terminal's xterm instance stays alive and is **re-parented** on a
@@ -1649,6 +1654,11 @@ when an announced state exceeds the evidence. Announced today: **Windows
       thing being tested), the wake-fidelity check, R07/R08/R10, and one recorded
       hostile-update run against a staging channel. Full checklist:
       `matrix → checklists.windows-x64`.
+- [ ] **Keyboard on Windows and Linux** — the app's global shortcuts inside a
+      browser page (WebView2 accelerator-key event, GTK key press —
+      `keyboard.rs`), WebView2's browser keys off in a release build, the
+      Alt+←/→ split defaults and Ctrl+Shift+C/V in a terminal compile and are
+      unit-tested, but nobody has pressed them on a real machine.
 - [ ] **keep-awake** is implemented for macOS/Linux and its state machine +
       spawn/kill path are now unit-tested (each CI runner toggles its own real
       inhibitor once), but **whether the machine actually stays awake** is

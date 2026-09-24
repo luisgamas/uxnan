@@ -1,8 +1,7 @@
-// Shared dispatcher for the app's keyboard actions, so the global handler
-// (`+page.svelte`) and the terminal handler (`Terminal.svelte`) run identical
-// code instead of two drifting switch blocks. Which actions win while a terminal
-// is focused is decided separately by the arbiter (`keybindings.ts`); this only
-// performs an action once someone decided to run it.
+// Runs the app's keyboard actions — one place, whoever heard the key: the
+// window (`+page.svelte`), a terminal (`Terminal.svelte`) or the native layer
+// for a browser page (`keyboard:action`). Who gets a key is decided by the
+// router (`router.ts`); this only performs an action once it was decided.
 
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
@@ -13,7 +12,7 @@ import { i18n } from "$lib/i18n";
 
 export interface RunActionOpts {
   /** The terminal that had focus — so `closeCenter` closes *this* terminal
-   *  rather than the active center tab. */
+   *  rather than the active center tab, and `clearTerminal` has one to clear. */
   terminalId?: string;
 }
 
@@ -32,6 +31,12 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
         return true;
       }
       return false;
+    case "clearTerminal": {
+      const controller = opts.terminalId ? terminals.controller(opts.terminalId) : undefined;
+      if (!controller) return false;
+      controller.clear();
+      return true;
+    }
     case "cycleTabNext":
       if (!terminals.root) return false;
       terminals.cycleTab(true);

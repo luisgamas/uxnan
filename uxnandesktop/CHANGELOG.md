@@ -7,6 +7,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **App shortcuts work with a browser page focused.** The dock and its
+  surfaces, the sidebar, new terminals and worktrees, the palettes, Settings and
+  Automations are heard even while the page has the keyboard — through the menu
+  bar on macOS, the page's accelerator keys on Windows and its key presses on
+  Linux — after the page gets its own keys first.
+- **The macOS menu bar carries the app's commands** (File, View, Settings…)
+  with your shortcuts, in the app's language, rebuilt when you rebind one.
+- **Asks before closing over unfinished work.** Closing the window — its button,
+  Alt+F4, ⌘Q, Close Window — now asks first when an agent is mid-turn or a file
+  has unsaved edits.
+- **Clear terminal** (⌘K on macOS; off macOS Ctrl+K stays the shell's
+  kill-line unless you choose otherwise).
+- **Ctrl+Shift+C / Ctrl+Shift+V copy and paste in a terminal** on Windows and
+  Linux, the terminal convention that never collides with SIGINT.
+- **Keyboard guide** (`docs/keyboard.md`).
 - **One right dock per workspace.** The right side of the window is a single
   panel offering only the surfaces the workspace on screen has: **Files** (a
   project), **Git** (a git repository), **GitHub** (a local git repository, when
@@ -31,6 +46,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   apart (separators on some, 11px text, a frame fighting the tab list's own
   padding). They are now one segmented control: a quiet track with the chosen
   option lifted out of it.
+- **One keyboard layer decides every key by where the focus is** (terminal,
+  editor, text field or the rest of the app), reusing the per-shortcut
+  Uxnan/TUI choice, focus mode and the leader key (`src/lib/keyboard/`). It
+  replaces the separate window and terminal handlers.
+- **Tab cycling defaults to Ctrl+Tab on every platform.** ⌘Tab is macOS's app
+  switcher and never reached the app.
+- **Moving between splits defaults to Alt+←/→ on Windows and Linux.**
+  Ctrl+Alt+arrows switch desktops on GNOME and rotate the screen on some Windows
+  graphics drivers. macOS keeps ⌥⌘←/→.
+- **Sleeping a workspace has no default shortcut.** It was ⌘⇧Z / Ctrl+Shift+Z
+  — Redo — and ends the workspace's shells and idle agents. Assign one in
+  Settings, or use the worktree row's menu.
 - **Changes and History are one Git surface**, switched by a segmented control
   that remembers its view per workspace.
 - **The browser is a dock surface, not a fourth panel.** The status bar's globe
@@ -46,6 +73,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Redo no longer sleeps the workspace, and selecting text no longer splits
+  the terminal.** A text field or the file editor now keeps its typing, caret,
+  selection, undo/redo and clipboard chords even when an app shortcut uses the
+  same one, and a key the editor already handled no longer also runs an action.
+- **⌘Q quits cleanly.** macOS's Quit ended the process without the app's
+  shutdown — pending writes were not flushed, the session was reported as a
+  crash on the next launch. Quit now closes the window like its close button,
+  and quitting from the Dock or by logging out still stops every shell.
+- **F5, Ctrl+R, Ctrl+F, Ctrl+P and Alt+← no longer act like a web browser on
+  Windows.** WebView2's browser keys reloaded the whole UI (losing unsaved
+  edits), opened find and print bars, or navigated the app's history. They are
+  off in release builds; a browser page keeps its own.
+- **F12 and Ctrl+Shift+I no longer open DevTools on the app in release
+  builds** — nor did Ctrl+Shift+C, which Linux users press to copy in a
+  terminal. The integrated browser keeps its DevTools.
+- **⌥ shortcuts on macOS match their key.** ⌥⌘S used to be read as ⌥⌘ß.
 - **⌘W on macOS closes the tab instead of the app.** The default menu bar bound
   Close Window to ⌘W, and a menu shortcut runs before the app sees the key — so
   closing a tab closed the whole window, with every terminal in it. The app now

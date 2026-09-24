@@ -4,7 +4,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { shell, icon } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import { cn } from "$lib/utils";
   import { titlebarInsets } from "$lib/titlebar";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";

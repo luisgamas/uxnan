@@ -13,7 +13,7 @@
   import { field, icon, iconButton, panel, row, shell, tab as tabStyle, text } from "$lib/design";
   import { titlebarInsets } from "$lib/titlebar";
   import { dock } from "$lib/state/dock.svelte";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import { toast, toastError } from "$lib/toast";
   import {
     githubPrView,

@@ -13,8 +13,7 @@
   import { usage } from "$lib/state/usage.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
-  import { matchAction } from "$lib/keybindings";
-  import { runAppAction } from "$lib/keyactions";
+  import { handleWindowKey, startNativeKeyboard } from "$lib/keyboard";
   import { isExperimentalPlatform, osLabel } from "$lib/platform";
   import { clampPanelWidth } from "$lib/panelWidth";
   import { cn } from "$lib/utils";
@@ -28,6 +27,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
+  import CloseGuardDialog from "$lib/components/CloseGuardDialog.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import Dock from "$lib/components/Dock.svelte";
@@ -252,25 +252,15 @@
     e.preventDefault();
   }
 
-  // Global keyboard shortcuts (configurable in Settings → Keyboard shortcuts).
-  // The terminal handler (`Terminal.svelte`) owns keys while a terminal is
-  // focused (it arbitrates app-shortcut vs TUI per action); here we only run the
-  // matched action via the shared dispatcher when a terminal is *not* focused.
-  function onKeyDown(e: KeyboardEvent) {
-    // Settings and Automations own their own keys (both are full-screen
-    // overlays). The inline GitHub view does not — the left sidebar stays
-    // active — so global shortcuts keep working; GitHub handles its own Escape.
-    if (app.settingsOpen || app.automationsOpen) return;
-    // Never steal keys while typing in a terminal — the shell owns Ctrl+W/J/etc.
-    const el = e.target as HTMLElement | null;
-    if (el?.closest(".xterm")) return;
-    const action = matchAction(e);
-    if (!action) return;
-    if (runAppAction(action)) e.preventDefault();
-  }
+  // Keyboard shortcuts (Settings → Keyboard shortcuts): the window hears every
+  // key but a terminal's, which its xterm hook routes first; the keyboard layer
+  // decides the rest (`$lib/keyboard`, `docs/keyboard.md`). The native layer
+  // carries the global shortcuts where the UI cannot hear them — a focused
+  // browser page — and into the macOS menu bar.
+  startNativeKeyboard();
 </script>
 
-<svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
+<svelte:window oncontextmenu={onContextMenu} onkeydown={handleWindowKey} />
 
 <!-- Reusable column resize handle. Zero-width in layout so adjacent panels sit
      flush (no visible seam, even behind split terminals). The grab strip is
@@ -327,6 +317,7 @@
 
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
   <SaveDiscardDialog />
+  <CloseGuardDialog />
 
   <!-- Content region below the title bar. The three-panel body stays mounted
        even while Settings is open (Settings overlays it), so terminals/PTYs are
