@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.55] - 20260924
 ### Added
 
 - **Agents can read and use the pages they build.** Eight new tools in the
