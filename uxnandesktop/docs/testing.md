@@ -268,7 +268,11 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,352 passing tests** across both
+ships in every build and is never shown) and the **build target** check
+(`tests/build-target.test.mjs` — xterm.js minified exactly as the production
+build does, under `build-target.js`, still answers a DECRQM mode request and
+keeps parsing afterwards; see [`build.md`](build.md) → *The frontend's build
+target*). **1,356 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

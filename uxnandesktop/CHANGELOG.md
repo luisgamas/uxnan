@@ -4,6 +4,17 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A terminal no longer freezes when the program in it asks which modes it
+  supports.** OpenCode 2 sends that question (DECRQM, `CSI ? Ps $ p`) the moment
+  it starts, and Uxnan's build had turned xterm.js's answer into an error: the
+  tab stopped showing anything — the TUI never appeared, and neither did
+  anything printed after it — while the same command worked in any other
+  terminal. The frontend is now compiled for the webviews Uxnan actually runs
+  on (macOS 11's Safari 14 and newer), which ships xterm.js intact; a test
+  minifies xterm.js the way the build does and fails if the answer breaks
+  again. Any TUI that queried a mode was affected since desktop 0.0.14.
 
 ## [0.0.55] - 20260924
 ### Added
