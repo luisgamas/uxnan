@@ -314,6 +314,23 @@ pub fn parse_major_version(output: &str) -> Option<u32> {
     })
 }
 
+/// The `opencode` a terminal runs when one types it: the first on `PATH`, the
+/// way the terminal finds it — not [`resolve`]'s headless pick, which on Windows
+/// prefers npm's `.exe` wherever `PATH` points, and could read the version of an
+/// OpenCode the tab never launches. On Windows an extension-less hit is npm's
+/// POSIX shim, which neither `cmd` nor PowerShell runs, so its runnable sibling
+/// (`.exe`, `.cmd`, …) is taken instead; a `.cmd` runs through `cmd.exe`.
+fn terminal_opencode() -> Option<PathBuf> {
+    let found = crate::which::resolve("opencode")?;
+    if !cfg!(windows) || found.extension().is_some() {
+        return Some(found);
+    }
+    ["exe", "cmd", "bat", "com"]
+        .iter()
+        .map(|ext| found.with_extension(ext))
+        .find(|candidate| candidate.is_file())
+}
+
 /// How long `opencode --version` may take before the answer counts as unknown.
 const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -332,13 +349,10 @@ static OPENCODE_VERSION: std::sync::Mutex<Option<(BinaryStamp, Option<u32>)>> =
 /// binary's stamp, so that costs a `stat` until OpenCode is upgraded, when the
 /// next launch re-reads it (≤ 0.4 s measured for 1.x, 0.04 s for 2.x).
 pub async fn opencode_major_version() -> Option<u32> {
-    let resolved = resolve("opencode")?;
-    let meta = std::fs::metadata(&resolved.program).ok()?;
-    let stamp: BinaryStamp = (
-        PathBuf::from(&resolved.program),
-        meta.len(),
-        meta.modified().ok(),
-    );
+    let program =
+        terminal_opencode().or_else(|| resolve("opencode").map(|r| PathBuf::from(r.program)))?;
+    let meta = std::fs::metadata(&program).ok()?;
+    let stamp: BinaryStamp = (program.clone(), meta.len(), meta.modified().ok());
     if let Ok(cache) = OPENCODE_VERSION.lock() {
         if let Some((cached, major)) = cache.as_ref() {
             if *cached == stamp {
@@ -346,9 +360,8 @@ pub async fn opencode_major_version() -> Option<u32> {
             }
         }
     }
-    let mut cmd = crate::winproc::command(&resolved.program);
-    cmd.args(&resolved.prepend)
-        .arg("--version")
+    let mut cmd = crate::winproc::command(&program);
+    cmd.arg("--version")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

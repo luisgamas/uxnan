@@ -216,7 +216,10 @@ with that tab's environment; it ends with the tab. It is the same shape OpenCode
 always had: its server lived inside the TUI.
 
 - **Only for 2.** The ADE reads `opencode --version` to decide: OpenCode 1 has no
-  such flag and refuses to start with it. The answer is cached against the
+  such flag and refuses to start with it. It asks the `opencode` a terminal would
+  run — the first on `PATH`, and on Windows its runnable `.exe` / `.cmd` rather
+  than the extension-less shim npm puts beside it — so two installs cannot
+  disagree about which one the tab launches. The answer is cached against the
   binary and re-read when it changes, so upgrading OpenCode while the app is open
   is picked up at the next launch.
 - **Your profile wins.** Arguments that already choose where OpenCode's server
@@ -228,6 +231,12 @@ always had: its server lived inside the TUI.
   disk either way, so history and `--session <id>` work in both.
 - **What you don't get:** following the same live session from another OpenCode
   client (its desktop or web app) attached to the shared service.
+- **Platforms.** Nothing here is platform-specific — the flag, the version check
+  (`PATHEXT`-aware on Windows) and the reporter are the same code on Windows,
+  macOS and Linux, and their tests run on all three CI runners. The real
+  OpenCode runs behind these notes (1.17.20 – 2.0.16, turns, permissions,
+  sub-agents, the memory figures) were made on **macOS**; a Windows or Linux run
+  that differs belongs here.
 - **An `opencode` you type yourself** in a uxnan terminal still uses the shared
   service. It runs normally, but its tab gets no precise status (the reporter
   stays silent in the shared service rather than report as the wrong tab) and no
