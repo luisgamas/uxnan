@@ -424,7 +424,7 @@
   })}
   confirmLabel={i18n.t("hosts.trustConfirm")}
   onconfirm={() => hosts.trustPendingKey()}
-  oncancel={() => (hosts.pendingKey = null)}
+  ondismiss={() => (hosts.pendingKey = null)}
 />
 
 <!-- A key that *changed* is not a prompt. There is nothing to confirm here,
@@ -526,7 +526,7 @@
     if (removing) await hosts.remove(removing);
     removing = null;
   }}
-  oncancel={() => (removing = null)}
+  ondismiss={() => (removing = null)}
 />
 
 {#if picking}

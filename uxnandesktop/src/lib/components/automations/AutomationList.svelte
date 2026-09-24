@@ -20,6 +20,7 @@
   } from "$lib/automations/display";
   import { newAutomation, type Automation } from "$lib/automations/types";
   import { app } from "$lib/state/app.svelte";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import Combobox from "$lib/components/Combobox.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import SchedulerBadge from "./SchedulerBadge.svelte";
@@ -81,8 +82,23 @@
 
   // Deleting is the one action that earns a modal: it drops the automation, its
   // OS task and its whole history at once.
+  //
+  // The dialog owns its own `open` (bound, not derived from `pendingDelete`),
+  // and it is opened **one macrotask after** the menu item is pressed. Both
+  // matter, and both were learned the hard way here: a dialog opened inside the
+  // closing menu inherits the menu's body pointer-lock and restores it on close,
+  // freezing every later click (`utils/pointerLock`), and a one-way `open`
+  // leaves this component believing the dialog is still up after the person
+  // dismissed it — so the second press of Delete did nothing at all.
   let pendingDelete = $state<Automation | null>(null);
-  const deleteOpen = $derived(pendingDelete !== null);
+  let deleteOpen = $state(false);
+
+  function askDelete(a: Automation) {
+    deferModalOpen(() => {
+      pendingDelete = a;
+      deleteOpen = true;
+    });
+  }
 
   async function confirmDelete() {
     const target = pendingDelete;
@@ -237,7 +253,11 @@
                     {i18n.t("automations.createFrom")}
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator />
-                  <DropdownMenu.Item class={text.menu} onclick={() => (pendingDelete = a)}>
+                  <DropdownMenu.Item
+                    variant="destructive"
+                    class={text.menu}
+                    onclick={() => askDelete(a)}
+                  >
                     <Icon icon={Trash2Icon} class={icon.button} />
                     {i18n.t("common.delete")}
                   </DropdownMenu.Item>
@@ -252,11 +272,11 @@
 {/if}
 
 <ConfirmDialog
-  open={deleteOpen}
+  bind:open={deleteOpen}
   title={i18n.t("automations.deleteTitle")}
   description={pendingDelete ? i18n.t("automations.deleteDesc", { name: pendingDelete.name }) : ""}
   confirmLabel={i18n.t("common.delete")}
   danger
   onconfirm={confirmDelete}
-  oncancel={() => (pendingDelete = null)}
+  ondismiss={() => (pendingDelete = null)}
 />

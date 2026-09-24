@@ -120,6 +120,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **An agent reopening the URL the page already showed navigates again**
   instead of doing nothing, and the page URL is no longer taken from an iframe
   that navigated.
+- **Delete in the automations list asked only once.** Cancelling the
+  confirmation left the list believing the dialog was still open, so the next
+  press of *Delete* did nothing at all — a destructive action that silently
+  ignores you is worse than one that asks twice. The dialog now owns its own
+  open state, and the shared confirmation reports **every** dismissal (the
+  button, Escape, a click outside) so a caller driving it from its own state
+  cannot get stuck. The same latent bug is fixed in Settings → Hosts (trusting
+  a host key, removing a host).
+- **Delete in that menu is painted as destructive**, like every other delete in
+  the app; it was the one that read as an ordinary item.
 
 ### Security
 
