@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.27-alpha.20260924] - 20260924
 ### Added
 
 - **OpenCode 2 works from the phone, and OpenCode 1 keeps working.** OpenCode 2
