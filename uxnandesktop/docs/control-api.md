@@ -638,6 +638,28 @@ skills get control --full`, every entry with its arguments and result plus the
 wire contract for a script, so when the catalog grows the reference is
 regenerated, never hand-edited — and `references/workflows.md` (recipes).
 
+**A catalog change is not finished until that skill is updated too.** It lives
+in another repository (`luisgamas/skills`, directory `uxnan-control`), so the
+test that keeps `docs/control-api-reference.md` honest cannot reach it: nothing
+fails when it rots, and a published skill that describes a surface the app no
+longer has is worse than no skill. What the update is, every time:
+
+| File | What changes |
+|---|---|
+| `references/catalog.md` | **regenerate**: `uxnan-cli skills get control --full > …/uxnan-control/references/catalog.md`. Never hand-edit it, and never hand-copy a single entry into it |
+| `SKILL.md` | the *Commands* block (the new `uxnan-cli` forms) and, when a group gains a subject, the *Capability groups* paragraph |
+| `agents/openai.yaml` | `default_prompt` names what the skill can do; a new subject belongs in that list |
+| `references/workflows.md` | a recipe, when the new entries are a task someone would look up rather than one call |
+| `README.md` (repo root) | the skill's row, same reason as the prompt |
+
+The check is one command, and it is the same one either way — if the two files
+differ, the skill is stale:
+
+```bash
+diff <(uxnan-cli skills get control --full) \
+     ../skills/uxnan-control/references/catalog.md
+```
+
 ## Verifying
 
 - **Protocol crate** (`cargo test -p uxnan-control-protocol`): the catalog's

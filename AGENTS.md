@@ -361,6 +361,18 @@ Three audiences, three homes — keep them separate so none of them rots:
   README is a conversion page and cites no count); new tests bump the
   `N passing` counts in that component's `FOR-DEV.md` `## Status` and any
   `README.md` / `docs/` page quoting one.
+- **A published skill is part of the change set that outdates it.** The
+  `uxnan-control` skill (repo `luisgamas/skills`, directory `uxnan-control`)
+  republishes the desktop control catalog for agents that run *outside* Uxnan:
+  its `references/catalog.md` **is** the output of `uxnan-cli skills get control
+  --full`. It lives in another repository, so no test here can catch it rotting
+  — a catalog entry added, renamed or re-argued leaves it describing a surface
+  the app no longer has. Regenerate that file (never hand-edit it) and update
+  the skill's `SKILL.md` commands, `agents/openai.yaml` prompt, its
+  `references/workflows.md` recipe when there is one to write, and the skill's
+  row in that repo's `README.md`. The full list and the one-command check are in
+  [`uxnandesktop/docs/control-api.md`](uxnandesktop/docs/control-api.md) →
+  *For the agent*.
 - **Never reference a git-ignored / local-only file from a tracked file.**
   Anything in `.git/info/exclude` (local `*_MVP.md` snapshots, scratch notes) is
   the maintainer's own context and won't exist on a fresh clone.
