@@ -1,8 +1,9 @@
 # Bundled hook assets for the ADE
 
-The ADE writes these scripts to `<app-data-dir>/hooks/` on every startup
-(overwriting if changed), and exposes their absolute paths via the
-`get_hook_install` Tauri command. They are the "ready-made per-agent hook
+The ADE writes these scripts **once per machine**, to `~/.uxnan/hooks/`, on
+every startup (overwriting if changed, and never downgrading a copy a newer
+build wrote — see `docs/agent-hooks.md` → *Why not inside the app's profile*),
+and exposes their absolute paths via the `get_hook_install` Tauri command. They are the "ready-made per-agent hook
 configs" referenced in `docs/agent-hooks.md` and `architecture/02d-agent-monitoring.md`.
 
 Each reporter is chosen for maximum shell-robustness (the agent's own hook

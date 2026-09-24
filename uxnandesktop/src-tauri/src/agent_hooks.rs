@@ -391,7 +391,7 @@ pub struct AgentHooksStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Script installation to <app-data>/hooks/
+// Script installation to the machine's shared hooks directory
 // ---------------------------------------------------------------------------
 
 /// Write `content` to `path` only if it differs (atomic via a sibling temp).
