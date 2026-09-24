@@ -208,7 +208,6 @@ export const shell = {
   appBarCompactAction: "flex size-10 shrink-0 items-center justify-center rounded-none",
   terminalStrip: "flex items-center bg-sidebar",
   rightPanelHeader: "bg-sidebar",
-  rightPanelTabs: "h-8 shrink-0",
   laneHeader: "flex min-h-7 min-w-0 flex-1 items-center gap-1 rounded px-1 text-left",
   laneAction: "min-h-7 shrink-0 rounded px-1.5 py-0.5",
   sidebarBrand: "flex select-none items-center gap-2 px-3",
@@ -360,4 +359,6 @@ export const tab = {
   segmentedList:
     "inline-flex min-h-8 shrink-0 self-start overflow-hidden rounded-md border border-border bg-muted/30",
   segmentedTrigger: "min-h-7 rounded-none px-2 text-[11px]",
+  /** One half of the Git surface's Changes / History switch (they share it). */
+  gitView: "flex flex-1 items-center justify-center gap-1.5 text-[12px]",
 } as const;

@@ -228,8 +228,8 @@ fills. Top-level icon controls use the square `shell.appBarAction` or
 uses `shell.appBarOverlay`, which intentionally has no second hairline because
 the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
 for Settings and Automations. **Every panel starts with this appbar** — the left
-sidebar, the center tab strips, the right panel, the browser panel and the
-inline GitHub view — so the top band reads as one line across the window; a
+sidebar, the center tab strips, the right dock (whatever surface it shows) and
+the inline GitHub view — so the top band reads as one line across the window; a
 panel with nothing to show there still renders an empty `shell.appBar` drag
 strip rather than a strip of its own height.
 
@@ -254,14 +254,15 @@ keeps left-aligned content clear of them.
 (macOS) and the top-right one holds `WindowControls` (Quick Commands, plus
 minimize / maximize / close off macOS). Which bar reaches a corner depends on the
 layout — hide the left sidebar and the center tab strip becomes the top-left
-bar; hide the right panel and it becomes the top-right one — so no bar
+bar; close the right dock and it becomes the top-right one — so no bar
 hard-codes a padding for them. `titlebarInsets(edges, isMac)` in
 `src/lib/titlebar.ts` returns the classes for the corners a bar reaches:
 `macTrafficLightsInset` (80px, macOS only) on the left,
 `macWindowControlsInset` (40px) or `windowControlsInset` (160px) on the right.
 `TerminalArea` asks it per region (`regionEdges` — only a region touching the
 area's top corner, with the panel on that side hidden), the inline GitHub view
-per the sidebar and browser state, and `WorkspaceAppBar` for both corners.
+per the sidebar and dock state, the `Dock` for the right corner (it is always
+the right-most panel), and `WorkspaceAppBar` for both corners.
 
 The overlay titlebar does **not** place those buttons for us: AppKit keeps the
 position it computed for the 32px system titlebar it replaced, which reads 4px
@@ -300,7 +301,9 @@ pixel-exact for virtualization and keyboard highlighting.
 
 The shell also names repeated chrome geometry: `shell.sidebarBrand` and
 `shell.sidebarSectionHeader`; `overlay.paletteViewport` owns the palette's
-viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
+viewport cap; `tab.panelTrigger` owns the GitHub view's section-trigger padding/type;
+`tab.gitView` lays out the dock's Git surface switch (Changes / History, one
+half each, over `tab.segmentedList`/`segmentedTrigger`); and
 `tab.terminalTrigger` owns terminal tab trigger geometry.
 
 ### Fields & containers (`field`, `panel`, `focus`)
@@ -318,8 +321,8 @@ viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
 | `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match. Not for the app bar or the status bar: those paint the same hairline as an overlay so their full-height controls keep the band's exact height |
-| `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; shared by the center terminal tabs and the right panel |
-| `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors |
+| `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; used by the center terminal tabs |
+| `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors and the dock's Git surface |
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays

@@ -1,19 +1,22 @@
 // The integrated browser, per workspace.
 //
 // Every workspace (a worktree, or the Global space) has its own browser
-// session: whether its panel is open, the page it shows and that page's live
-// state. The page itself is a child webview of the main window owned by the
+// session: the page it shows and that page's live state. Whether it is on
+// screen is the right dock's call (`state/dock.svelte.ts`): the page shows
+// while the dock of its workspace shows the Browser surface. The page itself is a child webview of the main window owned by the
 // backend (`src-tauri/src/browser/host.rs`); this store decides which page is
 // on screen and where, and mirrors what the backend reports about each one.
 //
 // The rules it enforces:
 //
 // - **Only the workspace on screen shows its page.** Switching workspace hides
-//   the previous page and shows the next one's (when its panel is open); a page
-//   never follows the person into a workspace it was not opened in.
+//   the previous page and shows the next one's (when its dock shows the
+//   browser); a page never follows the person into a workspace it was not
+//   opened in. Switching surface or closing the dock hides the page and keeps
+//   it; only closing the page (the toolbar's close) releases it.
 // - **A page opened for another workspace stays in it.** An agent working in a
-//   background worktree gets its page loaded there, hidden, and the person
-//   finds it when they visit that workspace.
+//   background worktree gets its page loaded there, hidden, and its dock set to
+//   the browser, so the person finds it when they visit that workspace.
 // - **Pages cost memory, so few stay alive.** At most `MAX_LIVE_PAGES` exist at
 //   once; opening one more closes the one shown longest ago (its URL is kept,
 //   and it reloads when its workspace is visited). A workspace put to sleep
@@ -38,6 +41,7 @@ import {
   type BrowserPageState,
 } from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
+import { dock } from "$lib/state/dock.svelte";
 
 /** How many pages may be alive at once, across every workspace. */
 export const MAX_LIVE_PAGES = 3;
@@ -52,8 +56,6 @@ const DEFAULT_BOUNDS: BrowserBounds = { x: 0, y: 0, width: 520, height: 720 };
 /** One workspace's browser. */
 export interface BrowserSession {
   workspace: string;
-  /** Whether the browser panel is open in this workspace. */
-  open: boolean;
   /** The page's URL (the target, until the page reports its own). */
   url: string;
   title: string;
@@ -72,7 +74,6 @@ export interface BrowserSession {
 function blank(workspace: string): BrowserSession {
   return {
     workspace,
-    open: false,
     url: "",
     title: "",
     loading: false,
@@ -145,9 +146,9 @@ class BrowserStore {
     return this.sessions[this.activeKey] ?? null;
   }
 
-  /** Whether the browser panel is open in `workspace` (default: on screen). */
-  isOpen(workspace = this.activeKey): boolean {
-    return this.sessions[workspace]?.open === true;
+  /** Whether the dock of `workspace` (default: on screen) shows the browser. */
+  isShown(workspace = this.activeKey): boolean {
+    return dock.showing(workspace) === "browser";
   }
 
   private ensure(workspace: string): BrowserSession {
@@ -158,27 +159,30 @@ class BrowserStore {
   }
 
   /** Open `url` in a workspace's browser — the one on screen by default — and
-   *  open its panel there. A page opened for a workspace that is not on screen
-   *  loads hidden and waits for the person to visit it. */
+   *  turn its dock to the browser. A page opened for a workspace that is not
+   *  on screen loads hidden and waits for the person to visit it. */
   async open(url: string, workspace = this.activeKey): Promise<void> {
     const session = this.ensure(workspace);
-    session.open = true;
     session.url = url;
     session.title = "";
+    dock.show("browser", workspace);
     await this.load(workspace, url);
   }
 
-  /** Close a workspace's browser: its panel and its page. */
+  /** Close a workspace's page (the toolbar's close). The Browser surface stays
+   *  where it is, empty, ready for another address. */
   close(workspace = this.activeKey): void {
     const session = this.sessions[workspace];
     if (!session) return;
-    session.open = false;
     this.release(workspace);
+    session.url = "";
+    session.title = "";
+    session.canGoBack = null;
+    session.canGoForward = null;
   }
 
-  /** Release a workspace's page but keep its panel state and URL, so visiting
-   *  it again reloads where it was (a sleeping workspace, or room for another
-   *  page). */
+  /** Release a workspace's page but keep its URL, so showing it again reloads
+   *  where it was (a sleeping workspace, or room for another page). */
   suspend(workspace: string): void {
     this.release(workspace);
   }
@@ -195,7 +199,7 @@ class BrowserStore {
 
   /** Whether `workspace`'s page should be on screen right now. */
   private wantsVisible(workspace: string): boolean {
-    return workspace === this.activeKey && this.isOpen(workspace) && this.slotShowable;
+    return workspace === this.activeKey && this.isShown(workspace) && this.slotShowable;
   }
 
   /** Load `url` in a workspace's page, creating it (and making room) first. */
@@ -344,10 +348,7 @@ class BrowserStore {
         this.approvals = this.approvals.filter((a) => a.id !== e.payload.id);
       });
       this.approvals = await browserApprovals();
-      for (const state of await browserSessions()) {
-        this.apply(state);
-        this.ensure(state.workspace).open = true;
-      }
+      for (const state of await browserSessions()) this.apply(state);
       this.sync();
     } catch {
       // No Tauri runtime (web preview) — nothing to mirror.

@@ -19,7 +19,8 @@ describe("phase-five work-surface contracts", () => {
 
     expect(source("TreeInlineInput.svelte")).toContain("<Input");
     expect(source("TreeInlineInput.svelte")).toContain('density="compact"');
-    expect(source("RightPanel.svelte")).toContain("min-w-0");
+    expect(source("Dock.svelte")).toContain("min-w-0");
+    expect(source("GitSurface.svelte")).toContain("min-w-0");
   });
 
   it("keeps GitHub and automation rows on shared density roles", () => {

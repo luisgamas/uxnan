@@ -31,13 +31,14 @@ vi.mock("$lib/api", async (importOriginal) => {
 import * as api from "$lib/api";
 import { browser, pageToEvict, MAX_LIVE_PAGES, type BrowserSession } from "./browser.svelte";
 import { terminals } from "./terminals.svelte";
+import { dock } from "./dock.svelte";
+import { app } from "./app.svelte";
 
 const SLOT = { x: 800, y: 60, width: 520, height: 700 };
 
 function session(workspace: string, live: boolean, lastShown: number): BrowserSession {
   return {
     workspace,
-    open: true,
     url: "http://localhost:1",
     title: "",
     loading: false,
@@ -72,7 +73,9 @@ describe("pageToEvict", () => {
 describe("the per-workspace browser", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(app, "persistSettings").mockResolvedValue();
     for (const ws of Object.keys(browser.sessions)) delete browser.sessions[ws];
+    app.settings.dock = { workspaces: {} };
     terminals.setWorkspace("");
     browser.setSlot(SLOT, true);
   });
@@ -84,14 +87,25 @@ describe("the per-workspace browser", () => {
   it("shows the page of the workspace on screen", async () => {
     await browser.open("http://localhost:3000");
     expect(api.browserOpen).toHaveBeenCalledWith("", "http://localhost:3000", SLOT, true);
-    expect(browser.isOpen("")).toBe(true);
+    expect(dock.showing("")).toBe("browser");
   });
 
   it("loads a page for another workspace hidden, and keeps it there", async () => {
     await browser.open("http://localhost:4000", "/work/tree");
     expect(api.browserOpen).toHaveBeenCalledWith("/work/tree", "http://localhost:4000", SLOT, false);
-    expect(browser.isOpen("")).toBe(false);
-    expect(browser.isOpen("/work/tree")).toBe(true);
+    // The dock on screen is untouched; the other workspace's turns to its page.
+    expect(dock.showing("")).toBeNull();
+    expect(dock.showing("/work/tree")).toBe("browser");
+  });
+
+  it("hides the page, and keeps it, when the dock leaves the browser", async () => {
+    await browser.open("http://localhost:3000");
+    vi.mocked(api.browserSetVisible).mockClear();
+    dock.hide();
+    browser.sync();
+    expect(api.browserSetVisible).toHaveBeenCalledWith("", false);
+    expect(api.browserClose).not.toHaveBeenCalled();
+    expect(browser.sessions[""].live).toBe(true);
   });
 
   it("swaps pages when the workspace on screen changes", async () => {
@@ -139,15 +153,16 @@ describe("the per-workspace browser", () => {
     const live = Object.values(browser.sessions).filter((s) => s.live);
     expect(live).toHaveLength(MAX_LIVE_PAGES);
     expect(api.browserClose).toHaveBeenCalledWith("/ws/0");
-    // Released, not forgotten: its panel and URL stay for when it is visited.
-    expect(browser.sessions["/ws/0"].open).toBe(true);
+    // Released, not forgotten: its URL (and its dock) stay for when it is visited.
+    expect(dock.showing("/ws/0")).toBe("browser");
     expect(browser.sessions["/ws/0"].url).toBe("http://localhost:5000");
   });
 
-  it("closing forgets the panel and releases the page", async () => {
+  it("closing the page releases it and leaves an empty browser in the dock", async () => {
     await browser.open("http://localhost:3000");
     browser.close();
-    expect(browser.isOpen("")).toBe(false);
     expect(api.browserClose).toHaveBeenCalledWith("");
+    expect(browser.sessions[""].url).toBe("");
+    expect(dock.showing("")).toBe("browser");
   });
 });

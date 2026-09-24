@@ -317,7 +317,7 @@ instead of quietly agreeing with a mock nobody updated.
 - `FilePreview.svelte.test.ts` — loose-table README GIFs resolve from Windows,
   macOS, Linux, and UNC document paths and render the returned animated image
   unchanged; `markdown.test.ts` covers multiple inline-HTML images in one table.
-- `GithubPanel.svelte.test.ts` — the right-panel GitHub tab keeps its content
+- `GithubPanel.svelte.test.ts` — the dock's GitHub surface keeps its content
   mounted while a poll re-reads the context, an unsubmitted **Create PR** form
   survives both a poll tick and an outright remount (each worktree keeping its
   own), **Cancel** is what discards it, and a worktree that really has no context

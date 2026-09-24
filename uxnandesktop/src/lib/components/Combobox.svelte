@@ -46,6 +46,8 @@
     disabled = false,
     itemPrefix,
     triggerContent,
+    searchable = true,
+    triggerVariant = "outline",
   }: {
     /** Currently selected value (empty/undefined shows the placeholder). */
     value: string | undefined;
@@ -62,6 +64,12 @@
     itemPrefix?: Snippet<[ComboItem]>;
     /** Fully custom trigger body (replaces the default label rendering). */
     triggerContent?: Snippet<[ComboItem | undefined]>;
+    /** Show the search box. Off for a short, fixed list (a handful of views),
+     *  where typing to filter only adds a step. */
+    searchable?: boolean;
+    /** The trigger's button variant: `outline` in a form, `ghost` where it sits
+     *  in a toolbar or an appbar and should read as part of it. */
+    triggerVariant?: "outline" | "ghost";
   } = $props();
 
   let open = $state(false);
@@ -81,7 +89,7 @@
     {#snippet child({ props })}
       <Button
         {...props}
-        variant="outline"
+        variant={triggerVariant}
         role="combobox"
         aria-expanded={open}
         {disabled}
@@ -101,7 +109,7 @@
   </Popover.Trigger>
   <Popover.Content width="command" padding="none" class={contentClass} {align}>
     <Command.Root value={value}>
-      <Command.Input placeholder={searchPlaceholder} />
+      {#if searchable}<Command.Input placeholder={searchPlaceholder} />{/if}
       <Command.List class="uxnan-scroll max-h-72">
         <Command.Empty>{emptyText}</Command.Empty>
         {#each groups as group, gi (gi)}

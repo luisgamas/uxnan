@@ -7,6 +7,7 @@
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
 import { projects } from "$lib/state/projects.svelte";
+import { dock } from "$lib/state/dock.svelte";
 import { toast } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 
@@ -97,7 +98,21 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
       void app.persistSettings();
       return true;
     case "toggleRightSidebar":
-      app.toggleRightSidebar();
+      dock.toggle();
+      return true;
+    // A surface's shortcut reveals it (opening the dock if needed); closing is
+    // the dock toggle's job, so pressing one twice never hides what you asked for.
+    case "dockFiles":
+    case "dockGit":
+    case "dockGithub": {
+      const surface = id === "dockFiles" ? "files" : id === "dockGit" ? "git" : "github";
+      if (!dock.has(surface)) return false;
+      dock.show(surface);
+      return true;
+    }
+    case "dockBrowser":
+      if (!dock.has("browser")) return false;
+      void app.openBrowser().catch(() => {});
       return true;
     case "saveFile":
       return false; // handled by the editor's own CodeMirror keymap when focused

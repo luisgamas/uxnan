@@ -438,6 +438,53 @@ fn empty_starter_profiles() -> Vec<TerminalProfile> {
     }]
 }
 
+/// A surface of the right dock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DockSurface {
+    Files,
+    Git,
+    Github,
+    Browser,
+}
+
+/// The two views of the dock's Git surface.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DockGitView {
+    #[default]
+    Changes,
+    History,
+}
+
+/// What the dock remembers for one workspace. Frontend-owned layout memory:
+/// the backend only keeps it (`state/dock.svelte.ts`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DockWorkspace {
+    #[serde(default)]
+    pub open: bool,
+    /// The surface chosen there; `None` until one is — the dock then opens on
+    /// its chooser.
+    #[serde(default)]
+    pub surface: Option<DockSurface>,
+    #[serde(default)]
+    pub git_view: DockGitView,
+    /// Epoch milliseconds of the last change — the frontend keeps the most
+    /// recent entries and drops the rest, so the map stays bounded.
+    #[serde(default)]
+    pub touched: u64,
+}
+
+/// The right dock's per-workspace memory, keyed by workspace key (a worktree
+/// folder; `""` is the Global space).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DockSettings {
+    #[serde(default)]
+    pub workspaces: std::collections::BTreeMap<String, DockWorkspace>,
+}
+
 /// User-facing application settings (UI layout, theme, terminal profiles).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -446,7 +493,12 @@ pub struct AppSettings {
     pub left_sidebar_width: u32,
     pub right_sidebar_width: u32,
     pub left_sidebar_open: bool,
-    pub right_sidebar_open: bool,
+    /// The right dock (Files · Git · GitHub · Browser), remembered per
+    /// workspace: whether it is open there, which surface it shows and which
+    /// Git view. Replaces the one app-wide "right panel open" switch; a
+    /// workspace with no entry starts with the dock closed.
+    #[serde(default)]
+    pub dock: DockSettings,
     /// Configurable terminal/shell profiles (seeded with platform defaults).
     #[serde(default)]
     pub terminal_profiles: Vec<TerminalProfile>,
@@ -1288,7 +1340,7 @@ impl Default for AppSettings {
             left_sidebar_width: 280,
             right_sidebar_width: 350,
             left_sidebar_open: true,
-            right_sidebar_open: true,
+            dock: DockSettings::default(),
             terminal_profiles,
             // No hosts by default: with none of these the app is exactly what it
             // was before remote hosts existed.
@@ -1763,7 +1815,7 @@ mod tests {
         // State persisted before orchestration runs existed must still load.
         let legacy: AppData = serde_json::from_str(
             r#"{"version":1,"repos":[],"settings":{"theme":"system","leftSidebarWidth":280,
-                "rightSidebarWidth":350,"leftSidebarOpen":true,"rightSidebarOpen":true}}"#,
+                "rightSidebarWidth":350,"leftSidebarOpen":true}}"#,
         )
         .unwrap();
         assert!(legacy.orchestration_runs.is_none());
@@ -1779,10 +1831,33 @@ mod tests {
     }
 
     #[test]
+    fn the_dock_remembers_each_workspace_and_loads_old_state_closed() {
+        // State from before the dock (with the old app-wide switch) loads with
+        // no memory: every workspace starts with the dock closed.
+        let legacy: AppSettings = serde_json::from_str(
+            r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+                "leftSidebarOpen":true,"rightSidebarOpen":true}"#,
+        )
+        .unwrap();
+        assert!(legacy.dock.workspaces.is_empty());
+        let json = r#"{"workspaces":{"/w/a":{"open":true,"surface":"browser","gitView":"history","touched":5},"":{}}}"#;
+        let dock: DockSettings = serde_json::from_str(json).unwrap();
+        let a = &dock.workspaces["/w/a"];
+        assert!(a.open);
+        assert_eq!(a.surface, Some(DockSurface::Browser));
+        assert_eq!(a.git_view, DockGitView::History);
+        // Nothing chosen yet: the dock opens on its chooser.
+        assert_eq!(dock.workspaces[""], DockWorkspace::default());
+        assert_eq!(dock.workspaces[""].surface, None);
+        let back = serde_json::to_string(&dock).unwrap();
+        assert!(back.contains("\"gitView\":\"history\""));
+    }
+
+    #[test]
     fn settings_serialize_with_camel_case_keys() {
         let json = serde_json::to_string(&AppSettings::default()).unwrap();
         assert!(json.contains("leftSidebarWidth"));
-        assert!(json.contains("rightSidebarOpen"));
+        assert!(json.contains("\"dock\":{\"workspaces\":{}}"));
         // snake_case keys must NOT leak to the frontend.
         assert!(!json.contains("left_sidebar_width"));
     }

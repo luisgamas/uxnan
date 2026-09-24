@@ -240,12 +240,32 @@ export interface NativeEditor {
   args: string[];
 }
 
+/** A surface of the right dock (`state/dock.svelte.ts`). */
+export type DockSurface = "files" | "git" | "github" | "browser";
+
+/** The two views of the dock's Git surface. */
+export type DockGitView = "changes" | "history";
+
+/** What the dock remembers for one workspace (mirrors `model::DockWorkspace`). */
+export interface DockWorkspace {
+  open: boolean;
+  /** The surface chosen there; null until one is (the dock opens on its chooser). */
+  surface: DockSurface | null;
+  gitView: DockGitView;
+  /** Epoch ms of the last change; the oldest entries are dropped past a cap. */
+  touched: number;
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
+  /** Width of the right dock while it shows Files, Git or GitHub (the browser
+   *  keeps its own, `browserPanelWidth`, since a page wants more room). */
   rightSidebarWidth: number;
   leftSidebarOpen: boolean;
-  rightSidebarOpen: boolean;
+  /** The right dock's memory, per workspace key (a worktree folder; `""` is the
+   *  Global space). A workspace with no entry starts with the dock closed. */
+  dock?: { workspaces: Record<string, DockWorkspace> };
   /** Configurable terminal/shell profiles (seeded with platform defaults). */
   terminalProfiles: TerminalProfile[];
   /** Id of the profile used for new terminals unless one is picked explicitly. */
@@ -1735,7 +1755,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leftSidebarWidth: 280,
   rightSidebarWidth: 350,
   leftSidebarOpen: true,
-  rightSidebarOpen: true,
+  dock: { workspaces: {} },
   // The backend seeds real platform profiles; this fallback is only used before
   // hydration (or in the plain web preview, which can't spawn PTYs anyway).
   terminalProfiles: [],

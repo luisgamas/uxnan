@@ -47,14 +47,16 @@ describe("phase-five chrome and dialog contracts", () => {
 
   it("keeps the window controls' corners clear wherever a bar reaches them", () => {
     // The center tab strip reaches a top corner once the panel on that side is
-    // hidden; the inline GitHub view once the sidebar hides or no browser sits
-    // beside it. Both ask the one helper instead of hard-coding a padding.
+    // hidden; the inline GitHub view once the sidebar hides or the dock is
+    // closed. Both ask the one helper instead of hard-coding a padding, and the
+    // dock — always the right-most panel — leaves the right corner free.
     const terminal = component("TerminalArea.svelte");
     expect(terminal).toContain("stripInsets(g.rect)");
     expect(terminal).toContain("!app.settings.leftSidebarOpen");
-    expect(terminal).toContain("!app.rightSidebarVisible && !app.browserOpen");
+    expect(terminal).toContain("!dock.isOpen()");
     const github = component("GitHub.svelte");
-    expect(github).toContain("titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !app.browserOpen }, isMac)");
+    expect(github).toContain("titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !dock.isOpen() }, isMac)");
+    expect(component("Dock.svelte")).toContain("titlebarInsets({ left: false, right: true }, isMac)");
     expect(github).not.toMatch(/pr-\[\d+px\]/);
   });
 
@@ -69,8 +71,7 @@ describe("phase-five chrome and dialog contracts", () => {
     for (const name of [
       "LeftSidebar.svelte",
       "TerminalArea.svelte",
-      "RightPanel.svelte",
-      "BrowserPanel.svelte",
+      "Dock.svelte",
       "GitHub.svelte",
       "WorkspaceAppBar.svelte",
     ]) {

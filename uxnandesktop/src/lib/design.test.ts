@@ -58,7 +58,7 @@ describe("desktop density tokens", () => {
 		expect(shell.appBarOverlay).toBe("h-10");
 		expect(shell.appBarAction).toContain("size-10");
 		expect(shell.appBarCompactAction).toContain("size-10");
-		expect(shell.rightPanelTabs).toContain("h-8");
+		expect(tab.gitView).toContain("flex-1");
 		expect(shell.laneHeader).toContain("min-h-7");
 		expect(shell.laneAction).toContain("min-h-7");
 		expect(shell.titlebarControl).toContain("size-10");

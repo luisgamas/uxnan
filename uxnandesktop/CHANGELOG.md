@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **One right dock per workspace.** The right side of the window is a single
+  panel offering only the surfaces the workspace on screen has: **Files** (a
+  project), **Git** (a git repository), **GitHub** (a local git repository, when
+  enabled) and **Browser** (when enabled). A plain folder no longer offers Git or
+  GitHub, and the Global space offers only the browser. The first time a
+  workspace opens its dock it shows a chooser — one card per surface, with its
+  shortcut — and after that each workspace reopens its dock on the surface it
+  last showed (remembered in `settings.dock`, the last 200 workspaces).
+- **A surface selector in the dock's top band**, the same control the GitHub
+  view uses for its sections. Each option says what is worth knowing without
+  opening it: the changed files, the pull request's checks, an agent waiting for
+  a browser approval.
+- **Shortcuts for each surface:** Mod+Shift+E Files, Mod+Shift+G Git,
+  Mod+Shift+H GitHub, Mod+Shift+B Browser — each opens the dock if needed. A
+  worktree's changed-files count in the sidebar opens its Git changes.
+
+### Changed
+
+- **Changes and History are one Git surface**, switched by a segmented control
+  that remembers its view per workspace.
+- **The browser is a dock surface, not a fourth panel.** The status bar's globe
+  is gone: the dock button (Mod+J) opens and closes the dock, and it carries the
+  amber dot when an agent waits for approval. Switching surface or closing the
+  dock only hides the page — it is there when you come back — and the browser
+  toolbar's ✕ now closes the page itself. The browser keeps its own, wider
+  width.
+
 ### Fixed
 
 - **Hidden side panels no longer put the window controls on top of the tabs.**

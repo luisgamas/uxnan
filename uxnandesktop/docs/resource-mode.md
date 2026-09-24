@@ -133,7 +133,7 @@ be what blocks the machine.
 | Resource-monitor history (`resourceHistorySeconds`)* | 180 s | 600 s | 600 s |
 | Pet idle one-shots (`petFlavour`)* | off (state changes still animate) | on | on |
 | Workspace auto-sleep (`workspaceAutoSleep`*, behind the flag) | suggest after 30 min idle | off | off |
-| Browser panel on close | destroy webview | destroy webview | destroy webview (no preloading) |
+| Browser page on close (the toolbar ✕; hiding the dock only hides it) | destroy webview | destroy webview | destroy webview (no preloading) |
 | Watchers (fs, active-worktree git, browse) | unchanged — they follow what is visible | unchanged | unchanged |
 
 \* = user-overridable per capability (plus `autoSleepIdleMinutes`); everything

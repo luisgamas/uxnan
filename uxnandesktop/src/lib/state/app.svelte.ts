@@ -33,6 +33,7 @@ import {
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
 import { browser } from "$lib/state/browser.svelte";
+import { dock } from "$lib/state/dock.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
@@ -124,13 +125,6 @@ class AppStore {
   settingsOpen = $state(false);
   /** Whether the multi-agent orchestration console is open. */
   orchestrationOpen = $state(false);
-  /** Whether the integrated browser panel (the right-side "4th panel") is open
-   *  in the workspace on screen — each workspace has its own browser. */
-  get browserOpen(): boolean {
-    return browser.isOpen();
-  }
-  /** Browser visibility temporarily overrides the saved review-panel preference. */
-  rightSidebarVisible = $derived(this.settings.rightSidebarOpen && !this.browserOpen);
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
   /** Whether the inline GitHub view is showing (it replaces the center + right
@@ -235,37 +229,24 @@ class AppStore {
     this.automationsOpen = false;
   }
 
-  /** Open the integrated browser of `workspace` (default: the one on screen) at
-   *  `url` — or, with no URL, at the page it already shows, the configured
-   *  homepage, or a blank page. */
+  /** Show the browser of `workspace` (default: the one on screen) in its dock,
+   *  loading `url` when one is given. With none, the page it already has stays
+   *  as it is; a workspace without one opens the configured home page, or an
+   *  empty browser waiting for an address. */
   openBrowser(url?: string, workspace?: string): Promise<void> {
-    const home = this.settings.browser?.homepage?.trim();
-    const current = browser.sessions[workspace ?? browser.activeKey]?.url;
-    const target = (url && url.trim()) || current || (home && home.length > 0 ? home : "about:blank");
-    return browser.open(target, workspace);
-  }
-
-  /** Close the integrated browser in the workspace on screen (its page is
-   *  destroyed; other workspaces keep theirs). */
-  closeBrowser(): void {
-    browser.close();
-  }
-
-  /** Toggle the review panel, keeping browser-only changes out of saved layout. */
-  toggleRightSidebar(): void {
-    if (this.browserOpen) {
-      this.closeBrowser();
-      this.settings.rightSidebarOpen = true;
-    } else {
-      this.settings.rightSidebarOpen = !this.settings.rightSidebarOpen;
+    const ws = workspace ?? browser.activeKey;
+    const target = url?.trim();
+    if (target) return browser.open(target, ws);
+    const session = browser.sessions[ws];
+    if (session?.live) {
+      dock.show("browser", ws);
+      return Promise.resolve();
     }
-    void this.persistSettings();
-  }
-
-  /** Toggle the integrated browser panel (opens at the homepage/blank). */
-  toggleBrowser(): void {
-    if (this.browserOpen) this.closeBrowser();
-    else void this.openBrowser().catch(() => {});
+    const home = this.settings.browser?.homepage?.trim();
+    const resume = session?.url || home;
+    if (resume) return browser.open(resume, ws);
+    dock.show("browser", ws);
+    return Promise.resolve();
   }
 
   /** Subscribe to OS dark-mode changes so the "System" theme tracks them live. */

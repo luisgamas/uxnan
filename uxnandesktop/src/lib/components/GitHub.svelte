@@ -12,6 +12,7 @@
   import { cn } from "$lib/utils";
   import { field, icon, iconButton, panel, row, shell, tab as tabStyle, text } from "$lib/design";
   import { titlebarInsets } from "$lib/titlebar";
+  import { dock } from "$lib/state/dock.svelte";
   import { isMac } from "$lib/keybindings";
   import { toast, toastError } from "$lib/toast";
   import {
@@ -1122,13 +1123,13 @@
     <!-- Drag strip: the same appbar every panel starts with. It lets the window
          be dragged and keeps clear of the window controls in whichever top
          corner it reaches — the left one once the sidebar is hidden, the right
-         one unless the browser panel sits beside it. Repo name for context. -->
+         one unless the dock sits beside it. Repo name for context. -->
     <div
       data-tauri-drag-region
       class={cn(
         shell.appBar,
         "flex items-center px-4",
-        titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !app.browserOpen }, isMac),
+        titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !dock.isOpen() }, isMac),
       )}
     >
       <span

@@ -48,7 +48,9 @@ started.**
 **Built (DONE), in detail:**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
-  backups + sequential schema migrations).
+  backups + sequential schema migrations). The right side is **one dock per
+  workspace** offering only the surfaces that workspace has (Files · Git ·
+  GitHub · Browser), with a first-open chooser and a surface selector.
 - **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions (each terminal's xterm instance stays alive and is **re-parented** on a
@@ -757,7 +759,7 @@ Deferred:
 
 **Goal:** a complete in-app developer browser to preview/debug the systems agents
 build and open the links agents produce — **not** a general-purpose browser. Lives
-as a right-side "4th panel" (`architecture/02a` §4.2b). Agent link interception
+as a surface of the right dock (`architecture/02a` §4.2b). Agent link interception
 **on by default**; one central link-policy decision point with an always-working OS
 fallback.
 
@@ -802,7 +804,7 @@ screenshot is an MCP image block); references bound to one document; the risk
 policy (`browser/policy.rs`) and the person's approval (`browser/approval.rs`,
 the amber bar in `BrowserApprovalBar.svelte` — walked by the maintainer on a
 dev build, 2026-09-23: bar, in-page highlight, **Allow** running the submit —,
-the globe's dot, 45 s wait); the
+the dock button's dot — the globe's, when walked —, 45 s wait); the
 `agentExternalSites` setting; the `Refused` error code (`-32008`, exit 9); the
 params validator now enforcing `enum` / `minimum` / `maximum` / `maxLength`; page
 actions in the control audit log with typed text by length; a still image of the

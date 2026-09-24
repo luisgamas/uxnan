@@ -28,6 +28,7 @@
   import { i18n } from "$lib/i18n";
   import { isMac, resolveBinding } from "$lib/keybindings";
   import { regionEdges, titlebarInsets } from "$lib/titlebar";
+  import { dock } from "$lib/state/dock.svelte";
   import KeyChord from "./KeyChord.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
@@ -481,7 +482,7 @@
   /** Whether the center area reaches the window's top-left / top-right corner:
    *  it does once the panel on that side is hidden. */
   const areaAtLeftEdge = $derived(!app.settings.leftSidebarOpen);
-  const areaAtRightEdge = $derived(!app.rightSidebarVisible && !app.browserOpen);
+  const areaAtRightEdge = $derived(!dock.isOpen());
 
   /** The padding a region's tab strip needs to stay clear of the window
    *  controls: only a region that reaches a top corner of the window has any
