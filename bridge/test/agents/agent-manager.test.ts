@@ -133,7 +133,11 @@ baseTest('a failed turn persists an error content block into history', async () 
   const thread = await store.startThread({ projectId: 'p' }, 1);
   const { turnId } = await manager.sendTurn(thread.id, 'go');
   adapter.error(thread.id, turnId, 'API error (status 402): usage balance exhausted');
-  await waitFor(async () => (await store.getTurn(turnId)).status === 'error');
+  // Wait for the TurnError *notification*, not the stored status: the status
+  // is persisted BEFORE the notification is emitted (as for TurnCompleted
+  // above), so polling the store can resolve while the notification is still
+  // pending and the TurnError assertion below flakes.
+  await waitFor(async () => notifications.some((n) => n.method === StreamNotification.TurnError));
 
   // The failure reason is persisted as a system/error content block so a
   // `turn/list` re-sync (after a restart) still shows why the turn failed.
