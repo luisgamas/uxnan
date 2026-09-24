@@ -1747,7 +1747,7 @@ enum HookLayout {
     ///
     /// The body is built per agent by [`plugin_body`], because these CLIs share
     /// one plugin API but not one identity: the same source has to declare which
-    /// agent it speaks for, and Kilo wants a different export shape.
+    /// agent it speaks for.
     Plugin,
 }
 
@@ -1978,7 +1978,8 @@ const TABLE_AGENTS: &[TableAgent] = &[
         layout: HookLayout::Plugin,
         events: &[],
     },
-    // Kilo's plugin API is the same event bus with a different export shape.
+    // Kilo's plugin API is the same event bus, and its loader takes the shared
+    // reporter's default-exported descriptor as it is.
     TableAgent {
         id: "kilocode",
         label: "uxnan-status.js",
@@ -2132,15 +2133,6 @@ fn amp_plugin_path() -> Option<PathBuf> {
     )
 }
 
-/// The plugin source installed for `id`.
-///
-/// OpenCode, MiMo and Kilo share one reporter because they share one plugin API
-/// (MiMo is a fork of OpenCode; Kilo reimplemented the same event bus). What
-/// differs is the identity it declares — the agent kind is what the server maps
-/// and what names the tab — and, for Kilo, the export shape its loader requires:
-/// a default `{ id, server }` rather than a bare named factory. Rewriting those
-/// two lines at install beats keeping three near-identical copies of a reporter
-/// whose behavior was validated once.
 /// The marker line that proves a plugin file on disk is ours to rewrite or
 /// remove — the only thing standing between an install and a user's own file of
 /// the same name.
@@ -2152,6 +2144,17 @@ fn plugin_marker(id: &str) -> &'static str {
     }
 }
 
+/// The plugin source installed for `id`.
+///
+/// OpenCode, MiMo and Kilo share one reporter because they share one plugin API
+/// (MiMo is a fork of OpenCode; Kilo reimplemented the same event bus), and one
+/// export shape every one of them loads: a default `{ id, setup, server }`
+/// descriptor carrying OpenCode 2's API and the V1 one side by side (measured on
+/// OpenCode 1.17.20–2.0.16, Kilo 7.7.9 and MiMo 0.1.15 — see the file's header).
+/// What differs is only the identity it declares — the agent kind is what the
+/// server maps and what names the tab — so that one line is rewritten at
+/// install, which beats keeping three near-identical copies of a reporter whose
+/// behavior was validated once.
 fn plugin_body(id: &str) -> String {
     if id == "amp" {
         return AMP_STATUS_PLUGIN.to_string();
@@ -2161,26 +2164,9 @@ fn plugin_body(id: &str) -> String {
         return PI_STATUS_EXTENSION
             .replace("const AGENT_TYPE = \"pi\";", "const AGENT_TYPE = \"omp\";");
     }
-    let body = OPENCODE_STATUS_PLUGIN.replace(
+    OPENCODE_STATUS_PLUGIN.replace(
         "const AGENT_TYPE = \"opencode\";",
         &format!("const AGENT_TYPE = \"{id}\";"),
-    );
-    if id != "kilocode" {
-        return body;
-    }
-    // Kilo's loader takes a default-exported descriptor, not a bare named
-    // factory. Anchored on the single `export` line and with the descriptor
-    // appended at the end — a multi-line anchor would silently stop matching the
-    // day the file's line endings or spacing change, and the plugin would load
-    // as nothing at all.
-    let demoted = body.replace(
-        "export const UxnanStatusPlugin = async () => ({",
-        "const UxnanStatusPlugin = async () => ({",
-    );
-    format!(
-        "{}\n// Kilo's loader takes a default-exported descriptor, not a bare factory.\n\
-         export default {{ id: \"{MANAGED_HOOK_NAME}\", server: UxnanStatusPlugin }};\n",
-        demoted.trim_end()
     )
 }
 
@@ -2848,17 +2834,19 @@ mod tests {
         assert!(mimo.contains("SubagentStart"));
         assert!(mimo.contains(OPENCODE_PLUGIN_MARKER));
 
-        // Kilo's loader takes a default-exported descriptor; a bare named
-        // factory is simply never registered, so the export has to change too.
+        // Kilo runs the same file too: one default descriptor every host loads
+        // (a named export beside it would load the plugin twice on V1 hosts).
         let kilo = plugin_body("kilocode");
         assert!(kilo.contains("const AGENT_TYPE = \"kilocode\";"));
-        assert!(
-            kilo.contains("export default { id: \"uxnan-status\", server: UxnanStatusPlugin };")
-        );
-        assert!(
-            !kilo.contains("export const UxnanStatusPlugin"),
-            "the named export must not survive, or the plugin loads twice"
-        );
+        for body in [&mimo, &kilo] {
+            assert!(body.contains(
+                "export default { id: \"uxnan-status\", setup, server: UxnanStatusPlugin };"
+            ));
+            assert!(
+                !body.contains("export const"),
+                "a second export loads it twice"
+            );
+        }
 
         // OpenCode's own copy is untouched by all of this.
         assert_eq!(plugin_body("opencode"), OPENCODE_STATUS_PLUGIN);

@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 953 Rust tests (876 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins). 956 Rust tests (879 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,352 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,370 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -150,7 +150,12 @@ started.**
   uses a Node relay (`node` guaranteed, in exec-form so no shell is involved);
   Codex uses a `curl` hook + a reproduced `trusted_hash` in
   `~/.codex/config.toml` (golden-vector-tested `codex_trust.rs`); OpenCode a
-  plugin, Pi an in-process extension. **Grok** owns a file in `~/.grok/hooks/`
+  plugin — one file speaking both plugin APIs, validated on real turns with
+  OpenCode 1.17.20, 1.18.32 and 2.0.16 (turn, permission, question, sub-agent,
+  interruption) and Kilo 7.7.9, load-checked on MiMo 0.1.15; OpenCode 2 is
+  launched `--standalone` so its server carries the tab's identity, and the
+  reporter stays silent in OpenCode 2's shared service (`docs/agent-hooks.md` →
+  *OpenCode 1 and OpenCode 2*) — Pi an in-process extension. **Grok** owns a file in `~/.grok/hooks/`
   (Claude's event vocabulary, so it reaches every state incl. a real `blocked`
   from `StopFailure`) and **Antigravity** one named entry in
   `~/.gemini/config/hooks.json` (loop events only — it has no prompt/permission
@@ -162,8 +167,8 @@ started.**
   Goose, MiMo Code, Kilo Code, Amp and OMP — as rows in `agent_hooks::TABLE_AGENTS`
   (config path, detection command, entry shape, events) driving the shared
   `uxnan-event-hook`, or — for the last three — an in-process plugin the CLI
-  auto-discovers (MiMo and Kilo run OpenCode's reporter with the agent kind and,
-  for Kilo, the export shape rewritten at install; Amp has its own source); adding one is a row plus
+  auto-discovers (MiMo and Kilo run OpenCode's reporter with only the agent kind
+  rewritten at install; Amp has its own source); adding one is a row plus
   a `normalize_event` arm with the same id, which a test enforces. Startup only
   installs the agents the machine actually has (`PATH` or an existing config).
   Per-event merge preserves user hooks and is tag-scoped, so two of our own
@@ -1237,6 +1242,24 @@ exists, so "closed" has to mean the socket is gone (`02g` §5.14).
 ## Deferred follow-ups (non-blocking) — by area
 
 **Agent hooks**
+- [ ] **OpenCode 2: one server for every tab instead of one per tab.** uxnan
+      launches OpenCode 2 `--standalone` (`mcpinject::required_args`) because
+      its shared background service runs every session with one terminal's
+      environment, and nothing in a session says which tab's TUI created it —
+      so status reports, the MCP tools' `x-uxnan-agent-id` and the agent's shell
+      commands (`uxnan-cli current`) could not be told apart. The price is
+      ~400 MB per extra OpenCode tab (measured: ~585 MB standalone vs ~175 MB per
+      TUI + ~470 MB for the service once).
+
+      *Where:* an uxnan-owned `opencode serve` per window, started with the
+      window's environment, every tab launched `--server <url>`, and the plugin
+      (plus a `ctx.shell.hook()` for per-command `UXNAN_AGENT_ID`) keying its
+      reports on a session → tab map instead of `process.env`.
+
+      *What unblocks it:* OpenCode exposing which client created or is attached
+      to a session (a client id on `session.created`, or a per-client header the
+      TUI can be given). Re-measure the per-tab cost first: if OpenCode's server
+      shrinks, standalone may stay the simpler answer.
 - [ ] **Zero: precise states + its `specialist` sub-agents, blocked on the CLI.**
       Zero has everything needed — a hooks CLI of its own (`zero hooks add <id>
       --event <event> --command <cmd> --arg <v> --user`, written to
@@ -1667,7 +1690,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 953 Rust + 1,352 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 956 Rust + 1,370 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

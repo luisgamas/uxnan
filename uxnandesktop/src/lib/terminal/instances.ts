@@ -33,7 +33,7 @@ import { LigaturesAddon } from '@xterm/addon-ligatures';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { WebglAddon } from '@xterm/addon-webgl';
 import { openUrl } from '$lib/api';
-import { ensureMcpLaunch, withMcpLaunch } from '$lib/mcpLaunch';
+import { ensureMcpLaunch, launchExecutable, withMcpLaunch } from '$lib/mcpLaunch';
 import { runAgentLaunch } from '$lib/terminal/agentLaunch';
 import { agentMonitor } from '$lib/state/agentMonitor.svelte';
 import { KeyboardProtocol } from '$lib/terminal/keyboardProtocol';
@@ -358,6 +358,10 @@ export async function spawnPty(
       // "" is the global workspace — meaningless as an attribution target.
       workspace: spec.workspace || null,
       target: spec.target ?? null,
+      // The agent this terminal is opened to launch, if any: an env-based MCP
+      // registration that must not reach every shell (OpenCode 2's) goes only
+      // on the terminal that launches it.
+      launching: launchExecutable(spec.runCommand ?? '') || null,
     });
     // The PTY now exists at exactly `cols`×`rows`; record that as the known
     // grid, then flush any fit that settled while the spawn was in flight so
@@ -449,7 +453,8 @@ async function nudgeRepaint(inst: TerminalInstance, cols: number, rows: number):
  *  This is also where uxnan's browser MCP server is registered with the agent:
  *  the command line gets that CLI's per-launch flags appended
  *  (`$lib/mcpLaunch`), so the `browser_*` tools exist for this process and
- *  nowhere else. Doing it here instead of at each call site covers a fresh
+ *  nowhere else — plus any flag the CLI needs for that per-launch wiring to
+ *  reach it at all (OpenCode 2's `--standalone`). Doing it here instead of at each call site covers a fresh
  *  launch, a resumed session and a woken tab with one transform, and leaves
  *  every non-agent command untouched. */
 export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_QUIET_MS): void {

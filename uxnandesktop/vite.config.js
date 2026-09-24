@@ -1,12 +1,17 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
+import { BUILD_TARGET } from "./build-target.js";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [tailwindcss(), sveltekit()],
+
+  // Never Vite's default: it lowers syntax the webviews already run, and one such
+  // lowering breaks xterm.js once minified (see `build-target.js`).
+  build: { target: BUILD_TARGET },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
