@@ -694,3 +694,19 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   --to id:<terminal> --message-file msg.md`, `uxnan-cli agent wait --to
   id:<terminal> --for idle`, `uxnan-cli terminal read id:<terminal>`; and from
   inside a Uxnan terminal, `uxnan-cli terminal show current`.
+- **Live, on a disposable profile (macOS, 2026-09-23)** — hosts, automations,
+  the external editor and the budget, run against a dev app started with
+  `UXNAN_DATA_DIR` pointing at a throwaway profile: two hosts that cannot
+  answer (an unresolvable name and a closed port) and an "editor" that is
+  `/usr/bin/touch`, so nothing real was connected to or opened. `host/list` and
+  `host/show` described both machines as disconnected with no channel count;
+  `host/connect` came back `unreachable` with `handshake` and `refused`
+  respectively, each with the sentence that names the host — and with no
+  fingerprint, credential method or key path in the result. `automation/show`
+  answered a seeded automation with its prompts, its policy and its
+  precondition; `file/open --with "Touch Probe"` really ran the editor (the
+  file's mtime moved) and `--with /bin/sh` was refused with the three editors
+  this machine offers; `status` reported `0/4 slots in use · 2466 MiB free
+  (needs 768 MiB)`. Every result was checked against the entry's **live**
+  `outputSchema` from `tools/list` (52 tools): required fields present,
+  declared types respected, no undocumented field.
