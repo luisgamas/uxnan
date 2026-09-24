@@ -341,7 +341,8 @@ export const divider = {
  *  sidebar-accent fill *plus* a firm foreground underline (the worktree-selection
  *  feel + an underline-style active bar). Compose `cn(tab.base, isActive ?
  *  tab.active : tab.inactive)`; `base` reserves the 2px underline so toggling
- *  never shifts content. Shared by the center terminal tabs and the right panel. */
+ *  never shifts content. The center terminal tabs and the GitHub view. A mode
+ *  switch (pick one of a few views) is `ui/segmented`, not a tab. */
 export const tab = {
   base: "border-b-2 border-transparent transition-colors",
   panelTrigger: "shrink-0 whitespace-nowrap px-3 text-[13px]",
@@ -355,10 +356,4 @@ export const tab = {
    *  on small view tabs. */
   activeLine: "border-foreground text-foreground",
   inactiveLine: "text-muted-foreground hover:text-foreground",
-  /** Small accessible Visual/JSON editor switcher. */
-  segmentedList:
-    "inline-flex min-h-8 shrink-0 self-start overflow-hidden rounded-md border border-border bg-muted/30",
-  segmentedTrigger: "min-h-7 rounded-none px-2 text-[11px]",
-  /** One half of the Git surface's Changes / History switch (they share it). */
-  gitView: "flex flex-1 items-center justify-center gap-1.5 text-[12px]",
 } as const;

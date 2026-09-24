@@ -301,9 +301,7 @@ pixel-exact for virtualization and keyboard highlighting.
 
 The shell also names repeated chrome geometry: `shell.sidebarBrand` and
 `shell.sidebarSectionHeader`; `overlay.paletteViewport` owns the palette's
-viewport cap; `tab.panelTrigger` owns the GitHub view's section-trigger padding/type;
-`tab.gitView` lays out the dock's Git surface switch (Changes / History, one
-half each, over `tab.segmentedList`/`segmentedTrigger`); and
+viewport cap; `tab.panelTrigger` owns the GitHub view's section-trigger padding/type; and
 `tab.terminalTrigger` owns terminal tab trigger geometry.
 
 ### Fields & containers (`field`, `panel`, `focus`)
@@ -322,7 +320,22 @@ half each, over `tab.segmentedList`/`segmentedTrigger`); and
 | `focus.ring` | The shared focus-visible ring |
 | `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match. Not for the app bar or the status bar: those paint the same hairline as an overlay so their full-height controls keep the band's exact height |
 | `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; used by the center terminal tabs |
-| `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors and the dock's Git surface |
+
+### Mode switches (`ui/segmented`)
+
+Picking one of a few views or modes — a file's Edit / Preview / Changes, its
+Unstaged / Staged, a diff's Unified / Side by side, the Git surface's Changes /
+History, an editor's Visual / JSON — is **one component**, not a recipe each
+caller dresses: `Segmented` (pick one; pressing the chosen option keeps it) and
+`SegmentedToggles` (switch several on and off — the find bar's match case /
+whole word / regex), both on Bits UI's toggle group. The look lives in
+`ui/segmented/recipe.ts` alone: a quiet `bg-muted/70` track, 28px tall, with the
+chosen option lifted out of it (`bg-background` + `shadow-xs`, a light
+`foreground/10` lift in dark mode), 12px labels, 14px glyphs, an optional count.
+`fill` shares the width (the Git surface); an option without a label is a
+square glyph button named by its tooltip. A switch is not a tab: tabs
+(`tab.*`) are for places you navigate, a segmented control for how you look at
+the same thing. A test fails if a component draws its own copy again.
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays

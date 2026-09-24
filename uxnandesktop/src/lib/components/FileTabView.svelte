@@ -13,10 +13,10 @@
   import { isImagePath } from "$lib/diff";
   import { filePreviewKind } from "$lib/filePreview";
   import { cn } from "$lib/utils";
-  import { icon, tab as tabStyle, text } from "$lib/design";
+  import { icon, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
-  import * as Tabs from "$lib/components/ui/tabs";
+  import { Segmented } from "$lib/components/ui/segmented";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import FileEditor from "./FileEditor.svelte";
@@ -89,9 +89,6 @@
   function setStaged(staged: boolean): void {
     terminals.setFileChangesStaged(tab.id, staged);
   }
-
-  const segActive = "bg-accent text-foreground";
-  const segIdle = "text-muted-foreground hover:text-foreground";
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
@@ -134,59 +131,23 @@
         {/snippet}
       </TooltipSimple>
     {:else if shown === "changes"}
-      <Tabs.Root
+      <Segmented
         value={tab.staged ? "staged" : "unstaged"}
+        options={[
+          { value: "unstaged", label: i18n.t("preview.unstaged") },
+          { value: "staged", label: i18n.t("preview.staged") },
+        ]}
         onValueChange={(value) => setStaged(value === "staged")}
-        class="shrink-0"
-      >
-        <Tabs.List class={tabStyle.segmentedList}>
-          <Tabs.Trigger
-            value="unstaged"
-            class={cn(tabStyle.segmentedTrigger, !tab.staged ? segActive : segIdle)}
-          >
-            {i18n.t("preview.unstaged")}
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="staged"
-            class={cn(tabStyle.segmentedTrigger, tab.staged ? segActive : segIdle)}
-          >
-            {i18n.t("preview.staged")}
-          </Tabs.Trigger>
-        </Tabs.List>
-      </Tabs.Root>
+      />
     {/if}
 
     <!-- View switch (only when this file offers more than one view). -->
     {#if views.length > 1}
-      <Tabs.Root
+      <Segmented
         value={shown}
-        onValueChange={(value) => {
-          if (value) switchView(value as FileView);
-        }}
-        class="shrink-0"
-      >
-        <Tabs.List class={tabStyle.segmentedList}>
-        {#each views as v, i (v.view)}
-          {@const glyph = v.icon}
-          <TooltipSimple title={v.label}>
-            {#snippet children(tp)}
-              <Tabs.Trigger
-                {...tp}
-                value={v.view}
-                class={cn(
-                  tabStyle.segmentedTrigger,
-                  i > 0 && "border-l border-border/60",
-                  shown === v.view ? segActive : segIdle,
-                )}
-              >
-                <Icon icon={glyph} class={icon.action} />
-                {v.label}
-              </Tabs.Trigger>
-            {/snippet}
-          </TooltipSimple>
-        {/each}
-        </Tabs.List>
-      </Tabs.Root>
+        options={views.map((v) => ({ value: v.view, label: v.label, icon: v.icon }))}
+        onValueChange={(value) => switchView(value as FileView)}
+      />
     {/if}
   </header>
 

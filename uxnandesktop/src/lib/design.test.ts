@@ -58,7 +58,6 @@ describe("desktop density tokens", () => {
 		expect(shell.appBarOverlay).toBe("h-10");
 		expect(shell.appBarAction).toContain("size-10");
 		expect(shell.appBarCompactAction).toContain("size-10");
-		expect(tab.gitView).toContain("flex-1");
 		expect(shell.laneHeader).toContain("min-h-7");
 		expect(shell.laneAction).toContain("min-h-7");
 		expect(shell.titlebarControl).toContain("size-10");
@@ -115,8 +114,6 @@ describe("desktop density tokens", () => {
 		expect(field.selectNarrow).toContain("max-w-full");
 		expect(field.selectStandard).toContain("w-56");
 		expect(field.selectWide).toContain("w-72");
-		expect(tab.segmentedList).toContain("min-h-8");
-		expect(tab.segmentedTrigger).toContain("min-h-7");
 		expect(panel.settingsPreview).toContain("h-60");
 		expect(panel.settingsBody).toContain("px-7");
 	});

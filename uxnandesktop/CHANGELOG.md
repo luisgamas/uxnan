@@ -25,6 +25,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **Every mode switch is one component.** A file's Edit / Preview / Changes,
+  Unstaged / Staged, a diff's layout, the Git surface's Changes / History and the
+  theme editors' Visual / JSON were five hand-styled copies that had drifted
+  apart (separators on some, 11px text, a frame fighting the tab list's own
+  padding). They are now one segmented control: a quiet track with the chosen
+  option lifted out of it.
 - **Changes and History are one Git surface**, switched by a segmented control
   that remembers its view per workspace.
 - **The browser is a dock surface, not a fourth panel.** The status bar's globe
