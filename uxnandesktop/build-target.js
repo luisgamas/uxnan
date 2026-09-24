@@ -3,7 +3,8 @@
 //
 // It is the oldest engine each platform's webview can be: WKWebView on macOS 11
 // (the app's `minimumSystemVersion`) ships Safari 14; WebView2 on Windows is
-// evergreen Chromium; WebKitGTK on Linux is newer than both. ES2021 is what all
+// evergreen Chromium; the WebKitGTK Tauri 2 needs on Linux is newer than Safari
+// 14. The bundle is the same on all three, and ES2021 is what all
 // three already run natively.
 //
 // It must not fall below ES2021. Vite 6's default target (`es2020`, …) makes

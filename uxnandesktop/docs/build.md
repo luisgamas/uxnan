@@ -59,9 +59,13 @@ so the released installers carry the sidecar.
 
 `vite.config.js` compiles the frontend to `BUILD_TARGET` from
 [`build-target.js`](../build-target.js) — `es2021`, `safari14`, `chrome105` —
-never to Vite's default. Safari 14 is the WKWebView of macOS 11, the app's
-`minimumSystemVersion`; WebView2 and WebKitGTK are newer, so nothing a
-supported webview runs is lowered.
+never to Vite's default. It is one floor for all three platforms, since they
+ship the same bundle: Safari 14 is the WKWebView of macOS 11, the app's
+`minimumSystemVersion`; WebView2 on Windows is evergreen Chromium (well past
+`chrome105`), and the WebKitGTK that Tauri 2 requires on Linux is newer than
+Safari 14 — so nothing a supported webview runs is lowered. The bug below was
+in that shared bundle, so it froze terminals on every platform, and its test
+runs on all three CI runners.
 
 The floor is a correctness rule, not a size preference. Under Vite 6's
 default (`es2020`, …) esbuild 0.25 lowers logical assignment and, while
