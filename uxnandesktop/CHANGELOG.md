@@ -6,6 +6,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **Chat tabs: agent conversations shared with Uxnan Mobile** (plan 030, "one
+  owner, two views"; architecture/02a §5.8.16). A new tab kind, `chat`, sits
+  next to terminals and shows a conversation the **bridge** drives — the same
+  threads the phone shows, live in both at once: a message typed on the phone
+  appears here before its answer streams, an approval answered here retires on
+  the phone, a rename or model switch on either shows on both. **Where to find
+  it:** the tab strip's "+" gains a *Chat* group (*New chat* plus the folder's
+  three newest conversations — ones started on the phone included), the worktree
+  row's *Launch agent* submenu opens with *New chat*, and the project launcher
+  dialog offers *Chat*. Local folders only: the bridge runs on this machine.
+  **A new chat** picks its agent first (fixed for the conversation's life — a
+  different CLI cannot continue a native session) and optionally a model (which
+  stays switchable from the chat header, `thread/setModel`), or continues an
+  existing conversation in the folder. **A running chat** renders the agent's
+  answer from the bridge's ordered `segments` (prose via `MarkdownView`, with
+  commands, diffs, tool calls, plans, subagents, warnings inline), streams
+  thinking and text, answers approvals and questions in place, stops the running
+  turn, queues follow-ups (with the paused-queue banner, resume and discard),
+  pages older turns in on scroll, and shows the context used when the agent
+  reports it. The header also sets the access mode and renames (the thread
+  itself, so every client shows the name) or archives it. The model is the
+  bridge's own: `Thread`/`Turn`/`Message` are imported **type-only** from
+  `shared/` through a new `$shared` alias, not copied. Stores:
+  `src/lib/bridge/{client,chat,conversation}.svelte.ts`; components:
+  `src/lib/components/chat/`. A chat tab persists only its pointer (`cwd`,
+  `threadId`, preselected `agentId`); the conversation lives on the bridge.
+  Without a connected bridge the tab says why and offers *Connect*. **Pending
+  the maintainer's visual review.**
+- **Settings → Bridge & mobile**: the connection mode (off / use a running
+  bridge / start it when needed), the live status with the reason and the fix
+  when it is unreachable (the install or start command), and the phones
+  connected to the bridge right now.
+
 - **The desktop can talk to the Uxnan bridge** (plan 029; architecture/02a
   §5.8.15). A new backend module, `bridgeclient/`, connects to the bridge's
   loopback-only local control channel as one more client next to the phone:

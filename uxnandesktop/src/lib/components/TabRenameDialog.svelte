@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { chat } from "$lib/bridge/chat.svelte";
   // Renames a center-panel tab. For a terminal/diff/commit tab it's a free-form
   // label (stored as the tab's `customTitle`). For a FILE tab it renames the real
   // file on disk (same folder) — so it always shows a confirmation note that the
@@ -59,6 +60,20 @@
   async function submit() {
     if (!canSubmit) return;
     error = null;
+    if (tab.kind === "chat" && tab.threadId) {
+      // A chat's name is its bridge thread's name: renaming it there is what
+      // makes the phone (and every other client) show the same one.
+      busy = true;
+      try {
+        await chat.rename(tab.threadId, value);
+        open = false;
+      } catch (e) {
+        error = e instanceof Error ? e.message : i18n.t("tab.renameError");
+      } finally {
+        busy = false;
+      }
+      return;
+    }
     if (!isFile) {
       terminals.renameTab(tab.id, value);
       open = false;

@@ -1622,6 +1622,18 @@ export type SavedTab =
       view?: "edit" | "preview" | "changes";
       /** In the `changes` view: staged (index-vs-HEAD) vs unstaged (worktree-vs-index). */
       staged?: boolean;
+    }
+  | {
+      /** A conversation driven by the Uxnan bridge (`ChatTab`). Only the
+       *  pointer is saved — the conversation itself lives on the bridge. */
+      kind: "chat";
+      title: string;
+      customTitle?: string;
+      cwd: string;
+      /** The bridge thread; absent while the tab still shows the new-chat setup. */
+      threadId?: string;
+      /** Agent preselected for a chat not started yet (bridge `AgentId`). */
+      agentId?: string;
     };
 
 export type SavedTermNode =

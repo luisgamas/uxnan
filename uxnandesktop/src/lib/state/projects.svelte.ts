@@ -1489,6 +1489,19 @@ class ProjectsStore {
     app.launchAgent(agent, { cwd: path, workspace: this.workspaceFor(path, target), target });
   }
 
+  /** Open a chat (a conversation the Uxnan bridge drives) in `path`'s
+   *  workspace, and switch to it. With `threadId` it shows that thread —
+   *  including one started on the phone; without, the new-chat setup with
+   *  `agentId` preselected. Local workspaces only: the bridge runs on this
+   *  machine, so a host's folder is not one it can work in. */
+  openChatAt(pathOrKey: string, opts: { threadId?: string; agentId?: string } = {}): void {
+    const { path, target } = this.locate(pathOrKey);
+    if (target !== LOCAL_TARGET) return;
+    this.activeWorktreePath = path;
+    this.stampActive(path);
+    terminals.openChat({ cwd: path, workspace: this.workspaceFor(path, target), ...opts });
+  }
+
   // --- Quick commands ------------------------------------------------------
 
   /** Build the active-workspace context quick commands resolve against (token

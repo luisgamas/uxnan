@@ -64,6 +64,7 @@
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import OpenWithSettings from "./OpenWithSettings.svelte";
   import HostsSettings from "$lib/components/HostsSettings.svelte";
+  import BridgeSettings from "$lib/components/BridgeSettings.svelte";
   import GitSettings from "./GitSettings.svelte";
   import GithubSettings from "./GithubSettings.svelte";
   import PetsSettings from "./PetsSettings.svelte";
@@ -93,6 +94,7 @@
   import LanguagesIcon from "@hugeicons/core-free-icons/LanguageSkillIcon";
   import ComputerActivityIcon from "@hugeicons/core-free-icons/ComputerActivityIcon";
   import ServerStackIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
+  import SmartPhoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
   import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
@@ -828,6 +830,7 @@
         { id: "github", key: "settings.github", icon: GithubIcon },
         { id: "openWith", key: "settings.openWith", icon: AppWindowIcon },
         { id: "hosts", key: "settings.hosts", icon: ServerStackIcon },
+        { id: "bridge", key: "settings.bridge", icon: SmartPhoneIcon },
       ],
     },
     {
@@ -1802,6 +1805,8 @@
           <GithubSettings />
         {:else if app.settingsSection === "hosts"}
           <HostsSettings />
+        {:else if app.settingsSection === "bridge"}
+          <BridgeSettings />
         {:else if app.settingsSection === "resources"}
           <div class="flex flex-col gap-10">
             <ResourceModeSection />

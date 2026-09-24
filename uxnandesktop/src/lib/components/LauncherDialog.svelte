@@ -36,6 +36,8 @@
   import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
   import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+  import { LOCAL_TARGET } from "$lib/target";
 
   let { repo, open = $bindable(false) }: { repo: RepoData; open?: boolean } = $props();
 
@@ -167,7 +169,7 @@
 
   // --- What to open (multi-select) ------------------------------------------
   // Each openable is an id: `term:default`, `term:<profileId>`, `agent:<id>`,
-  // or `browser`. You can pick one or several; Launch opens them all in the
+  // `chat` (a conversation the local bridge drives) or `browser`. You can pick one or several; Launch opens them all in the
   // resolved target.
   let selected = $state<string[]>([]);
   function toggle(id: string) {
@@ -194,6 +196,12 @@
       { heading: i18n.t("launcher.sectionTerminals"), items: terminals },
       { heading: i18n.t("launcher.sectionAgents"), items: agents },
     ];
+    // A chat runs on the local bridge: offered for a project on this machine.
+    if (projects.targetForPath(repo.path) === LOCAL_TARGET)
+      groups.push({
+        heading: i18n.t("launcher.sectionChat"),
+        items: [{ value: "chat", label: i18n.t("launcher.newChat"), keywords: ["chat", "mobile", "bridge"] }],
+      });
     if (browserEnabled)
       groups.push({
         heading: i18n.t("launcher.sectionBrowser"),
@@ -261,7 +269,8 @@
       else if (id.startsWith("agent:")) {
         const a = launchable.find((x) => x.id === id.slice(6));
         if (a) projects.launchAgentAt(path, a);
-      } else if (id === "browser") app.openBrowser();
+      } else if (id === "chat") projects.openChatAt(path);
+      else if (id === "browser") app.openBrowser();
     }
   }
 
@@ -500,6 +509,8 @@
     <AgentLogo logo={a ? agentLogoKey(a.icon, a.command) : null} class="size-4 shrink-0" />
   {:else if item.value === "browser"}
     <Icon icon={GlobeIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
+  {:else if item.value === "chat"}
+    <Icon icon={BubbleChatAddIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
   {:else}
     <Icon icon={TerminalIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
   {/if}

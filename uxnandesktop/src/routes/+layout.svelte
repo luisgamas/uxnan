@@ -1,6 +1,8 @@
 <script lang="ts">
   import "../app.css";
   import { onMount, untrack } from "svelte";
+  import { bridge } from "$lib/bridge/client.svelte";
+  import { chat } from "$lib/bridge/chat.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { applyTheme } from "$lib/theme";
@@ -74,6 +76,10 @@
     // dev server prints its address once, and a listener that only exists while
     // a popover is open would miss every announcement worth having.
     void ports.start();
+    // The bridge connection (idle while Settings → Bridge is off) and the chat
+    // store that mirrors its conversations for the chat tabs.
+    void bridge.start();
+    chat.start();
     // Answer the control surface's questions about what this window holds
     // (terminal tabs, open files, runs) — for `uxnan-cli` and the agents' tools.
     void startControlBridge();
