@@ -7,6 +7,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The desktop mockup's right side is the dock now.** The app replaced its
+  Files / Changes / History / GitHub tab row (and the separate browser panel)
+  with one dock whose top band holds a surface selector, so the mockup draws
+  that selector on its Files surface instead of four tabs.
+
 - **The phone in the hero draws Spaces, which is what the app shows now.** It
   was still the flat list the mobile app shipped with — agent filter chips over
   conversation cards. The real screen groups work by **project ▸ folder ▸

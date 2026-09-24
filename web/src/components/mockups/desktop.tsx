@@ -4,6 +4,7 @@ import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
 import CirclePauseIcon from "@hugeicons/core-free-icons/PauseCircleIcon";
 import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+import FolderTreeIcon from "@hugeicons/core-free-icons/FolderTreeIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import MessageCircleQuestionMarkIcon from "@hugeicons/core-free-icons/ChatQuestionIcon";
 import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
@@ -20,8 +21,9 @@ import { AGENT_ICON, CLAUDE_TERMINAL_ICON, INVERT_ON_DARK } from "@/lib/site";
 
    Chrome, panel order and wording follow the real app: one tab per running
    agent (subagents get no tab), the project rail with its live agent view
-   underneath the worktree, the agent terminal in the centre, and
-   Files / Changes / History / GitHub on the right.
+   underneath the worktree, the agent terminal in the centre, and the right
+   dock showing its Files surface (its selector switches to Git, GitHub or
+   the browser).
    ─────────────────────────────────────────────────────────────────────────── */
 
 /** The agent states the app renders, and the only ones this mockup may show. */
@@ -430,13 +432,14 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
           </div>
         </section>
 
-        {/* ── Files / Changes / History / GitHub ─────────────────────── */}
+        {/* ── The right dock, on its Files surface ───────────────────── */}
         <aside className="hidden w-[196px] shrink-0 flex-col border-l border-line bg-panel/60 lg:flex">
-          <div className="flex items-center gap-2.5 border-b border-line px-2.5 py-2 text-[9.5px]">
-            <span className="border-b border-fg pb-1 text-fg">Files</span>
-            <span className="text-dim">Changes</span>
-            <span className="text-dim">History</span>
-            <span className="text-dim">GitHub</span>
+          <div className="flex items-center border-b border-line px-1.5 py-1.5 text-[10px]">
+            <span className="flex items-center gap-1 rounded px-1 py-0.5 font-medium text-fg">
+              <HugeiconsIcon icon={FolderTreeIcon} className="size-3" />
+              Files
+              <HugeiconsIcon icon={ChevronDownIcon} className="size-2.5 text-faint" />
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5 px-2.5 py-2 text-[9px] tracking-[0.14em] text-faint">
