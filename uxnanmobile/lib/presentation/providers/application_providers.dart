@@ -731,6 +731,8 @@ final threadManagerProvider = Provider<ThreadManager>((ref) {
     connectionPhases: coordinator.connectionPhaseStream,
     // A reply in a thread the user isn't viewing is marked unread.
     foregroundThreadId: () => ref.read(foregroundThreadProvider),
+    // A thread another client starts is filed under the PC we are on.
+    currentDeviceId: () => ref.read(connectedDeviceProvider).value?.macDeviceId,
   );
   ref.onDispose(manager.dispose);
   return manager;

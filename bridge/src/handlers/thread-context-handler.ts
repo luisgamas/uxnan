@@ -5,9 +5,12 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError, StreamNotification, makeNotification } from '@uxnan/shared';
 import type {
   AccessMode,
+  Thread,
+  ThreadDeletedParams,
+  ThreadUpdatedParams,
   AgentCommandInvocation,
   AgentId,
   ApprovalDecision,
@@ -21,6 +24,18 @@ import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
 import { optionalBoolean, optionalNumber, optionalString, requireString } from './params.js';
 
+/**
+ * Tell every client a thread changed and return it, so a handler can end with
+ * `return announce(ctx, thread)`. The phone that made the change gets it too,
+ * which is harmless: the notification is an idempotent upsert.
+ */
+function announce(ctx: BridgeContext, thread: Thread): Thread {
+  ctx.sessionRegistry.broadcast(
+    makeNotification(StreamNotification.ThreadUpdated, { thread } satisfies ThreadUpdatedParams),
+  );
+  return thread;
+}
+
 export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('thread/list', (p, ctx: BridgeContext) =>
     ctx.threadStore.listThreads(optionalString(p, 'projectId')),
@@ -28,7 +43,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('thread/read', (p, ctx: BridgeContext) =>
     ctx.threadStore.getThread(requireString(p, 'threadId')),
   );
-  router.register('thread/start', (p, ctx: BridgeContext) => {
+  router.register('thread/start', async (p, ctx: BridgeContext) => {
     const projectId = requireString(p, 'projectId');
     // The phone provides the cwd (e.g. a folder-browser directory, which
     // `project/resolve` SYNTHESIZES into a project that is NOT in
@@ -51,7 +66,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     }
     const explicitModel = optionalString(p, 'model');
     const model = explicitModel ?? (pin && agentId === pin.agentId ? pin.model : undefined);
-    return ctx.threadStore.startThread(
+    const thread = await ctx.threadStore.startThread(
       {
         projectId,
         ...(optionalString(p, 'title') !== undefined ? { title: optionalString(p, 'title') } : {}),
@@ -61,51 +76,61 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       },
       ctx.now(),
     );
+    return announce(ctx, thread);
   });
   router.register('thread/resume', (p, ctx: BridgeContext) =>
     ctx.threadStore.resumeThread(requireString(p, 'threadId'), ctx.now()),
   );
-  router.register('thread/fork', (p, ctx: BridgeContext) =>
-    ctx.threadStore.forkThread(requireString(p, 'threadId'), ctx.now()),
+  router.register('thread/fork', async (p, ctx: BridgeContext) =>
+    announce(ctx, await ctx.threadStore.forkThread(requireString(p, 'threadId'), ctx.now())),
   );
   router.register('thread/setModel', async (p, ctx: BridgeContext) => {
-    await ctx.threadStore.setModel(
-      requireString(p, 'threadId'),
-      requireString(p, 'model'),
-      ctx.now(),
-    );
+    const threadId = requireString(p, 'threadId');
+    await ctx.threadStore.setModel(threadId, requireString(p, 'model'), ctx.now());
+    announce(ctx, await ctx.threadStore.getThread(threadId));
     return null;
   });
-  router.register('thread/rename', (p, ctx: BridgeContext) =>
-    ctx.threadStore.renameThread(
-      requireString(p, 'threadId'),
-      requireString(p, 'title'),
-      ctx.now(),
-      // Only a client's own auto-naming may declare itself provisional; anything
-      // else is a hand-rename, and that name is final. `'agent'` is deliberately
-      // not accepted from the wire — the bridge writes those when it generates one.
-      optionalString(p, 'source') === 'prompt' ? 'prompt' : 'user',
+  router.register('thread/rename', async (p, ctx: BridgeContext) =>
+    announce(
+      ctx,
+      await ctx.threadStore.renameThread(
+        requireString(p, 'threadId'),
+        requireString(p, 'title'),
+        ctx.now(),
+        // Only a client's own auto-naming may declare itself provisional; anything
+        // else is a hand-rename, and that name is final. `'agent'` is deliberately
+        // not accepted from the wire — the bridge writes those when it generates one.
+        optionalString(p, 'source') === 'prompt' ? 'prompt' : 'user',
+      ),
     ),
   );
-  router.register('thread/setAccessMode', (p, ctx: BridgeContext) =>
-    ctx.threadStore.setAccessMode(
-      requireString(p, 'threadId'),
-      parseAccessMode(requireString(p, 'mode')),
-      ctx.now(),
+  router.register('thread/setAccessMode', async (p, ctx: BridgeContext) =>
+    announce(
+      ctx,
+      await ctx.threadStore.setAccessMode(
+        requireString(p, 'threadId'),
+        parseAccessMode(requireString(p, 'mode')),
+        ctx.now(),
+      ),
     ),
   );
   router.register('thread/archive', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
     await ctx.agentManager.closeThreadSession(threadId);
-    return ctx.threadStore.archiveThread(threadId, ctx.now());
+    return announce(ctx, await ctx.threadStore.archiveThread(threadId, ctx.now()));
   });
-  router.register('thread/unarchive', (p, ctx: BridgeContext) =>
-    ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now()),
+  router.register('thread/unarchive', async (p, ctx: BridgeContext) =>
+    announce(ctx, await ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now())),
   );
   router.register('thread/delete', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
     await ctx.agentManager.closeThreadSession(threadId);
     await ctx.threadStore.deleteThread(threadId);
+    ctx.sessionRegistry.broadcast(
+      makeNotification(StreamNotification.ThreadDeleted, {
+        threadId,
+      } satisfies ThreadDeletedParams),
+    );
     return null;
   });
 
@@ -189,6 +214,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       // Absent → the manager queues behind an in-flight turn (the safe default);
       // `false` asks it to reject with `AgentBusy` instead.
       ...optionalQueue(p),
+      ...optionalClientTurnId(p),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });
@@ -226,6 +252,19 @@ function optionalEffort(params: unknown): { effort?: string } {
 function optionalQueue(params: unknown): { queue?: boolean } {
   const value = optionalBoolean(params, 'queue');
   return value === undefined ? {} : { queue: value };
+}
+
+/**
+ * Extracts `clientTurnId` (the sender's optimistic-bubble id, echoed on
+ * `stream/turn/created`). Opaque and never persisted; anything that is not a
+ * short non-empty string is dropped rather than rejected — it only affects how
+ * the sender matches its own echo.
+ */
+function optionalClientTurnId(params: unknown): { clientTurnId?: string } {
+  const value = optionalString(params, 'clientTurnId');
+  return value !== undefined && value.length > 0 && value.length <= 128
+    ? { clientTurnId: value }
+    : {};
 }
 
 const APPROVAL_DECISIONS = new Set<ApprovalDecision>(['approve', 'reject', 'approveSession']);

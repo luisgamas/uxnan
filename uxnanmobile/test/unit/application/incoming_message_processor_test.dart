@@ -244,6 +244,87 @@ void main() {
       expect(event.status, GitActionPhaseStatus.running);
     });
 
+    test('stream/thread/updated carries the whole wire thread', () {
+      final event = processor.classify(
+        note('stream/thread/updated', {
+          'thread': {'id': 'th9', 'title': 'From the desktop'},
+        }),
+      );
+      expect(event, isA<ThreadUpdatedEvent>());
+      final updated = event as ThreadUpdatedEvent;
+      expect(updated.threadId, 'th9');
+      expect(updated.thread['title'], 'From the desktop');
+    });
+
+    test('stream/thread/updated without a thread id is dropped', () {
+      final event = processor.classify(
+        note('stream/thread/updated', {
+          'thread': {'title': 'no id'},
+        }),
+      );
+      expect(event, isA<UnknownDomainEvent>());
+    });
+
+    test('stream/thread/deleted', () {
+      final event = processor.classify(
+        note('stream/thread/deleted', {'threadId': 'th9'}),
+      );
+      expect(event, isA<ThreadDeletedEvent>());
+      expect((event as ThreadDeletedEvent).threadId, 'th9');
+    });
+
+    test('stream/turn/created keeps the turn and the sender echo id', () {
+      final event = processor.classify(
+        note('stream/turn/created', {
+          'threadId': 'th1',
+          'clientTurnId': 'bubble-1',
+          'turn': {'id': 't7', 'status': 'pending', 'messages': <Object>[]},
+        }),
+      );
+      expect(event, isA<TurnCreatedEvent>());
+      final created = event as TurnCreatedEvent;
+      expect(created.threadId, 'th1');
+      expect(created.clientTurnId, 'bubble-1');
+      expect(created.turn['id'], 't7');
+    });
+
+    test('stream/approval/resolved', () {
+      final event = processor.classify(
+        note('stream/approval/resolved', {
+          'threadId': 'th1',
+          'approvalId': 'appr-1',
+          'decision': 'approveSession',
+        }),
+      );
+      expect(event, isA<ApprovalResolvedEvent>());
+      final resolved = event as ApprovalResolvedEvent;
+      expect(resolved.approvalId, 'appr-1');
+      expect(resolved.decision, 'approveSession');
+      expect(resolved.timedOut, isFalse);
+    });
+
+    test('stream/question/resolved decodes the chosen answers', () {
+      final event = processor.classify(
+        note('stream/question/resolved', {
+          'threadId': 'th1',
+          'questionId': 'q-1',
+          'answers': [
+            ['B'],
+            <String>[],
+          ],
+          'skipped': false,
+          'timedOut': true,
+        }),
+      );
+      expect(event, isA<QuestionResolvedEvent>());
+      final resolved = event as QuestionResolvedEvent;
+      expect(resolved.answers, [
+        ['B'],
+        <String>[],
+      ]);
+      expect(resolved.timedOut, isTrue);
+    });
+
     test('unhandled stream methods become UnknownDomainEvent', () {
       final event = processor.classify(
         note('stream/plan/update', {'foo': 'bar'}),

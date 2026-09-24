@@ -16,6 +16,7 @@ import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -58,6 +59,8 @@ void main() {
   // Test-settable `turn/read` result (null → empty, the no-op reconcile).
   Object? turnReadResult;
   Object? agentListResult;
+  // When set, `turn/send` waits for it — to deliver a notification first.
+  Completer<void>? turnSendGate;
   late ThreadManager manager;
 
   setUp(() {
@@ -70,25 +73,31 @@ void main() {
     turnListResult = null;
     turnReadResult = null;
     agentListResult = null;
+    turnSendGate = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
       messageRepository: messageRepo,
       domainEvents: events.stream,
       sendRequest: (method, [params]) async {
         sentMethods.add(method);
-        if (method == 'turn/send') turnSendParams = params;
+        if (method == 'turn/send') {
+          turnSendParams = params;
+          await turnSendGate?.future;
+        }
         final result = switch (method) {
           'turn/list' => turnListResult ?? <String, dynamic>{},
           'turn/read' => turnReadResult ?? <String, dynamic>{},
-          'thread/list' => [
-              {
-                'id': 'th1',
-                'title': 'Thread 1',
-                'agentId': 'codex',
-                'status': 'active',
-                'model': 'gpt-5',
-              },
-            ],
+          'thread/list' => {
+              'threads': [
+                {
+                  'id': 'th1',
+                  'title': 'Thread 1',
+                  'agentId': 'codex',
+                  'status': 'active',
+                  'model': 'gpt-5',
+                },
+              ],
+            },
           'project/list' => [
               {'id': 'p1', 'name': 'App', 'cwd': '/projects/app'},
             ],
@@ -1935,6 +1944,193 @@ void main() {
 
       final stored = await messageRepo.getMessages('th1');
       expect(stored.map((m) => m.id), ['u1', 'stream-t1', 'in-flight']);
+    });
+  });
+
+  group('multi-client sync', () {
+    Map<String, dynamic> wireTurn(
+      String id,
+      String text, {
+      String status = 'pending',
+    }) =>
+        {
+          'id': id,
+          'threadId': 'th1',
+          'status': status,
+          'createdAt': 5000,
+          'messages': [
+            {'id': 'm-$id', 'role': 'user', 'content': text, 'createdAt': 5000},
+            {'id': 'a-$id', 'role': 'assistant', 'content': ''},
+          ],
+        };
+
+    test('a thread another client started appears under the connected PC',
+        () async {
+      final bus = StreamController<DomainEvent>.broadcast();
+      final other = ThreadManager(
+        threadRepository: threadRepo,
+        messageRepository: messageRepo,
+        domainEvents: bus.stream,
+        sendRequest: (method, [params]) async =>
+            RpcMessage.response(id: '1', result: <String, dynamic>{}),
+        currentDeviceId: () => 'pc-1',
+      );
+      bus.add(
+        const ThreadUpdatedEvent(
+          threadId: 'th-desk',
+          thread: {
+            'id': 'th-desk',
+            'title': 'Started on the desktop',
+            'agentId': 'claude-code',
+            'status': 'active',
+            'model': 'opus',
+            'titleSource': 'user',
+          },
+        ),
+      );
+      await _settle();
+      final stored = await threadRepo.getThread('th-desk');
+      expect(stored?.title, 'Started on the desktop');
+      expect(stored?.deviceId, 'pc-1');
+      expect(stored?.agentId, 'claude-code');
+      await other.dispose();
+      await bus.close();
+    });
+
+    test('a prompt-sourced title never replaces the one shown here', () async {
+      await manager.loadThreads();
+      events.add(
+        const ThreadUpdatedEvent(
+          threadId: 'th1',
+          thread: {
+            'id': 'th1',
+            'title': 'provisional',
+            'titleSource': 'prompt',
+            'model': 'gpt-5.1',
+          },
+        ),
+      );
+      await _settle();
+      var stored = await threadRepo.getThread('th1');
+      expect(stored?.title, 'Thread 1');
+      // The rest of the update still lands.
+      expect(stored?.model, 'gpt-5.1');
+
+      events.add(
+        const ThreadUpdatedEvent(
+          threadId: 'th1',
+          thread: {'id': 'th1', 'title': 'Generated', 'titleSource': 'agent'},
+        ),
+      );
+      await _settle();
+      stored = await threadRepo.getThread('th1');
+      expect(stored?.title, 'Generated');
+    });
+
+    test('a thread deleted on another client leaves this one', () async {
+      await manager.loadThreads();
+      events.add(const ThreadDeletedEvent(threadId: 'th1'));
+      await _settle();
+      expect(await threadRepo.getThread('th1'), isNull);
+    });
+
+    test("another client's prompt is placed before its answer streams",
+        () async {
+      await messageRepo.saveMessage(
+        _msg('old', order: 3, role: MessageRole.assistant, text: 'earlier'),
+      );
+      events.add(
+        TurnCreatedEvent(
+          threadId: 'th1',
+          turn: wireTurn('t9', 'typed on the desktop'),
+        ),
+      );
+      await _settle();
+      final stored = await messageRepo.getMessages('th1');
+      final user = stored.firstWhere((m) => m.id == 'stream-user-t9');
+      expect(_text(user), 'typed on the desktop');
+      expect(user.turnId, 't9');
+      expect(user.deliveryState, MessageDeliveryState.sent);
+      expect(user.orderIndex, 4);
+    });
+
+    test('a queued prompt from another client shows as queued', () async {
+      events.add(
+        TurnCreatedEvent(
+          threadId: 'th1',
+          turn: wireTurn('t10', 'follow-up', status: 'queued'),
+        ),
+      );
+      await _settle();
+      final stored = await messageRepo.getMessages('th1');
+      expect(stored.single.deliveryState, MessageDeliveryState.queued);
+    });
+
+    test('our own echo confirms the bubble instead of adding a second one',
+        () async {
+      turnSendGate = Completer<void>();
+      final sending = manager.sendUserMessage('th1', 'hello');
+      await _settle();
+      final clientTurnId = turnSendParams?['clientTurnId'] as String?;
+      expect(clientTurnId, isNotNull);
+      // The notification lands before the `turn/send` reply does.
+      events.add(
+        TurnCreatedEvent(
+          threadId: 'th1',
+          clientTurnId: clientTurnId,
+          turn: wireTurn('t11', 'hello'),
+        ),
+      );
+      await _settle();
+      var stored = await messageRepo.getMessages('th1');
+      expect(stored, hasLength(1));
+      expect(stored.single.id, clientTurnId);
+      expect(stored.single.turnId, 't11');
+      expect(stored.single.deliveryState, MessageDeliveryState.sent);
+      turnSendGate!.complete();
+      await sending;
+      stored = await messageRepo.getMessages('th1');
+      expect(stored, hasLength(1));
+    });
+
+    test('an approval answered elsewhere is announced to the card providers',
+        () async {
+      final resolutions = <ElicitationResolution>[];
+      final sub = manager.resolutionsStream.listen(resolutions.add);
+      events.add(
+        const ApprovalResolvedEvent(
+          threadId: 'th1',
+          approvalId: 'appr-1',
+          decision: 'approveSession',
+        ),
+      );
+      events.add(
+        const QuestionResolvedEvent(
+          threadId: 'th1',
+          questionId: 'q-1',
+          answers: [
+            ['A'],
+          ],
+          skipped: false,
+          timedOut: true,
+        ),
+      );
+      await _settle();
+      expect(resolutions, [
+        const ApprovalResolution(
+          approvalId: 'appr-1',
+          decision: ApprovalDecision.approveSession,
+          timedOut: false,
+        ),
+        const QuestionResolution(
+          questionId: 'q-1',
+          answers: [
+            ['A'],
+          ],
+          timedOut: true,
+        ),
+      ]);
+      await sub.cancel();
     });
   });
 }

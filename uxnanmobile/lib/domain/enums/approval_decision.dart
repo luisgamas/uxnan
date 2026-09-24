@@ -18,4 +18,12 @@ enum ApprovalDecision {
         ApprovalDecision.reject => 'reject',
         ApprovalDecision.approveSession => 'approveSession',
       };
+
+  /// Parses a wire name, or null when it is not one this app knows.
+  static ApprovalDecision? fromWire(String? name) {
+    for (final value in ApprovalDecision.values) {
+      if (value.wireName == name) return value;
+    }
+    return null;
+  }
 }

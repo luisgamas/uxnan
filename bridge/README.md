@@ -196,7 +196,7 @@ Task-focused guides live in [`docs/`](docs/):
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
   E2EE types and runtime validators. The bridge exposes **70 JSON-RPC methods +
-  12 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  16 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,

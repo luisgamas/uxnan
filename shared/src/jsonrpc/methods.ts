@@ -156,6 +156,14 @@ export interface TurnSendParams {
    * Ignored when no turn is in flight — the turn simply starts.
    */
   queue?: boolean;
+  /**
+   * An id the sending client chose for its optimistic bubble. The bridge
+   * echoes it on the `stream/turn/created` it broadcasts for this turn, so the
+   * sender recognizes its own message — which can arrive before this call's
+   * reply — and every other client draws it as a new one. Opaque to the
+   * bridge, never persisted; at most 128 characters.
+   */
+  clientTurnId?: string;
 }
 export interface ThreadSetModelParams {
   threadId: string;

@@ -252,31 +252,122 @@ class QueueUpdatedEvent extends DomainEvent {
 
 /// The agent resolved its alias to a concrete model for a turn
 /// (`stream/model/resolved`), e.g. `opus` → `claude-opus-4-8`.
-/// The bridge renamed a thread (`stream/thread/renamed`) — normally a model
-/// writing a real conversation title over the provisional one taken from the
-/// opening message.
+/// A thread was created or its stored metadata changed on the bridge
+/// (`stream/thread/updated`) — by this phone, another phone, the desktop, or
+/// the bridge itself (a generated title). Carries the whole wire thread, so
+/// applying it is an idempotent upsert.
+class ThreadUpdatedEvent extends DomainEvent {
+  /// Creates a [ThreadUpdatedEvent].
+  const ThreadUpdatedEvent({required this.thread, this.threadId});
+
+  /// The wire `Thread` object, as `thread/list` returns them.
+  final Map<String, dynamic> thread;
+
+  /// The thread's id (read from [thread]).
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [thread, threadId];
+}
+
+/// A thread was deleted on the bridge (`stream/thread/deleted`), possibly from
+/// another client.
+class ThreadDeletedEvent extends DomainEvent {
+  /// Creates a [ThreadDeletedEvent].
+  const ThreadDeletedEvent({this.threadId});
+
+  /// The deleted thread.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [threadId];
+}
+
+/// A user turn was stored on the bridge (`stream/turn/created`) — started or
+/// queued — carrying the user's message, so a prompt typed on another client
+/// takes its place in the timeline before the answer streams.
 ///
-/// [titleSource] says how much to trust it: `user` is final, `agent` is the
-/// generated name, `prompt` the weak fallback.
-class ThreadRenamedEvent extends DomainEvent {
-  /// Creates a [ThreadRenamedEvent].
-  const ThreadRenamedEvent({
-    required this.title,
-    required this.titleSource,
+/// [clientTurnId] echoes the id this app sent on `turn/send` for its own
+/// optimistic bubble; when it matches, the event confirms that bubble instead
+/// of adding a second copy of the message.
+class TurnCreatedEvent extends DomainEvent {
+  /// Creates a [TurnCreatedEvent].
+  const TurnCreatedEvent({
+    required this.turn,
+    this.clientTurnId,
     this.threadId,
   });
 
-  /// The thread's new title.
-  final String title;
+  /// The wire `Turn` object (`id`, `status`, `messages`, `createdAt`).
+  final Map<String, dynamic> turn;
 
-  /// Who named it: `prompt`, `agent` or `user`.
-  final String titleSource;
+  /// The sender's optimistic-bubble id, when the sender supplied one.
+  final String? clientTurnId;
 
   /// The owning thread, if provided.
   final String? threadId;
 
   @override
-  List<Object?> get props => [title, titleSource, threadId];
+  List<Object?> get props => [turn, clientTurnId, threadId];
+}
+
+/// A pending approval stopped being pending (`stream/approval/resolved`):
+/// answered on some client, or timed out to a reject.
+class ApprovalResolvedEvent extends DomainEvent {
+  /// Creates an [ApprovalResolvedEvent].
+  const ApprovalResolvedEvent({
+    required this.approvalId,
+    required this.decision,
+    this.timedOut = false,
+    this.threadId,
+  });
+
+  /// The approval the cards are keyed by.
+  final String approvalId;
+
+  /// What the agent got, as its wire name (`approve`, `reject`,
+  /// `approveSession`).
+  final String decision;
+
+  /// True when nobody answered and it defaulted to reject.
+  final bool timedOut;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [approvalId, decision, timedOut, threadId];
+}
+
+/// A pending question stopped being pending (`stream/question/resolved`):
+/// answered on some client, skipped, or timed out.
+class QuestionResolvedEvent extends DomainEvent {
+  /// Creates a [QuestionResolvedEvent].
+  const QuestionResolvedEvent({
+    required this.questionId,
+    required this.answers,
+    required this.skipped,
+    this.timedOut = false,
+    this.threadId,
+  });
+
+  /// The question the cards are keyed by.
+  final String questionId;
+
+  /// The chosen labels, one list per question, in order.
+  final List<List<String>> answers;
+
+  /// True when no option was chosen.
+  final bool skipped;
+
+  /// True when nobody answered in time.
+  final bool timedOut;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [questionId, answers, skipped, timedOut, threadId];
 }
 
 class ModelResolvedEvent extends DomainEvent {

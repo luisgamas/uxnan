@@ -5,6 +5,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **Conversations stay in step with the desktop and other phones.** The bridge
+  now announces everything another client does, and the app applies it
+  (`ThreadManager`):
+  - `stream/thread/updated` upserts the thread — a conversation started on the
+    desktop appears in the list at once, filed under the connected PC — and a
+    `prompt`-sourced title never replaces the one already shown;
+    `stream/thread/deleted` removes it.
+  - `stream/turn/created` places a prompt typed elsewhere **above** the answer
+    that is about to stream (it used to arrive only after it, so it sorted
+    below). `turn/send` now carries `clientTurnId` (the local bubble id), so this
+    app's own echo confirms its bubble instead of drawing the message twice.
+  - `stream/approval/resolved` / `stream/question/resolved` retire an approval
+    or question card answered on another client, or timed out, showing the
+    decision or chosen labels; wired app-wide from the root (`_PushHost`) into
+    `ApprovalResponses.adoptResolution` / `QuestionResponses.adoptResolution`.
+
+### Changed
+- `ThreadRenamedEvent` is replaced by `ThreadUpdatedEvent` (the bridge retired
+  `stream/thread/renamed`).
+
+### Fixed
+- **The thread list never loaded from a real bridge.** `loadThreads` read the
+  `thread/list` result as a bare list, but the contract (and the bridge) return
+  `ThreadList` — `{ threads: [...] }` — so nothing was stored and a thread
+  created on another client could never appear. The test double returned the
+  bare list, which is why it went unnoticed; it now returns the real shape.
+
 
 ## [0.0.23-alpha.20260922+20260922] - 20260922
 ### Changed

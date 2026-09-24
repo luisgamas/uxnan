@@ -27,7 +27,10 @@ import {
   type QueuePausedReason,
   type QueueStateResult,
   type TurnAttachment,
-  type ThreadRenamedParams,
+  type ApprovalResolvedParams,
+  type QuestionResolvedParams,
+  type ThreadUpdatedParams,
+  type TurnCreatedParams,
   type TurnDeliveredParams,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
@@ -134,6 +137,11 @@ export interface SendTurnOptions {
    * drive one turn per thread.
    */
   queue?: boolean;
+  /**
+   * The sender's optimistic-bubble id, echoed on `stream/turn/created` so it
+   * can match its own message. Opaque; never persisted.
+   */
+  clientTurnId?: string;
 }
 
 /** Outcome of {@link AgentManager.sendTurn} — mirrors `TurnSendResult`. */
@@ -229,6 +237,7 @@ export class AgentManager {
   readonly #pendingHookApprovals = new Map<
     string,
     {
+      threadId: string;
       resolve: (decision: ApprovalDecision) => void;
       timer: ReturnType<typeof setTimeout> | undefined;
     }
@@ -240,6 +249,7 @@ export class AgentManager {
   readonly #pendingQuestions = new Map<
     string,
     {
+      threadId: string;
       resolve: (answers: string[][]) => void;
       timer: ReturnType<typeof setTimeout> | undefined;
     }
@@ -418,6 +428,7 @@ export class AgentManager {
     }
 
     const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
+    await this.#announceTurn(threadId, started.turnId, options.clientTurnId);
     await this.#runTurn(threadId, agentId, adapter, {
       turnId: started.turnId,
       assistantMessageId: started.assistantMessageId,
@@ -425,6 +436,63 @@ export class AgentManager {
       options,
     });
     return { turnId: started.turnId };
+  }
+
+  /**
+   * Tell every client a user turn now exists — with the user's message — before
+   * anything about its answer is sent. This is what lets a client show a
+   * message another client typed, in its place, instead of discovering the
+   * prompt only after the reply (architecture/02a §5.8.16). Best-effort: a
+   * failure to read the turn back must not fail the send.
+   */
+  async #announceTurn(threadId: string, turnId: string, clientTurnId?: string): Promise<void> {
+    try {
+      const turn = await this.#options.store.getTurn(turnId);
+      this.#options.notify(
+        makeNotification(StreamNotification.TurnCreated, {
+          threadId,
+          turn,
+          ...(clientTurnId !== undefined ? { clientTurnId } : {}),
+        } satisfies TurnCreatedParams),
+      );
+    } catch (err) {
+      this.#options.logger.warn(`could not announce turn ${turnId}: ${String(err)}`);
+    }
+  }
+
+  /** Every client retires its card for [approvalId]. */
+  #announceApproval(
+    threadId: string,
+    approvalId: string,
+    decision: ApprovalDecision,
+    timedOut = false,
+  ): void {
+    this.#options.notify(
+      makeNotification(StreamNotification.ApprovalResolved, {
+        threadId,
+        approvalId,
+        decision,
+        ...(timedOut ? { timedOut: true } : {}),
+      } satisfies ApprovalResolvedParams),
+    );
+  }
+
+  /** Every client retires its card for [questionId]. */
+  #announceQuestion(
+    threadId: string,
+    questionId: string,
+    answers: string[][],
+    timedOut = false,
+  ): void {
+    this.#options.notify(
+      makeNotification(StreamNotification.QuestionResolved, {
+        threadId,
+        questionId,
+        skipped: answers.every((chosen) => chosen.length === 0),
+        answers,
+        ...(timedOut ? { timedOut: true } : {}),
+      } satisfies QuestionResolvedParams),
+    );
   }
 
   /** Persists a turn as `queued` and parks it behind the in-flight one. */
@@ -450,6 +518,7 @@ export class AgentManager {
       );
     }
     const queued = await this.#options.store.queueTurn(threadId, persistText, this.#options.now());
+    await this.#announceTurn(threadId, queued.turnId, options.clientTurnId);
     // The agent is recorded now so a `turn/cancel` for this queued turn — and any
     // later cancel on the thread — reaches the right adapter even if it is the
     // first thing this thread ever ran.
@@ -686,11 +755,9 @@ export class AgentManager {
       // or the name was already this. Either way there is nothing to announce.
       if (!updated) return;
       this.#options.notify(
-        makeNotification(StreamNotification.ThreadRenamed, {
-          threadId,
-          title: updated.title,
-          titleSource: 'agent',
-        } satisfies ThreadRenamedParams),
+        makeNotification(StreamNotification.ThreadUpdated, {
+          thread: updated,
+        } satisfies ThreadUpdatedParams),
       );
       // Then mirror the name onto the agent's own session when its CLI keeps
       // one, so the same conversation is recognizable in that agent's client
@@ -758,7 +825,7 @@ export class AgentManager {
       makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
     );
     return new Promise<ApprovalDecision>((resolve) => {
-      this.#pendingHookApprovals.set(approvalId, { resolve, timer: undefined });
+      this.#pendingHookApprovals.set(approvalId, { threadId, resolve, timer: undefined });
       // Only start the auto-reject countdown while a phone is connected to see
       // and answer the card. While offline the approval WAITS (the card replays
       // from the outbound log on reconnect), so the agent never takes an
@@ -779,6 +846,7 @@ export class AgentManager {
     pending.timer = setTimeout(() => {
       this.#pendingHookApprovals.delete(approvalId);
       pending.resolve('reject');
+      this.#announceApproval(pending.threadId, approvalId, 'reject', true);
     }, this.#approvalTimeoutMs);
   }
 
@@ -838,6 +906,7 @@ export class AgentManager {
       clearTimeout(pending.timer);
       this.#pendingHookApprovals.delete(approvalId);
       pending.resolve(decision);
+      this.#announceApproval(threadId, approvalId, decision);
       return { turnId };
     }
     const agentId = this.#agentByThread.get(threadId);
@@ -855,6 +924,7 @@ export class AgentManager {
       );
     }
     await adapter.respondApproval(threadId, approvalId, decision);
+    this.#announceApproval(threadId, approvalId, decision);
     return { turnId };
   }
 
@@ -882,7 +952,7 @@ export class AgentManager {
       makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
     );
     return new Promise<string[][]>((resolve) => {
-      this.#pendingQuestions.set(questionId, { resolve, timer: undefined });
+      this.#pendingQuestions.set(questionId, { threadId, resolve, timer: undefined });
       // Same offline posture as approvals: only run the auto-skip countdown while
       // a phone is connected to see and answer the card (see onPhoneConnected).
       if (this.#isPhoneConnected()) this.#armQuestionTimeout(questionId);
@@ -897,6 +967,7 @@ export class AgentManager {
     pending.timer = setTimeout(() => {
       this.#pendingQuestions.delete(questionId);
       pending.resolve([]);
+      this.#announceQuestion(pending.threadId, questionId, [], true);
     }, this.#approvalTimeoutMs);
   }
 
@@ -915,6 +986,7 @@ export class AgentManager {
       clearTimeout(pending.timer);
       this.#pendingQuestions.delete(questionId);
       pending.resolve(answers);
+      this.#announceQuestion(threadId, questionId, answers);
     }
     return Promise.resolve({ turnId: this.#activeTurnByThread.get(threadId) ?? '' });
   }

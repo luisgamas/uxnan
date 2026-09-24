@@ -107,7 +107,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 70 metodos request/response** + 12 notificaciones de streaming
+> **Total: 70 metodos request/response** + 16 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -381,8 +381,35 @@ stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }         
 stream/turn/delivered       -> TurnDeliveredParams { threadId, turnId, intoTurnId }         (NUEVO 2026-08)
 stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
-stream/thread/renamed       -> ThreadRenamedParams { threadId, title, titleSource }         (NUEVO 2026-08)
+stream/thread/updated       -> ThreadUpdatedParams { thread }                               (NUEVO 2026-09; reemplaza stream/thread/renamed)
+stream/thread/deleted       -> ThreadDeletedParams { threadId }                             (NUEVO 2026-09)
+stream/turn/created         -> TurnCreatedParams   { threadId, turn, clientTurnId? }        (NUEVO 2026-09)
+stream/approval/resolved    -> ApprovalResolvedParams { threadId, approvalId, decision, timedOut? }  (NUEVO 2026-09)
+stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, skipped, answers, timedOut? }  (NUEVO 2026-09)
 ```
+
+**Varios clientes a la vez (2026-09, `02a` §5.8.16).** Cada notificacion se
+difunde a **todos** los clientes conectados — cada telefono emparejado y el
+desktop por el canal de control local (`02a` §5.8.15) — asi que cualquiera
+puede conducir un hilo y todos convergen al mismo estado. Las cinco
+notificaciones de 2026-09 cierran lo que faltaba para eso:
+
+- `stream/thread/updated` lleva el `Thread` **completo** (upsert idempotente) y
+  lo emiten `thread/start`, `thread/fork`, `thread/rename`, `thread/setModel`,
+  `thread/setAccessMode`, `thread/archive`, `thread/unarchive` y el titulo
+  generado. Un hilo que otro cliente acaba de crear aparece en la lista sin
+  recargar. **Reemplaza a `stream/thread/renamed`**, que solo cubria el titulo.
+- `stream/thread/deleted` retira el hilo en los demas clientes.
+- `stream/turn/created` anuncia un turno de usuario ya guardado (arrancado o
+  encolado) **con el mensaje del usuario**, antes de que empiece la respuesta:
+  sin esto, un prompt escrito en otro cliente solo se descubria despues de su
+  respuesta. `clientTurnId` hace eco de `TurnSendParams.clientTurnId` (el id
+  de la burbuja optimista del emisor, opaco, nunca persistido, ≤ 128
+  caracteres) para que el emisor reconozca su propio mensaje — puede llegar
+  **antes** que la respuesta de `turn/send`.
+- `stream/approval/resolved` y `stream/question/resolved` retiran la tarjeta en
+  todos los clientes cuando alguno responde (o vence el plazo: `timedOut`).
+  `answers` viaja para que un cliente que no respondio muestre lo elegido.
 
 **Nombre de la conversacion (2026-08).** Ningun CLI de agente nos da un titulo:
 todos dejan esa tarea a su propio cliente (un hilo creado por uxnan vuelve de
@@ -397,7 +424,7 @@ contenido). uxnan es el cliente, asi que uxnan los nombra, en dos etapas:
 
 `Thread.titleSource` (`prompt` | `agent` | `user`) es lo que ordena el conflicto:
 un titulo generado sustituye a uno provisional y **nunca** a uno que eligio el
-usuario. `stream/thread/renamed` hace converger a todos los clientes sin recarga.
+usuario. `stream/thread/updated` hace converger a todos los clientes sin recarga.
 `ThreadRenameParams.source` existe por el mismo motivo: ausente significa "lo
 renombro el usuario", asi que un cliente que autogenera su titulo provisional
 **debe** mandar `'prompt'` o su marcador de posicion quedaria registrado como

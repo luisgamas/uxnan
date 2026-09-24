@@ -25,6 +25,7 @@ import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
+import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -52,6 +53,7 @@ class ThreadManager {
     required RpcSend sendRequest,
     Stream<ConnectionPhase>? connectionPhases,
     String? Function()? foregroundThreadId,
+    String? Function()? currentDeviceId,
     Uuid? uuid,
     Duration resyncTimeout = const Duration(seconds: 8),
     Duration externalSyncInterval = const Duration(seconds: 3),
@@ -59,6 +61,7 @@ class ThreadManager {
         _messageRepository = messageRepository,
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
+        _currentDeviceId = currentDeviceId,
         _uuid = uuid ?? const Uuid(),
         _resyncTimeout = resyncTimeout,
         _externalSyncInterval = externalSyncInterval {
@@ -91,7 +94,17 @@ class ThreadManager {
   /// is NOT viewing is marked unread.
   final String? Function()? _foregroundThreadId;
 
+  /// The PC this app is connected to, so a thread another client starts on it
+  /// is filed under that PC the moment `stream/thread/updated` announces it.
+  final String? Function()? _currentDeviceId;
+
   final Uuid _uuid;
+
+  /// Approvals and questions the bridge announced as settled — answered here,
+  /// on another client, or timed out. The card providers listen and retire
+  /// their card for that id.
+  final PublishSubject<ElicitationResolution> _resolutions =
+      PublishSubject<ElicitationResolution>();
 
   final BehaviorSubject<TurnTimelineSnapshot> _timeline =
       BehaviorSubject.seeded(const TurnTimelineSnapshot());
@@ -256,6 +269,9 @@ class ThreadManager {
   /// Reactive list of threads.
   Stream<List<Thread>> get threadsStream => _threadRepository.watchThreads();
 
+  /// Approvals/questions the bridge announced as settled (see [_resolutions]).
+  Stream<ElicitationResolution> get resolutionsStream => _resolutions.stream;
+
   /// The active thread's timeline (current value replayed on listen).
   Stream<TurnTimelineSnapshot> get timelineStream => _timeline.stream;
 
@@ -320,9 +336,13 @@ class ThreadManager {
       'thread/list',
       projectId != null ? {'projectId': projectId} : null,
     );
+    // The contract is `ThreadList` — `{ threads: [...] }`, not a bare list.
+    // Reading a bare list here silently loaded nothing from a real bridge, so
+    // a thread started on another client never reached this list.
     final result = response.result;
-    if (result is! List) return;
-    for (final raw in result) {
+    final threads = result is Map ? result['threads'] : null;
+    if (threads is! List) return;
+    for (final raw in threads) {
       if (raw is Map) {
         // Tag each synced thread with the PC it came from so the list can be
         // scoped to the selected device.
@@ -450,6 +470,22 @@ class ThreadManager {
   /// best-effort and degrades gracefully if unsupported (a later `loadThreads`
   /// would re-sync it from the bridge until then).
   Future<void> deleteThread(String threadId) async {
+    await _forgetThread(threadId);
+    try {
+      await _sendRequest('thread/delete', {'threadId': threadId});
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'thread/delete failed (removed locally)',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
+  /// Drops everything this app holds for [threadId] — the stored thread, its
+  /// live turn, and the open timeline when it is the active one. Shared by a
+  /// delete made here and one announced by the bridge (`stream/thread/deleted`).
+  Future<void> _forgetThread(String threadId) async {
     await _threadRepository.deleteThread(threadId);
     _live.remove(threadId);
     _setActivity(threadId, ThreadActivity.idle);
@@ -460,15 +496,120 @@ class ThreadManager {
       _activePersisted = const [];
       _timeline.add(const TurnTimelineSnapshot());
     }
+  }
+
+  /// Adopts a thread the bridge announced (`stream/thread/updated`): a new one
+  /// another client started is stored under the connected PC; a known one is
+  /// updated in place, keeping what only this app knows (its PC, its worktree
+  /// path).
+  ///
+  /// A `prompt`-sourced title never replaces a title this app already shows:
+  /// it is the provisional name taken from the opening message, which this
+  /// app derives on its own. `agent` and `user` titles are authoritative.
+  Future<void> _adoptBridgeThread(Map<String, dynamic> json) async {
+    final incoming = _parseThread(json);
+    final existing = await _threadRepository.getThread(incoming.id);
+    final source = json['titleSource'];
+    final provisional = source == null || source == 'prompt';
+    final keepTitle = existing != null &&
+        provisional &&
+        !_hasPlaceholderTitle(existing) &&
+        existing.title.trim().isNotEmpty;
+    await _threadRepository.saveThread(
+      incoming.copyWith(
+        title: keepTitle ? existing.title : null,
+        deviceId: existing?.deviceId ?? _currentDeviceId?.call(),
+        worktreePath: existing?.worktreePath,
+      ),
+    );
+  }
+
+  /// Makes sure [threadId] is stored locally, reading it from the bridge when a
+  /// turn arrives for a thread whose announcement this app missed.
+  Future<void> _ensureThreadKnown(String threadId) async {
+    if (await _threadRepository.getThread(threadId) != null) return;
     try {
-      await _sendRequest('thread/delete', {'threadId': threadId});
+      final res = await _sendRequest('thread/read', {'threadId': threadId});
+      final result = res.result;
+      if (result is Map) {
+        await _adoptBridgeThread(result.cast<String, dynamic>());
+      }
     } on Object catch (error, stackTrace) {
       AppLogger.warn(
-        'thread/delete failed (removed locally)',
+        'thread/read for an announced turn failed',
         error,
         stackTrace,
       );
     }
+  }
+
+  /// Places a user turn the bridge announced (`stream/turn/created`).
+  ///
+  /// - **Our own send** ([clientTurnId] is the id of the bubble we already
+  ///   show): stamp that bubble with its turn, so the timeline never holds the
+  ///   message twice — this can land before `turn/send` returns.
+  /// - **Already known** (a resync got there first): nothing to do.
+  /// - **Another client's prompt**: stored now, at the end, so it sits above
+  ///   the answer that is about to stream instead of being discovered after it.
+  Future<void> _adoptCreatedTurn(
+    String threadId,
+    Map<String, dynamic> turn,
+    String? clientTurnId,
+  ) {
+    final turnId = turn['id'] as String;
+    final queued = turn['status'] == 'queued';
+    final state =
+        queued ? MessageDeliveryState.queued : MessageDeliveryState.sent;
+    unawaited(_ensureThreadKnown(threadId));
+    return _serializeWrite(() async {
+      final messages = await _messageRepository.getMessages(threadId);
+      if (clientTurnId != null) {
+        for (final message in messages) {
+          if (message.id != clientTurnId) continue;
+          // Only a bubble still waiting on its send is ours to settle; a later
+          // state (failed, cancelled) came from something newer than this.
+          if (message.deliveryState != MessageDeliveryState.sending) return;
+          await _messageRepository.saveMessage(
+            message.copyWith(turnId: turnId, deliveryState: state),
+          );
+          return;
+        }
+      }
+      final known = messages.any(
+        (m) => m.role == MessageRole.user && m.turnId == turnId,
+      );
+      if (known) return;
+      final user = _userMessageOf(turn);
+      if (user == null) return;
+      await _messageRepository.saveMessage(
+        Message(
+          id: _streamUserId(turnId),
+          threadId: threadId,
+          turnId: turnId,
+          role: MessageRole.user,
+          contents: [TextContent(user.text)],
+          deliveryState: state,
+          orderIndex: _maxOrder(messages) + 1,
+          createdAt: _millisToDate(user.createdAt ?? turn['createdAt']),
+        ),
+      );
+    });
+  }
+
+  /// The user's message text in a wire turn, when it has one.
+  static ({String text, Object? createdAt})? _userMessageOf(
+    Map<String, dynamic> turn,
+  ) {
+    final messages = turn['messages'];
+    if (messages is! List) return null;
+    for (final raw in messages) {
+      if (raw is! Map || raw['role'] != 'user') continue;
+      final content = raw['content'];
+      if (content is String && content.isNotEmpty) {
+        return (text: content, createdAt: raw['createdAt']);
+      }
+    }
+    return null;
   }
 
   /// Archives a thread (`thread/archive`): sets its local status to
@@ -1331,6 +1472,10 @@ class ThreadManager {
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
+        // Echoed on `stream/turn/created`, which can land before this reply:
+        // it is how that notification recognizes this bubble as ours instead
+        // of drawing the message a second time.
+        'clientTurnId': message.id,
         // A command invocation carries no free-form text: the bridge resolves
         // `{ name, args }` to the prompt the agent runs (expanded custom
         // template or the CLI's native `/name args` form).
@@ -1593,23 +1738,6 @@ class ThreadManager {
     });
   }
 
-  /// Applies a title the BRIDGE decided on.
-  ///
-  /// Skips a `prompt`-sourced one: that is the same provisional name this app
-  /// already wrote locally, so re-applying it only churns the row. A `user`
-  /// title comes from another device and is authoritative.
-  Future<void> _adoptBridgeTitle(
-    String threadId,
-    String title,
-    String titleSource,
-  ) async {
-    final trimmed = title.trim();
-    if (trimmed.isEmpty || titleSource == 'prompt') return;
-    final thread = await _threadRepository.getThread(threadId);
-    if (thread == null || thread.title == trimmed) return;
-    await _threadRepository.saveThread(thread.copyWith(title: trimmed));
-  }
-
   /// Settles a message the agent took **into the turn already running**: it
   /// becomes an ordinary sent message, in the place it was already showing.
   ///
@@ -1746,6 +1874,7 @@ class ThreadManager {
     ]);
     await _timeline.close();
     await _resolvedModels.close();
+    await _resolutions.close();
     await _activity.close();
     await _awaitingInput.close();
     await _unread.close();
@@ -1880,12 +2009,43 @@ class ThreadManager {
         // against it every time it changes.
         unawaited(_settleLocalQueueEchoes(threadId, queuedTurnIds));
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
-      case ThreadRenamedEvent(:final title, :final titleSource):
-        // The bridge named the conversation (usually a model replacing the
-        // provisional title taken from the opening message). Adopt it locally
-        // so the list converges without a refetch — never over a title the user
-        // chose here, which the bridge also refuses to overwrite.
-        unawaited(_adoptBridgeTitle(threadId, title, titleSource));
+      case ThreadUpdatedEvent(:final thread):
+        // Created or changed anywhere — here, another phone, the desktop, or a
+        // title the bridge generated. Upserting it is what makes a thread
+        // started on another client appear in the list without a refresh.
+        unawaited(_adoptBridgeThread(thread));
+      case ThreadDeletedEvent():
+        unawaited(_forgetThread(threadId));
+      case TurnCreatedEvent(:final turn, :final clientTurnId):
+        unawaited(_adoptCreatedTurn(threadId, turn, clientTurnId));
+      case ApprovalResolvedEvent(
+          :final approvalId,
+          :final decision,
+          :final timedOut,
+        ):
+        // Answered on some client (maybe this one) or timed out: the thread is
+        // no longer waiting on it, and every copy of the card retires.
+        _clearAwaitingInput(threadId, approvalId);
+        _resolutions.add(
+          ApprovalResolution(
+            approvalId: approvalId,
+            decision: ApprovalDecision.fromWire(decision),
+            timedOut: timedOut,
+          ),
+        );
+      case QuestionResolvedEvent(
+          :final questionId,
+          :final answers,
+          :final timedOut,
+        ):
+        _clearAwaitingInput(threadId, questionId);
+        _resolutions.add(
+          QuestionResolution(
+            questionId: questionId,
+            answers: answers,
+            timedOut: timedOut,
+          ),
+        );
       case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
         break;
     }
@@ -2382,7 +2542,11 @@ class ThreadManager {
         QueueUpdatedEvent(:final threadId) => threadId,
         GitProgressEvent(:final threadId) => threadId,
         ModelResolvedEvent(:final threadId) => threadId,
-        ThreadRenamedEvent(:final threadId) => threadId,
+        ThreadUpdatedEvent(:final threadId) => threadId,
+        ThreadDeletedEvent(:final threadId) => threadId,
+        TurnCreatedEvent(:final threadId) => threadId,
+        ApprovalResolvedEvent(:final threadId) => threadId,
+        QuestionResolvedEvent(:final threadId) => threadId,
         UnknownDomainEvent() => null,
       };
 

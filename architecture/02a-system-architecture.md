@@ -1,10 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.3
-> **Fecha:** 2026-08-02
+> **Version:** 1.3.0
+> **Fecha:** 2026-09-23
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.3.0):** the bridge is the single owner of every
+> conversation and any number of clients drive it at once — paired phones over
+> E2EE and Uxnan Desktop over a new loopback-only, token-gated local control
+> channel (§5.8.15) that serves the same router and registers the desktop as one
+> more receiver with its own `seq` and replay. Everything that changes a thread
+> is broadcast (§5.8.16): `stream/thread/updated` (replacing
+> `stream/thread/renamed`), `stream/thread/deleted`, `stream/turn/created` (the
+> user's message, before the answer, with the sender's `clientTurnId` echo) and
+> `stream/approval|question/resolved`, so a thread started or answered on one
+> client appears on the other without a refresh.
 
 > **Executive summary (1.2.3):** native assistant messages inside one turn are
 > preserved losslessly through durable response-boundary metadata; terminal
@@ -2350,7 +2361,7 @@ carpeta). uxnan es el cliente, asi que uxnan los nombra.
 //     -> one-shot SIN session id  => no entra en el historial del hilo
 //     -> modelo MAS BARATO del agente (Claude: haiku), nunca el de la conversacion
 //   ThreadStore.applyGeneratedTitle() rechaza pisar un titulo `user`
-//     -> stream/thread/renamed { threadId, title, titleSource }
+//     -> stream/thread/updated { thread }   (titleSource: 'agent')
 ```
 
 Todo es **best-effort y acotado** (30 s): sin credito, sin CLI o con timeout el
@@ -2431,6 +2442,74 @@ cambia):
 Las reglas 3 y 4 son deliberadamente **agnosticas del adaptador**: viven en el
 store y en el manager porque la exposicion la comparte toda la primera fila de la
 tabla, hoy o tras cualquier cambio upstream.
+
+#### 5.8.15 Canal de control local (desktop ↔ bridge en la misma maquina)
+
+Uxnan Desktop habla con el bridge de la **misma maquina** sin el pairing E2EE
+de un telefono. `uxnan-bridge start` abre, ademas del listener LAN, un
+**WebSocket ligado solo a `127.0.0.1`** en un puerto libre, y publica como
+llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
+
+```json
+{ "protocol": 1, "port": 51234, "token": "<256 bits base64url>", "pid": 4242,
+  "bridgeVersion": "0.0.27-…", "instanceId": "<uuid por arranque>" }
+```
+
+- **El fichero es la credencial**: se escribe atomico y con permisos `0600`
+  (en Windows, el ACL del perfil del usuario). Token nuevo en cada arranque; se
+  borra al parar (solo si sigue siendo el nuestro). Los comandos efimeros
+  (`qr`, `code`, `status`) nunca abren el canal. Config: `localControlEnabled`
+  (por defecto `true`).
+- **Autorizacion antes del upgrade** (`transport/local-control-server.ts`):
+  par de loopback, **sin cabecera `Origin`** (un navegador siempre la manda;
+  un cliente nativo no — ninguna pagina web alcanza el socket) y
+  `Authorization: Bearer <token>` comparado en tiempo constante. URL:
+  `/control?client=<id>&resume=<seq>&instance=<id>`.
+- **Mismo router, mismo registro.** El cliente se registra en el
+  `SessionRegistry` como `local:<id>`: recibe cada `stream/*` con su propio
+  `seq` y su `OutboundLog`, exactamente como un telefono. Primer frame `hello`
+  (`replayed`, `gap`); luego `{type:'message', seq?, message}` — las
+  notificaciones llevan `seq`, las respuestas no. `gap: true` (ventana agotada,
+  o el bridge se reinicio: `instanceId` distinto) obliga a re-sincronizar con
+  `thread/list` / `turn/list`.
+- **Orden:** las peticiones que nombran un `threadId` corren en orden de
+  llegada por hilo; el resto en paralelo (un `agent/models` lento no bloquea un
+  `turn/list`).
+- Un cliente local conectado cuenta como "hay alguien" para la cuenta atras de
+  las aprobaciones, igual que un telefono. No entra en `bridge/connectedPhones`.
+- `bridge/status` → `features.localControl: true` mientras escucha.
+
+**No es una variante criptografica**: es una ruta local con token, el mismo
+modelo de confianza que `POST /agent-hook/approval`. El E2EE no cambia.
+Contrato: `shared/src/local-control/local-control.ts`.
+
+#### 5.8.16 Convergencia entre clientes ("un dueño, dos vistas")
+
+El bridge es el **unico dueño** de cada hilo; telefonos y desktop son clientes
+que le envian turnos, y la cola por hilo (§5.8.13) los ordena — nunca hay dos
+procesos conduciendo una sesion. Para que dos clientes activos a la vez
+converjan, todo lo que cambia el estado se difunde (`02b` §1.4):
+
+| Cambio | Notificacion |
+|---|---|
+| hilo creado / metadatos (titulo, modelo, acceso, archivo) | `stream/thread/updated { thread }` |
+| hilo borrado | `stream/thread/deleted` |
+| turno de usuario guardado (arrancado o encolado) | `stream/turn/created { turn, clientTurnId? }` — **antes** de `stream/turn/started` |
+| aprobacion / pregunta resuelta (o vencida) | `stream/approval/resolved`, `stream/question/resolved` |
+
+El emisor manda `clientTurnId` (el id de su burbuja optimista) en `turn/send`;
+el bridge lo devuelve en `stream/turn/created` y el emisor confirma esa burbuja
+en vez de dibujar el mensaje dos veces. Los demas clientes lo insertan en su
+sitio, por encima de la respuesta que esta por llegar.
+
+**Reconexion:** el `seq` por cliente del `OutboundLog` + replay es la
+re-sincronizacion fina; `turn/list` (ya paginado: `limit`, `cursor`,
+`fromEnd`, `total`) es la gruesa cuando hay hueco. No hace falta un `seq` por
+hilo: el estado que viaja es idempotente (hilo completo, cola completa).
+
+**Agente fijo, modelo variable.** El agente de un hilo se fija en
+`thread/start` y no cambia (cambiar de CLI rompe la sesion nativa); el modelo
+si (`thread/setModel`, y lo ven todos los clientes via `stream/thread/updated`).
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 

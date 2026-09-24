@@ -24,6 +24,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   approval countdown, like a phone. New config key `localControlEnabled`
   (default `true`); `bridge/status` reports `features.localControl` while the
   listener is up. Short-lived commands (`qr`, `code`, `status`) never open it.
+- **Every client converges on the same conversations** (architecture/02a
+  §5.8.16). The thread handlers broadcast `stream/thread/updated` with the whole
+  thread after `thread/start`, `fork`, `rename`, `setModel`, `setAccessMode`,
+  `archive` and `unarchive`, and `stream/thread/deleted` after `thread/delete`,
+  so a thread started on the desktop appears on the phone (and the reverse)
+  without a refresh. `AgentManager` announces each stored user turn with
+  `stream/turn/created` — the user's message, before `stream/turn/started`,
+  echoing the sender's `clientTurnId` (≤ 128 chars, never persisted) — and
+  every settled approval or question with `stream/approval/resolved` /
+  `stream/question/resolved`, including a timeout, so a card answered on one
+  client stops being actionable on the others.
+
 - **OpenCode 2 works from the phone, and OpenCode 1 keeps working.** OpenCode 2
   kept `opencode serve` but replaced its whole API — a required password,
   `/api/*` routes, a new event stream, questions as forms, the model per session,
@@ -45,6 +57,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the reader normalized messages. `opencode-server.ts` and its exports
   (`OpenCodeServer`, `parseSseRecord`, `OpenCodePermissionRule`,
   `OpenCodePromptBody`, `OpenCodeServerEvent`) are replaced by the new modules'.
+- The generated thread title is announced as `stream/thread/updated` (the whole
+  thread) instead of the retired `stream/thread/renamed`.
 
 ### Fixed
 

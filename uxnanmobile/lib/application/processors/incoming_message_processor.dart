@@ -75,11 +75,30 @@ class IncomingMessageProcessor {
               ? QueuePausedReason.fromWire(params['pausedReason'])
               : null,
         ),
-      'stream/thread/renamed' => ThreadRenamedEvent(
-          title: params['title'] is String ? params['title'] as String : '',
-          titleSource: params['titleSource'] is String
-              ? params['titleSource'] as String
-              : 'agent',
+      'stream/thread/updated' => _threadUpdated(params['thread']),
+      'stream/thread/deleted' => ThreadDeletedEvent(threadId: threadId),
+      'stream/turn/created' => _turnCreated(
+          params['turn'],
+          threadId,
+          params['clientTurnId'],
+        ),
+      'stream/approval/resolved' => ApprovalResolvedEvent(
+          approvalId: params['approvalId'] is String
+              ? params['approvalId'] as String
+              : '',
+          decision: params['decision'] is String
+              ? params['decision'] as String
+              : 'reject',
+          timedOut: params['timedOut'] == true,
+          threadId: threadId,
+        ),
+      'stream/question/resolved' => QuestionResolvedEvent(
+          questionId: params['questionId'] is String
+              ? params['questionId'] as String
+              : '',
+          answers: _answers(params['answers']),
+          skipped: params['skipped'] == true,
+          timedOut: params['timedOut'] == true,
           threadId: threadId,
         ),
       'stream/model/resolved' => ModelResolvedEvent(
@@ -118,6 +137,40 @@ class IncomingMessageProcessor {
       );
     }
     return const UnknownDomainEvent(method: 'stream/content/block');
+  }
+
+  /// Decodes `stream/thread/updated`; a payload without a usable thread (no
+  /// string `id`) is dropped rather than upserted half-formed.
+  DomainEvent _threadUpdated(Object? thread) {
+    if (thread is Map && thread['id'] is String) {
+      final json = thread.cast<String, dynamic>();
+      return ThreadUpdatedEvent(thread: json, threadId: json['id'] as String);
+    }
+    return const UnknownDomainEvent(method: 'stream/thread/updated');
+  }
+
+  /// Decodes `stream/turn/created`; a turn without a string `id` is dropped.
+  DomainEvent _turnCreated(
+    Object? turn,
+    String? threadId,
+    Object? clientTurnId,
+  ) {
+    if (turn is Map && turn['id'] is String) {
+      return TurnCreatedEvent(
+        turn: turn.cast<String, dynamic>(),
+        clientTurnId: clientTurnId is String ? clientTurnId : null,
+        threadId: threadId,
+      );
+    }
+    return const UnknownDomainEvent(method: 'stream/turn/created');
+  }
+
+  /// Reads the per-question chosen labels, dropping anything malformed.
+  static List<List<String>> _answers(Object? value) {
+    if (value is! List) return const [];
+    return [
+      for (final entry in value) _stringList(entry),
+    ];
   }
 
   /// Maps a stream of inbound [source] messages to a stream of domain events.

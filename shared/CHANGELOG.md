@@ -4,6 +4,25 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed — streaming notifications for several clients at once
+
+Every notification reaches every connected client (phones and the desktop), so
+the contract now carries everything a second client needs to converge
+(architecture/02a §5.8.16, 02b §1.4). **16 streaming notifications** (was 12):
+
+- `stream/thread/renamed` is **replaced** by `stream/thread/updated`
+  (`ThreadUpdatedParams { thread }`): the whole thread, on creation and on every
+  metadata change — title, model, access mode, archive state — not just a
+  rename. `ThreadRenamedParams` is gone.
+- New `stream/thread/deleted` (`ThreadDeletedParams { threadId }`).
+- New `stream/turn/created` (`TurnCreatedParams { threadId, turn, clientTurnId? }`):
+  a stored user turn with the user's message, before its answer streams.
+- New `stream/approval/resolved` (`ApprovalResolvedParams`) and
+  `stream/question/resolved` (`QuestionResolvedParams`, with the chosen
+  `answers`): a card answered on one client, or timed out, retires everywhere.
+- `TurnSendParams.clientTurnId`: the sender's optimistic-bubble id, echoed on
+  `stream/turn/created` so it recognizes its own message.
+
 ### Added — local control channel contract
 
 `local-control/local-control.ts` defines how a client on the same machine as
