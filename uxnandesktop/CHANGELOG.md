@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **The GitHub tab of the right panel no longer squeezes the branch line.** In
+  its scrolling column the one-line branch row could shrink to a few pixels and
+  disappear under the repository header.
+
 ## [0.0.55] - 20260924
 ### Added
 
