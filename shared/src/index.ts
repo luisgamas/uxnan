@@ -22,6 +22,9 @@ export * from './agents/agent-capabilities.js';
 export * from './agents/agent-config.js';
 export * from './agents/agent-adapter.js';
 
+// Local control channel (desktop ↔ bridge on the same machine)
+export * from './local-control/local-control.js';
+
 // Version
 export * from './version/compare.js';
 

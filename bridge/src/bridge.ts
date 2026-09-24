@@ -10,7 +10,12 @@
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { makeNotification, type BridgeStatus, type PairingPayload } from '@uxnan/shared';
+import {
+  LOCAL_CONTROL_FILE,
+  makeNotification,
+  type BridgeStatus,
+  type PairingPayload,
+} from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
@@ -29,6 +34,16 @@ import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
+import {
+  startLocalControlServer,
+  type LocalControlServerHandle,
+} from './transport/local-control-server.js';
+import {
+  buildDiscovery,
+  mintLocalControlToken,
+  removeDiscoveryFile,
+  writeDiscoveryFile,
+} from './local-control-discovery.js';
 import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
@@ -84,6 +99,12 @@ export interface Bridge {
   connectRelay(sessionId: string): Promise<void>;
   /** Start the direct-LAN WebSocket server; resolves with the bound port. */
   startLan(): Promise<{ port: number }>;
+  /**
+   * Start the loopback-only local control channel (architecture/02a §5.8.15)
+   * and publish its address + a fresh token in `~/.uxnan/local-control.json`.
+   * Resolves with the bound port. Idempotent.
+   */
+  startLocalControl(): Promise<{ port: number }>;
   /**
    * Push a JSON-RPC notification to a connected phone. Returns `true` if it was
    * sent live, `false` if the device is offline and it was buffered.
@@ -401,6 +422,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     openCodeMessages: (sessionId, cwd) => openCodeAdapter.readSessionMessages(sessionId, cwd),
   });
   const startedAt = now();
+  // Identifies this run, so a local client reconnecting after a restart knows
+  // the replay window it remembers is gone (see local-control-server.ts).
+  const instanceId = randomUUID();
+  let localControl: LocalControlServerHandle | undefined;
+  let localControlToken: string | undefined;
 
   // Live relay-connection state, mutated by the relay serve loop below and read
   // by both the CLI `status()` and the `bridge/status` handler (via the context).
@@ -439,6 +465,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     pushService,
     logger,
     relayConnected: () => relayState.connected,
+    localControlActive: () => localControl !== undefined,
     updateStatus: () => updateState.status,
     now,
   };
@@ -483,6 +510,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         activeSessions: sessions.count,
         startedAt,
         now: now(),
+        localControl: localControl !== undefined,
         ...(updateState.status?.latestVersion !== undefined
           ? { latestVersion: updateState.status.latestVersion }
           : {}),
@@ -669,6 +697,49 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       }
       return { port: lanHandle.port };
     },
+    startLocalControl: async () => {
+      if (localControl) return { port: localControl.port };
+      const token = mintLocalControlToken();
+      const handle = await startLocalControlServer({
+        port: 0,
+        token,
+        bridgeVersion: BRIDGE_VERSION,
+        instanceId,
+        registry: sessionRegistry,
+        dispatch: (raw) => router.dispatchRaw(raw),
+        // A local client can see and answer approvals exactly like a phone, so
+        // it counts as "someone is there" for the approval countdown.
+        onClientConnected: (clientId) => {
+          agentManager.onPhoneConnected();
+          logger.info(`local client connected: ${clientId}`);
+        },
+        onClientDisconnected: (clientId) => {
+          agentManager.onPhoneDisconnected();
+          logger.info(`local client disconnected: ${clientId}`);
+        },
+      });
+      try {
+        await writeDiscoveryFile(
+          state.pathFor(LOCAL_CONTROL_FILE),
+          buildDiscovery({
+            port: handle.port,
+            token,
+            pid: process.pid,
+            bridgeVersion: BRIDGE_VERSION,
+            instanceId,
+          }),
+        );
+      } catch (err) {
+        // Without the file no client can find the listener: close it rather
+        // than keep a socket nobody can use.
+        await handle.close();
+        throw err;
+      }
+      localControl = handle;
+      localControlToken = token;
+      logger.info(`local control channel listening on 127.0.0.1:${handle.port}`);
+      return { port: handle.port };
+    },
     notify: (deviceId, method, params) =>
       sessionRegistry.notify(deviceId, makeNotification(method, params)),
     stop: async () => {
@@ -688,6 +759,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       if (lanHandle) {
         await lanHandle.close();
         lanHandle = undefined;
+      }
+      if (localControl) {
+        await localControl.close();
+        localControl = undefined;
+      }
+      if (localControlToken !== undefined) {
+        await removeDiscoveryFile(state.pathFor(LOCAL_CONTROL_FILE), localControlToken);
+        localControlToken = undefined;
       }
     },
   };

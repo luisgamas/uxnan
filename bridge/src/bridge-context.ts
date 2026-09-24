@@ -45,6 +45,8 @@ export interface BridgeContext {
   readonly logger: Logger;
   /** Whether at least one relay connection is currently serving a phone. */
   relayConnected(): boolean;
+  /** Whether the loopback local control channel (§5.8.15) is listening. */
+  localControlActive(): boolean;
   /**
    * Latest known self-update status from the background npm check, or
    * `undefined` before the first check completes. Read by `bridge/status` so the

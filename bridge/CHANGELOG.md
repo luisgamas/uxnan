@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [0.0.27-alpha.20260924] - 20260924
 ### Added
 
+- **Local control channel for Uxnan Desktop** (architecture/02a §5.8.15).
+  `uxnan-bridge start` now also opens a WebSocket listener bound to
+  **`127.0.0.1` only**, on a free port, and publishes its address plus a fresh
+  256-bit token in `~/.uxnan/local-control.json` (owner-only `0600`, written
+  atomically, removed on stop). A client on the same machine connects to
+  `/control?client=<id>` with `Authorization: Bearer <token>`; a request with an
+  `Origin` header (any browser) or from a non-loopback peer is refused before
+  the upgrade. The client is served by the **same router** the phones use and
+  is registered in the session registry as `local:<id>`, so it receives every
+  `stream/*` broadcast with its own `seq` and a reconnect replays what it
+  missed — or says it cannot (`hello.gap`, e.g. after a bridge restart), so it
+  resyncs instead. Requests naming one thread run in arrival order; others run
+  concurrently. A connected local client counts as "someone is there" for the
+  approval countdown, like a phone. New config key `localControlEnabled`
+  (default `true`); `bridge/status` reports `features.localControl` while the
+  listener is up. Short-lived commands (`qr`, `code`, `status`) never open it.
 - **OpenCode 2 works from the phone, and OpenCode 1 keeps working.** OpenCode 2
   kept `opencode serve` but replaced its whole API — a required password,
   `/api/*` routes, a new event stream, questions as forms, the model per session,

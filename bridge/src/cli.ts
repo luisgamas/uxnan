@@ -128,6 +128,15 @@ async function cmdStart(): Promise<void> {
     }
   }
 
+  if (bridge.context.config.localControlEnabled) {
+    try {
+      const { port } = await bridge.startLocalControl();
+      process.stdout.write(`Local control channel for Uxnan Desktop on 127.0.0.1:${port}.\n`);
+    } catch (err) {
+      process.stderr.write(`Failed to start the local control channel: ${errText(err)}\n`);
+    }
+  }
+
   const payload = bridge.generatePairingQr();
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);

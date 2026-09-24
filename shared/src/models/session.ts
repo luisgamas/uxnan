@@ -90,4 +90,12 @@ export interface BridgeFeatures {
    * folder names for the same repository and branch.
    */
   managedWorktrees?: boolean;
+  /**
+   * The bridge is serving the loopback **local control channel**
+   * (`LOCAL_CONTROL_FILE`, architecture/02a §5.8.15) right now, so a client on
+   * the same machine can drive it without pairing. Unlike the other flags this
+   * one is live, not build-level: it is absent while the listener is off
+   * (`localControlEnabled: false`, or a short-lived CLI command).
+   */
+  localControl?: boolean;
 }

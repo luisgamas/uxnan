@@ -24,6 +24,7 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
       activeSessions: ctx.sessions.count,
       startedAt: ctx.startedAt,
       now: ctx.now(),
+      localControl: ctx.localControlActive(),
       ...(update?.latestVersion !== undefined ? { latestVersion: update.latestVersion } : {}),
       ...(update?.updateAvailable ? { updateAvailable: true } : {}),
     });

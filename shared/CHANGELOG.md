@@ -4,6 +4,17 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — local control channel contract
+
+`local-control/local-control.ts` defines how a client on the same machine as
+the bridge (Uxnan Desktop) reaches it without E2EE pairing (architecture/02a
+§5.8.15): `LOCAL_CONTROL_FILE` (`local-control.json`, the discovery record
+`LocalControlDiscovery` — port, token, pid, version, `instanceId`),
+`LOCAL_CONTROL_PATH` (`/control`), the frame union `LocalControlFrame`
+(`hello` with `replayed`/`gap`, then `message` frames whose notifications carry
+`seq`), `LOCAL_CONTROL_MAX_FRAME_BYTES`, and the `isValidLocalClientId` /
+`localReceiverId` helpers. `BridgeFeatures.localControl` says the listener is up
+right now. No JSON-RPC method is added: the channel serves the existing ones.
 
 ## [0.0.16-alpha.20260919] - 20260919
 ### Added — `UsageStatus.accessRequired`

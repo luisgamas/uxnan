@@ -97,6 +97,15 @@ export interface DaemonConfig {
    * QR or typed-host pairing.
    */
   mdnsEnabled: boolean;
+  /**
+   * Serve the local control channel (architecture/02a §5.8.15): a WebSocket
+   * listener bound to `127.0.0.1` only, on a free port, whose address and
+   * token the bridge writes to `~/.uxnan/local-control.json` (owner-only). It
+   * is how Uxnan Desktop on the same machine drives the bridge's conversations
+   * next to the phone. **Default `true`**; loopback-only and token-gated, and
+   * it costs one idle socket. Only `uxnan-bridge start` opens it.
+   */
+  localControlEnabled: boolean;
   pushEnabled: boolean;
   pushOnAgentDone: boolean;
   pushOnAgentError: boolean;
@@ -157,6 +166,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   lanEnabled: true,
   lanPort: DEFAULT_LAN_PORT,
   mdnsEnabled: true,
+  localControlEnabled: true,
   pushEnabled: true,
   pushOnAgentDone: true,
   pushOnAgentError: true,

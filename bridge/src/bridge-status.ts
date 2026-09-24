@@ -19,6 +19,8 @@ export interface BridgeStatusInput {
   latestVersion?: string;
   /** Whether {@link latestVersion} is strictly newer than {@link version}. */
   updateAvailable?: boolean;
+  /** Whether the loopback local control channel is listening right now. */
+  localControl?: boolean;
 }
 
 /**
@@ -48,6 +50,6 @@ export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
     uptimeMs: Math.max(0, input.now - input.startedAt),
     ...(input.latestVersion !== undefined ? { latestVersion: input.latestVersion } : {}),
     ...(input.updateAvailable ? { updateAvailable: true } : {}),
-    features: { ...BRIDGE_FEATURES },
+    features: { ...BRIDGE_FEATURES, ...(input.localControl ? { localControl: true } : {}) },
   };
 }

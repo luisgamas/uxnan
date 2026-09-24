@@ -82,6 +82,14 @@ export class OutboundLog {
     return out;
   }
 
+  /**
+   * The seq of the oldest entry still retained, or {@link nextSeq} when the
+   * window is empty. A client that needs anything older than this has lost it.
+   */
+  get oldestSeq(): number {
+    return this.#entries[0]?.seq ?? this.#nextSeq;
+  }
+
   /** The seq that the next `record` will assign. */
   get nextSeq(): number {
     return this.#nextSeq;

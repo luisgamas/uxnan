@@ -23,6 +23,7 @@ function fakeContext(): BridgeContext {
     pushService: {} as BridgeContext['pushService'],
     logger: createLogger('test', 'error'),
     relayConnected: () => false,
+    localControlActive: () => false,
     updateStatus: () => undefined,
     now: () => 1000,
   };
