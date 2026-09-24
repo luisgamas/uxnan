@@ -115,4 +115,36 @@ describe("ChatBridgeGate", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     bridge.applyStatus({ state: "off" });
   });
+
+  it("installs a missing bridge in place, then connects to it", async () => {
+    bridge.applyStatus({ state: "off" });
+    const { screen, backend, user } = mount(ChatBridgeGate, {
+      commands: {
+        bridge_install_probe: () => ({
+          installed: false,
+          version: null,
+          npm: true,
+          nodeVersion: "v22.1.0",
+          command: "npm install -g uxnan-bridge@latest",
+        }),
+        bridge_install: () => ({
+          ok: true,
+          version: "0.0.30",
+          permissionDenied: false,
+          tail: [],
+          restarted: false,
+        }),
+        update_settings: () => ({}),
+      },
+    });
+    await until(() => screen.queryByRole("button", { name: "Install" }) !== null);
+    expect(screen.getByText("Install the Uxnan bridge to chat")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Install" }));
+    await until(() => backend.called("update_settings"));
+    expect(backend.called("bridge_install")).toBe(true);
+    const settings = backend.lastCallTo("update_settings")?.args.settings as {
+      bridge?: { mode: string };
+    };
+    expect(settings.bridge?.mode).toBe("managed");
+  });
 });

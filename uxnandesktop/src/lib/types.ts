@@ -1793,6 +1793,29 @@ export type BridgeMode = "off" | "attach" | "managed";
 
 export interface BridgeSettings {
   mode: BridgeMode;
+  /** Update the bridge on its own when a newer version is published, at a
+   *  quiet moment (no turn running on any client). Off by default. */
+  autoUpdate?: boolean;
+}
+
+/** What is installed (mirrors `bridgeclient::install::InstallInfo`). */
+export interface BridgeInstallInfo {
+  installed: boolean;
+  version: string | null;
+  npm: boolean;
+  nodeVersion: string | null;
+  /** The command to copy when the user would rather run it themselves. */
+  command: string;
+}
+
+/** How an install/update ended (mirrors `bridgeclient::InstallResult`). */
+export interface BridgeInstallResult {
+  ok: boolean;
+  version: string | null;
+  permissionDenied: boolean;
+  tail: string[];
+  /** The app's own (`managed`) bridge was restarted on the new version. */
+  restarted: boolean;
 }
 
 /** Why the bridge is not reachable (mirrors `bridgeclient::Unavailable`). */

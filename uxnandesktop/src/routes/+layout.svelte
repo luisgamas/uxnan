@@ -3,6 +3,7 @@
   import { onMount, untrack } from "svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { applyTheme } from "$lib/theme";
@@ -80,6 +81,7 @@
     // store that mirrors its conversations for the chat tabs.
     void bridge.start();
     chat.start();
+    void bridgeInstall.start(() => app.settings.bridge?.autoUpdate === true);
     // Answer the control surface's questions about what this window holds
     // (terminal tabs, open files, runs) — for `uxnan-cli` and the agents' tools.
     void startControlBridge();

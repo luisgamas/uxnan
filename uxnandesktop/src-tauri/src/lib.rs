@@ -513,6 +513,8 @@ pub fn run() {
             bridgeclient::commands::bridge_client_status,
             bridgeclient::commands::bridge_client_retry,
             bridgeclient::commands::bridge_call,
+            bridgeclient::commands::bridge_install_probe,
+            bridgeclient::commands::bridge_install,
             commands::get_app_state,
             commands::update_settings,
             commands::quick_commands_set,

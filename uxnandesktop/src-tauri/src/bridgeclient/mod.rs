@@ -25,6 +25,7 @@
 pub mod commands;
 pub mod connection;
 pub mod discovery;
+pub mod install;
 #[cfg(test)]
 mod socket_tests;
 
@@ -102,6 +103,17 @@ pub enum Status {
     },
 }
 
+/// How an install/update ended, and whether the app restarted its bridge on
+/// the new version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallResult {
+    #[serde(flatten)]
+    pub outcome: install::InstallOutcome,
+    /// The app's own (`managed`) bridge was restarted on the new version.
+    pub restarted: bool,
+}
+
 /// Why a call could not be made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BridgeCallError {
@@ -133,6 +145,8 @@ pub struct BridgeClient {
     managed_child: Mutex<Option<tokio::process::Child>>,
     /// Mirrors `managed_child.is_some()` for the synchronous exit hook.
     owns_bridge: AtomicBool,
+    /// An install/update is running (one at a time).
+    installing: AtomicBool,
 }
 
 impl BridgeClient {
@@ -145,6 +159,7 @@ impl BridgeClient {
             retry: Notify::new(),
             managed_child: Mutex::new(None),
             owns_bridge: AtomicBool::new(false),
+            installing: AtomicBool::new(false),
         })
     }
 
@@ -225,6 +240,37 @@ impl BridgeClient {
             }
             let _ = child.kill();
         }
+    }
+
+    /// Installs or updates the bridge (`npm install -g uxnan-bridge@latest`).
+    /// When this app runs the bridge (`managed`), a successful update restarts
+    /// it — the supervisor starts the new version straight away. A bridge the
+    /// user runs is left alone; the result says it needs a restart.
+    pub async fn install_or_update(&self, app: &AppHandle) -> InstallResult {
+        if self.installing.swap(true, Ordering::SeqCst) {
+            return InstallResult {
+                outcome: install::InstallOutcome {
+                    ok: false,
+                    version: None,
+                    permission_denied: false,
+                    tail: vec!["an install is already running".into()],
+                },
+                restarted: false,
+            };
+        }
+        let outcome = install::install(app).await;
+        let mut restarted = false;
+        if outcome.ok && self.owns_live_bridge() {
+            self.stop_managed_bridge().await;
+            self.retry_now();
+            restarted = true;
+        } else if outcome.ok {
+            // Not running yet (or the user's own): nudge the supervisor so a
+            // `managed` mode that was waiting on "not installed" starts now.
+            self.retry_now();
+        }
+        self.installing.store(false, Ordering::SeqCst);
+        InstallResult { outcome, restarted }
     }
 
     async fn set_status(&self, app: &AppHandle, status: Status) {

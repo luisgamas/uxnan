@@ -34,6 +34,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `threadId`, preselected `agentId`); the conversation lives on the bridge.
   Without a connected bridge the tab says why and offers *Connect*. **Pending
   the maintainer's visual review.**
+- **Install and update the bridge without leaving Uxnan.** When `uxnan-bridge`
+  is missing, a chat tab says so and offers **Install** in place (plus the
+  command to copy); Settings → Bridge & mobile shows the installed version
+  against the newest published one with **Install** / **Update**. Both run
+  `npm install -g uxnan-bridge@latest` on the user's request
+  (`bridgeclient/install.rs`, commands `bridge_install_probe` / `bridge_install`),
+  stream npm's output to the window, and — when Uxnan runs the bridge
+  (`managed`) — restart it on the new version; a bridge the user runs is left
+  alone and flagged as needing a restart. npm refusing to write its global
+  folder is recognized and explained. New setting `bridge.autoUpdate` (off by
+  default): update on its own once a newer bridge is published, only while no
+  turn runs on any device (`bridge/status` → `activeTurns`), once per version.
 - **Settings → Bridge & mobile**: the connection mode (off / use a running
   bridge / start it when needed), the live status with the reason and the fix
   when it is unreachable (the install or start command), and the phones

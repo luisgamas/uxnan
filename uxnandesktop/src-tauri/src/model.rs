@@ -492,6 +492,11 @@ pub struct BridgeSettings {
     /// `off` | `attach` | `managed` — see [`crate::bridgeclient::Mode`].
     #[serde(default)]
     pub mode: crate::bridgeclient::Mode,
+    /// Update the bridge on its own when a newer version is published, at a
+    /// quiet moment (no turn running on any client). Off by default: updating
+    /// runs npm and restarts the bridge, which the user should choose.
+    #[serde(default)]
+    pub auto_update: bool,
 }
 
 /// User-facing application settings (UI layout, theme, terminal profiles).

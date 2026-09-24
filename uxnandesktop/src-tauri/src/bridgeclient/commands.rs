@@ -7,7 +7,8 @@ use std::time::Duration;
 use serde_json::Value;
 use tauri::State;
 
-use super::{BridgeCallError, Status};
+use super::install::{self, InstallInfo};
+use super::{BridgeCallError, InstallResult, Status};
 use crate::error::CommandError;
 use crate::state::AppState;
 
@@ -48,4 +49,22 @@ pub async fn bridge_call(
             };
             CommandError::new(code, err.to_string())
         })
+}
+
+/// What is installed: the bridge (and its version), npm, Node.js — plus the
+/// command to copy for a user who would rather run it themselves.
+#[tauri::command]
+pub async fn bridge_install_probe() -> Result<InstallInfo, CommandError> {
+    Ok(install::probe().await)
+}
+
+/// Install or update the bridge with npm, streaming its output as
+/// `bridge:install-log`. Only ever run on the user's request (or with automatic
+/// updates turned on in Settings → Bridge & mobile).
+#[tauri::command]
+pub async fn bridge_install(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<InstallResult, CommandError> {
+    Ok(state.bridge.install_or_update(&app).await)
 }

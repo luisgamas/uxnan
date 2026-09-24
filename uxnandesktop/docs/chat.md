@@ -23,9 +23,20 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 | **Use a running bridge** (`attach`) | Connects to a bridge you already run — as a service (`uxnan-bridge install-service`) or with `uxnan-bridge start` in a terminal. |
 | **Start the bridge when needed** (`managed`) | Same, but when none is running it starts `uxnan-bridge start` itself (resolved on `PATH`, like any agent CLI) and stops it — through `uxnan-bridge stop`, so the bridge releases its lock cleanly — when the app exits. A bridge you started yourself is never stopped. |
 
-The bridge must be installed (`npm install -g uxnan-bridge`); the app never
-installs it for you. The status row names the state and, when the bridge is
-unreachable, why and what fixes it:
+**Installing and updating it from the app.** When `uxnan-bridge` is not on
+`PATH`, a chat tab says so and offers **Install** right there (and the command to
+copy, for whoever prefers a terminal); Settings → Bridge & mobile has the same
+**Install** / **Update** next to the installed and newest versions. Both run
+`npm install -g uxnan-bridge@latest` — only when you press the button — and show
+npm's output. If Uxnan runs the bridge (`managed`) it restarts it on the new
+version; a bridge you run yourself keeps running and the row says it needs a
+restart. Node.js 18+ (and its `npm`) must be installed; without it the row says
+so. **Update automatically** (off by default) updates the bridge Uxnan runs as
+soon as a newer one is published, waiting until no conversation is running on
+any device.
+
+The status row names the state and, when the bridge is unreachable, why and what
+fixes it:
 
 | Status | Meaning |
 |---|---|
