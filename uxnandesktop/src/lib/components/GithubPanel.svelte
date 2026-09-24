@@ -158,7 +158,10 @@
   }
 </script>
 
-<div class="scrollbar-sleek flex h-full min-h-0 flex-col overflow-y-auto p-2">
+<!-- `*:shrink-0`: in a scrolling flex column a child that clips its own
+     overflow (every `truncate` row) may otherwise shrink below its content —
+     the branch line collapsed to a few pixels under the repo header. -->
+<div class="scrollbar-sleek flex h-full min-h-0 flex-col overflow-y-auto p-2 *:shrink-0">
   {#if !github.available}
     <!-- Not installed / not signed in -->
     <div class="flex flex-col items-center gap-2 px-3 py-8 text-center">

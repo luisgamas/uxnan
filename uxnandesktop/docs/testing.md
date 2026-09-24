@@ -161,7 +161,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 840 passing unit tests of the app crate (882 with the ignored probes) — plus 18 in
+The 852 passing unit tests of the app crate (894 with the ignored probes) — plus 18 in
 `uxnan-control-protocol` and 14 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -218,7 +218,8 @@ readiness, context templates, cycle detection, validation + status derivation),
 `updaterLogic.ts` (download-progress fraction + install-policy decision),
 `diffParse.ts` (unified-diff parsing), `theme.ts` (batch theme-import
 normalization), `quickCommands.ts` (quick-command token substitution + scope
-filters), `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration),
+filters), `keyboard/` (the chord model, the per-focus key router and the per-platform
+bindings — `docs/keyboard.md`),
 `branchName.ts` (GitHub branch-name slugging + friendly auto-generated
 worktree branch names with collision-proof uniqueness), `filePreview.ts`
 (extension-to-view capability), `markdown.ts` (GitHub-flavored Markdown: alerts,
@@ -275,7 +276,7 @@ keeps parsing afterwards; see [`build.md`](build.md) → *The frontend's build
 target*) and the **OpenCode plugin** check (`tests/opencode-plugin.test.mjs` —
 the status plugin OpenCode, MiMo and Kilo run, fed events shaped like a real
 OpenCode 2.0.16 / 1.18.32 run: both plugin APIs, sub-agents, interruptions, and
-silence inside OpenCode 2's shared service). **1,370 passing tests** across both
+silence inside OpenCode 2's shared service). **1,437 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -324,7 +325,7 @@ instead of quietly agreeing with a mock nobody updated.
 - `FilePreview.svelte.test.ts` — loose-table README GIFs resolve from Windows,
   macOS, Linux, and UNC document paths and render the returned animated image
   unchanged; `markdown.test.ts` covers multiple inline-HTML images in one table.
-- `GithubPanel.svelte.test.ts` — the right-panel GitHub tab keeps its content
+- `GithubPanel.svelte.test.ts` — the dock's GitHub surface keeps its content
   mounted while a poll re-reads the context, an unsubmitted **Create PR** form
   survives both a poll tick and an outright remount (each worktree keeping its
   own), **Cancel** is what discards it, and a worktree that really has no context

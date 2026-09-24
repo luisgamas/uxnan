@@ -7,7 +7,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { i18n } from "$lib/i18n";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import { text } from "$lib/design";
   import Kbd from "./Kbd.svelte";
   import DirectoryBrowser from "./DirectoryBrowser.svelte";

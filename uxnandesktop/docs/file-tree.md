@@ -1,6 +1,6 @@
 # File tree & search
 
-The right panel's **Files** tab browses the active worktree, one directory at a
+The right dock's **Files** surface ([the right dock](browser.md#the-right-dock)) browses the active worktree, one directory at a
 time (a folder is listed the first time it is expanded, so `node_modules` costs
 nothing until you ask for it). Rows are colored from the same git status the
 Changes tab shows, and git-ignored entries are dimmed.

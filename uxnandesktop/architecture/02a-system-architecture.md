@@ -3,7 +3,7 @@
 > Documento de arquitectura del sistema para el Uxnan Desktop ADE.
 > Cubre el modelo de tres actores, modelo de datos, navegacion, layout, review, conexiones, persistencia y diagnostico post-mortem (§7.3.1).
 > Derivado de las secciones 2, 3, 4, 6.3 y 7 del documento de arquitectura original.
-> Navegador integrado (§4.2b): una página por workspace, como webview hijo de la ventana principal (no flota sobre otras apps); oculta temporalmente el panel de revisión preservando su visibilidad guardada.
+> Integrated browser (§4.2b): one page per workspace, a child webview of the main window (never floats over other apps), shown as one surface of the right dock — a single per-workspace panel with the surfaces the workspace has (Files · Git · GitHub · Browser).
 
 ---
 
@@ -152,7 +152,7 @@ Cada tab vive dentro de un TabGroup y representa una unidad de contenido en el a
 
 | Campo | Descripcion |
 |-------|-------------|
-| Tipo de contenido | `terminal` (emulador PTY), `editor` (CodeMirror 6), `diff` (visor de comparacion). El navegador integrado (`browser`) **no** es un tab central: vive en un panel lateral derecho — ver §4.2b |
+| Tipo de contenido | `terminal` (emulador PTY), `editor` (CodeMirror 6), `diff` (visor de comparacion). El navegador integrado (`browser`) **no** es un tab central: es una superficie del dock derecho — ver §4.2b |
 | Nombre visible | Etiqueta mostrada en la pestaña. Renombrable desde el menú contextual de la pestaña: terminales/diff/commit usan una etiqueta libre (`customTitle`, persistida en terminales); un tab de **archivo** renombra el archivo real en disco (`fs_rename`, misma carpeta) con confirmación y aviso de cambio de extensión. "Cerrar todas las pestañas" cierra las del workspace activo |
 | TabGroup padre | A que TabGroup pertenece este tab |
 
@@ -363,11 +363,23 @@ Esto es una distincion importante que diferencia al ADE de un terminal convencio
 
 ### 4.2b Navegador integrado (tab `browser`) — implementado
 
-The browser temporarily hides the Files / Changes / History / GitHub panel.
-Its saved `rightSidebarOpen` preference remains unchanged, so closing the browser
-restores only a previously open panel, including after repeated URL navigation.
-The review-panel button and keyboard shortcut explicitly switch back to review,
-closing the browser and saving the review panel as open.
+**The right dock.** The right side of the window is one panel (`Dock.svelte`,
+`state/dock.svelte.ts`) offering the surfaces the workspace on screen has:
+**Files** (a project), **Git** (a git repository — Changes and History behind one
+segmented control), **GitHub** (a local git repository with the GitHub surface
+enabled) and **Browser** (the browser enabled). A plain folder has no Git or
+GitHub; the Global space has only the browser. Each workspace remembers its dock
+— open or closed, the surface, the Git view — in `AppSettings.dock.workspaces`
+(keyed by workspace, the least recently used pruned past 200). One status-bar
+button (Mod+J) opens and closes it; the first open shows a chooser (one card per
+surface); a selector in its top band switches surface, each option carrying a
+signal (changed files, PR checks, a waiting approval); Mod+Shift+E / G / H / B
+reveal a surface directly. The browser is therefore not a separate "4th panel":
+leaving its surface or closing the dock **hides** the page (it survives), and the
+toolbar's ✕ does what `BrowserSettings.closeAction` says — clear the page
+(default), go back to the home page, or close the browser and the dock. The dock keeps two widths — one for Files / Git /
+GitHub (`rightSidebarWidth`) and a wider one for the browser
+(`browserPanelWidth`).
 
 El tipo de contenido `browser` (webview embebido) **está implementado** como un
 navegador *de desarrollo* ligero: para previsualizar/depurar lo que construyen los
@@ -392,7 +404,7 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   DevTools).
 - **Una página por workspace:** la sesión del navegador es por workspace (la
   clave de workspace del store de terminales: la ruta del worktree, `""` = Global):
-  panel abierto/cerrado, página, historial y zoom propios. Solo se muestra la del
+  página, historial y zoom propios (si el dock lo muestra lo decide el dock). Solo se muestra la del
   workspace en pantalla; cambiar de workspace oculta una y muestra la otra. Un
   enlace que abre la persona va al workspace en pantalla; uno que abre un
   **agente** (shim `$BROWSER` con `X-Uxnan-Agent-Id`, o las herramientas
@@ -402,6 +414,12 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   URL y recarga al volver), y dormir un workspace libera la suya. El backend es la
   fuente de verdad de la página (URL, título, carga, historial, zoom, `generation`
   = documentos confirmados) y la empuja con el evento `browser:state`.
+- **Address bar:** what the person types always leads somewhere
+  (`resolveAddress`): a scheme loads as is; this machine and the local network
+  (loopback, `*.localhost`, IPv4, `host:port`) over `http://`; a domain name
+  over `https://`; anything else is searched with the engine chosen in
+  `BrowserSettings.searchEngine` (Google by default, or a custom `%s` URL).
+  DevTools open detached — docked, WebKit's inspector took over the app window.
 - **Puerta de URLs:** solo `http(s)` (y `about:blank`); nunca el **origen propio
   de la app** (`tauri.localhost`, `ipc.localhost`, `asset.localhost` y, en build de
   desarrollo, el `devUrl`), porque Tauri trata ese origen como local y le da los

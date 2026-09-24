@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 959 Rust tests (882 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins). 971 Rust tests (894 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,370 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,437 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -48,7 +48,14 @@ started.**
 **Built (DONE), in detail:**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
-  backups + sequential schema migrations).
+  backups + sequential schema migrations). The right side is **one dock per
+  workspace** offering only the surfaces that workspace has (Files · Git ·
+  GitHub · Browser), with a first-open chooser and a surface selector.
+- **One keyboard layer** (`src/lib/keyboard/`, `docs/keyboard.md`): a router
+  that decides every key by focus (terminal with its per-shortcut Uxnan/TUI
+  policy, focus mode and leader key; editor; text field; app), per-platform
+  defaults, and a native half that carries the global shortcuts into browser
+  pages and the macOS menu bar; closing asks over unfinished work.
 - **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions (each terminal's xterm instance stays alive and is **re-parented** on a
@@ -762,7 +769,7 @@ Deferred:
 
 **Goal:** a complete in-app developer browser to preview/debug the systems agents
 build and open the links agents produce — **not** a general-purpose browser. Lives
-as a right-side "4th panel" (`architecture/02a` §4.2b). Agent link interception
+as a surface of the right dock (`architecture/02a` §4.2b). Agent link interception
 **on by default**; one central link-policy decision point with an always-working OS
 fallback.
 
@@ -807,7 +814,7 @@ screenshot is an MCP image block); references bound to one document; the risk
 policy (`browser/policy.rs`) and the person's approval (`browser/approval.rs`,
 the amber bar in `BrowserApprovalBar.svelte` — walked by the maintainer on a
 dev build, 2026-09-23: bar, in-page highlight, **Allow** running the submit —,
-the globe's dot, 45 s wait); the
+the dock button's dot — the globe's, when walked —, 45 s wait); the
 `agentExternalSites` setting; the `Refused` error code (`-32008`, exit 9); the
 params validator now enforcing `enum` / `minimum` / `maximum` / `maxLength`; page
 actions in the control audit log with typed text by length; a still image of the
@@ -1670,6 +1677,11 @@ when an announced state exceeds the evidence. Announced today: **Windows
       thing being tested), the wake-fidelity check, R07/R08/R10, and one recorded
       hostile-update run against a staging channel. Full checklist:
       `matrix → checklists.windows-x64`.
+- [ ] **Keyboard on Windows and Linux** — the app's global shortcuts inside a
+      browser page (WebView2 accelerator-key event, GTK key press —
+      `keyboard.rs`), WebView2's browser keys off in a release build, the
+      Alt+←/→ split defaults and Ctrl+Shift+C/V in a terminal compile and are
+      unit-tested, but nobody has pressed them on a real machine.
 - [ ] **keep-awake** is implemented for macOS/Linux and its state machine +
       spawn/kill path are now unit-tested (each CI runner toggles its own real
       inhibitor once), but **whether the machine actually stays awake** is
@@ -1690,7 +1702,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 959 Rust + 1,370 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 971 Rust + 1,437 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -36,7 +36,7 @@
   } from "$lib/api";
   import { app } from "$lib/state/app.svelte";
   import { browser } from "$lib/state/browser.svelte";
-  import { normalizeAddress, displayAddress, isSecureAddress, stepZoom } from "$lib/browserAddress";
+  import { resolveAddress, displayAddress, isSecureAddress, searchTemplate, stepZoom } from "$lib/browserAddress";
   import { overlayCovers, onOverlayChange, overlayLayerCount } from "$lib/overlayLayer";
   import { toast } from "$lib/toast";
   import BrowserApprovalBar from "$lib/components/BrowserApprovalBar.svelte";
@@ -44,9 +44,9 @@
   import { Input } from "$lib/components/ui/input";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { cn } from "$lib/utils";
-  import { focus, icon } from "$lib/design";
+  import { focus, icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import { Icon } from "$lib/components/ui/icon";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";
@@ -177,19 +177,35 @@
     };
   });
 
-  // Open the page when the panel appears for a session that has none yet
-  // (the globe toggle, a restored workspace).
+  // Load the page when the Browser surface appears for a session whose page is
+  // not alive (it was released to make room, or its workspace slept).
   $effect(() => {
     const s = session;
-    if (s?.open && !s.live && s.url) {
+    if (s && !s.live && s.url) {
       untrack(() => {
         void browser.open(s.url, s.workspace).catch(() => (unavailable = true));
       });
     }
   });
 
+  /** Where a search from the address bar goes (Settings → Browser). */
+  const search = $derived(searchTemplate(app.settings.browser?.searchEngine, app.settings.browser?.searchUrl));
+
+  /** What the ✕ does (Settings → Browser), and the home page it may go to. */
+  const closeAction = $derived(app.settings.browser?.closeAction ?? "blank");
+  const homeUrl = $derived(
+    app.settings.browser?.homepage?.trim() ? resolveAddress(app.settings.browser.homepage, search) : null,
+  );
+  const closeLabel = $derived(
+    closeAction === "dock"
+      ? i18n.t("browser.closeBrowser")
+      : closeAction === "home" && homeUrl
+        ? i18n.t("browser.goHome")
+        : i18n.t("browser.closePage"),
+  );
+
   function go(): void {
-    const target = normalizeAddress(address);
+    const target = resolveAddress(address, search);
     editing = false;
     addressEl?.blur();
     if (!target) return;
@@ -269,13 +285,6 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="flex h-full w-full flex-col bg-background" onkeydown={onPanelKey}>
-  <!-- Window-controls drag strip. When the browser is open it is the right-most
-       panel, so the min/max/close overlay (fixed top-right, rendered in
-       +page.svelte) lands over *this* panel. Mirror the right panel's top band
-       (h-9 drag strip) so those controls float over an empty strip instead of
-       covering the toolbar buttons below. -->
-  <div data-tauri-drag-region class="h-9 shrink-0 border-b border-border/60"></div>
-
   <div class="flex shrink-0 items-center gap-0.5 border-b border-border/60 px-1.5 py-1">
     <TooltipSimple title={i18n.t("browser.back")}>
       {#snippet children(tp)}
@@ -409,15 +418,16 @@
         </Button>
       {/snippet}
     </TooltipSimple>
-    <TooltipSimple title={i18n.t("browser.close")}>
+    <TooltipSimple title={closeLabel}>
       {#snippet children(tp)}
         <Button
           {...tp}
           variant="ghost"
           size="icon-xs"
           class={toolButton}
-          aria-label={i18n.t("browser.close")}
-          onclick={() => app.closeBrowser()}
+          aria-label={closeLabel}
+          disabled={closeAction === "blank" && !session?.url}
+          onclick={() => void browser.dismiss(closeAction, homeUrl).catch(() => {})}
         >
           <Icon icon={XIcon} class={icon.action} />
         </Button>
@@ -441,6 +451,13 @@
         class="pointer-events-none absolute inset-0 size-full select-none object-fill"
       />
     {/if}
+    {#if !session?.url && !unavailable}
+      <!-- No page: the address bar above is where one starts. -->
+      <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+        <Icon icon={GlobeIcon} class="size-7 text-muted-foreground/40" />
+        <p class={cn(text.meta, "max-w-60")}>{i18n.t("browser.empty")}</p>
+      </div>
+    {/if}
     {#if unavailable}
       <div
         class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
@@ -450,7 +467,7 @@
           variant="outline"
           size="sm"
           class="text-xs hover:bg-accent hover:text-foreground"
-          onclick={() => void openExternal(normalizeAddress(address) ?? "").catch(() => {})}
+          onclick={() => void openExternal(resolveAddress(address, search) ?? "").catch(() => {})}
         >
           {i18n.t("browser.openExternal")}
         </Button>

@@ -339,6 +339,7 @@ Detailed docs live in [`docs/`](./docs/):
 [control surface (MCP tools & `uxnan-cli`)](./docs/control-api.md) ·
 [control API reference (every entry, generated)](./docs/control-api-reference.md) ·
 [integrated browser](./docs/browser.md) ·
+[keyboard shortcuts](./docs/keyboard.md) ·
 [GitHub integration](./docs/github.md) ·
 [GitHub validation status](./docs/github-validation.md) ·
 [GitHub sandbox runbook](./docs/github-sandbox-runbook.md) ·

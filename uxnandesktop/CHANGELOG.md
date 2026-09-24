@@ -41,6 +41,135 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   hand could hand them to that shared service for good. A hand-typed `opencode`
   runs as normal, without the tools or a precise state; OpenCode 1 is unchanged.
 
+### Added
+
+- **Choose what the browser's ✕ does** (Settings → Browser → Close button):
+  clear the page (the default), go back to the home page, or close the browser
+  and the panel with it.
+- **The browser's address bar searches.** Anything that is not an address —
+  words, a phrase, a single name like `google` — goes to a search engine, as in
+  any browser, instead of failing as `https://google`. Choose it in Settings →
+  Browser: Google (default), DuckDuckGo, Bing, Brave Search or a custom URL with
+  `%s`. Addresses on this machine and the local network (an IPv4 address,
+  `host:port`) now load over `http://` too.
+- **App shortcuts work with a browser page focused.** The dock and its
+  surfaces, the sidebar, new terminals and worktrees, the palettes, Settings and
+  Automations are heard even while the page has the keyboard — through the menu
+  bar on macOS, the page's accelerator keys on Windows and its key presses on
+  Linux — after the page gets its own keys first.
+- **The macOS menu bar carries the app's commands** (File, View, Settings…)
+  with your shortcuts, in the app's language, rebuilt when you rebind one.
+- **Asks before closing over unfinished work.** Closing the window — its button,
+  Alt+F4, ⌘Q, Close Window — now asks first when an agent is mid-turn or a file
+  has unsaved edits.
+- **Find and replace in the file editor** (Mod+F): the app's own bar — its
+  inputs, buttons and switches — with a match count, match case / whole word /
+  regex, and replace on demand.
+- **Clear terminal** (⌘K on macOS; off macOS Ctrl+K stays the shell's
+  kill-line unless you choose otherwise).
+- **Ctrl+Shift+C / Ctrl+Shift+V copy and paste in a terminal** on Windows and
+  Linux, the terminal convention that never collides with SIGINT.
+- **Keyboard guide** (`docs/keyboard.md`).
+- **One right dock per workspace.** The right side of the window is a single
+  panel offering only the surfaces the workspace on screen has: **Files** (a
+  project), **Git** (a git repository), **GitHub** (a local git repository, when
+  enabled) and **Browser** (when enabled). A plain folder no longer offers Git or
+  GitHub, and the Global space offers only the browser. The first time a
+  workspace opens its dock it shows a chooser — one card per surface, with its
+  shortcut — and after that each workspace reopens its dock on the surface it
+  last showed (remembered in `settings.dock`, the last 200 workspaces).
+- **A surface selector in the dock's top band**, the same control the GitHub
+  view uses for its sections. Each option says what is worth knowing without
+  opening it: the changed files, the pull request's checks, an agent waiting for
+  a browser approval.
+- **Shortcuts for each surface:** Mod+Shift+E Files, Mod+Shift+G Git,
+  Mod+Shift+H GitHub, Mod+Shift+B Browser — each opens the dock if needed. A
+  worktree's changed-files count in the sidebar opens its Git changes.
+
+### Changed
+
+- **Every mode switch is one component.** A file's Edit / Preview / Changes,
+  Unstaged / Staged, a diff's layout, the Git surface's Changes / History and the
+  theme editors' Visual / JSON were five hand-styled copies that had drifted
+  apart (separators on some, 11px text, a frame fighting the tab list's own
+  padding). They are now one segmented control: a quiet track with the chosen
+  option lifted out of it.
+- **One keyboard layer decides every key by where the focus is** (terminal,
+  editor, text field or the rest of the app), reusing the per-shortcut
+  Uxnan/TUI choice, focus mode and the leader key (`src/lib/keyboard/`). It
+  replaces the separate window and terminal handlers.
+- **Tab cycling defaults to Ctrl+Tab on every platform.** ⌘Tab is macOS's app
+  switcher and never reached the app.
+- **Moving between splits defaults to Alt+←/→ on Windows and Linux.**
+  Ctrl+Alt+arrows switch desktops on GNOME and rotate the screen on some Windows
+  graphics drivers. macOS keeps ⌥⌘←/→.
+- **Sleeping a workspace has no default shortcut.** It was ⌘⇧Z / Ctrl+Shift+Z
+  — Redo — and ends the workspace's shells and idle agents. Assign one in
+  Settings, or use the worktree row's menu.
+- **Changes and History are one Git surface**, switched by a segmented control
+  that remembers its view per workspace.
+- **The browser is a dock surface, not a fourth panel.** The status bar's globe
+  is gone: the dock button (Mod+J) opens and closes the dock, and it carries the
+  amber dot when an agent waits for approval. Switching surface or closing the
+  dock only hides the page — it is there when you come back — and the browser
+  toolbar's ✕ now closes the page itself. The browser keeps its own, wider
+  width.
+- **On macOS, ⌘ shortcuts win while a terminal has focus.** ⌘ never reaches a
+  shell, so an app shortcut bound through it (⌘W, ⌘B, ⌘S…) no longer does
+  nothing because a terminal was focused. Ctrl chords still go to the terminal,
+  and a custom per-shortcut setting still decides.
+
+### Fixed
+
+- **The browser's ✕ no longer reloads the page it closed.** The page's last
+  state, arriving after it closed, carried its URL back into the session, and
+  the panel loaded it again.
+- **A search in the integrated browser no longer closes the app.** While the
+  browser keeps its address bar in step (every 1.5 s), it asked the engine for
+  the page's URL — and during a navigation WebKit briefly has none, which the
+  webview library unwraps: a panic that aborted the whole app. The page is now
+  asked where it is instead, in the same call that reads its history.
+- **Back and Forward follow the page's whole history.** The toolbar asked the
+  page's own Navigation API, which only counts entries of the current site: after
+  a search result on another site, Back went dead. The engine's session history
+  answers now.
+- **A browser page's DevTools open in a window of their own.** Docked, WebKit's
+  inspector took over the whole app window and stretched the page across it.
+- **Redo no longer sleeps the workspace, and selecting text no longer splits
+  the terminal.** A text field or the file editor now keeps its typing, caret,
+  selection, undo/redo and clipboard chords even when an app shortcut uses the
+  same one, and a key the editor already handled no longer also runs an action.
+- **⌘Q quits cleanly.** macOS's Quit ended the process without the app's
+  shutdown — pending writes were not flushed, the session was reported as a
+  crash on the next launch. Quit now closes the window like its close button,
+  and quitting from the Dock or by logging out still stops every shell.
+- **F5, Ctrl+R, Ctrl+F, Ctrl+P and Alt+← no longer act like a web browser on
+  Windows.** WebView2's browser keys reloaded the whole UI (losing unsaved
+  edits), opened find and print bars, or navigated the app's history. They are
+  off in release builds; a browser page keeps its own.
+- **F12 and Ctrl+Shift+I no longer open DevTools on the app in release
+  builds** — nor did Ctrl+Shift+C, which Linux users press to copy in a
+  terminal. The integrated browser keeps its DevTools.
+- **⌥ shortcuts on macOS match their key.** ⌥⌘S used to be read as ⌥⌘ß.
+- **⌘W on macOS closes the tab instead of the app.** The default menu bar bound
+  Close Window to ⌘W, and a menu shortcut runs before the app sees the key — so
+  closing a tab closed the whole window, with every terminal in it. The app now
+  installs its own menu bar with Close Window on ⌘⇧W, as tabbed Mac apps do.
+- **Hidden side panels no longer put the window controls on top of the tabs.**
+  With the left sidebar hidden, the macOS traffic lights sat over the first
+  terminal tabs; with the right panel hidden, the tab strip's scroll chevron sat
+  under the Quick Commands button (and, off macOS, under the window buttons).
+  The center tab strip now leaves the corner it reaches to the window controls —
+  only when the panel on that side is hidden, and only in the region that
+  touches that corner — and the corner stays draggable. The inline GitHub view
+  follows the same rule instead of a fixed right padding.
+- **The browser panel and the inline GitHub view start with the app's top
+  band.** Their top strip was 36px against the 40px band every other panel
+  draws, so the line under the window's top band broke at their edge.
+- **The GitHub tab of the right panel no longer squeezes the branch line.** In
+  its scrolling column the one-line branch row could shrink to a few pixels and
+  disappear under the repository header.
+
 ## [0.0.55] - 20260924
 ### Added
 

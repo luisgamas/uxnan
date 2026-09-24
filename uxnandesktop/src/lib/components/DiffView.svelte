@@ -15,11 +15,11 @@
   import { EditorState, RangeSetBuilder } from "@codemirror/state";
   import { parseDiff, hunkPatch, toSideRows } from "$lib/diff";
   import { Button } from "$lib/components/ui/button";
-  import * as Tabs from "$lib/components/ui/tabs";
+  import { Segmented } from "$lib/components/ui/segmented";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { focus, icon, tab as tabStyle, text as textToken } from "$lib/design";
+  import { focus, icon, text as textToken } from "$lib/design";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ColumnsIcon from "@hugeicons/core-free-icons/TableColumnsSplitIcon";
@@ -293,47 +293,16 @@
       <div class="min-w-0 flex-1"></div>
     {/if}
 
-    <Tabs.Root
+    <Segmented
       value={mode}
+      options={[
+        { value: "unified", label: i18n.t("diff.unified"), icon: AlignLeftIcon },
+        { value: "side", label: i18n.t("diff.sideBySide"), icon: ColumnsIcon },
+      ]}
       onValueChange={(value) => {
         if (value === "unified" || value === "side") mode = value;
       }}
-      class="shrink-0"
-    >
-      <Tabs.List class={tabStyle.segmentedList}>
-        <TooltipSimple title={i18n.t("diff.unified")}>
-          {#snippet children(tp)}
-            <Tabs.Trigger
-              {...tp}
-              value="unified"
-              class={cn(
-                tabStyle.segmentedTrigger,
-                mode === "unified" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon icon={AlignLeftIcon} class={icon.action} />
-              {i18n.t("diff.unified")}
-            </Tabs.Trigger>
-          {/snippet}
-        </TooltipSimple>
-        <TooltipSimple title={i18n.t("diff.sideBySide")}>
-          {#snippet children(tp)}
-            <Tabs.Trigger
-              {...tp}
-              value="side"
-              class={cn(
-                tabStyle.segmentedTrigger,
-                "border-l border-border/60",
-                mode === "side" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon icon={ColumnsIcon} class={icon.action} />
-              {i18n.t("diff.sideBySide")}
-            </Tabs.Trigger>
-          {/snippet}
-        </TooltipSimple>
-      </Tabs.List>
-    </Tabs.Root>
+    />
   </div>
 
   <!-- Both layouts stay mounted; only the active one is shown. -->

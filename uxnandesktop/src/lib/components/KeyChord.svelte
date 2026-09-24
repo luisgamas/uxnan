@@ -6,7 +6,7 @@
   // rest of the Mac symbols). The separator is deliberately the same everywhere:
   // the menu bar's run-together ⇧⌘N is unreadable in a settings list.
   import Kbd from "./Kbd.svelte";
-  import { formatChordParts } from "$lib/keybindings";
+  import { formatChordParts } from "$lib/keyboard";
   import { cn } from "$lib/utils";
 
   let {

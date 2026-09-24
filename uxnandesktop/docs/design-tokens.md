@@ -227,7 +227,11 @@ fills. Top-level icon controls use the square `shell.appBarAction` or
 `shell.appBarCompactAction`; both are 40×40px. The fixed window-control overlay
 uses `shell.appBarOverlay`, which intentionally has no second hairline because
 the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
-for Settings and Automations.
+for Settings and Automations. **Every panel starts with this appbar** — the left
+sidebar, the center tab strips, the right dock (whatever surface it shows) and
+the inline GitHub view — so the top band reads as one line across the window; a
+panel with nothing to show there still renders an empty `shell.appBar` drag
+strip rather than a strip of its own height.
 
 The status bar is the same anatomy at 28px: `shell.statusBar` paints its *top*
 hairline as an overlay for the same reason the appbar does — a `border-t` lives
@@ -245,6 +249,20 @@ status-bar control a `rounded` or a height other than the bar's.
 do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
 config supplies native overlay traffic lights and `shell.macTrafficLightsInset`
 keeps left-aligned content clear of them.
+
+**The window controls' corners.** The top-left corner holds the traffic lights
+(macOS) and the top-right one holds `WindowControls` (Quick Commands, plus
+minimize / maximize / close off macOS). Which bar reaches a corner depends on the
+layout — hide the left sidebar and the center tab strip becomes the top-left
+bar; close the right dock and it becomes the top-right one — so no bar
+hard-codes a padding for them. `titlebarInsets(edges, isMac)` in
+`src/lib/titlebar.ts` returns the classes for the corners a bar reaches:
+`macTrafficLightsInset` (80px, macOS only) on the left,
+`macWindowControlsInset` (40px) or `windowControlsInset` (160px) on the right.
+`TerminalArea` asks it per region (`regionEdges` — only a region touching the
+area's top corner, with the panel on that side hidden), the inline GitHub view
+per the sidebar and dock state, the `Dock` for the right corner (it is always
+the right-most panel), and `WorkspaceAppBar` for both corners.
 
 The overlay titlebar does **not** place those buttons for us: AppKit keeps the
 position it computed for the 32px system titlebar it replaced, which reads 4px
@@ -283,7 +301,7 @@ pixel-exact for virtualization and keyboard highlighting.
 
 The shell also names repeated chrome geometry: `shell.sidebarBrand` and
 `shell.sidebarSectionHeader`; `overlay.paletteViewport` owns the palette's
-viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
+viewport cap; `tab.panelTrigger` owns the GitHub view's section-trigger padding/type; and
 `tab.terminalTrigger` owns terminal tab trigger geometry.
 
 ### Fields & containers (`field`, `panel`, `focus`)
@@ -301,8 +319,28 @@ viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
 | `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match. Not for the app bar or the status bar: those paint the same hairline as an overlay so their full-height controls keep the band's exact height |
-| `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; shared by the center terminal tabs and the right panel |
-| `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors |
+| `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; used by the center terminal tabs |
+
+### Mode switches (`ui/segmented`)
+
+Picking one of a few views or modes — a file's Edit / Preview / Changes, its
+Unstaged / Staged, a diff's Unified / Side by side, the Git surface's Changes /
+History, an editor's Visual / JSON — is **one component**, not a recipe each
+caller dresses: `Segmented` (pick one; pressing the chosen option keeps it) and
+`SegmentedToggles` (switch several on and off — the find bar's match case /
+whole word / regex), both on Bits UI's toggle group. The look lives in
+`ui/segmented/recipe.ts` alone: a quiet `bg-muted/70` track, 28px tall, with the
+chosen option lifted out of it (`bg-background` + `shadow-xs`, a light
+`foreground/10` lift in dark mode), 12px labels, 14px glyphs, an optional count.
+`fill` shares the width (the Git surface); an option without a label is a
+square glyph button named by its tooltip. A switch is not a tab: tabs
+(`tab.*`) are for places you navigate, a segmented control for how you look at
+the same thing. A test fails if a component draws its own copy again.
+
+The file editor's **find bar** (Mod+F, `EditorFindPanel.svelte`) is built from
+the same parts — `Input`, ghost icon buttons with tooltips, `SegmentedToggles` —
+and mounted as CodeMirror's top panel (`lib/editorFind.svelte.ts`); CodeMirror
+still runs the search and draws the match highlights.
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays

@@ -18,7 +18,7 @@
   import { sshBrowseDirs, sshRepoAdd } from "$lib/api";
   import { app } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import Kbd from "./Kbd.svelte";
   import DirectoryBrowser from "./DirectoryBrowser.svelte";
   import { cn } from "$lib/utils";

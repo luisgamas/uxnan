@@ -7,7 +7,7 @@
   // left-edge marker peeks the *removed* lines on demand (the full diff lives in
   // the tab's Changes view). Ctrl/Cmd+S saves. A banner appears when the file
   // changes on disk while you hold unsaved edits (reload vs keep).
-  import { onDestroy, untrack } from "svelte";
+  import { getAllContexts, onDestroy, untrack } from "svelte";
   import {
     Decoration,
     EditorView,
@@ -25,9 +25,11 @@
     historyKeymap,
     indentWithTab,
   } from "@codemirror/commands";
+  import { searchKeymap } from "@codemirror/search";
+  import { editorFind } from "$lib/editorFind.svelte";
   import type { FileEditorState } from "$lib/state/files.svelte";
   import { languageFor, syntaxHighlight } from "$lib/editorLang";
-  import { resolveBinding, toCodeMirrorKey } from "$lib/keybindings";
+  import { resolveBinding, toCodeMirrorKey } from "$lib/keyboard";
   import { parseHeadDiff } from "$lib/diff";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
@@ -231,7 +233,22 @@
       backgroundColor: "color-mix(in srgb, var(--primary) 18%, transparent)",
       transition: "background-color 600ms ease-out",
     },
+    // Find / replace (Mod+F) is the app's own bar (`EditorFindPanel`); the
+    // match highlights are CodeMirror's, tinted like the selection.
+    ".cm-panels": { backgroundColor: "transparent", color: "inherit", border: "none" },
+    ".cm-panels-top": { borderBottom: "none" },
+    ".cm-searchMatch": {
+      backgroundColor: "color-mix(in srgb, var(--primary) 18%, transparent)",
+      outline: "1px solid color-mix(in srgb, var(--primary) 35%, transparent)",
+    },
+    ".cm-searchMatch.cm-searchMatch-selected": {
+      backgroundColor: "color-mix(in srgb, var(--primary) 38%, transparent)",
+    },
   });
+
+
+  // The find bar mounts as its own root: it inherits this component's context.
+  const contexts = getAllContexts();
 
   let host = $state<HTMLDivElement>();
   let view: EditorView | undefined;
@@ -256,12 +273,14 @@
       extensions: [
         lineNumbers(),
         history(),
+        editorFind(contexts),
         keymap.of([
           ...(saveKey
             ? [{ key: saveKey, preventDefault: true, run: () => (doSave(), true) }]
             : []),
           ...defaultKeymap,
           ...historyKeymap,
+          ...searchKeymap,
           indentWithTab,
         ]),
         ...(lang ? [lang] : []),

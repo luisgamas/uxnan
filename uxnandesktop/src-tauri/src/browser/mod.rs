@@ -16,6 +16,7 @@
 pub mod approval;
 pub mod capture;
 pub mod host;
+mod native;
 pub mod page;
 pub mod policy;
 

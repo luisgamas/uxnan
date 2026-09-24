@@ -599,7 +599,6 @@ export let agentStates = $state<Map<string, AgentState>>(new Map());
 export let gitStatusByWorktree = $state<Map<string, GitStatus>>(new Map());
 export let uiState = $state({
   leftSidebarOpen: true,
-  rightSidebarOpen: true,
   leftSidebarWidth: 280,
   rightSidebarWidth: 350,
 });

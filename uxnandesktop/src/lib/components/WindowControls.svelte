@@ -9,7 +9,7 @@
   import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
   import { focus, shell } from "$lib/design";
   import { icon as iconSize } from "$lib/design";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import { cn } from "$lib/utils";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).

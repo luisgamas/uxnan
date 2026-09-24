@@ -127,7 +127,7 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 - [~] Integracion con PRs de GitHub/GitLab. — **GitHub: hecho** (integración
       `gh`-backed: vista GitHub inline por-proyecto (centro+derecha, abierta desde el
       menú ⋯ de la tarjeta **o el menú contextual de cualquier fila de worktree**,
-      ambas por `github.openSection`) + tab contextual del panel derecho +
+      ambas por `github.openSection`) + superficie contextual del dock derecho +
       review/merge/**close/reopen** de PRs, con **CI en sección expandible** en el detalle
       + **popover** en el head-commit del timeline y por fila en la lista, **diff separado
       por archivo** (colapsado por defecto + expandir/contraer todo), un **timeline estilo
@@ -141,7 +141,7 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       (merge/approve/request-changes **restringidos a PRs abiertos**); al crear un PR se
       **eligen sus ramas `base ← head`** (cualquiera de los dos lados puede ser
       cualquier rama, local o de `origin`; por defecto la rama por defecto del repo y la
-      rama activa, fijada a la del worktree en el tab del panel derecho);
+      rama activa, fijada a la del worktree en la superficie del dock);
       el **merge respeta la protección de ramas**: los métodos son los del repo ∩ los de
       las **rulesets** de la rama base (`gh api …/rules/branches/{base}`; el endpoint
       clásico `/branches/{b}/protection` devuelve 404 en ramas protegidas por ruleset),

@@ -90,8 +90,8 @@ Open it **per project**, from either entry point — both land in the same view:
   the way in while the sidebar is **grouped by status**, where worktrees are
   flattened into attention lanes and no project card — hence no ⋯ menu — is drawn.
 
-It opens **in place of the center + right panels** — the left
-sidebar (projects) and the browser panel stay visible — scoped to that project, so
+It opens **in place of the center** — the left sidebar (projects) and the right
+dock stay visible — scoped to that project, so
 there's no repository selector. A **section switcher** (Pull Requests / Issues /
 Actions) sits next to a **close** button (left) and a **refresh** button (right), all
 inside the view's own toolbar. **Close** it with that button or by activating any
@@ -137,9 +137,10 @@ The **Account / Session** panel (signed-in user, host, token scopes, CLI presenc
 rate-limit — no token is ever shown) and the GitHub preferences live in **Settings →
 GitHub** (see *Settings* below), not in this view.
 
-## The right-panel GitHub tab
+## The dock's GitHub surface
 
-A 4th tab in the right panel (next to Files / Changes / History), scoped to the
+One of the right dock's surfaces (next to Files, Git and Browser — see
+[the right dock](browser.md#the-right-dock)), scoped to the
 **active worktree** — a digest of the repo that worktree belongs to, top to bottom:
 
 | Block | What it shows |
@@ -154,17 +155,16 @@ Every row **opens that item's detail inside the app** — the inline GitHub view
 over already showing that PR's review, that run's log or that issue's thread. None of
 them sends you to the browser (the explicit **Open on GitHub** action still does).
 
-Unlike the per-project GitHub view (scoped to the card you opened), this tab **is** bound
-to the **active worktree** — when no worktree is selected it shows an empty state (like
-the Files / Changes / History tabs). It stays visible whenever enabled (toggle in
-**Settings → GitHub → Right-panel GitHub tab**), showing a "connect" / "no active
-worktree" / "not a GitHub repo" state rather than appearing and disappearing. The
-right-panel **tab strip scrolls horizontally** when it's narrow, and the panel has a
-minimum width that keeps all four tabs visible.
+Unlike the per-project GitHub view (scoped to the card you opened), this surface **is**
+bound to the **active worktree**. The dock offers it for a local git repository whenever
+it is enabled (toggle in **Settings → GitHub → Right-panel GitHub tab**), showing a
+"connect" / "not a GitHub repo" state rather than appearing and disappearing; a plain
+folder or a project on an SSH host does not offer it. Its option in the dock's selector
+carries the branch's pull-request checks (a coloured dot) when there is one.
 
 ## Creating a PR
 
-The create-PR form (in the GitHub view's **Pull Requests** section and in the right-panel tab)
+The create-PR form (in the GitHub view's **Pull Requests** section and in the dock's GitHub surface)
 opens with a **`base ← head`** row: where the PR goes, and where it comes from. Both are
 always visible, even when they can't be changed — a PR silently opened from whatever
 branch happened to be checked out is exactly the mistake this row prevents.
@@ -173,8 +173,8 @@ branch happened to be checked out is exactly the mistake this row prevents.
   "my branch → main": it may target a colleague's branch, a release branch, or another
   feature branch it stacks on. Branches that exist only locally are marked *local only*.
 - **Base** defaults to the repo's **default branch**; **head** defaults to the
-  checked-out one. In the **right-panel tab** the head is fixed to the active worktree's
-  branch and shown read-only — that tab *is* that worktree. In the **section** (which is
+  checked-out one. In the **dock's GitHub surface** the head is fixed to the active worktree's
+  branch and shown read-only — that surface *is* that worktree. In the **section** (which is
   scoped to a *repo*) it's a real choice.
 - The form blocks a `base == head` PR, and warns when either branch hasn't been pushed to
   `origin` yet — `gh` runs with prompts disabled, so it can't offer to push for you.
@@ -282,11 +282,11 @@ The GitHub preferences and the **Account / Session** panel live in **Settings �
 
 | Setting | What it does |
 |---|---|
-| **Right-panel GitHub tab** | Show/hide the contextual right-panel tab (GitHub repos only). |
+| **Right-panel GitHub tab** | Offer or withhold the dock's GitHub surface (local git repositories only). |
 | **Status-bar readout** | Show/hide the passive GitHub block (unread count + rate limit) inside the status bar's backend popover. |
 | **Refresh interval** | How often (seconds) the active worktree's PR/CI status refreshes while focused. `0` = manual only. |
 | **Notifications badge** | Poll your unread notifications count for the backend popover + its dot (an extra request). |
-| **Confirm PR actions** | Ask before creating or merging a PR (both the GitHub view and the right-panel tab). On by default. |
+| **Confirm PR actions** | Ask before creating or merging a PR (both the GitHub view and the dock's GitHub surface). On by default. |
 
 ### AI PR authoring
 
@@ -319,7 +319,7 @@ list, or its model picker sits empty and the entry looks broken.
 Settings persist in `AppSettings.github` (`GithubSettings`); all fields default, so
 older state loads unchanged.
 
-The refresh interval drives the complete right-panel digest: the active branch's
+The refresh interval drives the complete dock digest: the active branch's
 PR context plus the repository's five recent PRs, workflow runs and issues. Each
 list request is sequence-guarded, so switching worktrees cannot let a slower
 response from the previous repository overwrite the current panel.
@@ -341,7 +341,7 @@ may never destroy what is on screen or what the user has typed.** In practice:
   `src/lib/githubRefresh.ts`); a worktree that never had one answers at once.
 - **An unsubmitted "Create PR" form is parked, not held by the component.** Title,
   description, base, head and the draft switch live in `github.prDrafts`, keyed by
-  the form's owner (`worktree:<path>` for the right-panel tab, `section:<path>`
+  the form's owner (`worktree:<path>` for the dock's surface, `section:<path>`
   for the section's own form — both can be open on the same repo and mean
   different things). Any remount restores it; only creating the PR or pressing
   **Cancel** drops it.

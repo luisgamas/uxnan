@@ -10,7 +10,8 @@ the status bar forwards the port to `127.0.0.1` over that host's existing
 connection and opens the result through the same routing described below, so a
 remote server behaves like a local one ([remote hosts](remote-hosts.md)).
 
-It lives in a **right-side "4th panel"**, and **every workspace has its own**.
+It is one of the **right dock's surfaces** (next to Files, Git and GitHub — see
+[the right dock](#the-right-dock)), and **every workspace has its own**.
 The page is a real system webview (WKWebView on macOS, WebView2 on Windows,
 WebKitGTK on Linux) drawn **inside the app window** — a child view of it, not a
 separate window. So it loads **any** http(s) website (Google included), has
@@ -21,63 +22,107 @@ app already runs, so it stays light.
 
 ## One browser per workspace
 
-A workspace — a worktree, or the Global space — has its own browser: its panel
-open or closed, its page, its history and its zoom. Switching workspace hides the
-page you were looking at and shows the next workspace's (when its panel is open);
+A workspace — a worktree, or the Global space — has its own browser: its page,
+its history and its zoom (and, like everything in the dock, whether the dock is
+open and on which surface). Switching workspace hides the page you were looking
+at and shows the next workspace's (when its dock is showing the browser);
 coming back finds the first page exactly where you left it. A page never follows
 you into a workspace it was not opened in.
 
 Links land in the workspace they belong to:
 
-- A link **you** open (the globe, a Ctrl/Cmd-clicked terminal link, the address
-  bar) opens in the workspace on screen.
+- A link **you** open (a Ctrl/Cmd-clicked terminal link, the address bar) opens
+  in the workspace on screen.
 - A link an **agent** opens (its `$BROWSER`, the `curl` route or the `browser_*`
   tools) opens in the workspace **its own terminal** runs in. When that is not the
   workspace on screen, the page loads **hidden** — the agent can load, reload and
   inspect its own dev server without disturbing what you are looking at — and it
-  is waiting there, panel open, when you visit that workspace.
+  is waiting there, the dock open on it, when you visit that workspace.
 
 Pages cost memory, so at most **three** stay alive at once
 (`MAX_LIVE_PAGES` in `src/lib/state/browser.svelte.ts`). Opening a fourth closes
 the one shown longest ago; its URL is kept, and visiting its workspace loads it
 again. A workspace put to **sleep** releases its page the same way.
 
+## The right dock
+
+The right side of the window is **one dock** with the surfaces the workspace on
+screen actually has — **Files** (a project), **Git** (a git repository: its
+Changes and History views behind one segmented control), **GitHub** (a local git
+repository, when the GitHub panel is enabled) and **Browser** (when the browser
+is enabled). A plain folder offers no Git or GitHub; the Global space offers only
+the browser. `src/lib/state/dock.svelte.ts` holds the rules.
+
+- **Open or close it** with the status-bar dock button (bottom-right) or its
+  shortcut (**Mod+J** by default). It reopens on the surface it last showed in
+  that workspace.
+- **The first time** a workspace opens its dock, nothing is chosen yet: the dock
+  shows a chooser, one card per surface, each with its shortcut.
+- **Switch surface** from the selector in the dock's top band — each option
+  carries what is worth knowing without opening it (changed files, the pull
+  request's checks, an agent waiting for approval) — or jump straight to one with
+  its shortcut: **Mod+Shift+E** Files, **Mod+Shift+G** Git, **Mod+Shift+H**
+  GitHub, **Mod+Shift+B** Browser (each opens the dock when it is closed).
+- A worktree's changed-files count in the sidebar opens its **Git → Changes**.
+
+Each workspace remembers its own dock — open or closed, the surface, the Git
+view — in `settings.dock` (the last 200 workspaces used).
+
 ## Opening the browser
 
-Opening the browser temporarily hides the Files / Changes / History / GitHub
-panel. Closing the browser restores that panel only if it was open beforehand;
-navigating to another URL does not change the saved preference. The review-panel
-button or keyboard shortcut switches back to that panel and closes the browser.
-
-- **Toggle it** from the status-bar **globe** button (bottom-right). It opens at
-  the page the workspace last showed, else your configured *home page*, else a
-  blank page.
+- **Show it** from the dock's selector or chooser, or with **Mod+Shift+B**. It
+  opens at the page the workspace last showed, else your configured *home page*,
+  else an empty state waiting for an address.
 - **From a link:** anything the ADE opens as a URL (a **Ctrl/Cmd-clicked** terminal
   link, or a link an agent opens) lands here when your link policy is *internal*
   (the default).
 
-The browser **fills the panel** and resizes with it — drag the panel's left edge to
-resize (the width is remembered). The browser has no separate size of its own.
-Closing the panel closes that workspace's page; the other workspaces keep theirs.
+The browser **fills the dock** and resizes with it — drag the dock's left edge to
+resize. The browser keeps a width of its own (wider than the other surfaces'), so
+widening it for a page never leaves Files or Git stretched.
+
+Leaving the browser surface, or closing the dock, only **hides** the page: it is
+there, scrolled where you left it, when you come back. The toolbar's **✕** does
+what Settings → Browser → *Close button* says: **clear the page** (the default —
+that workspace's page is released and its history cleared, leaving the browser
+empty as on its first open), **go back to the home page** (clearing it when none
+is set), or **close the browser and the panel**. The other workspaces keep
+their pages either way.
 
 ### Chrome
 
 Back · Forward · **Reload / Stop** (one button: Stop while the page loads;
 Shift-click reloads bypassing the cache) · address bar (a lock for https, a globe
 otherwise; a thin progress line while loading) · zoom level (shown only when it is
-not 100 % — click to reset) · **open in system browser** · **DevTools** · close.
+not 100 % — click to reset) · **open in system browser** · **DevTools** (in a
+window of their own — docked, WebKit's inspector took over the whole app window)
+· close page.
 Back and Forward disable themselves when the page has no history that way (where
 the engine reports it).
 
 The address bar follows the page — including in-app navigations a single-page app
-makes with `history.pushState` — and never overwrites what you are typing. For
-`localhost` and loopback addresses it assumes `http://`; otherwise `https://`.
+makes with `history.pushState` — and never overwrites what you are typing. What
+you type there always leads somewhere, as in any browser (`resolveAddress` in
+`src/lib/browserAddress.ts`):
+
+- an address with a scheme loads as it is;
+- this machine and the local network — `localhost`, loopback, `*.localhost`, an
+  IPv4 address, `host:port` — load over `http://` (a dev server);
+- a domain name (`example.com`, `docs.rs/serde`) loads over `https://`;
+- anything else — words, a phrase, a single name — is **searched** with the
+  search engine chosen in Settings → Browser.
+
 **Esc** restores the page's URL.
 
 With the keyboard in the panel's toolbar: **Ctrl/Cmd+L** focuses the address bar,
 **Ctrl/Cmd+R** reloads (**Shift** bypasses the cache), **Ctrl/Cmd+[** / **]** go
 back / forward, **Ctrl/Cmd+=** / **−** / **0** zoom in / out / reset. Once you click
-into the page, the page has the keyboard.
+into the page, the page has the keyboard — its own keys first (find, reload and
+the other browser keys work there) — and the app's **global** shortcuts still
+work from inside it: the dock toggle, the dock surfaces, the sidebar, new
+terminals, the palettes, Settings. Shortcuts that act on the focused tab or
+split (close tab, cycle tabs) need the app's UI focused. How that is routed per
+platform is in [the keyboard guide](keyboard.md).
 
 A link that opens a new window (`target="_blank"`, `window.open`) loads in the same
 page — a developer browser has no tabs. **Downloads** go to your Downloads folder
@@ -102,7 +147,9 @@ redirects and iframes (which may additionally use `about:srcdoc` and `blob:`).
 | **Let agents open links** | Inject a `$BROWSER` shim so agents' links land in-app automatically (see below). | On |
 | **Clickable terminal links** | Make URLs printed in the terminal **Ctrl/Cmd-clickable** (applies to terminals opened afterwards). | On |
 | **Let agents use other sites** | Let agents read and act on pages outside this machine. Off: the page tools work only on local pages (their dev servers). On: each site still needs your approval once, and high-risk actions every time (see *Agents reading and using the page*). | Off |
-| **Home page** | Opened when the browser panel has no target. Blank if empty. | — |
+| **Home page** | Opened when the browser has no page to show. Blank if empty. | — |
+| **Close button** | What the toolbar's ✕ does: clear the page, go back to the home page, or close the browser and the panel. | Clear the page |
+| **Search engine** | Where the address bar sends what is not an address: Google (default), DuckDuckGo, Bing, Brave Search, or a custom URL with `%s` for the query (an unusable one searches Google). | Google |
 
 The setting is one **decision point**: links from the UI, the terminal, and agents
 all flow through the same policy, and the system browser is always available as a
@@ -337,8 +384,8 @@ panel of the agent's workspace, naming the agent, the element (highlighted in
 the page), what it would do and the site: **Deny**, **Allow** (this action), or —
 for a site outside this machine — **Allow on *site*** (reads and ordinary actions
 there stop asking until the page closes). When the request is in a workspace you
-are not looking at, or its panel is closed, the status-bar **globe** gets an
-amber dot; clicking it takes you there. The agent waits **45 seconds**, then its
+are not looking at, or its dock is not showing the browser, the status-bar dock
+button gets an amber dot; clicking it takes you there. The agent waits **45 seconds**, then its
 call is refused with a message telling it to explain what it wants and ask
 again. Nothing about approvals is remembered: closing the page, a restart or a
 navigation ends them, and an approval is for the document the agent looked at —
@@ -384,9 +431,10 @@ the panels, so the page hides while either is open.
 
 ## Performance
 
-A page only exists while its workspace's browser is open: it is created when the
-panel (or an agent) opens it and destroyed when the panel closes, the workspace
-sleeps, or it is the oldest of more than three live pages. It reuses the OS webview
+A page only exists while its workspace has one open: it is created when you (or
+an agent) open it and destroyed when its ✕ closes it, the workspace sleeps, or it
+is the oldest of more than three live pages — hiding it (another dock surface, the
+dock closed, another workspace) keeps it. It reuses the OS webview
 runtime the app already loads (far lighter than bundling a browser). The panel
 measures its slot only when something changes — a resize, the window, an overlay
 opening or closing — not every frame; while the page is on screen it asks it for
@@ -401,7 +449,8 @@ what the engine does not push (an in-page URL change, the history state) every
 - Because the page is a native view, anything uxnan draws over it has to hide it
   first (see *Dialogs and menus over the browser*): while a dialog is open the
   panel shows a still image of the page (an empty slot if the capture fails).
-- Keyboard shortcuts of the app do not reach it while the page itself has the
-  keyboard; click the toolbar (or anywhere in the app) to give it back.
+- With the page focused, only the app's global shortcuts work (see
+  [the keyboard guide](keyboard.md)); click the toolbar (or anywhere in the app)
+  for the rest.
 - The `$BROWSER` auto-interception only covers tools that honor that convention; for
   others, use the explicit `curl` call above.

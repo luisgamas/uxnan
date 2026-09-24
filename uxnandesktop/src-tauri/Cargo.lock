@@ -6689,6 +6689,7 @@ dependencies = [
  "futures-util",
  "git2",
  "globset",
+ "gtk",
  "hex",
  "ignore",
  "notify",

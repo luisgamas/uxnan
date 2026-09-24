@@ -40,8 +40,11 @@ mod gitfast;
 pub mod control;
 pub mod github;
 mod hooks;
+mod keyboard;
 pub mod launchenv;
 mod mcpinject;
+#[cfg(target_os = "macos")]
+mod menu;
 mod model;
 mod path_env;
 mod persistence;
@@ -102,6 +105,16 @@ pub fn run() {
         // window config provides the first-run defaults.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            // The native half of the keyboard layer (`keyboard.rs`). On macOS
+            // the app builds its own menu bar — the default one binds Close
+            // Window to ⌘W and quits without the app's shutdown (`menu.rs`);
+            // the UI fills in its commands once it has loaded.
+            app.manage(keyboard::KeyboardState::default());
+            #[cfg(target_os = "macos")]
+            {
+                crate::menu::install(app.handle(), &keyboard::Snapshot::default())?;
+                app.on_menu_event(|app, event| crate::menu::on_event(app, event.id().as_ref()));
+            }
             // Resolve the app data directory (the OS-specific one, unless
             // `UXNAN_DATA_DIR` points the process at a disposable profile) and
             // load (or default) the persisted state, then publish it as managed
@@ -336,6 +349,25 @@ pub fn run() {
                     "uxnan-cli is not bundled with this build (built without the sidecar overlay)",
                 ),
             }
+
+            // The main window, created here rather than from the config so its
+            // web inspector exists only in development builds: in a release, F12
+            // or Ctrl+Shift+I must not open DevTools on the app itself (the
+            // integrated browser's pages keep theirs — the `devtools` feature).
+            // Created after every piece of state is managed, so the UI never
+            // calls a command whose state is missing.
+            let main_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or("the main window is missing from tauri.conf.json")?;
+            let main = tauri::WebviewWindowBuilder::from_config(app.handle(), &main_config)?
+                .devtools(cfg!(debug_assertions))
+                .build()?;
+            keyboard::quiet_engine_keys(&main);
 
             // Pause the git watcher while the window is unfocused, and take the
             // desktop pet window down with the main window — with the pet still
@@ -698,13 +730,25 @@ pub fn run() {
             commands::github_ai_draft_pr,
             commands::diagnostics_log,
             commands::diagnostics_report,
+            keyboard::keyboard_set_commands,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // Kill every live PTY child when the app exits, so no shell/agent
-            // is left running in the background.
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            // Tear down when the app exits: after its last window closed
+            // (`ExitRequested`) or when macOS ends it without one — the Dock's
+            // Quit, logging out (`Exit`). Runs once whichever comes first.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                static SHUT_DOWN: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if SHUT_DOWN.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                // Kill every live PTY child, so no shell/agent is left running
+                // in the background.
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     state.pty.close_all();
                     // Release any keep-awake helper (kills caffeinate /

@@ -9,7 +9,7 @@ describe('phase five work-surface batch B contracts', () => {
 
     expect(browser).toContain('import { Button } from "$lib/components/ui/button"');
     expect(browser).toContain('import { Input } from "$lib/components/ui/input"');
-    expect(browser).toContain('import { focus, icon } from "$lib/design"');
+    expect(browser).toContain('import { focus, icon, text } from "$lib/design"');
     expect(browser).toContain('size="icon-xs"');
     expect(browser).toContain('density="compact"');
     expect(browser).toContain('overlayCovers(r)');
@@ -17,14 +17,12 @@ describe('phase five work-surface batch B contracts', () => {
     expect(browser).not.toMatch(/<button\b/);
   });
 
-  it('uses Bits Tabs for file-view and staged selectors', () => {
+  it('uses the shared segmented control for file-view and staged selectors', () => {
     const fileTabs = source('FileTabView.svelte');
 
-    expect(fileTabs).toContain('import * as Tabs from "$lib/components/ui/tabs"');
-    expect(fileTabs).toContain('tabStyle.segmentedList');
-    expect(fileTabs).toContain('tabStyle.segmentedTrigger');
-    expect(fileTabs).toContain('value="unstaged"');
-    expect(fileTabs).toContain('value="staged"');
+    expect(fileTabs).toContain('import { Segmented } from "$lib/components/ui/segmented"');
+    expect(fileTabs).toContain('value: "unstaged"');
+    expect(fileTabs).toContain('value: "staged"');
     expect(fileTabs).toContain('value={shown}');
     expect(fileTabs).not.toMatch(/class=\{cn\([^\n]*\bh-6\b/);
   });
@@ -33,8 +31,7 @@ describe('phase five work-surface batch B contracts', () => {
     const diff = source('DiffView.svelte');
 
     expect(diff).toContain('import { Button } from "$lib/components/ui/button"');
-    expect(diff).toContain('import * as Tabs from "$lib/components/ui/tabs"');
-    expect(diff).toContain('tabStyle.segmentedList');
+    expect(diff).toContain('import { Segmented } from "$lib/components/ui/segmented"');
     expect(diff).toContain('size="icon-xs"');
     expect(diff).toContain('size="xs"');
     expect(diff).toContain('focus.ring');

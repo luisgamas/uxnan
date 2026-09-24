@@ -1,18 +1,18 @@
-// Shared dispatcher for the app's keyboard actions, so the global handler
-// (`+page.svelte`) and the terminal handler (`Terminal.svelte`) run identical
-// code instead of two drifting switch blocks. Which actions win while a terminal
-// is focused is decided separately by the arbiter (`keybindings.ts`); this only
-// performs an action once someone decided to run it.
+// Runs the app's keyboard actions — one place, whoever heard the key: the
+// window (`+page.svelte`), a terminal (`Terminal.svelte`) or the native layer
+// for a browser page (`keyboard:action`). Who gets a key is decided by the
+// router (`router.ts`); this only performs an action once it was decided.
 
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
 import { projects } from "$lib/state/projects.svelte";
+import { dock } from "$lib/state/dock.svelte";
 import { toast } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 
 export interface RunActionOpts {
   /** The terminal that had focus — so `closeCenter` closes *this* terminal
-   *  rather than the active center tab. */
+   *  rather than the active center tab, and `clearTerminal` has one to clear. */
   terminalId?: string;
 }
 
@@ -31,6 +31,12 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
         return true;
       }
       return false;
+    case "clearTerminal": {
+      const controller = opts.terminalId ? terminals.controller(opts.terminalId) : undefined;
+      if (!controller) return false;
+      controller.clear();
+      return true;
+    }
     case "cycleTabNext":
       if (!terminals.root) return false;
       terminals.cycleTab(true);
@@ -97,7 +103,21 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
       void app.persistSettings();
       return true;
     case "toggleRightSidebar":
-      app.toggleRightSidebar();
+      dock.toggle();
+      return true;
+    // A surface's shortcut reveals it (opening the dock if needed); closing is
+    // the dock toggle's job, so pressing one twice never hides what you asked for.
+    case "dockFiles":
+    case "dockGit":
+    case "dockGithub": {
+      const surface = id === "dockFiles" ? "files" : id === "dockGit" ? "git" : "github";
+      if (!dock.has(surface)) return false;
+      dock.show(surface);
+      return true;
+    }
+    case "dockBrowser":
+      if (!dock.has("browser")) return false;
+      void app.openBrowser().catch(() => {});
       return true;
     case "saveFile":
       return false; // handled by the editor's own CodeMirror keymap when focused

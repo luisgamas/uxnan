@@ -16,7 +16,7 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { isMac } from "$lib/keybindings";
+  import { isMac } from "$lib/keyboard";
   import Kbd from "./Kbd.svelte";
   import DirectoryBrowser from "./DirectoryBrowser.svelte";
   import AddProjectDialog from "./AddProjectDialog.svelte";

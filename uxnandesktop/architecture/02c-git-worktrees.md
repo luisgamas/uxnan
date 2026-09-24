@@ -658,8 +658,10 @@ El siguiente diagrama muestra cómo se conectan los módulos de Git, diffs y wor
 
 ## 6. Pestaña de Archivos y Editor
 
-El panel derecho expone **hasta cuatro vistas mediante pestañas** (`RightPanel.svelte`
-con `shadcn-svelte` Tabs). De izquierda a derecha:
+The right dock (`Dock.svelte`, `state/dock.svelte.ts`; see `02a` §4.2b) offers the
+surfaces below — only those the workspace has: no Git or GitHub for a plain folder.
+Changes and History are one **Git** surface with a segmented Changes / History
+switch (`GitSurface.svelte`); the browser is the dock's fourth surface. In order:
 
 1. **Archivos** (`FileTreePanel.svelte`): el árbol de archivos completo del
    worktree/proyecto activo, no solo los archivos con cambios.
@@ -678,7 +680,7 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    `GithubWorktreeDialog` para arrancar su worktree. La cabecera abre la vista de
    GitHub del proyecto y refresca (con tooltip que dice qué relee). Los iconos y
    tonos de estado son los de `$lib/githubDisplay`, compartidos con la vista
-   inline. Solo aparece cuando el repo es de GitHub y el tab está habilitado
+   inline. El dock lo ofrece para un repositorio git local cuando está habilitado
    (`AppSettings.github.rightPanelTab`). Cada poll configurado de GitHub refresca
    tanto el contexto de la rama como las tres listas del resumen del repositorio
    (PR, ejecuciones de CI e issues), incluso si no cambiaron el nombre de la rama
@@ -690,7 +692,7 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    como a un remontaje (§3.3, «Un refresco de fondo no puede quitar nada»). Las
    vistas grandes (review/diff/logs) se
    abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
-   centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se
+   centro dejando visibles el sidebar izquierdo y el dock derecho. Se
    abre desde el menú **⋯** de cada tarjeta de proyecto y desde el menú contextual
    de **cualquier fila de worktree** (**GitHub → Pull Requests / Issues / Actions**,
    siempre sobre el proyecto propietario y por el mismo camino,
@@ -703,7 +705,7 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
 
 El estado git del worktree activo se carga en el shell siempre montado
 (`+page.svelte`), de modo que la pestaña Archivos colorea su árbol aunque el
-panel derecho esté cerrado o la pestaña Cambios esté desmontada. La pestaña
+dock derecho esté cerrado o la vista Cambios esté desmontada. La pestaña
 Historial mantiene su propio store (`history.svelte.ts`), que sobrevive al cambio
 de pestaña. Las operaciones commit/push/pull de Uxnan refrescan inmediatamente un
 log ya cargado, y el watcher de estado hace lo mismo cuando un commit externo
@@ -912,7 +914,7 @@ permite ocultar detectados, **explorar** el equipo para añadir cualquier app
 fijar el **icono** de cada editor (favicon automático o imagen/glifo propio).
 Los atajos de teclado de la app son configurables
 en **Configuración → Atajos de teclado** (`AppSettings.keybindings`,
-`keybindings.ts`); p. ej. `Ctrl/Cmd+W` cierra la pestaña activa del área central
+`src/lib/keyboard/`, `02b` §4.b); p. ej. `Ctrl/Cmd+W` cierra la pestaña activa del área central
 (con la guarda de cambios sin guardar si es un archivo sucio).
 
 Acceso de archivos no confinado (la propia máquina del usuario, igual que

@@ -28,10 +28,9 @@
     spawnPty,
     type TerminalInstance,
   } from "$lib/terminal/instances";
-  import { arbitrateTerminalKey, isMac, type ArbiterContext } from "$lib/keybindings";
+  import { isMac, routeTerminalKey, runAppAction } from "$lib/keyboard";
   import { diagnosticsLog } from "$lib/api";
 
-  import { runAppAction } from "$lib/keyactions";
   import { terminalKeyboard } from "$lib/state/terminalKeyboard.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
   import { control, focus } from "$lib/design";
@@ -529,6 +528,7 @@
         e.ctrlKey &&
         !e.altKey &&
         !e.metaKey &&
+        !e.shiftKey &&
         e.key.toLowerCase() === "c" &&
         !term?.hasSelection()
       ) {
@@ -546,12 +546,13 @@
     // falls through to xterm's defaults and on to the PTY). Re-attached on every
     // mount (xterm keeps exactly one custom handler — attaching replaces the
     // previous mount's):
-    //  - The arbiter (`keybindings.ts`) decides app-shortcut vs TUI/agent per the
-    //    user's per-action policy, with a leader one-shot override and a
-    //    per-terminal focus (passthrough) mode; a resolved app action runs through
-    //    the shared dispatcher (same code as the global +page handler).
-    //  - Ctrl+C copies when there's a selection, else passes through as SIGINT.
-    //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
+    //  - The keyboard router (`$lib/keyboard`) decides app shortcut vs TUI/agent
+    //    per the person's per-action policy, with a leader one-shot override and
+    //    a per-terminal focus (passthrough) mode; a resolved app action runs
+    //    through the shared dispatcher (the same code the window runs).
+    //  - Copy / paste: ⌘C / ⌘V on macOS; Ctrl+C (with a selection, else it is
+    //    SIGINT) / Ctrl+V and the terminal convention Ctrl+Shift+C / Ctrl+Shift+V
+    //    elsewhere. Paste is preventDefault-ed so the native paste never doubles it.
     //  - When an app negotiates the Kitty/CSI-u keyboard protocol, keys are
     //    encoded for it (dormant otherwise — existing behaviour is unchanged).
     //  - Shift+Enter / Alt+Enter insert a newline (xterm otherwise collapses
@@ -572,15 +573,14 @@
       // Interrupt inference watches (never consumes) for Ctrl+C / double-Esc.
       noteInterruptIntent(e);
 
-      // Arbitrate app-shortcut vs TUI/agent per the user's per-action policy, with
-      // the leader one-shot override and per-terminal focus (passthrough) mode. A
-      // resolved app action runs through the shared dispatcher (same code as the
-      // global +page handler); everything else falls through to the PTY below.
-      const ctx: ArbiterContext = {
+      // App shortcut vs TUI/agent, per the person's per-action policy, the
+      // leader one-shot override and this terminal's focus (passthrough) mode.
+      // A resolved app action runs through the shared dispatcher; everything
+      // else falls through to the PTY below.
+      const disp = routeTerminalKey(e, {
         passthrough: terminalKeyboard.passthrough(id),
         leaderPending,
-      };
-      const disp = arbitrateTerminalKey(e, ctx);
+      });
       // A pending leader is consumed by exactly one following key.
       if (leaderPending && disp.kind !== "leader") {
         leaderPending = false;
@@ -604,16 +604,24 @@
         e.preventDefault();
         return false;
       }
+      // A ⌘ shortcut left to the terminal is marked handled, so the macOS menu
+      // bar does not run it behind the terminal's back (xterm ignores ⌘ keys).
+      if (disp.kind === "surface" && disp.claim) e.preventDefault();
 
       // Copy / paste on the platform's primary modifier: ⌘ on macOS, Ctrl
-      // elsewhere. On macOS this keeps Ctrl+C as the shell's SIGINT (only ⌘+C
-      // copies); on Windows/Linux Ctrl+C copies when there's a selection.
+      // elsewhere — plus Ctrl+Shift+C / V off macOS, the terminal convention
+      // that never collides with SIGINT. On macOS Ctrl+C stays the shell's
+      // SIGINT (only ⌘C copies); elsewhere Ctrl+C copies when there's a
+      // selection.
       const primaryMod = isMac ? e.metaKey : e.ctrlKey;
-      if (primaryMod && !e.altKey && !e.shiftKey) {
+      const clipboardChord = primaryMod && !e.altKey && (!e.shiftKey || !isMac);
+      if (clipboardChord) {
         const key = e.key.toLowerCase();
-        if (key === "c" && term?.hasSelection()) {
-          copySelection();
-          term.clearSelection();
+        if (key === "c" && (e.shiftKey || term?.hasSelection())) {
+          if (term?.hasSelection()) {
+            copySelection();
+            term.clearSelection();
+          }
           e.preventDefault();
           return false;
         }
@@ -760,6 +768,7 @@
       paste: pasteClipboard,
       hasSelection,
       focus: () => term?.focus(),
+      clear: () => term?.clear(),
       restart: async (resume) => {
         if (!inst || !term) return;
         term.write(`\r\n\x1b[2m── ${i18n.t("terminal.restarted")} ──\x1b[0m\r\n`);

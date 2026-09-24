@@ -14,6 +14,7 @@
   import { unread } from "$lib/state/unread.svelte";
   import { github } from "$lib/state/github.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
+  import { dock } from "$lib/state/dock.svelte";
   import { resolveAgentDisplay, resolveAgentView } from "$lib/state/agentDisplay";
   // Aliased: this component already binds `agentStatus` to its own aggregate.
   import { agentStatus as agentReports } from "$lib/state/agentStatus.svelte";
@@ -178,6 +179,13 @@
     if (drag?.consumeClick()) return;
     projects.setActiveWorktree(row.path);
     if (terminals.terminalCount(wsKey) === 0) projects.openTerminalAt(row.path);
+  }
+
+  /** The change count's click: select this worktree and show its changes. */
+  function reviewChanges(e: Event) {
+    e.stopPropagation();
+    projects.setActiveWorktree(row.path);
+    dock.showGit("changes", wsKey);
   }
 
   // The stable per-branch icon key (branch name, or path when detached) + the
@@ -421,11 +429,17 @@
                     </TooltipSimple>
                   {/if}
                   {#if status && status.dirty > 0}
-                    <TooltipSimple title={i18n.t("worktree.dirtyTooltip", { n: status.dirty })}>
+                    <!-- The change count takes you to the changes: it selects
+                         this worktree and opens its dock on Git › Changes. -->
+                    <TooltipSimple title={`${i18n.t("worktree.dirtyTooltip", { n: status.dirty })} · ${i18n.t("dock.reviewChanges")}`}>
                       {#snippet children(tp2)}
                         <span
                           {...tp2}
-                          class={cn("inline-flex shrink-0 items-center gap-0.5 text-amber-600 dark:text-amber-400", text.indicator)}
+                          role="button"
+                          tabindex="-1"
+                          class={cn("inline-flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-0.5 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400", text.indicator)}
+                          onclick={reviewChanges}
+                          onkeydown={(e) => e.key === "Enter" && reviewChanges(e)}
                         >
                           <span class="size-1.5 rounded-full bg-amber-500"></span>{status.dirty}
                         </span>

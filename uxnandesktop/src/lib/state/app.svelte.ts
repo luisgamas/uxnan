@@ -32,7 +32,9 @@ import {
   type TerminalProfile,
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
+import { closeGuard, closeMatters } from "$lib/state/closeGuard.svelte";
 import { browser } from "$lib/state/browser.svelte";
+import { dock } from "$lib/state/dock.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
@@ -124,13 +126,6 @@ class AppStore {
   settingsOpen = $state(false);
   /** Whether the multi-agent orchestration console is open. */
   orchestrationOpen = $state(false);
-  /** Whether the integrated browser panel (the right-side "4th panel") is open
-   *  in the workspace on screen — each workspace has its own browser. */
-  get browserOpen(): boolean {
-    return browser.isOpen();
-  }
-  /** Browser visibility temporarily overrides the saved review-panel preference. */
-  rightSidebarVisible = $derived(this.settings.rightSidebarOpen && !this.browserOpen);
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
   /** Whether the inline GitHub view is showing (it replaces the center + right
@@ -235,37 +230,24 @@ class AppStore {
     this.automationsOpen = false;
   }
 
-  /** Open the integrated browser of `workspace` (default: the one on screen) at
-   *  `url` — or, with no URL, at the page it already shows, the configured
-   *  homepage, or a blank page. */
+  /** Show the browser of `workspace` (default: the one on screen) in its dock,
+   *  loading `url` when one is given. With none, the page it already has stays
+   *  as it is; a workspace without one opens the configured home page, or an
+   *  empty browser waiting for an address. */
   openBrowser(url?: string, workspace?: string): Promise<void> {
-    const home = this.settings.browser?.homepage?.trim();
-    const current = browser.sessions[workspace ?? browser.activeKey]?.url;
-    const target = (url && url.trim()) || current || (home && home.length > 0 ? home : "about:blank");
-    return browser.open(target, workspace);
-  }
-
-  /** Close the integrated browser in the workspace on screen (its page is
-   *  destroyed; other workspaces keep theirs). */
-  closeBrowser(): void {
-    browser.close();
-  }
-
-  /** Toggle the review panel, keeping browser-only changes out of saved layout. */
-  toggleRightSidebar(): void {
-    if (this.browserOpen) {
-      this.closeBrowser();
-      this.settings.rightSidebarOpen = true;
-    } else {
-      this.settings.rightSidebarOpen = !this.settings.rightSidebarOpen;
+    const ws = workspace ?? browser.activeKey;
+    const target = url?.trim();
+    if (target) return browser.open(target, ws);
+    const session = browser.sessions[ws];
+    if (session?.live) {
+      dock.show("browser", ws);
+      return Promise.resolve();
     }
-    void this.persistSettings();
-  }
-
-  /** Toggle the integrated browser panel (opens at the homepage/blank). */
-  toggleBrowser(): void {
-    if (this.browserOpen) this.closeBrowser();
-    else void this.openBrowser().catch(() => {});
+    const home = this.settings.browser?.homepage?.trim();
+    const resume = session?.url || home;
+    if (resume) return browser.open(resume, ws);
+    dock.show("browser", ws);
+    return Promise.resolve();
   }
 
   /** Subscribe to OS dark-mode changes so the "System" theme tracks them live. */
@@ -418,20 +400,32 @@ class AppStore {
     }
   }
 
-  /** Flush pending debounced writes (terminal layout, orchestration runs,
-   *  workspace-recency stamps) before the window actually closes, so a change
-   *  made inside a debounce window at quit time isn't dropped. `preventDefault`
-   *  holds the close, then `destroy()` closes for real (it does not re-fire this
-   *  handler). Wrapped in try/catch so the web preview (no Tauri window) — where
-   *  debounced writes are best-effort — keeps working. */
+  /** Close the window — which quits the app — without losing work: ask first
+   *  when an agent is mid-turn or a file has unsaved edits (`closeGuard`), then
+   *  flush pending debounced writes (terminal layout, orchestration runs,
+   *  workspace-recency stamps) so a change made inside a debounce window at
+   *  quit time isn't dropped. Every way of closing lands here: the close
+   *  button, Alt+F4, ⌘Q and Close Window (the macOS menu closes the window).
+   *  `preventDefault` holds the close, then `destroy()` closes for real (it
+   *  does not re-fire this handler). Wrapped in try/catch so the web preview
+   *  (no Tauri window) — where debounced writes are best-effort — keeps working. */
   private async listenCloseRequested(): Promise<void> {
     try {
       const win = getCurrentWindow();
       let closing = false;
       await win.onCloseRequested(async (event) => {
+        event.preventDefault(); // hold the close while we ask and flush
         if (closing) return; // re-entry guard
         closing = true;
-        event.preventDefault(); // hold the close while we flush
+        const work = terminals.unfinishedWork();
+        if (closeMatters(work)) {
+          // A hidden or minimized window still has to show the question.
+          await Promise.allSettled([win.unminimize(), win.show(), win.setFocus()]);
+          if (!(await closeGuard.request(work))) {
+            closing = false;
+            return;
+          }
+        }
         try {
           // Bound the wait so the window ALWAYS closes: `flushAll` already
           // contains a *throw* (`allSettled`), but a flush whose backend `invoke`

@@ -1,9 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { app } from "$lib/state/app.svelte";
-  import { terminals } from "$lib/state/terminals.svelte";
   import { projects } from "$lib/state/projects.svelte";
-  import { browser } from "$lib/state/browser.svelte";
   import { orchestration } from "$lib/state/orchestration.svelte";
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
   import { sessions } from "$lib/state/sessions.svelte";
@@ -15,8 +13,7 @@
   import { usage } from "$lib/state/usage.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
-  import { matchAction } from "$lib/keybindings";
-  import { runAppAction } from "$lib/keyactions";
+  import { handleWindowKey, startNativeKeyboard } from "$lib/keyboard";
   import { isExperimentalPlatform, osLabel } from "$lib/platform";
   import { clampPanelWidth } from "$lib/panelWidth";
   import { cn } from "$lib/utils";
@@ -25,18 +22,17 @@
   import FlaskIcon from "@hugeicons/core-free-icons/FlaskConicalIcon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
   import PanelLeftIcon from "@hugeicons/core-free-icons/PanelLeftIcon";
-  import PanelRightIcon from "@hugeicons/core-free-icons/PanelRightIcon";
-  import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
   import LayersIcon from "@hugeicons/core-free-icons/Layers01Icon";
   import WorkflowIcon from "@hugeicons/core-free-icons/Flowchart01Icon";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
+  import CloseGuardDialog from "$lib/components/CloseGuardDialog.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
-  import RightPanel from "$lib/components/RightPanel.svelte";
-  import { rightPanel, RIGHT_PANEL_MAX } from "$lib/state/rightPanel.svelte";
-  import BrowserPanel from "$lib/components/BrowserPanel.svelte";
+  import Dock from "$lib/components/Dock.svelte";
+  import DockToggle from "$lib/components/DockToggle.svelte";
+  import { dock } from "$lib/state/dock.svelte";
   import NewWorktreeDialog from "$lib/components/NewWorktreeDialog.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import Automations from "$lib/components/Automations.svelte";
@@ -57,18 +53,23 @@
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
   const LEFT_MAX = 480;
-  // The right panel's floor is the measured width of its tab strip
-  // (Files/Changes/History/GitHub) so every tab always fits — see
-  // `rightPanel.min` (localized labels + the optional GitHub tab shift it). The
-  // ceiling is shared with that module.
-  const RIGHT_MAX = RIGHT_PANEL_MAX;
+  // The dock keeps two widths: one for Files / Git / GitHub, and a wider one for
+  // the browser, since a page wants more room than a file tree. Its tabs are
+  // icons, so no label length sets a floor.
+  const DOCK_MIN = 280;
+  const DOCK_MAX = 560;
   const BROWSER_MIN = 320;
   const BROWSER_MAX = 900;
 
-  /** Fallback width for the browser panel when settings predate it. */
-  const browserWidth = () => app.settings.browserPanelWidth ?? 520;
+  /** The dock's width for the surface it shows. */
+  const dockShowsBrowser = $derived(dock.showing() === "browser");
+  const dockWidth = $derived(
+    dockShowsBrowser
+      ? clampPanelWidth(app.settings.browserPanelWidth ?? 520, BROWSER_MIN, BROWSER_MAX)
+      : clampPanelWidth(app.settings.rightSidebarWidth, DOCK_MIN, DOCK_MAX),
+  );
 
-  type Side = "left" | "right" | "browser";
+  type Side = "left" | "right";
 
   let dragging = $state<Side | null>(null);
   let startX = 0;
@@ -77,12 +78,7 @@
   function onHandleDown(side: Side, e: PointerEvent) {
     dragging = side;
     startX = e.clientX;
-    startWidth =
-      side === "left"
-        ? app.settings.leftSidebarWidth
-        : side === "right"
-          ? app.settings.rightSidebarWidth
-          : browserWidth();
+    startWidth = side === "left" ? app.settings.leftSidebarWidth : dockWidth;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
@@ -91,17 +87,12 @@
     const dx = e.clientX - startX;
     if (dragging === "left") {
       app.settings.leftSidebarWidth = clampPanelWidth(startWidth + dx, LEFT_MIN, LEFT_MAX);
-    } else if (dragging === "right") {
-      // Right handle grows the panel as the pointer moves left. The floor is the
-      // live tab-strip width, so the panel can't be shrunk to clip the tabs.
-      app.settings.rightSidebarWidth = clampPanelWidth(
-        startWidth - dx,
-        rightPanel.min,
-        RIGHT_MAX,
-      );
-    } else {
-      // Browser panel handle (far right) grows as the pointer moves left.
+    } else if (dockShowsBrowser) {
+      // The dock's handle grows it as the pointer moves left — the width of
+      // the surface it shows.
       app.settings.browserPanelWidth = clampPanelWidth(startWidth - dx, BROWSER_MIN, BROWSER_MAX);
+    } else {
+      app.settings.rightSidebarWidth = clampPanelWidth(startWidth - dx, DOCK_MIN, DOCK_MAX);
     }
   }
 
@@ -142,26 +133,6 @@
   function toggleLeftSidebar() {
     app.settings.leftSidebarOpen = !app.settings.leftSidebarOpen;
     void app.persistSettings();
-  }
-  /** An agent's approval request the person cannot see right now: waiting in
-   *  another workspace, or in this one with its browser panel closed. */
-  const pendingApproval = $derived(
-    browser.approvals.find((a) => a.workspace !== browser.activeKey || !app.browserOpen) ?? null,
-  );
-
-  /** The globe: go to a waiting approval first, else toggle the browser. */
-  function onGlobe() {
-    const waiting = pendingApproval;
-    if (!waiting) return app.toggleBrowser();
-    if (waiting.workspace !== browser.activeKey) {
-      if (waiting.workspace) projects.setActiveWorktree(waiting.workspace);
-      else terminals.setWorkspace(waiting.workspace);
-    }
-    if (!app.browserOpen) void app.openBrowser(undefined, waiting.workspace).catch(() => {});
-  }
-
-  function toggleRightSidebar() {
-    app.toggleRightSidebar();
   }
 
   // Aim the backend filesystem watcher at the active worktree (here, not in the
@@ -281,25 +252,15 @@
     e.preventDefault();
   }
 
-  // Global keyboard shortcuts (configurable in Settings → Keyboard shortcuts).
-  // The terminal handler (`Terminal.svelte`) owns keys while a terminal is
-  // focused (it arbitrates app-shortcut vs TUI per action); here we only run the
-  // matched action via the shared dispatcher when a terminal is *not* focused.
-  function onKeyDown(e: KeyboardEvent) {
-    // Settings and Automations own their own keys (both are full-screen
-    // overlays). The inline GitHub view does not — the left sidebar stays
-    // active — so global shortcuts keep working; GitHub handles its own Escape.
-    if (app.settingsOpen || app.automationsOpen) return;
-    // Never steal keys while typing in a terminal — the shell owns Ctrl+W/J/etc.
-    const el = e.target as HTMLElement | null;
-    if (el?.closest(".xterm")) return;
-    const action = matchAction(e);
-    if (!action) return;
-    if (runAppAction(action)) e.preventDefault();
-  }
+  // Keyboard shortcuts (Settings → Keyboard shortcuts): the window hears every
+  // key but a terminal's, which its xterm hook routes first; the keyboard layer
+  // decides the rest (`$lib/keyboard`, `docs/keyboard.md`). The native layer
+  // carries the global shortcuts where the UI cannot hear them — a focused
+  // browser page — and into the macOS menu bar.
+  startNativeKeyboard();
 </script>
 
-<svelte:window oncontextmenu={onContextMenu} onkeydown={onKeyDown} />
+<svelte:window oncontextmenu={onContextMenu} onkeydown={handleWindowKey} />
 
 <!-- Reusable column resize handle. Zero-width in layout so adjacent panels sit
      flush (no visible seam, even behind split terminals). The grab strip is
@@ -310,7 +271,7 @@
 {#snippet resizeHandle(side: Side)}
   <div class="group relative w-0 shrink-0">
     <!-- Grab strip: on the left seam it sits over the left sidebar; on the
-         right/browser seams over the panel to the right. Either way it stays off
+         right seam over the dock. Either way it stays off
          the center pane's scrollbar-bearing right edge. -->
     <div
       class={cn(
@@ -356,6 +317,7 @@
 
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
   <SaveDiscardDialog />
+  <CloseGuardDialog />
 
   <!-- Content region below the title bar. The three-panel body stays mounted
        even while Settings is open (Settings overlays it), so terminals/PTYs are
@@ -379,10 +341,10 @@
       {/if}
 
       {#if app.githubInline}
-        <!-- Region: inline GitHub view — replaces the center + right panels for the
-             project opened from a card's ⋯ menu. The left sidebar (above) and the
-             browser panel (below) stay in place; a close button or activating a
-             worktree returns to the terminal view. -->
+        <!-- Region: inline GitHub view — replaces the center for the project
+             opened from a card's ⋯ menu. The left sidebar (above) and the dock
+             (below) stay in place; a close button or activating a worktree
+             returns to the terminal view. -->
         <GitHub />
       {:else}
         <!-- Region: Center workspace (Pane area) — a tree of regions whose tabs are
@@ -392,30 +354,18 @@
           <TerminalArea />
         </main>
 
-        {#if app.rightSidebarVisible}
-          <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
-          {@render resizeHandle("right")}
-
-          <aside
-            class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
-            style="width: {clampPanelWidth(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
-          >
-            <RightPanel />
-          </aside>
-        {/if}
       {/if}
 
-      {#if app.browserOpen}
-        {@render resizeHandle("browser")}
-
-        <!-- 4th panel: the integrated developer browser of the workspace on
-             screen. The toolbar is here; the page is a native child webview
-             placed over the panel's content (state/browser.svelte.ts). -->
+      {#if dock.isOpen()}
+        <!-- Region: the right dock — Files · Git · GitHub · Browser, per
+             workspace (state/dock.svelte.ts). The browser's page is a native
+             child webview placed over the dock's content (state/browser.svelte.ts). -->
+        {@render resizeHandle("right")}
         <aside
           class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
-          style="width: {browserWidth()}px"
+          style="width: {dockWidth}px"
         >
-          <BrowserPanel />
+          <Dock />
         </aside>
       {/if}
     </div>
@@ -539,53 +489,8 @@
           </button>
         {/snippet}
       </TooltipSimple>
-      <TooltipSimple title={i18n.t("terminal.toggleRight")}>
-        {#snippet children(props)}
-          <button
-            {...props}
-            class={cn(
-              shell.statusBarAction,
-              focus.ring,
-              app.rightSidebarVisible
-                ? "bg-accent text-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-            aria-label={i18n.t("terminal.toggleRight")}
-            aria-pressed={app.rightSidebarVisible}
-            onclick={toggleRightSidebar}
-          >
-            <Icon icon={PanelRightIcon} class={iconSize.action} />
-          </button>
-        {/snippet}
-      </TooltipSimple>
-      {#if app.settings.browser?.enabled ?? true}
-        <TooltipSimple title={pendingApproval ? i18n.t("browser.approvalPending") : i18n.t("browser.toggle")}>
-          {#snippet children(props)}
-            <button
-              {...props}
-              class={cn(
-                shell.statusBarAction,
-                focus.ring,
-                "relative",
-                app.browserOpen
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-              aria-label={pendingApproval ? i18n.t("browser.approvalPending") : i18n.t("browser.toggle")}
-              aria-pressed={app.browserOpen}
-              onclick={onGlobe}
-            >
-              <Icon icon={GlobeIcon} class={iconSize.action} />
-              {#if pendingApproval}
-                <span
-                  class="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-amber-500"
-                  aria-hidden="true"
-                ></span>
-              {/if}
-            </button>
-          {/snippet}
-        </TooltipSimple>
-      {/if}
+      <!-- The right dock: open / close (the surface is picked inside it). -->
+      <DockToggle />
     </footer>
 
     <!-- Settings overlays the still-mounted body (full content region). -->

@@ -77,7 +77,7 @@
         "L2"
       ],
       "evidence": {
-        "L1": "src/lib/terminal/scrollback.test.ts, src/lib/terminalArbiter.test.ts",
+        "L1": "src/lib/terminal/scrollback.test.ts, src/lib/keyboard/router.test.ts",
         "L3": "src-tauri/src/pty.rs #[cfg(test)]",
         "L4": "tests/e2e/specs/terminal.e2e.mjs"
       },

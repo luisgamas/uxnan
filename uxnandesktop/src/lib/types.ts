@@ -240,12 +240,32 @@ export interface NativeEditor {
   args: string[];
 }
 
+/** A surface of the right dock (`state/dock.svelte.ts`). */
+export type DockSurface = "files" | "git" | "github" | "browser";
+
+/** The two views of the dock's Git surface. */
+export type DockGitView = "changes" | "history";
+
+/** What the dock remembers for one workspace (mirrors `model::DockWorkspace`). */
+export interface DockWorkspace {
+  open: boolean;
+  /** The surface chosen there; null until one is (the dock opens on its chooser). */
+  surface: DockSurface | null;
+  gitView: DockGitView;
+  /** Epoch ms of the last change; the oldest entries are dropped past a cap. */
+  touched: number;
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
+  /** Width of the right dock while it shows Files, Git or GitHub (the browser
+   *  keeps its own, `browserPanelWidth`, since a page wants more room). */
   rightSidebarWidth: number;
   leftSidebarOpen: boolean;
-  rightSidebarOpen: boolean;
+  /** The right dock's memory, per workspace key (a worktree folder; `""` is the
+   *  Global space). A workspace with no entry starts with the dock closed. */
+  dock?: { workspaces: Record<string, DockWorkspace> };
   /** Configurable terminal/shell profiles (seeded with platform defaults). */
   terminalProfiles: TerminalProfile[];
   /** Id of the profile used for new terminals unless one is picked explicitly. */
@@ -601,6 +621,14 @@ export type SortMode =
  *  the OS browser; `ask` prompts per link. */
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
+/** Where the browser's address bar sends what is not an address (mirror of
+ *  Rust `SearchEngine`; the URL templates live in `browserAddress.ts`). */
+export type SearchEngine = "google" | "duckduckgo" | "bing" | "brave" | "custom";
+
+/** What the browser toolbar's ✕ does (mirror of Rust `BrowserCloseAction`):
+ *  clear the page, go back to the home page, or close the browser and its dock. */
+export type BrowserCloseAction = "blank" | "home" | "dock";
+
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
   /** Master switch. Off → every link goes to the OS browser, no agent shim. */
@@ -613,6 +641,12 @@ export interface BrowserSettings {
   terminalLinks: boolean;
   /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
   homepage: string;
+  /** Where the address bar sends what is not an address. Default `google`. */
+  searchEngine: SearchEngine;
+  /** Custom search URL with `%s` for the query (`searchEngine: "custom"`). */
+  searchUrl: string;
+  /** What the toolbar's ✕ does. Default `blank`. */
+  closeAction: BrowserCloseAction;
   /** Let agents read and act on pages of sites outside this machine. Off (the
    *  default): the page tools work only on local pages; on: each site still
    *  needs the person's approval once, and high-risk actions every time. */
@@ -1742,7 +1776,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leftSidebarWidth: 280,
   rightSidebarWidth: 350,
   leftSidebarOpen: true,
-  rightSidebarOpen: true,
+  dock: { workspaces: {} },
   // The backend seeds real platform profiles; this fallback is only used before
   // hydration (or in the plain web preview, which can't spawn PTYs anyway).
   terminalProfiles: [],
@@ -1793,6 +1827,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    searchEngine: "google",
+    searchUrl: "",
+    closeAction: "blank",
     agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,
