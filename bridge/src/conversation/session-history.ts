@@ -78,6 +78,7 @@ import {
 import { codexReasoningText, codexItemBlocks, codexFileChanges } from '../adapters/codex-tools.js';
 import { fileChangeBlock, truncateOutput } from '../adapters/content-blocks.js';
 import { opencodeToolBlock } from '../adapters/opencode-tools.js';
+import type { OpenCodeHistoryMessage } from '../adapters/opencode-protocol.js';
 import { piToolBlock, piResultText, type PiToolUse } from '../adapters/pi-tools.js';
 
 /** Where a thread's on-disk history lives, as known by the bridge. */
@@ -97,11 +98,12 @@ export interface SessionHistoryOptions {
   /** Path-cache TTL in ms (default 60s, per §5.8.8). */
   cacheTtlMs?: number;
   /**
-   * Official OpenCode `GET /session/:id/message` reader. New OpenCode releases
-   * use SQLite rather than the legacy JSON store, so the running serve process
-   * is the stable cross-version boundary.
+   * OpenCode's history, read through its own server and already normalized by
+   * the protocol client that speaks the installed version (`opencode-v1.ts` /
+   * `opencode-v2.ts`). Newer releases keep sessions in SQLite rather than the
+   * legacy JSON store, so the server is the stable cross-version boundary.
    */
-  openCodeMessages?: (sessionId: string, cwd?: string) => Promise<unknown[]>;
+  openCodeMessages?: (sessionId: string, cwd?: string) => Promise<OpenCodeHistoryMessage[]>;
 }
 
 interface CacheEntry {
@@ -138,7 +140,9 @@ export class SessionHistoryReader {
   readonly #now: () => number;
   readonly #ttl: number;
   readonly #cache = new Map<string, CacheEntry>();
-  readonly #openCodeMessages: ((sessionId: string, cwd?: string) => Promise<unknown[]>) | undefined;
+  readonly #openCodeMessages:
+    | ((sessionId: string, cwd?: string) => Promise<OpenCodeHistoryMessage[]>)
+    | undefined;
 
   constructor(options: SessionHistoryOptions = {}) {
     this.#home = options.homeDir ?? homedir();
@@ -368,8 +372,7 @@ export class SessionHistoryReader {
   async #readOpenCode(sessionId: string, cwd?: string): Promise<RawMessage[] | null> {
     if (this.#openCodeMessages) {
       try {
-        const messages = await this.#openCodeMessages(sessionId, cwd);
-        const parsed = openCodeApiMessages(messages);
+        const parsed = await this.#openCodeMessages(sessionId, cwd);
         if (parsed.length > 0) return parsed;
       } catch {
         // Fall through to the legacy JSON store. This keeps history readable
@@ -687,63 +690,6 @@ function extractPiContent(content: unknown): string {
     if (rec && rec['type'] === 'text' && typeof rec['text'] === 'string') texts.push(rec['text']);
   }
   return texts.join('').trim();
-}
-
-/** Parse `GET /session/:id/message` (`{ info, parts }[]`) from OpenCode serve. */
-function openCodeApiMessages(messages: unknown[]): RawMessage[] {
-  const out: RawMessage[] = [];
-  for (const value of messages) {
-    const entry = asRecord(value);
-    const info = asRecord(entry?.['info']);
-    const role = info?.['role'];
-    if (!info || (role !== 'user' && role !== 'assistant')) continue;
-    // A live assistant record is visible through the API before it finishes.
-    // Import it only after OpenCode stamps `finish` (current) or a completion
-    // time (older 1.x), otherwise a polling phone would freeze partial prose as
-    // a completed external turn.
-    if (role === 'assistant') {
-      const time = asRecord(info['time']);
-      if (!info['finish'] && time?.['completed'] === undefined) continue;
-    }
-    const parts = Array.isArray(entry?.['parts']) ? (entry['parts'] as unknown[]) : [];
-    const texts: string[] = [];
-    const thoughts: string[] = [];
-    const blocks: unknown[] = [];
-    for (const rawPart of parts) {
-      const part = asRecord(rawPart);
-      if (!part) continue;
-      if (part['type'] === 'text' && typeof part['text'] === 'string') {
-        texts.push(part['text']);
-      } else if (part['type'] === 'reasoning' && typeof part['text'] === 'string') {
-        thoughts.push(part['text']);
-      } else if (part['type'] === 'tool') {
-        const state = asRecord(part['state']) ?? {};
-        const status = typeof state['status'] === 'string' ? state['status'] : '';
-        if (status !== 'completed' && status !== 'error') continue;
-        const tool = typeof part['tool'] === 'string' ? part['tool'] : '';
-        const id = typeof part['id'] === 'string' ? part['id'] : '';
-        const input = asRecord(state['input']) ?? {};
-        const output =
-          typeof state['output'] === 'string'
-            ? state['output']
-            : typeof state['error'] === 'string'
-              ? state['error']
-              : '';
-        blocks.push(opencodeToolBlock(tool, id, input, output, status === 'error'));
-      }
-    }
-    const time = asRecord(info?.['time']);
-    const raw: RawMessage = {
-      role,
-      text: texts.join('').trim(),
-      createdAt: parseTime(time?.['created']),
-    };
-    const thinking = thoughts.join('').trim();
-    if (thinking) raw.thinking = thinking;
-    if (blocks.length > 0) raw.blocks = blocks;
-    if (raw.text || raw.thinking || raw.blocks?.length) out.push(raw);
-  }
-  return out;
 }
 
 /** Text projection of an ACP content block (`{ type:'text', text }`). */

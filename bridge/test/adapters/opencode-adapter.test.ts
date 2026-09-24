@@ -4,68 +4,95 @@ import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import {
   OpenCodeAdapter,
+  OpenCodeV1Translator,
+  OpenCodeV2Translator,
   parseModelList,
   parseOpenCodeModelWindows,
   openCodeUsageTokens,
   splitOpenCodeModel,
   decisionToPermissionReply,
-  parseSseRecord,
+  parseSseData,
   parseServeUrl,
   type IOpenCodeServer,
-  type OpenCodePermissionRule,
-  type OpenCodeServerEvent,
-  type OpenCodePromptBody,
+  type OpenCodeEvent,
+  type OpenCodeHistoryMessage,
+  type OpenCodeModel,
+  type OpenCodeModelRef,
+  type OpenCodePermissionPolicy,
+  type OpenCodePrompt,
+  type OpenCodeProtocolVersion,
   type PermissionReply,
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
-// --- a fake `opencode serve` the adapter drives via the IOpenCodeServer surface ---
+// --- a fake `opencode serve` behind the neutral contract. Raw protocol events go
+// through the REAL V1 / V2 translators, so these tests cover what a live server's
+// events become, not a hand-made approximation of it.
 class FakeServer implements IOpenCodeServer {
-  readonly #listeners: ((e: OpenCodeServerEvent) => void)[] = [];
+  readonly protocol: OpenCodeProtocolVersion;
+  readonly #listeners: ((e: OpenCodeEvent) => void)[] = [];
+  readonly #v1 = new OpenCodeV1Translator();
+  readonly #v2 = new OpenCodeV2Translator();
   readonly sessions: string[] = [];
-  readonly prompts: { sessionId: string; body: OpenCodePromptBody }[] = [];
+  readonly prompts: { sessionId: string; body: OpenCodePrompt }[] = [];
+  readonly steered: { sessionId: string; text: string }[] = [];
   readonly aborted: string[] = [];
   readonly replies: { id: string; reply: PermissionReply }[] = [];
   readonly rejectedQuestions: string[] = [];
   readonly questionReplies: { id: string; answers: string[][] }[] = [];
-  messages: unknown[] = [];
-  lastPermission: OpenCodePermissionRule[] | undefined;
+  history: OpenCodeHistoryMessage[] = [];
+  catalog: OpenCodeModel[] = [];
+  lastPermission: OpenCodePermissionPolicy | undefined;
+  lastSessionModel: OpenCodeModelRef | undefined;
   nextSessionId = 'ses_1';
+
+  constructor(protocol: OpenCodeProtocolVersion = 1) {
+    this.protocol = protocol;
+  }
 
   start(): Promise<void> {
     return Promise.resolve();
   }
-  createSession(opts: { title?: string; permission?: OpenCodePermissionRule[] }): Promise<string> {
+  createSession(opts: {
+    title?: string;
+    permission: OpenCodePermissionPolicy;
+    model?: OpenCodeModelRef;
+  }): Promise<string> {
     this.lastPermission = opts.permission;
+    this.lastSessionModel = opts.model;
     const id = this.nextSessionId;
     this.sessions.push(id);
     return Promise.resolve(id);
   }
-  promptAsync(sessionId: string, body: OpenCodePromptBody): Promise<void> {
+  prompt(sessionId: string, body: OpenCodePrompt): Promise<void> {
     this.prompts.push({ sessionId, body });
     return Promise.resolve();
   }
-  getMessages(): Promise<unknown[]> {
-    return Promise.resolve(this.messages);
+  steer(sessionId: string, text: string): Promise<void> {
+    this.steered.push({ sessionId, text });
+    return Promise.resolve();
   }
-  abort(sessionId: string): Promise<void> {
+  interrupt(sessionId: string): Promise<void> {
     this.aborted.push(sessionId);
     return Promise.resolve();
   }
-  replyPermission(id: string, reply: PermissionReply): Promise<void> {
+  replyPermission(_sessionId: string, id: string, reply: PermissionReply): Promise<void> {
     this.replies.push({ id, reply });
     return Promise.resolve();
   }
-  rejectQuestion(id: string): Promise<void> {
-    this.rejectedQuestions.push(id);
+  answerQuestion(_sessionId: string, id: string, answers: string[][]): Promise<void> {
+    if (answers.some((a) => a.length > 0)) this.questionReplies.push({ id, answers });
+    else this.rejectedQuestions.push(id);
     return Promise.resolve();
   }
-  replyQuestion(id: string, answers: string[][]): Promise<void> {
-    this.questionReplies.push({ id, answers });
-    return Promise.resolve();
+  messages(): Promise<OpenCodeHistoryMessage[]> {
+    return Promise.resolve(this.history);
   }
-  onEvent(listener: (e: OpenCodeServerEvent) => void): () => void {
+  models(): Promise<OpenCodeModel[]> {
+    return Promise.resolve(this.catalog);
+  }
+  onEvent(listener: (e: OpenCodeEvent) => void): () => void {
     this.#listeners.push(listener);
     return () => undefined;
   }
@@ -75,17 +102,24 @@ class FakeServer implements IOpenCodeServer {
   close(): Promise<void> {
     return Promise.resolve();
   }
-  /** Push a server event to the adapter. */
+  /** Push an OpenCode 1 bus event (`{ type, properties }`) through the V1 translator. */
   emit(type: string, properties: Record<string, unknown>): void {
-    for (const l of this.#listeners) l({ type, properties });
+    this.#push(this.#v1.translate(type, properties));
+  }
+  /** Push an OpenCode 2 event (`{ type, data }`) through the V2 translator. */
+  emitV2(type: string, data: Record<string, unknown>): void {
+    this.#push(this.#v2.translate(type, data));
+  }
+  #push(events: OpenCodeEvent[]): void {
+    for (const e of events) for (const l of this.#listeners) l(e);
   }
 }
 
-test('readSessionMessages uses the official serve history endpoint', async () => {
+test("readSessionMessages returns the server's normalized history", async () => {
   const server = new FakeServer();
-  server.messages = [{ info: { id: 'm1', role: 'user' }, parts: [] }];
+  server.history = [{ role: 'user', text: 'hi', createdAt: 1 }];
   const adapter = makeAdapter(server);
-  assert.deepEqual(await adapter.readSessionMessages('ses_external', '/repo'), server.messages);
+  assert.deepEqual(await adapter.readSessionMessages('ses_external', '/repo'), server.history);
 });
 
 /** A spawnFn whose child closes immediately with empty output (for `opencode models --verbose`). */
@@ -181,14 +215,14 @@ test('parseServeUrl reads the listening URL from a serve log line', () => {
   assert.equal(parseServeUrl('loading config...'), undefined);
 });
 
-test('parseSseRecord parses a data: JSON event, tolerating blanks', () => {
+test('parseSseData reads a data: JSON event, tolerating blanks', () => {
   const rec = 'event: message\ndata: {"type":"session.idle","properties":{"sessionID":"ses_1"}}';
-  assert.deepEqual(parseSseRecord(rec), {
+  assert.deepEqual(parseSseData(rec), {
     type: 'session.idle',
     properties: { sessionID: 'ses_1' },
   });
-  assert.equal(parseSseRecord(': heartbeat'), null);
-  assert.equal(parseSseRecord('data: not json'), null);
+  assert.equal(parseSseData(': heartbeat'), null);
+  assert.equal(parseSseData('data: not json'), null);
 });
 
 test('openCodeUsageTokens prefers total, then buckets, then numeric fields', () => {
@@ -446,12 +480,7 @@ test('OpenCodeAdapter routes permission.asked → approval → reply', async () 
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'edit a file' });
   // interactive by default → gated tools set to `ask`
-  assert.deepEqual(server.lastPermission, [
-    { permission: 'edit', pattern: '**', action: 'ask' },
-    { permission: 'bash', pattern: '**', action: 'ask' },
-    { permission: 'webfetch', pattern: '**', action: 'ask' },
-    { permission: 'external_directory', pattern: '**', action: 'ask' },
-  ]);
+  assert.equal(server.lastPermission, 'ask');
 
   server.emit('permission.asked', {
     id: 'per_1',
@@ -578,7 +607,7 @@ test('OpenCodeAdapter uses allow rules for approveForMe', async () => {
   const adapter = makeAdapter(server);
   collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'approveForMe' });
-  assert.ok(server.lastPermission?.every((r) => r.action === 'allow'));
+  assert.equal(server.lastPermission, 'allow');
 });
 
 test('OpenCodeAdapter reuses the session id on the next turn', async () => {
@@ -652,9 +681,9 @@ test('steerTurn prompts the same session without opening a second run', async ()
   assert.equal(taken, true);
   assert.deepEqual(
     server.prompts.map((p) => p.body.text),
-    ['first', 'actually, do this instead'],
+    ['first'],
   );
-  assert.equal(server.prompts[1]?.sessionId, server.prompts[0]?.sessionId, 'same session');
+  assert.deepEqual(server.steered, [{ sessionId: 'ses_1', text: 'actually, do this instead' }]);
   // Only the original turn was announced — a second turn_started would tell the
   // phone a new turn began when the agent is still inside the first.
   assert.equal(events.filter((e) => e.type === 'turn_started').length, 1);
@@ -688,8 +717,10 @@ test('steerTurn keeps the running turn model, not a new one', async () => {
     text: 'more',
     service: 'opencode/some-other-model',
   });
-  // A message inside a turn must not switch the model mid-answer.
-  assert.equal(server.prompts[1]?.body.model, undefined);
+  // A message inside a turn must not switch the model mid-answer: steering
+  // carries text only.
+  assert.deepEqual(server.steered, [{ sessionId: 'ses_1', text: 'more' }]);
+  assert.equal(server.prompts.length, 1);
 });
 
 test('steerTurn declines for a finished, unknown or mismatched turn', async () => {
@@ -717,6 +748,7 @@ test('steerTurn declines for a finished, unknown or mismatched turn', async () =
     server.prompts.map((p) => p.body.text),
     ['first'],
   );
+  assert.deepEqual(server.steered, []);
 });
 
 test('a message the server accepted counts as delivered even if the turn just ended', async () => {
@@ -728,8 +760,8 @@ test('a message the server accepted counts as delivered even if the turn just en
   // The turn goes idle while the prompt round-trip is in flight. Reporting "not
   // taken" would make the bridge queue it and send the SAME text again — an
   // instruction acted on twice is worse than a reply we cannot attribute.
-  server.promptAsync = (sessionId, body) => {
-    server.prompts.push({ sessionId, body });
+  server.steer = (sessionId, text) => {
+    server.steered.push({ sessionId, text });
     server.emit('session.idle', { sessionID: 'ses_1' });
     return Promise.resolve();
   };
@@ -741,10 +773,31 @@ test('a message the server accepted counts as delivered even if the turn just en
     text: 'racy',
   });
   assert.equal(taken, true);
-  assert.equal(server.prompts.length, 2, 'sent exactly once');
+  assert.equal(server.steered.length, 1, 'sent exactly once');
 });
 
 test('the adapter advertises steering', () => {
   const adapter = makeAdapter(new FakeServer());
   assert.equal(adapter.capabilities.steering, true);
+});
+
+test('context windows are retried until a load brings one', async () => {
+  // OpenCode 1's first `opencode models` on a fresh install prints nothing.
+  const server = new FakeServer();
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  await adapter.loadContextWindows();
+  server.catalog = [{ id: 'opencode/m', contextWindow: 1000 }];
+  await adapter.loadContextWindows();
+  const { events, done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  server.emit('message.updated', {
+    info: { role: 'assistant', id: 'm1', sessionID: 'ses_1', tokens: { input: 10, output: 5 } },
+  });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+  await done;
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.deepEqual((completed?.data as { usage?: unknown }).usage, {
+    tokens: 15,
+    contextWindow: 1000,
+  });
 });

@@ -73,8 +73,8 @@ push validation (FOR-HUMAN).
   running one (`IAgentAdapter.steerTurn`), the turn goes `delivered` (terminal
   and *successful*, distinct from `cancelled`) and `stream/turn/delivered`
   fires. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
-  and follow-ups on an open stdin), **OpenCode** (`prompt_async` on the busy
-  session) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
+  and follow-ups on an open stdin), **OpenCode** (1.x: `prompt_async` on the
+  busy session; 2.x: `delivery: "steer"`) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
   (`turn/steer`) but not yet run against a
   real turn (see below). Antigravity, Zero and Grok have no such channel and
   keep waiting — Zero's own TUI behaves that way too. Advertised as
@@ -98,8 +98,11 @@ push validation (FOR-HUMAN).
   [`docs/agents.md`](docs/agents.md)), **Zero** and **Grok** JSON-RPC over the
   Agent Client Protocol (`zero acp` / `grok agent stdio`, NDJSON over stdio —
   reusing the Codex NDJSON transport, with **real `session/request_permission`
-  approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No
-  further agent is planned right now.
+  approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback) —
+  OpenCode 1 and 2 alike: one adapter over a protocol client per major version,
+  picked by `opencode --version` (`docs/agents.md` → *OpenCode 1 and OpenCode
+  2*), validated live on 1.18.32 and 2.0.16. No further agent is planned right
+  now.
 - **Context compaction markers** — real native signals from Codex, Claude,
   OpenCode and pi are normalized into durable `compaction` content blocks.
   Zero/Grok ACP and Antigravity expose no trustworthy signal, so no event is
@@ -324,27 +327,6 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
-- [ ] **OpenCode 2 — rewrite the adapter for its new server API.** The adapter
-      drives `opencode serve --port 0 --hostname 127.0.0.1 --print-logs` and speaks
-      the V1 HTTP API (`GET /event`, `POST /session`,
-      `/session/:id/prompt_async`, `/session/:id/message`, `/session/:id/abort`).
-      OpenCode 2 kept the command but not the API — measured on 2.0.16
-      (2026-09-24, isolated XDG dirs): the server prints its URL **and a password**
-      it now requires, `GET /event` and `GET /session` answer the web app's HTML
-      page, `POST /session` is `405`, and the API lives elsewhere (`/api…`,
-      authenticated). So a phone thread on OpenCode 2 cannot start. OpenCode 1
-      keeps working as today.
-
-      *Where:* `src/adapters/opencode-server.ts` (spawn, auth, routes, event
-      stream) and the event mapping in `opencode-adapter.ts`; see the inline
-      `FOR-DEV:` at the spawn.
-
-      *What it needs:* map OpenCode 2's API (routes, auth header, event stream
-      and its `session.execution.*` vocabulary — the same events the desktop's
-      status plugin was validated on) against a **running** 2.x server, keep the
-      V1 path for 1.x (`opencode --version` tells them apart: `1.18.32` vs
-      `opencode v2.0.16`), then update `docs/agents.md` → *Drive surface* with
-      what the driven surface actually emits (usage included).
 - [ ] **Name conversations on Zero.** `IAgentAdapter.generateTitle` is wired for
       all seven active agents and **verified live on six**: Claude Code
       (`haiku`), Codex (`gpt-5.6-luna` at `low` effort, `codex exec --ephemeral

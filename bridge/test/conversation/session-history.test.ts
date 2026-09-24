@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
-import { SessionHistoryReader } from '../../src/index.js';
+import { SessionHistoryReader, openCodeV1History, openCodeV2History } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
 
 /** Build a throwaway fake-home tree and return its path + a cleanup fn. */
@@ -905,29 +905,30 @@ test('pi: think tags inside assistant text are extracted into Message.thinking',
     await cleanup();
   }
 });
-test('opencode: reads the official serve message API and ignores a live assistant record', async () => {
+test('opencode 1: reads the official serve message API and ignores a live assistant record', async () => {
   const reader = new SessionHistoryReader({
-    openCodeMessages: async () => [
-      {
-        info: { id: 'u1', role: 'user', time: { created: 1000 } },
-        parts: [{ type: 'text', text: 'from OpenCode Desktop' }],
-      },
-      {
-        info: { id: 'a1', role: 'assistant', finish: 'stop', time: { created: 1001 } },
-        parts: [
-          { type: 'reasoning', text: 'checking' },
-          { type: 'text', text: 'completed answer' },
-        ],
-      },
-      {
-        info: { id: 'u2', role: 'user', time: { created: 2000 } },
-        parts: [{ type: 'text', text: 'still running' }],
-      },
-      {
-        info: { id: 'a2', role: 'assistant', time: { created: 2001 } },
-        parts: [{ type: 'text', text: 'partial answer' }],
-      },
-    ],
+    openCodeMessages: async () =>
+      openCodeV1History([
+        {
+          info: { id: 'u1', role: 'user', time: { created: 1000 } },
+          parts: [{ type: 'text', text: 'from OpenCode Desktop' }],
+        },
+        {
+          info: { id: 'a1', role: 'assistant', finish: 'stop', time: { created: 1001 } },
+          parts: [
+            { type: 'reasoning', text: 'checking' },
+            { type: 'text', text: 'completed answer' },
+          ],
+        },
+        {
+          info: { id: 'u2', role: 'user', time: { created: 2000 } },
+          parts: [{ type: 'text', text: 'still running' }],
+        },
+        {
+          info: { id: 'a2', role: 'assistant', time: { created: 2001 } },
+          parts: [{ type: 'text', text: 'partial answer' }],
+        },
+      ]),
   });
   const turns = await reader.readTurns(
     { agentId: 'opencode', agentSessionId: 'ses_external', cwd: '/repo' },
@@ -936,6 +937,52 @@ test('opencode: reads the official serve message API and ignores a live assistan
   assert.equal(turns?.length, 2);
   assert.equal(turns?.[0]?.messages[1]?.content, 'completed answer');
   assert.equal(turns?.[0]?.messages[1]?.thinking, 'checking');
+  assert.equal(turns?.[1]?.messages.length, 1, 'the unfinished answer is not imported');
+});
+
+test('opencode 2: reads typed messages and ignores an unfinished assistant', async () => {
+  // Shapes captured from OpenCode 2.0.16's `GET /api/session/:id/message?order=asc`.
+  const reader = new SessionHistoryReader({
+    openCodeMessages: async () =>
+      openCodeV2History([
+        { id: 'm1', time: { created: 1000 }, type: 'user', text: 'run echo probe' },
+        {
+          id: 'm2',
+          time: { created: 1001, completed: 1005 },
+          type: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'I will run it' },
+            {
+              type: 'tool',
+              id: 'call_1',
+              name: 'shell',
+              state: {
+                status: 'completed',
+                input: { command: 'echo probe' },
+                content: [{ type: 'text', text: 'probe\n' }],
+              },
+            },
+            { type: 'text', text: 'It printed probe.' },
+          ],
+        },
+        { id: 'm3', time: { created: 1006 }, type: 'idle', outcome: 'succeeded' },
+        { id: 'm4', time: { created: 2000 }, type: 'user', text: 'still running' },
+        {
+          id: 'm5',
+          time: { created: 2001 },
+          type: 'assistant',
+          content: [{ type: 'text', text: 'part' }],
+        },
+      ]),
+  });
+  const turns = await reader.readTurns(
+    { agentId: 'opencode', agentSessionId: 'ses_v2', cwd: '/repo' },
+    'th-opencode-2',
+  );
+  assert.equal(turns?.length, 2);
+  const answer = turns?.[0]?.messages[1];
+  assert.equal(answer?.content, 'It printed probe.');
+  assert.equal(answer?.thinking, 'I will run it');
   assert.equal(turns?.[1]?.messages.length, 1, 'the unfinished answer is not imported');
 });
 

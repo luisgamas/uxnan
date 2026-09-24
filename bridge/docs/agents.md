@@ -47,7 +47,9 @@ it in a request body. What differs is how long a process lives:
 - The **server-based** adapters talk to a long-lived server: **Codex** speaks
   JSON-RPC over `codex app-server` stdio, **Zero** and **Grok** speak JSON-RPC
   (the Agent Client Protocol, NDJSON) over `zero acp` / `grok agent stdio`, and
-  **OpenCode** speaks HTTP + SSE to `opencode serve`.
+  **OpenCode** speaks HTTP + SSE to `opencode serve` — OpenCode 1 and 2
+  alike, through one adapter over two protocol clients (see *OpenCode 1 and
+  OpenCode 2* below).
 
 The one-shot **side errands** (naming a thread, listing models) still pass their
 prompt as an argv element, still `shell:false`.
@@ -90,7 +92,7 @@ Which agents can, and why — verified against the real CLIs:
 | Agent | Mid-turn? | Mechanism |
 |---|---|---|
 | **Claude Code** | yes | `-p --input-format stream-json`; the message is written to the open stdin |
-| **OpenCode** | yes | another `prompt_async` on the session that is already busy |
+| **OpenCode** | yes | 1.x: another `prompt_async` on the session that is already busy; 2.x: `POST /api/session/:id/prompt` with `delivery: "steer"` (both verified live: the turn answered the new message and ended once) |
 | **Codex** | yes | app-server `turn/steer { threadId, expectedTurnId, input }` |
 | **pi** | yes | RPC `steer` command, drained by its agent loop at the next boundary |
 | **Antigravity** | no | `--input-format stream-json` "runs a turn for each" stdin message — a second one is queued as the next turn, not steered into this one; the CLI has no steer message |
@@ -128,7 +130,7 @@ attention to.
 |---|---|---|
 | **Claude Code** | `-p` with no `--resume` | `haiku` |
 | **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.6-luna` at `-c model_reasoning_effort=low` |
-| **OpenCode** | `opencode run` (no `--session`/`--continue`) | CLI default |
+| **OpenCode** | `opencode run` (no `--session`/`--continue`); on 2.x `opencode run --standalone`, so a title never starts the shared background service | CLI default |
 | **pi** | `pi -p --no-session` | CLI default |
 | **Antigravity** | `agy -p --mode plan` (no `--conversation`) | `gemini-3.6-flash-low` |
 | **Grok** | `grok -p` | CLI default |
@@ -191,7 +193,7 @@ surface it does not drive.**
 
 | Agent | Surface the bridge drives | Transport / framing | Reports usage |
 |---|---|---|---|
-| **OpenCode** | `opencode serve` (OpenCode **1.x**; 2.x changed the server API and is not driven yet — `FOR-DEV.md` → *OpenCode 2*) | local HTTP + SSE | yes |
+| **OpenCode** | `opencode serve` — 1.x: V1 routes, no password; 2.x: `/api/*` routes behind a per-process password (see *OpenCode 1 and OpenCode 2*) | local HTTP + SSE | yes — 1.x on `step-finish` parts / the assistant `message.updated`; 2.x on `session.step.ended`. The context window comes from `opencode models --verbose` (1.x) or `GET /api/model` (2.x) |
 | **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin | yes |
 | **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
 | **pi** | `pi --mode rpc`, one resident process per thread | JSON-RPC over stdio (`prompt` / `steer` / `get_state` commands in, JSON events out) | yes — `message_end` `usage.totalTokens`; the model's `contextWindow` comes from the `get_state` response |
@@ -260,7 +262,8 @@ bridge's own approval hook is unaffected: it uses three of those names
 them per turn and a value it sets survives. Only an inherited one is dropped.
 
 **Model lists follow the same read-the-source rule.** Every agent's list is
-**discovered live** from the CLI — `opencode models`, `model/list`,
+**discovered live** from the CLI — `opencode models` (`GET /api/model` on
+OpenCode 2), `model/list`,
 `pi --list-models`, `agy models`, `zero models list`, Grok's `initialize`
 handshake. **Claude Code is the only curated, hand-maintained list** (see
 *Claude Code models* below); it is the one place a new model has to be added by
@@ -290,7 +293,7 @@ so a format change there is a **two-app** fix.
 
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
-| **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
+| **OpenCode** (default) | `opencode serve` (local HTTP + SSE), 1.x or 2.x | persisted server session id | `accessMode` → per-session permission rules: `ask` on the side-effecting keys — 1.x `edit`/`bash`/`webfetch`/`external_directory`, 2.x `edit`/`shell`/`webfetch`/`external_directory` (a 2.x file write asks as `edit`) — with real `permission.asked` approvals / `allow` for approveForMe·fullAccess | `opencode models` (1.x) / `GET /api/model` (2.x) |
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `accessMode` → app-server `approvalPolicy` + `sandbox`, re-applied on **every** `thread/start`/`thread/resume` (so a mid-conversation change lands on the next turn); approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
@@ -314,7 +317,7 @@ Compactions use the ordinary structured-content path and therefore persist in
 |---|---|---|
 | Codex | completed `contextCompaction` item | reason unknown |
 | Claude Code | `system/compact_boundary` | trigger + pre-compaction tokens |
-| OpenCode | `session.compacted` | reason unknown |
+| OpenCode | `session.compacted` (1.x) / `session.compaction.ended` (2.x) | reason unknown |
 | pi | successful `compaction_end` | reason + before/estimated-after tokens |
 | Zero / Grok | ACP exposes no compaction update | no marker |
 | Antigravity | the stream-json surface exposes no compaction event | no marker |
@@ -346,7 +349,7 @@ written in an agent's desktop app or CLI appear back in Uxnan Mobile.
 | Agent | Native history source | Cross-client behavior |
 |---|---|---|
 | Codex | `~/.codex/sessions/.../rollout-*-<sessionId>.jsonl` | Codex Desktop/CLI completed turns converge |
-| OpenCode | `GET /session/:id/message` from the per-workspace `opencode serve` process; legacy JSON store fallback | OpenCode Desktop/CLI completed turns converge |
+| OpenCode | the per-workspace `opencode serve`: `GET /session/:id/message` (1.x) or `GET /api/session/:id/message?order=asc`, following its cursor (2.x), normalized by the protocol client; legacy JSON store fallback | OpenCode Desktop/CLI completed turns converge (2.x verified across server processes: a session one process wrote, another reads) |
 | Claude Code | `~/.claude/projects/.../<sessionId>.jsonl` | completed CLI turns converge |
 | pi | `~/.pi/agent/sessions/..._<sessionId>.jsonl` | completed CLI turns converge |
 | Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP turns converge |
@@ -415,7 +418,7 @@ conversation through each adapter and then continuing it from a second client:
 |---|---|---|
 | **Codex** | `thread/resume` from another app-server | refused while the bridge held it → **needed the release above** |
 | **Claude Code** | `claude -p --resume <sessionId>` from the same cwd | works, and appends to the SAME `<sessionId>.jsonl`, so the turn converges back to the phone. Nothing to hold: the adapter spawns one process per turn |
-| **OpenCode** | its own `opencode serve` (the desktop app's model) | works with the bridge's server still running: it lists the session, reads it, and posts a new turn into it. The store is shared, not owned by a process |
+| **OpenCode** | its own `opencode serve` (the desktop app's model) | works with the bridge's server still running: it lists the session, reads it, and posts a new turn into it. The store is shared, not owned by a process (measured on 1.x; on 2.x a session written by one server process is read by another) |
 
 pi, Zero, Grok and Antigravity ship no desktop app; their continuity is the
 per-CLI session flag in the *Wired agents* table.
@@ -436,7 +439,7 @@ An adapter must decide when the agent is done. There are two kinds:
 
 | Ends on | Adapters | Can the CLI emit after that? |
 |---|---|---|
-| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`agent_settled` — **not** `agent_end`, which ends one *run*: pi retries a run after a retryable provider error, `willRetry: true`, and a prompt sent in between is refused as "already processing"), Grok / Zero (the ACP `session/prompt` reply), Antigravity (`result`) | **Yes** — the process is still alive when the event arrives |
+| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle` on 1.x, `session.execution.succeeded` on 2.x), Pi (`agent_settled` — **not** `agent_end`, which ends one *run*: pi retries a run after a retryable provider error, `willRetry: true`, and a prompt sent in between is refused as "already processing"), Grok / Zero (the ACP `session/prompt` reply), Antigravity (`result`) | **Yes** — the process is still alive when the event arrives |
 
 That distinction matters because **Claude Code really does come back**. When the
 model starts a background task (`Bash` with `run_in_background`) and ends its
@@ -521,7 +524,7 @@ the phone renders them generically — Codex discovers them from the app-server
 `model/list` (`supportedReasoningEfforts`), Claude/pi from their own flag sets.
 
 **Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
-Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`),
+Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`, both versions),
 Zero and Grok (ACP `session/request_permission`);
 **pi** and **Antigravity** have no headless pre-tool channel (both run
 autonomously — Antigravity's headless surface auto-denies any tool that needs a prompt,
@@ -531,9 +534,50 @@ so a `requestApproval` thread runs read-only `--mode plan` instead — see
 **Interactive questions** — OpenCode's `question` tool (the agent asks a
 multiple-choice question) surfaces as a `question` content block the phone answers
 via `turn/send { questionResponse }`; the bridge (`AgentManager.requestQuestion`)
-replies to `/question/{id}/reply` so the agent continues with the choice. The
-`permission.v2.asked` elicitation shape is routed through the same approval path as
+answers it so the agent continues with the choice — on 1.x `/question/{id}/reply`
+(or `/reject` to skip), on 2.x the question arrives as a **form** (`form.created`,
+one field per question) answered per field key at
+`/api/session/:id/form/:id/reply` (or dismissed with `DELETE`). OpenCode 1's
+`permission.v2.asked` shape is routed through the same approval path as
 `permission.asked`.
+
+### OpenCode 1 and OpenCode 2
+
+OpenCode 2 kept the `opencode serve` command and replaced everything on the
+wire, so the adapter is split along that seam — one layer, not a patch on top of
+the 1.x code:
+
+| Module | Holds |
+|---|---|
+| `opencode-protocol.ts` | The contract the adapter speaks: sessions, turns, neutral events (`text` / `reasoning` / `tool` / `usage` / `plan` / `permission` / `question` / `idle` / `interrupted` / `error`), normalized history, models |
+| `opencode-transport.ts` | What both versions share: the `serve` process on a port the bridge picked free, the optional password, SSE, JSON requests |
+| `opencode-v1.ts` / `opencode-v2.ts` | Each version's routes and the translation of its events and history into the contract |
+| `opencode-version.ts` | `opencode --version` (`1.18.32` / `opencode v2.0.16`) → which client serves a directory, read each time a server is started |
+| `opencode-adapter.ts` | Only what a turn is — which session runs which bridge turn, the reply, the plan card, usage, the approval and question round-trips |
+
+What differs, as measured on 1.17.20 – 1.18.32 and 2.0.16:
+
+| | OpenCode 1.x | OpenCode 2.x |
+|---|---|---|
+| Server auth | none | required: the bridge sets `OPENCODE_SERVER_PASSWORD` per process and sends Basic `opencode:<password>` |
+| Routes | `/event`, `/session`, `/session/:id/prompt_async`, `/abort`, `/permission/:id/reply`, `/question/:id/reply` | `/api/event`, `/api/session` (with `location`, `model`, `permissions`), `/api/session/:id/prompt`, `/interrupt`, `/permission/:id/reply`, `/form/:id/reply`; the OpenAPI document is at `/openapi.json` |
+| Turn stream | message parts (`message.part.delta` / `.updated`, a role per message) | `session.text.*`, `session.reasoning.*`, `session.tool.*` (assistant only) |
+| Turn end | `session.idle` | `session.execution.succeeded` / `interrupted` / `failed` |
+| Model | per prompt | per session (`POST /api/session/:id/model` when it changes) |
+| Tools | `bash`, file tools take `filePath` | `shell`, file tools take `path` — both map to the same blocks |
+| Models + windows | `opencode models` / `opencode models --verbose` | `GET /api/model` (loads a moment after the server boots) |
+| History | `{ info, parts }[]` | typed messages, paginated with a cursor |
+
+**Port.** No OpenCode 1 release checked honours `--port 0` — each binds its
+default 4096 — so the bridge picks a free loopback port and passes it: a second
+project's server, or anything else on 4096, no longer kills a turn with
+"exited before listening".
+
+**Validated live** (the adapter itself, sandboxed config, a free model): on
+OpenCode 2.0.16 and 1.18.32 — models with context windows, a turn with usage, a
+shell permission approved from the approval path, a question answered, a
+mid-turn message (steer), a cancel, history, a title, and two projects' servers
+at once.
 
 ## Agent commands (`agent/commands` + `turn/send` `command`)
 
