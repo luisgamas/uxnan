@@ -5,7 +5,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
-## [0.0.27-alpha.20260924] - 20260924
 ### Added
 
 - **Local control channel for Uxnan Desktop** (architecture/02a §5.8.15).
@@ -24,6 +23,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   approval countdown, like a phone. New config key `localControlEnabled`
   (default `true`); `bridge/status` reports `features.localControl` while the
   listener is up. Short-lived commands (`qr`, `code`, `status`) never open it.
+
 - **Every client converges on the same conversations** (architecture/02a
   §5.8.16). The thread handlers broadcast `stream/thread/updated` with the whole
   thread after `thread/start`, `fork`, `rename`, `setModel`, `setAccessMode`,
@@ -36,6 +36,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `stream/question/resolved`, including a timeout, so a card answered on one
   client stops being actionable on the others.
 
+- **`uxnan-bridge version`** (also `--version`, `-v`) prints the installed
+  version and nothing else, without starting a daemon — how Uxnan Desktop tells
+  which bridge is installed.
+
+- **`bridge/status` reports `activeTurns`**: threads with a turn in flight right
+  now, whichever client started it. Uxnan Desktop waits for `0` before an
+  automatic bridge update restarts it, so nobody's running turn is cut.
+
+### Changed
+
+- The generated thread title is announced as `stream/thread/updated` (the whole
+  thread) instead of the retired `stream/thread/renamed`.
+
+## [0.0.27-alpha.20260924] - 20260924
+### Added
+
 - **OpenCode 2 works from the phone, and OpenCode 1 keeps working.** OpenCode 2
   kept `opencode serve` but replaced its whole API — a required password,
   `/api/*` routes, a new event stream, questions as forms, the model per session,
@@ -47,13 +63,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   2.0.16). On 2.x a conversation title runs `opencode run --standalone`, so it
   never starts OpenCode's shared background service.
 
-- **`uxnan-bridge version`** (also `--version`, `-v`) prints the installed
-  version and nothing else, without starting a daemon — how Uxnan Desktop tells
-  which bridge is installed.
-- **`bridge/status` reports `activeTurns`**: threads with a turn in flight right
-  now, whichever client started it. Uxnan Desktop waits for `0` before an
-  automatic bridge update restarts it, so nobody's running turn is cut.
-
 ### Changed
 
 - **One OpenCode adapter over a protocol client per version.** The adapter now
@@ -64,8 +73,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the reader normalized messages. `opencode-server.ts` and its exports
   (`OpenCodeServer`, `parseSseRecord`, `OpenCodePermissionRule`,
   `OpenCodePromptBody`, `OpenCodeServerEvent`) are replaced by the new modules'.
-- The generated thread title is announced as `stream/thread/updated` (the whole
-  thread) instead of the retired `stream/thread/renamed`.
 
 ### Fixed
 
