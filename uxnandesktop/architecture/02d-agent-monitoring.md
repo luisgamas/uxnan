@@ -86,14 +86,24 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
     degradando a "no disponible" si el SO no la genera.
   - **OpenCode** — un plugin in-process depositado en su directorio `plugins/`
     (`~/.config/opencode/plugins/uxnan-status.js`); OpenCode lo auto-descubre, así
-    que **no** se toca `opencode.json` (no tiene key `plugins` en su schema).
+    que **no** se toca `opencode.json` (no tiene key `plugins` en su schema). Un
+    solo archivo habla las **dos APIs de plugin**: su `export default { id, setup,
+    server }` lleva el `setup` de OpenCode 2 (cuyo contexto transmite los eventos
+    `session.execution.*`, `form.*`, `permission.*`) y la fábrica V1 como `server`
+    (el bus `session.status` / `session.idle` / `message.part.updated`). Medido:
+    OpenCode 1.17.20 / 1.18.25 / 1.18.32 llaman `server` (y `setup` sin flujo de
+    eventos, que no hace nada), OpenCode 2.0.16 llama solo `setup`. OpenCode 2 corre
+    los plugins en un **servidor**, no en el TUI: uxnan lo lanza `--standalone`
+    (servidor privado, hijo del TUI de la pestaña, con su entorno — ver §1.6) y el
+    plugin **calla dentro del servicio compartido** (`opencode serve --service`),
+    cuyo entorno es el de otra pestaña.
   - **Pi / OMP** — una extensión in-process en `~/.pi/agent/extensions/`.
   - **Plugins in-process de terceros** — **MiMo Code** y **Kilo Code** ejecutan el
     plugin de OpenCode tal cual (MiMo es un fork suyo; Kilo reimplementó el mismo
-    bus de eventos): el instalador reescribe el tipo de agente que declara y, para
-    Kilo, el descriptor `export default { id, server }` que exige su cargador —
-    tres copias casi idénticas de un reporter ya validado serían tres sitios donde
-    corregir el siguiente bug. **Amp** tiene API propia (`amp.on(...)`, con un
+    bus de eventos): el instalador reescribe solo el tipo de agente que declara —
+    el descriptor por defecto del archivo lo cargan tal cual Kilo 7.7.9 y MiMo
+    0.1.15 (ambos llaman `server`) — y tres copias casi idénticas de un reporter
+    ya validado serían tres sitios donde corregir el siguiente bug. **Amp** tiene API propia (`amp.on(...)`, con un
     `agent.end` que distingue turno terminado de turno muerto), así que lleva su
     propio archivo; su `tool.call` **decide** si la herramienta corre, y el
     reporter responde `allow` — observar no puede ser la razón de que algo no se
@@ -457,6 +467,7 @@ corriendolos de verdad y leyendo lo que emiten**:
 | Codex 0.147.0 | herramienta `spawn_agent` | `agent_id` | `last_assistant_message` |
 | Grok 0.2.118 | herramienta de subagente | `subagentId` | `lastAssistantMessage` |
 | OpenCode 1.18.15 | herramienta `task` (**sesion hija**) | id de la sesion hija | — |
+| OpenCode 2.0.16 | herramienta `task` (**sesion hija**, `data.parentID`) | id de la sesion hija | — |
 
 Codex expone los dos eventos con **el mismo payload que Claude**, asi que basta con
 suscribirse: van en `codex_trust::CODEX_EVENTS` con su etiqueta snake_case, porque su
@@ -766,9 +777,11 @@ esfuerzo (un archivo ajeno en esa ruta se respeta). `status` reporta ambos
 |---|---|---|
 | Claude Code | flag de lanzamiento | `--mcp-config <archivo propio del ADE>` (`headers`: `Authorization: Bearer ${UXNAN_MCP_TOKEN}`, `x-uxnan-agent-id: ${UXNAN_AGENT_ID}`, expandidos del entorno) |
 | Codex | flags de lanzamiento | `-c mcp_servers.<n>.url=<endpoint> -c mcp_servers.<n>.bearer_token_env_var=UXNAN_MCP_TOKEN -c mcp_servers.<n>.env_http_headers.x-uxnan-agent-id=UXNAN_AGENT_ID` (cabecera → nombre de variable; verificado con `codex mcp get`) |
-| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; `headers` con `{env:UXNAN_MCP_TOKEN}` y `{env:UXNAN_AGENT_ID}`) |
+| OpenCode | env de lanzamiento | `OPENCODE_CONFIG_CONTENT` (se **fusiona** sobre la config del usuario; `headers` con `{env:UXNAN_MCP_TOKEN}` y `{env:UXNAN_AGENT_ID}`). Con OpenCode 2 solo en la terminal que uxnan abre para lanzarlo, y el lanzamiento lleva `--standalone` (abajo) |
 
 El archivo de Claude vive en `<app-data>/mcp/claude-<puerto>.json` y lleva el puerto de **esa** ventana, de modo que dos ventanas de uxnan abiertas nunca se pisan el endpoint. Los flags se anaden en el unico punto donde el frontend teclea un comando de lanzamiento (`$lib/mcpLaunch` desde `terminal/instances.ts`), asi que cubre por igual un lanzamiento nuevo, una sesion reanudada y una pestana despertada.
+
+**OpenCode 2: un servidor por pestaña.** OpenCode 2 ya no corre el agente en el TUI: un `opencode` a secas es cliente de un **servicio de fondo compartido** (`opencode serve --service`) que sobrevive a la pestaña y corre plugins y servidores MCP con el entorno de la primera terminal que lo arrancó. Registrado por entorno en todas las terminales, eso repetiría el fallo que este invariante evita: una registración que sobrevive al lanzamiento (puerto y token caducos al reiniciar uxnan) y que presta la identidad de **una** pestaña a todo cliente de OpenCode de la máquina. Por eso, con OpenCode 2 instalado (`agentcli::opencode_major_version`, `opencode --version` cacheado contra el binario): (1) uxnan lo lanza con **`--standalone`** (`mcpinject::required_args`, que el frontend añade en todo lanzamiento aunque las herramientas estén apagadas, salvo que el perfil ya elija servidor con `--standalone` / `--server`) — un servidor privado, hijo del TUI de la pestaña, que muere con ella; OpenCode 1 rechaza el flag y no lo necesita; y (2) `OPENCODE_CONFIG_CONTENT` va **solo en la terminal abierta para lanzar OpenCode** (`pty_create` recibe `launching`; `mcpinject::launch_env_all`), así que un `opencode` tecleado a mano no se lo pasa al servicio. Con OpenCode 1 todas las terminales lo siguen recibiendo, como antes. Coste medido (macOS, 2.0.16): ~585 MB por pestaña standalone frente a ~175 MB por TUI más ~470 MB del servicio una vez.
 
 **Por que se sustituyo la escritura en la config global de usuario:** era una unica entrada, persistente y compartida, con dos fallos observados. (1) Fuera de uxnan no era inocua: Codex valida `bearer_token_env_var` al arrancar y aborta la fase MCP con *«Environment variable UXNAN_MCP_TOKEN for MCP server 'uxnan-browser' is not set»* en **cada** ejecucion. (2) La entrada llevaba el puerto de una instancia, asi que una **segunda** ventana de uxnan la sobrescribia y rompia los agentes de la primera desde dentro. Al arrancar, el ADE hace un **barrido de limpieza** (solo eliminacion, `sweep_legacy`) que borra esa entrada de las siete configs de usuario que versiones anteriores pudieron escribir.
 

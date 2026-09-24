@@ -198,6 +198,44 @@ in a POSIX shell and `"fix the bug"` under cmd. Just type the raw values in the
 
 ---
 
+## OpenCode 2
+
+With **OpenCode 2** installed, the ADE launches it as `opencode --standalone`
+(a resumed session too: `opencode --session <id> --standalone`). You don't add
+it and you don't see it in your profile — it is appended at the moment the
+launch line is typed, like the MCP flags, whether or not the agent tools are on.
+
+Why: OpenCode 2's TUI is only a client. A bare `opencode` talks to a
+**background service shared by every OpenCode on the machine**, which outlives
+the tab and runs the agent with the environment of whichever terminal started it
+first. Everything a uxnan launch hands the agent through its tab's environment —
+the terminal id its status reports carry, the hook server, the MCP tools — would
+then belong to one tab for all of them, and go stale when uxnan restarts.
+`--standalone` gives the launch a **private server**, child of the TUI in the tab,
+with that tab's environment; it ends with the tab. It is the same shape OpenCode 1
+always had: its server lived inside the TUI.
+
+- **Only for 2.** The ADE reads `opencode --version` to decide: OpenCode 1 has no
+  such flag and refuses to start with it. The answer is cached against the
+  binary and re-read when it changes, so upgrading OpenCode while the app is open
+  is picked up at the next launch.
+- **Your profile wins.** Arguments that already choose where OpenCode's server
+  runs — `--standalone` itself, or `--server <url>` — leave the line alone.
+- **The cost is memory**, measured on macOS with OpenCode 2.0.16: a standalone
+  launch is about **585 MB** (TUI 183 MB + its server 401 MB) against about
+  **175 MB** per TUI on the shared service plus **~470 MB** for the service once.
+  Startup is the same (first frame 1.29 s vs 1.13 s). Sessions are stored on
+  disk either way, so history and `--session <id>` work in both.
+- **What you don't get:** following the same live session from another OpenCode
+  client (its desktop or web app) attached to the shared service.
+- **An `opencode` you type yourself** in a uxnan terminal still uses the shared
+  service. It runs normally, but its tab gets no precise status (the reporter
+  stays silent in the shared service rather than report as the wrong tab) and no
+  MCP tools — see [agent hooks](./agent-hooks.md) → *OpenCode 1 and OpenCode 2*
+  and [browser](./browser.md) → *How it connects*.
+
+---
+
 ## Sessions named at launch
 
 For the CLIs that accept a caller-chosen session id, the ADE picks one and adds

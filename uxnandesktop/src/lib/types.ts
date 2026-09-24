@@ -652,6 +652,13 @@ export interface McpAgentInfo {
   /** Arguments to append to this launch's command line. Empty for `env` agents
    *  and while the hook server isn't listening yet. */
   args: string[];
+  /** Arguments this CLI needs for any of uxnan's per-launch wiring (hooks, the
+   *  MCP server) to reach it — appended on every launch, whatever the agent-tools
+   *  switch says. OpenCode 2's `--standalone` (Rust `mcpinject::required_args`). */
+  requiredArgs: string[];
+  /** Flags by which a command line has already made that choice itself; a line
+   *  carrying one gets no `requiredArgs`. */
+  requiredArgsChosenBy: string[];
 }
 
 /** Runtime MCP coordinates: the live endpoint + token for the Settings snippet,

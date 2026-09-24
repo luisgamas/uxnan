@@ -15,6 +15,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   on (macOS 11's Safari 14 and newer), which ships xterm.js intact; a test
   minifies xterm.js the way the build does and fails if the answer breaks
   again. Any TUI that queried a mode was affected since desktop 0.0.14.
+- **OpenCode 2 shows its state again.** OpenCode 2 replaced its plugin API, so
+  Uxnan's status plugin no longer loaded ("Plugin must export a default
+  definition…") and an OpenCode tab never left its gray dot. The plugin now
+  speaks both APIs from one file, so OpenCode 1 and 2 — and MiMo Code and Kilo
+  Code, which run the same file — report working, waiting (a permission or a
+  question), done, interrupted, failed and their sub-agents. With OpenCode 2 the
+  card also shows your prompt, the tool in use and the agent's last reply.
+- **An OpenCode error reads as text**, not `[object Object]`.
+
+### Changed
+
+- **OpenCode 2 is launched `--standalone`.** Its TUI is only a client of a
+  background service shared by every OpenCode on the machine, which keeps the
+  environment of whichever terminal started it — so every OpenCode tab would
+  have reported, and used the agent tools, as that one tab, with a token that
+  stops working when Uxnan restarts. A launch from Uxnan now gets a private
+  server that belongs to its tab and ends with it. Uxnan reads `opencode
+  --version` to decide (OpenCode 1 rejects the flag), picks up an upgrade at the
+  next launch, and leaves a profile that already chose `--standalone` or
+  `--server` alone. The cost is memory: about 585 MB per OpenCode tab instead of
+  ~175 MB plus ~470 MB for the shared service once.
+- **With OpenCode 2, its agent tools go only to the terminal Uxnan opens to
+  launch it.** Before, every terminal carried them, so an `opencode` typed by
+  hand could hand them to that shared service for good. A hand-typed `opencode`
+  runs as normal, without the tools or a precise state; OpenCode 1 is unchanged.
 
 ## [0.0.55] - 20260924
 ### Added
