@@ -12,7 +12,9 @@
   // Phase 6 → Chat tabs.
   //
   // Built on the shared `InputGroup` (the same primitive the command palette's
-  // search uses): a `Textarea` over a `block-end` action bar.
+  // search uses): a `Textarea` over a `block-end` toolbar of quiet pills — the
+  // model (`leading`), the model's run options, the access mode (`trailing`) —
+  // then the context ring and the round send / stop button.
   import * as InputGroup from "$lib/components/ui/input-group";
   import * as Select from "$lib/components/ui/select";
   import { Icon } from "$lib/components/ui/icon";
@@ -20,10 +22,11 @@
   import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
   import type { Snippet } from "svelte";
+  import ChatContextRing from "./ChatContextRing.svelte";
   import type { AgentModelOption } from "$shared/agents/agent-capabilities";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { chat, icon, text } from "$lib/design";
 
   let {
     running = false,
@@ -35,6 +38,8 @@
     onsend,
     onstop,
     leading,
+    trailing,
+    context = null,
   }: {
     running?: boolean;
     disabled?: boolean;
@@ -46,8 +51,12 @@
     autofocus?: boolean;
     onsend: (text: string) => void | Promise<void>;
     onstop?: () => void;
-    /** Controls shown at the start of the action bar (the model picker). */
+    /** Controls shown at the start of the toolbar (the model picker). */
     leading?: Snippet;
+    /** Controls shown after the run options (the access mode). */
+    trailing?: Snippet;
+    /** How full the context window is, when the agent reports it. */
+    context?: { tokens: number; limit: number } | null;
   } = $props();
 
   let value = $state("");
@@ -96,7 +105,7 @@
       aria-label={i18n.t("chat.composerLabel")}
       class={cn("max-h-60 min-h-11 px-3 leading-5", text.body)}
     />
-    <InputGroup.Addon align="block-end" class="gap-1">
+    <InputGroup.Addon align="block-end" class="gap-0.5">
       {#if leading}{@render leading()}{/if}
       {#each enumOptions as option (option.key)}
         <Select.Root
@@ -104,7 +113,7 @@
           value={String(optionValues[option.key] ?? option.default ?? "")}
           onValueChange={(v) => (optionValues = { ...optionValues, [option.key]: v })}
         >
-          <Select.Trigger size="compact" aria-label={option.label}>
+          <Select.Trigger size="compact" class={chat.pill} aria-label={option.label}>
             {optionLabel(option)}
           </Select.Trigger>
           <Select.Content>
@@ -115,7 +124,7 @@
         </Select.Root>
       {/each}
       {#each toggleOptions as option (option.key)}
-        <label class={cn("flex items-center gap-1.5 px-1", text.meta)}>
+        <label class={cn("flex h-7 items-center gap-1.5 px-2", text.meta)}>
           <Switch
             checked={(optionValues[option.key] ?? option.default) === true}
             onCheckedChange={(on) => (optionValues = { ...optionValues, [option.key]: on })}
@@ -123,7 +132,11 @@
           {option.label}
         </label>
       {/each}
+      {#if trailing}{@render trailing()}{/if}
       <span class="flex-1"></span>
+      {#if context && context.limit > 0}
+        <ChatContextRing tokens={context.tokens} limit={context.limit} />
+      {/if}
       {#if running && empty && onstop}
         <InputGroup.Button
           size="icon-sm"

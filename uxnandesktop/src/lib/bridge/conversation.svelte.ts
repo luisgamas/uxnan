@@ -126,22 +126,26 @@ export class Conversation {
   pending = $state<PendingSend[]>([]);
 
   running = $derived(this.activeTurnId !== null);
-  /** Approvals and questions of the running turn nobody has answered yet. */
-  pendingInput = $derived.by(() => {
+  /** Approvals and questions of the running turn nobody has answered yet, in
+   *  the order the agent raised them — the requests the chat pins above its
+   *  composer until they are answered here, on the phone, or time out. */
+  openRequests = $derived.by<Record<string, unknown>[]>(() => {
     const turn = this.activeTurnId ? this.turns.find((t) => t.id === this.activeTurnId) : undefined;
     const blocks = assistantOf(turn)?.blocks ?? [];
-    let open = 0;
+    const open: Record<string, unknown>[] = [];
     for (const raw of blocks) {
       const block = record(raw);
       const req = block.request && typeof block.request === 'object' ? record(block.request) : block;
       if (block.type === 'approval' && typeof req.approvalId === 'string') {
-        if (!this.approvals[req.approvalId]) open += 1;
+        if (!this.approvals[req.approvalId]) open.push(block);
       } else if (block.type === 'question' && typeof req.questionId === 'string') {
-        if (!this.questions[req.questionId]) open += 1;
+        if (!this.questions[req.questionId]) open.push(block);
       }
     }
     return open;
   });
+  /** How many of them there are. */
+  pendingInput = $derived(this.openRequests.length);
   /** What the chat's tab chip shows — the same states a terminal agent's
    *  indicator uses: `blocked` while the agent waits on the user, `working`
    *  while it runs, `idle` otherwise. */

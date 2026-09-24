@@ -6,11 +6,20 @@
 
 import { describe, expect, it } from "vitest";
 import { mount, until } from "../../../test/render";
+
+/** Whether a node sits inside a collapsed section (Bits UI may keep a closed
+ *  section's content mounted, marked closed and hidden). */
+function folded(node: HTMLElement | null): boolean {
+  return !node || node.closest('[data-slot="collapsible-content"][data-state="closed"], [hidden]') !== null;
+}
 import { Conversation } from "$lib/bridge/conversation.svelte";
 import { bridge } from "$lib/bridge/client.svelte";
 import { chat } from "$lib/bridge/chat.svelte";
+import type { Turn } from "$shared/models/thread";
 import ChatBlock from "./ChatBlock.svelte";
 import ChatBridgeGate from "./ChatBridgeGate.svelte";
+import ChatTurnView from "./ChatTurnView.svelte";
+import ChatWorkGroup from "./ChatWorkGroup.svelte";
 
 function conversation(): Conversation {
   return new Conversation("t1", async () => ({}) as never);
@@ -86,11 +95,88 @@ describe("ChatBlock", () => {
     expect(screen.getByText("No longer waiting for an answer")).toBeTruthy();
   });
 
+  it("records a request in the timeline as one line, then how it ended", async () => {
+    const c = conversation();
+    const { screen } = mount(ChatBlock, {
+      props: { block: approval, threadId: "t1", conversation: c, compact: true },
+    });
+    expect(screen.getByText("Allow Bash: rm -rf build")).toBeTruthy();
+    expect(screen.getByText("Waiting for you")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
+    c.apply({
+      method: "stream/approval/resolved",
+      params: { threadId: "t1", approvalId: "ap-1", decision: "approve" },
+    });
+    await until(() => screen.queryByText("Waiting for you") === null);
+  });
+
   it("renders nothing for a block type it does not know", () => {
     const { screen } = mount(ChatBlock, {
       props: { block: { type: "from-the-future" }, threadId: "t1", conversation: conversation() },
     });
     expect(screen.container.textContent?.trim()).toBe("");
+  });
+});
+
+describe("ChatWorkGroup", () => {
+  const blocks = [
+    { type: "command_execution", command: "npm test", exitCode: 1, output: "1 failing" },
+    { type: "command_execution", command: "ls", exitCode: 0 },
+    { type: "diff", filename: "src/a.ts", additions: 3, deletions: 1 },
+  ];
+
+  it("sums up a settled run of steps and opens back to them", async () => {
+    const { screen, user } = mount(ChatWorkGroup, { props: { blocks, live: false } });
+    expect(screen.getByText("Ran 2 commands · 1 edit")).toBeTruthy();
+    expect(screen.getByText("1 failed")).toBeTruthy();
+    expect(folded(screen.queryByText("npm test"))).toBe(true);
+    await user.click(screen.getByText("Ran 2 commands · 1 edit"));
+    await until(() => !folded(screen.queryByText("npm test")));
+    expect(screen.getByText("exit 1")).toBeTruthy();
+  });
+
+  it("stays open while the turn runs", () => {
+    const { screen } = mount(ChatWorkGroup, { props: { blocks, live: true } });
+    expect(screen.getByText("npm test")).toBeTruthy();
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
+  });
+});
+
+describe("ChatTurnView", () => {
+  const settled: Turn = {
+    id: "turn-1",
+    threadId: "t1",
+    status: "completed",
+    createdAt: 1_000,
+    completedAt: 64_000,
+    messages: [
+      { id: "u", turnId: "turn-1", role: "user", content: "Fix the build", createdAt: 1_000 },
+      {
+        id: "a",
+        turnId: "turn-1",
+        role: "assistant",
+        content: "",
+        createdAt: 64_000,
+        segments: [
+          { type: "text", text: "Looking at the failure." },
+          { type: "command_execution", command: "npm run build", exitCode: 0 },
+          { type: "diff", filename: "src/app.ts", additions: 2, deletions: 2 },
+          { type: "text", text: "The build passes now." },
+        ],
+      },
+    ],
+  };
+
+  it("folds a settled turn's work behind its duration and keeps the answer and its files", async () => {
+    const { screen, user } = mount(ChatTurnView, {
+      props: { turn: settled, threadId: "t1", cwd: "/repo", conversation: conversation() },
+    });
+    expect(screen.getByText("Fix the build")).toBeTruthy();
+    expect(screen.getByText("The build passes now.")).toBeTruthy();
+    expect(screen.getByText("1 file changed")).toBeTruthy();
+    expect(folded(screen.queryByText("Looking at the failure."))).toBe(true);
+    await user.click(screen.getByText("Worked for 1m 3s"));
+    await until(() => !folded(screen.queryByText("Looking at the failure.")));
   });
 });
 

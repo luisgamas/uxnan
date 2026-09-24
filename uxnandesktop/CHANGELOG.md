@@ -16,20 +16,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   three newest conversations — ones started on the phone included), the worktree
   row's *Launch agent* submenu opens with *New chat*, and the project launcher
   dialog offers *Chat*. Local folders only: the bridge runs on this machine.
-  **A new chat** picks its agent first (fixed for the conversation's life — a
-  different CLI cannot continue a native session) and optionally a model (which
-  stays switchable from the chat header, `thread/setModel`), or continues an
-  existing conversation in the folder. **A running chat** renders the agent's
-  answer from the bridge's ordered `segments` (prose via `MarkdownView`, with
-  commands, diffs, tool calls, plans, subagents, warnings inline), streams
-  thinking and text, answers approvals and questions in place, stops the running
-  turn, queues follow-ups (with the paused-queue banner, resume and discard),
-  pages older turns in on scroll, and shows the context used when the agent
-  reports it. The header also sets the access mode and renames (the thread
-  itself, so every client shows the name) or archives it. The model is the
+  **A new chat** opens on one question over the composer, whose toolbar picks
+  the agent (fixed for the conversation's life — a different CLI cannot
+  continue a native session) and optionally a model; the folder's existing
+  conversations are listed below it. **A running chat** renders the agent's
+  answer from the bridge's ordered `segments` (prose via `MarkdownView`), with
+  consecutive steps — commands, edits, tool calls, subagents — grouped into one
+  work group of compact rows (a pulsing dot while a step runs, red when it
+  failed; each opens to its output or diff) and a live *Working for 12s* line.
+  **Once a turn settles** its work folds behind *Worked for 1m 3s* (*Stopped
+  after …* / *Failed after …*), each group closed to a summary (*Ran 3 commands
+  · 2 edits*, and how many failed), leaving the closing answer open and a card
+  of the files the turn changed (a click opens the file). Open approvals and
+  questions wait in a dock **pinned above the composer**, the timeline keeping a
+  one-line record of each; the dock also lists queued follow-ups (each
+  cancellable) and the paused-queue banner (resume, discard). Messages show
+  their time and a copy button on hover. The composer's toolbar holds what can
+  change mid-chat — the model (`thread/setModel`), its run options, the access
+  mode — as quiet pills, plus a ring showing how full the context window is.
+  Also: stops the running turn, streams thinking, pages older turns in on
+  scroll. The header names the conversation and its agent, and renames (the
+  thread itself, so every client shows the name) or archives it. The model is the
   bridge's own: `Thread`/`Turn`/`Message` are imported **type-only** from
   `shared/` through a new `$shared` alias, not copied. Stores:
-  `src/lib/bridge/{client,chat,conversation}.svelte.ts`; components:
+  `src/lib/bridge/{client,chat,conversation}.svelte.ts` and the pure layout in
+  `src/lib/bridge/timeline.ts`; components:
   `src/lib/components/chat/`. A chat tab persists only its pointer (`cwd`,
   `threadId`, preselected `agentId`); the conversation lives on the bridge.
   Without a connected bridge the tab says why and offers *Connect*. **Pending

@@ -160,8 +160,10 @@ describe('Conversation', () => {
       }),
     );
     expect(c.pendingInput).toBe(1);
+    expect(c.openRequests).toEqual([{ type: 'approval', approvalId: 'ap', action: 'Allow Bash' }]);
     expect(c.displayStatus).toBe('blocked');
     c.apply(note('stream/approval/resolved', { approvalId: 'ap', decision: 'approve' }));
+    expect(c.openRequests).toEqual([]);
     expect(c.displayStatus).toBe('working');
     c.apply(note('stream/turn/aborted', { turnId: 'x' }));
     expect(c.displayStatus).toBe('idle');

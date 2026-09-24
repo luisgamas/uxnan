@@ -286,16 +286,24 @@ asserts both.
 |---|---|
 | `pane.root` / `pane.header` | Any center-area pane that is not a terminal — file, commit, chat: `bg-background` root and the 36px header band (`h-9`, hairline below). |
 | `chat.column` | The centered reading column (`max-w-3xl`) the chat timeline and composer share. |
+| `chat.hero` | A new chat's question, centered over its composer. |
 | `chat.userBubble` / `chat.queuedBubble` | The user's message (muted fill) and a queued follow-up (same shape, dashed outline). |
-| `chat.activity` | One line of the agent's work log — a command, a changed file, a tool call — at the 32px row minimum. |
-| `chat.card` | An interactive card inside a turn: an approval, a question, a plan. |
+| `chat.activity` | One compact row of the agent's work — a command, an edit, a tool call — and the header of a work group or a folded turn. |
+| `chat.activityList` | An open work group's rows, hung off a quiet rule. |
+| `chat.runningDot` | A step (or a turn) still running: a small pulsing dot. |
+| `chat.card` | A card inside the chat: an approval or a question (in the dock), a plan, the files a turn changed, the queue. |
 | `chat.output` | Captured output under an expanded activity line. |
+| `chat.pill` | A quiet control in the composer's toolbar (agent, model, run options, access mode): ghost until hovered. |
+| `chat.dock` | What waits above the composer — open approvals and questions, the queue — capped in height, scrolling. |
+| `chat.messageMeta` | A message's time and copy button, revealed while its row (`group/message`) is hovered or focused. |
 
 The chat composes these with the shared primitives rather than drawing its own:
-`InputGroup` + `Textarea` for the composer, `AiModelPicker` for the model,
-`Combobox` for the agent, `Select` for the access mode, `Collapsible` for the
-work log, `DiffView` for changed files, `Badge` for small states and
-`AgentStatusIndicator` on its tab chip.
+`InputGroup` + `Textarea` for the composer, `AiModelPicker` (its `ghost`
+variant) for the model, `Combobox` (its `ghost` trigger) for the agent, `Select`
+for the access mode and the run options, `Collapsible` for work groups and
+folded turns, `DiffView` for changed files, `Badge` for small states,
+`TooltipSimple` for the context ring, and `AgentStatusIndicator` on its tab
+chip.
 
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes

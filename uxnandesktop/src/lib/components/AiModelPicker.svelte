@@ -22,6 +22,7 @@
     onSelect,
     triggerClass = "w-56",
     size = "default",
+    variant = "outline",
     disabled = false,
   }: {
     /** Models the agent reports (Default is added by this component). */
@@ -35,6 +36,9 @@
     triggerClass?: string;
     /** Control density: `default` (36px, forms) or `sm` (32px, a pane header). */
     size?: "default" | "sm";
+    /** `outline` in a form; `ghost` where it sits in a toolbar (the chat
+     *  composer) and should read as part of it — as `Combobox` does. */
+    variant?: "outline" | "ghost";
     disabled?: boolean;
   } = $props();
 
@@ -75,7 +79,7 @@
            class wins and the button loses its width, stretching full-width. -->
       <Button
         {...props}
-        variant="outline"
+        {variant}
         {size}
         {disabled}
         role="combobox"

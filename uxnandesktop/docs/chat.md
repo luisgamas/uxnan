@@ -74,14 +74,15 @@ folder on an SSH host is not one it can work in):
 
 ## A new chat
 
-Pick the **agent** — it stays with the conversation, because another CLI cannot
-continue a native session — and, optionally, a **model** (the composer's model
-picker; *Default model* lets the agent decide). The first message starts the
-thread in the tab's folder; the thread is titled from that message until the
-agent writes a better name.
+A new chat opens on one question — *What should we build in <folder>?* — over
+the composer. Its toolbar carries the **agent** (it stays with the
+conversation, because another CLI cannot continue a native session) and,
+optionally, a **model** (*Default model* lets the agent decide). The first
+message starts the thread in the tab's folder; the thread is titled from that
+message until the agent writes a better name.
 
-The same screen lists **Continue a conversation**: every conversation the bridge
-holds for this folder, whichever app started it.
+Below it, **Continue a conversation** lists every conversation the bridge holds
+for this folder, whichever app started it.
 
 Agents offered are the bridge's (`agent/list`), not the desktop's agent
 profiles: a chat runs on the bridge's drive surface for each CLI
@@ -89,35 +90,54 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 
 ## In a chat
 
-- **Header**: the agent (fixed), the model (switchable — every client sees the
-  change), the access mode (*Ask first* / *Auto-approve edits* / *Full access*;
-  new chats start at *Full access*, like new chats on the phone), and *Rename*
-  (renames the thread, so the phone shows the same name) / *Archive*.
-- **Timeline**: the agent's answer in the order it produced it — prose, and
-  inline the commands it ran, the files it changed (+/− counts, expandable), tool
-  calls, plans, subagents, warnings. *Thinking* folds away. Scrolling to the top
-  loads older turns.
-- **Approvals and questions** are answered in place. One answered on the phone
-  (or timed out) settles here too; one from a turn that already ended never
-  offers its buttons again.
-- **Composer**: Enter sends, Shift+Enter breaks the line. While the agent works
-  the button stops it; a message sent meanwhile is queued behind the running
-  turn (or handed to it, on agents that take input mid-turn). A stopped or failed
-  turn pauses the queue: *Resume* or *Discard*. Per-model knobs (reasoning
-  effort, …) appear next to the model when the model has any.
-- **Context used** shows under the composer when the agent reports it.
+- **Header**: the conversation's name, its agent (fixed), and *Rename* (renames
+  the thread, so the phone shows the same name) / *Archive*.
+- **Timeline, while a turn runs**: everything in view, in the order the agent
+  produced it — prose, and between it the steps it takes. Consecutive steps
+  (commands, edits, tool calls, subagents) form one **work group**: a compact
+  row per step (icon, verb, detail; a pulsing dot while it runs, red when it
+  failed), each one opening to its output or diff. A *Working for 12s* line
+  sits under the turn.
+- **Timeline, once a turn settles**: the work that led to the answer folds
+  behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
+  …*) — which opens back to it, each work group then closed to its summary
+  (*Ran 3 commands · 2 edits*, and how many failed). The closing answer stays
+  open, followed by a card of the **files the turn changed** (+/− per file; a
+  click opens the file). *Thinking* folds away. Scrolling to the top loads older
+  turns.
+- **Messages**: hovering one shows when it was sent and a copy button.
+- **Approvals and questions** wait in a dock **pinned above the composer**
+  until they are answered; the timeline keeps a one-line record of each (what
+  was asked, then how it ended). One answered on the phone (or timed out)
+  settles here too; one from a turn that already ended never offers its buttons
+  again.
+- **Queue**: a message sent while the agent works is queued behind the running
+  turn (or handed to it, on agents that take input mid-turn); queued messages
+  are listed in the dock, each with a cancel button. A stopped or failed turn
+  pauses the queue: *Resume* or *Discard*.
+- **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
+  the round button stops it. Its toolbar holds what can change mid-chat — the
+  model (every client sees the change), the model's knobs (reasoning effort, …)
+  when it has any, and the access mode (*Ask first* / *Auto-approve edits* /
+  *Full access*; new chats start at *Full access*, like new chats on the phone)
+  — and a ring showing how full the context window is, when the agent reports
+  it (amber past 75%, red past 90%; the figures are in its tooltip).
 
 ## For developers
 
 - Stores: `src/lib/bridge/client.svelte.ts` (connection + call + notification
   fan-out), `chat.svelte.ts` (thread list, actions), `conversation.svelte.ts`
-  (one thread's timeline reducer). Components: `src/lib/components/chat/`.
+  (one thread's timeline reducer, including `openRequests` for the dock),
+  `timeline.ts` (pure: grouping a turn's parts into work groups, splitting the
+  closing answer, work summaries, changed files, durations). Components:
+  `src/lib/components/chat/`.
 - The conversation model is the bridge's own, imported **type-only** from
   `shared/src` through the `$shared` alias (`svelte.config.js`): no copy that can
   drift.
 - A chat tab (`ChatTab` in `terminals.svelte.ts`) persists only `cwd`,
   `threadId` and the preselected `agentId`.
-- Tests: `src/lib/bridge/*.svelte.test.ts`, `src/lib/state/chatTabs.svelte.test.ts`,
+- Tests: `src/lib/bridge/*.svelte.test.ts`, `src/lib/bridge/timeline.test.ts`,
+  `src/lib/state/chatTabs.svelte.test.ts`,
   `src/lib/components/chat/ChatBlock.svelte.test.ts`, and in Rust
   `cargo test bridgeclient` — which includes a contract test against the real
   built bridge (`bridge/dist`; skipped when it is not built).

@@ -5,10 +5,10 @@
   // already runs in this folder — one started on the phone included — since
   // every client sees the same bridge threads.
   //
-  // The agent is chosen with the same `Combobox` + `AgentLogo` the new-worktree
-  // dialog uses, the model with the shared `AiModelPicker`.
-  import { Icon } from "$lib/components/ui/icon";
-  import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
+  // A centered hero: the question, then the composer, whose toolbar carries the
+  // agent (the same `Combobox` + `AgentLogo` the new-worktree dialog uses) and
+  // the model (the shared `AiModelPicker`) as quiet pills; the conversations
+  // already running here are listed below it.
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import AiModelPicker from "$lib/components/AiModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
@@ -113,68 +113,66 @@
   <AgentLogo logo={bridgeAgentLogo(item.value)} class={cn(icon.brand, "shrink-0")} />
 {/snippet}
 
-<div class="flex h-full min-h-0 flex-col">
-  <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto">
-    <div class={cn(chatTokens.column, "flex max-w-xl flex-col gap-6 pb-6 pt-12")}>
-      <div class="flex flex-col items-center gap-2 text-center">
-        <Icon icon={BubbleChatIcon} class={cn(icon.empty, "text-muted-foreground/60")} />
-        <h2 class={text.title}>{i18n.t("chat.startTitle", { folder })}</h2>
-        <p class={cn(text.meta, "max-w-md")}>{i18n.t("chat.startHint")}</p>
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <span class={text.bodyStrong}>{i18n.t("chat.chooseAgent")}</span>
-        <Combobox
-          value={agentId}
-          groups={agentGroups}
-          placeholder={agents.length === 0 ? i18n.t("chat.agentsLoading") : ""}
-          searchPlaceholder={i18n.t("common.search")}
-          itemPrefix={agentPrefix}
-          disabled={agents.length === 0}
-          onChange={pickAgent}
-        />
-        <p class={text.meta}>{i18n.t("chat.agentFixedHint")}</p>
-      </div>
-
-      {#if existing.length > 0}
-        <div class="flex flex-col gap-1">
-          <span class={text.section}>{i18n.t("chat.continue")}</span>
-          {#each existing.slice(0, 8) as thread (thread.id)}
-            <button
-              type="button"
-              class={cn(row.list, row.listInactive)}
-              onclick={() => openExisting(thread.id)}
-            >
-              <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
-              <span class="min-w-0 flex-1 truncate text-foreground">{thread.title}</span>
-              <span class={cn(text.meta, "shrink-0")}>{relativeTime(thread.updatedAt, i18n.locale)}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
+<div class="uxnan-scroll h-full min-h-0 overflow-y-auto">
+  <div class={cn(chatTokens.column, "flex min-h-full max-w-2xl flex-col justify-center gap-5 py-10")}>
+    <div class="flex flex-col items-center gap-1.5 text-center">
+      <h2 class={chatTokens.hero}>
+        {i18n.t("chat.startTitle", { folder })}
+      </h2>
+      <p class={cn(text.meta, "max-w-md")}>{i18n.t("chat.startHint")}</p>
     </div>
-  </div>
 
-  <div class={cn(chatTokens.column, "max-w-xl shrink-0 pb-4")}>
-    <ChatComposer
-      disabled={!agentId || starting}
-      {runOptions}
-      bind:optionValues
-      autofocus={active}
-      placeholder={i18n.t("chat.startPlaceholder")}
-      onsend={start}
-    >
-      {#snippet leading()}
-        <AiModelPicker
-          {models}
-          value={model}
-          loading={modelsLoading}
-          size="sm"
-          triggerClass="max-w-56"
-          disabled={!agentId}
-          onSelect={(id) => (model = id)}
-        />
-      {/snippet}
-    </ChatComposer>
+    <div class="flex flex-col gap-1.5">
+      <ChatComposer
+        disabled={!agentId || starting}
+        {runOptions}
+        bind:optionValues
+        autofocus={active}
+        placeholder={i18n.t("chat.startPlaceholder")}
+        onsend={start}
+      >
+        {#snippet leading()}
+          <Combobox
+            value={agentId}
+            groups={agentGroups}
+            placeholder={agents.length === 0 ? i18n.t("chat.agentsLoading") : i18n.t("chat.chooseAgent")}
+            searchPlaceholder={i18n.t("common.search")}
+            itemPrefix={agentPrefix}
+            triggerVariant="ghost"
+            triggerClass={cn(chatTokens.pill, "w-auto max-w-48")}
+            disabled={agents.length === 0}
+            onChange={pickAgent}
+          />
+          <AiModelPicker
+            {models}
+            value={model}
+            loading={modelsLoading}
+            size="sm"
+            variant="ghost"
+            triggerClass={cn(chatTokens.pill, "max-w-52")}
+            disabled={!agentId}
+            onSelect={(id) => (model = id)}
+          />
+        {/snippet}
+      </ChatComposer>
+      <p class={cn(text.meta, "px-1")}>{i18n.t("chat.agentFixedHint")}</p>
+    </div>
+
+    {#if existing.length > 0}
+      <div class="flex flex-col gap-1 pt-2">
+        <span class={cn(text.section, "px-1")}>{i18n.t("chat.continue")}</span>
+        {#each existing.slice(0, 8) as thread (thread.id)}
+          <button
+            type="button"
+            class={cn(row.list, row.listInactive)}
+            onclick={() => openExisting(thread.id)}
+          >
+            <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
+            <span class="min-w-0 flex-1 truncate text-foreground">{thread.title}</span>
+            <span class={cn(text.meta, "shrink-0")}>{relativeTime(thread.updatedAt, i18n.locale)}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 </div>
