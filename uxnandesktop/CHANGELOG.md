@@ -76,6 +76,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A search in the integrated browser no longer closes the app.** While the
+  browser keeps its address bar in step (every 1.5 s), it asked the engine for
+  the page's URL — and during a navigation WebKit briefly has none, which the
+  webview library unwraps: a panic that aborted the whole app. The page is now
+  asked where it is instead, in the same call that reads its history.
+- **Back and Forward follow the page's whole history.** The toolbar asked the
+  page's own Navigation API, which only counts entries of the current site: after
+  a search result on another site, Back went dead. The engine's session history
+  answers now.
+- **A browser page's DevTools open in a window of their own.** Docked, WebKit's
+  inspector took over the whole app window and stretched the page across it.
 - **Redo no longer sleeps the workspace, and selecting text no longer splits
   the terminal.** A text field or the file editor now keeps its typing, caret,
   selection, undo/redo and clipboard chords even when an app shortcut uses the

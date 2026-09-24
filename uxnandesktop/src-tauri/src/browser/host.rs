@@ -205,32 +205,56 @@ pub async fn eval_json<R: tauri::Runtime>(
     Ok(serde_json::from_str(&raw).unwrap_or(Value::Null))
 }
 
-/// Ask the page whether its history can move, through the Navigation API
-/// where the engine has it.
-const HISTORY_JS: &str = "(()=>{try{const n=window.navigation;return n?[!!n.canGoBack,!!n.canGoForward]:null}catch(e){return null}})()";
+/// Ask the page where it is and whether its history can move (the Navigation
+/// API, where the engine has it): `[href, canGoBack, canGoForward]`.
+const PAGE_STATE_JS: &str = "(()=>{try{const n=window.navigation;return [String(location.href),n?!!n.canGoBack:null,n?!!n.canGoForward:null]}catch(e){return null}})()";
+
+/// What the page said: its URL (an http(s) one only — a blank or error
+/// document says nothing worth showing) and, when the engine knows it, whether
+/// it can go back and forward.
+fn read_page_state(value: &Value) -> (Option<String>, Option<(bool, bool)>) {
+    let Some([href, back, fwd]) = value.as_array().map(Vec::as_slice) else {
+        return (None, None);
+    };
+    let url = href
+        .as_str()
+        .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+        .map(str::to_string);
+    let history = match (back, fwd) {
+        (Value::Bool(b), Value::Bool(f)) => Some((*b, *f)),
+        _ => None,
+    };
+    (url, history)
+}
 
 /// Refresh what the engine does not push by itself — the URL after an in-page
 /// (`pushState`) navigation, and the history state — and emit it.
+///
+/// The page is asked, never the engine: WebKit has *no* URL for a moment
+/// during a navigation, and wry's `url()` unwraps it — a panic that aborts the
+/// whole app (it happened on a search from the address bar).
 pub async fn refresh<R: tauri::Runtime>(
     app: &AppHandle<R>,
     workspace: &str,
 ) -> Result<SessionState, CommandError> {
     let wv = webview(app, workspace)?;
-    let url = wv.url().ok().map(|u| u.to_string());
-    let history = eval_json(&wv, HISTORY_JS, Duration::from_secs(1))
+    let (url, page_history) = eval_json(&wv, PAGE_STATE_JS, Duration::from_secs(1))
         .await
-        .ok()
-        .and_then(|v| v.as_array().cloned());
+        .map(|v| read_page_state(&v))
+        .unwrap_or((None, None));
+    // The engine knows the whole session history; the page's own Navigation API
+    // (the fallback) only the entries of its current origin.
+    let history = super::native::history(&wv).await.or(page_history);
     update(app, workspace, |s| {
         if let Some(url) = url {
             s.url = url;
         }
-        match history.as_deref() {
-            Some([Value::Bool(back), Value::Bool(fwd)]) => {
-                s.can_go_back = Some(*back);
-                s.can_go_forward = Some(*fwd);
+        match history {
+            Some((back, fwd)) => {
+                s.can_go_back = Some(back);
+                s.can_go_forward = Some(fwd);
             }
-            _ => {
+            None => {
                 s.can_go_back = None;
                 s.can_go_forward = None;
             }
@@ -686,7 +710,7 @@ pub async fn browser_devtools<R: tauri::Runtime>(
     if wv.is_devtools_open() {
         wv.close_devtools();
     } else {
-        wv.open_devtools();
+        super::native::open_devtools(&wv).await;
     }
     Ok(())
 }
@@ -737,6 +761,28 @@ pub async fn browser_sessions<R: tauri::Runtime>(app: AppHandle<R>) -> Vec<Sessi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_where_the_page_is_without_asking_the_engine() {
+        let (url, history) = read_page_state(&serde_json::json!([
+            "https://example.com/?q=1",
+            true,
+            false
+        ]));
+        assert_eq!(url.as_deref(), Some("https://example.com/?q=1"));
+        assert_eq!(history, Some((true, false)));
+        // An engine without the Navigation API: the URL still counts.
+        let (url, history) =
+            read_page_state(&serde_json::json!(["http://localhost:5173/", null, null]));
+        assert_eq!(url.as_deref(), Some("http://localhost:5173/"));
+        assert_eq!(history, None);
+        // A blank or error document, or no answer, says nothing.
+        assert_eq!(
+            read_page_state(&serde_json::json!(["about:blank", false, false])).0,
+            None
+        );
+        assert_eq!(read_page_state(&Value::Null), (None, None));
+    }
 
     #[test]
     fn zoom_is_clamped() {

@@ -91,8 +91,9 @@ other workspaces keep theirs.
 Back · Forward · **Reload / Stop** (one button: Stop while the page loads;
 Shift-click reloads bypassing the cache) · address bar (a lock for https, a globe
 otherwise; a thin progress line while loading) · zoom level (shown only when it is
-not 100 % — click to reset) · **open in system browser** · **DevTools** · close
-page.
+not 100 % — click to reset) · **open in system browser** · **DevTools** (in a
+window of their own — docked, WebKit's inspector took over the whole app window)
+· close page.
 Back and Forward disable themselves when the page has no history that way (where
 the engine reports it).
 
