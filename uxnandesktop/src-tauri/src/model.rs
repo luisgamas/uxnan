@@ -1099,6 +1099,23 @@ pub enum BrowserLinkPolicy {
     Ask,
 }
 
+/// Where the browser's address bar sends what is not an address (Settings →
+/// Browser). The templates live in the UI (`browserAddress.ts`); `Custom` uses
+/// [`BrowserSettings::search_url`]. An unknown value (a newer version's engine)
+/// reads as Google rather than failing the whole settings file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchEngine {
+    DuckDuckGo,
+    Bing,
+    Brave,
+    Custom,
+    // Last: serde's catch-all for an engine this version does not know.
+    #[default]
+    #[serde(other)]
+    Google,
+}
+
 /// Integrated **developer** browser (Settings → Browser). A lightweight in-app
 /// webview tab for previewing/debugging the systems agents build and opening the
 /// links agents produce — deliberately not a general-purpose browser. The webview
@@ -1125,6 +1142,14 @@ pub struct BrowserSettings {
     /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
     #[serde(default)]
     pub homepage: String,
+    /// The search engine the address bar uses for anything that is not an
+    /// address. Default Google.
+    #[serde(default)]
+    pub search_engine: SearchEngine,
+    /// A custom search URL with `%s` for the query (used when
+    /// [`search_engine`](Self::search_engine) is `Custom`). Default empty.
+    #[serde(default)]
+    pub search_url: String,
     /// Let agents read and act on pages of sites outside this machine (the
     /// `browser_snapshot` / `_click` / … tools). Off: they work only on local
     /// pages (loopback — the agent's own dev server); on: each site still needs
@@ -1163,6 +1188,8 @@ impl Default for BrowserSettings {
             allow_agents: true,
             terminal_links: true,
             homepage: String::new(),
+            search_engine: SearchEngine::Google,
+            search_url: String::new(),
             agent_external_sites: false,
             mcp_enabled: true,
             friction_free: true,
@@ -1946,6 +1973,22 @@ mod tests {
         assert!(!BrowserSettings::default().agent_external_sites);
         let json = serde_json::to_string(&BrowserSettings::default()).unwrap();
         assert!(json.contains("\"agentExternalSites\":false"));
+    }
+
+    #[test]
+    fn the_search_engine_defaults_to_google_and_never_fails_a_load() {
+        let old: BrowserSettings = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert_eq!(old.search_engine, SearchEngine::Google);
+        assert!(old.search_url.is_empty());
+        let chosen: BrowserSettings =
+            serde_json::from_str(r#"{"searchEngine":"duckduckgo","searchUrl":""}"#).unwrap();
+        assert_eq!(chosen.search_engine, SearchEngine::DuckDuckGo);
+        // An engine a newer version added reads as Google, not as a broken file.
+        let newer: BrowserSettings =
+            serde_json::from_str(r#"{"searchEngine":"somefuture"}"#).unwrap();
+        assert_eq!(newer.search_engine, SearchEngine::Google);
+        let json = serde_json::to_string(&BrowserSettings::default()).unwrap();
+        assert!(json.contains("\"searchEngine\":\"google\""));
     }
 
     #[test]

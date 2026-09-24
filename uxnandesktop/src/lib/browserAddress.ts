@@ -1,19 +1,57 @@
 // The integrated browser's address bar and zoom steps — pure, so they are
 // unit-tested directly.
 
+import type { SearchEngine } from "$lib/types";
+
 /** Loopback hosts, which a dev server listens on over plain `http`. */
 const LOOPBACK = /^(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])(?::\d+)?(?:[/?#]|$)/i;
+/** `name.localhost` — also this machine. */
+const LOCAL_SUBDOMAIN = /^[a-z0-9-]+\.localhost(?::\d+)?(?:[/?#]|$)/i;
+/** A domain name: dotted labels ending in a letters-only top-level one. */
+const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}\.?(?::\d{1,5})?(?:[/?#]\S*)?$/i;
+/** An IPv4 address, which on a developer's network is a dev server (`http`). */
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:[/?#]\S*)?$/;
+/** One host name with a port (`devbox:8080`) — a machine on the network. */
+const HOST_PORT = /^[a-z0-9-]+:\d{1,5}(?:[/?#]\S*)?$/i;
 
-/** Turn what the person typed into an address to load, or `null` for nothing.
- *  Explicit schemes and `about:` pass through; a loopback host gets `http://`
- *  (a dev server); anything else gets `https://`. */
-export function normalizeAddress(input: string): string | null {
+/** The search engines the address bar can ask, as URL templates (`%s` is the
+ *  query). `custom` takes the person's own template. */
+
+export const SEARCH_ENGINES: Record<Exclude<SearchEngine, "custom">, { name: string; template: string }> = {
+  google: { name: "Google", template: "https://www.google.com/search?q=%s" },
+  duckduckgo: { name: "DuckDuckGo", template: "https://duckduckgo.com/?q=%s" },
+  bing: { name: "Bing", template: "https://www.bing.com/search?q=%s" },
+  brave: { name: "Brave Search", template: "https://search.brave.com/search?q=%s" },
+};
+
+/** Whether a custom search template can be used: an http(s) URL with `%s`. */
+export function isSearchTemplate(template: string): boolean {
+  return /^https?:\/\/\S+$/i.test(template.trim()) && template.includes("%s");
+}
+
+/** The template a search goes to: the chosen engine's, or the custom one when
+ *  it is usable — else Google, so a search always lands somewhere. */
+export function searchTemplate(engine: SearchEngine | undefined, custom = ""): string {
+  if (engine === "custom") return isSearchTemplate(custom) ? custom.trim() : SEARCH_ENGINES.google.template;
+  return SEARCH_ENGINES[engine ?? "google"]?.template ?? SEARCH_ENGINES.google.template;
+}
+
+/** Turn what the person typed into the address to load (`null` for nothing),
+ *  the way a browser's address bar does: an address loads, anything else is
+ *  searched. Explicit schemes and `about:` pass through; this machine and the
+ *  local network (loopback, `*.localhost`, an IPv4 address, `host:port`) get
+ *  `http://` — a dev server; a domain name gets `https://`; words, spaces or
+ *  anything else go to `template` (`%s` = the query). */
+export function resolveAddress(input: string, template: string = SEARCH_ENGINES.google.template): string | null {
   const s = input.trim();
   if (!s) return null;
   if (/^about:/i.test(s)) return s.toLowerCase() === "about:blank" ? "about:blank" : s;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s;
-  if (LOOPBACK.test(s) || /^[a-z0-9-]+\.localhost(?::\d+)?(?:[/?#]|$)/i.test(s)) return `http://${s}`;
-  return `https://${s}`;
+  if (!/\s/.test(s)) {
+    if (LOOPBACK.test(s) || LOCAL_SUBDOMAIN.test(s) || IPV4.test(s) || HOST_PORT.test(s)) return `http://${s}`;
+    if (DOMAIN.test(s)) return `https://${s}`;
+  }
+  return template.replace("%s", encodeURIComponent(s));
 }
 
 /** What the address bar shows for a page URL: nothing for the empty page. */

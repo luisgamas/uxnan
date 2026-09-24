@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The browser's address bar searches.** Anything that is not an address —
+  words, a phrase, a single name like `google` — goes to a search engine, as in
+  any browser, instead of failing as `https://google`. Choose it in Settings →
+  Browser: Google (default), DuckDuckGo, Bing, Brave Search or a custom URL with
+  `%s`. Addresses on this machine and the local network (an IPv4 address,
+  `host:port`) now load over `http://` too.
 - **App shortcuts work with a browser page focused.** The dock and its
   surfaces, the sidebar, new terminals and worktrees, the palettes, Settings and
   Automations are heard even while the page has the keyboard — through the menu

@@ -48,6 +48,7 @@
     InstallPolicy,
     BrowserSettings,
     BrowserLinkPolicy,
+    SearchEngine,
     McpInfo,
   } from "$lib/types";
   import { mcpInfo } from "$lib/api";
@@ -81,6 +82,7 @@
     type TerminalPolicy,
   } from "$lib/keyboard";
   import { cn } from "$lib/utils";
+  import { SEARCH_ENGINES, isSearchTemplate } from "$lib/browserAddress";
   import { divider, field, focus, icon, iconButton, panel, row, tab, text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
   import PaletteIcon from "@hugeicons/core-free-icons/PaintBoardIcon";
@@ -611,6 +613,8 @@
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    searchEngine: "google",
+    searchUrl: "",
     agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,
@@ -700,6 +704,18 @@
   const linkPolicyGroups = $derived<ComboGroup[]>([
     { items: LINK_POLICIES.map((p) => ({ value: p.value, label: i18n.t(p.labelKey) })) },
   ]);
+  const searchEngineGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        ...Object.entries(SEARCH_ENGINES).map(([value, e]) => ({ value, label: e.name })),
+        { value: "custom", label: i18n.t("browser.searchCustom") },
+      ],
+    },
+  ]);
+  /** A custom search URL that cannot be used (searches then go to Google). */
+  const searchUrlInvalid = $derived(
+    br.searchEngine === "custom" && br.searchUrl.trim() !== "" && !isSearchTemplate(br.searchUrl),
+  );
 
   // --- Agent browser MCP (Settings → Browser) -------------------------------
   // Runtime coordinates + supported-agent catalog, loaded once when the Browser
@@ -1620,6 +1636,38 @@
                     />
                   {/snippet}
                 </SettingsRow>
+
+                <SettingsRow label={i18n.t("browser.searchEngine")} description={i18n.t("browser.searchEngineDesc")}>
+                  {#snippet control()}
+                    <Combobox
+                      value={br.searchEngine}
+                      groups={searchEngineGroups}
+                      disabled={!br.enabled}
+                      searchable={false}
+                      triggerClass={field.selectStandard}
+                      onChange={(v) => { setBr({ searchEngine: v as SearchEngine }); persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
+
+                {#if br.searchEngine === "custom"}
+                  <SettingsRow
+                    label={i18n.t("browser.searchUrl")}
+                    description={searchUrlInvalid ? i18n.t("browser.searchUrlInvalid") : i18n.t("browser.searchUrlDesc")}
+                  >
+                    {#snippet control()}
+                      <Input
+                        class={field.selectWide}
+                        value={br.searchUrl}
+                        placeholder="https://example.com/search?q=%s"
+                        aria-invalid={searchUrlInvalid}
+                        disabled={!br.enabled}
+                        oninput={(e) => setBr({ searchUrl: e.currentTarget.value })}
+                        onchange={() => persistNow()}
+                      />
+                    {/snippet}
+                  </SettingsRow>
+                {/if}
                 </div>
               </div>
 

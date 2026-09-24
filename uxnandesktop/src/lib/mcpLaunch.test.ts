@@ -52,6 +52,8 @@ const ON: BrowserSettings = {
   allowAgents: true,
   terminalLinks: true,
   homepage: "",
+  searchEngine: "google",
+  searchUrl: "",
   agentExternalSites: false,
   mcpEnabled: true,
   frictionFree: true,

@@ -36,7 +36,7 @@
   } from "$lib/api";
   import { app } from "$lib/state/app.svelte";
   import { browser } from "$lib/state/browser.svelte";
-  import { normalizeAddress, displayAddress, isSecureAddress, stepZoom } from "$lib/browserAddress";
+  import { resolveAddress, displayAddress, isSecureAddress, searchTemplate, stepZoom } from "$lib/browserAddress";
   import { overlayCovers, onOverlayChange, overlayLayerCount } from "$lib/overlayLayer";
   import { toast } from "$lib/toast";
   import BrowserApprovalBar from "$lib/components/BrowserApprovalBar.svelte";
@@ -188,8 +188,13 @@
     }
   });
 
+  /** Where a search from the address bar goes (Settings → Browser). */
+  const search = $derived(searchTemplate(app.settings.browser?.searchEngine, app.settings.browser?.searchUrl));
+
+  );
+
   function go(): void {
-    const target = normalizeAddress(address);
+    const target = resolveAddress(address, search);
     editing = false;
     addressEl?.blur();
     if (!target) return;
@@ -451,7 +456,7 @@
           variant="outline"
           size="sm"
           class="text-xs hover:bg-accent hover:text-foreground"
-          onclick={() => void openExternal(normalizeAddress(address) ?? "").catch(() => {})}
+          onclick={() => void openExternal(resolveAddress(address, search) ?? "").catch(() => {})}
         >
           {i18n.t("browser.openExternal")}
         </Button>

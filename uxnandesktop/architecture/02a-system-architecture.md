@@ -413,6 +413,12 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   URL y recarga al volver), y dormir un workspace libera la suya. El backend es la
   fuente de verdad de la página (URL, título, carga, historial, zoom, `generation`
   = documentos confirmados) y la empuja con el evento `browser:state`.
+- **Address bar:** what the person types always leads somewhere
+  (`resolveAddress`): a scheme loads as is; this machine and the local network
+  (loopback, `*.localhost`, IPv4, `host:port`) over `http://`; a domain name
+  over `https://`; anything else is searched with the engine chosen in
+  `BrowserSettings.searchEngine` (Google by default, or a custom `%s` URL).
+  DevTools open detached — docked, WebKit's inspector took over the app window.
 - **Puerta de URLs:** solo `http(s)` (y `about:blank`); nunca el **origen propio
   de la app** (`tauri.localhost`, `ipc.localhost`, `asset.localhost` y, en build de
   desarrollo, el `devUrl`), porque Tauri trata ese origen como local y le da los

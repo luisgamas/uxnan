@@ -98,8 +98,17 @@ Back and Forward disable themselves when the page has no history that way (where
 the engine reports it).
 
 The address bar follows the page — including in-app navigations a single-page app
-makes with `history.pushState` — and never overwrites what you are typing. For
-`localhost` and loopback addresses it assumes `http://`; otherwise `https://`.
+makes with `history.pushState` — and never overwrites what you are typing. What
+you type there always leads somewhere, as in any browser (`resolveAddress` in
+`src/lib/browserAddress.ts`):
+
+- an address with a scheme loads as it is;
+- this machine and the local network — `localhost`, loopback, `*.localhost`, an
+  IPv4 address, `host:port` — load over `http://` (a dev server);
+- a domain name (`example.com`, `docs.rs/serde`) loads over `https://`;
+- anything else — words, a phrase, a single name — is **searched** with the
+  search engine chosen in Settings → Browser.
+
 **Esc** restores the page's URL.
 
 With the keyboard in the panel's toolbar: **Ctrl/Cmd+L** focuses the address bar,
@@ -136,6 +145,7 @@ redirects and iframes (which may additionally use `about:srcdoc` and `blob:`).
 | **Clickable terminal links** | Make URLs printed in the terminal **Ctrl/Cmd-clickable** (applies to terminals opened afterwards). | On |
 | **Let agents use other sites** | Let agents read and act on pages outside this machine. Off: the page tools work only on local pages (their dev servers). On: each site still needs your approval once, and high-risk actions every time (see *Agents reading and using the page*). | Off |
 | **Home page** | Opened when the browser has no page to show. Blank if empty. | — |
+| **Search engine** | Where the address bar sends what is not an address: Google (default), DuckDuckGo, Bing, Brave Search, or a custom URL with `%s` for the query (an unusable one searches Google). | Google |
 
 The setting is one **decision point**: links from the UI, the terminal, and agents
 all flow through the same policy, and the system browser is always available as a

@@ -621,6 +621,10 @@ export type SortMode =
  *  the OS browser; `ask` prompts per link. */
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
+/** Where the browser's address bar sends what is not an address (mirror of
+ *  Rust `SearchEngine`; the URL templates live in `browserAddress.ts`). */
+export type SearchEngine = "google" | "duckduckgo" | "bing" | "brave" | "custom";
+
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
   /** Master switch. Off → every link goes to the OS browser, no agent shim. */
@@ -633,6 +637,10 @@ export interface BrowserSettings {
   terminalLinks: boolean;
   /** Page opened when a fresh browser tab has no target URL. Empty = blank. */
   homepage: string;
+  /** Where the address bar sends what is not an address. Default `google`. */
+  searchEngine: SearchEngine;
+  /** Custom search URL with `%s` for the query (`searchEngine: "custom"`). */
+  searchUrl: string;
   /** Let agents read and act on pages of sites outside this machine. Off (the
    *  default): the page tools work only on local pages; on: each site still
    *  needs the person's approval once, and high-risk actions every time. */
@@ -1806,6 +1814,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     allowAgents: true,
     terminalLinks: true,
     homepage: "",
+    searchEngine: "google",
+    searchUrl: "",
     agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,
