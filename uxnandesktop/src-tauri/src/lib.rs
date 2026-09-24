@@ -12,6 +12,7 @@ mod aicommit;
 // Public so the binary's headless runner mode (`main.rs`) can reach it without
 // starting Tauri — an automation must run with the app closed.
 pub mod automations;
+mod bridgeclient;
 mod browse;
 mod browser;
 pub mod budget;
@@ -175,9 +176,15 @@ pub fn run() {
             let hook_install_slot = state.hook_install.clone();
             let resources = state.resources.clone();
             let control_token = state.control_token.clone();
+            let bridge = state.bridge.clone();
             app.manage(state);
             app.manage(browser::BrowserHost::default());
             app.manage(browser::approval::Approvals::default());
+
+            // The bridge client (`bridgeclient`): parked on the mode until the
+            // user turns it on in Settings → Bridge; then it connects (and, in
+            // `managed` mode, starts the bridge) and keeps reconnecting.
+            crate::bridgeclient::spawn(app.handle().clone(), bridge);
 
             // Resource observability sampler (`resources.rs`). Fully parked —
             // no timer, no process-table walks — until a consumer subscribes
@@ -503,6 +510,9 @@ pub fn run() {
             automations::commands::automations_run_now,
             automations::commands::automations_scheduler_status,
             automations::commands::automations_scheduler_supported,
+            bridgeclient::commands::bridge_client_status,
+            bridgeclient::commands::bridge_client_retry,
+            bridgeclient::commands::bridge_call,
             commands::get_app_state,
             commands::update_settings,
             commands::quick_commands_set,
@@ -754,6 +764,11 @@ pub fn run() {
                     // Release any keep-awake helper (kills caffeinate /
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
+                    // Stop the bridge this app started in `managed` mode, if
+                    // any, through its own `stop` (it releases its lock and
+                    // removes its discovery file). A bridge the user runs
+                    // themselves is never touched.
+                    state.bridge.shutdown_blocking();
                     // The control token dies with the server: remove the file
                     // that carries it (a client also checks pid + start time,
                     // so an unclean exit leaves nothing usable either).

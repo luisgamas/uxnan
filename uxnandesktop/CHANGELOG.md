@@ -4,6 +4,27 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **The desktop can talk to the Uxnan bridge** (plan 029; architecture/02a
+  §5.8.15). A new backend module, `bridgeclient/`, connects to the bridge's
+  loopback-only local control channel as one more client next to the phone:
+  it reads `~/.uxnan/local-control.json` (the file is the credential — size
+  capped, strictly parsed, its token redacted from every `Debug` and never sent
+  to the webview), opens `ws://127.0.0.1:<port>/control?client=desktop` with
+  the bearer token, calls the bridge's JSON-RPC router with numbered requests,
+  timeouts and a pending map that a closed socket fails at once, and forwards
+  every `stream/*` notification to the window as `bridge:notification`. It
+  remembers the last `seq` it applied and resumes from it after a reconnect.
+  Three modes, the new setting `bridge.mode`: **`off`** (default — no socket,
+  no file read, no timer, no process), **`attach`** (use a bridge the user
+  already runs) and **`managed`** (also start `uxnan-bridge start` when none is
+  running, resolved on `PATH`, and stop it on exit through its own
+  `uxnan-bridge stop`, so it releases its lock cleanly). New commands:
+  `bridge_client_status`, `bridge_client_retry`, `bridge_call`; status changes
+  are emitted as `bridge:status`. New dependency: `tokio-tungstenite` 0.30
+  (MIT, no TLS features — the socket is loopback only); `futures-util` gains
+  its `sink` feature.
 
 ## [0.0.57] - 20260925
 ### Fixed

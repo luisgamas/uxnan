@@ -43,6 +43,8 @@ pub async fn update_settings(
     // Keep the resource monitor's cadence in step (no-op unless the resource
     // settings actually changed — this command fires for every settings write).
     state.resources.apply_settings(&data.settings.resources);
+    // Same for the bridge connection: a no-op unless the mode changed.
+    state.bridge.set_mode(data.settings.bridge.mode);
     Ok(data.clone())
 }
 

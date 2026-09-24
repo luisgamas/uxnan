@@ -147,6 +147,10 @@ pub struct AppState {
     /// (`control::bridge`): tabs, open files and runs are the window's, so a
     /// caller's request about them is answered by the window.
     pub control_bridge: crate::control::bridge::Bridge,
+    /// The desktop's connection to the Uxnan bridge (`bridgeclient`): the chat
+    /// tab drives the bridge's conversations through it. Idle — no socket, no
+    /// timer — while Settings → Bridge is `off`.
+    pub bridge: Arc<crate::bridgeclient::BridgeClient>,
     /// Receipts of the control surface's `create` entries, by idempotency key
     /// (`control::receipts`): a retried call gets its first answer back.
     pub control_receipts: crate::control::receipts::Receipts,
@@ -169,6 +173,7 @@ impl AppState {
         data_dir: std::path::PathBuf,
     ) -> Self {
         let resources = crate::resources::ResourceMonitor::new((&data.settings.resources).into());
+        let bridge_mode = data.settings.bridge.mode;
         Self {
             data: RwLock::new(data),
             persistence,
@@ -191,6 +196,7 @@ impl AppState {
             mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             resources,
             control_bridge: crate::control::bridge::Bridge::default(),
+            bridge: crate::bridgeclient::BridgeClient::new(bridge_mode),
             control_receipts: crate::control::receipts::Receipts::default(),
             agent_changes: Arc::new(tokio::sync::Notify::new()),
             control_token: Arc::new(RwLock::new(uuid::Uuid::new_v4().to_string())),

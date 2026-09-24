@@ -485,6 +485,15 @@ pub struct DockSettings {
     pub workspaces: std::collections::BTreeMap<String, DockWorkspace>,
 }
 
+/// Settings → Bridge (`bridgeclient`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeSettings {
+    /// `off` | `attach` | `managed` — see [`crate::bridgeclient::Mode`].
+    #[serde(default)]
+    pub mode: crate::bridgeclient::Mode,
+}
+
 /// User-facing application settings (UI layout, theme, terminal profiles).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -684,6 +693,11 @@ pub struct AppSettings {
     /// unchanged (the additive-field migration path every settings struct uses).
     #[serde(default)]
     pub resources: ResourceSettings,
+    /// How the desktop connects to the Uxnan bridge (Settings → Bridge,
+    /// `bridgeclient`). Defaults to `off`, so older state loads unchanged and
+    /// the app stays exactly the standalone ADE until the user opts in.
+    #[serde(default)]
+    pub bridge: BridgeSettings,
     /// Resource mode (Settings → Resources → Resource mode): the explicit
     /// efficiency/degradation profile plus per-capability overrides. All fields
     /// default (profile `balanced` = the pre-mode behavior), so older state
@@ -1431,6 +1445,7 @@ impl Default for AppSettings {
             open_with: OpenWithSettings::default(),
             profile: None,
             resources: ResourceSettings::default(),
+            bridge: BridgeSettings::default(),
             resource_mode: ResourceModeSettings::default(),
             worktrees: WorktreeSettings::default(),
             control: ControlSettings::default(),

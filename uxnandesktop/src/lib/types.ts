@@ -393,6 +393,9 @@ export interface AppSettings {
    *  per-capability overrides. Absent = `balanced` (the pre-mode behavior).
    *  Validated and resolved by `$lib/resources/policy`. */
   resourceMode?: ResourceModeSettings;
+  /** Connection to the Uxnan bridge (Settings → Bridge). Absent = `off`: the
+   *  app is the standalone ADE, with no socket, file read, timer or process. */
+  bridge?: BridgeSettings;
   /** Where new worktrees are created. Absent = the managed root
    *  (`<home>/uxnan/worktrees/<repo>/<branch>`). Only affects worktrees created
    *  from now on: the ones already on disk are read from git and keep working
@@ -1771,6 +1774,25 @@ export interface CommandError {
   code: string;
 }
 
+/** How the desktop relates to the Uxnan bridge (`bridgeclient` in Rust):
+ *  `off` = standalone; `attach` = use a bridge the user already runs;
+ *  `managed` = also start `uxnan-bridge` when none runs, and stop it on exit. */
+export type BridgeMode = "off" | "attach" | "managed";
+
+export interface BridgeSettings {
+  mode: BridgeMode;
+}
+
+/** Why the bridge is not reachable (mirrors `bridgeclient::Unavailable`). */
+export type BridgeUnavailableReason = "notRunning" | "notInstalled" | "rejected" | "failed";
+
+/** Live connection state (mirrors `bridgeclient::Status`, event `bridge:status`). */
+export type BridgeClientStatus =
+  | { state: "off" }
+  | { state: "connecting" }
+  | { state: "connected"; bridgeVersion: string; instanceId: string; managed: boolean }
+  | { state: "unavailable"; reason: BridgeUnavailableReason; detail: string | null };
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "system",
   leftSidebarWidth: 280,
@@ -1786,6 +1808,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   resources: { enabled: true, orphanSweep: false, orphanSweepSeconds: 20 },
   resourceMode: { profile: "balanced", overrides: {}, autoSleep: false, schemaVersion: 1 },
   worktrees: { location: "managed", root: null },
+  bridge: { mode: "off" },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,
