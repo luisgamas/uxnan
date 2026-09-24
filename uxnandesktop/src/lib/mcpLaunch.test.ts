@@ -54,6 +54,7 @@ const ON: BrowserSettings = {
   homepage: "",
   searchEngine: "google",
   searchUrl: "",
+  closeAction: "blank",
   agentExternalSites: false,
   mcpEnabled: true,
   frictionFree: true,

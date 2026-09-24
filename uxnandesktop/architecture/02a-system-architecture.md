@@ -376,7 +376,8 @@ surface); a selector in its top band switches surface, each option carrying a
 signal (changed files, PR checks, a waiting approval); Mod+Shift+E / G / H / B
 reveal a surface directly. The browser is therefore not a separate "4th panel":
 leaving its surface or closing the dock **hides** the page (it survives), and the
-toolbar's ✕ closes the page. The dock keeps two widths — one for Files / Git /
+toolbar's ✕ does what `BrowserSettings.closeAction` says — clear the page
+(default), go back to the home page, or close the browser and the dock. The dock keeps two widths — one for Files / Git /
 GitHub (`rightSidebarWidth`) and a wider one for the browser
 (`browserPanelWidth`).
 

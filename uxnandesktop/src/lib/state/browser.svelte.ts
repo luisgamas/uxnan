@@ -42,6 +42,7 @@ import {
 } from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
 import { dock } from "$lib/state/dock.svelte";
+import type { BrowserCloseAction } from "$lib/types";
 
 /** How many pages may be alive at once, across every workspace. */
 export const MAX_LIVE_PAGES = 3;
@@ -181,6 +182,18 @@ class BrowserStore {
     session.canGoForward = null;
   }
 
+  /** The toolbar's ✕, as Settings → Browser says (`closeAction`): clear the
+   *  page (`blank`), go back to the home page (`home` — cleared when there is
+   *  none), or close the browser and the dock with it (`dock`). */
+  async dismiss(action: BrowserCloseAction, homeUrl: string | null, workspace = this.activeKey): Promise<void> {
+    if (action === "home" && homeUrl) {
+      await this.open(homeUrl, workspace);
+      return;
+    }
+    this.close(workspace);
+    if (action === "dock") dock.hide(workspace);
+  }
+
   /** Release a workspace's page but keep its URL, so showing it again reloads
    *  where it was (a sleeping workspace, or room for another page). */
   suspend(workspace: string): void {
@@ -237,7 +250,11 @@ class BrowserStore {
   apply(state: BrowserPageState): void {
     const session = this.ensure(state.workspace);
     session.live = state.live;
-    session.url = state.url || session.url;
+    // A page that is gone says where it *was*; what the session remembers is
+    // the app's call — a closed page is forgotten (the toolbar's ✕), a
+    // released one keeps its URL. Taking the dead page's URL back reloaded a
+    // page the person had just closed.
+    if (state.live) session.url = state.url || session.url;
     session.title = state.title;
     session.loading = state.loading;
     session.canGoBack = state.canGoBack;

@@ -1116,6 +1116,20 @@ pub enum SearchEngine {
     Google,
 }
 
+/// What the browser toolbar's ✕ does (Settings → Browser): clear the page,
+/// go back to the home page (cleared when there is none), or close the browser
+/// and the dock with it. An unknown value reads as `Blank`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum BrowserCloseAction {
+    Home,
+    Dock,
+    // Last: serde's catch-all for an action this version does not know.
+    #[default]
+    #[serde(other)]
+    Blank,
+}
+
 /// Integrated **developer** browser (Settings → Browser). A lightweight in-app
 /// webview tab for previewing/debugging the systems agents build and opening the
 /// links agents produce — deliberately not a general-purpose browser. The webview
@@ -1150,6 +1164,9 @@ pub struct BrowserSettings {
     /// [`search_engine`](Self::search_engine) is `Custom`). Default empty.
     #[serde(default)]
     pub search_url: String,
+    /// What the toolbar's ✕ does. Default `Blank` (clear the page).
+    #[serde(default)]
+    pub close_action: BrowserCloseAction,
     /// Let agents read and act on pages of sites outside this machine (the
     /// `browser_snapshot` / `_click` / … tools). Off: they work only on local
     /// pages (loopback — the agent's own dev server); on: each site still needs
@@ -1190,6 +1207,7 @@ impl Default for BrowserSettings {
             homepage: String::new(),
             search_engine: SearchEngine::Google,
             search_url: String::new(),
+            close_action: BrowserCloseAction::Blank,
             agent_external_sites: false,
             mcp_enabled: true,
             friction_free: true,
@@ -1989,6 +2007,17 @@ mod tests {
         assert_eq!(newer.search_engine, SearchEngine::Google);
         let json = serde_json::to_string(&BrowserSettings::default()).unwrap();
         assert!(json.contains("\"searchEngine\":\"google\""));
+    }
+
+    #[test]
+    fn the_close_button_clears_the_page_unless_told_otherwise() {
+        let old: BrowserSettings = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert_eq!(old.close_action, BrowserCloseAction::Blank);
+        let dock: BrowserSettings = serde_json::from_str(r#"{"closeAction":"dock"}"#).unwrap();
+        assert_eq!(dock.close_action, BrowserCloseAction::Dock);
+        let newer: BrowserSettings =
+            serde_json::from_str(r#"{"closeAction":"somefuture"}"#).unwrap();
+        assert_eq!(newer.close_action, BrowserCloseAction::Blank);
     }
 
     #[test]

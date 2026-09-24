@@ -49,6 +49,7 @@
     BrowserSettings,
     BrowserLinkPolicy,
     SearchEngine,
+    BrowserCloseAction,
     McpInfo,
   } from "$lib/types";
   import { mcpInfo } from "$lib/api";
@@ -615,6 +616,7 @@
     homepage: "",
     searchEngine: "google",
     searchUrl: "",
+    closeAction: "blank",
     agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,
@@ -710,6 +712,14 @@
         ...Object.entries(SEARCH_ENGINES).map(([value, e]) => ({ value, label: e.name })),
         { value: "custom", label: i18n.t("browser.searchCustom") },
       ],
+    },
+  ]);
+  const closeActionGroups = $derived<ComboGroup[]>([
+    {
+      items: (["blank", "home", "dock"] as const).map((value) => ({
+        value,
+        label: i18n.t(`browser.closeAction.${value}`),
+      })),
     },
   ]);
   /** A custom search URL that cannot be used (searches then go to Google). */
@@ -1668,6 +1678,24 @@
                     {/snippet}
                   </SettingsRow>
                 {/if}
+
+                <SettingsRow
+                  label={i18n.t("browser.closeAction")}
+                  description={br.closeAction === "home" && !br.homepage.trim()
+                    ? i18n.t("browser.closeActionNoHome")
+                    : i18n.t("browser.closeActionDesc")}
+                >
+                  {#snippet control()}
+                    <Combobox
+                      value={br.closeAction}
+                      groups={closeActionGroups}
+                      disabled={!br.enabled}
+                      searchable={false}
+                      triggerClass={field.selectStandard}
+                      onChange={(v) => { setBr({ closeAction: v as BrowserCloseAction }); persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
                 </div>
               </div>
 

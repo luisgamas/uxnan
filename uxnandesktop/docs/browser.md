@@ -82,9 +82,12 @@ resize. The browser keeps a width of its own (wider than the other surfaces'), s
 widening it for a page never leaves Files or Git stretched.
 
 Leaving the browser surface, or closing the dock, only **hides** the page: it is
-there, scrolled where you left it, when you come back. The toolbar's **✕ closes
-the page** — that workspace's page is released and its history cleared; the
-other workspaces keep theirs.
+there, scrolled where you left it, when you come back. The toolbar's **✕** does
+what Settings → Browser → *Close button* says: **clear the page** (the default —
+that workspace's page is released and its history cleared, leaving the browser
+empty as on its first open), **go back to the home page** (clearing it when none
+is set), or **close the browser and the panel**. The other workspaces keep
+their pages either way.
 
 ### Chrome
 
@@ -145,6 +148,7 @@ redirects and iframes (which may additionally use `about:srcdoc` and `blob:`).
 | **Clickable terminal links** | Make URLs printed in the terminal **Ctrl/Cmd-clickable** (applies to terminals opened afterwards). | On |
 | **Let agents use other sites** | Let agents read and act on pages outside this machine. Off: the page tools work only on local pages (their dev servers). On: each site still needs your approval once, and high-risk actions every time (see *Agents reading and using the page*). | Off |
 | **Home page** | Opened when the browser has no page to show. Blank if empty. | — |
+| **Close button** | What the toolbar's ✕ does: clear the page, go back to the home page, or close the browser and the panel. | Clear the page |
 | **Search engine** | Where the address bar sends what is not an address: Google (default), DuckDuckGo, Bing, Brave Search, or a custom URL with `%s` for the query (an unusable one searches Google). | Google |
 
 The setting is one **decision point**: links from the UI, the terminal, and agents

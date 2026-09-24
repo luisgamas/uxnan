@@ -625,6 +625,10 @@ export type BrowserLinkPolicy = "internal" | "external" | "ask";
  *  Rust `SearchEngine`; the URL templates live in `browserAddress.ts`). */
 export type SearchEngine = "google" | "duckduckgo" | "bing" | "brave" | "custom";
 
+/** What the browser toolbar's ✕ does (mirror of Rust `BrowserCloseAction`):
+ *  clear the page, go back to the home page, or close the browser and its dock. */
+export type BrowserCloseAction = "blank" | "home" | "dock";
+
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
   /** Master switch. Off → every link goes to the OS browser, no agent shim. */
@@ -641,6 +645,8 @@ export interface BrowserSettings {
   searchEngine: SearchEngine;
   /** Custom search URL with `%s` for the query (`searchEngine: "custom"`). */
   searchUrl: string;
+  /** What the toolbar's ✕ does. Default `blank`. */
+  closeAction: BrowserCloseAction;
   /** Let agents read and act on pages of sites outside this machine. Off (the
    *  default): the page tools work only on local pages; on: each site still
    *  needs the person's approval once, and high-risk actions every time. */
@@ -1816,6 +1822,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     homepage: "",
     searchEngine: "google",
     searchUrl: "",
+    closeAction: "blank",
     agentExternalSites: false,
     mcpEnabled: true,
     frictionFree: true,

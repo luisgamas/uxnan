@@ -191,6 +191,17 @@
   /** Where a search from the address bar goes (Settings → Browser). */
   const search = $derived(searchTemplate(app.settings.browser?.searchEngine, app.settings.browser?.searchUrl));
 
+  /** What the ✕ does (Settings → Browser), and the home page it may go to. */
+  const closeAction = $derived(app.settings.browser?.closeAction ?? "blank");
+  const homeUrl = $derived(
+    app.settings.browser?.homepage?.trim() ? resolveAddress(app.settings.browser.homepage, search) : null,
+  );
+  const closeLabel = $derived(
+    closeAction === "dock"
+      ? i18n.t("browser.closeBrowser")
+      : closeAction === "home" && homeUrl
+        ? i18n.t("browser.goHome")
+        : i18n.t("browser.closePage"),
   );
 
   function go(): void {
@@ -407,16 +418,16 @@
         </Button>
       {/snippet}
     </TooltipSimple>
-    <TooltipSimple title={i18n.t("browser.closePage")}>
+    <TooltipSimple title={closeLabel}>
       {#snippet children(tp)}
         <Button
           {...tp}
           variant="ghost"
           size="icon-xs"
           class={toolButton}
-          aria-label={i18n.t("browser.closePage")}
-          disabled={!session?.url}
-          onclick={() => browser.close()}
+          aria-label={closeLabel}
+          disabled={closeAction === "blank" && !session?.url}
+          onclick={() => void browser.dismiss(closeAction, homeUrl).catch(() => {})}
         >
           <Icon icon={XIcon} class={icon.action} />
         </Button>

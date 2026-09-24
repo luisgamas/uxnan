@@ -70,6 +70,20 @@ describe("pageToEvict", () => {
   });
 });
 
+/** What the backend reports for a page it closed. */
+const deadState = (workspace: string) => ({
+  workspace,
+  live: false,
+  url: "",
+  title: "",
+  loading: false,
+  canGoBack: null,
+  canGoForward: null,
+  zoom: 1,
+  visible: false,
+  generation: 1,
+});
+
 describe("the per-workspace browser", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -164,5 +178,28 @@ describe("the per-workspace browser", () => {
     expect(api.browserClose).toHaveBeenCalledWith("");
     expect(browser.sessions[""].url).toBe("");
     expect(dock.showing("")).toBe("browser");
+  });
+
+  it("does not bring a closed page back when its last state arrives", async () => {
+    await browser.open("http://localhost:3000");
+    browser.close();
+    // The backend reports the page it just closed, with where it was.
+    browser.apply({ ...deadState(""), url: "http://localhost:3000" });
+    expect(browser.sessions[""].url).toBe("");
+  });
+
+  it("does what Settings says the close button does", async () => {
+    await browser.open("http://localhost:3000");
+    await browser.dismiss("home", "http://localhost:8080");
+    expect(browser.sessions[""].url).toBe("http://localhost:8080");
+
+    await browser.dismiss("home", null);
+    expect(browser.sessions[""].url).toBe("");
+    expect(dock.showing("")).toBe("browser");
+
+    await browser.open("http://localhost:3000");
+    await browser.dismiss("dock", null);
+    expect(browser.sessions[""].url).toBe("");
+    expect(dock.isOpen("")).toBe(false);
   });
 });

@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Choose what the browser's ✕ does** (Settings → Browser → Close button):
+  clear the page (the default), go back to the home page, or close the browser
+  and the panel with it.
 - **The browser's address bar searches.** Anything that is not an address —
   words, a phrase, a single name like `google` — goes to a search engine, as in
   any browser, instead of failing as `https://google`. Choose it in Settings →
@@ -82,6 +85,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **The browser's ✕ no longer reloads the page it closed.** The page's last
+  state, arriving after it closed, carried its URL back into the session, and
+  the panel loaded it again.
 - **A search in the integrated browser no longer closes the app.** While the
   browser keeps its address bar in step (every 1.5 s), it asked the engine for
   the page's URL — and during a navigation WebKit briefly has none, which the
