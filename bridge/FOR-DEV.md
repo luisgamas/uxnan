@@ -324,6 +324,27 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
+- [ ] **OpenCode 2 — rewrite the adapter for its new server API.** The adapter
+      drives `opencode serve --port 0 --hostname 127.0.0.1 --print-logs` and speaks
+      the V1 HTTP API (`GET /event`, `POST /session`,
+      `/session/:id/prompt_async`, `/session/:id/message`, `/session/:id/abort`).
+      OpenCode 2 kept the command but not the API — measured on 2.0.16
+      (2026-09-24, isolated XDG dirs): the server prints its URL **and a password**
+      it now requires, `GET /event` and `GET /session` answer the web app's HTML
+      page, `POST /session` is `405`, and the API lives elsewhere (`/api…`,
+      authenticated). So a phone thread on OpenCode 2 cannot start. OpenCode 1
+      keeps working as today.
+
+      *Where:* `src/adapters/opencode-server.ts` (spawn, auth, routes, event
+      stream) and the event mapping in `opencode-adapter.ts`; see the inline
+      `FOR-DEV:` at the spawn.
+
+      *What it needs:* map OpenCode 2's API (routes, auth header, event stream
+      and its `session.execution.*` vocabulary — the same events the desktop's
+      status plugin was validated on) against a **running** 2.x server, keep the
+      V1 path for 1.x (`opencode --version` tells them apart: `1.18.32` vs
+      `opencode v2.0.16`), then update `docs/agents.md` → *Drive surface* with
+      what the driven surface actually emits (usage included).
 - [ ] **Name conversations on Zero.** `IAgentAdapter.generateTitle` is wired for
       all seven active agents and **verified live on six**: Claude Code
       (`haiku`), Codex (`gpt-5.6-luna` at `low` effort, `codex exec --ephemeral
