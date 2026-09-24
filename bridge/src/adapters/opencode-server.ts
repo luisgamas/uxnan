@@ -163,7 +163,12 @@ export class OpenCodeServer implements IOpenCodeServer {
     await this.#openEventStream(baseUrl);
   }
 
-  /** Spawn `opencode serve` and resolve with its base URL once it's listening. */
+  /** Spawn `opencode serve` and resolve with its base URL once it's listening.
+   *
+   *  FOR-DEV: OpenCode 2 kept `serve` but replaced the API this class speaks — a
+   *  required password, `/event` and `/session` now serve the web app — so only
+   *  OpenCode 1.x works here. See FOR-DEV.md → *OpenCode 2 — rewrite the adapter
+   *  for its new server API*. */
   #spawnServer(): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       let child: SpawnedProcess;

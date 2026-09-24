@@ -191,7 +191,7 @@ surface it does not drive.**
 
 | Agent | Surface the bridge drives | Transport / framing | Reports usage |
 |---|---|---|---|
-| **OpenCode** | `opencode serve` | local HTTP + SSE | yes |
+| **OpenCode** | `opencode serve` (OpenCode **1.x**; 2.x changed the server API and is not driven yet — `FOR-DEV.md` → *OpenCode 2*) | local HTTP + SSE | yes |
 | **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin | yes |
 | **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
 | **pi** | `pi --mode rpc`, one resident process per thread | JSON-RPC over stdio (`prompt` / `steer` / `get_state` commands in, JSON events out) | yes — `message_end` `usage.totalTokens`; the model's `contextWindow` comes from the `get_state` response |

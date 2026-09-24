@@ -38,6 +38,25 @@
 //! fails, so the arguments survive `cmd.exe`, PowerShell and POSIX quoting
 //! untouched.
 //!
+//! ## OpenCode 2: one server per tab, and its variable only where it launches
+//! OpenCode 2 no longer runs its agent in the TUI: a bare `opencode` is a client
+//! of a **shared background service** (`opencode serve --service`) that
+//! outlives it, and the service runs the plugins and the MCP servers with the
+//! environment of whichever terminal started it first. Pointed at through the
+//! environment, that would be the old bug again — a registration that outlives
+//! the launch (a stale port and token once uxnan restarts), carrying one tab's
+//! identity into every OpenCode client on the machine, uxnan's or not. So for
+//! OpenCode 2 ([`crate::agentcli::opencode_major_version`]):
+//!
+//! - uxnan launches it with **`--standalone`** ([`required_args`]): a private
+//!   server, child of the TUI in the tab, which dies with it and has the tab's
+//!   own environment — the per-launch contract, kept. OpenCode 1 has no such
+//!   flag (it rejects it), and needs none: its server always lived in the TUI.
+//! - its variable goes **only on a terminal uxnan opens to launch OpenCode**
+//!   ([`launch_env_all`]), never on every terminal, so a hand-typed `opencode`
+//!   cannot hand it to the shared service. With OpenCode 1 every terminal keeps
+//!   it, as before — there is no daemon to leak into.
+//!
 //! ## Why the other wired CLIs are not on that list
 //! An agent is auto-configured only when a **per-launch** mechanism exists and
 //! has been verified against the real CLI:
@@ -159,12 +178,26 @@ pub struct AgentInfo {
     /// Ready-to-append arguments for this launch (endpoint already substituted).
     /// Empty when the server isn't listening yet or the agent is env-based.
     pub args: Vec<String>,
+    /// Arguments this CLI needs for **any** of uxnan's per-launch wiring (hooks,
+    /// this server) to reach the process it launches — appended on every
+    /// launch, whether or not the agent tools are switched on. See
+    /// [`required_args`].
+    pub required_args: Vec<String>,
+    /// Flags by which a command line has already made the choice
+    /// `required_args` makes; a line carrying one is left alone, since the
+    /// person's own profile decided. See [`required_args_chosen_by`].
+    pub required_args_chosen_by: Vec<String>,
 }
 
 /// The supported-agent catalog for the frontend. `endpoint`/`claude_config` are
 /// `None` before the hook server is listening — the catalog is still returned
 /// (so Settings can render its toggles), just with no launch arguments.
-pub fn agent_infos(endpoint: Option<&str>, claude_config: Option<&str>) -> Vec<AgentInfo> {
+/// `opencode_major` is the installed OpenCode's major version, if known.
+pub fn agent_infos(
+    endpoint: Option<&str>,
+    claude_config: Option<&str>,
+    opencode_major: Option<u32>,
+) -> Vec<AgentInfo> {
     AGENTS
         .iter()
         .map(|a| AgentInfo {
@@ -177,8 +210,47 @@ pub fn agent_infos(endpoint: Option<&str>, claude_config: Option<&str>) -> Vec<A
                 Some(e) => launch_args(a.id, e, claude_config),
                 None => Vec::new(),
             },
+            required_args: required_args(a.id, opencode_major),
+            required_args_chosen_by: required_args_chosen_by(a.id),
         })
         .collect()
+}
+
+/// Whether the installed OpenCode runs its agent in a shared background
+/// service unless told otherwise — OpenCode 2 and later.
+fn opencode_has_shared_service(opencode_major: Option<u32>) -> bool {
+    opencode_major.is_some_and(|major| major >= 2)
+}
+
+/// Arguments `agent_id` must be launched with for uxnan's per-launch wiring to
+/// reach it at all, independent of the agent-tools switch.
+///
+/// Only OpenCode 2 today: `--standalone` gives the launch a private server in
+/// the tab instead of the shared background service (module docs). A profile
+/// that already picks a server is left alone ([`required_args_chosen_by`]).
+/// `None` (version unknown) adds nothing: OpenCode 1 rejects the flag, and a
+/// launch that works beats one that is wired.
+// FOR-DEV: one uxnan-owned OpenCode server per window instead of one per tab
+// (`--server <url>` launches keyed by a session → tab map), which needs OpenCode
+// to say which client a session belongs to — see FOR-DEV.md → *Agent hooks* →
+// *OpenCode 2: one server for every tab*.
+pub fn required_args(agent_id: &str, opencode_major: Option<u32>) -> Vec<String> {
+    match agent_id {
+        "opencode" if opencode_has_shared_service(opencode_major) => {
+            vec!["--standalone".to_string()]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The flags by which a command line has already chosen what
+/// [`required_args`] would: for OpenCode, where its server runs —
+/// `--standalone` itself, or `--server <url>`, a server the person runs.
+pub fn required_args_chosen_by(agent_id: &str) -> Vec<String> {
+    match agent_id {
+        "opencode" => vec!["--standalone".to_string(), "--server".to_string()],
+        _ => Vec::new(),
+    }
 }
 
 /// One line naming how `agent_id` is pointed at the server, for the Settings
@@ -280,11 +352,25 @@ pub fn launch_env(agent_id: &str, endpoint: &str) -> Vec<(String, String)> {
 }
 
 /// Every env-based registration for the agents that aren't disabled — what
-/// `pty_create` adds to the terminal's environment.
-pub fn launch_env_all(endpoint: &str, disabled: &HashSet<&str>) -> Vec<(String, String)> {
+/// `pty_create` adds to the terminal's environment. `launching` is the
+/// executable uxnan will type into this terminal (`opencode`, `claude`, …), if
+/// any: OpenCode 2's registration goes only on a terminal launching OpenCode,
+/// because anywhere else a hand-typed `opencode` would pass it to the shared
+/// background service (module docs).
+pub fn launch_env_all(
+    endpoint: &str,
+    disabled: &HashSet<&str>,
+    launching: Option<&str>,
+    opencode_major: Option<u32>,
+) -> Vec<(String, String)> {
     AGENTS
         .iter()
         .filter(|a| a.via == LaunchVia::Env && !disabled.contains(a.id))
+        .filter(|a| {
+            a.id != "opencode"
+                || !opencode_has_shared_service(opencode_major)
+                || launching.is_some_and(|exe| a.commands.contains(&exe))
+        })
         .flat_map(|a| launch_env(a.id, endpoint))
         .collect()
 }
@@ -714,18 +800,56 @@ mod tests {
     #[test]
     fn launch_env_all_skips_disabled_agents() {
         let none: HashSet<&str> = HashSet::new();
-        assert_eq!(launch_env_all("http://x/mcp", &none).len(), 1);
+        assert_eq!(
+            launch_env_all("http://x/mcp", &none, None, Some(1)).len(),
+            1
+        );
         let off: HashSet<&str> = ["opencode"].into_iter().collect();
-        assert!(launch_env_all("http://x/mcp", &off).is_empty());
+        assert!(launch_env_all("http://x/mcp", &off, Some("opencode"), Some(1)).is_empty());
+    }
+
+    #[test]
+    fn opencode_2s_variable_goes_only_where_it_is_launched() {
+        let none: HashSet<&str> = HashSet::new();
+        let e = "http://x/mcp";
+        // OpenCode 1 (or an unknown version): every terminal, as before — a
+        // hand-typed `opencode` there has no daemon to hand it to.
+        for major in [Some(1), None] {
+            assert_eq!(launch_env_all(e, &none, None, major).len(), 1);
+            assert_eq!(launch_env_all(e, &none, Some("claude"), major).len(), 1);
+        }
+        // OpenCode 2: only the terminal uxnan opens to launch it; a plain
+        // terminal or another agent's would give it to the shared service.
+        assert_eq!(launch_env_all(e, &none, Some("opencode"), Some(2)).len(), 1);
+        assert!(launch_env_all(e, &none, None, Some(2)).is_empty());
+        assert!(launch_env_all(e, &none, Some("claude"), Some(3)).is_empty());
+    }
+
+    #[test]
+    fn only_opencode_2_is_launched_standalone() {
+        // OpenCode 1 rejects the flag outright (prints its help and exits), so
+        // an unknown version must not get it either.
+        assert!(required_args("opencode", Some(1)).is_empty());
+        assert!(required_args("opencode", None).is_empty());
+        assert_eq!(required_args("opencode", Some(2)), vec!["--standalone"]);
+        assert!(required_args("claude", Some(2)).is_empty());
+
+        // …and the catalog carries it whether or not the server is up: it is
+        // not part of the MCP registration.
+        for endpoint in [None, Some("http://127.0.0.1:9/mcp")] {
+            let infos = agent_infos(endpoint, None, Some(2));
+            let opencode = infos.iter().find(|a| a.id == "opencode").unwrap();
+            assert_eq!(opencode.required_args, vec!["--standalone"]);
+        }
     }
 
     #[test]
     fn agent_infos_carry_args_only_once_the_server_is_up() {
-        let cold = agent_infos(None, None);
+        let cold = agent_infos(None, None, Some(1));
         assert_eq!(cold.len(), AGENTS.len());
         assert!(cold.iter().all(|a| a.args.is_empty()));
 
-        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"));
+        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"), Some(1));
         let claude = warm.iter().find(|a| a.id == "claude").unwrap();
         assert_eq!(claude.args, vec!["--mcp-config", "cfg.json"]);
         let opencode = warm.iter().find(|a| a.id == "opencode").unwrap();
@@ -739,8 +863,8 @@ mod tests {
         // config path. An empty one would leave the row claiming a name and
         // explaining nothing.
         for infos in [
-            agent_infos(None, None),
-            agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json")),
+            agent_infos(None, None, None),
+            agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"), None),
         ] {
             for (info, agent) in infos.iter().zip(AGENTS) {
                 assert_eq!(info.id, agent.id);
@@ -753,7 +877,7 @@ mod tests {
             }
         }
         // The file Claude is launched with is named once it exists.
-        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"));
+        let warm = agent_infos(Some("http://127.0.0.1:9/mcp"), Some("cfg.json"), None);
         let claude = warm.iter().find(|a| a.id == "claude").unwrap();
         assert_eq!(claude.mechanism, "--mcp-config cfg.json");
         let opencode = warm.iter().find(|a| a.id == "opencode").unwrap();

@@ -210,6 +210,13 @@ pub fn run() {
                 .await;
             });
 
+            // Read the installed OpenCode's version off the startup path, so the
+            // first terminal does not wait on `opencode --version` to learn how
+            // OpenCode is launched and registered (`mcpinject.rs`).
+            tauri::async_runtime::spawn(async {
+                crate::agentcli::opencode_major_version().await;
+            });
+
             // Start the app's local server (`control::server`): hook reports,
             // the browser shim, MCP and the control RPC, on one loopback port.
             // On success, publish the hook coordinates (+ the endpoint-file path
