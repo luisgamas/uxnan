@@ -277,6 +277,26 @@ working. So:
   connection nobody is typing at no longer gets dropped for being quiet (it used
   to be reaped after five minutes of silence).
 
+## From a shell, without the app window
+
+`uxnan-cli` reaches the same sessions, which is handy when the machine you care
+about is not the one you are looking at:
+
+```
+uxnan-cli host ls                 # every host, connected or not, with its channels
+uxnan-cli host show build-box     # plus the projects and terminals on it
+uxnan-cli host connect build-box  # open a session on one that has none
+```
+
+`connect` never asks for anything secret. A host that wants a password or a key
+passphrase answers `needsPassword` / `needsPassphrase` and stops; one whose key
+is unknown or has changed answers that and stops too, having trusted nothing.
+Those are yours to finish in Settings → Hosts — and adding, editing or removing
+a host has no command at all, for the same reason. The agents uxnan launches do
+**not** see this: their token is scoped to one project, so hosts are the
+person's shell's to ask about (see
+[the control surface](./control-api.md) → *Hosts*).
+
 ## Not planned
 
 - **Containers and devcontainers** as a feature of their own. An environment you

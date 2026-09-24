@@ -1,9 +1,23 @@
 <script lang="ts">
-  // Canonical destructive-confirmation dialog (remove project / worktree,
-  // close all tabs, …). All callers share one layout: an optional danger hero
-  // icon, the title + description, an optional inline error, and a ghost Cancel
-  // plus a confirm button. `onconfirm` may return `false` to keep the dialog
-  // open (e.g. a remove that failed and now offers a force option).
+  // Canonical confirmation dialog (remove project / worktree, close all tabs,
+  // leaving an agent's draft …). All callers share one layout: an optional
+  // danger hero icon, the title + description, an optional inline error, and a
+  // ghost button plus a confirm button. `onconfirm` may return `false` to keep
+  // the dialog open (e.g. a remove that failed and now offers a force option).
+  //
+  // The ghost button is *Cancel* by default, but a caller whose two answers are
+  // both real choices ("save it" / "discard and leave") names it.
+  //
+  // Two different things can be worth knowing, so there are two callbacks:
+  //
+  // - `oncancel` — the **ghost button** was pressed. An explicit answer, which
+  //   for some callers is a real action ("discard this draft and leave").
+  // - `ondismiss` — the dialog **closed without confirming**, by any route:
+  //   that button, Escape, a click outside. A caller that drives `open` from
+  //   its own state (`open={pending !== null}`) needs this one, or it is left
+  //   believing the dialog is still up after the person dismissed it — and the
+  //   next request to open it is then not a change at all, which is how a
+  //   destructive action ends up silently doing nothing the second time.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -18,28 +32,51 @@
     title,
     description = "",
     confirmLabel = "Confirm",
+    cancelLabel = undefined,
+    confirmDisabled = false,
     danger = false,
     error = null,
     onconfirm,
     oncancel,
+    ondismiss,
   }: {
     open?: boolean;
     title: string;
     description?: string;
     confirmLabel?: string;
+    /** The ghost button's label. Defaults to *Cancel*. */
+    cancelLabel?: string;
+    /** The confirm button cannot be pressed (the caller says why in `error`). */
+    confirmDisabled?: boolean;
     danger?: boolean;
     error?: string | null;
     onconfirm: () => void | Promise<boolean | void>;
+    /** The ghost button was pressed. */
     oncancel?: () => void;
+    /** The dialog closed and nothing was confirmed — that button, Escape or a
+     *  click outside. */
+    ondismiss?: () => void;
   } = $props();
 
   let busy = $state(false);
+  /** Set while a confirm closes the dialog, so its close is not reported as a
+   *  cancellation. */
+  let confirming = $state(false);
+
+  // A caller that drives `open` from its own state reopens the dialog without
+  // bits-ui reporting the transition, so arm the guard from the prop too.
+  $effect(() => {
+    if (open) dismissed = false;
+  });
 
   async function confirm() {
     busy = true;
     try {
       const result = await onconfirm();
-      if (result !== false) open = false;
+      if (result !== false) {
+        confirming = true;
+        open = false;
+      }
     } catch {
       // A thrown rejection means the action failed; keep the dialog open so
       // the caller can surface an error (callers that report via a returned
@@ -49,13 +86,40 @@
     }
   }
 
+  /** Guard: one dismissal per opening, whichever route closed it. A close the
+   *  component performs itself (this button) does not always reach
+   *  `onOpenChange` — bits-ui reports its *own* transitions — so both routes
+   *  report, and this keeps that from being two. */
+  let dismissed = $state(false);
+
+  function dismiss() {
+    if (dismissed) return;
+    dismissed = true;
+    ondismiss?.();
+  }
+
   function cancel() {
     oncancel?.();
+    dismiss();
     open = false;
+  }
+
+  /** Any close a confirm did not cause is a dismissal, however it happened. */
+  function openChange(next: boolean) {
+    if (next) {
+      confirming = false;
+      dismissed = false;
+      return;
+    }
+    if (confirming) {
+      confirming = false;
+      return;
+    }
+    dismiss();
   }
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root bind:open onOpenChange={openChange}>
   <Dialog.Content
     size="small"
     class="flex min-w-0 flex-col"
@@ -92,8 +156,14 @@
     {/if}
 
     <Dialog.Footer class="min-w-0">
-      <Button variant="ghost" disabled={busy} onclick={cancel}>{i18n.t("common.cancel")}</Button>
-      <Button variant={danger ? "destructive" : "default"} disabled={busy} onclick={confirm}>
+      <Button variant="ghost" disabled={busy} onclick={cancel}>
+        {cancelLabel ?? i18n.t("common.cancel")}
+      </Button>
+      <Button
+        variant={danger ? "destructive" : "default"}
+        disabled={busy || confirmDisabled}
+        onclick={confirm}
+      >
         {#if busy}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {/if}

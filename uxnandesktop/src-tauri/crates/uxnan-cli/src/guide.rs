@@ -444,10 +444,15 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "run/list" => "uxnan-cli run ls",
         "run/show" => "uxnan-cli run show <run-id>",
         "run/start" => "uxnan-cli run start <run-id> [--idempotency-key <key>]",
+        "host/list" => "uxnan-cli host ls",
+        "host/show" => "uxnan-cli host show <host-id>",
+        "host/connect" => "uxnan-cli host connect <host-id> [--idempotency-key <key>]",
         "automation/list" => "uxnan-cli automation ls",
+        "automation/show" => "uxnan-cli automation show <automation-id>",
+        "automation/propose" => "uxnan-cli automation propose --spec-file <draft.json>",
         "automation/run" => "uxnan-cli automation run <automation-id> [--idempotency-key <key>]",
         "app/focus" => "uxnan-cli app focus",
-        "file/open" => "uxnan-cli file open <path> [--worktree <worktree>]",
+        "file/open" => "uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]",
         "file/diff" => "uxnan-cli file diff <path> [--worktree <worktree>] [--staged]",
         "browser/open" => "uxnan-cli browser open <url>",
         "browser/navigate" => "uxnan-cli browser navigate <url>",
@@ -595,9 +600,11 @@ uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree 
 uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
 uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
-uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
+uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
+uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
+uxnan-cli automation propose --spec-file <draft.json>   # the person reviews and saves it
 uxnan-cli app focus
-uxnan-cli file open <path> [--worktree <worktree>]
+uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll

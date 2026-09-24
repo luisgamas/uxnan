@@ -87,9 +87,9 @@ below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
-| `read` | `status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
-| `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
-| `create` | `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run`; `automation/list` sits in `read` | shipped |
+| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
+| `ui` | `app/focus`, `terminal/reveal`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
+| `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
 
@@ -97,6 +97,67 @@ below) without touching the others. Trust order:
 with its arguments, its result and a request — the output of `uxnan-cli skills
 get control --full`, generated from the catalog, so it cannot describe
 something the app does not do.
+
+### Hosts: the machines the work runs on
+
+A project whose `target` is `ssh:<hostId>` lives on a registered host, and
+everything about it — its worktrees, its git, its terminals — goes through one
+SSH session the app holds. `host/list` and `host/show` describe those machines
+**from that session**, not from the settings: connected or not, the shell it
+starts, the channels in use against the limit the host turned out to enforce.
+`host/connect` opens a session on one that has none — the same path startup
+takes for the hosts that need nothing.
+
+Two things it deliberately does not do:
+
+- **It takes no credential.** A host that wants a password or a key passphrase
+  comes back as `needsPassword` / `needsPassphrase` and stops there; so does one
+  whose host key is unknown, changed or revoked (`hostUnknown` / `hostChanged` /
+  `hostRevoked` — nothing is trusted). Those are the person's to finish in
+  Settings → Hosts, and the result carries no fingerprint, key path or
+  credential method for a caller to work with.
+- **It is scoped like everything else.** A caller sees the host *its own
+  project* lives on; the person's own shell (the control token) sees every
+  registered machine, and a token scoped to a project on this machine is
+  refused with *scope denied* and told why — an empty list would read as "no
+  hosts", which is a different fact. In practice that makes this the person's
+  surface today: a terminal on a host is a remote PTY with none of the
+  `UXNAN_*` variables, so an agent running *there* cannot call the API at all
+  (that is the remote agent runner's work, still owed in `FOR-DEV.md`).
+
+### Proposing an automation, instead of creating one
+
+Creating, editing, enabling or scheduling an automation is **not** exposed, and
+that is the design: an automation that could create and schedule itself would
+outlive the session that made it, and nobody would have agreed to it.
+
+What is exposed is the useful half. `automation/propose` opens Uxnan's
+automations editor filled in with the draft, with an amber notice naming who
+drafted it (or, when a shell sent it, that it came from the control API) — the
+same shape as `file/diff`: the agent shows, the person decides. Nothing is
+stored: the draft is not in the list, and because leaving would throw it away
+for good, *Discard* asks first and offers saving as the primary answer. When
+the person does press Save it is saved **paused**, so the last two decisions —
+save, and then turn it on — are both theirs.
+
+The backend checks what it can before the window is bothered (a name, a folder
+that exists, at least one step, a prompt under 64 KiB, at most 20 steps) and
+applies the scope: **a launch token may only propose work in a folder of its own
+project**, so an agent cannot put another project's path in front of the person.
+The window checks what only it knows — that each step's agent is installed here
+(the error lists what is), that `dependsOn` names real steps — and normalizes
+the cadence, defaulting to daily at 09:00 rather than refusing a draft over a
+malformed hour.
+
+### The budget in `status`
+
+`status` reports the budget a new agent faces here: `concurrency`, how many
+slots are `live` right now, the `minFreeMemoryMb` a start must leave free,
+`freeMemoryMb` on the machine and the advisory `maxAgentMemoryMb` ceiling. It
+is the resolved resource mode (Settings → Resources), read from the same place
+the gates read it and counted across **every** process that shares it — this
+app and each automations runner. A coordinator that does not look starts eight
+workers that queue behind each other; one that does, dispatches what fits.
 
 ### The `create` group: receipts, idempotency, audit
 
@@ -342,8 +403,8 @@ Two tokens exist, both minted fresh on every start, neither ever logged:
 
 **Scope.** The per-launch token travels in agent processes — the least trusted
 caller — so it reaches only the project its terminal was opened in: listings
-(`project/list`, `worktree/list`, `terminal/list`, `agent/list`, the counts in
-`status`) are narrowed to it, and a selector that names a worktree or a
+(`project/list`, `worktree/list`, `terminal/list`, `agent/list`, `host/list`,
+the counts in `status`) are narrowed to it, and a selector that names a worktree or a
 terminal of another project is refused with *scope denied* (`-32003`) —
 distinct from *not found*, so an agent learns to stop rather than retry. The
 scope is taken from **backend state**: the folder the caller's own PTY runs in
@@ -502,9 +563,11 @@ uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempote
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
-uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
+uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
+uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
+uxnan-cli automation propose --spec-file <draft.json>
 uxnan-cli app focus
-uxnan-cli file open <path> [--worktree <worktree>]
+uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw
@@ -574,6 +637,28 @@ codes) with `references/catalog.md` — which **is** the output of `uxnan-cli
 skills get control --full`, every entry with its arguments and result plus the
 wire contract for a script, so when the catalog grows the reference is
 regenerated, never hand-edited — and `references/workflows.md` (recipes).
+
+**A catalog change is not finished until that skill is updated too.** It lives
+in another repository (`luisgamas/skills`, directory `uxnan-control`), so the
+test that keeps `docs/control-api-reference.md` honest cannot reach it: nothing
+fails when it rots, and a published skill that describes a surface the app no
+longer has is worse than no skill. What the update is, every time:
+
+| File | What changes |
+|---|---|
+| `references/catalog.md` | **regenerate**: `uxnan-cli skills get control --full > …/uxnan-control/references/catalog.md`. Never hand-edit it, and never hand-copy a single entry into it |
+| `SKILL.md` | the *Commands* block (the new `uxnan-cli` forms) and, when a group gains a subject, the *Capability groups* paragraph |
+| `agents/openai.yaml` | `default_prompt` names what the skill can do; a new subject belongs in that list |
+| `references/workflows.md` | a recipe, when the new entries are a task someone would look up rather than one call |
+| `README.md` (repo root) | the skill's row, same reason as the prompt |
+
+The check is one command, and it is the same one either way — if the two files
+differ, the skill is stale:
+
+```bash
+diff <(uxnan-cli skills get control --full) \
+     ../skills/uxnan-control/references/catalog.md
+```
 
 ## Verifying
 
@@ -656,3 +741,19 @@ regenerated, never hand-edited — and `references/workflows.md` (recipes).
   --to id:<terminal> --message-file msg.md`, `uxnan-cli agent wait --to
   id:<terminal> --for idle`, `uxnan-cli terminal read id:<terminal>`; and from
   inside a Uxnan terminal, `uxnan-cli terminal show current`.
+- **Live, on a disposable profile (macOS, 2026-09-23)** — hosts, automations,
+  the external editor and the budget, run against a dev app started with
+  `UXNAN_DATA_DIR` pointing at a throwaway profile: two hosts that cannot
+  answer (an unresolvable name and a closed port) and an "editor" that is
+  `/usr/bin/touch`, so nothing real was connected to or opened. `host/list` and
+  `host/show` described both machines as disconnected with no channel count;
+  `host/connect` came back `unreachable` with `handshake` and `refused`
+  respectively, each with the sentence that names the host — and with no
+  fingerprint, credential method or key path in the result. `automation/show`
+  answered a seeded automation with its prompts, its policy and its
+  precondition; `file/open --with "Touch Probe"` really ran the editor (the
+  file's mtime moved) and `--with /bin/sh` was refused with the three editors
+  this machine offers; `status` reported `0/4 slots in use · 2466 MiB free
+  (needs 768 MiB)`. Every result was checked against the entry's **live**
+  `outputSchema` from `tools/list` (52 tools): required fields present,
+  declared types respected, no undocumented field.

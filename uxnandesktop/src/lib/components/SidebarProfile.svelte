@@ -6,6 +6,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { app } from "$lib/state/app.svelte";
   import { cn } from "$lib/utils";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { icon, text, divider, row, focus } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { resolveBinding } from "$lib/keybindings";
@@ -155,7 +156,7 @@
         </DropdownMenu.Sub>
       {/if}
       <DropdownMenu.Separator />
-      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => (editOpen = true)}>
+      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => deferModalOpen(() => (editOpen = true))}>
         <Icon icon={PencilIcon} class={icon.button} />
         <span class="flex-1">{i18n.t("sidebarProfile.edit")}</span>
       </DropdownMenu.Item>

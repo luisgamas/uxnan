@@ -79,8 +79,10 @@ pub struct Limits {
 
 /// The budget a mirrored record means: clamped to the engine's own bounds, and
 /// the pre-budget defaults when there is nothing recorded. Split from the read
-/// so the rule is tested without a data directory.
-fn limits_from(resolved: Option<crate::model::ResolvedBudget>) -> Limits {
+/// so the rule is tested without a data directory — and so a caller that
+/// already holds the settings in memory (the app answering `status`) applies
+/// the same rule without going back to disk.
+pub fn limits_from(resolved: Option<crate::model::ResolvedBudget>) -> Limits {
     match resolved {
         Some(mirror) => Limits {
             policy: budget::Policy {

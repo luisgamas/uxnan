@@ -26,6 +26,7 @@ import {
 import { i18n } from "$lib/i18n";
 import { buildAllExamples } from "$lib/automations/examples";
 import { startBoundary } from "$lib/automations/schedule";
+import type { Proposal } from "$lib/automations/proposal";
 import type { Automation, AutomationRun, SchedulerStatus } from "$lib/automations/types";
 
 /** How often run records are re-read while the screen is open. */
@@ -46,6 +47,10 @@ class AutomationsStore {
   scheduler = $state<Record<string, SchedulerStatus>>({});
   /** Per-automation run history, newest first. */
   runs = $state<Record<string, AutomationRun[]>>({});
+  /** A draft an agent proposed through the control surface, waiting for the
+   *  person to look at it. It is **not** saved and not in `items`: the list
+   *  opens the editor on it, and it is gone the moment they save or leave. */
+  proposed = $state<Proposal | null>(null);
 
   private hydrated = false;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -190,6 +195,17 @@ class AutomationsStore {
     } catch (e) {
       this.error = message(e);
     }
+  }
+
+  /** Hold a draft an agent proposed, for the list to open the editor on.
+   *  Nothing is stored: `automation/propose` creates nothing by design. */
+  propose(automation: Automation, from: string | null): void {
+    this.proposed = { automation, from };
+  }
+
+  /** Forget the proposal — it was saved, or the person walked away from it. */
+  clearProposal(): void {
+    this.proposed = null;
   }
 
   /** Duplicate an automation as a new draft ("create from"). The copy is

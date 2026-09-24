@@ -22,11 +22,22 @@
   import { Icon } from "$lib/components/ui/icon";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   let {
     automation,
     onback,
-  }: { automation: Automation; onback: () => void } = $props();
+    proposedBy,
+  }: {
+    automation: Automation;
+    onback: () => void;
+    /** Set when an agent drafted this through the control surface: its name (or
+     *  terminal id), or null when a shell proposed it. The notice above the
+     *  form says so — a form that filled itself in without explanation is the
+     *  one thing this must never be. */
+    proposedBy?: string | null;
+  } = $props();
 
   // A working copy, so an abandoned edit changes nothing. Deliberately taken
   // once: the draft is the user's in-progress edit, and re-syncing it to the
@@ -69,7 +80,7 @@
     return out;
   });
 
-  async function save() {
+  async function save(): Promise<boolean> {
     saving = true;
     draft.tags = tagsText
       .split(",")
@@ -78,20 +89,62 @@
     const ok = await automations.save($state.snapshot(draft) as Automation);
     saving = false;
     if (ok) onback();
+    return ok;
+  }
+
+  // Leaving someone else's draft throws it away, and there is nothing to come
+  // back to — it was never stored. So the way out asks, and offers the other
+  // answer first: saving it (paused) keeps the work. Escape or a click outside
+  // is the third answer, "neither", which leaves the editor as it was.
+  let confirmLeave = $state(false);
+
+  function leave() {
+    if (proposedBy === undefined) {
+      onback();
+      return;
+    }
+    confirmLeave = true;
+  }
+
+  function discard() {
+    confirmLeave = false;
+    onback();
   }
 </script>
 
 <div class="flex flex-col gap-6">
   <div class="flex items-center gap-2">
-    <Button variant="ghost" size="sm" onclick={onback}>
+    <Button variant="ghost" size="sm" onclick={leave}>
       <Icon icon={ArrowLeftIcon} data-icon="inline-start" />
-      {i18n.t("common.back")}
+      {proposedBy !== undefined ? i18n.t("automations.proposedDiscard") : i18n.t("common.back")}
     </Button>
     <span class="flex-1"></span>
     <Button size="sm" disabled={saving || problems.length > 0} onclick={save}>
       {i18n.t("common.save")}
     </Button>
   </div>
+
+  {#if proposedBy !== undefined}
+    <div
+      role="note"
+      aria-label={i18n.t("automations.proposedTitle")}
+      class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2"
+      data-testid="automation-proposal"
+    >
+      <Icon
+        icon={SparklesIcon}
+        class={cn(icon.decorative, "mt-0.5 shrink-0 text-amber-600 dark:text-amber-400")}
+      />
+      <div class="min-w-0 flex-1">
+        <p class={cn(text.body, "break-words font-medium")}>
+          {proposedBy
+            ? i18n.t("automations.proposedBy", { agent: proposedBy })
+            : i18n.t("automations.proposedTitle")}
+        </p>
+        <p class={cn(text.meta, "break-words")}>{i18n.t("automations.proposedDesc")}</p>
+      </div>
+    </div>
+  {/if}
 
   <SettingsSection
     title={i18n.t("automations.identity")}
@@ -264,4 +317,18 @@
   title={i18n.t("automations.folderTitle")}
   description={i18n.t("automations.folderDesc")}
   onselect={(path) => (draft.workingDir = path)}
+/>
+
+<!-- Leaving a draft an agent proposed: it was never stored, so "back" would
+     throw away both the proposal and whatever the person just changed in it. -->
+<ConfirmDialog
+  bind:open={confirmLeave}
+  title={i18n.t("automations.proposedLeaveTitle")}
+  description={i18n.t("automations.proposedLeaveDesc")}
+  confirmLabel={i18n.t("common.save")}
+  cancelLabel={i18n.t("automations.proposedLeaveDiscard")}
+  confirmDisabled={problems.length > 0}
+  error={problems.length > 0 ? problems[0] : automations.error}
+  onconfirm={save}
+  oncancel={discard}
 />

@@ -14,6 +14,7 @@ const { orchestrationRun } = await import("$lib/state/orchestrationRun.svelte");
 const { orchestration } = await import("$lib/state/orchestration.svelte");
 const { projects } = await import("$lib/state/projects.svelte");
 const { app } = await import("$lib/state/app.svelte");
+const { automations } = await import("$lib/state/automations.svelte");
 const { answer, startControlBridge } = await import("./bridge");
 
 const WT = "C:/repo";
@@ -49,6 +50,9 @@ beforeEach(() => {
   orchestrationRun.runs = [];
   orchestration.clearQueue();
   app.repos = [{ id: "repo-1", name: "repo", path: WT, worktrees: [], isGit: true }];
+  app.automationsOpen = false;
+  automations.items = [];
+  automations.clearProposal();
   app.settings.agentProfiles = [
     { id: "a-claude", name: "Claude Code", command: "claude", args: [] },
     { id: "a-none", name: "Broken", command: "", args: [] },
@@ -93,6 +97,54 @@ describe("the control bridge", () => {
     });
     expect(diffed.error).toBeUndefined();
     expect(terminals.isFileChangesOpen(WT, "src/b.ts", true)).toBe(true);
+  });
+
+  it("opens the automations editor on an agent's draft, and creates nothing", async () => {
+    terminals.setWorkspace(WT);
+    const agent = terminals.create({ cwd: WT, title: "claude", agentName: "Claude Code" });
+    backend.setCommands({ ai_commit_agents: () => ["claude", "codex"] });
+
+    const { result, error } = await answer({
+      id: "r10",
+      method: "automation/propose",
+      params: {
+        from: agent,
+        name: "Nightly lint",
+        workingDir: WT,
+        steps: [{ agent: "claude", prompt: "Run the linter." }],
+        schedule: { kind: "dailyAt", hour: 3, minute: 0 },
+      },
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ proposed: true, name: "Nightly lint", steps: 1 });
+    // The screen is open on the list, with the draft held for the editor — and
+    // the store has no new automation: nothing exists until the person saves.
+    expect(app.automationsOpen).toBe(true);
+    expect(app.automationsSection).toBe("list");
+    expect(automations.items).toHaveLength(0);
+    expect(automations.proposed?.automation.name).toBe("Nightly lint");
+    expect(automations.proposed?.automation.enabled).toBe(false);
+    expect(automations.proposed?.automation.schedule).toEqual({
+      kind: "dailyAt",
+      hour: 3,
+      minute: 0,
+    });
+    // Named by the agent in the tab, so the notice can say who asked.
+    expect(automations.proposed?.from).toBe("Claude Code");
+  });
+
+  it("refuses a draft that names an agent this machine does not have", async () => {
+    backend.setCommands({ ai_commit_agents: () => ["claude"] });
+    const { result } = await answer({
+      id: "r11",
+      method: "automation/propose",
+      params: { name: "x", workingDir: WT, steps: [{ agent: "gpt", prompt: "go" }] },
+    });
+    // `invalid` so the caller reads it as a bad argument, not a missing thing.
+    expect(result).toMatchObject({ invalid: true });
+    expect(String((result as { error: string }).error)).toMatch(/no agent `gpt` is installed/);
+    expect(automations.proposed).toBeNull();
   });
 
   it("describes runs from the run store, and says null for one it does not have", async () => {

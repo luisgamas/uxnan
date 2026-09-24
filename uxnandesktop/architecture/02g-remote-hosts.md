@@ -420,9 +420,20 @@ clave ya esta en `known_hosts`, porque alcanzar uno desconocido solo puede acaba
 en el dialogo de confianza — al lanzar la app y sin que nadie lo pida. Un host que
 queda fuera no esta rechazado: conecta en cuanto el usuario lo pide.
 
-Pendiente y anotado: **avisar a la interfaz** cuando una sesion se cae. Hoy se
-entera al preguntar; el keepalive (§5.7) lo detecta en ~2 min, pero nadie emite
-un evento.
+Avisar a la interfaz cuando una sesion se cae **ya esta hecho** y vive en
+§5.10f: un vigilante por sesion emite `ssh:session-ended` y la escalera de §5.12
+intenta traerla de vuelta. (Esta seccion lo daba por pendiente; lo estuvo hasta
+la fase 3.)
+
+**Desde la superficie de control** (`02d` §1.6) esta misma sesion se lee y se
+abre sin la interfaz: `host/list` y `host/show` describen cada maquina **por su
+sesion** —conectada o no, su shell, los canales en uso contra el limite que el
+host demostro (§5.10g)—, y `host/connect` abre la de un host registrado que no
+la tiene, por el mismo camino que el arranque. La superficie **no acepta
+credencial**: `needsPassword`, `needsPassphrase` y los tres desenlaces de clave
+de host se devuelven tal cual y ahi termina, porque confiar una clave o teclear
+una contrasena son actos de una persona. Alta, edicion y borrado de hosts no
+tienen entrada: implican secretos y se quedan en Ajustes.
 
 ## 5.6 Inventario del host — IMPLEMENTADO
 

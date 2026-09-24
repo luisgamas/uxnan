@@ -17,6 +17,9 @@ import { terminals } from "$lib/state/terminals.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { orchestration } from "$lib/state/orchestration.svelte";
 import { projects } from "$lib/state/projects.svelte";
+import { automations } from "$lib/state/automations.svelte";
+import { buildProposal, type ProposedAutomation } from "$lib/automations/proposal";
+import { aiCommitAgents } from "$lib/api";
 import { app } from "$lib/state/app.svelte";
 import { browser } from "$lib/state/browser.svelte";
 import { readInstanceText } from "$lib/terminal/instances";
@@ -152,6 +155,28 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
     const worktree = String(p.worktree ?? "");
     const id = terminals.openFile(path, worktree || null, { workspace: worktree });
     return { tab: id };
+  },
+  // An agent's draft of an automation: the editor opens on it, and nothing is
+  // created. The window is where this belongs — it owns the screen, and the
+  // one thing the backend cannot check is which agents are installed here.
+  "automation/propose": async (p) => {
+    const installed = await aiCommitAgents().catch(() => [] as string[]);
+    let draft;
+    try {
+      draft = buildProposal(p as ProposedAutomation, installed, () => crypto.randomUUID());
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e), invalid: true };
+    }
+    const from = typeof p.from === "string" ? p.from : null;
+    const tab = from ? terminals.findTab(from) : null;
+    automations.propose(
+      draft,
+      (tab && tab.kind === "terminal" ? (tab.agentName ?? tab.customTitle ?? tab.title) : null) ??
+        from,
+    );
+    app.automationsSelectedId = null;
+    app.openAutomations("list");
+    return { proposed: true, name: draft.name, steps: draft.steps.length };
   },
   "file/diff": (p) => {
     const path = String(p.path ?? "");

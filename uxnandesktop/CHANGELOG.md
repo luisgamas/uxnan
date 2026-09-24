@@ -8,6 +8,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [0.0.55] - 20260924
 ### Added
 
+- **The control surface sees the machines your projects live on.**
+  `host_list` / `host_show` describe every registered host **from its live SSH
+  session** — connected or not, the shell it starts, the projects and terminals
+  on it, and the channels in use against the limit that host turned out to
+  enforce — and `host_connect` opens a session on one that has none, the same
+  path startup takes. It never accepts a credential: a host that wants a
+  password or a key passphrase, or whose host key is unknown, changed or
+  revoked, says so and stops — that is yours to finish in Settings → Hosts, and
+  no fingerprint or key path comes back. Adding, editing and removing hosts
+  have no entry at all. From a shell: `uxnan-cli host ls | show <id> |
+  connect <id>`.
+- **An agent can draft an automation for you to decide on.** `automation_propose`
+  opens Uxnan's automations editor filled in with what the agent suggests, under
+  an amber notice saying who drafted it. Nothing is created: you read it, change
+  what you want and press Save — and it is saved **paused**, so it only starts
+  running once you turn it on. *Discard* asks first, because the draft was never
+  stored: the dialog says what is thrown away and offers saving instead. Creating,
+  editing, enabling and scheduling an automation still have no entry at all, on
+  purpose: one that could schedule itself would outlive the session that made
+  it. A launch token may only propose work in a folder of its own project, and
+  each step must name an agent installed here. From a shell: `uxnan-cli
+  automation propose --spec-file draft.json`.
+- **`automation_show`**: one saved automation in full — each step's prompt,
+  dependencies, failure handling and whether it approves its own tool use, plus
+  the run policy and the precondition that can make a run do nothing. The list
+  alone never said what a run would *do*, and `automation_run` needs an id from
+  it. From a shell: `uxnan-cli automation show <id>`.
+- **`file_open` can hand a file to your own editor**: `with` names one of the
+  editors this machine offers (the detected ones minus the ones you hid, plus
+  the ones you added in Settings → Open with), by name or by command. A caller
+  names an editor, never a command, so this is not a door to running anything.
+  From a shell: `uxnan-cli file open <path> --with zed`.
+- **`uxnan_status` reports the agent budget**: the concurrency of this machine,
+  how many slots are in use right now across this app *and* every automations
+  runner, the free memory a start must leave, the memory free now and the
+  advisory per-agent ceiling. A coordinator that reads it dispatches what fits
+  instead of starting workers that queue behind each other. `uxnan-cli status`
+  prints it.
 - **Agents can read and use the pages they build.** Eight new tools in the
   control surface (MCP and `uxnan-cli browser …`): `browser_snapshot` reads the
   page as a compact outline where every link, button and field carries a
@@ -83,6 +121,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **An agent reopening the URL the page already showed navigates again**
   instead of doing nothing, and the page URL is no longer taken from an iframe
   that navigated.
+- **Delete in the automations list asked only once.** Cancelling the
+  confirmation left the list believing the dialog was still open, so the next
+  press of *Delete* did nothing at all — a destructive action that silently
+  ignores you is worse than one that asks twice. The dialog now owns its own
+  open state, and the shared confirmation reports **every** dismissal (the
+  button, Escape, a click outside) so a caller driving it from its own state
+  cannot get stuck. The same latent bug is fixed in Settings → Hosts (trusting
+  a host key, removing a host).
+- **Delete in that menu is painted as destructive**, like every other delete in
+  the app; it was the one that read as an ordinary item.
 
 ### Security
 

@@ -111,6 +111,11 @@ enum Command {
         #[arg(long)]
         reject: bool,
     },
+    /// The remote machines projects live on.
+    Host {
+        #[command(subcommand)]
+        cmd: HostCmd,
+    },
     /// Saved automations (unattended, recurring runs).
     Automation {
         #[command(subcommand)]
@@ -415,9 +420,36 @@ enum InboxCmd {
 }
 
 #[derive(Subcommand)]
+enum HostCmd {
+    /// List the registered hosts and the state of their session.
+    Ls,
+    /// Describe one host, with the projects and terminals on it.
+    Show { host: String },
+    /// Connect a registered host that has no session. Never asks for, or
+    /// accepts, a credential: a host that needs one says so and stops.
+    Connect {
+        host: String,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum AutomationCmd {
     /// List the saved automations.
     Ls,
+    /// Describe one automation in full: prompts, policy and precondition.
+    Show { automation: String },
+    /// Put a draft in front of the person: Uxnan opens its automations editor
+    /// filled in with the JSON file's contents and creates nothing. The file is
+    /// the entry's arguments (`name`, `workingDir`, `steps`, …) — see
+    /// `uxnan-cli skills get control --full`.
+    Propose {
+        /// A JSON file holding the draft.
+        #[arg(long)]
+        spec_file: std::path::PathBuf,
+    },
     /// Run a saved automation now.
     Run {
         automation: String,
@@ -448,6 +480,10 @@ enum FileCmd {
     Open {
         #[command(flatten)]
         target: FileTarget,
+        /// Open it in one of this machine's external editors instead (by name
+        /// or command: `code`, `Zed`, one added in Settings → Open with).
+        #[arg(long = "with")]
+        with: Option<String>,
     },
     /// Open a file's working-tree diff.
     Diff {
@@ -872,8 +908,28 @@ fn plan(command: Command) -> Result<Plan, String> {
             }
             with("question/answer", p)
         }
+        Command::Host { cmd } => match cmd {
+            HostCmd::Ls => with("host/list", json!({})),
+            HostCmd::Show { host } => with("host/show", json!({ "host": host })),
+            HostCmd::Connect {
+                host,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "host": host });
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("host/connect", p)
+            }
+        },
         Command::Automation { cmd } => match cmd {
             AutomationCmd::Ls => with("automation/list", json!({})),
+            AutomationCmd::Show { automation } => {
+                with("automation/show", json!({ "automation": automation }))
+            }
+            AutomationCmd::Propose { spec_file } => {
+                with("automation/propose", read_spec(&spec_file)?)
+            }
             AutomationCmd::Run {
                 automation,
                 idempotency_key,
@@ -889,10 +945,16 @@ fn plan(command: Command) -> Result<Plan, String> {
             AppCmd::Focus => with("app/focus", json!({})),
         },
         Command::File { cmd } => match cmd {
-            FileCmd::Open { target } => {
+            FileCmd::Open {
+                target,
+                with: editor,
+            } => {
                 let mut p = json!({ "path": target.path });
                 if let Some(w) = sel(target.worktree) {
                     p["worktree"] = json!(w);
+                }
+                if let Some(e) = sel(editor) {
+                    p["with"] = json!(e);
                 }
                 with("file/open", p)
             }
@@ -1058,6 +1120,19 @@ fn read_prompt_file(path: &std::path::Path) -> Result<String, String> {
         return Err(format!("prompt file {} is empty", path.display()));
     }
     Ok(text)
+}
+
+/// A draft read from a JSON file: the arguments of `automation/propose`, as a
+/// person would rather write them than type them on one line.
+fn read_spec(path: &std::path::Path) -> Result<Value, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let value: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", path.display()))?;
+    if !value.is_object() {
+        return Err(format!("{} must hold a JSON object", path.display()));
+    }
+    Ok(value)
 }
 
 /// Write the `image` a result carries to `out`; answer with the result minus

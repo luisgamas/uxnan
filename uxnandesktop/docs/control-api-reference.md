@@ -25,9 +25,11 @@ uxnan-cli worker start --run <run-id> --task <task> --agent <agent> [--worktree 
 uxnan-cli inbox check --run <run-id> [--ack <id>]... [--wait] [--timeout <seconds>]
 uxnan-cli ask --question <text> [--option <o>]...      # from a worker's terminal
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
-uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
+uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
+uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
+uxnan-cli automation propose --spec-file <draft.json>   # the person reviews and saves it
 uxnan-cli app focus
-uxnan-cli file open <path> [--worktree <worktree>]
+uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli browser snapshot | screenshot --out <file> | console | wait <text> | click <ref> | type <ref> <text> | press <key> | scroll
@@ -52,6 +54,8 @@ Global: --json (stable machine output), --timeout <seconds>
 - `status` (MCP tool `uxnan_status`) — Report the running Uxnan Desktop: its version, the control protocol version, which capability groups are enabled, and how many projects, terminals and live agents it holds.
 - `project/list` (MCP tool `project_list`) — List the projects registered in Uxnan: id, name, folder, whether it is a git repository, the machine it lives on, and its worktrees with branch and change counts.
 - `project/show` (MCP tool `project_show`) — Describe one project: the same record `project/list` gives, for the project you select.
+- `host/list` (MCP tool `host_list`) — List the remote machines Uxnan is registered against, with the state of their live SSH session: connected or not, the shell each one starts, and the channels in use against the limit it enforces.
+- `host/show` (MCP tool `host_show`) — Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.
 - `worktree/list` (MCP tool `worktree_list`) — List worktrees: path, branch, HEAD, whether it is the main checkout, and which live agents run in it.
 - `worktree/show` (MCP tool `worktree_show`) — Describe one worktree: path, branch, HEAD, the project it belongs to, its dirty/ahead/behind counts and the agents running in it.
 - `terminal/list` (MCP tool `terminal_list`) — List the terminal tabs open in Uxnan: id, title, working directory, the worktree it belongs to, and — when an agent runs in it — the agent, its model and its live state (working, waiting, blocked, done).
@@ -59,7 +63,8 @@ Global: --json (stable machine output), --timeout <seconds>
 - `agent/list` (MCP tool `agent_list`) — List the agents Uxnan is currently tracking: terminal id, agent kind, state (working, waiting, blocked, done), the prompt and tool last reported, and the worktree they run in.
 - `run/list` (MCP tool `run_list`) — List the orchestration runs (multi-step, multi-agent plans) with their status and step counts.
 - `run/show` (MCP tool `run_show`) — Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.
-- `automation/list` (MCP tool `automation_list`) — List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.
+- `automation/list` (MCP tool `automation_list`) — List the saved automations (unattended, recurring agent runs): id, name, whether its schedule is active, the schedule itself, its working folder and its steps.
+- `automation/show` (MCP tool `automation_show`) — Describe one saved automation in full: what `automation/list` gives plus each step's prompt, dependencies, failure handling and whether it approves its own tool use, and the run policy (overlap, ceilings, notifications, and the precondition that may make a run do nothing).
 - `browser/status` (MCP tool `browser_status`) — Report the integrated browser of your workspace: whether a page is open there, its URL, title and load state, whether the person can see it, whether the in-app browser is enabled and how opens are routed (in-app / external / ask).
 - `browser/snapshot` (MCP tool `browser_snapshot`) — Read your workspace's browser page as a compact outline of what is visible — headings, text, links, buttons, fields with their values and state — where every interactive element carries a `ref` for browser_click / browser_type.
 - `browser/screenshot` (MCP tool `browser_screenshot`) — Capture what your workspace's browser page looks like, as a PNG image — for checking layout and visual changes that an outline cannot show.
@@ -72,6 +77,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `terminal/reveal` (MCP tool `terminal_reveal`) — Show a terminal tab: switch to its workspace and make it the active tab, so the person sees what that agent is doing.
 - `file/open` (MCP tool `file_open`) — Open a file in Uxnan's editor tab (or reveal it if already open).
 - `file/diff` (MCP tool `file_diff`) — Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the person can review what changed.
+- `automation/propose` (MCP tool `automation_propose`) — Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own.
 - `browser/open` (MCP tool `browser_open`) — Open the integrated in-app browser of your workspace and load a URL; answers once the page has loaded (or 15 s passed).
 - `browser/navigate` (MCP tool `browser_navigate`) — Navigate your workspace's integrated browser to a new URL (opening it first if it is not open).
 - `browser/reload` (MCP tool `browser_reload`) — Reload your workspace's page in the integrated browser and answer once it has loaded again.
@@ -84,6 +90,7 @@ Global: --json (stable machine output), --timeout <seconds>
 
 ### `create` (v1) — create a worktree or a terminal, start a saved run or automation
 
+- `host/connect` (MCP tool `host_connect`) — Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing.
 - `worktree/create` (MCP tool `worktree_create`) — Create a git worktree on a new branch of a project — where Uxnan's worktree-location policy puts it — list it in the sidebar, and optionally launch an agent in it with a first message.
 - `terminal/create` (MCP tool `terminal_create`) — Open a new terminal tab in a worktree, optionally launching a configured agent in it with a first message.
 - `terminal/close` (MCP tool `terminal_close`) — Close a terminal tab: one the surface opened (`terminal/create`, `worktree/create`, `worker/start`) once its agent is no longer working, or any terminal whose shell has exited — the way a coordinator collects the workers it started.
@@ -203,6 +210,12 @@ Report the running Uxnan Desktop: its version, the control protocol version, whi
   - `projects` (integer) — Registered projects.
   - `terminals` (integer) — Live terminals.
   - `agents` (integer) — Live agents.
+- `budget` (object) — What must be free before another agent starts here, and what is taken right now. It is the resolved resource mode (Settings → Resources), shared by this app and every automations runner: read it before dispatching workers, or they queue behind each other.
+  - `concurrency` (integer) — How many agent runs may be in flight on this machine at once.
+  - `live` (integer) — How many of those slots are held right now, by this app and by any automations runner.
+  - `minFreeMemoryMb` (integer) — Memory that must be free for a new agent to be admitted, in MiB. 0 = no memory condition.
+  - `freeMemoryMb` (integer) — Memory free on this machine right now, in MiB.
+  - `maxAgentMemoryMb` (integer) — The advisory ceiling on one run's whole process tree, in MiB. 0 = measured only, which is the default.
 - `cli` (object) — Where `uxnan-cli` is on this machine.
   - `bundled` (string | null) — The binary shipped inside the app, next to its executable — on the PATH of every terminal Uxnan opens (also named by `UXNAN_CLI` there). Null for a build made without the sidecar.
   - `shim` (string | null) — The link (macOS/Linux, `~/.local/bin/uxnan-cli`) or copy (Windows, `%LOCALAPPDATA%\uxnan\bin`) the app keeps for your own shell. Null when it could not be written.
@@ -336,6 +349,116 @@ Describe one project: the same record `project/list` gives, for the project you 
 **Errors** (besides the ones every entry can answer — see *Error codes*)
 
 - `-32002` not found — the selector named no project, worktree or terminal
+
+### `host/list`
+
+List the remote machines Uxnan is registered against, with the state of their live SSH session: connected or not, the shell each one starts, and the channels in use against the limit it enforces. A project whose `target` is `ssh:<hostId>` lives on one of these — check here when work on it stops answering. You see the host your own project lives on, and the person's own shell sees every registered host: a token scoped to a project on this machine is refused (`-32003`), because an inventory of someone's machines is not a project's business.
+
+- **Group:** `read` · read-only
+- **MCP:** `host_list`
+- **CLI:** `uxnan-cli host ls`
+
+**Params** — none (send `{}`).
+
+**Result**
+
+- `hosts` (array of object) — The hosts you may see.
+  - `id` (string) — The host id — what a project's `ssh:<hostId>` target names, and what `host/show` and `host/connect` take.
+  - `label` (string) — What the person calls this machine.
+  - `hostname` (string) — The address it is dialled at.
+  - `port` (integer) — Its SSH port.
+  - `user` (string) — The user Uxnan logs in as.
+  - `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
+  - `needsPrompt` (boolean) — Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it.
+  - `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
+  - `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
+  - `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
+  - `channels` (object, optional) — Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.
+    - `open` (integer) — Channels in use right now.
+    - `limit` (integer | null) — The host's own limit, once it has refused one. Null until then.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "host/list",
+  "params": {}
+}
+```
+
+### `host/show`
+
+Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.
+
+- **Group:** `read` · read-only
+- **MCP:** `host_show`
+- **CLI:** `uxnan-cli host show <host-id>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `host` | string | yes | The host id, from `host/list` or from a project's `ssh:<hostId>` target. |
+
+**Result**
+
+- `id` (string) — The host id — what a project's `ssh:<hostId>` target names, and what `host/show` and `host/connect` take.
+- `label` (string) — What the person calls this machine.
+- `hostname` (string) — The address it is dialled at.
+- `port` (integer) — Its SSH port.
+- `user` (string) — The user Uxnan logs in as.
+- `source` (string) — Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`).
+- `needsPrompt` (boolean) — Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it.
+- `connected` (boolean) — Whether a live session is open on it right now — the session itself, not what the settings remember.
+- `generation` (integer, optional) — The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it.
+- `shell` (string, optional) — The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine.
+- `channels` (object, optional) — Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.
+  - `open` (integer) — Channels in use right now.
+  - `limit` (integer | null) — The host's own limit, once it has refused one. Null until then.
+- `projects` (array of object) — The registered projects that live on this host.
+  - `id` (string) — The project id — what `id:<projectId>` selects.
+  - `name` (string) — The display name — what `name:<project name>` selects.
+  - `path` (string) — Absolute folder of the project.
+  - `target` (string) — `local`, or `ssh:<hostId>` for a project on a host.
+  - `isGit` (boolean) — Whether the folder is a git repository. A plain folder has one pseudo-worktree and no branches.
+- `terminals` (array of object) — The terminals open against its session, as `terminal/list` describes them.
+  - `id` (string) — The tab id — also the PTY id and the agent id; what `id:<terminalId>` selects.
+  - `title` (string) — The tab title (a custom one when the person renamed it).
+  - `workspace` (string) — The workspace key: the worktree folder, prefixed `ssh:<hostId>::` on a host, empty for the Global space.
+  - `cwd` (string, optional) — The folder the shell was opened in.
+  - `target` (string) — `local`, or `ssh:<hostId>`.
+  - `agentName` (string, optional) — The configured agent launched in this tab, when one was.
+  - `agentCommand` (string, optional) — That agent's command (`claude`, `codex`, …).
+  - `agentModel` (string, optional) — The model the launch pinned, when the profile pins one.
+  - `exited` (boolean) — Whether the shell has exited.
+  - `asleep` (boolean) — Whether the tab is asleep (its PTY released, restorable).
+  - `agent` (object, optional) — The agent tracked in this tab, once one has reported.
+    - `terminalId` (string) — The terminal it runs in — its `UXNAN_AGENT_ID`.
+    - `kind` (string, optional) — `claude`, `codex`, … when its hooks said.
+    - `status` (string) — `working`, `blocked`, `waiting` (asked the person something) or `done` (turn finished).
+    - `prompt` (string, optional) — The prompt it is working on, when reported.
+    - `tool` (string, optional) — The tool in use (`file_edit`, `bash`, …), when reported.
+    - `interrupted` (boolean) — Whether it reported being interrupted.
+    - `summary` (string, optional) — A short preview of its latest reply, when reported.
+    - `sessionId` (string, optional) — The provider's own session id, when captured — what its `--resume` takes.
+    - `cwd` (string, optional) — The folder its terminal was opened in, when known.
+    - `firstSeen` (integer) — Epoch seconds of its first report.
+    - `lastUpdate` (integer) — Epoch seconds of its latest report.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "host/show",
+  "params": {
+    "host": "h-42"
+  }
+}
+```
 
 ### `worktree/list`
 
@@ -685,7 +808,7 @@ Describe one orchestration run: every step with its kind, target, dependencies, 
 
 ### `automation/list`
 
-List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.
+List the saved automations (unattended, recurring agent runs): id, name, whether its schedule is active, the schedule itself, its working folder and its steps. Read one with `automation/show` before running it.
 
 - **Group:** `read` · read-only
 - **MCP:** `automation_list`
@@ -696,16 +819,16 @@ List the saved automations (unattended, recurring agent runs): id, name, whether
 **Result**
 
 - `automations` (array of object) — Every saved automation.
-  - `id` (string) — The automation id — what `automation/run` takes.
+  - `id` (string) — The automation id — what `automation/show` and `automation/run` take.
   - `name` (string) — Its name.
   - `description` (string) — Its description, possibly empty.
-  - `enabled` (boolean) — Whether its schedule is active.
+  - `enabled` (boolean) — Whether its schedule is active. A disabled automation can still be run by hand.
   - `tags` (array of string) — Free-form labels the list groups by.
   - `workingDir` (string) — The folder a run executes in.
-  - `worktreePerRun` (boolean) — Whether every run gets its own worktree.
+  - `worktreePerRun` (boolean) — Whether every run gets its own worktree, so unattended work never touches the tree the person is using.
   - `schedule` (object) — Its schedule: `{ kind: "every", n, unit, startsAt }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`.
   - `steps` (array of object) — Its steps, in order.
-    - `id` (string) — The step id.
+    - `id` (string) — The step id (`s1`, `s2`, …) — what a `{{steps.<id>.output}}` reference names.
     - `title` (string) — The step's title.
     - `agent` (string) — The agent it runs (`claude`, `codex`, …).
     - `model` (string) — The model it pins; empty for the CLI's default.
@@ -721,6 +844,69 @@ List the saved automations (unattended, recurring agent runs): id, name, whether
   "params": {}
 }
 ```
+
+### `automation/show`
+
+Describe one saved automation in full: what `automation/list` gives plus each step's prompt, dependencies, failure handling and whether it approves its own tool use, and the run policy (overlap, ceilings, notifications, and the precondition that may make a run do nothing). Read this before `automation/run` — the list alone does not say what a run would do.
+
+- **Group:** `read` · read-only
+- **MCP:** `automation_show`
+- **CLI:** `uxnan-cli automation show <automation-id>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `automation` | string | yes | The automation id from `automation/list`. |
+
+**Result**
+
+- `id` (string) — The automation id — what `automation/show` and `automation/run` take.
+- `name` (string) — Its name.
+- `description` (string) — Its description, possibly empty.
+- `enabled` (boolean) — Whether its schedule is active. A disabled automation can still be run by hand.
+- `tags` (array of string) — Free-form labels the list groups by.
+- `workingDir` (string) — The folder a run executes in.
+- `worktreePerRun` (boolean) — Whether every run gets its own worktree, so unattended work never touches the tree the person is using.
+- `schedule` (object) — Its schedule: `{ kind: "every", n, unit, startsAt }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`.
+- `steps` (array of object) — Its steps, in order.
+  - `id` (string) — The step id (`s1`, `s2`, …) — what a `{{steps.<id>.output}}` reference names.
+  - `title` (string) — The step's title.
+  - `agent` (string) — The agent it runs (`claude`, `codex`, …).
+  - `model` (string) — The model it pins; empty for the CLI's default.
+  - `prompt` (string) — What the step asks the agent to do, as written — `{{steps.<id>.output}}` is substituted at run time.
+  - `dependsOn` (array of string) — Steps that must finish first; empty means it starts with the run.
+  - `onFailure` (string) — `stop` (fail the run; dependents are skipped) or `retry`.
+  - `maxAttempts` (integer) — How many dispatches `retry` allows.
+  - `timeoutMs` (integer | null) — The step's own wall-clock cap in milliseconds; null uses the runner's default.
+  - `autonomous` (boolean) — Whether this step's agent approves its own tool use. A step that must change something needs it; one that only reads should not have it.
+- `updatedAt` (integer) — Epoch milliseconds of the last edit.
+- `baseBranch` (string | null) — The branch a per-run worktree is cut from; null uses the repository's HEAD.
+- `createdAt` (integer) — Epoch milliseconds of its creation.
+- `policy` (object) — How a run behaves, beyond the graph.
+  - `catchUp` (boolean) — Whether a moment missed while the machine was off is recovered.
+  - `overlap` (string) — What a trigger does while a run is going: `skip`, `queue` or `cancelPrevious`.
+  - `maxRunMinutes` (integer) — Wall-clock ceiling for the whole run.
+  - `keepRuns` (integer) — How many past runs are kept on disk.
+  - `notifyOn` (array of string) — Which outcomes raise a native notification.
+  - `precondition` (object | null) — `{ command, timeoutSeconds }`: a shell command that decides whether the run proceeds at all (exit 0 = go ahead). Null when there is none — `automation/run` may therefore do nothing and say why.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "automation/show",
+  "params": {
+    "automation": "nightly-lint"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no saved run or automation has that id
 
 ### `browser/status`
 
@@ -968,11 +1154,11 @@ Show a terminal tab: switch to its workspace and make it the active tab, so the 
 
 ### `file/open`
 
-Open a file in Uxnan's editor tab (or reveal it if already open). The path must be inside a registered worktree.
+Open a file in Uxnan's editor tab (or reveal it if already open). The path must be inside a registered worktree. `with` hands it to one of the person's external editors instead — one of the editors this machine has, never a command you choose.
 
 - **Group:** `ui` · mutates (receipted, audited)
 - **MCP:** `file_open`
-- **CLI:** `uxnan-cli file open <path> [--worktree <worktree>]`
+- **CLI:** `uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]`
 
 **Params**
 
@@ -980,10 +1166,12 @@ Open a file in Uxnan's editor tab (or reveal it if already open). The path must 
 |---|---|---|---|
 | `path` | string | yes | Absolute path of the file, or a path relative to the selected worktree. |
 | `worktree` | string | no | Which worktree: `current` (the one your terminal runs in), `path:<absolute folder>`, or `branch:<branch name>`. |
+| `with` | string | no | Open it in an external editor instead of Uxnan's tab, by the id or name of one this machine offers (`vscode`, `Zed`, an editor the person added in Settings → Open with). The error lists what is available. Only a folder or file inside a registered worktree is ever handed over. |
 
 **Result**
 
-- `opened` (string) — The absolute path now open in the editor.
+- `opened` (string) — The absolute path now open.
+- `openedWith` (string, optional) — The external editor it was handed to, when `with` was given. Absent means Uxnan's own tab.
 
 **Request**
 
@@ -1044,6 +1232,59 @@ Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the p
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32002` not found — the path is not inside the worktree, or does not exist
+
+### `automation/propose`
+
+Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `automation_propose`
+- **CLI:** `uxnan-cli automation propose --spec-file <draft.json>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | What to call it. At most 200 characters. |
+| `workingDir` | string | yes | Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project. |
+| `steps` | array of object | yes | The steps, in order. At most 20. |
+| `description` | string | no | A sentence saying what it is for. |
+| `tags` | array of string | no | Free-form labels the list groups by. |
+| `schedule` | object | no | How often it repeats, in the shape `automation/show` reports: `{ kind: "every", n, unit }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`. Default: daily at 09:00 — the person sets the real cadence. |
+| `worktreePerRun` | boolean | no | Give every run its own worktree, so unattended work never touches the tree the person is using. Default false. |
+
+**Result**
+
+- `proposed` (boolean) — Always true: the editor is open with your draft. It is **not** saved — nothing exists until the person presses Save, and it is paused when they do.
+- `name` (string) — The name the draft carries.
+- `steps` (integer) — How many steps it has.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "automation/propose",
+  "params": {
+    "name": "Nightly lint",
+    "workingDir": "/Users/me/code/app",
+    "steps": [
+      {
+        "id": "s1",
+        "title": "Lint",
+        "agent": "claude",
+        "prompt": "Run the linter and fix what it reports."
+      }
+    ],
+    "schedule": {
+      "kind": "dailyAt",
+      "hour": 3,
+      "minute": 0
+    }
+  }
+}
+```
 
 ### `browser/open`
 
@@ -1465,6 +1706,47 @@ Scroll your workspace's browser page — or one scrollable element, by its `ref`
   "params": {
     "direction": "down",
     "amount": 1
+  }
+}
+```
+
+### `host/connect`
+
+Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.
+
+- **Group:** `create` · mutates (receipted, audited)
+- **MCP:** `host_connect`
+- **CLI:** `uxnan-cli host connect <host-id> [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `host` | string | yes | The host id, from `host/list` or from a project's `ssh:<hostId>` target. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `host` (object) — What the attempt came to.
+  - `id` (string) — The host id.
+  - `connected` (boolean) — Whether there is a live session now. True also when one was already open.
+  - `status` (string) — `connected`; `needsPassword` or `needsPassphrase` (a person must finish it in Settings → Hosts); `hostUnknown`, `hostChanged` or `hostRevoked` (the host key must be confirmed by a person — nothing was trusted); `unreachable`, `failed` or `noUsableMethod`.
+  - `generation` (integer, optional) — The connection incarnation, when connected.
+  - `shell` (string, optional) — The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected.
+  - `reason` (string, optional) — For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not.
+  - `detail` (string, optional) — A sentence naming the host and what happened, for `unreachable`.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "host/connect",
+  "params": {
+    "host": "h-42"
   }
 }
 ```

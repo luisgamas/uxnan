@@ -127,6 +127,25 @@ pub fn render(method: &str, value: &Value) -> String {
             &[],
             &[],
         ),
+        "host/list" => table(
+            value.get("hosts"),
+            &["id", "label", "user", "hostname", "connected"],
+            &[
+                |h: &Value| match h["connected"].as_bool() {
+                    Some(true) => match (
+                        h["channels"]["open"].as_u64(),
+                        h["channels"]["limit"].as_u64(),
+                    ) {
+                        (Some(open), Some(limit)) => format!("{open}/{limit}"),
+                        (Some(open), None) => format!("{open}/?"),
+                        _ => String::new(),
+                    },
+                    _ => String::new(),
+                },
+                |h: &Value| h["shell"].as_str().unwrap_or("").to_string(),
+            ],
+            &["channels", "shell"],
+        ),
         "automation/list" => table(
             value.get("automations"),
             &["id", "name", "enabled", "workingDir"],
@@ -173,6 +192,22 @@ fn status(v: &Value) -> String {
         if !off.is_empty() {
             out.push_str(&format!("groups off: {}\n", off.join(", ")));
         }
+    }
+    if let Some(b) = v.get("budget") {
+        out.push_str(&format!(
+            "agent budget: {}/{} slots in use · {} MiB free",
+            b["live"], b["concurrency"], b["freeMemoryMb"]
+        ));
+        if b["minFreeMemoryMb"].as_u64().unwrap_or(0) > 0 {
+            out.push_str(&format!(" (needs {} MiB)", b["minFreeMemoryMb"]));
+        }
+        if b["maxAgentMemoryMb"].as_u64().unwrap_or(0) > 0 {
+            out.push_str(&format!(
+                " · ceiling {} MiB per agent",
+                b["maxAgentMemoryMb"]
+            ));
+        }
+        out.push('\n');
     }
     if let Some(kind) = v["caller"]["kind"].as_str() {
         match v["caller"]["terminalId"].as_str() {

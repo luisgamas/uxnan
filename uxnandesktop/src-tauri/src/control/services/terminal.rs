@@ -107,7 +107,13 @@ pub struct TerminalView {
     pub agent: Option<AgentView>,
 }
 
-async fn enrich<R: tauri::Runtime>(app: &AppHandle<R>, tabs: Vec<TabView>) -> Vec<TerminalView> {
+/// Pair each tab with the agent state the backend knows for it. `pub(super)`
+/// because `host/show` lists the terminals of one machine and must describe
+/// them exactly as `terminal/list` does.
+pub(super) async fn enrich<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    tabs: Vec<TabView>,
+) -> Vec<TerminalView> {
     let agents = super::agent::all(app).await;
     tabs.into_iter()
         .map(|tab| {
