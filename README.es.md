@@ -29,7 +29,7 @@
   Mobile</b> se empareja con un pequeño daemon cifrado en tu PC para que puedas revisar un<br />
   agente, aprobar su siguiente paso o enviarle una nueva instrucción desde tu teléfono,<br />
   sea desde el otro lado del cuarto o desde el otro lado del mundo. Son apps independientes: usa<br />
-  Desktop sola, Mobile sola, o ambas.
+  Desktop sola, Mobile sola, o ambas — y entonces un chat iniciado en una continúa en la otra.
 </p>
 
 <p align="center">

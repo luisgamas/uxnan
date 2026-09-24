@@ -28,7 +28,8 @@
   git worktree, without the memory cost of a full IDE. <b>Uxnan Mobile</b> pairs with a small<br />
   encrypted daemon on your PC so you can check on an agent, approve its next step, or send<br />
   a new instruction from your phone — across the room or across the world. They're<br />
-  independent apps: run Desktop on its own, run Mobile on its own, or run both.
+  independent apps: run Desktop on its own, run Mobile on its own, or run both — and then a<br />
+  chat started on either one carries on in the other.
 </p>
 
 <p align="center">

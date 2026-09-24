@@ -17,6 +17,18 @@ connected to live bridge data, validated on-device against a real bridge.
 
 **Built (DONE):**
 
+- **Multi-client convergence** (architecture/02a §5.8.16) — the app applies
+  `stream/thread/updated|deleted` (a conversation started on Uxnan Desktop
+  appears in the list at once, filed under the connected PC),
+  `stream/turn/created` (another client's prompt is placed above its answer;
+  this app's own echo is matched by `clientTurnId` so nothing is drawn twice)
+  and `stream/approval|question/resolved` (a card answered elsewhere, or timed
+  out, settles here — wired app-wide from `_PushHost`). `loadThreads` now reads
+  the real `ThreadList` shape (it silently loaded nothing from a bridge before).
+  **Not yet device-verified** against a desktop chat — covered by unit tests
+  (`thread_manager_test`, `incoming_message_processor_test`,
+  `elicitation_resolution_test`) and by the bridge's own end-to-end tests.
+
 - **Large screens: one route table, two layouts.** Past 840 dp the app stops
   being a stack of screens — a **permanent navigation drawer** (the PC, its
   work, and you) with the routed screen as the content pane beside it. The
