@@ -42,6 +42,13 @@ export interface BridgeStatus {
    */
   updateAvailable?: boolean;
   /**
+   * Threads with a turn in flight right now, whichever client started it.
+   * Absent on an older bridge. A client uses it to wait for a quiet moment
+   * before anything that restarts the bridge (Uxnan Desktop's bridge update),
+   * so no one's running turn is cut.
+   */
+  activeTurns?: number;
+  /**
    * Optional capabilities this bridge supports, so a newer client offers a
    * feature only where it actually works instead of inferring it from the
    * version string. **Absent means "assume none"** — an older bridge simply

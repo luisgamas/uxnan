@@ -23,6 +23,12 @@ the contract now carries everything a second client needs to converge
 - `TurnSendParams.clientTurnId`: the sender's optimistic-bubble id, echoed on
   `stream/turn/created` so it recognizes its own message.
 
+### Added — `BridgeStatus.activeTurns`
+
+Threads with a turn in flight, whichever client started it (optional; absent
+on an older bridge). A client waits for a quiet moment with it before anything
+that restarts the bridge.
+
 ### Added — local control channel contract
 
 `local-control/local-control.ts` defines how a client on the same machine as

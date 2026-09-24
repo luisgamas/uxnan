@@ -309,6 +309,12 @@ test('turn/send passes a sane clientTurnId through and drops an oversized one', 
       created.map((c) => c.clientTurnId),
       ['b-1', undefined],
     );
+    // One thread has a turn in flight (the second one is queued behind it):
+    // `bridge/status` says so, for a client waiting for a quiet moment.
+    const status = (await bridge.router.dispatch(makeRequest('st', 'bridge/status'))) as {
+      result: { activeTurns?: number };
+    };
+    assert.equal(status.result.activeTurns, 1);
   } finally {
     await bridge.stop();
     await rmrf(baseDir);

@@ -269,7 +269,9 @@ notifications/unregister        -> desregistrar el telefono
 **Control del bridge (6):**
 ```
 bridge/status                    -> snapshot de estado del bridge (incluye relayConnected,
-                                    version y, del chequeo npm de fondo, latestVersion/updateAvailable)
+                                    version y, del chequeo npm de fondo, latestVersion/updateAvailable;
+                                    activeTurns = hilos con un turno en curso, para que un cliente
+                                    espere un momento tranquilo antes de reiniciar el bridge)
 bridge/generatePairingQr         -> regenera y devuelve el PairingPayload vigente
 bridge/connectedPhones           -> lista de telefonos conectados
 bridge/disconnectPhone           -> desconectar un telefono

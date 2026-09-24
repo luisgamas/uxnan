@@ -511,6 +511,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         startedAt,
         now: now(),
         localControl: localControl !== undefined,
+        activeTurns: agentManager.activeTurnCount(),
         ...(updateState.status?.latestVersion !== undefined
           ? { latestVersion: updateState.status.latestVersion }
           : {}),

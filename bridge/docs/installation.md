@@ -88,7 +88,16 @@ commands keep using the cache so they stay fast. The paired phone learns the
 same thing via `bridge/status`
 (`latestVersion`/`updateAvailable`) and shows an informational hint — see the
 mobile app. Update with `npm install -g uxnan-bridge@latest` (or `git pull` +
-`npm install` for a source checkout).
+`npm install` for a source checkout). `uxnan-bridge version` prints the installed
+version without starting anything.
+
+**From Uxnan Desktop.** Settings → *Bridge & mobile* (and a chat tab, when the
+bridge is missing) offers **Install** / **Update**: it runs that same npm command
+on your request, shows its output, and — when Uxnan is the one running the bridge
+— restarts it on the new version. If npm cannot write its global folder, it says
+so and offers the command to copy. *Update automatically* does the same on its
+own when a newer version is published, but only while no conversation is
+running on any device (`bridge/status` → `activeTurns`).
 
 ## Autostart (run at logon, no open terminal)
 

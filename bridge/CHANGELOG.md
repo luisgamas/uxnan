@@ -47,6 +47,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   2.0.16). On 2.x a conversation title runs `opencode run --standalone`, so it
   never starts OpenCode's shared background service.
 
+- **`uxnan-bridge version`** (also `--version`, `-v`) prints the installed
+  version and nothing else, without starting a daemon — how Uxnan Desktop tells
+  which bridge is installed.
+- **`bridge/status` reports `activeTurns`**: threads with a turn in flight right
+  now, whichever client started it. Uxnan Desktop waits for `0` before an
+  automatic bridge update restarts it, so nobody's running turn is cut.
+
 ### Changed
 
 - **One OpenCode adapter over a protocol client per version.** The adapter now

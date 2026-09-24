@@ -40,6 +40,7 @@ Commands:
   stop             Stop the running daemon
   install-service    Start the bridge automatically at logon (as the current user)
   uninstall-service  Remove the autostart entry
+  version          Print the installed version (no daemon is started)
   help             Show this help
 `;
 
@@ -240,6 +241,13 @@ async function main(): Promise<number> {
       return 0;
     case 'uninstall-service':
       await cmdUninstallService();
+      return 0;
+    case 'version':
+    case '--version':
+    case '-v':
+      // Just the version, nothing else on stdout: Uxnan Desktop reads it to
+      // tell which bridge is installed without starting one.
+      process.stdout.write(`${BRIDGE_VERSION}\n`);
       return 0;
     case 'help':
     case '--help':

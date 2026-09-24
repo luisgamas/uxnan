@@ -1000,6 +1000,13 @@ export class AgentManager {
    * turn running now?"; the phone re-attaches its streaming view to it on
    * resync (surfaced via `turn/list` → `activeTurnId`).
    */
+  /** How many threads have a turn in flight right now, on any client's behalf.
+   *  Lets a client pick a quiet moment for disruptive work (restarting the
+   *  bridge to update it) instead of cutting a running turn. */
+  activeTurnCount(): number {
+    return this.#activeTurnByThread.size;
+  }
+
   activeTurnId(threadId: string): string | undefined {
     return this.#activeTurnByThread.get(threadId);
   }

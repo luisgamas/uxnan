@@ -21,6 +21,8 @@ export interface BridgeStatusInput {
   updateAvailable?: boolean;
   /** Whether the loopback local control channel is listening right now. */
   localControl?: boolean;
+  /** Threads with a turn in flight (see `BridgeStatus.activeTurns`). */
+  activeTurns?: number;
 }
 
 /**
@@ -50,6 +52,7 @@ export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
     uptimeMs: Math.max(0, input.now - input.startedAt),
     ...(input.latestVersion !== undefined ? { latestVersion: input.latestVersion } : {}),
     ...(input.updateAvailable ? { updateAvailable: true } : {}),
+    ...(input.activeTurns !== undefined ? { activeTurns: input.activeTurns } : {}),
     features: { ...BRIDGE_FEATURES, ...(input.localControl ? { localControl: true } : {}) },
   };
 }

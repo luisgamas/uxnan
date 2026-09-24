@@ -152,6 +152,7 @@ uxnan-bridge code             # print just the current pairing code
 uxnan-bridge stop             # stop the running daemon (via the lock file)
 uxnan-bridge install-service  # autostart at logon (Task Scheduler / LaunchAgent / systemd --user)
 uxnan-bridge uninstall-service
+uxnan-bridge version          # print the installed version (starts nothing)
 ```
 
 **Pairing is time-boxed.** A first-time enrollment is only accepted while a
