@@ -44,7 +44,10 @@ pub enum MenuPlacement {
 pub struct NativeCommand {
     pub id: String,
     pub chord: String,
+    /// Read by the macOS menu bar (`menu.rs`) — the only menu there is.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub label: String,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub menu: Option<MenuPlacement>,
 }
 
@@ -52,11 +55,14 @@ pub struct NativeCommand {
 #[derive(Debug, Clone, Default)]
 pub struct Snapshot {
     pub commands: Vec<NativeCommand>,
+    /// The macOS menu bar's words (`menu.rs`).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub labels: HashMap<String, String>,
 }
 
 impl Snapshot {
     /// A menu word in the app's language, else the English fallback.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn label<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
         self.labels
             .get(key)
@@ -79,6 +85,8 @@ impl KeyboardState {
         }
     }
 
+    /// What the macOS menu bar is built from (`menu.rs`).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn snapshot(&self) -> Snapshot {
         self.inner.lock().map(|s| s.clone()).unwrap_or_default()
     }
@@ -147,6 +155,7 @@ impl Chord {
     }
 
     /// The accelerator the macOS menu bar takes for this chord.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn menu_accelerator(&self) -> String {
         let mut parts: Vec<&str> = Vec::new();
         if self.primary {
