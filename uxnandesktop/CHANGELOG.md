@@ -4,6 +4,42 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A terminal no longer freezes when the program in it asks which modes it
+  supports.** OpenCode 2 sends that question (DECRQM, `CSI ? Ps $ p`) the moment
+  it starts, and Uxnan's build had turned xterm.js's answer into an error: the
+  tab stopped showing anything — the TUI never appeared, and neither did
+  anything printed after it — while the same command worked in any other
+  terminal. The frontend is now compiled for the webviews Uxnan actually runs
+  on (macOS 11's Safari 14 and newer), which ships xterm.js intact; a test
+  minifies xterm.js the way the build does and fails if the answer breaks
+  again. Any TUI that queried a mode was affected since desktop 0.0.14.
+- **OpenCode 2 shows its state again.** OpenCode 2 replaced its plugin API, so
+  Uxnan's status plugin no longer loaded ("Plugin must export a default
+  definition…") and an OpenCode tab never left its gray dot. The plugin now
+  speaks both APIs from one file, so OpenCode 1 and 2 — and MiMo Code and Kilo
+  Code, which run the same file — report working, waiting (a permission or a
+  question), done, interrupted, failed and their sub-agents. With OpenCode 2 the
+  card also shows your prompt, the tool in use and the agent's last reply.
+- **An OpenCode error reads as text**, not `[object Object]`.
+
+### Changed
+
+- **OpenCode 2 is launched `--standalone`.** Its TUI is only a client of a
+  background service shared by every OpenCode on the machine, which keeps the
+  environment of whichever terminal started it — so every OpenCode tab would
+  have reported, and used the agent tools, as that one tab, with a token that
+  stops working when Uxnan restarts. A launch from Uxnan now gets a private
+  server that belongs to its tab and ends with it. Uxnan reads `opencode
+  --version` to decide (OpenCode 1 rejects the flag), picks up an upgrade at the
+  next launch, and leaves a profile that already chose `--standalone` or
+  `--server` alone. The cost is memory: about 585 MB per OpenCode tab instead of
+  ~175 MB plus ~470 MB for the shared service once.
+- **With OpenCode 2, its agent tools go only to the terminal Uxnan opens to
+  launch it.** Before, every terminal carried them, so an `opencode` typed by
+  hand could hand them to that shared service for good. A hand-typed `opencode`
+  runs as normal, without the tools or a precise state; OpenCode 1 is unchanged.
 
 ### Added
 
@@ -253,6 +289,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   side by side, each getting its own agents' reports, and neither can break the
   other. Codex stops asking you to review its hooks, too: its trust hash covers
   the command, and the command no longer moves.
+
+  **An agent you wired by hand keeps working.** The generic wrapper's path is
+  that agent's *launch command*, so moving the scripts would have left it
+  naming a file that is gone — the agent would not start at all. The upgrade
+  rewrites those commands (and arguments) to the new location once, on the
+  first launch, and saves them, so what Settings → Agents shows is what runs.
+  Only paths inside the app's own hooks folder that name one of its reporters
+  are touched; a copy you made somewhere of your own is yours and is left
+  alone.
 
   Two builds can ship different reporters, so the shared directory records the
   version that wrote it and an older build never overwrites a newer one's

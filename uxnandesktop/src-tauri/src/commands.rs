@@ -467,6 +467,11 @@ pub async fn pty_create(
     // Machine to open it on. Absent or `local` spawns a process here; an
     // `ssh:<hostId>` target opens a channel on that host's live session.
     target: Option<String>,
+    // The executable uxnan will type into this terminal once it is ready
+    // (`opencode`, `claude`, …) — absent for a plain terminal. It scopes the
+    // env-based MCP registrations that must not reach every shell (see
+    // `mcpinject::launch_env_all`).
+    launching: Option<String>,
 ) -> Result<bool, CommandError> {
     // Remote first, because everything below this line is about spawning a local
     // process: hook coordinates for a local server, WSLENV, resource attribution
@@ -684,7 +689,13 @@ pub async fn pty_create(
             env.push((crate::mcpinject::TOKEN_ENV.to_string(), h.token.clone()));
             let disabled: std::collections::HashSet<&str> =
                 mcp_disabled.iter().map(String::as_str).collect();
-            env.extend(crate::mcpinject::launch_env_all(&endpoint, &disabled));
+            let opencode_major = crate::agentcli::opencode_major_version().await;
+            env.extend(crate::mcpinject::launch_env_all(
+                &endpoint,
+                &disabled,
+                launching.as_deref().filter(|exe| !exe.is_empty()),
+                opencode_major,
+            ));
         }
         crate::mcpinject::prepare(&app, cwd.as_deref().unwrap_or_default()).await;
     }
@@ -740,7 +751,11 @@ pub struct McpInfo {
 
 /// Return the browser MCP server coordinates + per-launch agent catalog. Used by
 /// the Settings panel (per-agent toggles + snippet) **and** by the launch path,
-/// which appends each agent's `args` to the command it types. The token is the
+/// which appends each agent's `requiredArgs` — and, with the agent tools on,
+/// its `args` — to the command it types. The launch path asks again before
+/// every launch, so an OpenCode upgraded mid-session is launched the way its
+/// new version needs (the version is cached against the binary, so this costs
+/// a `stat` when nothing changed). The token is the
 /// app's own local loopback secret, surfaced only so the user can copy a
 /// ready-to-paste config for an agent the ADE doesn't auto-configure.
 #[tauri::command]
@@ -763,7 +778,11 @@ pub async fn mcp_info(app: AppHandle, state: State<'_, AppState>) -> Result<McpI
         server_name: crate::mcpinject::SERVER_NAME.to_string(),
         agent_id_header: crate::mcpinject::AGENT_ID_HEADER.to_string(),
         agent_id_env: crate::mcpinject::AGENT_ID_ENV.to_string(),
-        agents: crate::mcpinject::agent_infos(endpoint.as_deref(), claude_config.as_deref()),
+        agents: crate::mcpinject::agent_infos(
+            endpoint.as_deref(),
+            claude_config.as_deref(),
+            crate::agentcli::opencode_major_version().await,
+        ),
     })
 }
 
@@ -4217,8 +4236,9 @@ pub struct HookScripts {
     pub wrapper_fish: String,
 }
 
-/// Paths of the bundled hook scripts the ADE writes to `<app-data>/hooks/`
-/// on startup, plus the resolved `~/.claude/settings.json` path. Settings →
+/// Paths of the bundled hook scripts the ADE writes to the machine's shared
+/// hooks directory (`agent_hooks::shared_hooks_dir`) on startup, plus the
+/// resolved `~/.claude/settings.json` path. Settings →
 /// Agents → Hooks uses this to render copy-pasteable commands and the install
 /// buttons. `None` if the install-on-startup step failed (e.g. the app-data
 /// directory is not writable) — in that case precise hook reporting still

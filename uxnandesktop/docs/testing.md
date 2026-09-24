@@ -161,7 +161,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 846 passing unit tests of the app crate (888 with the ignored probes) — plus 18 in
+The 852 passing unit tests of the app crate (894 with the ignored probes) — plus 18 in
 `uxnan-control-protocol` and 14 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -269,7 +269,14 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,419 passing tests** across both
+ships in every build and is never shown) and the **build target** check
+(`tests/build-target.test.mjs` — xterm.js minified exactly as the production
+build does, under `build-target.js`, still answers a DECRQM mode request and
+keeps parsing afterwards; see [`build.md`](build.md) → *The frontend's build
+target*) and the **OpenCode plugin** check (`tests/opencode-plugin.test.mjs` —
+the status plugin OpenCode, MiMo and Kilo run, fed events shaped like a real
+OpenCode 2.0.16 / 1.18.32 run: both plugin APIs, sub-agents, interruptions, and
+silence inside OpenCode 2's shared service). **1,437 passing tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

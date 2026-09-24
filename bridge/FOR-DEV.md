@@ -73,8 +73,8 @@ push validation (FOR-HUMAN).
   running one (`IAgentAdapter.steerTurn`), the turn goes `delivered` (terminal
   and *successful*, distinct from `cancelled`) and `stream/turn/delivered`
   fires. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
-  and follow-ups on an open stdin), **OpenCode** (`prompt_async` on the busy
-  session) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
+  and follow-ups on an open stdin), **OpenCode** (1.x: `prompt_async` on the
+  busy session; 2.x: `delivery: "steer"`) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
   (`turn/steer`) but not yet run against a
   real turn (see below). Antigravity, Zero and Grok have no such channel and
   keep waiting — Zero's own TUI behaves that way too. Advertised as
@@ -98,8 +98,11 @@ push validation (FOR-HUMAN).
   [`docs/agents.md`](docs/agents.md)), **Zero** and **Grok** JSON-RPC over the
   Agent Client Protocol (`zero acp` / `grok agent stdio`, NDJSON over stdio —
   reusing the Codex NDJSON transport, with **real `session/request_permission`
-  approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No
-  further agent is planned right now.
+  approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback) —
+  OpenCode 1 and 2 alike: one adapter over a protocol client per major version,
+  picked by `opencode --version` (`docs/agents.md` → *OpenCode 1 and OpenCode
+  2*), validated live on 1.18.32 and 2.0.16. No further agent is planned right
+  now.
 - **Context compaction markers** — real native signals from Codex, Claude,
   OpenCode and pi are normalized into durable `compaction` content blocks.
   Zero/Grok ACP and Antigravity expose no trustworthy signal, so no event is

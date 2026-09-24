@@ -239,3 +239,25 @@ test('execute/bash tools normalize to a command_execution block across agents', 
   assert.deepEqual(zero, expected);
   assert.deepEqual(grok, expected);
 });
+
+test('opencodeToolBlock: OpenCode 2 spellings map to the same blocks as 1.x', () => {
+  // 2.0.16 names the shell tool `shell` (1.x `bash`) and the file argument `path`
+  // (1.x `filePath`) — captured from `session.tool.called`.
+  assert.deepEqual(
+    opencodeToolBlock('shell', 'c1', { command: 'echo hi' }, 'hi\n', false),
+    opencodeToolBlock('bash', 'c1', { command: 'echo hi' }, 'hi\n', false),
+  );
+  assert.deepEqual(
+    opencodeToolBlock('write', 'c2', { path: 'hello.txt', content: 'hi' }, '', false),
+    opencodeToolBlock('write', 'c2', { filePath: 'hello.txt', content: 'hi' }, '', false),
+  );
+  const edit = opencodeToolBlock(
+    'edit',
+    'c3',
+    { path: 'hello.txt', oldString: 'hi', newString: 'hello' },
+    '',
+    false,
+  );
+  assert.equal(edit['type'], 'diff');
+  assert.equal(edit['filename'], 'hello.txt');
+});

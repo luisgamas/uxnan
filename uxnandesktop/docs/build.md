@@ -55,6 +55,27 @@ under `tauri dev` — where `control::cli` looks for it.
 `release-desktop.yml` names that same script (`tauriScript: npm run tauri`),
 so the released installers carry the sidecar.
 
+### The frontend's build target
+
+`vite.config.js` compiles the frontend to `BUILD_TARGET` from
+[`build-target.js`](../build-target.js) — `es2021`, `safari14`, `chrome105` —
+never to Vite's default. It is one floor for all three platforms, since they
+ship the same bundle: Safari 14 is the WKWebView of macOS 11, the app's
+`minimumSystemVersion`; WebView2 on Windows is evergreen Chromium (well past
+`chrome105`), and the WebKitGTK that Tauri 2 requires on Linux is newer than
+Safari 14 — so nothing a supported webview runs is lowered. The bug below was
+in that shared bundle, so it froze terminals on every platform, and its test
+runs on all three CI runners.
+
+The floor is a correctness rule, not a size preference. Under Vite 6's
+default (`es2020`, …) esbuild 0.25 lowers logical assignment and, while
+minifying, drops the variable it was assigning to: xterm.js 6's DECRQM
+handler (`CSI ? Ps $ p`) shipped as a `ReferenceError`, and the first TUI that
+asked the terminal which modes it supports — OpenCode 2 does, at startup —
+killed that tab's parser, so the tab froze and every later byte was dropped.
+`tests/build-target.test.mjs` minifies the real xterm.js under the configured
+target and asks it those questions; lowering the target turns it red.
+
 ## Output locations
 
 | Artifact | Path (under `src-tauri/target/release/`) |

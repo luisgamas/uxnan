@@ -241,7 +241,7 @@ broken. Nothing is left behind when uxnan exits either, cleanly or not.
 | --- | --- |
 | Claude Code | `--mcp-config <file>` — a config uxnan owns, in its own app-data folder |
 | Codex | `-c mcp_servers.uxnan-browser.url=… -c mcp_servers.uxnan-browser.bearer_token_env_var=UXNAN_MCP_TOKEN` |
-| OpenCode | `OPENCODE_CONFIG_CONTENT` on the terminal — merged over your own config, which is left untouched |
+| OpenCode | `OPENCODE_CONFIG_CONTENT` on the terminal — merged over your own config, which is left untouched. OpenCode 2 is also launched `--standalone` (below) |
 
 The **token is never written to a file**: each form references the
 `UXNAN_MCP_TOKEN` environment variable, which uxnan injects into the terminal it
@@ -254,11 +254,24 @@ mechanism, in plain sight, and the agent's full-screen UI covers it a moment lat
 
 **Agents you type yourself.** Because the registration rides on the command uxnan
 types, an agent you start by hand in a uxnan terminal doesn't get the tools — with
-one exception: OpenCode's registration is an environment variable, so it covers
+one exception: OpenCode 1's registration is an environment variable, so it covers
 every terminal uxnan spawns, typed by hand or not. Start the agent from uxnan (the
 launcher, a project or worktree row, an automation) and it is always registered.
 That is the trade for the guarantee: the only way an agent can be registered
 *everywhere* is a config file that follows you out of the app.
+
+**OpenCode 2 gets the variable only where uxnan launches it.** OpenCode 2 runs its
+agent — and its MCP servers — in a background service shared by every `opencode`
+on the machine, which keeps the environment of the terminal that started it and
+outlives both that terminal and uxnan. A variable on every terminal would reach
+that service the first time you typed `opencode` by hand: the tools would then act
+as that one tab for every OpenCode client, uxnan's or not, and point at a port and
+token that stop working when uxnan restarts — the very failure the per-launch rule
+exists to prevent. So, with OpenCode 2 installed, `OPENCODE_CONFIG_CONTENT` is set
+only on a terminal uxnan opens to launch OpenCode, and that launch runs
+`--standalone`: a private server, child of the tab's TUI, that dies with it (see
+[agent launch](./agent-launch.md) → *OpenCode 2*). A hand-typed `opencode` there
+gets no tools, like every other hand-typed agent.
 
 The `/mcp` endpoint is guarded exactly like the hook routes: the bearer token is
 compared in constant time, and a **loopback `Host`/`Origin` gate** rejects (`403`)

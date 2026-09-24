@@ -36,9 +36,13 @@ fake backend), lock file; the **autostart** plan per platform; git + workspace +
 the durable metrics ledger (legacy backfill, deletion retention, rotating-file
 recovery, complete same-PC export/import and idempotent merge);
 the AgentManager + echo agent end-to-end; the seven active OpenCode / Claude Code /
-Codex / pi / Antigravity / Zero / Grok adapter parsers + streaming (OpenCode against a fake `opencode serve`
-implementing the `IOpenCodeServer` surface incl. the `permission.asked` → approval
-round-trip; Zero against a fake `zero acp` ACP process incl. a
+Codex / pi / Antigravity / Zero / Grok adapter parsers + streaming (OpenCode on
+both of its protocols: the V1 and V2 event translators fed events captured from
+real 1.x / 2.0.16 runs, a fake server implementing the `IOpenCodeServer` contract
+for the adapter's turn logic incl. the approval and question round-trips, and a
+**fake `opencode` binary** — `test/helpers/fake-opencode.ts`, answering
+`--version`, `models`, `run` and `serve` with the V1 or V2 routes, password
+included — driving the real transport, clients and adapter end to end; Zero against a fake `zero acp` ACP process incl. a
 `session/request_permission` → approval round-trip; the others against fake spawns);
 and router-level wiring/error mapping.
 
@@ -106,6 +110,16 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
   open for their protocol). Adapter unit tests live in `test/adapters/`; Zero was also
   validated end-to-end against the real `zero.exe` (streaming + a real
   shell-command approval + completion).
+- **OpenCode — run it on both majors.** The adapter speaks OpenCode 1 and 2
+  through separate protocol clients, so a change to it is validated against a
+  real `opencode` of **each** (1.x from `npm i opencode-ai@1.18.x` in a scratch
+  directory; 2.x from its installer). Keep the run off your own setup by pointing
+  `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_STATE_HOME` / `XDG_CACHE_HOME` at a
+  scratch directory; the free `opencode/big-pickle` model needs no account.
+  Drive the built adapter (`dist/src/index.js`) through a turn, an approval, a
+  question, a steer, a cancel, `readSessionMessages`, `listModels` and
+  `generateTitle`, and compare with [`agents.md`](./agents.md) → *OpenCode 1 and
+  OpenCode 2*.
 - **No next planned agent.** The wired set is complete for now; the recipe for
   wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md).
 

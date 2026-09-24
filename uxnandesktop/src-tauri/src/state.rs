@@ -122,7 +122,9 @@ pub struct AppState {
     /// just without precise hook reporting).
     pub hook: Arc<RwLock<Option<HookServerInfo>>>,
     /// Absolute paths of the ready-made per-agent hook scripts the ADE wrote
-    /// to `<app-data>/hooks/` at startup (Phase 4 follow-up; `None` if the
+    /// to the machine's shared hooks directory at startup — never inside this
+    /// profile, so a second instance cannot take the machine's agents over
+    /// (`agent_hooks`). (`None` if the
     /// install step failed — precise hook reporting still works, only the
     /// one-click install button is unavailable).
     pub hook_install: Arc<RwLock<Option<HookInstall>>>,

@@ -65,17 +65,18 @@ export function opencodeToolBlock(
   output: string,
   isError: boolean,
 ): Record<string, unknown> {
+  // OpenCode 2 renamed two things the phone's blocks depend on (measured on
+  // 2.0.16): the shell tool is `shell` (1.x: `bash`), and the file tools take
+  // `path` (1.x: `filePath`). Both spellings map to the same blocks.
+  const filePath = str(input['filePath']) || str(input['path']);
   switch (toolName) {
     case 'bash':
+    case 'shell':
       return commandBlock(str(input['command']), output, isError);
     case 'edit':
-      return editDiffBlock(
-        str(input['filePath']),
-        str(input['oldString']),
-        str(input['newString']),
-      );
+      return editDiffBlock(filePath, str(input['oldString']), str(input['newString']));
     case 'write':
-      return writeDiffBlock(str(input['filePath']), str(input['content']));
+      return writeDiffBlock(filePath, str(input['content']));
     // OpenCode's to-do tool surfaces the plan/task list. Verified against
     // opencode 1.17.x: `todowrite` fires with `{ todos:[{content,status,priority}] }`
     // up to twice per turn (an `in_progress`/`pending` pass and a `completed` pass),

@@ -138,6 +138,33 @@ pub fn run() {
             data.settings.ensure_terminal_profiles();
             // Drop agent cache entries past their 7-day TTL (spec 02d §1.5).
             data.prune_agent_cache(crate::hooks::now_secs());
+            // The reporters moved out of this profile and into the machine's
+            // shared directory, so an agent the person wired by hand with the
+            // generic wrapper names a file that is no longer there — and that
+            // path is its *launch command*, not a reporting detail. Move it
+            // with them, once, and persist it so the setting they can see in
+            // Settings → Agents matches what actually runs.
+            if let Some(shared) = crate::agent_hooks::shared_hooks_dir() {
+                let moved = crate::agent_hooks::repoint_profiles(
+                    &mut data.settings.agent_profiles,
+                    &data_dir.join("hooks"),
+                    &shared,
+                );
+                if moved > 0 {
+                    crate::diagnostics::log(
+                        crate::diagnostics::Level::Info,
+                        "hooks",
+                        &format!("moved {moved} hand-wired reporter path(s) to {shared:?}"),
+                    );
+                    if let Err(err) = persistence.save(&data) {
+                        crate::diagnostics::log(
+                            crate::diagnostics::Level::Warn,
+                            "hooks",
+                            &format!("the moved reporter paths could not be saved ({err}); they are correct for this run and will be written on the next save"),
+                        );
+                    }
+                }
+            }
             // Whether to auto-install the Claude hooks block this launch (off once
             // the user uninstalls). Captured before `data` moves into the state.
             let auto_install_hooks = data.settings.auto_install_hooks;
@@ -194,6 +221,13 @@ pub fn run() {
                     crate::mcpinject::sweep_legacy(&mcp_sweep_handle);
                 })
                 .await;
+            });
+
+            // Read the installed OpenCode's version off the startup path, so the
+            // first terminal does not wait on `opencode --version` to learn how
+            // OpenCode is launched and registered (`mcpinject.rs`).
+            tauri::async_runtime::spawn(async {
+                crate::agentcli::opencode_major_version().await;
             });
 
             // Start the app's local server (`control::server`): hook reports,

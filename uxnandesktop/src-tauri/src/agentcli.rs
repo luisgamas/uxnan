@@ -300,6 +300,87 @@ fn resolve_opencode() -> Option<Resolved> {
     }
 }
 
+/// The major version a CLI's `--version` output names, reading the first token
+/// shaped like `X.Y…` (a leading `v` allowed): OpenCode 1 prints `1.18.32`,
+/// OpenCode 2 prints `opencode v2.0.16`. `None` when nothing version-shaped is
+/// printed — a bare number is not taken for one.
+pub fn parse_major_version(output: &str) -> Option<u32> {
+    output.split_whitespace().find_map(|token| {
+        let token = token.trim_start_matches(['v', 'V']);
+        let mut parts = token.split('.');
+        let major = parts.next()?.parse::<u32>().ok()?;
+        parts.next()?.chars().next().filter(char::is_ascii_digit)?;
+        Some(major)
+    })
+}
+
+/// The `opencode` a terminal runs when one types it: the first on `PATH`, the
+/// way the terminal finds it — not [`resolve`]'s headless pick, which on Windows
+/// prefers npm's `.exe` wherever `PATH` points, and could read the version of an
+/// OpenCode the tab never launches. On Windows an extension-less hit is npm's
+/// POSIX shim, which neither `cmd` nor PowerShell runs, so its runnable sibling
+/// (`.exe`, `.cmd`, …) is taken instead; a `.cmd` runs through `cmd.exe`.
+fn terminal_opencode() -> Option<PathBuf> {
+    let found = crate::which::resolve("opencode")?;
+    if !cfg!(windows) || found.extension().is_some() {
+        return Some(found);
+    }
+    ["exe", "cmd", "bat", "com"]
+        .iter()
+        .map(|ext| found.with_extension(ext))
+        .find(|candidate| candidate.is_file())
+}
+
+/// How long `opencode --version` may take before the answer counts as unknown.
+const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The binary a cached version was read from: its path, size and modification
+/// time. An upgrade replaces the file, so any of the three changing re-reads it.
+type BinaryStamp = (PathBuf, u64, Option<std::time::SystemTime>);
+
+/// The last `opencode --version` answer, against the binary it came from.
+static OPENCODE_VERSION: std::sync::Mutex<Option<(BinaryStamp, Option<u32>)>> =
+    std::sync::Mutex::new(None);
+
+/// The installed OpenCode's major version, or `None` when it is not installed
+/// or does not say. It decides how uxnan launches OpenCode (2 needs
+/// `--standalone`, which 1 rejects — see `mcpinject::required_args`), so it is
+/// asked whenever a launch is prepared; the answer is cached against the
+/// binary's stamp, so that costs a `stat` until OpenCode is upgraded, when the
+/// next launch re-reads it (≤ 0.4 s measured for 1.x, 0.04 s for 2.x).
+pub async fn opencode_major_version() -> Option<u32> {
+    let program =
+        terminal_opencode().or_else(|| resolve("opencode").map(|r| PathBuf::from(r.program)))?;
+    let meta = std::fs::metadata(&program).ok()?;
+    let stamp: BinaryStamp = (program.clone(), meta.len(), meta.modified().ok());
+    if let Ok(cache) = OPENCODE_VERSION.lock() {
+        if let Some((cached, major)) = cache.as_ref() {
+            if *cached == stamp {
+                return *major;
+            }
+        }
+    }
+    let mut cmd = crate::winproc::command(&program);
+    cmd.arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let major = match cmd.spawn() {
+        Ok(child) => tokio::time::timeout(VERSION_TIMEOUT, child.wait_with_output())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .filter(|out| out.status.success())
+            .and_then(|out| parse_major_version(&String::from_utf8_lossy(&out.stdout))),
+        Err(_) => None,
+    };
+    if let Ok(mut cache) = OPENCODE_VERSION.lock() {
+        *cache = Some((stamp, major));
+    }
+    major
+}
+
 /// Resolve a supported agent id to a spawnable form, or `None` if it isn't
 /// installed in a runnable shape.
 pub fn resolve(agent_id: &str) -> Option<Resolved> {
@@ -1001,6 +1082,18 @@ Available models:
         // Live-discovered agents have no static list.
         assert!(static_models("opencode").is_empty());
         assert!(static_models("codex").is_empty());
+    }
+
+    #[test]
+    fn reads_the_major_version_either_opencode_prints() {
+        // Both spellings captured from the real CLIs.
+        assert_eq!(parse_major_version("1.18.32\n"), Some(1));
+        assert_eq!(parse_major_version("opencode v2.0.16\n"), Some(2));
+        assert_eq!(parse_major_version("V10.0.0-beta.3"), Some(10));
+        // A bare number, prose or nothing is no version.
+        assert_eq!(parse_major_version("2"), None);
+        assert_eq!(parse_major_version("version unknown"), None);
+        assert_eq!(parse_major_version(""), None);
     }
 
     #[test]

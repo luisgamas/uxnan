@@ -145,6 +145,7 @@ distinct, precise states** plus a derived idle:
 > | **Codex** 0.147.0 | `spawn_agent` tool | `agent_id` | `last_assistant_message` |
 > | **Grok** 0.2.118 | subagent tool | `subagentId` | `lastAssistantMessage` |
 > | **OpenCode** 1.18.15 | `task` tool (a child **session**) | child session id | — |
+> | **OpenCode** 2.0.16 | `task` tool (a child **session**, `data.parentID`) | child session id | — |
 >
 > Grok and Cursor spell the events their own way (`subagent_start`,
 > `subagentStart`); every spelling normalizes to the same pair. **Droid** fires
@@ -235,6 +236,16 @@ Reporters an older build left inside a profile are removed on the next startup �
 the registrations are rewritten to the shared path, so those copies are orphans.
 The `endpoint.*` file is *not* a reporter and stays where it is.
 
+**A hand-wired agent is migrated too.** If you set the generic wrapper as a
+custom agent's *Command* (below), that path is what launches the agent, not a
+reporting detail — deleting the file it names would stop the agent from
+starting. The first launch after the upgrade rewrites those commands and
+arguments to the shared directory and saves them, so the value you see in
+Settings → Agents is the one that runs. It is deliberately narrow: only a path
+**inside the app's own hooks folder** whose file name is one of the ADE's
+(`uxnan-…`). A reporter you copied somewhere of your own is yours, and is left
+exactly as it is.
+
 Setting **`UXNAN_DATA_DIR`** to an absolute path moves `<app-data>` — and with it
 this instance's state and coordinates — for that one process. It exists so a
 launch can be given a disposable profile: the
@@ -318,6 +329,39 @@ started last owned it and the other's agents got nothing. It no longer does: the
 server is registered **per launch**, on the process each window spawns, so every
 agent talks to the window that launched it (see [browser](./browser.md)).
 
+### OpenCode 1 and OpenCode 2
+
+OpenCode 2 changed both halves of what the reporter depends on: the **plugin
+API** (a default-exported `{ id, setup }` whose context streams events, instead
+of a named factory handed the bus) and the **event vocabulary**
+(`session.execution.started` / `succeeded` / `interrupted` / `failed`,
+`form.created` for a question, `data.parentID` on a child session, …). A V1
+plugin does not load at all in 2 — OpenCode logs *"Plugin must export a default
+definition with an id and an effect or setup function"* and the card never moves.
+
+The one reporter file speaks both: its default export carries a V2 `setup` and
+the V1 factory as `server`. Measured, each host loads it once and reports through
+exactly one path — OpenCode 1.17.20, 1.18.25 and 1.18.32 call `server` (and call
+`setup` too, with no event stream, where it does nothing), OpenCode 2.0.16 calls
+only `setup`, Kilo Code 7.7.9 and MiMo Code 0.1.15 call `server`. So Kilo no
+longer needs an export of its own; only the agent kind is rewritten per CLI.
+OpenCode 2 also gives the plugin what OpenCode 1 never did: the prompt, the tool
+in use and the final reply ride on its reports.
+
+The other change is **where** the plugin runs. OpenCode 2's TUI is a client: a
+bare `opencode` talks to a **shared background service** (`opencode serve
+--service`) that outlives it, and that service runs the plugins with the
+environment of whichever terminal started it first — so its reports would name
+that one tab for every OpenCode on the machine. Two things keep the identity
+right:
+
+- uxnan **launches OpenCode 2 with `--standalone`**: a private server, child of
+  the TUI in the tab, carrying that tab's environment. It needs no setup and
+  is added only for 2 (OpenCode 1 rejects the flag); see
+  [agent launch](./agent-launch.md) → *OpenCode 2*.
+- the plugin **stays silent inside the shared service**, so a hand-typed
+  `opencode` reports nothing rather than reporting as the wrong tab.
+
 ---
 
 ## Install — the built-in agents (automatic)
@@ -371,7 +415,9 @@ The per-agent notes below are what each CLI made us learn the hard way:
   works it shows the current tool; once the turn ends it shows the reply. That
   reply has to come from somewhere, and measured across a real run of every
   wired agent **only Claude fills the hook's `summary`** (15 of 34 reports;
-  codex, opencode, pi, grok and antigravity report none). Antigravity and Grok are covered
+  codex, opencode, pi, grok and antigravity report none). OpenCode 2 is the
+  exception since its plugin rewrite: the reporter sends the turn's last reply
+  with the idle report itself (`last_assistant_message`). Antigravity and Grok are covered
   because they hand us a `transcriptPath` and the reader understands their
   record shapes (Antigravity's flat records; Grok's ACP chunks, which are
   reassembled per turn, excluding its `agent_thought_chunk` thinking). Everything else keeps showing its **status**, which is the honest
@@ -453,6 +499,8 @@ The per-agent notes below are what each CLI made us learn the hard way:
   `hooks.json` alone.
 - **OpenCode / Pi** install a plugin / extension file into the agent's own
   plugin / extension directory (only overwriting a file the ADE itself manages).
+  The OpenCode file is the same for OpenCode 1 and 2, MiMo and Kilo — see
+  *OpenCode 1 and OpenCode 2* above.
 - **Restart the agent afterward** so it re-reads its config (Claude picks up
   `settings.json` changes via a file watcher, but restarting is the sure path).
 
@@ -514,7 +562,7 @@ arguments look slightly different.
 
 **Settings → Agents → Add custom agent:**
 
-- **Command:** `C:\Users\<you>\AppData\Roaming\dev.luisgamas.uxnandesktop\hooks\uxnan-hook-wrapper.ps1`
+- **Command:** `C:\Users\<you>\.uxnan\hooks\uxnan-hook-wrapper.ps1`
 - **Arguments** *(space-separated)*: `-Type codex -Command codex -Args --version`
 
 Then launch from the worktree's Bot menu. The wrapper invokes `codex
@@ -536,7 +584,7 @@ Use `uxnan-hook-wrapper.cmd`. Only needed on hosts without PowerShell
 
 **Settings → Agents → Add custom agent:**
 
-- **Command:** `C:\Users\<you>\AppData\Roaming\dev.luisgamas.uxnandesktop\hooks\uxnan-hook-wrapper.cmd`
+- **Command:** `C:\Users\<you>\.uxnan\hooks\uxnan-hook-wrapper.cmd`
 - **Arguments:** `codex -- --version`
 
 (Or `codex --` followed by whatever your agent's normal CLI args are.)
@@ -551,8 +599,8 @@ Use `uxnan-hook-wrapper.sh`.
 
 **Settings → Agents → Add custom agent:**
 
-- **Command:** `/Users/<you>/Library/Application Support/dev.luisgamas.uxnandesktop/hooks/uxnan-hook-wrapper.sh`
-  (Linux: `/home/<you>/.local/share/dev.luisgamas.uxnandesktop/hooks/uxnan-hook-wrapper.sh`)
+- **Command:** `/Users/<you>/.uxnan/hooks/uxnan-hook-wrapper.sh`
+  (the same path on Linux: `/home/<you>/.uxnan/hooks/uxnan-hook-wrapper.sh`)
 - **Arguments:** `codex -- --version`
 
 Or with no args (most common interactive use):
