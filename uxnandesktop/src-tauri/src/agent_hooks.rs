@@ -24,9 +24,34 @@
 //! stale (e.g. the terminal outlived an app restart) and fails open — a dead
 //! server or missing coordinate is silently ignored, never breaking the agent.
 //!
-//! On startup the ADE writes the bundled scripts to `<app-data>/hooks/`
-//! (idempotent) and, when auto-install is on, merges the managed reporter into
-//! each agent's config — preserving every other user setting.
+//! # Where the scripts live, and why it is not the profile
+//!
+//! Each agent's config is **one file per machine** (21 of them), and what the
+//! ADE writes into it is a path to a script. For a long time that path was
+//! `<app-data>/hooks/…` — a path that belongs to **one instance**. Every
+//! symptom we have chased came from that single fact: a second window took the
+//! machine over, a development profile pointed the user's agents at itself, a
+//! throwaway profile that was later deleted left every agent running
+//! `node <gone>.cjs` on each turn, and Codex asked to trust its hook again
+//! whenever the path moved (its `trusted_hash` covers the command).
+//!
+//! So the scripts live **once per machine**, in [`shared_hooks_dir`]
+//! (`~/.uxnan/hooks`), and the registration names that path whoever writes it.
+//! The only thing that is per instance is *which app a report goes to*, and
+//! that already travels in the terminal's environment (`UXNAN_HOOK_URL`, plus
+//! `UXNAN_ENDPOINT_FILE` pointing inside that instance's own data dir). The
+//! reporters prefer the environment, so two instances — installed and
+//! development — coexist: each one's terminals report to it, and neither can
+//! break the other's registration, because both write the same bytes to the
+//! same path.
+//!
+//! The one thing two instances can still disagree about is the *content* of
+//! those shared scripts, so the directory carries the version that wrote it
+//! ([`VERSION_STAMP`]) and an older build never overwrites a newer one's copy.
+//!
+//! On startup the ADE writes the bundled scripts there (idempotent) and, when
+//! auto-install is on, merges the managed reporter into each agent's config —
+//! preserving every other user setting.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -421,14 +446,135 @@ pub(crate) fn write_text_atomic(path: &Path, text: &str) -> Result<(), AppError>
     Ok(())
 }
 
+/// The names of the per-instance "endpoint file" — this app's live coordinates,
+/// written by `control::server::write_endpoint_file` into the **profile's** own
+/// hooks directory and delivered to each terminal as `UXNAN_ENDPOINT_FILE`.
+///
+/// Defined here, next to the sweep that must never delete it, and used by the
+/// writer: one name in two places is how a rename turns into data loss.
+pub const ENDPOINT_FILENAMES: [&str; 2] = ["endpoint.env", "endpoint.cmd"];
+
+/// The file that records which build owns the shared scripts.
+///
+/// A sidecar rather than a comment inside each script: the scripts are shipped
+/// verbatim from `static/hooks/`, and stamping them would mean rewriting every
+/// one of them on every version — and teaching each of six languages where a
+/// comment may go.
+const VERSION_STAMP: &str = ".uxnan-hooks-version";
+
+/// Where the reporters live: **once per machine**, never inside a profile.
+///
+/// `~/.uxnan` is the home the product already keeps (the bridge writes its
+/// daemon state and logs there), so this adds a directory rather than a
+/// concept. It is also short and space-free, which the Windows reporters care
+/// about far more than the app-data path did.
+pub fn shared_hooks_dir() -> Option<PathBuf> {
+    Some(home_dir()?.join(".uxnan").join("hooks"))
+}
+
+/// What the shared directory's stamp says, as comparable numbers. `None` when
+/// there is no stamp (a directory written before stamps existed, or none at
+/// all), which sorts below every real version.
+fn stamped_version(dir: &Path) -> Option<(u64, u64, u64)> {
+    parse_version(
+        std::fs::read_to_string(dir.join(VERSION_STAMP))
+            .ok()?
+            .trim(),
+    )
+}
+
+/// `0.0.55` → `(0, 0, 55)`. Anything after the patch number (a pre-release or
+/// build suffix) is ignored: two builds of the same release own the directory
+/// equally, and the tie is broken below by whether the bytes differ.
+fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
+    let core = text
+        .trim()
+        .split(['-', '+'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    let mut parts = core.split('.').map(|p| p.parse::<u64>());
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(Ok(a)), Some(Ok(b)), Some(Ok(c))) => Some((a, b, c)),
+        _ => None,
+    }
+}
+
+/// This build's version, for the stamp.
+fn own_version() -> (u64, u64, u64) {
+    parse_version(env!("CARGO_PKG_VERSION")).unwrap_or((0, 0, 0))
+}
+
+/// Whether this build may write the shared scripts.
+///
+/// **Refresh, never degrade.** A newer build updates the machine; an older one
+/// — a development profile built from last week's tree, a demo of a previous
+/// release — reads what is there and leaves it alone, because the scripts it
+/// carries are the older contract. Equal versions may write: that is the case
+/// of a developer editing a reporter, and the running app owns the bytes.
+fn may_write_shared(dir: &Path) -> bool {
+    match stamped_version(dir) {
+        Some(on_disk) => on_disk <= own_version(),
+        None => true,
+    }
+}
+
+/// Write the bundled scripts to the machine's shared directory and resolve
+/// every path the Settings UI needs — the call the app makes at startup.
+///
+/// A build older than the one that wrote the directory installs nothing and
+/// reports the paths as they are: the registrations already name them, and the
+/// contract they answer is the newer one.
+pub fn install_shared_scripts() -> Result<HookInstall, AppError> {
+    let dir = shared_hooks_dir()
+        .ok_or_else(|| AppError::NotFound("no home directory for the hooks".into()))?;
+    install_scripts_to(&dir)
+}
+
+/// Remove the reporters an older build left inside a profile's own
+/// `<app-data>/hooks/`, now that they live once per machine.
+///
+/// The registrations are migrated by being rewritten — every launch writes the
+/// current paths — so what is left behind is the copies themselves, and they
+/// are worth deleting rather than leaving: a stale copy on disk is what a
+/// person finds when they go looking for "the" hook, and a registration that
+/// somehow survives pointing at one would report to the wrong place instead of
+/// failing loudly.
+///
+/// **The endpoint file stays.** It is not a reporter: it is this instance's
+/// live coordinates, it belongs to the profile, and the terminals this app
+/// spawns are pointed at it by `UXNAN_ENDPOINT_FILE`.
+pub fn clear_profile_scripts(profile_hooks_dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(profile_hooks_dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        // A prefix match rather than a list of what this build ships: the whole
+        // point is to clear reporters from *older* builds, including ones whose
+        // names this one no longer knows.
+        let is_ours = name.starts_with("uxnan-") || name == VERSION_STAMP;
+        let is_endpoint = ENDPOINT_FILENAMES.iter().any(|f| *f == name);
+        if is_ours && !is_endpoint && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// Write the bundled scripts to `<dir>` (idempotent) and resolve every path the
 /// Settings UI needs. `+x` is set on the POSIX scripts a shell runs directly.
 pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     std::fs::create_dir_all(dir)?;
+    // An older build describes what is there and changes nothing.
+    let writable = may_write_shared(dir);
     let dir = dir.to_path_buf();
     let write = |name: &str, content: &str| -> Result<PathBuf, AppError> {
         let path = dir.join(name);
-        write_if_changed(&path, content)?;
+        if writable {
+            write_if_changed(&path, content)?;
+        }
         Ok(path)
     };
     let relay = write(STATUS_RELAY_FILENAME, STATUS_RELAY_SCRIPT)?;
@@ -449,7 +595,7 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     let event_sh = write(EVENT_HOOK_SH_FILENAME, EVENT_HOOK_SH)?;
     let event_cmd = write(EVENT_HOOK_CMD_FILENAME, EVENT_HOOK_CMD)?;
     #[cfg(unix)]
-    {
+    if writable {
         use std::os::unix::fs::PermissionsExt;
         for f in [&codex_sh, &bash, &fish, &browser_bash, &event_sh] {
             let _ = std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755));
@@ -460,25 +606,32 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     // list is derived from what we actually wrote rather than restated (a
     // restated list is what drifts), which makes a future rename self-cleaning:
     // the old name simply stops being written and is swept on the next launch.
-    sweep_foreign_scripts(
-        &dir,
-        &[
-            &relay,
-            &codex_sh,
-            &codex_cmd,
-            &opencode,
-            &pi,
-            &amp,
-            &bash,
-            &ps,
-            &cmd,
-            &fish,
-            &browser_bash,
-            &browser_cmd,
-            &event_sh,
-            &event_cmd,
-        ],
-    );
+    // Only the owner sweeps: a newer build may have renamed a script, and an
+    // older one must not delete it for being unfamiliar.
+    if writable {
+        let _ = write_if_changed(&dir.join(VERSION_STAMP), env!("CARGO_PKG_VERSION"));
+    }
+    if writable {
+        sweep_foreign_scripts(
+            &dir,
+            &[
+                &relay,
+                &codex_sh,
+                &codex_cmd,
+                &opencode,
+                &pi,
+                &amp,
+                &bash,
+                &ps,
+                &cmd,
+                &fish,
+                &browser_bash,
+                &browser_cmd,
+                &event_sh,
+                &event_cmd,
+            ],
+        );
+    }
     let path_str = |p: &Path| p.to_string_lossy().into_owned();
     let opt = |p: Option<PathBuf>| p.map(|p| path_str(&p)).unwrap_or_default();
     Ok(HookInstall {
@@ -3028,6 +3181,124 @@ mod tests {
         // `None` — the caller then reports the agent unavailable rather than
         // writing a hook that would never fire.
         assert_eq!(unquotable_path("/nope/a b/uxnan-event-hook.sh"), None);
+    }
+
+    /// The reporters are machine-wide, and the *profile* keeps only the
+    /// coordinates. This is the whole fix: what a machine-global agent config
+    /// names must not belong to one instance of the app.
+    #[test]
+    fn the_shared_directory_is_not_inside_any_profile() {
+        let dir = shared_hooks_dir().expect("a home directory");
+        assert!(dir.ends_with("hooks"));
+        assert!(dir.parent().is_some_and(|p| p.ends_with(".uxnan")));
+        assert!(
+            !dir.to_string_lossy().contains("uxnandesktop"),
+            "the shared directory must not sit inside an app-data profile: {dir:?}"
+        );
+    }
+
+    /// Refresh, never degrade: a newer build owns the machine's copies, an
+    /// older one leaves them alone. Equal versions may write, which is a
+    /// developer editing a reporter — the running app owns the bytes.
+    #[test]
+    fn an_older_build_never_overwrites_a_newer_one_s_scripts() {
+        let tmp = std::env::temp_dir().join(format!("uxnan-stamp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let stamp = tmp.join(VERSION_STAMP);
+
+        // Nothing written yet, and a directory from before stamps existed.
+        assert!(may_write_shared(&tmp));
+        std::fs::write(&stamp, "not a version").unwrap();
+        assert!(may_write_shared(&tmp));
+
+        let (a, b, c) = own_version();
+        std::fs::write(&stamp, format!("{a}.{b}.{c}")).unwrap();
+        assert!(may_write_shared(&tmp), "the same version may write");
+        std::fs::write(&stamp, format!("{a}.{b}.{}", c + 1)).unwrap();
+        assert!(
+            !may_write_shared(&tmp),
+            "a newer build's copies are left alone"
+        );
+        std::fs::write(&stamp, format!("{a}.{}.0", b + 1)).unwrap();
+        assert!(!may_write_shared(&tmp));
+        if c > 0 {
+            std::fs::write(&stamp, format!("{a}.{b}.{}", c - 1)).unwrap();
+            assert!(may_write_shared(&tmp), "an older directory is refreshed");
+        }
+        // A pre-release of the same release is the same owner.
+        std::fs::write(&stamp, format!("{a}.{b}.{c}-alpha.1")).unwrap();
+        assert!(may_write_shared(&tmp));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// What an older build does instead of writing: describe what is there.
+    /// Its registrations still name real files, so its agents keep reporting.
+    #[test]
+    fn an_older_build_still_reports_the_paths_it_did_not_write() {
+        let tmp = std::env::temp_dir().join(format!("uxnan-older-{}", uuid::Uuid::new_v4()));
+        let first = install_scripts_to(&tmp).expect("install succeeds");
+        let relay = Path::new(&first.status_relay_script).to_path_buf();
+        // A newer build owns the directory, and left a reporter of its own.
+        let (a, b, c) = own_version();
+        std::fs::write(tmp.join(VERSION_STAMP), format!("{a}.{b}.{}", c + 1)).unwrap();
+        std::fs::write(&relay, "// a newer relay\n").unwrap();
+        std::fs::write(tmp.join("uxnan-something-new.cjs"), "// newer\n").unwrap();
+
+        let again = install_scripts_to(&tmp).expect("install succeeds");
+        assert_eq!(again.status_relay_script, first.status_relay_script);
+        assert_eq!(
+            std::fs::read_to_string(&relay).unwrap(),
+            "// a newer relay\n",
+            "an older build must not overwrite the newer copy"
+        );
+        assert!(
+            tmp.join("uxnan-something-new.cjs").is_file(),
+            "an older build must not sweep a script it simply does not know"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// The migration: a profile keeps its coordinates and loses the reporters,
+    /// which now live once per machine. A throwaway profile that is deleted can
+    /// no longer take a machine's agents down with it.
+    #[test]
+    fn a_profile_keeps_its_endpoint_and_loses_its_reporters() {
+        let tmp = std::env::temp_dir().join(format!("uxnan-profile-{}", uuid::Uuid::new_v4()));
+        install_scripts_to(&tmp).expect("install succeeds");
+        std::fs::write(
+            tmp.join("endpoint.env"),
+            "UXNAN_HOOK_URL=http://127.0.0.1:1/hook\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("endpoint.cmd"),
+            "set UXNAN_HOOK_URL=http://127.0.0.1:1/hook\r\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("notes.txt"), "the user's own file\n").unwrap();
+
+        // A reporter from a build whose names this one no longer knows: the
+        // migration is *for* those, so it goes too.
+        std::fs::write(tmp.join("uxnan-claude-hook.cjs"), "// pre-relay\n").unwrap();
+
+        let removed = clear_profile_scripts(&tmp);
+        assert!(removed >= 10, "every reporter goes, {removed} removed");
+        assert!(!tmp.join("uxnan-claude-hook.cjs").exists());
+        for name in ENDPOINT_FILENAMES {
+            assert!(
+                tmp.join(name).is_file(),
+                "{name} is this instance's coordinates, not a reporter"
+            );
+        }
+        assert!(
+            tmp.join("notes.txt").is_file(),
+            "nothing that is not ours is touched"
+        );
+        assert!(!tmp.join(STATUS_RELAY_FILENAME).exists());
+        assert!(!tmp.join(CODEX_HOOK_SH_FILENAME).exists());
+        assert!(!tmp.join(VERSION_STAMP).exists());
+        assert_eq!(clear_profile_scripts(&tmp), 0, "and it is idempotent");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

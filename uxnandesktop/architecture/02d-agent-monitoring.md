@@ -30,8 +30,25 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
 - **Cache persistente:** El ultimo estado de cada agente se guarda en disco con un **TTL de 7 dias**. Esto permite que al reiniciar el ADE, la sidebar muestre el estado correcto de cada agente sin necesidad de que estos re-reporten.
 - **Broadcast:** Cada cambio de estado se difunde al frontend via **Tauri events** para actualizacion inmediata de la UI. El evento `agent:status-changed` se emite con el nuevo estado normalizado.
 - **Reporters listos para usar (multi-shell):** El ADE embebe sus scripts
-  (`src-tauri/src/agent_hooks.rs` + `static/hooks/`) y los escribe a
-  `<app-data>/hooks/` en cada arranque, idempotente. Cada agente usa el reporter
+  (`src-tauri/src/agent_hooks.rs` + `static/hooks/`) y los escribe **una sola
+  vez por máquina**, en `~/.uxnan/hooks/`, en cada arranque e idempotente.
+  **La ruta registrada no nombra a ninguna instancia, y esa es la regla.** La
+  configuración de cada agente es un fichero por máquina; mientras el ADE
+  escribía ahí una ruta de su *perfil* (`<app-data>/hooks/`), la última
+  instancia en arrancar se adueñaba de todos los agentes del equipo — una
+  segunda ventana, una build de desarrollo, un perfil desechable de una demo —
+  y borrar ese perfil dejaba a cada agente ejecutando `node <inexistente>.cjs`
+  en cada turno. Lo único que es por instancia es **a qué app va el reporte**, y
+  eso ya viaja en el entorno de la terminal (`UXNAN_HOOK_URL` y
+  `UXNAN_ENDPOINT_FILE`, que apunta al `endpoint.*` del perfil que lanzó esa
+  terminal); los reporters prefieren el entorno, así que dos instancias
+  conviven. Efecto colateral buscado: el `trusted_hash` de Codex —que cubre el
+  comando, ruta incluida— deja de cambiar, y con él la petición de volver a
+  confiar en los hooks. Dos builds pueden traer scripts distintos, así que el
+  directorio guarda la versión que lo escribió (`.uxnan-hooks-version`) y **una
+  build más vieja nunca pisa las copias de una más nueva**: lee lo que hay y
+  registra esas rutas. Los reporters que una build anterior dejó dentro de un
+  perfil se borran al arrancar (el `endpoint.*` no es un reporter y se queda). Cada agente usa el reporter
   que mejor evita el problema de "¿qué shell ejecuta el hook?" (el runner de
   hooks del propio agente lo ejecuta, así que debe funcionar sea cual sea la
   shell del usuario: cmd, PowerShell, PowerShell 7, Git Bash, WSL, bash, zsh,

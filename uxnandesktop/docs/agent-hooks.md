@@ -204,20 +204,44 @@ These states show up everywhere you track an agent:
 
 ## What does the ADE provide out of the box?
 
-On every startup the ADE writes its reporter scripts to `<app-data>/hooks/`. The
-exact path is shown in **Settings → Agents → Hooks** ("Installed at …"):
+On every startup the ADE writes its reporter scripts **once per machine**, to
+`~/.uxnan/hooks/` (`%USERPROFILE%\.uxnan\hooks\` on Windows). The exact path is
+shown in **Settings → Agents → Hooks** ("Installed at …").
 
-| OS | `<app-data>` |
-|---|---|
-| Windows | `%APPDATA%\dev.luisgamas.uxnandesktop\hooks\` |
-| macOS | `~/Library/Application Support/dev.luisgamas.uxnandesktop/hooks/` |
-| Linux | `~/.local/share/dev.luisgamas.uxnandesktop/hooks/` |
+### Why not inside the app's profile
+
+Each agent's config is **one file per machine**, and what the ADE writes into it
+is a path to a script. While that path lived in `<app-data>/hooks/` it named one
+*instance* of the app — and a machine can run more than one: your installed
+Uxnan, a development build, a disposable profile for a benchmark or a demo.
+Whichever started last owned every agent on the machine, and if its profile was
+later deleted, every agent ran `node <gone>.cjs` on each turn.
+
+So the scripts are machine-wide and the registration never names a profile.
+**What is per instance is only where a report goes**, and that already travels
+in the terminal's environment (`UXNAN_HOOK_URL`, plus `UXNAN_ENDPOINT_FILE`
+pointing at that instance's own `<app-data>/hooks/endpoint.env`). Reporters
+prefer the environment, so two instances coexist: each one's terminals report to
+it, neither can break the other's registration, and Codex's `trusted_hash` —
+which covers the command, path included — stops changing, so it stops asking you
+to review the hooks.
+
+Two builds can still ship different scripts. The shared directory therefore
+records the version that wrote it (`.uxnan-hooks-version`) and **an older build
+never overwrites a newer one's copies**: it reads what is there and registers
+those paths. Equal versions may write, which is a developer editing a reporter.
+
+Reporters an older build left inside a profile are removed on the next startup —
+the registrations are rewritten to the shared path, so those copies are orphans.
+The `endpoint.*` file is *not* a reporter and stays where it is.
 
 Setting **`UXNAN_DATA_DIR`** to an absolute path moves `<app-data>` — and with it
-everything below it — for that one process. It exists so a launch can be given a
-disposable profile: the [resource benchmarks](resource-benchmarks.md) use it, and
-an E2E driver will. A relative path is ignored, since it would resolve against
-whatever the working directory happened to be.
+this instance's state and coordinates — for that one process. It exists so a
+launch can be given a disposable profile: the
+[resource benchmarks](resource-benchmarks.md) use it, an E2E driver will, and so
+does anyone demoing a build. With the scripts machine-wide, doing so no longer
+touches the machine's installed app. A relative path is ignored, since it would
+resolve against whatever the working directory happened to be.
 
 The reporters (one per agent, plus the generic wrapper) — full table in
 [`static/hooks/README.md`](../static/hooks/README.md):
@@ -379,7 +403,7 @@ The per-agent notes below are what each CLI made us learn the hard way:
   command holding an absolute path would break for anyone whose account name has
   a space in it.
 - **A hook command is a literal path, so the reporter lives beside each agent's
-  own config** — not in `<app-data>/hooks/`, where the ADE keeps the copy you
+  own config** — not in `~/.uxnan/hooks/`, where the ADE keeps the copy you
   can read. None of these CLIs parses quotes, so the path we hand them must
   contain no space, and on macOS the ADE's own folder is
   `~/Library/Application Support/…`: the space is in Apple's layout, not in
@@ -755,9 +779,9 @@ The hook isn't installed (or isn't being invoked) for that agent.
   `-Type <agent-type> -Command <agent-cli> -Args <args>`). Launch the agent
   through the ADE's Bot menu — running it manually in a terminal doesn't go
   through the wrapper.
-- **Wrapper script missing:** if `<app-data>/hooks/` is empty, the ADE
+- **Wrapper script missing:** if `~/.uxnan/hooks/` is empty, the ADE
   couldn't write them at startup (sandbox / permissions). Check the ADE's
-  console for the error; restart the ADE with a writable app-data dir.
+  console for the error; restart the ADE with a writable home directory.
 
 **Dot shows `done` immediately after launch.** The wrapper ran, but the
 inner command either wasn't found or exited with a non-zero status before
@@ -824,4 +848,5 @@ generated on every launch.
   §1 (the three monitoring layers), §2 (notifications), §3 (multi-agent
   orchestration).
 - **Reference implementations:** `static/hooks/` — bundled into the binary
-  at compile time and written to `<app-data>/hooks/` on every startup.
+  at compile time and written to `~/.uxnan/hooks/` on every startup (unless a
+  newer build already owns that directory).

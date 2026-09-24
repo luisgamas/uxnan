@@ -212,10 +212,12 @@ fn write_endpoint_file(dir: &Path, url: &str, token: &str) -> Option<PathBuf> {
     if !shell_safe(url) || !shell_safe(token) {
         return None;
     }
+    // The name comes from `agent_hooks`, which is where the sweep that must
+    // never delete this file lives.
     let (name, prefix, eol) = if cfg!(windows) {
-        ("endpoint.cmd", "set ", "\r\n")
+        (crate::agent_hooks::ENDPOINT_FILENAMES[1], "set ", "\r\n")
     } else {
-        ("endpoint.env", "", "\n")
+        (crate::agent_hooks::ENDPOINT_FILENAMES[0], "", "\n")
     };
     let body = format!("{prefix}UXNAN_HOOK_URL={url}{eol}{prefix}UXNAN_HOOK_TOKEN={token}{eol}");
     if std::fs::create_dir_all(dir).is_err() {
@@ -449,6 +451,21 @@ mod tests {
         assert!(presented_token(&with(&[(header::AUTHORIZATION, "Basic abc")])).is_none());
         assert!(presented_token(&with(&[(header::AUTHORIZATION, "Bearer ")])).is_none());
         assert!(presented_token(&HeaderMap::new()).is_none());
+    }
+
+    /// The file the server writes is the file the hook sweep keeps. They are
+    /// in different modules and one name; this is the test that keeps them one.
+    #[test]
+    fn the_endpoint_file_is_the_one_the_sweep_protects() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_endpoint_file(dir.path(), "http://127.0.0.1:1/hook", "tok-1.2").unwrap();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            crate::agent_hooks::ENDPOINT_FILENAMES.contains(&name.as_str()),
+            "{name} is not one of the names the sweep keeps"
+        );
+        assert_eq!(crate::agent_hooks::clear_profile_scripts(dir.path()), 0);
+        assert!(path.is_file(), "the coordinates survived the sweep");
     }
 
     /// The endpoint file is sourced as shell, so a value that could break out of

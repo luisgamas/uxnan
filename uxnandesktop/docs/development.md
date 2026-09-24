@@ -78,6 +78,15 @@ Consequences worth knowing:
   use for a disposable profile).
 - To start a dev build from a copy of your real profile, copy the directory once
   — never point `UXNAN_DATA_DIR` at the installed app's own folder.
+- **Running a dev or disposable profile does not touch your installed app's
+  agents.** The reporters each agent's config names live once per machine
+  (`~/.uxnan/hooks/`, see [agent hooks](agent-hooks.md) → *Why not inside the
+  app's profile*), so a dev build cannot redirect your everyday agents, and a
+  throwaway profile you later delete cannot leave them running a hook that is
+  gone. Each instance still gets its own agents' reports: that routing travels
+  in the terminal's environment. The one thing a dev build *does* own is the
+  content of those shared scripts when its version is newer — an older build
+  leaves them alone.
 
 The Projects sidebar performs a lightweight worktree reconciliation every 3
 seconds while the shell is mounted. This also discovers worktrees created by an
