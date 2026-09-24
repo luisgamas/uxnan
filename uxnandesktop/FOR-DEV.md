@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 916 Rust tests (839 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins). 940 Rust tests (863 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,305 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,327 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -761,23 +761,61 @@ as a right-side "4th panel" (`architecture/02a` §4.2b). Agent link interception
 **on by default**; one central link-policy decision point with an always-working OS
 fallback.
 
-**Engine decision:** a frameless `WebviewWindow` **owned by + docked to** the main
-window (stable Tauri API), holding the page; the toolbar lives in the panel's DOM
-and the window is glued over the panel's content rect. Chosen after two rejected
-attempts: a native child webview (Tauri `unstable` multiwebview) **froze the app**
-on Windows (`add_child` blocked the main thread), and a plain `<iframe>` was too
-limited (blocked by `X-Frame-Options`, no DevTools). The owned window loads any
-site + has real DevTools while staying light.
+**Engine decision:** every page is a **child webview of the main window**
+(`Window::add_child`, Tauri's multi-webview API behind the `unstable` feature), one
+per workspace, placed over the panel slot; the toolbar lives in the panel's DOM.
+Inside the window it moves, minimizes and changes desktop with the app and never
+floats over other applications — the owned `WebviewWindow` it replaced did, on
+every desktop. The first child-webview attempt froze Windows because the webview
+was created from a **synchronous** command (it runs on the main thread, inside the
+app webview's IPC callback, where WebView2 cannot finish creating a controller):
+every command that creates or touches a page is `async`. A plain `<iframe>` stays
+rejected (`X-Frame-Options`, no DevTools).
 
-**Done (code-complete, validated by clippy/fmt/tests + svelte-check + vite build):**
-`BrowserSettings`/`BrowserLinkPolicy` + `browserPanelWidth` model + Settings →
-Browser pane; the `browser_window_*` backend (`browser.rs`) + `BrowserPanel.svelte`
-(toolbar + glued window: back/forward/reload/address/open-external/DevTools) + the
-right-side panel + status-bar toggle; `open_url`/`open_external` routing (shared
-`browser::route_url`) + the `browser:open-url` listener; **agent auto-interception**
-(`UXNAN_BROWSER_*` env + `$BROWSER` shim `static/hooks/uxnan-browser.{sh,cmd}` + the
-hook-server `/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-
-clickable terminal links** (`@xterm/addon-web-links`).
+**Done (code-complete, validated by clippy/fmt/tests + svelte-check + a dev-build
+run on macOS, including a real agent opening its page hidden in a background
+worktree):** `BrowserSettings`/`BrowserLinkPolicy` + `browserPanelWidth` model +
+Settings → Browser pane; the page host (`browser/host.rs`: `browser_open` /
+`_navigate` / `_set_bounds` / `_set_visible` / `_back` / `_forward` / `_reload` /
+`_stop` / `_zoom` / `_devtools` / `_refresh` / `_close` / `_sessions`, the
+`browser:state` event, downloads to the Downloads folder, `target=_blank` in
+place) + the URL gate (`browser/mod.rs`: http(s) only, never the app's own
+origin) + the per-workspace store (`state/browser.svelte.ts`: one session per
+workspace, `MAX_LIVE_PAGES` = 3 with LRU release, sleep releases the page) +
+`BrowserPanel.svelte` (back/forward with history state, reload/stop, address bar
+with lock + progress, zoom, open-external, DevTools, keyboard shortcuts, slot
+measured on change) + the right-side panel + status-bar toggle;
+`open_url`/`open_external` routing (shared `browser::route_url`) + the
+`browser:open-url` listener (with the target workspace); **agent
+auto-interception** (`UXNAN_BROWSER_*` env + `$BROWSER` shim
+`static/hooks/uxnan-browser.{sh,cmd}`, which names its terminal, + the hook-server
+`/browser` route, gated on `enabled && allow_agents`); **Ctrl/Cmd-clickable
+terminal links** (`@xterm/addon-web-links`).
+
+**Done — agents read and use the page (plans 018/019), validated end to end on
+macOS by a real Claude Code agent over MCP:** the page script
+(`browser/page.js`, injected before the page's code; one frozen entry point, no
+general eval) and its channel (`browser/page.rs`, bounded JSON over the engine's
+own evaluation); `browser/snapshot|screenshot|console|wait` (read) and
+`browser/click|type|press|scroll` (ui) in the catalog, the CLI and MCP (a
+screenshot is an MCP image block); references bound to one document; the risk
+policy (`browser/policy.rs`) and the person's approval (`browser/approval.rs`,
+the amber bar in `BrowserApprovalBar.svelte` — walked by the maintainer on a
+dev build, 2026-09-23: bar, in-page highlight, **Allow** running the submit —,
+the globe's dot, 45 s wait); the
+`agentExternalSites` setting; the `Refused` error code (`-32008`, exit 9); the
+params validator now enforcing `enum` / `minimum` / `maximum` / `maxLength`; page
+actions in the control audit log with typed text by length; a still image of the
+page under dialogs.
+
+- [ ] **Browser — validate the child-webview engine on Windows and Linux.** It
+      builds and its suites are green on every CI leg (run 35927031616), but it
+      was run on macOS only (dev build). Windows is the platform that froze the first
+      attempt (see the engine decision): run `npm run test:e2e -- --spec browser`
+      (the journey now opens, loads and closes a page) and walk the panel by hand —
+      workspace switch, a dialog over the page, the window minimized/moved to
+      another desktop. Linux (WebKitGTK child views) has never been seen at all.
+      Record the result in `tests/platform-support.json` → `browser`.
 
 **Done — browser-control MCP (backend, spec `02d` §1.6):** the browser is now
 **discoverable** to agents as MCP tools, not just via the `/browser` curl. The
@@ -825,13 +863,14 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
-- [ ] **Browser MCP — interaction tools (control-only for now).** The tool surface is
-      navigation-only. Page inspection/interaction (`browser_snapshot`,
-      `browser_evaluate`, `browser_click`, `browser_type`) needs a JS return-channel
-      from the docked `WebviewWindow` (`.eval()` is fire-and-forget) — an injected
-      init-script that posts results back, mindful of page CSP. Deferred as a second
-      pass (`FOR-DEV:` marker in `control/services/browser.rs`); they would be
-      new catalog entries in the `ui` group.
+- [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
+      now captures on every desktop platform — WebView2 `CapturePreview` into a
+      memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —
+      and both build on CI, but only macOS has run it. On each, call
+      `uxnan-cli browser screenshot --out shot.png` against a local page (the
+      page visible, then hidden in a background workspace) and open a dialog
+      over the panel to see the still image; then drop this item and the inline
+      `FOR-DEV:` in `browser/capture.rs`.
 
 ## Control surface — MCP tools + `uxnan-cli` ☐
 
@@ -1620,7 +1659,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 916 Rust + 1,305 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 940 Rust + 1,327 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -394,7 +394,7 @@ pub fn pet_window_hide(app: AppHandle) {
 /// a shortcut is no shortcut if the app stays buried.
 #[tauri::command]
 pub fn pet_focus_main(app: AppHandle) {
-    if let Some(win) = app.get_webview_window("main") {
+    if let Some(win) = app.get_window("main") {
         let _ = win.unminimize();
         let _ = win.show();
         let _ = win.set_focus();
@@ -3789,13 +3789,14 @@ pub async fn open_in_editor(
 }
 
 /// The single decision point every link in the ADE funnels through: open `url` in
-/// the integrated browser tab, hand it to the OS default browser, or (for the
-/// `Ask` policy) let the frontend prompt — per the user's `BrowserSettings`.
-/// Powers the `openUrl` frontend wrapper and terminal link clicks; the agent
-/// `BROWSER` shim reaches the same logic via the hook server's `/browser` route.
+/// the integrated browser of the workspace on screen, hand it to the OS default
+/// browser, or (for the `Ask` policy) let the frontend prompt — per the user's
+/// `BrowserSettings`. Powers the `openUrl` frontend wrapper and terminal link
+/// clicks; the agent `BROWSER` shim reaches the same logic via the hook
+/// server's `/browser` route.
 #[tauri::command]
 pub async fn open_url(app: AppHandle, url: String) -> Result<(), CommandError> {
-    crate::browser::route_url(&app, url).await
+    crate::browser::route_url(&app, url, None).await.map(|_| ())
 }
 
 /// Open `url` in the OS default browser unconditionally (ignores the link policy).
@@ -3803,10 +3804,7 @@ pub async fn open_url(app: AppHandle, url: String) -> Result<(), CommandError> {
 /// prompt's external choice.
 #[tauri::command]
 pub fn open_external(app: AppHandle, url: String) -> Result<(), CommandError> {
-    use tauri_plugin_opener::OpenerExt;
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| CommandError::new("OPEN_EXTERNAL_FAILED", e.to_string()))
+    crate::browser::open_external(&app, &url)
 }
 
 /// Working-tree-vs-`HEAD` diff for one file, powering the editor's change gutter

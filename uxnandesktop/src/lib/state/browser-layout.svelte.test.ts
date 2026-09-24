@@ -1,4 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The browser's pages live in the backend; here only the layout matters, so
+// every page call answers as a backend with a live page would.
+vi.mock("$lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("$lib/api")>();
+  const page = (workspace: string, url = "about:blank") => ({
+    workspace,
+    live: true,
+    url,
+    title: "",
+    loading: false,
+    canGoBack: null,
+    canGoForward: null,
+    zoom: 1,
+    visible: false,
+    generation: 1,
+  });
+  return {
+    ...actual,
+    browserOpen: vi.fn(async (workspace: string, url: string) => page(workspace, url)),
+    browserSetVisible: vi.fn(async (workspace: string) => page(workspace)),
+    browserSetBounds: vi.fn(async () => {}),
+    browserClose: vi.fn(async () => {}),
+  };
+});
+
 import { app } from "./app.svelte";
 
 beforeEach(() => {

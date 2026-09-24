@@ -553,7 +553,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub updater: UpdaterSettings,
     /// Integrated developer browser (Settings → Browser): whether links route to
-    /// the in-app browser window vs the OS browser, and whether agents may drive it
+    /// the in-app browser vs the OS browser, and whether agents may drive it
     /// (see `BrowserSettings`). All fields default, so older state loads unchanged.
     #[serde(default)]
     pub browser: BrowserSettings,
@@ -1073,13 +1073,21 @@ pub struct BrowserSettings {
     /// Page opened when a fresh browser tab has no target URL. Empty = blank tab.
     #[serde(default)]
     pub homepage: String,
+    /// Let agents read and act on pages of sites outside this machine (the
+    /// `browser_snapshot` / `_click` / … tools). Off: they work only on local
+    /// pages (loopback — the agent's own dev server); on: each site still needs
+    /// the person's approval once per page, and high-risk actions every time
+    /// (`browser/policy.rs`). Default off.
+    #[serde(default)]
+    pub agent_external_sites: bool,
     /// Give the agents the ADE launches the control surface as MCP tools (spec
     /// `02d` §1.6) — the whole catalog, the `browser_*` tools among it. The
     /// server is registered **per launch** — in the process uxnan spawns, never
     /// in a config file the user keeps (see `mcpinject.rs`). When off, nothing is
     /// registered; the `/mcp` endpoint and `uxnan-cli` keep working. Independent
-    /// of [`enabled`](Self::enabled): the browser being off only makes the
-    /// browser tools answer *unavailable*. Lives here with the other launch
+    /// of [`enabled`](Self::enabled): the browser being off only sends
+    /// `browser_open` to the system browser (and leaves the page tools without a
+    /// page). Lives here with the other launch
     /// wiring it grew from; the surface itself has no settings pane. Default on.
     #[serde(default = "default_true")]
     pub mcp_enabled: bool,
@@ -1103,6 +1111,7 @@ impl Default for BrowserSettings {
             allow_agents: true,
             terminal_links: true,
             homepage: String::new(),
+            agent_external_sites: false,
             mcp_enabled: true,
             friction_free: true,
             mcp_disabled_agents: Vec::new(),
@@ -1852,6 +1861,16 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.browser.enabled);
         assert_eq!(settings.browser.link_policy, BrowserLinkPolicy::Internal);
+    }
+
+    #[test]
+    fn agents_stay_off_outside_sites_unless_allowed() {
+        // Older state has no such key: it must load as off.
+        let old: BrowserSettings = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(!old.agent_external_sites);
+        assert!(!BrowserSettings::default().agent_external_sites);
+        let json = serde_json::to_string(&BrowserSettings::default()).unwrap();
+        assert!(json.contains("\"agentExternalSites\":false"));
     }
 
     #[test]

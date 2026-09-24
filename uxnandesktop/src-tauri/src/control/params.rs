@@ -1,9 +1,10 @@
 //! Argument validation against a catalog entry's schema.
 //!
 //! The schemas are a small, closed subset of JSON Schema (an object with typed
-//! properties, a `required` list, `additionalProperties: false`), so they are
-//! checked here directly instead of pulling a validator crate in for eleven
-//! lines of rules. A misspelled or extra argument is an error the caller sees —
+//! properties, a `required` list, `additionalProperties: false`, and per
+//! property `enum`, `minimum` / `maximum` and `maxLength`), so they are checked
+//! here directly instead of pulling a validator crate in for a screenful of
+//! rules. A misspelled or extra argument is an error the caller sees —
 //! for an agent, silently ignoring one is how it "calls" a tool and nothing
 //! happens.
 
@@ -85,6 +86,44 @@ pub fn validate(schema: &Value, params: &Value) -> Result<(), RpcError> {
                 format!("argument `{key}` must not be empty"),
             ));
         }
+        if let Some(prop) = props.get(key) {
+            bounds(key, prop, value)?;
+        }
+    }
+    Ok(())
+}
+
+/// The per-property constraints: `enum`, `minimum` / `maximum`, `maxLength`.
+fn bounds(key: &str, prop: &Value, value: &Value) -> Result<(), RpcError> {
+    let bad = |why: String| Err(RpcError::new(ErrorCode::InvalidParams, why));
+    if let Some(allowed) = prop.get("enum").and_then(|e| e.as_array()) {
+        if !allowed.contains(value) {
+            let list: Vec<String> = allowed.iter().map(|v| v.to_string()).collect();
+            return bad(format!(
+                "argument `{key}` must be one of {}",
+                list.join(", ")
+            ));
+        }
+    }
+    if let Some(n) = value.as_f64() {
+        if let Some(min) = prop.get("minimum").and_then(|m| m.as_f64()) {
+            if n < min {
+                return bad(format!("argument `{key}` must be at least {min}"));
+            }
+        }
+        if let Some(max) = prop.get("maximum").and_then(|m| m.as_f64()) {
+            if n > max {
+                return bad(format!("argument `{key}` must be at most {max}"));
+            }
+        }
+    }
+    if let (Some(text), Some(max)) = (
+        value.as_str(),
+        prop.get("maxLength").and_then(|m| m.as_u64()),
+    ) {
+        if text.chars().count() as u64 > max {
+            return bad(format!("argument `{key}` must be at most {max} characters"));
+        }
     }
     Ok(())
 }
@@ -93,6 +132,31 @@ pub fn validate(schema: &Value, params: &Value) -> Result<(), RpcError> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn enforces_enum_range_and_length() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "level": { "type": "string", "enum": ["all", "error"] },
+                "amount": { "type": "number", "minimum": 0.05, "maximum": 5 },
+                "text": { "type": "string", "maxLength": 3 }
+            },
+            "required": [],
+            "additionalProperties": false
+        });
+        assert!(validate(
+            &schema,
+            &json!({ "level": "error", "amount": 1, "text": "abc" })
+        )
+        .is_ok());
+        assert!(validate(&schema, &json!({ "level": "warn" })).is_err());
+        assert!(validate(&schema, &json!({ "amount": 0 })).is_err());
+        assert!(validate(&schema, &json!({ "amount": 9 })).is_err());
+        assert!(validate(&schema, &json!({ "text": "abcd" })).is_err());
+        // Length counts characters, not bytes.
+        assert!(validate(&schema, &json!({ "text": "ñññ" })).is_ok());
+    }
 
     fn schema() -> Value {
         json!({

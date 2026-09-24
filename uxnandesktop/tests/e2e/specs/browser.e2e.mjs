@@ -1,19 +1,22 @@
 /**
- * The integrated browser opens a page in a second window.
+ * The integrated browser opens a page, and closes it.
  *
- * Worth an end-to-end test for one reason nothing else here covers: the browser
- * is a **separate `WebviewWindow`**, so this is the only journey that exercises
- * multi-window handling — the app owning, positioning and tearing down a window
- * that is not its main one.
+ * Worth an end-to-end test because nothing else here covers it: each
+ * workspace's page is a **child webview of the main window** — a second native
+ * view the app creates, places, tracks and tears down — and the only way to know
+ * that works on a platform is to run it there.
  *
  * The page comes from the shared loopback fixture, so the test needs no network
- * and the content is fixed.
+ * and the content is fixed. The journey goes through the real entry point every
+ * link uses (`open_url`) and reads the backend's own account of the page
+ * (`browser_sessions`), so it proves a page exists and loaded rather than that a
+ * button was drawn.
  *
- * Not asserted here: the scheme gate. `open_url` deliberately *routes* rather
- * than rejects — a non-http(s) link is handed to the OS instead of loaded in the
- * window — so calling it with `file://` in a test would open something on the
- * developer's desktop rather than fail. The gate itself is a pure decision and
- * is unit-tested in `browser.rs`, which is the right layer for it.
+ * Not asserted here: the URL gate. `open_url` deliberately *routes* rather than
+ * rejects — a non-http(s) link is handed to the OS instead of loaded in-app — so
+ * calling it with `file://` in a test would open something on the developer's
+ * desktop rather than fail. The gate is a pure decision, unit-tested in
+ * `src-tauri/src/browser/mod.rs`, which is the right layer for it.
  */
 
 import { strict as assert } from "node:assert";
@@ -35,6 +38,12 @@ const FIXTURE_SERVER = path.resolve(
   "fixtures",
   "http-server.mjs",
 );
+
+/** The live page whose URL starts with `prefix`, if any. */
+async function pageAt(prefix) {
+  const sessions = await invoke("browser_sessions");
+  return sessions.find((s) => s.live && s.url.startsWith(prefix)) ?? null;
+}
 
 describe("the integrated browser", () => {
   let server;
@@ -66,23 +75,36 @@ describe("the integrated browser", () => {
 
   after(() => server?.kill());
 
-  it("opens a loopback page in its own window", async () => {
-    const before = (await browser.getWindowHandles()).length;
-
+  it("opens a loopback page in the workspace on screen and loads it", async () => {
     // `open_url` is the single decision every link funnels through, so this is
     // the real entry point rather than a shortcut into the browser module.
     await invoke("open_url", { url });
 
     await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > before,
+      async () => {
+        const page = await pageAt(url);
+        return !!page && !page.loading;
+      },
       {
         timeout: 30_000,
         interval: 500,
-        timeoutMsg: "the browser window never appeared",
+        timeoutMsg: "the browser page never loaded",
       },
     );
 
-    const handles = await browser.getWindowHandles();
-    assert.ok(handles.length > before, "no second window was created");
+    const page = await pageAt(url);
+    assert.ok(page.generation >= 1, "no document was committed");
+    assert.equal(page.visible, true, "the page of the workspace on screen is hidden");
+  });
+
+  it("closes the page and forgets it", async () => {
+    const page = await pageAt(url);
+    assert.ok(page, "no page to close");
+    await invoke("browser_close", { workspace: page.workspace });
+    await browser.waitUntil(async () => (await pageAt(url)) === null, {
+      timeout: 10_000,
+      interval: 250,
+      timeoutMsg: "the page outlived its close",
+    });
   });
 });

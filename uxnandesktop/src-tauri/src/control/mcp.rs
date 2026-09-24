@@ -40,7 +40,7 @@ pub const SERVER_NAME: &str = "uxnan-browser";
 
 /// What the agent is told at `initialize`: the one paragraph that makes the
 /// tools make sense together.
-const INSTRUCTIONS: &str = "You are running inside Uxnan Desktop, which offers you tools to read and operate it. Call `uxnan_status` first to learn what is enabled. Use `worktree_*`, `terminal_*` and `agent_*` to see the projects, terminals and agents Uxnan holds (`current` names your own terminal and worktree); `file_open` / `file_diff` to show the person a file or a change; `browser_*` to preview and test web apps and dev servers you build (call `browser_status` first, `browser_reload` after code changes). If you are a step of a Uxnan orchestration run, report your final output with `orchestration_report_result` (agentId = your UXNAN_AGENT_ID) so the run captures it for the next step.";
+const INSTRUCTIONS: &str = "You are running inside Uxnan Desktop, which offers you tools to read and operate it. Call `uxnan_status` first to learn what is enabled. Use `worktree_*`, `terminal_*` and `agent_*` to see the projects, terminals and agents Uxnan holds (`current` names your own terminal and worktree); `file_open` / `file_diff` to show the person a file or a change; `browser_*` to preview and test web apps and dev servers you build in your workspace's own browser page (`browser_open` it, `browser_snapshot` to read it and get element refs, `browser_click` / `browser_type` / `browser_press` to use it, `browser_screenshot` to see it, `browser_console` for its errors, `browser_reload` after code changes). If you are a step of a Uxnan orchestration run, report your final output with `orchestration_report_result` (agentId = your UXNAN_AGENT_ID) so the run captures it for the next step.";
 
 /// The tool list advertised on `tools/list`: the catalog, in MCP's shape.
 pub fn tool_catalog() -> Value {
@@ -75,6 +75,34 @@ fn text_result(text: String, is_error: bool) -> Value {
     })
 }
 
+/// Wrap a successful result. A result carrying an `image` object
+/// (`{ mimeType, data, … }`, e.g. `browser/screenshot`) becomes an MCP image
+/// block — what a model can look at — followed by the rest of the result as
+/// text, with the base64 left out so it is not sent twice.
+fn success_result(result: &Value) -> Value {
+    let image = result.get("image").and_then(|img| {
+        Some((
+            img.get("mimeType")?.as_str()?.to_string(),
+            img.get("data")?.as_str()?.to_string(),
+        ))
+    });
+    let Some((mime, data)) = image else {
+        let text = serde_json::to_string(result).unwrap_or_else(|_| "{}".into());
+        return text_result(text, false);
+    };
+    let mut rest = result.clone();
+    if let Some(img) = rest.get_mut("image").and_then(|i| i.as_object_mut()) {
+        img.remove("data");
+    }
+    json!({
+        "content": [
+            { "type": "image", "data": data, "mimeType": mime },
+            { "type": "text", "text": serde_json::to_string(&rest).unwrap_or_else(|_| "{}".into()) }
+        ],
+        "isError": false
+    })
+}
+
 /// Run one `tools/call` through the dispatcher.
 async fn call_tool<R: tauri::Runtime>(
     app: &AppHandle<R>,
@@ -86,10 +114,7 @@ async fn call_tool<R: tauri::Runtime>(
         return text_result(format!("unknown tool: {name}"), true);
     };
     match super::dispatch(app, caller, entry.method, args).await {
-        Ok(result) => {
-            let text = serde_json::to_string(&result).unwrap_or_else(|_| "{}".into());
-            text_result(text, false)
-        }
+        Ok(result) => success_result(&result),
         Err(e) => text_result(e.message, true),
     }
 }
@@ -204,6 +229,24 @@ pub fn handle_get() -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_image_result_becomes_an_image_block() {
+        let out = success_result(&json!({
+            "url": "http://localhost:1",
+            "image": { "mimeType": "image/png", "width": 2, "height": 1, "data": "iVBOR" }
+        }));
+        let content = out["content"].as_array().unwrap();
+        assert_eq!(content[0]["type"], "image");
+        assert_eq!(content[0]["data"], "iVBOR");
+        assert_eq!(content[0]["mimeType"], "image/png");
+        let text: Value = serde_json::from_str(content[1]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text["image"]["width"], 2);
+        assert!(text["image"].get("data").is_none());
+        // Anything else stays a text block.
+        let plain = success_result(&json!({ "ok": true }));
+        assert_eq!(plain["content"][0]["type"], "text");
+    }
 
     /// The tool list is the catalog, one for one, in MCP's shape.
     #[test]

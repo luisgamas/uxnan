@@ -182,13 +182,18 @@ available today are:
 - **Integrated developer browser.** A complete in-app browser in a right-side panel
   that temporarily hides the review panel and restores it on close only if it was
   previously open
-  (a real system webview docked to the app, so it loads any site and has real
-  DevTools) to preview and debug what your agents build — `localhost` dev servers
-  and any site — and to open the links they create. Links route by a policy you
+  (a real system webview drawn inside the app window, so it loads any site and has
+  real DevTools) to preview and debug what your agents build — `localhost` dev
+  servers and any site — and to open the links they create. **Each workspace has
+  its own browser**: a page stays in the workspace it was opened in, and an agent
+  working in another worktree loads its page there, hidden, without disturbing
+  yours. Links route by a policy you
   choose (in-app · system browser · ask); when allowed, agents open URLs in it
   automatically — and, through the **MCP server** registered on each agent uxnan
   launches (and only there — your agent configs are never touched), discover
-  `browser_*` tools to preview and test what they build with no setup. See
+  `browser_*` tools to open, read, use and screenshot what they build with no
+  setup — their own local pages freely; other sites and anything that submits,
+  deletes or signs in only with your approval. See
   [the integrated browser](./docs/browser.md).
 - **A control surface for agents and shells.** The same MCP server gives every
   agent uxnan launches tools to read the app (`uxnan_status`, `project_list`,

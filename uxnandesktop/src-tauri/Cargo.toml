@@ -46,10 +46,15 @@ tauri-build = { version = "2", features = [] }
 # `uxnan-cli`, so the app and its console client cannot disagree on a name.
 uxnan-control-protocol = { path = "crates/control-protocol" }
 # `devtools`: keep web DevTools available in release builds too, so the integrated
-# developer browser (a docked `WebviewWindow`) can debug the pages agents serve.
+# developer browser can debug the pages agents serve.
 # `macos-private-api` exists solely for the desktop pet window: a transparent
 # webview window needs it on macOS (it is a no-op on Windows/Linux).
-tauri = { version = "2", features = ["devtools", "macos-private-api"] }
+# `unstable` is Tauri's multi-webview API (`Window::add_child`): the integrated
+# browser's pages are child webviews *inside* the main window, so they move,
+# minimize and change desktop with it and never float over other apps. Every
+# child webview is created from an `async` command — a synchronous one deadlocks
+# WebView2 creation on Windows (see `browser/host.rs`).
+tauri = { version = "2", features = ["devtools", "macos-private-api", "unstable"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
@@ -165,6 +170,16 @@ zeroize = "1"
 # Already in the tree via `rustls-platform-verifier` (reqwest); MIT/Apache-2.0.
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
+# The macOS half of `browser/capture.rs`: a browser page's screenshot through
+# WebKit's own `takeSnapshotWithConfiguration:` and AppKit's PNG encoder. The
+# same Objective-C bindings the webview itself is built on (wry), at the versions
+# already in the tree — only a few more framework classes are compiled in.
+# MIT/Apache-2.0/Zlib.
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSError"] }
+objc2-app-kit = { version = "0.3", features = ["NSImage", "NSImageRep", "NSBitmapImageRep"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKSnapshotConfiguration", "block2", "objc2-app-kit"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
@@ -175,6 +190,20 @@ windows-sys = { version = "0.59", features = [
 # The user's PATH for the `uxnan-cli` shim (`control/cli.rs`); already in the
 # tree through the updater, so no new code to trust.
 winreg = "0.55"
+# The Windows half of `browser/capture.rs`: a browser page's screenshot through
+# WebView2's own `CapturePreview` into an in-memory stream. The same WebView2 and
+# Windows bindings the webview is built on (wry), at the versions already in the
+# tree. MIT/Apache-2.0.
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+
+# The Linux half of `browser/capture.rs`: a browser page's screenshot through
+# WebKitGTK's `webkit_web_view_get_snapshot`, written as PNG by cairo. Both are
+# what the webview is built on (wry), at the versions already in the tree; `png`
+# compiles in cairo's own PNG writer. MIT.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+cairo-rs = { version = "0.18", features = ["png"] }
 
 
 [dev-dependencies]

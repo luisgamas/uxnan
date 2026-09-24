@@ -5,6 +5,93 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can read and use the pages they build.** Eight new tools in the
+  control surface (MCP and `uxnan-cli browser …`): `browser_snapshot` reads the
+  page as a compact outline where every link, button and field carries a
+  reference; `browser_click`, `browser_type` (also picks a select option),
+  `browser_press` and `browser_scroll` act on those references;
+  `browser_screenshot` returns what the page looks like (an image the model can
+  see — verified on macOS; Windows and Linux build on CI, first real run
+  pending); `browser_console` returns what the page logged, uncaught
+  errors included; `browser_wait` waits for text to appear. There is no
+  "run JavaScript" tool, no selectors and no coordinates: a reference names an
+  element of one document and is refused after a navigation, and an action is
+  refused when its element is hidden, disabled or covered by something else.
+- **What an agent may do in a page is a policy, and some of it is yours to
+  approve.** On a page on this machine (the agent's dev server) reading and
+  ordinary actions just run; submitting a form or anything that reads as
+  deleting, paying, publishing or signing in waits for you. A site outside this
+  machine is off limits unless you turn on **Settings → Browser → Let agents use
+  other sites** — and then each site needs your approval once. Typing into a
+  password or file field is refused everywhere. Approvals appear as an amber bar
+  above the page, with the element highlighted; the status-bar globe shows a dot
+  when one is waiting elsewhere. An agent waits 45 seconds, then is told to ask
+  again. Every page action is written to the control audit log, typed text by
+  length only.
+- **A still image of the page under dialogs**: the browser panel keeps
+  showing the page behind a dialog or menu instead of going blank.
+- **`refused` error code** (`-32008`, `uxnan-cli` exit status 9) for anything a
+  safety policy or the person turned down, and the control surface now enforces
+  the `enum`, `minimum`, `maximum` and `maxLength` its schemas declare.
+
+### Changed
+
+- **The integrated browser lives inside the window, one per workspace.** Its
+  page used to be a separate window glued over the panel, which floated above
+  every other application and followed you onto every desktop. Each page is now
+  a child view of the app window: it moves, minimizes and changes desktop with
+  the app and is shown only while its workspace is on screen. Every workspace —
+  each worktree, and the Global space — has its own browser (panel, page,
+  history, zoom); switching workspace swaps them, and coming back finds the page
+  where you left it. A link an agent opens lands in the workspace **its own
+  terminal** runs in — hidden, when that is not the one on screen — so an agent
+  can load its dev server in a background worktree without disturbing what you
+  are looking at. At most three pages stay alive at once; the oldest is released
+  (its URL kept) and a sleeping workspace releases its page.
+- **A fuller browser toolbar.** Reload turns into Stop while a page loads
+  (Shift-click reloads bypassing the cache); Back and Forward disable themselves
+  when there is no history that way; the address bar shows a lock for https and
+  a progress line, follows in-app (`pushState`) navigations, never overwrites
+  what you type, and Esc restores it; a zoom level appears when it is not 100 %.
+  Keyboard: Ctrl/Cmd+L, Ctrl/Cmd+R, Ctrl/Cmd+[ / ], Ctrl/Cmd+= / − / 0. Links
+  that open a new window load in place, and downloads go to your Downloads
+  folder (never overwriting a file).
+- **The `browser_*` tools answer with the page.** `browser_open`,
+  `browser_navigate` and `browser_reload` wait for the page to load (up to
+  15 s) and return its URL, title, load state, history and whether the person
+  can see it; `browser_back` / `browser_forward` say whether the page moved;
+  `browser_status` reports the page of the caller's workspace. `browser_open`
+  also says where the open went (`browser`, `external` or `ask`). The
+  `$BROWSER` shim now names its terminal (`X-Uxnan-Agent-Id`), so its links
+  land in that terminal's workspace too.
+- **Tauri updated to 2.11.6** (runtime 2.11.4, with the plugins, `@tauri-apps/api`
+  2.11.1 and `@tauri-apps/cli` 2.11.5), the latest 2.x: deadlock fixes in
+  listeners and cookie reads, an HDC handle leak on Windows, faster custom
+  protocol loads.
+
+### Fixed
+
+- **The browser no longer floats over other apps and desktops.** See above.
+- **The panel no longer polls every frame.** The page slot is measured when
+  something changes (a resize, the window, an overlay opening or closing), and
+  frame by frame only while a menu or dialog is up.
+- **Opening the browser with no home page no longer fails.** The empty page is
+  a valid address again.
+- **An agent reopening the URL the page already showed navigates again**
+  instead of doing nothing, and the page URL is no longer taken from an iframe
+  that navigated.
+
+### Security
+
+- **The integrated browser refuses the app's own origin.** Tauri trusts a page
+  on `tauri.localhost` / `ipc.localhost` / `asset.localhost` (and, in a
+  development build, the dev server the app is served from) as the app itself,
+  with its commands reachable without an ACL check. The browser — and every
+  navigation a page starts, iframes included — now refuses those origins, on top
+  of refusing every non-http(s) scheme.
+
 ## [0.0.54] - 20260922
 ### Changed
 

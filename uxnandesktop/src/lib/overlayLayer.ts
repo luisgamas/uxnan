@@ -2,11 +2,11 @@
 // selects that portal into `<body>` and are meant to paint above everything.
 //
 // It exists for exactly one reason: the integrated browser's page is not DOM. It
-// is a real child `WebviewWindow` docked over the browser panel (`browser.rs`),
-// and an owned native window ALWAYS paints above its owner's web content — no
+// is a native child webview placed over the browser panel (`browser/host.rs`),
+// and a native view ALWAYS paints above the app UI's web content — no
 // `z-index` can put a dialog in front of it. The only way to let something in
-// the main window be on top is to hide that window while it is up
-// (`browser_window_hide`). This registry is what tells the panel when.
+// the app be on top is to hide the page while it is up. This registry is what
+// tells the panel when.
 //
 // Registration lives in the shared `ui/` primitives (one call per floating
 // content component), so every dialog and menu in the app is covered without a
@@ -16,7 +16,7 @@
 // Deliberately NOT registered: tooltips and hover cards. They are transient and
 // non-interactive, and the browser toolbar's own tooltips open right over the
 // page slot — hiding the whole page to show one would flicker on every hover.
-// They stay behind the browser window, exactly as they do today.
+// They stay behind the page.
 
 /** The minimum of a `DOMRect` this module needs (so tests need no DOM). */
 export interface LayerRect {
@@ -26,17 +26,33 @@ export interface LayerRect {
   bottom: number;
 }
 
-/** Live floating layers, in registration order. Plain `Set` on purpose: the
- *  browser panel polls it from its rAF tick, so reactivity would only add cost. */
+/** Live floating layers, in registration order. Plain `Set` on purpose:
+ *  reactivity would only add cost — the browser panel subscribes instead. */
 const layers = new Set<Element>();
+const listeners = new Set<() => void>();
+
+function changed(): void {
+  for (const listener of listeners) listener();
+}
 
 /** Register a floating layer for as long as it is mounted. Returns the
  *  unregister function, so a Svelte `$effect` can simply return it. */
 export function registerOverlay(el: Element | null | undefined): () => void {
   if (!el) return () => {};
   layers.add(el);
+  changed();
   return () => {
-    layers.delete(el);
+    if (layers.delete(el)) changed();
+  };
+}
+
+/** Be told when a layer registers or unregisters. Returns the unsubscribe
+ *  function. A layer that moves while mounted (a menu positioning itself)
+ *  does not notify: a subscriber that cares tracks it while any are live. */
+export function onOverlayChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
   };
 }
 

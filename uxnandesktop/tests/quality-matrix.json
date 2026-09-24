@@ -238,7 +238,7 @@
         "L2"
       ],
       "evidence": {
-        "L3": "src-tauri/src/browser.rs #[cfg(test)] (scheme gate)",
+        "L3": "src-tauri/src/browser/mod.rs #[cfg(test)] (URL gate), src-tauri/src/browser/host.rs #[cfg(test)]",
         "L4": "tests/e2e/specs/browser.e2e.mjs"
       },
       "platforms": {
@@ -246,7 +246,31 @@
         "macos": "untested",
         "linux": "untested"
       },
-      "gaps": "The journey opens a loopback page in the browser window — the only multi-window coverage in the suite. Closing it, and the routing preference, are not covered."
+      "gaps": "The journey opens, loads and closes a loopback page (a child webview of the main window). Switching workspace, overlays over the page and the routing preference are not covered end to end; the per-workspace store has no component test yet."
+    },
+    {
+      "id": "browser-agent-tools",
+      "flow": "Agents read and use a browser page: snapshot, actions, policy, approvals",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/state/browser.svelte.test.ts",
+        "L2": "src/lib/components/BrowserApprovalBar.svelte.test.ts",
+        "L3": "src-tauri/src/browser/policy.rs #[cfg(test)] (risk and site decisions), src-tauri/src/browser/page.rs #[cfg(test)] (the page channel), src-tauri/src/browser/approval.rs #[cfg(test)], src-tauri/src/control/params.rs #[cfg(test)] (schema bounds)"
+      },
+      "platforms": {
+        "windows": "untested",
+        "macos": "verified",
+        "linux": "untested"
+      },
+      "gaps": "The page script (src-tauri/src/browser/page.js) is exercised against a real page by hand and by a real agent on macOS, and the approval bar was walked by the maintainer on a macOS dev build — there is no fixture journey for snapshot/click/type yet. The page capture has run on macOS only; its Windows and Linux halves only build."
     },
     {
       "id": "settings-persistence",

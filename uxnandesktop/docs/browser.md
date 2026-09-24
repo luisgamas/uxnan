@@ -10,13 +10,37 @@ the status bar forwards the port to `127.0.0.1` over that host's existing
 connection and opens the result through the same routing described below, so a
 remote server behaves like a local one ([remote hosts](remote-hosts.md)).
 
-It lives in a **right-side "4th panel"**. The page itself is a real system webview
-(a frameless `WebviewWindow` — Chromium/WebView2 on Windows) **owned by** and
-**docked to** uxnan: it follows the app when you move/resize it and stays above it,
-so it reads as a panel. Because it's a real top-level webview (not an iframe), it
-loads **any** http(s) website (Google included) and has **real DevTools**, while staying light
-(it reuses the OS webview the ADE already runs). It's created when you open the
-panel and destroyed when you close it.
+It lives in a **right-side "4th panel"**, and **every workspace has its own**.
+The page is a real system webview (WKWebView on macOS, WebView2 on Windows,
+WebKitGTK on Linux) drawn **inside the app window** — a child view of it, not a
+separate window. So it loads **any** http(s) website (Google included), has
+**real DevTools**, and behaves like the rest of the app: it moves, minimizes and
+changes desktop with the window, never floats over other applications, and is
+shown only while its workspace is the one on screen. It reuses the OS webview the
+app already runs, so it stays light.
+
+## One browser per workspace
+
+A workspace — a worktree, or the Global space — has its own browser: its panel
+open or closed, its page, its history and its zoom. Switching workspace hides the
+page you were looking at and shows the next workspace's (when its panel is open);
+coming back finds the first page exactly where you left it. A page never follows
+you into a workspace it was not opened in.
+
+Links land in the workspace they belong to:
+
+- A link **you** open (the globe, a Ctrl/Cmd-clicked terminal link, the address
+  bar) opens in the workspace on screen.
+- A link an **agent** opens (its `$BROWSER`, the `curl` route or the `browser_*`
+  tools) opens in the workspace **its own terminal** runs in. When that is not the
+  workspace on screen, the page loads **hidden** — the agent can load, reload and
+  inspect its own dev server without disturbing what you are looking at — and it
+  is waiting there, panel open, when you visit that workspace.
+
+Pages cost memory, so at most **three** stay alive at once
+(`MAX_LIVE_PAGES` in `src/lib/state/browser.svelte.ts`). Opening a fourth closes
+the one shown longest ago; its URL is kept, and visiting its workspace loads it
+again. A workspace put to **sleep** releases its page the same way.
 
 ## Opening the browser
 
@@ -26,21 +50,48 @@ navigating to another URL does not change the saved preference. The review-panel
 button or keyboard shortcut switches back to that panel and closes the browser.
 
 - **Toggle it** from the status-bar **globe** button (bottom-right). It opens at
-  your configured *home page*, or a blank page.
+  the page the workspace last showed, else your configured *home page*, else a
+  blank page.
 - **From a link:** anything the ADE opens as a URL (a **Ctrl/Cmd-clicked** terminal
   link, or a link an agent opens) lands here when your link policy is *internal*
   (the default).
 
 The browser **fills the panel** and resizes with it — drag the panel's left edge to
 resize (the width is remembered). The browser has no separate size of its own.
+Closing the panel closes that workspace's page; the other workspaces keep theirs.
 
 ### Chrome
 
-Back · Forward · Reload · address bar (type a URL and press Enter) · **open in
-system browser** · **DevTools** · close. For `localhost` the address bar assumes
-`http://`; otherwise it defaults to `https://`. The integrated browser only loads
-**http(s)** URLs — any other scheme (`file:`, `tauri:`, `data:`, …) is refused
-rather than loaded in-app; use **open in system browser** for those.
+Back · Forward · **Reload / Stop** (one button: Stop while the page loads;
+Shift-click reloads bypassing the cache) · address bar (a lock for https, a globe
+otherwise; a thin progress line while loading) · zoom level (shown only when it is
+not 100 % — click to reset) · **open in system browser** · **DevTools** · close.
+Back and Forward disable themselves when the page has no history that way (where
+the engine reports it).
+
+The address bar follows the page — including in-app navigations a single-page app
+makes with `history.pushState` — and never overwrites what you are typing. For
+`localhost` and loopback addresses it assumes `http://`; otherwise `https://`.
+**Esc** restores the page's URL.
+
+With the keyboard in the panel's toolbar: **Ctrl/Cmd+L** focuses the address bar,
+**Ctrl/Cmd+R** reloads (**Shift** bypasses the cache), **Ctrl/Cmd+[** / **]** go
+back / forward, **Ctrl/Cmd+=** / **−** / **0** zoom in / out / reset. Once you click
+into the page, the page has the keyboard.
+
+A link that opens a new window (`target="_blank"`, `window.open`) loads in the same
+page — a developer browser has no tabs. **Downloads** go to your Downloads folder
+(never overwriting a file: `name (2).ext`, …) and a notice says where.
+
+### What it will not load
+
+Only **http(s)** addresses open — `file:`, `data:`, `javascript:`, `tauri:` and every
+other scheme is refused rather than loaded in-app; use **open in system browser**
+for those. It also refuses **the app's own origin** (`tauri.localhost`,
+`ipc.localhost`, `asset.localhost`, and in a development build the dev server the
+app itself is served from): a page there would be treated as the app and reach its
+commands. The same gate applies to navigations the page starts itself, including
+redirects and iframes (which may additionally use `about:srcdoc` and `blob:`).
 
 ## Settings → Browser
 
@@ -50,6 +101,7 @@ rather than loaded in-app; use **open in system browser** for those.
 | **Open links** | Where links open: *in the integrated browser* (`internal`), *in my system browser* (`external`), or *ask each time* (`ask`). | Internal |
 | **Let agents open links** | Inject a `$BROWSER` shim so agents' links land in-app automatically (see below). | On |
 | **Clickable terminal links** | Make URLs printed in the terminal **Ctrl/Cmd-clickable** (applies to terminals opened afterwards). | On |
+| **Let agents use other sites** | Let agents read and act on pages outside this machine. Off: the page tools work only on local pages (their dev servers). On: each site still needs your approval once, and high-risk actions every time (see *Agents reading and using the page*). | Off |
 | **Home page** | Opened when the browser panel has no target. Blank if empty. | — |
 
 The setting is one **decision point**: links from the UI, the terminal, and agents
@@ -76,11 +128,14 @@ Two ways an agent ends up in the in-app browser:
    curl -X POST "$UXNAN_BROWSER_URL" \
      -H "Content-Type: application/json" \
      -H "X-Uxnan-Token: $UXNAN_BROWSER_TOKEN" \
+     -H "X-Uxnan-Agent-Id: $UXNAN_AGENT_ID" \
      -d '{"url":"http://localhost:5173"}'
    ```
 
 Either way the URL is routed through your link policy, so it opens in the in-app
-browser (or your system browser / a prompt, depending on the setting).
+browser (or your system browser / a prompt, depending on the setting). The shim
+sends the terminal's `UXNAN_AGENT_ID`, so the page opens in **that terminal's
+workspace**; a request without it opens in the workspace on screen.
 
 > Tip: tell your agent something like *"when you start the dev server, open its URL
 > in the browser"* — if it runs `$BROWSER <url>` or the `curl` above, the preview
@@ -98,15 +153,23 @@ no documentation**.
 
 | Tool | What it does |
 | --- | --- |
-| `browser_open` | Open the in-app browser and load a URL (routed through your link policy). |
-| `browser_navigate` | Navigate the browser to a URL (opening the panel first if needed). |
-| `browser_reload` | Reload the current page (e.g. after the agent changes code). |
-| `browser_back` / `browser_forward` | Move through history. |
-| `browser_status` | Report whether a page is open, the current URL, and how opens are routed. |
+| `browser_open` | Open the browser of **your** workspace and load a URL (routed through the link policy); answers once the page has loaded, with its URL, title and state. |
+| `browser_navigate` | Navigate your workspace's page to a URL (opening it first if needed). Same answer as `browser_open`. |
+| `browser_reload` | Reload the page and answer once it has loaded again (e.g. after the agent changes code). |
+| `browser_back` / `browser_forward` | Move through history; answers with the page it landed on and whether it moved. |
+| `browser_status` | Report the page of your workspace (URL, title, loading, whether the person can see it, history) and how opens are routed. |
+| `browser_snapshot` | Read the page as a compact outline, every interactive element carrying a `ref`. |
+| `browser_screenshot` | See the page: a PNG taken by the engine itself. |
+| `browser_console` | Read what the page logged — messages, warnings, errors, uncaught exceptions. |
+| `browser_wait` | Wait until the page shows some text (up to 30 s). |
+| `browser_click` / `browser_type` / `browser_press` / `browser_scroll` | Use the page: click, type into a field (or pick a select option), press a key, scroll — by `ref`. |
 
-They map onto the same in-app browser and the same link policy as a clicked link.
-(Page inspection/interaction — snapshot/click/type — is a planned follow-up; see
-`FOR-DEV.md`.)
+"Your workspace" is the one your terminal runs in; a caller outside a Uxnan
+terminal (a script with the control token) acts on the workspace on screen. The
+answer says `visible: false` when the page loaded hidden in a workspace the person
+is not looking at — it works the same, they just do not see it yet. How the page
+tools behave, and what they may not do, is in *Agents reading and using the page*
+below.
 
 The browser tools are six entries of a larger list: the same MCP server carries the
 whole **control surface** — `uxnan_status`, `project_*`, `worktree_*`, `terminal_*`,
@@ -218,17 +281,81 @@ The registry is small, so wiring a new CLI is one row plus one arm in
 The frontend needs no change: the per-agent toggles and the launch path both read the
 registry from the backend.
 
+## Agents reading and using the page
+
+An agent building a web app needs to *see* what it built and *try* it: open the
+dev server, read what rendered, fill a form, press the button, check the console.
+The page tools do exactly that, and nothing more — there is no "run this
+JavaScript" tool, no CSS selectors and no screen coordinates.
+
+**Snapshot, then act by reference.** `browser_snapshot` returns the page as an
+outline — one line per heading, text, link, button or field, with its state and
+value (a password field says only that it is filled) — and gives every
+interactive element a reference like `k3p9:e12`. The actions take that
+reference. A reference names an element of **one document**: after a navigation
+or a reload the old ones are refused ("take a new snapshot"), so an agent can
+never act on a page it has not looked at. Before acting, the element is scrolled
+into view and must be visible, enabled and not covered by something else — a
+click that would land on an overlay is refused and says what covers the element.
+Actions answer once any navigation they caused has loaded, and can return the new
+snapshot in the same call (`snapshot: true`).
+
+**Evidence, not proof.** The outline and the screenshot are what the page
+produced about itself; a page can misdescribe its own buttons. That is why the
+safety rules below lean cautious.
+
+### What needs the person
+
+| | reading (snapshot, screenshot, console, wait) | ordinary actions (links, buttons, typing, scrolling, keys) | high-risk actions |
+| --- | --- | --- | --- |
+| **A page on this machine** — `localhost`, `127.0.0.1`, `*.localhost`, a forwarded SSH port | allowed | allowed | **you approve each one** |
+| **Another site**, while *Let agents use other sites* is off (the default) | refused | refused | refused |
+| **Another site**, with it on | **you approve the site once** | **you approve the site once** | **you approve each one** |
+
+**High-risk** is submitting a form (a submit button, Enter in a form field) or
+clicking anything whose name reads as deleting, removing, paying, buying,
+publishing, deploying, sending, confirming, signing in or up, granting,
+authorizing or merging (English and Spanish). **Typing into a password or file
+field is refused everywhere, always** — an agent never handles a credential or a
+file for you; it asks you to do it.
+
+**Approving.** The request appears as an amber bar above the page, in the browser
+panel of the agent's workspace, naming the agent, the element (highlighted in
+the page), what it would do and the site: **Deny**, **Allow** (this action), or —
+for a site outside this machine — **Allow on *site*** (reads and ordinary actions
+there stop asking until the page closes). When the request is in a workspace you
+are not looking at, or its panel is closed, the status-bar **globe** gets an
+amber dot; clicking it takes you there. The agent waits **45 seconds**, then its
+call is refused with a message telling it to explain what it wants and ask
+again. Nothing about approvals is remembered: closing the page, a restart or a
+navigation ends them, and an approval is for the document the agent looked at —
+if the page navigated meanwhile, the action is refused.
+
+**What is logged.** Every action an agent takes in a page — done or refused —
+leaves a line in the control audit log (`control-audit.log` in the app's data
+folder): who, which action, which reference, whether it ran. Typed text is
+recorded by length only.
+
+**Platform notes.** The screenshot is taken by the engine itself: WebKit's
+snapshot on **macOS** (verified), WebView2's `CapturePreview` on **Windows** and
+WebKitGTK's snapshot on **Linux** — those two build and are unit-tested on CI but
+have not been run on a real machine yet. If a capture fails, `browser_screenshot`
+says so; the rest of the tools do not depend on it.
+
 ## Dialogs and menus over the browser
 
-The page is a real **native window**, not DOM, and on every platform an owned
-window paints above its owner's web content — no amount of `z-index` can put a
-uxnan dialog in front of it. So the browser **steps aside on its own**: whenever a
-dialog, menu, popover or select overlaps the browser panel, the page window hides
-until it closes, and then comes straight back on the same URL.
+The page is a real **native view**, not DOM, and on every platform a native view
+paints above the app's web content — no amount of `z-index` can put a uxnan dialog
+in front of it. So the page **steps aside on its own**: whenever a dialog, menu,
+popover or select overlaps the browser panel, the page is hidden until it closes,
+and then comes straight back on the same URL. If the page had the keyboard, the app
+takes it back while the page is hidden.
 
 That is why adding a project, picking a folder, opening a context menu or any
-other overlay now works normally with the browser open, instead of the dialog
-opening *behind* the page and being unclickable.
+other overlay works normally with the browser open, instead of the dialog opening
+*behind* the page and being unclickable. Where the page can be captured, the
+panel keeps showing a **still image** of it under the dialog
+instead of going blank.
 
 Two details worth knowing:
 
@@ -244,19 +371,24 @@ the panels, so the page hides while either is open.
 
 ## Performance
 
-The browser only consumes resources while the panel is open: the webview window is
-created when you open the panel and destroyed when you close it, and it reuses the
-OS webview runtime the app already loads (far lighter than bundling a browser).
-Keep heavy pages closed when you don't need them.
+A page only exists while its workspace's browser is open: it is created when the
+panel (or an agent) opens it and destroyed when the panel closes, the workspace
+sleeps, or it is the oldest of more than three live pages. It reuses the OS webview
+runtime the app already loads (far lighter than bundling a browser). The panel
+measures its slot only when something changes — a resize, the window, an overlay
+opening or closing — not every frame; while the page is on screen it asks it for
+what the engine does not push (an in-page URL change, the history state) every
+1.5 s.
 
 ## Limitations
 
 - It's a developer browser, not a hardened/general-purpose one (no bookmarks,
-  profiles or extensions).
-- The page is a separate (owned) window glued over the panel, so during a fast
-  app-window resize it may lag a frame before it catches up.
-- Because it is a native window, anything uxnan draws over it has to hide it
+  profiles, extensions or tabs). Cookies and site data are shared by every
+  workspace's page.
+- Because the page is a native view, anything uxnan draws over it has to hide it
   first (see *Dialogs and menus over the browser*): while a dialog is open the
-  panel shows an empty slot instead of the page.
+  panel shows a still image of the page (an empty slot if the capture fails).
+- Keyboard shortcuts of the app do not reach it while the page itself has the
+  keyboard; click the toolbar (or anywhere in the app) to give it back.
 - The `$BROWSER` auto-interception only covers tools that honor that convention; for
   others, use the explicit `curl` call above.

@@ -32,6 +32,7 @@ import {
   type TerminalProfile,
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
+import { browser } from "$lib/state/browser.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
@@ -123,12 +124,13 @@ class AppStore {
   settingsOpen = $state(false);
   /** Whether the multi-agent orchestration console is open. */
   orchestrationOpen = $state(false);
-  /** Whether the integrated browser panel (the right-side "4th panel") is open. */
-  browserOpen = $state(false);
+  /** Whether the integrated browser panel (the right-side "4th panel") is open
+   *  in the workspace on screen — each workspace has its own browser. */
+  get browserOpen(): boolean {
+    return browser.isOpen();
+  }
   /** Browser visibility temporarily overrides the saved review-panel preference. */
   rightSidebarVisible = $derived(this.settings.rightSidebarOpen && !this.browserOpen);
-  /** Target URL shown in the integrated browser panel. */
-  browserUrl = $state("");
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
   /** Whether the inline GitHub view is showing (it replaces the center + right
@@ -233,18 +235,20 @@ class AppStore {
     this.automationsOpen = false;
   }
 
-  /** Open the integrated browser panel at `url` (or the configured homepage, or a
-   *  blank page). If the panel is already open, this just navigates it. */
-  openBrowser(url?: string): void {
+  /** Open the integrated browser of `workspace` (default: the one on screen) at
+   *  `url` — or, with no URL, at the page it already shows, the configured
+   *  homepage, or a blank page. */
+  openBrowser(url?: string, workspace?: string): Promise<void> {
     const home = this.settings.browser?.homepage?.trim();
-    const target = (url && url.trim()) || (home && home.length > 0 ? home : "about:blank");
-    this.browserUrl = target;
-    this.browserOpen = true;
+    const current = browser.sessions[workspace ?? browser.activeKey]?.url;
+    const target = (url && url.trim()) || current || (home && home.length > 0 ? home : "about:blank");
+    return browser.open(target, workspace);
   }
 
-  /** Close the integrated browser panel (its `WebviewWindow` is destroyed). */
+  /** Close the integrated browser in the workspace on screen (its page is
+   *  destroyed; other workspaces keep theirs). */
   closeBrowser(): void {
-    this.browserOpen = false;
+    browser.close();
   }
 
   /** Toggle the review panel, keeping browser-only changes out of saved layout. */
@@ -261,7 +265,7 @@ class AppStore {
   /** Toggle the integrated browser panel (opens at the homepage/blank). */
   toggleBrowser(): void {
     if (this.browserOpen) this.closeBrowser();
-    else this.openBrowser();
+    else void this.openBrowser().catch(() => {});
   }
 
   /** Subscribe to OS dark-mode changes so the "System" theme tracks them live. */
@@ -393,18 +397,21 @@ class AppStore {
     void this.listenCloseRequested();
   }
 
-  /** Route backend `browser:open-url` events to the integrated browser tab. Fired
-   *  by `open_url` (terminal link clicks, the agent `BROWSER` shim). For the `ask`
-   *  policy the user picks in-app vs the OS browser. */
+  /** Route backend `browser:open-url` events to the integrated browser. Fired
+   *  by `open_url` (terminal link clicks, the agent `BROWSER` shim) and the
+   *  control surface; `workspace` names the workspace whose browser should load
+   *  it (absent = the one on screen). For the `ask` policy the user picks
+   *  in-app vs the OS browser. */
   private async listenOpenUrl(): Promise<void> {
+    void browser.start();
     try {
-      await listen<{ url: string; ask: boolean }>("browser:open-url", (e) => {
-        const { url, ask } = e.payload;
+      await listen<{ url: string; ask: boolean; workspace?: string | null }>("browser:open-url", (e) => {
+        const { url, ask, workspace } = e.payload;
         if (ask && !confirm(i18n.t("browser.askPrompt", { url }))) {
           void openExternal(url).catch(() => {});
           return;
         }
-        this.openBrowser(url);
+        void this.openBrowser(url, workspace ?? undefined).catch(() => {});
       });
     } catch {
       // No Tauri event bus (web preview) — nothing to route.

@@ -315,9 +315,11 @@ struct BrowserRequest {
     url: String,
 }
 
-/// `POST /browser`: route a URL through the user's browser policy (in-app tab /
-/// OS browser / prompt). Lets an agent open a link in the integrated browser via
-/// `UXNAN_BROWSER_URL` + `UXNAN_BROWSER_TOKEN`.
+/// `POST /browser`: route a URL through the user's browser policy (in-app / OS
+/// browser / prompt). Lets an agent open a link in the integrated browser via
+/// `UXNAN_BROWSER_URL` + `UXNAN_BROWSER_TOKEN`; it lands in the browser of the
+/// agent's own workspace when the request names its terminal, else in the one
+/// on screen.
 async fn route_browser<R: tauri::Runtime>(
     AxumState(ctx): AxumState<ServerCtx<R>>,
     headers: HeaderMap,
@@ -326,17 +328,25 @@ async fn route_browser<R: tauri::Runtime>(
     if !loopback_caller(&headers) {
         return StatusCode::FORBIDDEN;
     }
-    if ctx.caller(&headers).await.is_none() {
+    let Some(caller) = ctx.caller(&headers).await else {
         return StatusCode::UNAUTHORIZED;
-    }
+    };
     let Ok(payload) = serde_json::from_slice::<BrowserRequest>(&body) else {
         return StatusCode::BAD_REQUEST;
     };
     if payload.url.trim().is_empty() {
         return StatusCode::BAD_REQUEST;
     }
-    match crate::browser::route_url(&ctx.app, payload.url).await {
-        Ok(()) => StatusCode::NO_CONTENT,
+    let workspace = match caller {
+        Caller::Launch { agent_id: Some(_) } => {
+            super::services::browser::workspace_of(&ctx.app, &caller)
+                .await
+                .ok()
+        }
+        _ => None,
+    };
+    match crate::browser::route_url(&ctx.app, payload.url, workspace).await {
+        Ok(_) => StatusCode::NO_CONTENT,
         Err(_) => StatusCode::BAD_REQUEST,
     }
 }

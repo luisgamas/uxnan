@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 const source = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), 'utf8');
 
 describe('phase five work-surface batch B contracts', () => {
-  it('keeps browser chrome on shared controls without changing native-window lifecycle code', () => {
+  it('keeps browser chrome on shared controls and reports the page slot to the store', () => {
     const browser = source('BrowserPanel.svelte');
 
     expect(browser).toContain('import { Button } from "$lib/components/ui/button"');
@@ -13,7 +13,7 @@ describe('phase five work-surface batch B contracts', () => {
     expect(browser).toContain('size="icon-xs"');
     expect(browser).toContain('density="compact"');
     expect(browser).toContain('overlayCovers(r)');
-    expect(browser).toContain('browserWindowSetBounds');
+    expect(browser).toContain('browser.setSlot(bounds, showable, covered)');
     expect(browser).not.toMatch(/<button\b/);
   });
 
