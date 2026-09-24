@@ -26,7 +26,8 @@
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import { resolveBinding } from "$lib/keybindings";
+  import { isMac, resolveBinding } from "$lib/keybindings";
+  import { regionEdges, titlebarInsets } from "$lib/titlebar";
   import KeyChord from "./KeyChord.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
@@ -477,6 +478,22 @@
     dropSlot = null;
   }
   /** Whether the insertion marker sits at slot `index` of `groupId`. */
+  /** Whether the center area reaches the window's top-left / top-right corner:
+   *  it does once the panel on that side is hidden. */
+  const areaAtLeftEdge = $derived(!app.settings.leftSidebarOpen);
+  const areaAtRightEdge = $derived(!app.rightSidebarVisible && !app.browserOpen);
+
+  /** The padding a region's tab strip needs to stay clear of the window
+   *  controls: only a region that reaches a top corner of the window has any
+   *  (see `$lib/titlebar`). */
+  function stripInsets(rect: { x: number; y: number; w: number }): string {
+    const edges = regionEdges(rect);
+    return titlebarInsets(
+      { left: edges.left && areaAtLeftEdge, right: edges.right && areaAtRightEdge },
+      isMac,
+    );
+  }
+
   function isDropAt(groupId: string, index: number): boolean {
     return !!tabDrag?.dragging && dropSlot?.groupId === groupId && dropSlot.index === index;
   }
@@ -524,7 +541,15 @@
                        scrollbar is hidden (`.uxnan-scrollbar-none`) so grabbing
                        it never starts a window drag; the strip scrolls only via
                        the edge chevrons and the mouse wheel. -->
-                  <div class={cn(shell.appBar, shell.terminalStrip)} role="group" aria-label={i18n.t("terminal.tabs")}>
+                  <!-- A region reaching a top corner of the window (a panel on
+                       that side hidden) leaves the corner to the window
+                       controls, so no tab or chevron slides under them. -->
+                  <div
+                    data-tauri-drag-region
+                    class={cn(shell.appBar, shell.terminalStrip, stripInsets(g.rect))}
+                    role="group"
+                    aria-label={i18n.t("terminal.tabs")}
+                  >
                     {#if stripOverflow[g.group.id]?.hasOverflow}
                       <button
                         type="button"

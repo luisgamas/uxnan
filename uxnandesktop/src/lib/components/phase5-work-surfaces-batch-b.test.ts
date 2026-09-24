@@ -9,7 +9,7 @@ describe('phase five work-surface batch B contracts', () => {
 
     expect(browser).toContain('import { Button } from "$lib/components/ui/button"');
     expect(browser).toContain('import { Input } from "$lib/components/ui/input"');
-    expect(browser).toContain('import { focus, icon } from "$lib/design"');
+    expect(browser).toContain('import { focus, icon, shell } from "$lib/design"');
     expect(browser).toContain('size="icon-xs"');
     expect(browser).toContain('density="compact"');
     expect(browser).toContain('overlayCovers(r)');

@@ -6,6 +6,7 @@
   import { i18n } from "$lib/i18n";
   import { isMac } from "$lib/keybindings";
   import { cn } from "$lib/utils";
+  import { titlebarInsets } from "$lib/titlebar";
   import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 
   let { title, onback }: { title: string; onback: () => void } = $props();
@@ -16,7 +17,8 @@
   class={cn(
     shell.appBar,
     shell.workspaceHeader,
-    isMac ? cn(shell.macTrafficLightsInset, "pr-10") : "pr-40",
+    // A full-screen view spans the window: it reaches both top corners.
+    titlebarInsets({ left: true, right: true }, isMac),
   )}
 >
   <TooltipSimple title={i18n.t("common.close")}>

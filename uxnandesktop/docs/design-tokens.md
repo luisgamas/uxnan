@@ -227,7 +227,11 @@ fills. Top-level icon controls use the square `shell.appBarAction` or
 `shell.appBarCompactAction`; both are 40×40px. The fixed window-control overlay
 uses `shell.appBarOverlay`, which intentionally has no second hairline because
 the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
-for Settings and Automations.
+for Settings and Automations. **Every panel starts with this appbar** — the left
+sidebar, the center tab strips, the right panel, the browser panel and the
+inline GitHub view — so the top band reads as one line across the window; a
+panel with nothing to show there still renders an empty `shell.appBar` drag
+strip rather than a strip of its own height.
 
 The status bar is the same anatomy at 28px: `shell.statusBar` paints its *top*
 hairline as an overlay for the same reason the appbar does — a `border-t` lives
@@ -245,6 +249,19 @@ status-bar control a `rounded` or a height other than the bar's.
 do not replace `surface.*` on content surfaces. On macOS, the platform Tauri
 config supplies native overlay traffic lights and `shell.macTrafficLightsInset`
 keeps left-aligned content clear of them.
+
+**The window controls' corners.** The top-left corner holds the traffic lights
+(macOS) and the top-right one holds `WindowControls` (Quick Commands, plus
+minimize / maximize / close off macOS). Which bar reaches a corner depends on the
+layout — hide the left sidebar and the center tab strip becomes the top-left
+bar; hide the right panel and it becomes the top-right one — so no bar
+hard-codes a padding for them. `titlebarInsets(edges, isMac)` in
+`src/lib/titlebar.ts` returns the classes for the corners a bar reaches:
+`macTrafficLightsInset` (80px, macOS only) on the left,
+`macWindowControlsInset` (40px) or `windowControlsInset` (160px) on the right.
+`TerminalArea` asks it per region (`regionEdges` — only a region touching the
+area's top corner, with the panel on that side hidden), the inline GitHub view
+per the sidebar and browser state, and `WorkspaceAppBar` for both corners.
 
 The overlay titlebar does **not** place those buttons for us: AppKit keeps the
 position it computed for the 32px system titlebar it replaced, which reads 4px

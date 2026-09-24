@@ -44,7 +44,7 @@
   import { Input } from "$lib/components/ui/input";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { cn } from "$lib/utils";
-  import { focus, icon } from "$lib/design";
+  import { focus, icon, shell } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { isMac } from "$lib/keybindings";
   import { Icon } from "$lib/components/ui/icon";
@@ -270,11 +270,11 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="flex h-full w-full flex-col bg-background" onkeydown={onPanelKey}>
   <!-- Window-controls drag strip. When the browser is open it is the right-most
-       panel, so the min/max/close overlay (fixed top-right, rendered in
-       +page.svelte) lands over *this* panel. Mirror the right panel's top band
-       (h-9 drag strip) so those controls float over an empty strip instead of
-       covering the toolbar buttons below. -->
-  <div data-tauri-drag-region class="h-9 shrink-0 border-b border-border/60"></div>
+       panel, so the window controls (fixed top-right, `WindowControls`) land
+       over *this* panel. It is the same appbar every panel starts with — same
+       height, same hairline — so the controls float over an empty strip and the
+       top band reads as one line across the window. -->
+  <div data-tauri-drag-region class={cn(shell.appBar, shell.rightPanelHeader)}></div>
 
   <div class="flex shrink-0 items-center gap-0.5 border-b border-border/60 px-1.5 py-1">
     <TooltipSimple title={i18n.t("browser.back")}>

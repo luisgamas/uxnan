@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Hidden side panels no longer put the window controls on top of the tabs.**
+  With the left sidebar hidden, the macOS traffic lights sat over the first
+  terminal tabs; with the right panel hidden, the tab strip's scroll chevron sat
+  under the Quick Commands button (and, off macOS, under the window buttons).
+  The center tab strip now leaves the corner it reaches to the window controls —
+  only when the panel on that side is hidden, and only in the region that
+  touches that corner — and the corner stays draggable. The inline GitHub view
+  follows the same rule instead of a fixed right padding.
+- **The browser panel and the inline GitHub view start with the app's top
+  band.** Their top strip was 36px against the 40px band every other panel
+  draws, so the line under the window's top band broke at their edge.
 - **The GitHub tab of the right panel no longer squeezes the branch line.** In
   its scrolling column the one-line branch row could shrink to a few pixels and
   disappear under the repository header.

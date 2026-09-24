@@ -216,6 +216,11 @@ export const shell = {
   workspaceHeader: "flex items-center gap-2 px-3",
   /** Keeps native macOS traffic lights clear of left-aligned app chrome. */
   macTrafficLightsInset: "pl-20",
+  /** Keeps right-aligned app chrome clear of the fixed top-right controls:
+   *  Quick Commands alone on macOS (the OS draws the window buttons), Quick
+   *  Commands plus minimize/maximize/close elsewhere (`WindowControls`). */
+  macWindowControlsInset: "pr-10",
+  windowControlsInset: "pr-40",
   sidebarSectionHeader: "flex h-8 shrink-0 items-center gap-0.5 px-2.5",
   titlebar: "fixed right-0 top-0 z-50 flex select-none items-center",
   titlebarControl: "flex size-10 items-center justify-center",

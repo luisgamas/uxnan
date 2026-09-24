@@ -10,7 +10,9 @@
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
-  import { field, icon, iconButton, panel, row, tab as tabStyle, text, divider } from "$lib/design";
+  import { field, icon, iconButton, panel, row, shell, tab as tabStyle, text } from "$lib/design";
+  import { titlebarInsets } from "$lib/titlebar";
+  import { isMac } from "$lib/keybindings";
   import { toast, toastError } from "$lib/toast";
   import {
     githubPrView,
@@ -1117,11 +1119,17 @@
        (left) / refresh (right) actions live inside the section's own toolbar, not
        in a window-height header bar. -->
   <section class="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
-    <!-- Slim drag strip: lets the window be dragged and clears the floating window
-         controls' zone (right). Repo name for context; no actions. -->
+    <!-- Drag strip: the same appbar every panel starts with. It lets the window
+         be dragged and keeps clear of the window controls in whichever top
+         corner it reaches — the left one once the sidebar is hidden, the right
+         one unless the browser panel sits beside it. Repo name for context. -->
     <div
       data-tauri-drag-region
-      class={cn("flex h-9 shrink-0 items-center px-4 pr-[140px]", divider.bottom)}
+      class={cn(
+        shell.appBar,
+        "flex items-center px-4",
+        titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !app.browserOpen }, isMac),
+      )}
     >
       <span
         data-tauri-drag-region

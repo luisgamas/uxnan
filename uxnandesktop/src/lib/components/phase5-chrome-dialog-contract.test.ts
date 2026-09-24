@@ -40,8 +40,22 @@ describe("phase-five chrome and dialog contracts", () => {
     }
     const workspace = component("WorkspaceAppBar.svelte");
     expect(workspace).toContain("shell.workspaceHeader");
-    expect(workspace).toContain("shell.macTrafficLightsInset");
+    // A full-screen view spans the window, so it clears both top corners.
+    expect(workspace).toContain("titlebarInsets({ left: true, right: true }, isMac)");
     expect(workspace).toContain("class={shell.appBarAction}");
+  });
+
+  it("keeps the window controls' corners clear wherever a bar reaches them", () => {
+    // The center tab strip reaches a top corner once the panel on that side is
+    // hidden; the inline GitHub view once the sidebar hides or no browser sits
+    // beside it. Both ask the one helper instead of hard-coding a padding.
+    const terminal = component("TerminalArea.svelte");
+    expect(terminal).toContain("stripInsets(g.rect)");
+    expect(terminal).toContain("!app.settings.leftSidebarOpen");
+    expect(terminal).toContain("!app.rightSidebarVisible && !app.browserOpen");
+    const github = component("GitHub.svelte");
+    expect(github).toContain("titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !app.browserOpen }, isMac)");
+    expect(github).not.toMatch(/pr-\[\d+px\]/);
   });
 
   it("keeps every top-level appbar on one shared height", () => {
@@ -56,6 +70,8 @@ describe("phase-five chrome and dialog contracts", () => {
       "LeftSidebar.svelte",
       "TerminalArea.svelte",
       "RightPanel.svelte",
+      "BrowserPanel.svelte",
+      "GitHub.svelte",
       "WorkspaceAppBar.svelte",
     ]) {
       expect(component(name), name).toContain("shell.appBar");
