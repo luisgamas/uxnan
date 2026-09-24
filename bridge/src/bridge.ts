@@ -221,19 +221,20 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   });
   // Echo: built-in reference agent (no external CLI), useful for development.
   agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
-  // OpenCode: real agent driven via the `opencode serve` HTTP/SSE protocol (the
-  // bridge speaks HTTP to a local `opencode serve` process; approvals go through
-  // the bridge's `requestApproval` flow — see `opencode-server.ts`).
+  // OpenCode: real agent driven over a local `opencode serve` (HTTP + SSE),
+  // OpenCode 1 or 2 — the adapter reads the installed version and speaks its
+  // protocol (`opencode-v1.ts` / `opencode-v2.ts`); approvals and questions go
+  // through the bridge's shared round-trips below.
   const openCodeSettings = config.agents.opencode ?? {};
   const openCode = resolveOpenCodeBinary(openCodeSettings.binaryPath);
   const openCodeAdapter = new OpenCodeAdapter({
     binaryPath: openCode.binaryPath,
-    // Route OpenCode's `permission.asked` elicitations to the bridge's shared
-    // approval round-trip (the same one the Claude PreToolUse hook, Codex
-    // app-server, and Echo demo use).
+    // Route OpenCode's permission requests to the bridge's shared approval
+    // round-trip (the same one the Claude PreToolUse hook, Codex app-server, and
+    // Echo demo use).
     onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
-    // Route OpenCode's `question.asked` (the agent's multiple-choice tool) to
-    // the phone's question card and back.
+    // Route OpenCode's questions (the agent's multiple-choice tool; a form on
+    // OpenCode 2) to the phone's question card and back.
     onQuestionRequest: (threadId, questions) => agentManager.requestQuestion(threadId, questions),
     ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
   });
@@ -393,8 +394,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   );
   // Agent-owned history is consulted on every idle `turn/list` so work written
   // from another client attached to the same native session converges back into
-  // Uxnan. OpenCode is read through its official serve API (current releases
-  // use SQLite); the other supported agents use their documented local logs.
+  // Uxnan. OpenCode is read through its own server's history API, normalized for
+  // the installed version (current releases use SQLite); the other supported
+  // agents use their documented local logs.
   const sessionHistory = new SessionHistoryReader({
     openCodeMessages: (sessionId, cwd) => openCodeAdapter.readSessionMessages(sessionId, cwd),
   });

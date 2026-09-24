@@ -240,7 +240,7 @@ interface AgentCapabilities {
 // contrato vigente es el de arriba.
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
-//   ✅ opencode  (default; `opencode serve` HTTP/SSE; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
+//   ✅ opencode  (default; `opencode serve` HTTP/SSE, OpenCode 1 y 2: un cliente de protocolo por version mayor elegido por `opencode --version`, 2.x con password por proceso y rutas `/api/*`; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation)
 //   ✅ pi-agent  (`pi --mode rpc`, UN proceso residente por thread; `--session-id` con el id leido de `get_state`; `steer` en turno; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
@@ -2043,7 +2043,7 @@ another client attached to the same native session converge into Uxnan.
 | Codex | `~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl` | Codex Desktop/CLI completed turns |
 | Claude Code | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | completed CLI turns |
 | pi | `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl` | completed CLI turns |
-| OpenCode | local `opencode serve` `GET /session/:id/message`; legacy JSON-store fallback | OpenCode Desktop/CLI completed turns across current SQLite and older installs |
+| OpenCode | local `opencode serve`: `GET /session/:id/message` (1.x) or `GET /api/session/:id/message?order=asc` following its cursor (2.x), normalized by the version's protocol client; legacy JSON-store fallback | OpenCode Desktop/CLI completed turns across current SQLite and older installs |
 | Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP session turns |
 | Grok | `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl` | ACP turns closed by `turn_completed` only |
 | Antigravity | none | unsupported: `agy` has no history/export API and its SQLite step payloads are opaque |
@@ -2321,7 +2321,7 @@ Que agentes pueden, y por que (verificado contra las CLI reales):
 | Agente | ¿Steering? | Mecanismo |
 |---|---|---|
 | **Claude Code** | Si | `-p --input-format stream-json`, mensaje por stdin abierto |
-| **OpenCode** | Si | otro `prompt_async` sobre la sesion ya ocupada |
+| **OpenCode** | Si | 1.x: otro `prompt_async` sobre la sesion ya ocupada; 2.x: `POST /api/session/:id/prompt` con `delivery: "steer"` |
 | **Codex** | Si | app-server `turn/steer { threadId, expectedTurnId, input }` |
 | **pi** | Si | comando RPC `steer`, drenado por su bucle de agente en el siguiente limite |
 | **Antigravity** | No | `--input-format stream-json` "runs a turn for each" mensaje de stdin: un segundo mensaje es el siguiente turno, no un steer; la CLI no tiene mensaje de steer |
@@ -2385,7 +2385,7 @@ Un adaptador decide cuando el agente termino, y hay dos formas:
 
 | Termina por | Adaptadores | ¿La CLI puede emitir despues? |
 |---|---|---|
-| **Evento de protocolo** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`stopReason`), Grok / Zero (respuesta ACP a `session/prompt`) | **Si** — el proceso sigue vivo cuando llega el evento |
+| **Evento de protocolo** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle` en 1.x, `session.execution.succeeded` en 2.x), Pi (`stopReason`), Grok / Zero (respuesta ACP a `session/prompt`) | **Si** — el proceso sigue vivo cuando llega el evento |
 | **Cierre del proceso** | Antigravity | No — el turno no puede terminar antes que el proceso |
 
 La primera fila es la peligrosa, y **Claude Code lo demuestra**: cuando el modelo

@@ -4,6 +4,40 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **OpenCode 2 works from the phone, and OpenCode 1 keeps working.** OpenCode 2
+  kept `opencode serve` but replaced its whole API — a required password,
+  `/api/*` routes, a new event stream, questions as forms, the model per session,
+  history in a new shape — so a thread on OpenCode 2 could not even start. The
+  bridge now reads `opencode --version` and speaks the installed version's
+  protocol: turns with streaming text and reasoning, tool blocks, usage with the
+  context window, approvals, questions, mid-turn messages, cancel, history,
+  model lists and titles, on 1.x and 2.x alike (validated live on 1.18.32 and
+  2.0.16). On 2.x a conversation title runs `opencode run --standalone`, so it
+  never starts OpenCode's shared background service.
+
+### Changed
+
+- **One OpenCode adapter over a protocol client per version.** The adapter now
+  speaks a version-neutral contract (`opencode-protocol.ts`); `opencode-v1.ts`
+  and `opencode-v2.ts` translate each protocol into it, over a shared
+  `opencode-transport.ts`, and `opencode-version.ts` picks one. The V1 history
+  parser moved out of `session-history.ts` into the V1 client, which now hands
+  the reader normalized messages. `opencode-server.ts` and its exports
+  (`OpenCodeServer`, `parseSseRecord`, `OpenCodePermissionRule`,
+  `OpenCodePromptBody`, `OpenCodeServerEvent`) are replaced by the new modules'.
+
+### Fixed
+
+- **A second OpenCode project no longer fails to start.** Every OpenCode 1
+  release checked (1.17.20 – 1.18.32) ignores `--port 0` and binds 4096, so a
+  second project's server — or anything else on 4096 — died with "opencode serve
+  exited before listening". The bridge now picks a free loopback port itself.
+- **The context percentage survives OpenCode 1's cold start.** Its first
+  `opencode models` on a fresh install prints nothing while it downloads the
+  catalog, and the adapter settled on that for the whole session; it now retries
+  on a later turn until a load brings a context window.
 
 ## [0.0.26-alpha.20260922] - 20260922
 ### Added

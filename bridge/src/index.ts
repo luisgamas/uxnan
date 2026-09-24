@@ -146,23 +146,45 @@ export {
 } from './adapters/resolve-antigravity.js';
 export {
   OpenCodeAdapter,
-  parseModelList,
-  parseOpenCodeModelWindows,
-  openCodeUsageTokens,
-  splitOpenCodeModel,
   decisionToPermissionReply,
   type OpenCodeAdapterOptions,
 } from './adapters/opencode-adapter.js';
 export {
-  OpenCodeServer,
-  parseSseRecord,
-  parseServeUrl,
+  openCodeUsageTokens,
+  permissionPolicyFor,
+  splitOpenCodeModel,
   type IOpenCodeServer,
-  type OpenCodeServerEvent,
-  type OpenCodePermissionRule,
-  type OpenCodePromptBody,
+  type OpenCodeEvent,
+  type OpenCodeHistoryMessage,
+  type OpenCodeModel,
+  type OpenCodeModelRef,
+  type OpenCodePermissionPolicy,
+  type OpenCodePrompt,
+  type OpenCodeProtocolVersion,
   type PermissionReply,
-} from './adapters/opencode-server.js';
+} from './adapters/opencode-protocol.js';
+export { freeLoopbackPort, parseServeUrl, parseSseData } from './adapters/opencode-transport.js';
+export {
+  OpenCodeV1Server,
+  OpenCodeV1Translator,
+  openCodeV1History,
+  parseModelList,
+  parseOpenCodeModelWindows,
+} from './adapters/opencode-v1.js';
+export {
+  OpenCodeV2Server,
+  OpenCodeV2Translator,
+  formAnswer,
+  openCodeV2History,
+  openCodeV2Models,
+} from './adapters/opencode-v2.js';
+export {
+  createOpenCodeServer,
+  detectOpenCodeMajor,
+  openCodeRunArgs,
+  parseOpenCodeMajor,
+  protocolFor,
+} from './adapters/opencode-version.js';
 export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
 export {
   ZeroAdapter,
