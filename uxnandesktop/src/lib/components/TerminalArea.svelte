@@ -41,9 +41,7 @@
   import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
   import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
   import ChatPane from "$lib/components/chat/ChatPane.svelte";
-  import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
-  import { bridgeAgentLogo } from "$lib/bridge/agents";
   import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import LauncherMenu from "./LauncherMenu.svelte";
@@ -654,9 +652,12 @@
                             </TooltipSimple>
                           {/if}
                         {:else if t.kind === "chat"}
-                          {@const chatAgent = t.threadId ? chat.threads.get(t.threadId)?.agentId : t.agentId}
-                          {#if bridgeAgentLogo(chatAgent)}
-                            <AgentLogo logo={bridgeAgentLogo(chatAgent)} class={cn(icon.status, "shrink-0")} />
+                          <!-- Same state glyph as a terminal agent's tab while the
+                               chat's agent works or waits on you; the chat mark
+                               otherwise. -->
+                          {@const chatStatus = chat.peekConversation(t.threadId)?.displayStatus ?? "idle"}
+                          {#if chatStatus !== "idle"}
+                            <AgentStatusIndicator status={chatStatus} />
                           {:else}
                             <Icon icon={BubbleChatIcon} class={cn(icon.decorative, "shrink-0")} />
                           {/if}

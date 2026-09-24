@@ -1,5 +1,6 @@
 <script lang="ts">
-  // Searchable model picker for Settings → AI commit, built as the idiomatic
+  // The app's one searchable model picker — Settings → AI commit, GitHub PR
+  // drafts, orchestration steps and the chat tab — built as the idiomatic
   // shadcn-svelte Combobox (Popover + Command). OpenCode/Pi can report hundreds
   // of `provider/model` ids, so Command's built-in filtering + a scrollable list
   // keep it usable; the trigger stays `w-56` to match the sibling Select fields.
@@ -20,6 +21,8 @@
     loading = false,
     onSelect,
     triggerClass = "w-56",
+    size = "default",
+    disabled = false,
   }: {
     /** Models the agent reports (Default is added by this component). */
     models: AgentModel[];
@@ -30,6 +33,9 @@
     onSelect: (id: string) => void;
     /** Trigger width/size (defaults to the Settings sizing). */
     triggerClass?: string;
+    /** Control density: `default` (36px, forms) or `sm` (32px, a pane header). */
+    size?: "default" | "sm";
+    disabled?: boolean;
   } = $props();
 
   // Command needs a non-empty value for the Default item; map "" ↔ this sentinel.
@@ -70,6 +76,8 @@
       <Button
         {...props}
         variant="outline"
+        {size}
+        {disabled}
         role="combobox"
         aria-expanded={open}
         class={cn(triggerClass, "justify-between font-normal")}

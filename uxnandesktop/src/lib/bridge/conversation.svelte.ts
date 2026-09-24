@@ -126,6 +126,28 @@ export class Conversation {
   pending = $state<PendingSend[]>([]);
 
   running = $derived(this.activeTurnId !== null);
+  /** Approvals and questions of the running turn nobody has answered yet. */
+  pendingInput = $derived.by(() => {
+    const turn = this.activeTurnId ? this.turns.find((t) => t.id === this.activeTurnId) : undefined;
+    const blocks = assistantOf(turn)?.blocks ?? [];
+    let open = 0;
+    for (const raw of blocks) {
+      const block = record(raw);
+      const req = block.request && typeof block.request === 'object' ? record(block.request) : block;
+      if (block.type === 'approval' && typeof req.approvalId === 'string') {
+        if (!this.approvals[req.approvalId]) open += 1;
+      } else if (block.type === 'question' && typeof req.questionId === 'string') {
+        if (!this.questions[req.questionId]) open += 1;
+      }
+    }
+    return open;
+  });
+  /** What the chat's tab chip shows — the same states a terminal agent's
+   *  indicator uses: `blocked` while the agent waits on the user, `working`
+   *  while it runs, `idle` otherwise. */
+  displayStatus = $derived<'blocked' | 'working' | 'idle'>(
+    this.pendingInput > 0 ? 'blocked' : this.running ? 'working' : 'idle',
+  );
   /** Offset of the oldest loaded turn in the thread; `0` = everything loaded. */
   oldestOffset = $state(0);
   hasOlder = $derived(this.oldestOffset > 0);

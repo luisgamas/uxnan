@@ -69,7 +69,9 @@ describe('ChatStore', () => {
 
   it('routes timeline notifications to the open conversation only', () => {
     const { store } = harness();
+    expect(store.peekConversation('t1')).toBeUndefined();
     const open = store.conversation('t1');
+    expect(store.peekConversation('t1')).toBe(open);
     store.apply({
       method: 'stream/queue/updated',
       params: { threadId: 't1', queuedTurnIds: ['q'], paused: false },

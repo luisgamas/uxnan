@@ -280,6 +280,23 @@ change `x` and it has to stay inside `macTrafficLightsInset` (80px), which the
 14px buttons at 23px apart currently reach 72px into. The chrome contract test
 asserts both.
 
+### Panes (`pane`) and chat (`chat`)
+
+| Token | Use |
+|---|---|
+| `pane.root` / `pane.header` | Any center-area pane that is not a terminal — file, commit, chat: `bg-background` root and the 36px header band (`h-9`, hairline below). |
+| `chat.column` | The centered reading column (`max-w-3xl`) the chat timeline and composer share. |
+| `chat.userBubble` / `chat.queuedBubble` | The user's message (muted fill) and a queued follow-up (same shape, dashed outline). |
+| `chat.activity` | One line of the agent's work log — a command, a changed file, a tool call — at the 32px row minimum. |
+| `chat.card` | An interactive card inside a turn: an approval, a question, a plan. |
+| `chat.output` | Captured output under an expanded activity line. |
+
+The chat composes these with the shared primitives rather than drawing its own:
+`InputGroup` + `Textarea` for the composer, `AiModelPicker` for the model,
+`Combobox` for the agent, `Select` for the access mode, `Collapsible` for the
+work log, `DiffView` for changed files, `Badge` for small states and
+`AgentStatusIndicator` on its tab chip.
+
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes
 on top of the base.

@@ -13,7 +13,7 @@
   import { isImagePath } from "$lib/diff";
   import { filePreviewKind } from "$lib/filePreview";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, pane, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Segmented } from "$lib/components/ui/segmented";
@@ -91,8 +91,8 @@
   }
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-background">
-  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
+<div class={pane.root}>
+  <header class={pane.header}>
     <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
     <TooltipSimple title={tab.path}>
       {#snippet children(tp)}

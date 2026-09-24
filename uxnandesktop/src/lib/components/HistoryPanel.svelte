@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { relativeTime as relativeTimeFrom } from "$lib/relativeTime";
   // History tab: the active worktree's commit log, with an optional branch graph
   // gutter (colored lanes for branches/merges) drawn to the left of each commit.
   // Clicking a commit expands it to its changed-file list; clicking a file opens
@@ -132,23 +133,7 @@
   }
 
   // Localized, compact relative time (e.g. "2 days ago"), via the platform.
-  const rtf = $derived(new Intl.RelativeTimeFormat(i18n.locale, { numeric: "auto" }));
-  function relativeTime(unixSeconds: number): string {
-    const diff = unixSeconds * 1000 - Date.now();
-    const abs = Math.abs(diff);
-    const min = 60_000,
-      hour = 60 * min,
-      day = 24 * hour,
-      week = 7 * day,
-      month = 30 * day,
-      year = 365 * day;
-    if (abs < hour) return rtf.format(Math.round(diff / min), "minute");
-    if (abs < day) return rtf.format(Math.round(diff / hour), "hour");
-    if (abs < week) return rtf.format(Math.round(diff / day), "day");
-    if (abs < month) return rtf.format(Math.round(diff / week), "week");
-    if (abs < year) return rtf.format(Math.round(diff / month), "month");
-    return rtf.format(Math.round(diff / year), "year");
-  }
+  const relativeTime = (unixSeconds: number) => relativeTimeFrom(unixSeconds * 1000, i18n.locale);
   const dtf = $derived(
     new Intl.DateTimeFormat(i18n.locale, { dateStyle: "medium", timeStyle: "short" }),
   );

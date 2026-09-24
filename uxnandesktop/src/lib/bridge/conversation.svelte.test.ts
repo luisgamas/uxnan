@@ -146,6 +146,27 @@ describe('Conversation', () => {
     expect(c.approvals.ap2?.decision).toBe('reject');
   });
 
+  it('reports working, then blocked on an open approval, then idle', () => {
+    const { c } = conversation();
+    expect(c.displayStatus).toBe('idle');
+    c.apply(note('stream/turn/created', { turn: turn('x', 'go', 'pending') }));
+    c.apply(note('stream/turn/started', { turnId: 'x' }));
+    expect(c.displayStatus).toBe('working');
+    c.apply(
+      note('stream/content/block', {
+        turnId: 'x',
+        messageId: 'x-a',
+        content: { type: 'approval', approvalId: 'ap', action: 'Allow Bash' },
+      }),
+    );
+    expect(c.pendingInput).toBe(1);
+    expect(c.displayStatus).toBe('blocked');
+    c.apply(note('stream/approval/resolved', { approvalId: 'ap', decision: 'approve' }));
+    expect(c.displayStatus).toBe('working');
+    c.apply(note('stream/turn/aborted', { turnId: 'x' }));
+    expect(c.displayStatus).toBe('idle');
+  });
+
   it('pages back with an offset cursor and never duplicates a turn', async () => {
     const call = vi.fn(async () => ({ turns: [turn('o1', 'old'), turn('a', 'dup')], total: 40 }) as never);
     const { c } = conversation(call);

@@ -7,11 +7,12 @@
   import ChatBridgeGate from "./ChatBridgeGate.svelte";
   import ChatStart from "./ChatStart.svelte";
   import ChatConversation from "./ChatConversation.svelte";
+  import { pane } from "$lib/design";
 
   let { tab, active }: { tab: ChatTab; active: boolean } = $props();
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-[var(--ux-panel)] text-foreground">
+<div class={pane.root}>
   {#if !bridge.connected}
     <ChatBridgeGate />
   {:else if !tab.threadId}

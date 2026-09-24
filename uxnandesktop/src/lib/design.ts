@@ -357,3 +357,31 @@ export const tab = {
   activeLine: "border-foreground text-foreground",
   inactiveLine: "text-muted-foreground hover:text-foreground",
 } as const;
+
+/** A center-area pane that is not a terminal — a file, a commit, a chat: its
+ *  root and its 36px header band (icon, title, actions over one hairline). */
+export const pane = {
+  root: "flex h-full min-h-0 flex-col bg-background",
+  header: "flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2",
+} as const;
+
+/** Chat tab roles (a conversation the Uxnan bridge drives). */
+export const chat = {
+  /** The reading column every chat surface centers on. */
+  column: "mx-auto w-full max-w-3xl px-5",
+  /** The user's message: a quiet muted bubble, right-aligned by its row. */
+  userBubble:
+    "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-[13px] leading-5",
+  /** A queued follow-up: the same bubble, outlined instead of filled. */
+  queuedBubble:
+    "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-dashed border-border px-3.5 py-2 text-[13px] leading-5 text-muted-foreground",
+  /** One activity line of the agent's work log (a command, a diff, a tool). */
+  activity:
+    "flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground",
+  /** An interactive card inside a turn (an approval, a question, a plan). */
+  card: "rounded-lg border border-border/60 bg-card p-3 shadow-xs",
+  /** Captured output under an expanded activity line. */
+  output:
+    "uxnan-scroll max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 font-mono text-[11px] leading-4",
+} as const;
+

@@ -5,7 +5,7 @@
   // loaded against the commit's own worktree, independent of the right panel.
   import type { CommitViewerState } from "$lib/state/git.svelte";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, pane, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import DiffView from "./DiffView.svelte";
@@ -18,8 +18,8 @@
   const fileName = $derived(state.file ? (state.file.split("/").pop() ?? state.file) : null);
 </script>
 
-<div class="flex h-full min-h-0 flex-col bg-background">
-  <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
+<div class={pane.root}>
+  <header class={pane.header}>
     {#if fileName}
       <Icon icon={FileDiffIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       <TooltipSimple title={state.file ?? ""}>

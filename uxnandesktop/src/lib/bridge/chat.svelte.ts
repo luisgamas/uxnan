@@ -52,7 +52,7 @@ export class ChatStore {
   threadsLoaded = $state(false);
   agents = $state<AgentDescriptor[]>([]);
   #models = new SvelteMap<string, AgentModel[]>();
-  #conversations = new Map<string, Conversation>();
+  #conversations = new SvelteMap<string, Conversation>();
   #started = false;
 
   constructor(client: BridgeClientStore) {
@@ -150,6 +150,12 @@ export class ChatStore {
       if (this.#client.connected) void conversation.load();
     }
     return conversation;
+  }
+
+  /** The live view of a thread when one is already open — never creates or
+   *  loads one, so a tab chip can read it while it renders. */
+  peekConversation(threadId: string | undefined): Conversation | undefined {
+    return threadId ? this.#conversations.get(threadId) : undefined;
   }
 
   /** Stop tracking a thread no tab shows anymore. */
