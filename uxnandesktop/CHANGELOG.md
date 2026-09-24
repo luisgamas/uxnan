@@ -125,10 +125,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   other. Codex stops asking you to review its hooks, too: its trust hash covers
   the command, and the command no longer moves.
 
-  If you wired an agent by hand with the generic wrapper, its command moved
-  with the scripts: the path to copy is now `~/.uxnan/hooks/uxnan-hook-wrapper.*`
-  (Settings → Agents → Hooks shows it, and `docs/agent-hooks.md` has the
-  per-OS form).
+  **An agent you wired by hand keeps working.** The generic wrapper's path is
+  that agent's *launch command*, so moving the scripts would have left it
+  naming a file that is gone — the agent would not start at all. The upgrade
+  rewrites those commands (and arguments) to the new location once, on the
+  first launch, and saves them, so what Settings → Agents shows is what runs.
+  Only paths inside the app's own hooks folder that name one of its reporters
+  are touched; a copy you made somewhere of your own is yours and is left
+  alone.
 
   Two builds can ship different reporters, so the shared directory records the
   version that wrote it and an older build never overwrites a newer one's
