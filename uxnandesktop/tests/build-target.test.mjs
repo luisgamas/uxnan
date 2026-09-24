@@ -14,7 +14,6 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -55,7 +54,11 @@ describe("xterm.js as the app ships it", () => {
   beforeAll(async () => {
     const entry = require.resolve("@xterm/xterm/lib/xterm.mjs", { paths: [path.resolve(HERE, "..")] });
     const code = await shipped(fs.readFileSync(entry, "utf8"), "xterm.mjs");
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxnan-xterm-"));
+    // Inside the project, not the OS temp dir: on Windows that is an 8.3 short
+    // path (`RUNNER~1`), whose `~` Vite URL-encodes and then cannot load.
+    const cache = path.resolve(HERE, "..", "node_modules", ".cache");
+    fs.mkdirSync(cache, { recursive: true });
+    dir = fs.mkdtempSync(path.join(cache, "uxnan-xterm-"));
     const file = path.join(dir, "xterm.min.mjs");
     fs.writeFileSync(file, code);
     ({ Terminal } = await import(/* @vite-ignore */ pathToFileURL(file).href));
