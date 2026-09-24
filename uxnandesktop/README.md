@@ -305,9 +305,12 @@ The full state is recorded honestly, per platform and per feature, in the
   you can also [build it yourself](docs/build.md), and issues/PRs that improve the
   macOS installers (or help non-technical users) are very welcome.
 
-The only remaining roadmap phase is **Phase 6 (bridge integration / mobile
-pairing)**, which is *optional for standalone use* — required only if you want the
-ADE to double as the mobile bridge (otherwise install `uxnan-bridge` separately).
+The remaining roadmap phase is **Phase 6 (bridge integration / mobile pairing)**,
+which is *optional for standalone use*. Its first half is in: with `uxnan-bridge`
+installed, **chat tabs** run agent conversations on the bridge next to your
+terminals — the same conversations Uxnan Mobile shows, live in both
+([docs/chat.md](docs/chat.md)). Packaging the bridge inside the ADE and pairing
+phones from it are still to come.
 The detailed implementation status (phases, test counts, pre-release gaps) lives
 in [`FOR-DEV.md`](FOR-DEV.md).
 
@@ -328,6 +331,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[chat tabs & the bridge connection](./docs/chat.md) ·
 [remote hosts over SSH](./docs/remote-hosts.md) ·
 [worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·

@@ -1,0 +1,115 @@
+# Chat tabs and the bridge connection
+
+A **chat tab** shows a conversation with an agent that the **Uxnan bridge**
+drives — the same conversations Uxnan Mobile shows. Both apps are clients of
+one owner: whatever you do in one (send a message, stop a turn, answer an
+approval, rename, switch the model) shows up in the other as it happens.
+
+Terminals are unchanged: an agent launched in a terminal is still its own TUI,
+driven by you through the PTY. A chat is the other way to run an agent — as a
+conversation you can take with you.
+
+Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a-system-architecture.md)
+§5.8.15 (the local control channel) and §5.8.16 (how clients converge);
+[`architecture/02e-bridge-integration.md`](../architecture/02e-bridge-integration.md) §3.5.
+
+## Connecting to the bridge
+
+**Settings → Bridge & mobile → Connection** (`settings.bridge.mode`):
+
+| Mode | What the app does |
+|---|---|
+| **Off** (default) | Nothing: no socket, no file read, no timer, no process. Chat tabs say the bridge is off and offer *Connect*. |
+| **Use a running bridge** (`attach`) | Connects to a bridge you already run — as a service (`uxnan-bridge install-service`) or with `uxnan-bridge start` in a terminal. |
+| **Start the bridge when needed** (`managed`) | Same, but when none is running it starts `uxnan-bridge start` itself (resolved on `PATH`, like any agent CLI) and stops it — through `uxnan-bridge stop`, so the bridge releases its lock cleanly — when the app exits. A bridge you started yourself is never stopped. |
+
+The bridge must be installed (`npm install -g uxnan-bridge`); the app never
+installs it for you. The status row names the state and, when the bridge is
+unreachable, why and what fixes it:
+
+| Status | Meaning |
+|---|---|
+| Connected — bridge `x.y.z` | Live. "started by Uxnan" when `managed` launched it. |
+| No bridge is running | Nothing serves the local channel. Start it, or switch to *Start the bridge when needed*. A bridge started with `localControlEnabled: false` in `~/.uxnan/daemon-config.json` also reads this way. |
+| Not installed | `managed` found no `uxnan-bridge` on `PATH`. |
+| Refused this app | A bridge answered but rejected the token — typically another user's bridge, or a stale file. |
+| Could not connect | Anything else; the detail line says what. |
+
+While connected, the section also lists the phones connected to the bridge.
+Pairing a phone is still done from a terminal (`uxnan-bridge qr` or
+`uxnan-bridge code`).
+
+### How the connection works
+
+The bridge publishes `~/.uxnan/local-control.json` — its loopback port and a
+token minted fresh at every start, owner-only (`0600`). The backend
+(`src-tauri/src/bridgeclient/`) reads it, opens
+`ws://127.0.0.1:<port>/control?client=desktop` with the token, and from then on
+calls the bridge's JSON-RPC methods and receives its `stream/*` notifications
+exactly as a phone does. The token never leaves the Rust side: the window only
+sees the status (`bridge:status`), the notifications (`bridge:notification`)
+and call results (`bridge_call`). After a reconnect the bridge replays what the
+app missed, or says it cannot (a restart), and the app re-reads what it shows.
+
+## Opening a chat
+
+Chats are offered for folders on **this** machine (the bridge runs here, so a
+folder on an SSH host is not one it can work in):
+
+- the tab strip's **+** → *Chat* → **New chat**, plus the folder's three newest
+  conversations (one started on the phone included);
+- a worktree row's right-click → *Launch agent* → **New chat**;
+- the project card's launcher dialog → *What to open* → **Chat**.
+
+## A new chat
+
+Pick the **agent** — it stays with the conversation, because another CLI cannot
+continue a native session — and, optionally, a **model** (the composer's model
+picker; *Default model* lets the agent decide). The first message starts the
+thread in the tab's folder; the thread is titled from that message until the
+agent writes a better name.
+
+The same screen lists **Continue a conversation**: every conversation the bridge
+holds for this folder, whichever app started it.
+
+Agents offered are the bridge's (`agent/list`), not the desktop's agent
+profiles: a chat runs on the bridge's drive surface for each CLI
+(`bridge/docs/agents.md`), so availability is what the bridge resolves.
+
+## In a chat
+
+- **Header**: the agent (fixed), the model (switchable — every client sees the
+  change), the access mode (*Ask first* / *Auto-approve edits* / *Full access*;
+  new chats start at *Full access*, like new chats on the phone), and *Rename*
+  (renames the thread, so the phone shows the same name) / *Archive*.
+- **Timeline**: the agent's answer in the order it produced it — prose, and
+  inline the commands it ran, the files it changed (+/− counts, expandable), tool
+  calls, plans, subagents, warnings. *Thinking* folds away. Scrolling to the top
+  loads older turns.
+- **Approvals and questions** are answered in place. One answered on the phone
+  (or timed out) settles here too; one from a turn that already ended never
+  offers its buttons again.
+- **Composer**: Enter sends, Shift+Enter breaks the line. While the agent works
+  the button stops it; a message sent meanwhile is queued behind the running
+  turn (or handed to it, on agents that take input mid-turn). A stopped or failed
+  turn pauses the queue: *Resume* or *Discard*. Per-model knobs (reasoning
+  effort, …) appear next to the model when the model has any.
+- **Context used** shows under the composer when the agent reports it.
+
+## For developers
+
+- Stores: `src/lib/bridge/client.svelte.ts` (connection + call + notification
+  fan-out), `chat.svelte.ts` (thread list, actions), `conversation.svelte.ts`
+  (one thread's timeline reducer). Components: `src/lib/components/chat/`.
+- The conversation model is the bridge's own, imported **type-only** from
+  `shared/src` through the `$shared` alias (`svelte.config.js`): no copy that can
+  drift.
+- A chat tab (`ChatTab` in `terminals.svelte.ts`) persists only `cwd`,
+  `threadId` and the preselected `agentId`.
+- Tests: `src/lib/bridge/*.svelte.test.ts`, `src/lib/state/chatTabs.svelte.test.ts`,
+  `src/lib/components/chat/ChatBlock.svelte.test.ts`, and in Rust
+  `cargo test bridgeclient` — which includes a contract test against the real
+  built bridge (`bridge/dist`; skipped when it is not built).
+- To iterate on the chat UI in a plain browser (`npm run dev`) there is no
+  backend, so a chat tab shows the "bridge is off" state; drive the real flow
+  with `npm run tauri dev` and a running bridge.

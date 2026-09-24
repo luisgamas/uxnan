@@ -113,6 +113,34 @@ VPN on the phone and want an internet-reachable fallback. **To turn it on:**
 3. Re-pair (or regenerate the QR): it now carries your `relay` as a fallback after
    the direct `hosts`.
 
+## 4. Uxnan Desktop on the same machine (local control channel)
+
+Uxnan Desktop does not pair like a phone. When the bridge runs
+(`uxnan-bridge start`, or as a service) it also opens a **loopback-only**
+WebSocket on a free port and writes how to reach it to
+`~/.uxnan/local-control.json`:
+
+```json
+{ "protocol": 1, "port": 51234, "token": "…", "pid": 4242, "bridgeVersion": "…", "instanceId": "…" }
+```
+
+- The file is the credential: owner-only (`0600`; on Windows the profile ACL),
+  written atomically, a **fresh token every start**, removed on stop.
+- A connection must come from loopback, carry **no `Origin` header** (every
+  browser sends one — no web page can reach the socket), and present
+  `Authorization: Bearer <token>`. URL: `/control?client=desktop`.
+- The desktop is served by the **same** JSON-RPC router as the phones and gets
+  every `stream/*` notification with its own `seq` (replayed after a reconnect),
+  so a conversation started on either shows up on both
+  (architecture/02a §5.8.15–§5.8.16).
+- It never leaves this machine and is not the E2EE protocol: it is a local
+  route with a token, the same trust model as the agent approval hook.
+- `bridge/status` reports `features.localControl: true` while it listens.
+  Turn it off with `"localControlEnabled": false` in `~/.uxnan/daemon-config.json`.
+
+In the desktop: **Settings → Bridge & mobile** (see
+`uxnandesktop/docs/chat.md`).
+
 ## Notes
 
 - **First-time pairing is time-boxed (LAN/Tailscale).** Enrollment of a *new*

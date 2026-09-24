@@ -16,6 +16,7 @@ file is optional; create it to override. Defaults live in
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. On multi-homed hosts, the bridge joins and emits on every eligible advertised IPv4 rather than trusting the OS multicast route. Best-effort — an unavailable UDP 5353 interface is logged and pairing still works by QR or by typing the host. Discovery never advertises the pairing code and never creates trust. |
+| `localControlEnabled` | `true` | Serve the **local control channel** Uxnan Desktop uses on this machine: a WebSocket bound to `127.0.0.1` only, on a free port, authorized by a token written with the port to `~/.uxnan/local-control.json` (owner-only, fresh every start, removed on stop). Only `uxnan-bridge start` opens it. Set `false` to refuse the desktop entirely. See [connectivity](connectivity.md#4-uxnan-desktop-on-the-same-machine-local-control-channel). |
 | `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
 | `maxConcurrentSessions` | `1` | Concurrent phone sessions. |
 | `sessionTimeoutMinutes` | `30` | Idle session timeout. |

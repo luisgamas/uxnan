@@ -28,11 +28,13 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 971 Rust tests (894 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins), **chat tabs that drive the Uxnan bridge's conversations next to
+the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
+`docs/chat.md`). 981 Rust tests (904 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,437 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,408 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -42,8 +44,14 @@ windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet valid
 on real hardware**. **Every platform claim now lives in the platform support
 matrix** (`tests/platform-support.json` + `docs/platform-support.md`, checked by
 the suite and gating releases): Windows announces `smoke`, macOS (both arches)
-and Linux announce `builds`. **Phase 6 (embedded bridge / mobile pairing) is NOT
-started.**
+and Linux announce `builds`. **Phase 6 (bridge integration) is PARTIAL:** the
+desktop is a **client** of an installed bridge over its loopback local control
+channel (modes off / attach / managed, `docs/chat.md`), and chat tabs show and
+drive the bridge's threads live alongside the phone. **Pending the maintainer's
+visual review** of the chat UI; still left: packaging the bridge as a sidecar
+(plan 007), pairing and device management from the desktop (plan 008),
+publishing the desktop's projects to the bridge (plan 009), and the mirror /
+hand-off of terminal-launched sessions (plan 030 stages D–E).
 
 **Built (DONE), in detail:**
 
@@ -1702,7 +1710,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 971 Rust + 1,437 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 981 Rust + 1,408 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

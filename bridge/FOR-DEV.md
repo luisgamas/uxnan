@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 692, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 717, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,17 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **Several clients at once** (plans 029/030; architecture/02a §5.8.15–§5.8.16) —
+  a loopback-only **local control channel** for Uxnan Desktop
+  (`transport/local-control-server.ts`, discovery file
+  `~/.uxnan/local-control.json`, config `localControlEnabled`) that serves the
+  same router and registers the desktop as one more receiver with its own `seq`
+  and replay; and every change a second client needs is broadcast —
+  `stream/thread/updated|deleted`, `stream/turn/created` (with the sender's
+  `clientTurnId` echo), `stream/approval|question/resolved`. Covered end to end
+  by `test/transport/local-control.test.ts`, `test/agents/multi-client-sync.test.ts`
+  and, from the other side, the desktop's `bridgeclient` contract test against
+  this built bridge.
 - **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
   handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
   background reconnect loop; stable pairing session; mDNS discovery
