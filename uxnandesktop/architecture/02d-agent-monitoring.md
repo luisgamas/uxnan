@@ -623,8 +623,10 @@ forma de CLI contra el arbol real de subcomandos de clap.
 **Grupos de capacidad (versionados y desconectables en `settings.control`):**
 `read` (`status` — que ademas informa del **presupuesto** que enfrenta un agente
 nuevo aqui: concurrencia, ranuras vivas, memoria minima exigida, memoria libre y
-el tope advisory por agente, leidos de donde los leen las propias puertas
-(`automations::runner::limits` + `budget::live`), asi que un coordinador puede
+el tope advisory por agente: la misma regla que aplican las propias puertas
+(`automations::runner::limits_from`) sobre los ajustes que este proceso ya
+tiene en memoria, mas `budget::live` para las ranuras que comparten todos los
+procesos — responder `status` no relee el fichero de estado —, asi que un coordinador puede
 decidir cuantos workers caben en vez de lanzarlos a encolarse —,
 `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`,
 `agent/list`, `run/list|show`, `automation/list|show` — el detalle completo de una
