@@ -270,7 +270,7 @@
         "macos": "verified",
         "linux": "untested"
       },
-      "gaps": "The page script (src-tauri/src/browser/page.js) is exercised only against a real page, by hand and by a real agent on macOS — there is no fixture journey for snapshot/click/type yet. The page capture has run on macOS only; its Windows and Linux halves only build."
+      "gaps": "The page script (src-tauri/src/browser/page.js) is exercised against a real page by hand and by a real agent on macOS, and the approval bar was walked by the maintainer on a macOS dev build — there is no fixture journey for snapshot/click/type yet. The page capture has run on macOS only; its Windows and Linux halves only build."
     },
     {
       "id": "settings-persistence",

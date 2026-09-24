@@ -800,7 +800,9 @@ own evaluation); `browser/snapshot|screenshot|console|wait` (read) and
 `browser/click|type|press|scroll` (ui) in the catalog, the CLI and MCP (a
 screenshot is an MCP image block); references bound to one document; the risk
 policy (`browser/policy.rs`) and the person's approval (`browser/approval.rs`,
-the amber bar in `BrowserApprovalBar.svelte`, the globe's dot, 45 s wait); the
+the amber bar in `BrowserApprovalBar.svelte` — walked by the maintainer on a
+dev build, 2026-09-23: bar, in-page highlight, **Allow** running the submit —,
+the globe's dot, 45 s wait); the
 `agentExternalSites` setting; the `Refused` error code (`-32008`, exit 9); the
 params validator now enforcing `enum` / `minimum` / `maximum` / `maxLength`; page
 actions in the control audit log with typed text by length; a still image of the
@@ -869,12 +871,6 @@ the browser MCP; user guide in `docs/browser.md`.
       page visible, then hidden in a background workspace) and open a dialog
       over the panel to see the still image; then drop this item and the inline
       `FOR-DEV:` in `browser/capture.rs`.
-- [ ] **Browser — approve from the approval bar, on a real screen.** The bar
-      has a component test (every button sends its answer; no site answer for a
-      one-at-a-time request) and the backend's wait/timeout path was exercised by
-      a real agent; a person clicking **Allow** / **Allow on site** / **Deny**
-      in the running app — with the highlight in the page and the globe's dot —
-      has not been walked yet.
 
 ## Control surface — MCP tools + `uxnan-cli` ☐
 
