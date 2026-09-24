@@ -441,6 +441,15 @@ enum AutomationCmd {
     Ls,
     /// Describe one automation in full: prompts, policy and precondition.
     Show { automation: String },
+    /// Put a draft in front of the person: Uxnan opens its automations editor
+    /// filled in with the JSON file's contents and creates nothing. The file is
+    /// the entry's arguments (`name`, `workingDir`, `steps`, …) — see
+    /// `uxnan-cli skills get control --full`.
+    Propose {
+        /// A JSON file holding the draft.
+        #[arg(long)]
+        spec_file: std::path::PathBuf,
+    },
     /// Run a saved automation now.
     Run {
         automation: String,
@@ -918,6 +927,9 @@ fn plan(command: Command) -> Result<Plan, String> {
             AutomationCmd::Show { automation } => {
                 with("automation/show", json!({ "automation": automation }))
             }
+            AutomationCmd::Propose { spec_file } => {
+                with("automation/propose", read_spec(&spec_file)?)
+            }
             AutomationCmd::Run {
                 automation,
                 idempotency_key,
@@ -1108,6 +1120,19 @@ fn read_prompt_file(path: &std::path::Path) -> Result<String, String> {
         return Err(format!("prompt file {} is empty", path.display()));
     }
     Ok(text)
+}
+
+/// A draft read from a JSON file: the arguments of `automation/propose`, as a
+/// person would rather write them than type them on one line.
+fn read_spec(path: &std::path::Path) -> Result<Value, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let value: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", path.display()))?;
+    if !value.is_object() {
+        return Err(format!("{} must hold a JSON object", path.display()));
+    }
+    Ok(value)
 }
 
 /// Write the `image` a result carries to `out`; answer with the result minus

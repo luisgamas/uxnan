@@ -27,6 +27,7 @@ uxnan-cli ask --question <text> [--option <o>]...      # from a worker's termina
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
 uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
 uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
+uxnan-cli automation propose --spec-file <draft.json>   # the person reviews and saves it
 uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
@@ -76,6 +77,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `terminal/reveal` (MCP tool `terminal_reveal`) — Show a terminal tab: switch to its workspace and make it the active tab, so the person sees what that agent is doing.
 - `file/open` (MCP tool `file_open`) — Open a file in Uxnan's editor tab (or reveal it if already open).
 - `file/diff` (MCP tool `file_diff`) — Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the person can review what changed.
+- `automation/propose` (MCP tool `automation_propose`) — Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own.
 - `browser/open` (MCP tool `browser_open`) — Open the integrated in-app browser of your workspace and load a URL; answers once the page has loaded (or 15 s passed).
 - `browser/navigate` (MCP tool `browser_navigate`) — Navigate your workspace's integrated browser to a new URL (opening it first if it is not open).
 - `browser/reload` (MCP tool `browser_reload`) — Reload your workspace's page in the integrated browser and answer once it has loaded again.
@@ -1230,6 +1232,59 @@ Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the p
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32002` not found — the path is not inside the worktree, or does not exist
+
+### `automation/propose`
+
+Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `automation_propose`
+- **CLI:** `uxnan-cli automation propose --spec-file <draft.json>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | What to call it. At most 200 characters. |
+| `workingDir` | string | yes | Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project. |
+| `steps` | array of object | yes | The steps, in order. At most 20. |
+| `description` | string | no | A sentence saying what it is for. |
+| `tags` | array of string | no | Free-form labels the list groups by. |
+| `schedule` | object | no | How often it repeats, in the shape `automation/show` reports: `{ kind: "every", n, unit }`, `{ kind: "dailyAt", hour, minute }`, `{ kind: "weekdaysAt", hour, minute }` or `{ kind: "weeklyAt", day, hour, minute }`. Default: daily at 09:00 — the person sets the real cadence. |
+| `worktreePerRun` | boolean | no | Give every run its own worktree, so unattended work never touches the tree the person is using. Default false. |
+
+**Result**
+
+- `proposed` (boolean) — Always true: the editor is open with your draft. It is **not** saved — nothing exists until the person presses Save, and it is paused when they do.
+- `name` (string) — The name the draft carries.
+- `steps` (integer) — How many steps it has.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "automation/propose",
+  "params": {
+    "name": "Nightly lint",
+    "workingDir": "/Users/me/code/app",
+    "steps": [
+      {
+        "id": "s1",
+        "title": "Lint",
+        "agent": "claude",
+        "prompt": "Run the linter and fix what it reports."
+      }
+    ],
+    "schedule": {
+      "kind": "dailyAt",
+      "hour": 3,
+      "minute": 0
+    }
+  }
+}
+```
 
 ### `browser/open`
 

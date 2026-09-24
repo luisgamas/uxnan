@@ -138,6 +138,17 @@ advance, the app can show live progress just by watching the directory.
 You will normally do this in the editor; the JSON below is what it writes, and is
 also the format an automation can be hand-edited or imported in.
 
+**An agent can draft one for you.** Ask it to set up recurring work and it can
+call `automation_propose` (or `uxnan-cli automation propose --spec-file
+draft.json`): Uxnan opens this editor filled in with what it suggests, with an
+amber notice above the form saying who drafted it. **Nothing is created** — you
+read it, change what you want and press Save, and it is saved **paused**, so it
+only starts running once you turn it on in the list. *Discard* asks first —
+the draft was never stored, so leaving throws away both it and anything you
+changed in it, and the dialog offers saving before discarding. Creating, editing, enabling and scheduling an automation have no entry
+in the control surface at all: one that could schedule itself would outlive the
+session that made it, so the last step is always a person's.
+
 ```jsonc
 {
   "version": 1,

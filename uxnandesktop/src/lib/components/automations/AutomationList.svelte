@@ -44,6 +44,20 @@
   /** null = the list; otherwise the automation being inspected or edited. */
   let editing = $state<Automation | null>(null);
 
+  // A draft an agent proposed through the control surface opens the editor on
+  // itself — that *is* the entry: the agent shows, the person decides. It is
+  // never in `items`, so leaving the editor leaves nothing behind.
+  const proposal = $derived(automations.proposed);
+  $effect(() => {
+    const pending = automations.proposed;
+    if (pending && editing?.id !== pending.automation.id) editing = pending.automation;
+  });
+
+  function leaveEditor() {
+    if (automations.proposed) automations.clearProposal();
+    editing = null;
+  }
+
   const selected = $derived(
     app.automationsSelectedId ? automations.byId(app.automationsSelectedId) : undefined,
   );
@@ -80,7 +94,11 @@
 </script>
 
 {#if editing}
-  <AutomationEditor automation={editing} onback={() => (editing = null)} />
+  <AutomationEditor
+    automation={editing}
+    proposedBy={proposal && proposal.automation.id === editing.id ? proposal.from : undefined}
+    onback={leaveEditor}
+  />
 {:else if selected}
   <AutomationDetail
     automation={selected}

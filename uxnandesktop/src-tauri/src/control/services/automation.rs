@@ -8,7 +8,9 @@ use uxnan_control_protocol::rpc::{ErrorCode, RpcError};
 
 use crate::automations::commands::{automations_list, automations_run_now};
 use crate::automations::Automation;
+use crate::control::bridge::Bridge;
 use crate::control::receipts;
+use crate::control::resolve::{Resolver, Scope};
 use crate::control::Caller;
 
 /// One automation as the catalog describes it. `full` is `automation/show`:
@@ -105,6 +107,110 @@ fn selected(params: &Value) -> String {
         .unwrap_or("")
         .trim()
         .to_string()
+}
+
+/// The most steps a proposal may carry. A draft is something a person reads in
+/// one sitting and decides on; past this it is a program, and the editor is
+/// where a program gets built.
+const MAX_PROPOSED_STEPS: usize = 20;
+
+/// `automation/propose`: hand the person a draft, open the editor on it, and
+/// create nothing.
+///
+/// The window does the rest — it owns the screen, knows which agents are
+/// installed and validates the graph the same way Save does. What happens here
+/// is what the window cannot answer: the cheap shape checks, and the **scope**
+/// — a launch token may only propose work in a folder of its own project.
+pub async fn propose<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    caller: &Caller,
+    params: &Value,
+) -> Result<Value, RpcError> {
+    let text = |key: &str| {
+        params
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    let name = text("name");
+    if name.is_empty() || name.chars().count() > 200 {
+        return Err(invalid("`name` must be between 1 and 200 characters"));
+    }
+    let dir = text("workingDir");
+    if dir.is_empty() {
+        return Err(invalid(
+            "`workingDir` is required: an automation runs in a folder",
+        ));
+    }
+    if !std::path::Path::new(&dir).is_dir() {
+        return Err(RpcError::new(
+            ErrorCode::NotFound,
+            format!("{dir} is not a folder on this machine"),
+        ));
+    }
+    let steps = params
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| invalid("`steps` must be a list"))?;
+    if steps.is_empty() {
+        return Err(invalid("an automation with no steps does nothing"));
+    }
+    if steps.len() > MAX_PROPOSED_STEPS {
+        return Err(invalid(format!(
+            "{} steps is more than a person reviews at once; the most a proposal may carry is {MAX_PROPOSED_STEPS}",
+            steps.len()
+        )));
+    }
+    for (i, step) in steps.iter().enumerate() {
+        let at = |key: &str| step.get(key).and_then(|v| v.as_str()).unwrap_or("").trim();
+        if at("agent").is_empty() {
+            return Err(invalid(format!("step {} names no agent", i + 1)));
+        }
+        let prompt = at("prompt");
+        if prompt.is_empty() {
+            return Err(invalid(format!("step {} has no prompt", i + 1)));
+        }
+        if prompt.len() > super::terminal::PROMPT_MAX_BYTES {
+            return Err(invalid(format!(
+                "step {}'s prompt is {} bytes; the most one may be is {} — put the rest in a file the step is told to read",
+                i + 1,
+                prompt.len(),
+                super::terminal::PROMPT_MAX_BYTES
+            )));
+        }
+    }
+    // The scope: a launch token proposes work in its own project's folders, not
+    // anywhere on the disk. The person would see the folder in the editor, but
+    // an agent should not be able to put another project's path in front of
+    // them in the first place.
+    let resolver = Resolver::new(app, caller);
+    let scope = resolver.scope().await;
+    if !matches!(scope, Scope::All) && !scope.admits_folder(Some(&dir)) {
+        return Err(RpcError::new(
+            ErrorCode::ScopeDenied,
+            format!("{dir} is outside your project: a launch token may propose work only in the project its terminal runs in"),
+        ));
+    }
+    let mut ask = params.clone();
+    // Who is proposing, so the person is told. Backend state, not a claim of
+    // the request: the window turns the terminal id into the agent's name.
+    if let Caller::Launch {
+        agent_id: Some(id), ..
+    } = caller
+    {
+        ask["from"] = json!(id);
+    }
+    let answer = Bridge::ask(app, "automation/propose", ask).await?;
+    if let Some(refusal) = crate::control::bridge::refused(&answer) {
+        return Err(refusal);
+    }
+    Ok(answer)
+}
+
+fn invalid(message: impl Into<String>) -> RpcError {
+    RpcError::new(ErrorCode::InvalidParams, message.into())
 }
 
 /// `automation/run`.

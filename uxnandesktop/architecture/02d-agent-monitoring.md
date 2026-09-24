@@ -636,7 +636,16 @@ precondicion) porque la lista no dice **que haria** una corrida —,
 `terminal/reveal`, `file/open` — en la pestana del ADE o, con `with`, en uno de
 los editores externos de la persona: se nombra **un editor de su lista**, nunca
 un comando, asi que la superficie no gana una puerta a ejecutar cualquier cosa —,
-`file/diff`, `browser/open|navigate|reload|back|forward`,
+`file/diff`, `automation/propose` — abre el editor de automatizaciones relleno
+con el borrador de un agente y **no crea nada**: la persona lo lee, lo cambia y
+pulsa Guardar, y se guarda **en pausa**; crear, editar, activar o programar una
+automatizacion no tienen entrada, porque una que pudiera programarse a si misma
+sobreviviria a la sesion que la creo. El backend comprueba lo barato (nombre,
+carpeta existente, pasos, prompt bajo 64 KiB, maximo 20) y **el alcance** (un
+token de lanzamiento solo propone trabajo en una carpeta de su proyecto); la
+ventana comprueba lo que solo ella sabe (que el agente de cada paso este
+instalado, que `dependsOn` nombre pasos reales) —,
+`browser/open|navigate|reload|back|forward`,
 `browser/click|type|press|scroll` — acciones en la pagina, bajo la politica de riesgo
 y aprobacion de `02a` §4.2b; codigo de error `-32008` *refused*, salida 9 del CLI),
 `create` (`host/connect` — abre sesion en un host **ya registrado** que no la

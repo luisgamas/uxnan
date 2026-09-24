@@ -28,11 +28,11 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 947 Rust tests (870 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins). 948 Rust tests (871 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,327 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,344 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -966,17 +966,6 @@ unacknowledged messages, by kind, step, dispatch and text — and its card in
 the list says `driven · N in inbox` (`RunInbox.svelte`, 4 component tests).
 
 ### Still pending
-- [ ] **`automation/propose` — let an agent draft an automation for a person to
-      save.** Creating, editing, enabling or scheduling an automation is not
-      exposed and should not be: one that creates itself and schedules itself
-      **outlives the session that made it**. The useful half is a `ui` entry
-      that opens the automations editor with a definition filled in, so the
-      person presses save — the same shape as `file/diff` (the agent shows, the
-      person decides). Left out of the hosts/automations round (2026-09-23)
-      because it is UI, and UI is reviewed on screen before it is committed.
-      Sites: `crates/control-protocol/src/catalog.rs` (the entry),
-      `control/services/automation.rs`, `src/lib/control/bridge.ts` (the window
-      handler) and the automations editor.
 - [ ] **The Windows shim on uninstall.** The app keeps a copy of `uxnan-cli`
       in `%LOCALAPPDATA%\uxnan\bin` and adds that folder to the user `PATH`
       once (`control::cli`); the NSIS/MSI uninstallers do not remove either.
@@ -1678,7 +1667,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 947 Rust + 1,327 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 948 Rust + 1,344 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

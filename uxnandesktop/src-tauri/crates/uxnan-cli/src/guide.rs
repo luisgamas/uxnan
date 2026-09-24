@@ -449,6 +449,7 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "host/connect" => "uxnan-cli host connect <host-id> [--idempotency-key <key>]",
         "automation/list" => "uxnan-cli automation ls",
         "automation/show" => "uxnan-cli automation show <automation-id>",
+        "automation/propose" => "uxnan-cli automation propose --spec-file <draft.json>",
         "automation/run" => "uxnan-cli automation run <automation-id> [--idempotency-key <key>]",
         "app/focus" => "uxnan-cli app focus",
         "file/open" => "uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]",
@@ -601,6 +602,7 @@ uxnan-cli ask --question <text> [--option <o>]...      # from a worker's termina
 uxnan-cli answer --run <run-id> --question <id> --answer <text> [--reject]
 uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
 uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
+uxnan-cli automation propose --spec-file <draft.json>   # the person reviews and saves it
 uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]

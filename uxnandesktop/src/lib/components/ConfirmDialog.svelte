@@ -1,9 +1,14 @@
 <script lang="ts">
-  // Canonical destructive-confirmation dialog (remove project / worktree,
-  // close all tabs, …). All callers share one layout: an optional danger hero
-  // icon, the title + description, an optional inline error, and a ghost Cancel
-  // plus a confirm button. `onconfirm` may return `false` to keep the dialog
-  // open (e.g. a remove that failed and now offers a force option).
+  // Canonical confirmation dialog (remove project / worktree, close all tabs,
+  // leaving an agent's draft …). All callers share one layout: an optional
+  // danger hero icon, the title + description, an optional inline error, and a
+  // ghost button plus a confirm button. `onconfirm` may return `false` to keep
+  // the dialog open (e.g. a remove that failed and now offers a force option).
+  //
+  // The ghost button is *Cancel* by default, but a caller whose two answers are
+  // both real choices ("save it" / "discard and leave") names it. Closing the
+  // dialog with Escape or a click outside is always the third answer — do
+  // neither — and never runs `oncancel`.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -18,6 +23,8 @@
     title,
     description = "",
     confirmLabel = "Confirm",
+    cancelLabel = undefined,
+    confirmDisabled = false,
     danger = false,
     error = null,
     onconfirm,
@@ -27,6 +34,10 @@
     title: string;
     description?: string;
     confirmLabel?: string;
+    /** The ghost button's label. Defaults to *Cancel*. */
+    cancelLabel?: string;
+    /** The confirm button cannot be pressed (the caller says why in `error`). */
+    confirmDisabled?: boolean;
     danger?: boolean;
     error?: string | null;
     onconfirm: () => void | Promise<boolean | void>;
@@ -92,8 +103,14 @@
     {/if}
 
     <Dialog.Footer class="min-w-0">
-      <Button variant="ghost" disabled={busy} onclick={cancel}>{i18n.t("common.cancel")}</Button>
-      <Button variant={danger ? "destructive" : "default"} disabled={busy} onclick={confirm}>
+      <Button variant="ghost" disabled={busy} onclick={cancel}>
+        {cancelLabel ?? i18n.t("common.cancel")}
+      </Button>
+      <Button
+        variant={danger ? "destructive" : "default"}
+        disabled={busy || confirmDisabled}
+        onclick={confirm}
+      >
         {#if busy}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {/if}

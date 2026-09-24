@@ -18,6 +18,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   no fingerprint or key path comes back. Adding, editing and removing hosts
   have no entry at all. From a shell: `uxnan-cli host ls | show <id> |
   connect <id>`.
+- **An agent can draft an automation for you to decide on.** `automation_propose`
+  opens Uxnan's automations editor filled in with what the agent suggests, under
+  an amber notice saying who drafted it. Nothing is created: you read it, change
+  what you want and press Save — and it is saved **paused**, so it only starts
+  running once you turn it on. *Discard* asks first, because the draft was never
+  stored: the dialog says what is thrown away and offers saving instead. Creating,
+  editing, enabling and scheduling an automation still have no entry at all, on
+  purpose: one that could schedule itself would outlive the session that made
+  it. A launch token may only propose work in a folder of its own project, and
+  each step must name an agent installed here. From a shell: `uxnan-cli
+  automation propose --spec-file draft.json`.
 - **`automation_show`**: one saved automation in full — each step's prompt,
   dependencies, failure handling and whether it approves its own tool use, plus
   the run policy and the precondition that can make a run do nothing. The list

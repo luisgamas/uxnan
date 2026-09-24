@@ -88,7 +88,7 @@ below) without touching the others. Trust order:
 | Group | What it holds | Today |
 |---|---|---|
 | `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
-| `ui` | `app/focus`, `terminal/reveal`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
+| `ui` | `app/focus`, `terminal/reveal`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
 | `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
@@ -124,6 +124,30 @@ Two things it deliberately does not do:
   surface today: a terminal on a host is a remote PTY with none of the
   `UXNAN_*` variables, so an agent running *there* cannot call the API at all
   (that is the remote agent runner's work, still owed in `FOR-DEV.md`).
+
+### Proposing an automation, instead of creating one
+
+Creating, editing, enabling or scheduling an automation is **not** exposed, and
+that is the design: an automation that could create and schedule itself would
+outlive the session that made it, and nobody would have agreed to it.
+
+What is exposed is the useful half. `automation/propose` opens Uxnan's
+automations editor filled in with the draft, with an amber notice naming who
+drafted it (or, when a shell sent it, that it came from the control API) — the
+same shape as `file/diff`: the agent shows, the person decides. Nothing is
+stored: the draft is not in the list, and because leaving would throw it away
+for good, *Discard* asks first and offers saving as the primary answer. When
+the person does press Save it is saved **paused**, so the last two decisions —
+save, and then turn it on — are both theirs.
+
+The backend checks what it can before the window is bothered (a name, a folder
+that exists, at least one step, a prompt under 64 KiB, at most 20 steps) and
+applies the scope: **a launch token may only propose work in a folder of its own
+project**, so an agent cannot put another project's path in front of the person.
+The window checks what only it knows — that each step's agent is installed here
+(the error lists what is), that `dependsOn` names real steps — and normalizes
+the cadence, defaulting to daily at 09:00 rather than refusing a draft over a
+malformed hour.
 
 ### The budget in `status`
 
@@ -541,6 +565,7 @@ uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
 uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
 uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
+uxnan-cli automation propose --spec-file <draft.json>
 uxnan-cli app focus
 uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]

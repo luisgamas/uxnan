@@ -1314,3 +1314,135 @@ async fn opening_with_an_unknown_editor_is_refused_and_lists_what_there_is() {
     );
     assert!(message.contains("available:"), "{message}");
 }
+
+/// `automation/propose` creates nothing: it checks what the window cannot
+/// (the shape, the folder, the caller's scope) and forwards the draft. What
+/// the window does with it — building the automation, opening the editor — is
+/// its own test (`bridge.svelte.test.ts`).
+#[tokio::test]
+async fn a_proposed_automation_is_checked_scoped_and_handed_to_the_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let (repo_path, repo) = repo_in(dir.path()).await;
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    let s = server(data).await;
+    let handle = s._app.handle().clone();
+    handle
+        .state::<AppState>()
+        .pty
+        .create(
+            crate::pty::PtySpec {
+                id: "agent-a".into(),
+                cwd: Some(repo_path.clone()),
+                shell: None,
+                args: Vec::new(),
+                env: Vec::new(),
+                cols: 80,
+                rows: 24,
+            },
+            |_| {},
+            || {},
+        )
+        .unwrap();
+    // A stand-in window: answers the tab list, and echoes what it was asked to
+    // propose so the test can see what crossed the bridge.
+    let tabs = json!({ "tabs": [{ "id": "agent-a", "title": "a", "workspace": repo_path }] });
+    let answerer = handle.clone();
+    handle.listen_any(super::bridge::REQUEST_EVENT, move |event| {
+        let req: super::bridge::BridgeRequest = serde_json::from_str(event.payload()).unwrap();
+        let answer = match req.method.as_str() {
+            "terminal/list" => tabs.clone(),
+            "automation/propose" => json!({ "proposed": true, "asked": req.params }),
+            _ => Value::Null,
+        };
+        answerer
+            .state::<AppState>()
+            .control_bridge
+            .answer(&req.id, Ok(answer));
+    });
+    let launch: [(&str, &str); 2] = [("x-uxnan-token", LAUNCH), ("x-uxnan-agent-id", "agent-a")];
+    let control = [("authorization", "Bearer control-token")];
+    let step = json!({ "agent": "claude", "prompt": "Run the linter." });
+    let draft = |folder: &str, steps: Value| json!({ "name": "Nightly lint", "workingDir": folder, "steps": steps });
+
+    // The happy path: forwarded, with who asked — taken from the token, never
+    // from the request.
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &launch,
+        rpc(
+            "automation/propose",
+            draft(&repo_path, json!([step.clone()])),
+        ),
+    )
+    .await;
+    assert_eq!(body["result"]["proposed"], true, "{body}");
+    assert_eq!(body["result"]["asked"]["from"], "agent-a", "{body}");
+    assert_eq!(body["result"]["asked"]["name"], "Nightly lint");
+
+    // A draft nobody can act on, refused before the window is bothered.
+    for (params, code) in [
+        (draft(&repo_path, json!([])), ErrorCode::InvalidParams),
+        (
+            draft(&repo_path, json!([{ "agent": "claude", "prompt": "  " }])),
+            ErrorCode::InvalidParams,
+        ),
+        (
+            draft(&repo_path, json!([{ "agent": "", "prompt": "go" }])),
+            ErrorCode::InvalidParams,
+        ),
+        (
+            json!({ "name": "  ", "workingDir": repo_path, "steps": [step.clone()] }),
+            ErrorCode::InvalidParams,
+        ),
+        (
+            draft(
+                &repo_path,
+                json!([{ "agent": "claude", "prompt": "x".repeat(65 * 1024) }]),
+            ),
+            ErrorCode::InvalidParams,
+        ),
+        (
+            draft(&format!("{repo_path}/nowhere"), json!([step.clone()])),
+            ErrorCode::NotFound,
+        ),
+        // Someone else's folder: a launch token proposes work in its own
+        // project, not anywhere on the disk.
+        (
+            draft(
+                &outside.path().to_string_lossy().replace('\\', "/"),
+                json!([step.clone()]),
+            ),
+            ErrorCode::ScopeDenied,
+        ),
+    ] {
+        let (_, body) = post(
+            &s.origin,
+            RPC_PATH,
+            &launch,
+            rpc("automation/propose", params),
+        )
+        .await;
+        assert_eq!(body["error"]["code"], code.code(), "{body}");
+    }
+
+    // The person's own shell may propose work anywhere — it is their machine,
+    // and they are the one who will read the draft.
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &control,
+        rpc(
+            "automation/propose",
+            draft(
+                &outside.path().to_string_lossy().replace('\\', "/"),
+                json!([step]),
+            ),
+        ),
+    )
+    .await;
+    assert_eq!(body["result"]["proposed"], true, "{body}");
+    assert!(body["result"]["asked"]["from"].is_null(), "{body}");
+}

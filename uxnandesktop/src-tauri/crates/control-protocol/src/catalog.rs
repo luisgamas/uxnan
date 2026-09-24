@@ -884,6 +884,51 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({ "path": "src/app.ts", "worktree": "branch:feat/x", "staged": false }),
         },
         Entry {
+            method: "automation/propose",
+            tool: "automation_propose",
+            group: Group::Ui,
+            summary: "Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own. Use it when someone asks for recurring unattended work; `automation/run` only runs what already exists, and creating or scheduling one behind their back is not something this surface does. The folder must be one you can reach; each step names an agent installed on this machine (the error lists them) and an earlier step's result reads as `{{steps.<id>.output}}`.",
+            params: object(
+                json!({
+                    "name": { "type": "string", "description": "What to call it. At most 200 characters." },
+                    "workingDir": { "type": "string", "description": "Absolute folder a run executes in. It must exist, and a launch token may only name a folder of its own project." },
+                    "steps": {
+                        "type": "array",
+                        "description": "The steps, in order. At most 20.",
+                        "items": object(
+                            json!({
+                                "id": { "type": "string", "description": "Optional short id (`s1`, `s2`, …) — what `dependsOn` and `{{steps.<id>.output}}` name. Defaults to its position." },
+                                "title": { "type": "string", "description": "A short title for the step." },
+                                "agent": { "type": "string", "description": "The agent CLI to run it (`claude`, `codex`, …). It must be installed here." },
+                                "model": { "type": "string", "description": "A model to pin; omit for the CLI's default." },
+                                "prompt": { "type": "string", "description": "What the step asks the agent to do. At most 64 KiB." },
+                                "dependsOn": { "type": "array", "items": { "type": "string" }, "description": "Step ids that must finish first; omit for a step that starts with the run." },
+                                "autonomous": { "type": "boolean", "description": "Let this step's agent approve its own tool use. Default false — a step that only reads and reports should not have it." }
+                            }),
+                            &["agent", "prompt"],
+                        )
+                    },
+                    "description": { "type": "string", "description": "A sentence saying what it is for." },
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "Free-form labels the list groups by." },
+                    "schedule": { "type": "object", "description": "How often it repeats, in the shape `automation/show` reports: `{ kind: \"every\", n, unit }`, `{ kind: \"dailyAt\", hour, minute }`, `{ kind: \"weekdaysAt\", hour, minute }` or `{ kind: \"weeklyAt\", day, hour, minute }`. Default: daily at 09:00 — the person sets the real cadence." },
+                    "worktreePerRun": { "type": "boolean", "description": "Give every run its own worktree, so unattended work never touches the tree the person is using. Default false." }
+                }),
+                &["name", "workingDir", "steps"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "proposed": field("boolean", "Always true: the editor is open with your draft. It is **not** saved — nothing exists until the person presses Save, and it is paused when they do."),
+                "name": field("string", "The name the draft carries."),
+                "steps": field("integer", "How many steps it has."),
+            })),
+            example: json!({
+                "name": "Nightly lint",
+                "workingDir": "/Users/me/code/app",
+                "steps": [{ "id": "s1", "title": "Lint", "agent": "claude", "prompt": "Run the linter and fix what it reports." }],
+                "schedule": { "kind": "dailyAt", "hour": 3, "minute": 0 }
+            }),
+        },
+        Entry {
             method: "browser/open",
             tool: "browser_open",
             group: Group::Ui,
