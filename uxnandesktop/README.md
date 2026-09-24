@@ -196,16 +196,21 @@ available today are:
   deletes or signs in only with your approval. See
   [the integrated browser](./docs/browser.md).
 - **A control surface for agents and shells.** The same MCP server gives every
-  agent uxnan launches tools to read the app (`uxnan_status`, `project_list`,
-  `worktree_show`, `terminal_list`, `agent_list`, `run_show`), to show you
-  things (`file_open`, `file_diff`, `terminal_reveal`, `app_focus`), to give a
+  agent uxnan launches tools to read the app (`uxnan_status` — which also says
+  how many agent slots the machine has left —, `project_list`, `worktree_show`,
+  `terminal_list`, `agent_list`, `run_show`, `automation_show`), to show you
+  things (`file_open`, in Uxnan's tab or in one of your own editors,
+  `file_diff`, `terminal_reveal`, `app_focus`), to give a
   subtask its own worktree and agent (`worktree_create`, `terminal_create`),
   to talk to a running agent (`agent_send`, `agent_wait`, `terminal_read`) and
   to **coordinate a run of workers** — tasks, an agent of any installed kind
   per task in its own worktree, an inbox, questions (`run_create`,
   `task_create`, `worker_start`, `inbox_check`, `question_answer`) — nothing to
-  install. From any shell, **`uxnan-cli`** (a separate small binary) does the same:
-  `uxnan-cli status`, `uxnan-cli terminal ls --json`, `uxnan-cli file diff
+  install. From any shell, **`uxnan-cli`** (a separate small binary) does the same,
+  and reaches the remote machines your projects live on:
+  `uxnan-cli status`, `uxnan-cli terminal ls --json`, `uxnan-cli host ls`,
+  `uxnan-cli host connect build-box` (it never asks for a credential — a host
+  that needs one says so and stops), `uxnan-cli file diff
   src/app.ts --worktree branch:feat` — and any script on the same machine can
   post the same JSON-RPC. One catalog behind all of it, no shell access, no
   destructive git or filesystem entries by construction. See

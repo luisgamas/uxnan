@@ -1144,3 +1144,173 @@ async fn a_coordinator_waits_on_the_inbox_and_a_worker_on_its_question() {
     assert!(log.contains("\"method\":\"question/ask\""));
     assert!(!log.contains("\"method\":\"inbox/check\""));
 }
+
+/// A host is the person's business: their own shell sees every registered
+/// machine, and a token scoped to a project on *this* machine is told why it
+/// sees none — an empty list would read as "no hosts", which is a different
+/// fact. `host/show` also answers the projects and terminals on the machine.
+#[tokio::test]
+async fn hosts_answer_the_person_and_tell_a_scoped_token_why_it_sees_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let (repo_path, repo) = repo_in(dir.path()).await;
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    data.settings.ssh_hosts = vec![host("h-a", "build-box"), host("h-b", "gpu-box")];
+    let s = server(data).await;
+    let handle = s._app.handle().clone();
+    handle
+        .state::<AppState>()
+        .pty
+        .create(
+            crate::pty::PtySpec {
+                id: "agent-a".into(),
+                cwd: Some(repo_path.clone()),
+                shell: None,
+                args: Vec::new(),
+                env: Vec::new(),
+                cols: 80,
+                rows: 24,
+            },
+            |_| {},
+            || {},
+        )
+        .unwrap();
+    // A stand-in window with one tab, in the local project.
+    let tabs = json!({ "tabs": [{ "id": "agent-a", "title": "a", "workspace": repo_path }] });
+    let answerer = handle.clone();
+    handle.listen_any(super::bridge::REQUEST_EVENT, move |event| {
+        let req: super::bridge::BridgeRequest = serde_json::from_str(event.payload()).unwrap();
+        let answer = match req.method.as_str() {
+            "terminal/list" => tabs.clone(),
+            _ => Value::Null,
+        };
+        answerer
+            .state::<AppState>()
+            .control_bridge
+            .answer(&req.id, Ok(answer));
+    });
+    let control = [("authorization", "Bearer control-token")];
+    let launch: [(&str, &str); 2] = [("x-uxnan-token", LAUNCH), ("x-uxnan-agent-id", "agent-a")];
+
+    // The person's shell: both machines, described from the live session —
+    // which there is none of, so no generation and no channel count.
+    let (_, body) = post(&s.origin, RPC_PATH, &control, rpc("host/list", json!({}))).await;
+    let hosts = body["result"]["hosts"].as_array().unwrap();
+    assert_eq!(hosts.len(), 2, "{body}");
+    assert_eq!(hosts[0]["id"], "h-a");
+    assert_eq!(hosts[0]["label"], "build-box");
+    assert_eq!(hosts[0]["connected"], false);
+    assert_eq!(hosts[0]["source"], "manual");
+    assert!(hosts[0].get("generation").is_none(), "{body}");
+    assert!(hosts[0].get("channels").is_none(), "{body}");
+
+    // One host, with what is on it. The local project is not.
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &control,
+        rpc("host/show", json!({ "host": "h-b" })),
+    )
+    .await;
+    assert_eq!(body["result"]["id"], "h-b", "{body}");
+    assert_eq!(body["result"]["projects"], json!([]));
+    assert_eq!(body["result"]["terminals"], json!([]));
+
+    // An id nobody has.
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &control,
+        rpc("host/show", json!({ "host": "h-z" })),
+    )
+    .await;
+    assert_eq!(body["error"]["code"], ErrorCode::NotFound.code(), "{body}");
+
+    // The agent's token: refused, and told what its scope is.
+    for method in ["host/list", "host/show", "host/connect"] {
+        let params = if method == "host/list" {
+            json!({})
+        } else {
+            json!({ "host": "h-a" })
+        };
+        let (_, body) = post(&s.origin, RPC_PATH, &launch, rpc(method, params)).await;
+        assert_eq!(
+            body["error"]["code"],
+            ErrorCode::ScopeDenied.code(),
+            "{method}: {body}"
+        );
+        let message = body["error"]["message"].as_str().unwrap();
+        assert!(message.contains("repo"), "{method}: {message}");
+    }
+}
+
+/// A registered machine with nothing interesting about it.
+fn host(id: &str, label: &str) -> crate::model::SshHost {
+    crate::model::SshHost {
+        id: id.into(),
+        label: label.into(),
+        config_host: None,
+        hostname: format!("{label}.example"),
+        port: 22,
+        user: "dev".into(),
+        identity_files: Vec::new(),
+        identity_agent: None,
+        identities_only: false,
+        forward_agent: false,
+        proxy_command: None,
+        proxy_jump: None,
+        source: crate::model::SshHostSource::Manual,
+        needs_prompt: false,
+    }
+}
+
+/// `status` reports the budget a new agent would be admitted under, from the
+/// same place the gates read it — a coordinator that does not know the
+/// concurrency starts workers that queue behind each other.
+#[tokio::test]
+async fn status_reports_the_budget_a_new_agent_faces() {
+    let s = server(AppData::default()).await;
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &[("authorization", "Bearer control-token")],
+        rpc("status", json!({})),
+    )
+    .await;
+    let budget = &body["result"]["budget"];
+    assert!(budget["concurrency"].as_u64().unwrap() >= 1, "{body}");
+    assert!(budget["live"].is_u64(), "{body}");
+    assert!(budget["minFreeMemoryMb"].is_u64(), "{body}");
+    assert!(budget["freeMemoryMb"].as_u64().unwrap() > 0, "{body}");
+    assert!(budget["maxAgentMemoryMb"].is_u64(), "{body}");
+}
+
+/// `file/open --with` launches one of the person's editors, named. An editor
+/// this machine does not have is refused **before** anything is spawned, and
+/// the error says what there is — a caller cannot turn this into "run this
+/// command", which is the whole point of naming editors instead of commands.
+#[tokio::test]
+async fn opening_with_an_unknown_editor_is_refused_and_lists_what_there_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let (repo_path, repo) = repo_in(dir.path()).await;
+    let mut data = AppData::default();
+    data.repos.push(repo);
+    let s = server(data).await;
+    let (_, body) = post(
+        &s.origin,
+        RPC_PATH,
+        &[("authorization", "Bearer control-token")],
+        rpc(
+            "file/open",
+            json!({ "path": "README.md", "worktree": format!("path:{repo_path}"), "with": "/bin/sh" }),
+        ),
+    )
+    .await;
+    assert_eq!(body["error"]["code"], ErrorCode::NotFound.code(), "{body}");
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("no editor on this machine matches"),
+        "{message}"
+    );
+    assert!(message.contains("available:"), "{message}");
+}

@@ -252,8 +252,9 @@ fn own_start_time() -> u64 {
     crate::resources::Collector::probe_start_time(std::process::id()).unwrap_or(0)
 }
 
-/// Free memory right now, in MiB.
-fn free_memory_mb() -> u64 {
+/// Free memory right now, in MiB. Public because `status` reports it beside
+/// the condition it is weighed against — a number on its own says nothing.
+pub fn free_memory_mb() -> u64 {
     let mut sys = sysinfo::System::new();
     sys.refresh_memory();
     sys.available_memory() / (1024 * 1024)

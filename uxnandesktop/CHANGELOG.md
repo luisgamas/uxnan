@@ -7,6 +7,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The control surface sees the machines your projects live on.**
+  `host_list` / `host_show` describe every registered host **from its live SSH
+  session** — connected or not, the shell it starts, the projects and terminals
+  on it, and the channels in use against the limit that host turned out to
+  enforce — and `host_connect` opens a session on one that has none, the same
+  path startup takes. It never accepts a credential: a host that wants a
+  password or a key passphrase, or whose host key is unknown, changed or
+  revoked, says so and stops — that is yours to finish in Settings → Hosts, and
+  no fingerprint or key path comes back. Adding, editing and removing hosts
+  have no entry at all. From a shell: `uxnan-cli host ls | show <id> |
+  connect <id>`.
+- **`automation_show`**: one saved automation in full — each step's prompt,
+  dependencies, failure handling and whether it approves its own tool use, plus
+  the run policy and the precondition that can make a run do nothing. The list
+  alone never said what a run would *do*, and `automation_run` needs an id from
+  it. From a shell: `uxnan-cli automation show <id>`.
+- **`file_open` can hand a file to your own editor**: `with` names one of the
+  editors this machine offers (the detected ones minus the ones you hid, plus
+  the ones you added in Settings → Open with), by name or by command. A caller
+  names an editor, never a command, so this is not a door to running anything.
+  From a shell: `uxnan-cli file open <path> --with zed`.
+- **`uxnan_status` reports the agent budget**: the concurrency of this machine,
+  how many slots are in use right now across this app *and* every automations
+  runner, the free memory a start must leave, the memory free now and the
+  advisory per-agent ceiling. A coordinator that reads it dispatches what fits
+  instead of starting workers that queue behind each other. `uxnan-cli status`
+  prints it.
 - **Agents can read and use the pages they build.** Eight new tools in the
   control surface (MCP and `uxnan-cli browser …`): `browser_snapshot` reads the
   page as a compact outline where every link, button and field carries a

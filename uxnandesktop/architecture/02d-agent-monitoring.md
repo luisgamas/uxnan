@@ -621,12 +621,28 @@ crate `uxnan-cli` falla cuando queda desactualizado, y otro comprueba cada
 forma de CLI contra el arbol real de subcomandos de clap.
 
 **Grupos de capacidad (versionados y desconectables en `settings.control`):**
-`read` (`status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`,
-`agent/list`, `run/list|show`, `automation/list`, `browser/status|snapshot|screenshot|console|wait`), `ui` (`app/focus`,
-`terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`,
+`read` (`status` — que ademas informa del **presupuesto** que enfrenta un agente
+nuevo aqui: concurrencia, ranuras vivas, memoria minima exigida, memoria libre y
+el tope advisory por agente, leidos de donde los leen las propias puertas
+(`automations::runner::limits` + `budget::live`), asi que un coordinador puede
+decidir cuantos workers caben en vez de lanzarlos a encolarse —,
+`project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`,
+`agent/list`, `run/list|show`, `automation/list|show` — el detalle completo de una
+automatizacion (prompts, dependencias, manejo de fallos, `autonomous`, politica y
+precondicion) porque la lista no dice **que haria** una corrida —,
+`browser/status|snapshot|screenshot|console|wait`), `ui` (`app/focus`,
+`terminal/reveal`, `file/open` — en la pestana del ADE o, con `with`, en uno de
+los editores externos de la persona: se nombra **un editor de su lista**, nunca
+un comando, asi que la superficie no gana una puerta a ejecutar cualquier cosa —,
+`file/diff`, `browser/open|navigate|reload|back|forward`,
 `browser/click|type|press|scroll` — acciones en la pagina, bajo la politica de riesgo
 y aprobacion de `02a` §4.2b; codigo de error `-32008` *refused*, salida 9 del CLI),
-`create` (`worktree/create` — el nucleo del comando `worktree_create` movido al
+`create` (`host/connect` — abre sesion en un host **ya registrado** que no la
+tiene, el mismo camino que el arranque toma con los que no piden nada, y
+**sin aceptar credencial alguna**: si el host pide contrasena o passphrase, o su
+clave es desconocida, cambio o fue revocada, la respuesta lo dice y ahi termina
+(lo resuelve una persona en Ajustes → Hosts); el resultado no lleva huella
+digital, ruta de clave ni metodo de credencial —, `worktree/create` — el nucleo del comando `worktree_create` movido al
 servicio, adopcion por la ventana via el puente, lanzamiento del agente y primer
 mensaje encolado tras el backpressure del broadcast —, `terminal/create`,
 `terminal/close` — cierra una pestana que la propia superficie abrio (marcada
@@ -673,8 +689,8 @@ una version de protocolo distinta o un pid que ya no es ese proceso. El token de
 control abarca todos los proyectos (es el mismo usuario del SO que ya puede abrir
 la app); el de lanzamiento, **solo el proyecto de su terminal**, y el resolutor
 lo aplica (`control/resolve.rs` → `Scope`): los listados (`project/list`,
-`worktree/list`, `terminal/list`, `agent/list`, los conteos de `status`) se
-acotan a el, y un selector que nombra un worktree o una terminal de otro
+`worktree/list`, `terminal/list`, `agent/list`, `host/list`, los conteos de `status`) se
+acotan a el, y un selector que nombra un worktree, una terminal o un host de otro
 proyecto responde `-32003` *scope denied* — distinto de *not found*, para que
 el agente deje de insistir. El alcance sale del **estado del backend** (la
 carpeta en la que corre el PTY del propio llamador), nunca de lo que la
@@ -683,7 +699,15 @@ de su ubicacion de worktrees registrada **o de cualquier worktree que git le
 lista** — los worktrees enlazados que la app corta bajo la raiz de worktrees
 viven fuera del checkout y son donde corren los workers de un coordinador; una peticion de lanzamiento sin la cabecera
 `x-uxnan-agent-id` no alcanza ningun proyecto, ni una terminal del espacio
-Global. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
+Global. Los **hosts** siguen ese mismo alcance en vez de relajarlo: un llamador
+ve la maquina en la que vive su propio proyecto, la shell de la persona las ve
+todas, y a un token acotado a un proyecto local se le dice por que no ve
+ninguna (una lista vacia se leeria como "no hay hosts", que es otro hecho). Hoy
+eso hace de `host/*` la superficie de la persona: una terminal en un host es un
+PTY remoto sin ninguna variable `UXNAN_*`, asi que un agente que corra *alli* no
+puede llamar a esta API — eso llega con el estado de agente en el host
+(`02g-remote-hosts.md`, fase 2) y su ejecucion headless remota, y la regla ya
+esta escrita para entonces. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
 **cada config de lanzamiento envia el id de la terminal en cada llamada**,
 expandido de `UXNAN_AGENT_ID` como cada CLI expande variables (tabla abajo);
 `current` se resuelve asi tambien desde una tool. Ninguno de los dos tokens se

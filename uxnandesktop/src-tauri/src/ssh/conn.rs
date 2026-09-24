@@ -238,6 +238,14 @@ impl Connection {
         &self.endpoint
     }
 
+    /// Channels in use on this connection, and the limit this host turned out
+    /// to enforce (`None` until it has refused one). For the status surfaces —
+    /// a caller deciding whether to open one asks [`Self::open_channel`], which
+    /// decides against the same budget.
+    pub fn channels(&self) -> (usize, Option<usize>) {
+        (self.budget.open(), self.budget.observed_limit())
+    }
+
     pub fn handle(&self) -> &client::Handle<Client> {
         &self.handle
     }

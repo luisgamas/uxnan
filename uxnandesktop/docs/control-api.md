@@ -87,9 +87,9 @@ below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
-| `read` | `status`, `project/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
-| `ui` | `app/focus`, `terminal/reveal`, `file/open`, `file/diff`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
-| `create` | `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run`; `automation/list` sits in `read` | shipped |
+| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
+| `ui` | `app/focus`, `terminal/reveal`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
+| `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run` | shipped |
 | `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
 
@@ -97,6 +97,43 @@ below) without touching the others. Trust order:
 with its arguments, its result and a request — the output of `uxnan-cli skills
 get control --full`, generated from the catalog, so it cannot describe
 something the app does not do.
+
+### Hosts: the machines the work runs on
+
+A project whose `target` is `ssh:<hostId>` lives on a registered host, and
+everything about it — its worktrees, its git, its terminals — goes through one
+SSH session the app holds. `host/list` and `host/show` describe those machines
+**from that session**, not from the settings: connected or not, the shell it
+starts, the channels in use against the limit the host turned out to enforce.
+`host/connect` opens a session on one that has none — the same path startup
+takes for the hosts that need nothing.
+
+Two things it deliberately does not do:
+
+- **It takes no credential.** A host that wants a password or a key passphrase
+  comes back as `needsPassword` / `needsPassphrase` and stops there; so does one
+  whose host key is unknown, changed or revoked (`hostUnknown` / `hostChanged` /
+  `hostRevoked` — nothing is trusted). Those are the person's to finish in
+  Settings → Hosts, and the result carries no fingerprint, key path or
+  credential method for a caller to work with.
+- **It is scoped like everything else.** A caller sees the host *its own
+  project* lives on; the person's own shell (the control token) sees every
+  registered machine, and a token scoped to a project on this machine is
+  refused with *scope denied* and told why — an empty list would read as "no
+  hosts", which is a different fact. In practice that makes this the person's
+  surface today: a terminal on a host is a remote PTY with none of the
+  `UXNAN_*` variables, so an agent running *there* cannot call the API at all
+  (that is the remote agent runner's work, still owed in `FOR-DEV.md`).
+
+### The budget in `status`
+
+`status` reports the budget a new agent faces here: `concurrency`, how many
+slots are `live` right now, the `minFreeMemoryMb` a start must leave free,
+`freeMemoryMb` on the machine and the advisory `maxAgentMemoryMb` ceiling. It
+is the resolved resource mode (Settings → Resources), read from the same place
+the gates read it and counted across **every** process that shares it — this
+app and each automations runner. A coordinator that does not look starts eight
+workers that queue behind each other; one that does, dispatches what fits.
 
 ### The `create` group: receipts, idempotency, audit
 
@@ -342,8 +379,8 @@ Two tokens exist, both minted fresh on every start, neither ever logged:
 
 **Scope.** The per-launch token travels in agent processes — the least trusted
 caller — so it reaches only the project its terminal was opened in: listings
-(`project/list`, `worktree/list`, `terminal/list`, `agent/list`, the counts in
-`status`) are narrowed to it, and a selector that names a worktree or a
+(`project/list`, `worktree/list`, `terminal/list`, `agent/list`, `host/list`,
+the counts in `status`) are narrowed to it, and a selector that names a worktree or a
 terminal of another project is refused with *scope denied* (`-32003`) —
 distinct from *not found*, so an agent learns to stop rather than retry. The
 scope is taken from **backend state**: the folder the caller's own PTY runs in
@@ -502,9 +539,10 @@ uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempote
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
-uxnan-cli automation ls | run <automation-id> [--idempotency-key <key>]
+uxnan-cli host ls | show <host-id> | connect <host-id> [--idempotency-key <key>]
+uxnan-cli automation ls | show <automation-id> | run <automation-id> [--idempotency-key <key>]
 uxnan-cli app focus
-uxnan-cli file open <path> [--worktree <worktree>]
+uxnan-cli file open <path> [--worktree <worktree>] [--with <editor>]
 uxnan-cli file diff <path> [--worktree <worktree>] [--staged]
 uxnan-cli browser open <url> | navigate <url> | reload | back | forward | status
 uxnan-cli rpc <method> [--params '<json>']      # any catalog entry, raw

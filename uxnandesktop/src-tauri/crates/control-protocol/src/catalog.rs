@@ -209,6 +209,114 @@ fn project_ref() -> Value {
     }))
 }
 
+/// Channels on a host's live session, as an optional field: absent while the
+/// host is not connected, because there is nothing to count.
+fn host_channels() -> Value {
+    let mut v = nested(
+        "Channels in use on the live session, and the limit this host turned out to enforce. A terminal, the file session and each command are one channel each; the limit is learned from a refusal, never guessed.",
+        json!({
+            "open": field("integer", "Channels in use right now."),
+            "limit": nullable("integer", "The host's own limit, once it has refused one. Null until then."),
+        }),
+    );
+    v[ABSENT] = json!(true);
+    v
+}
+
+/// A registered remote machine and what its session is doing (`SshHost` plus
+/// live state). `full` adds what only `host/show` answers: the projects on the
+/// machine and the terminals open against its session.
+///
+/// What is *not* here is deliberate: no key paths, no credentials, no
+/// fingerprints — a caller of this surface never needs them, and the person
+/// resolves anything key-shaped in Settings → Hosts.
+fn host_view(full: bool) -> Value {
+    let mut props = json!({
+        "id": field("string", "The host id — what a project's `ssh:<hostId>` target names, and what `host/show` and `host/connect` take."),
+        "label": field("string", "What the person calls this machine."),
+        "hostname": field("string", "The address it is dialled at."),
+        "port": field("integer", "Its SSH port."),
+        "user": field("string", "The user Uxnan logs in as."),
+        "source": field("string", "Where the record came from: `manual` (added here) or `sshConfig` (imported from the person's `~/.ssh/config`)."),
+        "needsPrompt": field("boolean", "Whether the last connection needed a passphrase or a password. Such a host is left alone at startup and `host/connect` will likely answer `needsPassword`/`needsPassphrase`: only the person can finish it."),
+        "connected": field("boolean", "Whether a live session is open on it right now — the session itself, not what the settings remember."),
+        "generation": optional("integer", "The connection incarnation, while connected. It changes when a dropped session is replaced, and every mutation prepared against a session carries it."),
+        "shell": optional("string", "The shell its `sshd` starts (`posix`, `cmd`, `powershell` or `unknown`), learned once per connection. It decides how a command line must be quoted for this machine."),
+        "channels": host_channels(),
+    });
+    if full {
+        props["projects"] = list_of(
+            project_ref(),
+            "The registered projects that live on this host.",
+        );
+        props["terminals"] = list_of(
+            terminal_view(),
+            "The terminals open against its session, as `terminal/list` describes them.",
+        );
+    }
+    result(props)
+}
+
+/// A saved automation. `full` adds what only `automation/show` answers: each
+/// step's prompt and failure handling, and the run policy — what a caller reads
+/// to decide whether running it is what it wants.
+fn automation_view(full: bool) -> Value {
+    let mut step = json!({
+        "id": field("string", "The step id (`s1`, `s2`, …) — what a `{{steps.<id>.output}}` reference names."),
+        "title": field("string", "The step's title."),
+        "agent": field("string", "The agent it runs (`claude`, `codex`, …)."),
+        "model": field("string", "The model it pins; empty for the CLI's default."),
+    });
+    if full {
+        step["prompt"] = field("string", "What the step asks the agent to do, as written — `{{steps.<id>.output}}` is substituted at run time.");
+        step["dependsOn"] = list_of(
+            field("string", "A step id."),
+            "Steps that must finish first; empty means it starts with the run.",
+        );
+        step["onFailure"] = field(
+            "string",
+            "`stop` (fail the run; dependents are skipped) or `retry`.",
+        );
+        step["maxAttempts"] = field("integer", "How many dispatches `retry` allows.");
+        step["timeoutMs"] = nullable(
+            "integer",
+            "The step's own wall-clock cap in milliseconds; null uses the runner's default.",
+        );
+        step["autonomous"] = field("boolean", "Whether this step's agent approves its own tool use. A step that must change something needs it; one that only reads should not have it.");
+    }
+    let mut props = json!({
+        "id": field("string", "The automation id — what `automation/show` and `automation/run` take."),
+        "name": field("string", "Its name."),
+        "description": field("string", "Its description, possibly empty."),
+        "enabled": field("boolean", "Whether its schedule is active. A disabled automation can still be run by hand."),
+        "tags": list_of(field("string", "A label."), "Free-form labels the list groups by."),
+        "workingDir": field("string", "The folder a run executes in."),
+        "worktreePerRun": field("boolean", "Whether every run gets its own worktree, so unattended work never touches the tree the person is using."),
+        "schedule": field("object", "Its schedule: `{ kind: \"every\", n, unit, startsAt }`, `{ kind: \"dailyAt\", hour, minute }`, `{ kind: \"weekdaysAt\", hour, minute }` or `{ kind: \"weeklyAt\", day, hour, minute }`."),
+        "steps": list_of(result(step), "Its steps, in order."),
+        "updatedAt": field("integer", "Epoch milliseconds of the last edit."),
+    });
+    if full {
+        props["baseBranch"] = nullable(
+            "string",
+            "The branch a per-run worktree is cut from; null uses the repository's HEAD.",
+        );
+        props["createdAt"] = field("integer", "Epoch milliseconds of its creation.");
+        props["policy"] = nested(
+            "How a run behaves, beyond the graph.",
+            json!({
+                "catchUp": field("boolean", "Whether a moment missed while the machine was off is recovered."),
+                "overlap": field("string", "What a trigger does while a run is going: `skip`, `queue` or `cancelPrevious`."),
+                "maxRunMinutes": field("integer", "Wall-clock ceiling for the whole run."),
+                "keepRuns": field("integer", "How many past runs are kept on disk."),
+                "notifyOn": list_of(field("string", "`completed` or `failed`."), "Which outcomes raise a native notification."),
+                "precondition": nullable("object", "`{ command, timeoutSeconds }`: a shell command that decides whether the run proceeds at all (exit 0 = go ahead). Null when there is none — `automation/run` may therefore do nothing and say why."),
+            }),
+        );
+    }
+    result(props)
+}
+
 /// A tracked agent (`AgentView`).
 fn agent_view() -> Value {
     result(json!({
@@ -450,6 +558,13 @@ pub fn catalog() -> Vec<Entry> {
                     "terminals": field("integer", "Live terminals."),
                     "agents": field("integer", "Live agents."),
                 })),
+                "budget": nested("What must be free before another agent starts here, and what is taken right now. It is the resolved resource mode (Settings → Resources), shared by this app and every automations runner: read it before dispatching workers, or they queue behind each other.", json!({
+                    "concurrency": field("integer", "How many agent runs may be in flight on this machine at once."),
+                    "live": field("integer", "How many of those slots are held right now, by this app and by any automations runner."),
+                    "minFreeMemoryMb": field("integer", "Memory that must be free for a new agent to be admitted, in MiB. 0 = no memory condition."),
+                    "freeMemoryMb": field("integer", "Memory free on this machine right now, in MiB."),
+                    "maxAgentMemoryMb": field("integer", "The advisory ceiling on one run's whole process tree, in MiB. 0 = measured only, which is the default."),
+                })),
                 "cli": nested("Where `uxnan-cli` is on this machine.", json!({
                     "bundled": nullable("string", "The binary shipped inside the app, next to its executable — on the PATH of every terminal Uxnan opens (also named by `UXNAN_CLI` there). Null for a build made without the sidecar."),
                     "shim": nullable("string", "The link (macOS/Linux, `~/.local/bin/uxnan-cli`) or copy (Windows, `%LOCALAPPDATA%\\uxnan\\bin`) the app keeps for your own shell. Null when it could not be written."),
@@ -476,6 +591,29 @@ pub fn catalog() -> Vec<Entry> {
             mutates: false,
             result: project_with_worktrees(true),
             example: json!({ "project": "name:uxnan" }),
+        },
+        Entry {
+            method: "host/list",
+            tool: "host_list",
+            group: Group::Read,
+            summary: "List the remote machines Uxnan is registered against, with the state of their live SSH session: connected or not, the shell each one starts, and the channels in use against the limit it enforces. A project whose `target` is `ssh:<hostId>` lives on one of these — check here when work on it stops answering. You see the host your own project lives on, and the person's own shell sees every registered host: a token scoped to a project on this machine is refused (`-32003`), because an inventory of someone's machines is not a project's business.",
+            params: object(json!({}), &[]),
+            mutates: false,
+            result: result(json!({ "hosts": list_of(host_view(false), "The hosts you may see.") })),
+            example: json!({}),
+        },
+        Entry {
+            method: "host/show",
+            tool: "host_show",
+            group: Group::Read,
+            summary: "Describe one host: the record `host/list` gives, plus the projects registered on it and the terminals open against its session.",
+            params: object(
+                json!({ "host": { "type": "string", "description": "The host id, from `host/list` or from a project's `ssh:<hostId>` target." } }),
+                &["host"],
+            ),
+            mutates: false,
+            result: host_view(true),
+            example: json!({ "host": "h-42" }),
         },
         Entry {
             method: "worktree/list",
@@ -575,27 +713,24 @@ pub fn catalog() -> Vec<Entry> {
             method: "automation/list",
             tool: "automation_list",
             group: Group::Read,
-            summary: "List the saved automations (unattended, recurring agent runs): id, name, whether it is enabled, its schedule and its working folder.",
+            summary: "List the saved automations (unattended, recurring agent runs): id, name, whether its schedule is active, the schedule itself, its working folder and its steps. Read one with `automation/show` before running it.",
             params: object(json!({}), &[]),
             mutates: false,
-            result: result(json!({ "automations": list_of(result(json!({
-                "id": field("string", "The automation id — what `automation/run` takes."),
-                "name": field("string", "Its name."),
-                "description": field("string", "Its description, possibly empty."),
-                "enabled": field("boolean", "Whether its schedule is active."),
-                "tags": list_of(field("string", "A label."), "Free-form labels the list groups by."),
-                "workingDir": field("string", "The folder a run executes in."),
-                "worktreePerRun": field("boolean", "Whether every run gets its own worktree."),
-                "schedule": field("object", "Its schedule: `{ kind: \"every\", n, unit, startsAt }`, `{ kind: \"dailyAt\", hour, minute }`, `{ kind: \"weekdaysAt\", hour, minute }` or `{ kind: \"weeklyAt\", day, hour, minute }`."),
-                "steps": list_of(result(json!({
-                    "id": field("string", "The step id."),
-                    "title": field("string", "The step's title."),
-                    "agent": field("string", "The agent it runs (`claude`, `codex`, …)."),
-                    "model": field("string", "The model it pins; empty for the CLI's default."),
-                })), "Its steps, in order."),
-                "updatedAt": field("integer", "Epoch milliseconds of the last edit."),
-            })), "Every saved automation.") })),
+            result: result(json!({ "automations": list_of(automation_view(false), "Every saved automation.") })),
             example: json!({}),
+        },
+        Entry {
+            method: "automation/show",
+            tool: "automation_show",
+            group: Group::Read,
+            summary: "Describe one saved automation in full: what `automation/list` gives plus each step's prompt, dependencies, failure handling and whether it approves its own tool use, and the run policy (overlap, ceilings, notifications, and the precondition that may make a run do nothing). Read this before `automation/run` — the list alone does not say what a run would do.",
+            params: object(
+                json!({ "automation": { "type": "string", "description": "The automation id from `automation/list`." } }),
+                &["automation"],
+            ),
+            mutates: false,
+            result: automation_view(true),
+            example: json!({ "automation": "nightly-lint" }),
         },
         Entry {
             method: "browser/status",
@@ -712,16 +847,20 @@ pub fn catalog() -> Vec<Entry> {
             method: "file/open",
             tool: "file_open",
             group: Group::Ui,
-            summary: "Open a file in Uxnan's editor tab (or reveal it if already open). The path must be inside a registered worktree.",
+            summary: "Open a file in Uxnan's editor tab (or reveal it if already open). The path must be inside a registered worktree. `with` hands it to one of the person's external editors instead — one of the editors this machine has, never a command you choose.",
             params: object(
                 json!({
                     "path": { "type": "string", "description": "Absolute path of the file, or a path relative to the selected worktree." },
-                    "worktree": worktree_selector()
+                    "worktree": worktree_selector(),
+                    "with": { "type": "string", "description": "Open it in an external editor instead of Uxnan's tab, by the id or name of one this machine offers (`vscode`, `Zed`, an editor the person added in Settings → Open with). The error lists what is available. Only a folder or file inside a registered worktree is ever handed over." }
                 }),
                 &["path"],
             ),
             mutates: true,
-            result: result(json!({ "opened": field("string", "The absolute path now open in the editor.") })),
+            result: result(json!({
+                "opened": field("string", "The absolute path now open."),
+                "openedWith": optional("string", "The external editor it was handed to, when `with` was given. Absent means Uxnan's own tab."),
+            })),
             example: json!({ "path": "src/app.ts", "worktree": "current" }),
         },
         Entry {
@@ -886,6 +1025,32 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({ "direction": "down", "amount": 1 }),
         },
         // ── Create ───────────────────────────────────────────────────────────
+        Entry {
+            method: "host/connect",
+            tool: "host_connect",
+            group: Group::Create,
+            summary: "Open a session on a registered host that has none — the same path startup takes for the hosts that need nothing. Idempotent: a host already connected reports so. **No credential is ever accepted here**: a host that wants a password or a key passphrase, or whose host key is unknown or has changed, comes back saying so and stops — that is the person's to finish in Settings → Hosts. Use it when `host/list` says the machine your project lives on is not connected.",
+            params: object(
+                json!({
+                    "host": { "type": "string", "description": "The host id, from `host/list` or from a project's `ssh:<hostId>` target." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["host"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "host": nested("What the attempt came to.", json!({
+                    "id": field("string", "The host id."),
+                    "connected": field("boolean", "Whether there is a live session now. True also when one was already open."),
+                    "status": field("string", "`connected`; `needsPassword` or `needsPassphrase` (a person must finish it in Settings → Hosts); `hostUnknown`, `hostChanged` or `hostRevoked` (the host key must be confirmed by a person — nothing was trusted); `unreachable`, `failed` or `noUsableMethod`."),
+                    "generation": optional("integer", "The connection incarnation, when connected."),
+                    "shell": optional("string", "The shell it starts (`posix`, `cmd`, `powershell`, `unknown`), when connected."),
+                    "reason": optional("string", "For `unreachable`: `timeout`, `unknownAddress`, `refused` or `handshake` — a machine that is asleep is worth another try, a name that does not resolve is not."),
+                    "detail": optional("string", "A sentence naming the host and what happened, for `unreachable`."),
+                })),
+            })),
+            example: json!({ "host": "h-42" }),
+        },
         Entry {
             method: "worktree/create",
             tool: "worktree_create",

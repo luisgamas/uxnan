@@ -1225,8 +1225,8 @@ impl SshConnectReport {
 /// `password` is supplied only on a retry, after the app has asked for it. It is
 /// used for this attempt and never stored.
 #[tauri::command]
-pub async fn ssh_host_connect(
-    app: AppHandle,
+pub async fn ssh_host_connect<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     host_id: String,
     password: Option<String>,
@@ -1270,8 +1270,8 @@ pub async fn ssh_host_connect(
 /// Reach a host that has no live session, from the host key to the shell it
 /// starts. Split out of [`ssh_host_connect`] so both the first connection and a
 /// replacement for one that ended take exactly the same path.
-async fn connect_fresh(
-    app: AppHandle,
+async fn connect_fresh<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     host_id: String,
     password: Option<String>,
@@ -1404,8 +1404,8 @@ const SESSION_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_se
 /// connection under the same host id; this task compares generations before
 /// removing anything, so a watcher for a dead session can never take away the
 /// live one that replaced it.
-fn watch_session(
-    app: AppHandle,
+fn watch_session<R: tauri::Runtime>(
+    app: AppHandle<R>,
     host_id: String,
     generation: u64,
     session: std::sync::Arc<ssh::conn::Connection>,
@@ -1488,7 +1488,7 @@ const RECONNECT_BACKOFF: [u64; 5] = [2, 5, 15, 30, 60];
 /// name that does not resolve, a refused credential, a host key that changed
 /// (which is the one case where retrying would be actively wrong: something is
 /// answering for that address and it is not the machine we trusted).
-async fn reconnect_ladder(app: AppHandle, host_id: String) {
+async fn reconnect_ladder<R: tauri::Runtime>(app: AppHandle<R>, host_id: String) {
     for (attempt, wait) in RECONNECT_BACKOFF.iter().enumerate() {
         tokio::time::sleep(std::time::Duration::from_secs(*wait)).await;
 
