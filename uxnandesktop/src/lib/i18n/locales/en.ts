@@ -2536,6 +2536,7 @@ export const en = {
   "chat.queuePausedError": "The queue is paused because the last turn failed.",
   "chat.queueResume": "Resume",
   "chat.queueClear": "Discard",
+  "chat.noLongerPending": "No longer waiting for an answer",
   "chat.context": "{percent}% of context used",
 } as const;
 

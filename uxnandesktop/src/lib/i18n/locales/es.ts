@@ -2538,5 +2538,6 @@ export const es: Record<MessageKey, string> = {
   "chat.queuePausedError": "La cola está en pausa porque el último turno falló.",
   "chat.queueResume": "Reanudar",
   "chat.queueClear": "Descartar",
+  "chat.noLongerPending": "Ya no espera respuesta",
   "chat.context": "{percent}% del contexto usado",
 };

@@ -103,11 +103,11 @@
         {#if isText(part)}
           {#if part.text.trim()}
             <div class="chat-prose min-w-0 text-[13px] leading-6">
-              <MarkdownView source={part.text} baseDir={cwd} onopenfile={openFile} />
+              <MarkdownView source={part.text} baseDir={cwd} inline onopenfile={openFile} />
             </div>
           {/if}
         {:else}
-          <ChatBlock block={part} {threadId} {conversation} />
+          <ChatBlock block={part} {threadId} {conversation} live={streaming} />
         {/if}
       {/each}
 

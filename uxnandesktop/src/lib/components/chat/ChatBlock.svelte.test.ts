@@ -78,6 +78,14 @@ describe("ChatBlock", () => {
     });
   });
 
+  it("never offers to answer an approval whose turn already ended", () => {
+    const { screen } = mount(ChatBlock, {
+      props: { block: approval, threadId: "t1", conversation: conversation(), live: false },
+    });
+    expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
+    expect(screen.getByText("No longer waiting for an answer")).toBeTruthy();
+  });
+
   it("renders nothing for a block type it does not know", () => {
     const { screen } = mount(ChatBlock, {
       props: { block: { type: "from-the-future" }, threadId: "t1", conversation: conversation() },

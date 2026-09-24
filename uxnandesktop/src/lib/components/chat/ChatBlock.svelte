@@ -36,10 +36,15 @@
     block,
     threadId,
     conversation,
+    live = true,
   }: {
     block: unknown;
     threadId: string;
     conversation: Conversation;
+    /** The block's turn is still running. An approval or question in a turn
+     *  that ended is settled whatever this window saw — without this, a card
+     *  answered while the tab was closed would offer its buttons again. */
+    live?: boolean;
   } = $props();
 
   const b = $derived(
@@ -237,7 +242,9 @@
         {/if}
       </div>
     </div>
-    {#if approvalOutcome}
+    {#if !approvalOutcome && !live}
+      <p class={cn(text.meta, "mt-2")}>{i18n.t("chat.noLongerPending")}</p>
+    {:else if approvalOutcome}
       <p class={cn(text.meta, "mt-2 flex items-center gap-1")}>
         <Icon
           icon={approvalOutcome.decision === "reject" ? Cancel01Icon : Tick02Icon}
@@ -272,7 +279,9 @@
             <span class={text.bodyStrong}>{q.question}</span>
           </div>
         </div>
-        {#if questionOutcome}
+        {#if !questionOutcome && !live}
+          <p class={cn(text.meta, "pl-6")}>{i18n.t("chat.noLongerPending")}</p>
+        {:else if questionOutcome}
           {@const chosen = questionOutcome.answers[qi] ?? []}
           <p class={cn(text.meta, "pl-6")}>
             {chosen.length > 0 ? chosen.join(", ") : i18n.t("chat.questionSkipped")}
@@ -302,7 +311,7 @@
     {/each}
     {#if questionOutcome?.timedOut}
       <p class={text.meta}>{i18n.t("chat.questionTimedOut")}</p>
-    {:else if !questionOutcome}
+    {:else if !questionOutcome && live}
       <div class="flex justify-end gap-1.5">
         <Button size="xs" variant="ghost" disabled={answering} onclick={() => void answer(true)}>
           {i18n.t("chat.skip")}
