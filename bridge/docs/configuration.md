@@ -158,6 +158,15 @@ only write-bounded by its `permissionMode` — see
 `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and the metrics sealing key
 live in the OS keychain, not on disk.
 
+**`~/.uxnan/` is the product's home on the machine, not the bridge's alone.**
+Uxnan Desktop writes one sibling here — `hooks/`, the agent reporters each
+CLI's own config points at — because that config is itself one file per machine
+and naming a path inside any one app profile is what let a second instance take
+the machine's agents over (`uxnandesktop/docs/agent-hooks.md` → *Why not inside
+the app's profile*). The bridge owns everything listed above and touches
+nothing else here; the desktop owns `hooks/` and touches nothing of the
+bridge's.
+
 `metrics.json` is a versioned, global-per-PC activity ledger. It retains
 conversation, message/day, reported-token, connection-session and mutating-Git
 rows even after mutable thread history is deleted. Existing conversation

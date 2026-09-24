@@ -125,6 +125,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   other. Codex stops asking you to review its hooks, too: its trust hash covers
   the command, and the command no longer moves.
 
+  If you wired an agent by hand with the generic wrapper, its command moved
+  with the scripts: the path to copy is now `~/.uxnan/hooks/uxnan-hook-wrapper.*`
+  (Settings → Agents → Hooks shows it, and `docs/agent-hooks.md` has the
+  per-OS form).
+
   Two builds can ship different reporters, so the shared directory records the
   version that wrote it and an older build never overwrites a newer one's
   copies. Reporters an older version left inside a profile are cleaned up on the

@@ -4217,8 +4217,9 @@ pub struct HookScripts {
     pub wrapper_fish: String,
 }
 
-/// Paths of the bundled hook scripts the ADE writes to `<app-data>/hooks/`
-/// on startup, plus the resolved `~/.claude/settings.json` path. Settings →
+/// Paths of the bundled hook scripts the ADE writes to the machine's shared
+/// hooks directory (`agent_hooks::shared_hooks_dir`) on startup, plus the
+/// resolved `~/.claude/settings.json` path. Settings →
 /// Agents → Hooks uses this to render copy-pasteable commands and the install
 /// buttons. `None` if the install-on-startup step failed (e.g. the app-data
 /// directory is not writable) — in that case precise hook reporting still
