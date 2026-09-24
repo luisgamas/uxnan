@@ -112,6 +112,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A development or demo profile no longer takes over your installed app's
+  agents.** Each agent's hook config is one file per machine, and Uxnan wrote a
+  path from *its own profile* into it — so whichever instance started last owned
+  every agent on the computer, and a throwaway profile that was later deleted
+  left every agent running a hook that no longer existed (`MODULE_NOT_FOUND` on
+  every turn, in every agent's terminal). The reporters now live **once per
+  machine**, in `~/.uxnan/hooks/`, and the registration never names a profile.
+  What stays per instance is only where a report goes, which already travels in
+  each terminal's environment — so an installed app and a development build run
+  side by side, each getting its own agents' reports, and neither can break the
+  other. Codex stops asking you to review its hooks, too: its trust hash covers
+  the command, and the command no longer moves.
+
+  Two builds can ship different reporters, so the shared directory records the
+  version that wrote it and an older build never overwrites a newer one's
+  copies. Reporters an older version left inside a profile are cleaned up on the
+  next start; that profile's `endpoint.*` coordinates are not touched.
 - **The browser no longer floats over other apps and desktops.** See above.
 - **The panel no longer polls every frame.** The page slot is measured when
   something changes (a resize, the window, an overlay opening or closing), and

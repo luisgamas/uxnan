@@ -189,9 +189,15 @@ pub fn run() {
             // it writes to `<data>/hooks/`) so `pty_create` can inject them into
             // every terminal, and write the control discovery file so
             // `uxnan-cli` can find the app from any shell.
+            //
+            // Two directories, and the split is the point: **this instance's
+            // coordinates** live in its own profile (`<data>/hooks/endpoint.*`,
+            // injected per terminal), while the **reporters** live once per
+            // machine (`agent_hooks::shared_hooks_dir`) because the agent
+            // configs that name them are themselves one per machine.
             let hook_handle = app.handle().clone();
-            let hooks_dir = data_dir.join("hooks");
-            let hooks_dir_for_server = hooks_dir.clone();
+            let endpoint_dir = data_dir.join("hooks");
+            let hooks_dir_for_server = endpoint_dir.clone();
             let discovery_dir = data_dir.clone();
             let mcp_config_handle = hook_handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -237,11 +243,25 @@ pub fn run() {
                 }
             });
 
-            // Write the bundled per-agent hook scripts to <data>/hooks/ so the
-            // Settings → Agents → Hooks pane can install the ready-made configs.
-            // Best-effort: a failure here doesn't break the app (precise hook
-            // reporting still works; the one-click install is just unavailable).
-            match crate::agent_hooks::install_scripts_to(&hooks_dir) {
+            // Write the bundled per-agent hook scripts to the machine's shared
+            // hooks directory so the Settings → Agents → Hooks pane can install
+            // the ready-made configs. Best-effort: a failure here doesn't break
+            // the app (precise hook reporting still works; the one-click
+            // install is just unavailable).
+            //
+            // Anything an older build left inside this profile goes: the
+            // registrations are rewritten below to the shared path, so those
+            // copies are orphans — and an orphan reporter is exactly what a
+            // deleted development profile used to leave behind.
+            let removed = crate::agent_hooks::clear_profile_scripts(&endpoint_dir);
+            if removed > 0 {
+                crate::diagnostics::log(
+                    crate::diagnostics::Level::Info,
+                    "hooks",
+                    &format!("removed {removed} reporter(s) from {endpoint_dir:?}; they live in the machine's shared hooks directory now"),
+                );
+            }
+            match crate::agent_hooks::install_shared_scripts() {
                 Ok(install) => {
                     // Auto-install the managed hooks for every supported agent
                     // (Claude Code, Codex, OpenCode, Pi, Grok, Antigravity, …) so precise states
@@ -256,7 +276,7 @@ pub fn run() {
                     });
                 }
                 Err(err) => {
-                    let message = format!("hook scripts not installed at {hooks_dir:?}: {err}");
+                    let message = format!("hook scripts not installed: {err}");
                     crate::diagnostics::log(crate::diagnostics::Level::Warn, "hooks", &message);
                     eprintln!("[uxnan-desktop] {message}");
                 }
