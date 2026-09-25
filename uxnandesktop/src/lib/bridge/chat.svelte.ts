@@ -22,6 +22,7 @@ import type { ThreadDeletedParams, ThreadUpdatedParams } from '$shared/jsonrpc/n
 import { bridge, type BridgeClientStore, type BridgeNotification } from './client.svelte';
 import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelte';
 import { isUserFacingAgent } from './agents';
+import { ThreadActivity, type ChatActivity } from './activity.svelte';
 
 /** Longest provisional title (the bridge's `TITLE_MAX_LENGTH`). */
 const TITLE_MAX_LENGTH = 72;
@@ -52,6 +53,8 @@ export class ChatStore {
   threads = new SvelteMap<string, Thread>();
   threadsLoaded = $state(false);
   agents = $state<AgentDescriptor[]>([]);
+  /** What every thread is doing now (tab chips, sidebar rows). */
+  readonly activity = new ThreadActivity();
   #models = new SvelteMap<string, AgentModel[]>();
   /** `agent/models` requests in flight, by agent. */
   readonly #modelRequests = new Map<string, Promise<AgentModel[]>>();
@@ -90,6 +93,7 @@ export class ChatStore {
       }
       for (const id of [...this.threads.keys()]) if (!next.has(id)) this.threads.delete(id);
       for (const [id, thread] of next) this.threads.set(id, thread);
+      this.activity.adoptList([...next.values()]);
       this.threadsLoaded = true;
     } catch {
       /* not connected; the next connect resyncs */
@@ -162,6 +166,18 @@ export class ChatStore {
       });
   }
 
+  /** What the folder's conversations are doing — the non-idle states, each with
+   *  when it last moved — for the sidebar's aggregates (needs-you count, a
+   *  worktree's leading state, recency order), next to its terminal agents. */
+  statusesAt(cwd: string): { status: ChatActivity; at: number }[] {
+    const out: { status: ChatActivity; at: number }[] = [];
+    for (const thread of this.threadsFor(cwd)) {
+      const status = this.activity.of(thread.id);
+      if (status !== 'idle') out.push({ status, at: thread.updatedAt });
+    }
+    return out;
+  }
+
   /** The live view of one thread, created (and loaded) on first use. */
   conversation(threadId: string): Conversation {
     let conversation = this.#conversations.get(threadId);
@@ -188,6 +204,7 @@ export class ChatStore {
 
   /** Route one bridge notification. */
   apply(notification: BridgeNotification): void {
+    this.activity.apply(notification);
     switch (notification.method) {
       case 'stream/thread/updated': {
         const thread = (notification.params as ThreadUpdatedParams | undefined)?.thread;
@@ -204,16 +221,23 @@ export class ChatStore {
     const threadId = threadIdOf(notification);
     if (!threadId) return;
     this.#conversations.get(threadId)?.apply(notification);
-    // A turn starting or ending is activity: keep the list's order honest
+    // A turn arriving or starting is activity: keep the list's order honest
     // without a refetch.
-    if (notification.method === 'stream/turn/created') {
+    if (notification.method === 'stream/turn/created' || notification.method === 'stream/turn/started') {
       const thread = this.threads.get(threadId);
       if (thread) this.threads.set(threadId, { ...thread, updatedAt: Date.now() });
     }
   }
 
   /** Start a thread in `cwd` with `agentId` (fixed from now on) and `model`. */
-  async startThread(input: { cwd: string; agentId: string; model?: string }): Promise<Thread> {
+  /** Starts a thread; a `title` (a name the user gave the tab before its
+   *  first message) is the user's, so nothing generated replaces it. */
+  async startThread(input: {
+    cwd: string;
+    agentId: string;
+    model?: string;
+    title?: string;
+  }): Promise<Thread> {
     const project = await this.#client.call<Project>('project/resolve', { cwd: input.cwd });
     const thread = await this.#client.call<Thread>('thread/start', {
       projectId: project.id,
@@ -225,7 +249,8 @@ export class ChatStore {
     // Same starting posture as a thread started on the phone, so a
     // conversation behaves alike whichever client opened it.
     void this.setAccessMode(thread.id, 'fullAccess').catch(() => undefined);
-    return thread;
+    if (input.title?.trim()) await this.rename(thread.id, input.title).catch(() => undefined);
+    return this.threads.get(thread.id) ?? thread;
   }
 
   /** Send a user message. The bubble shows at once; the bridge's
@@ -297,7 +322,9 @@ export class ChatStore {
   async rename(threadId: string, title: string): Promise<void> {
     const trimmed = title.trim();
     if (trimmed.length === 0) return;
-    await this.#client.call('thread/rename', { threadId, title: trimmed });
+    const thread = await this.#client.call<Thread>('thread/rename', { threadId, title: trimmed });
+    // Adopt it now: a generated title must not race past a name just chosen.
+    if (thread && typeof thread.id === 'string') this.threads.set(thread.id, thread);
   }
 
   async archive(threadId: string): Promise<void> {

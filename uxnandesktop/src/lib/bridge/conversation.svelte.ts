@@ -145,14 +145,6 @@ export class Conversation {
     }
     return open;
   });
-  /** How many of them there are. */
-  pendingInput = $derived(this.openRequests.length);
-  /** What the chat's tab chip shows — the same states a terminal agent's
-   *  indicator uses: `blocked` while the agent waits on the user, `working`
-   *  while it runs, `idle` otherwise. */
-  displayStatus = $derived<'blocked' | 'working' | 'idle'>(
-    this.pendingInput > 0 ? 'blocked' : this.running ? 'working' : 'idle',
-  );
   /** Offset of the oldest loaded turn in the thread; `0` = everything loaded. */
   oldestOffset = $state(0);
   hasOlder = $derived(this.oldestOffset > 0);

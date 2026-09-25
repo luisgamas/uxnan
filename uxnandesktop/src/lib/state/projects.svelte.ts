@@ -60,6 +60,7 @@ import {
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
+import { chat } from "$lib/bridge/chat.svelte";
 import {
   resolveCommandCwd,
   substituteTokens,
@@ -456,9 +457,10 @@ class ProjectsStore {
       const paths = main ? [main.path] : [];
       for (const w of this.visibleChildWorktrees(repo.id)) paths.push(w.path);
       for (const p of paths) {
-        const s = mostUrgentStatus(
-          terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
-        );
+        const s = mostUrgentStatus([
+          ...terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
+          ...chat.statusesAt(p).map((c) => c.status),
+        ]);
         if (s === "waiting" || s === "blocked") n += 1;
       }
     }
@@ -496,14 +498,17 @@ class ProjectsStore {
    *  comparators read, aggregated across the agents running in it. */
   private workspaceMeta(path: string, name: string): SortMeta {
     const tabs = terminals.agentTabs(path);
-    const status = mostUrgentStatus(
-      tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
-    );
+    const chats = chat.statusesAt(path);
+    const status = mostUrgentStatus([
+      ...tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
+      ...chats.map((c) => c.status),
+    ]);
     let activityAt = 0;
     for (const t of tabs) {
       const hook = agentStatus.get(t.id);
       if (hook?.lastUpdate) activityAt = Math.max(activityAt, hook.lastUpdate);
     }
+    for (const c of chats) activityAt = Math.max(activityAt, c.at);
     return {
       name,
       lastActive: app.settings.workspaceLastActive?.[path] ?? 0,

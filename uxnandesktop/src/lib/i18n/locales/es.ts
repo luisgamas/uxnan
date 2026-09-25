@@ -1383,6 +1383,7 @@ export const es: Record<MessageKey, string> = {
   "monitor.unread": "El agente terminó — sin revisar",
   "agents.spaceLabel": "Agentes",
   "agentView.interrupted": "Interrumpido",
+  "agentView.chat": "Chat",
   "agentView.subagents": "{n} subagente(s)",
   "agentView.subagent": "Subagente",
   "agentView.subagentType": "Tipo de subagente",

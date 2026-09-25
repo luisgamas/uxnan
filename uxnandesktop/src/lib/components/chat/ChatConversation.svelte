@@ -56,6 +56,15 @@
   // `$derived`, which may not write state. `ChatPane` re-keys this component
   // per thread, so one instance always shows one conversation.
   const conversation = chat.conversation(untrack(() => threadId));
+
+  // While this conversation is in view, a finished or failed turn is not
+  // news: the tab chip and the sidebar row go back to idle.
+  $effect(() => {
+    if (!active) return;
+    if (chat.activity.of(threadId) === "done" || chat.activity.of(threadId) === "blocked") {
+      chat.activity.seen(threadId);
+    }
+  });
   const thread = $derived(chat.threads.get(threadId));
   /** Deleted on another client (or the bridge lost it): nothing to show. */
   const missing = $derived(chat.threadsLoaded && !thread);

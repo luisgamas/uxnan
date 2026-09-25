@@ -178,15 +178,15 @@ export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab;
  *  session is about, not just which agent runs it), then the agent's name, then
  *  its own title. Every other kind shows its derived title. */
 export function tabDisplayTitle(t: GroupTab): string {
+  // A chat bound to a thread is named by the bridge (a rename made here or on
+  // the phone, or a generated name) — never by a tab-local title.
+  if (t.kind === 'chat' && t.threadId) {
+    const title = chat.threads.get(t.threadId)?.title;
+    if (title) return title;
+  }
   if (t.customTitle) return t.customTitle;
   if (t.kind === 'terminal') {
     return conversationTitles.get(t.id) ?? t.agentName ?? t.title;
-  }
-  if (t.kind === 'chat') {
-    // The bridge's title, which every client converges on (a generated name,
-    // or a rename made on the phone).
-    const title = t.threadId ? chat.threads.get(t.threadId)?.title : undefined;
-    return title || t.title;
   }
   return t.title;
 }
@@ -1105,6 +1105,14 @@ class TerminalStore {
   /** PTY id of the active tab of the active region — only when that tab is a
    *  terminal (a file/diff active tab yields null, so file-drop and the agent
    *  "are you viewing it" check behave correctly). */
+  /** The thread of the chat tab shown in the active group, if it is one. */
+  activeChatThreadId(): string | null {
+    if (!this.root) return null;
+    const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
+    const tab = group?.tabs.find((t) => t.id === group.activeTabId);
+    return tab?.kind === 'chat' ? (tab.threadId ?? null) : null;
+  }
+
   activePtyId(): string | null {
     if (!this.root) return null;
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
@@ -1404,8 +1412,10 @@ class TerminalStore {
   bindChatThread(tabId: string, threadId: string | undefined): void {
     for (const { tab } of this.tabsWithWorkspace()) {
       if (tab.kind === 'chat' && tab.id === tabId) {
-        // Reactive: the layout-persistence effect picks the change up.
+        // Reactive: the layout-persistence effect picks the change up. Once
+        // bound, the thread's own title names the tab (`tabDisplayTitle`).
         tab.threadId = threadId;
+        if (threadId) delete tab.customTitle;
         return;
       }
     }

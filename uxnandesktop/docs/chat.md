@@ -80,6 +80,31 @@ folder on an SSH host is not one it can work in):
 - a worktree row's right-click → *Launch agent* → **New chat**;
 - the project card's launcher dialog → *What to open* → **Chat**.
 
+## In the sidebar
+
+A worktree's agent view lists its bridge conversations next to its terminal
+agents, in the same rows (`ChatRow`): the state glyph, the agent's mark, the
+title and when it last moved; a second line says what it is doing, or — idle —
+that it is a chat and on which model. Listed are every conversation open in a
+tab or doing something, then the most recent others up to four
+(`sidebarChats`); a conversation started on the phone appears as soon as the
+bridge knows it. A click opens it in a chat tab, or focuses the tab showing it.
+
+The state is the one every chat surface reads (`ThreadActivity`), the same five
+a terminal agent shows: **working** while a turn runs, **waiting** while an
+approval or a question waits on you, **blocked** when the last turn failed,
+**done** when a turn finished and you have not looked yet, and idle. It comes
+from the bridge's own stream — turns starting and ending, requests raised and
+resolved — so a chat needs no hooks; right after connecting, `thread/list`'s
+live `activeTurnId` says which conversations are already working. Chats count
+toward the worktree's leading state, its "last moved" time, the needs-you
+count and the sidebar's status order.
+
+**Names.** A chat's title is its thread's, the same on every client: renaming
+the tab renames the thread (`thread/rename`), a rename on the phone shows here,
+and a name given to a new chat's tab before its first message becomes the
+thread's name.
+
 ## A new chat
 
 A new chat opens on one question — *What should we build in <folder>?* — over
@@ -152,6 +177,7 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - A chat tab (`ChatTab` in `terminals.svelte.ts`) persists only `cwd`,
   `threadId` and the preselected `agentId`.
 - Tests: `src/lib/bridge/*.svelte.test.ts`, `src/lib/bridge/timeline.test.ts`,
+  `src/lib/components/ChatRow.svelte.test.ts`,
   `src/lib/components/BridgeSettings.svelte.test.ts`,
   `src/lib/state/chatTabs.svelte.test.ts`,
   `src/lib/components/chat/ChatBlock.svelte.test.ts`, and in Rust

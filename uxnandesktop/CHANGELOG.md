@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **Chats in the sidebar, with the phone's conversations.** A worktree's agent
+  view lists its bridge conversations beside its terminal agents (`ChatRow`,
+  the same row tokens): the ones open in a tab or doing something, then the
+  most recent up to four (`sidebarChats`) — a conversation started on the phone
+  included. One state source for every chat surface (`ThreadActivity`, fed by
+  every bridge notification and by `thread/list`'s live `activeTurnId`) speaks
+  the terminal agents' vocabulary: working, **waiting** on an open approval or
+  question (it read as `blocked` before, against 02d), blocked on a failed
+  turn, done until seen. Chats count toward the worktree's leading state, the
+  needs-you count and the status sort. A chat tab's name is always its
+  thread's, and a name given before the first message becomes the thread's.
 - **Chat tabs: agent conversations shared with Uxnan Mobile** ("one owner, two
   views"; architecture/02a §5.8.16). A new tab kind, `chat`, sits
   next to terminals and shows a conversation the **bridge** drives — the same

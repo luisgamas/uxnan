@@ -1379,6 +1379,7 @@ export const en = {
   "monitor.unread": "Agent finished — not yet reviewed",
   "agents.spaceLabel": "Agents",
   "agentView.interrupted": "Interrupted",
+  "agentView.chat": "Chat",
   "agentView.subagents": "{n} sub-agent(s)",
   "agentView.subagent": "Sub-agent",
   "agentView.subagentType": "Sub-agent type",

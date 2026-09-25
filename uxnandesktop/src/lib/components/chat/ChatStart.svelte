@@ -87,6 +87,8 @@
         cwd: tab.cwd,
         agentId,
         ...(model ? { model } : {}),
+        // A name given to the tab before the first message is the user's.
+        ...(tab.customTitle ? { title: tab.customTitle } : {}),
       });
       terminals.bindChatThread(tab.id, thread.id);
       // The conversation is empty on the bridge, so the first page is known

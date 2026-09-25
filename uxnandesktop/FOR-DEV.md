@@ -1029,10 +1029,6 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       Site: `src/lib/components/chat/ChatComposer.svelte` (`FOR-DEV:` marker).
 - [ ] Fork and "session info" (the agent's native session id, for resuming it
       from its own CLI) in the chat header's menu — the phone offers both.
-- [ ] Chats in the left sidebar: bridge threads do not show as agent rows under
-      their worktree (a running or waiting chat is only visible in its tab and in
-      the "+" menu's recent list). Needs a design decision on how chat rows sit
-      beside terminal agent rows.
 
 ### Terminal-launched sessions
 - [ ] Publish terminal sessions to the bridge's catalog, mirror them read-only

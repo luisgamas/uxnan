@@ -173,12 +173,10 @@ describe('Conversation', () => {
     expect(c.approvals.ap2?.decision).toBe('reject');
   });
 
-  it('reports working, then blocked on an open approval, then idle', () => {
+  it('lists the open approvals of the running turn until they are answered', () => {
     const { c } = conversation();
-    expect(c.displayStatus).toBe('idle');
     c.apply(note('stream/turn/created', { turn: turn('x', 'go', 'pending') }));
     c.apply(note('stream/turn/started', { turnId: 'x' }));
-    expect(c.displayStatus).toBe('working');
     c.apply(
       note('stream/content/block', {
         turnId: 'x',
@@ -186,14 +184,9 @@ describe('Conversation', () => {
         content: { type: 'approval', approvalId: 'ap', action: 'Allow Bash' },
       }),
     );
-    expect(c.pendingInput).toBe(1);
     expect(c.openRequests).toEqual([{ type: 'approval', approvalId: 'ap', action: 'Allow Bash' }]);
-    expect(c.displayStatus).toBe('blocked');
     c.apply(note('stream/approval/resolved', { approvalId: 'ap', decision: 'approve' }));
     expect(c.openRequests).toEqual([]);
-    expect(c.displayStatus).toBe('working');
-    c.apply(note('stream/turn/aborted', { turnId: 'x' }));
-    expect(c.displayStatus).toBe('idle');
   });
 
   it('pages back with an offset cursor and never duplicates a turn', async () => {

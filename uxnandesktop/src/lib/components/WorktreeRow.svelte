@@ -44,6 +44,7 @@
   import MoonIcon from "@hugeicons/core-free-icons/MoonIcon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import { chat } from "$lib/bridge/chat.svelte";
 
   let {
     row,
@@ -148,10 +149,14 @@
 
   // Aggregate agent status for the leading indicator: a working agent wins, else
   // the first one; null when the worktree has no agents (show the branch icon).
+  // A bridge conversation in this folder that is doing something counts too.
   const agentStatus = $derived.by(() => {
-    const ds = agentTabs
-      .map((t) => resolveAgentDisplay(t))
-      .filter((d): d is NonNullable<typeof d> => d != null);
+    const ds = [
+      ...agentTabs
+        .map((t) => resolveAgentDisplay(t))
+        .filter((d): d is NonNullable<typeof d> => d != null),
+      ...chat.statusesAt(row.path).map((c) => ({ status: c.status, stale: false })),
+    ];
     return ds.find((d) => d.status === "working") ?? ds[0] ?? null;
   });
 
@@ -165,6 +170,7 @@
       const at = agentReports.get(t.id)?.lastUpdate ?? 0;
       if (at > newest) newest = at;
     }
+    for (const c of chat.statusesAt(row.path)) newest = Math.max(newest, c.at);
     return newest || null;
   });
   const lastActivityText = $derived(

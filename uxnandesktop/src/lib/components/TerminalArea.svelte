@@ -655,7 +655,7 @@
                           <!-- Same state glyph as a terminal agent's tab while the
                                chat's agent works or waits on you; the chat mark
                                otherwise. -->
-                          {@const chatStatus = chat.peekConversation(t.threadId)?.displayStatus ?? "idle"}
+                          {@const chatStatus = chat.activity.of(t.threadId)}
                           {#if chatStatus !== "idle"}
                             <AgentStatusIndicator status={chatStatus} />
                           {:else}
