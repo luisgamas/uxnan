@@ -639,17 +639,22 @@ The bridge discovers each agent's special ("slash") commands (`agent/commands` �
 | Agent | How commands are discovered | How they run |
 |---|---|---|
 | **Claude Code** | **asked of the CLI itself**: a stream-json `initialize` control request (no turn, no tokens; ~0.5 s, reused per folder for a minute) lists every command it has in the thread's folder — built-ins, custom commands (project and user `.claude/commands`), skills and plugins — with descriptions and argument hints. Hidden: what its own `system/init` `terminal_slash_commands` says only its TUI runs (`doctor`, `color`, `focus`, `reload-plugins`), and what the bridge owns or must not touch (`clear`, `rename`, `model`, `effort`, `fast`, `config`, `status` — which fails headless —, account and internal ones) | native — sent as `/name args`, resolved against the thread's `--resume` session |
-| **Zero**, **Grok** (ACP) | the ACP `available_commands_update` notification (captured, previously dropped) | native — via `session/prompt` |
-| **Codex** | scan `~/.codex/prompts/*.md` | bridge expands the template (`expandCommand`) — the app-server has no slash/compaction RPC |
-| **OpenCode** | scan `.opencode/command(s)/*.md` (+ `~/.config/opencode/command`) | bridge expands |
-| **pi**, **Antigravity** | — (no documented command surface) | — |
+| **Codex** | a native `compact` + the **skills the app-server lists** in the thread's folder (`skills/list { cwds: [cwd] }`: repository, user and system skills, enabled only, short description; reused per folder for a minute) + the user's custom prompts (`~/.codex/prompts/*.md`; a prompt keeps its name over a skill) | natively: a skill as a `{ type: 'skill', name, path }` input item beside the arguments' text; `compact` as `thread/compact/start` (its own turn, rendered as a compaction block); a custom prompt is expanded by the bridge (`expandCommand`) and sent as text |
+| **OpenCode** | **asked of its server** in the thread's folder — v1 `GET /command` (commands and skills, told apart by `source`), v2 `GET /api/command` + `GET /api/skill`, waiting for a freshly booted catalog to settle (it loads in stages over ~1 s); includes its own `init`/`review`, the config's `command` key, `.opencode/command(s)` (project and user) and skills; reused per folder for a minute | **native** — v2 `POST /api/session/:id/command {name, text}`, a skill as a prompt with the skill attached; v1 `POST /session/:id/command {command, arguments, model}`, not awaited (it answers only when the turn ends). The server expands the template; the turn streams like a prompt |
+| **pi** | **asked of pi itself**: `get_commands` on a short-lived `pi --mode rpc --no-session` in the thread's folder, started with the turn's posture flags, so a project's own prompts and skills are listed exactly when pi trusts the project for the turn (`--approve`, or its saved `trust.json` decision); prompt templates as `custom`, skills as `skill` (`skill:<name>`); extension commands left out, because their dialogs would block with nobody to answer; reused per folder for a minute | native — sent as `/name args` on the `prompt` command, which pi expands |
+| **Antigravity** | its **skills**, from `agy -p /skills --add-dir <cwd>` in the thread's folder (a command the CLI answers itself; the workspace's skills come from `--add-dir`; ~4 s cold); built-ins are never listed because they fail on stream-json; reused per folder for a minute | native — sent as `/name args` in the user message, which `agy` expands |
+| **Zero** | — none reachable: its ACP server never sends `available_commands_update` (0.9.0) and it invokes skills only from its TUI (`capabilities.commands` false) | — |
+| **Grok** (ACP) | the ACP `available_commands_update` notification (captured; **unverified** — Grok is not installed on the machine these were verified on) | native — via `session/prompt` |
 
-Custom prompt-template scanning + expansion is shared in
-`src/adapters/command-scan.ts` (dependency-free markdown-front-matter + minimal
-TOML parsers; argument substitution only — `@file`/`` !`shell` `` placeholders
-are passed through literally). The five command-capable adapters set
-`capabilities.commands = true`; `cwd` on `agent/commands`/`listCommands` scopes
-discovery to a project's own custom commands.
+The rule behind every row: **ask the agent**, on the surface the bridge drives,
+what commands it has in the thread's folder, and let it run them natively; the
+bridge expands a template itself only where the agent offers no way to (Codex's
+custom prompts, through `src/adapters/command-scan.ts` — its only user now).
+Sources: `builtin` (the CLI's own), `custom` (the user's commands and prompt
+templates), `skill` (an agent skill invoked by name), `acp` (advertised over
+ACP). Every row was verified by running the CLI through its adapter (Claude
+2.1.282, Codex 0.156.1, OpenCode 1.18.32 and 2.0.16, pi 0.85.1, agy 1.2.11,
+Zero 0.9.0).
 
 ## Image attachments (`turn/send { attachments }`)
 

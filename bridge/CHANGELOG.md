@@ -14,6 +14,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   scan and the names the last turn happened to report. What only its terminal
   runs (its own `terminal_slash_commands`) and what the bridge owns (`clear`,
   `rename`, `model`, `effort`, `config`, `status`, …) are left out.
+- **Codex** lists the skills its app-server has in the folder (`skills/list`)
+  and runs one as a native skill input item; `compact` runs as
+  `thread/compact/start`; custom prompts are still expanded by the bridge.
+- **OpenCode** asks its server (v1 `GET /command`, v2 `GET /api/command` +
+  `/api/skill`) and runs commands and skills natively on it — config-defined
+  commands and the built-in `init`/`review` included; the bridge's own folder
+  scan and template expansion for OpenCode are gone.
+- **pi** lists its prompts and skills with `get_commands` (a short-lived RPC
+  process with the turn's posture, so project ones appear exactly when pi
+  trusts the project) and expands them natively; extension commands are left
+  out.
+- **Antigravity** lists its skills (`agy -p /skills --add-dir <cwd>`) and
+  expands them natively.
+- **Zero** no longer advertises commands: its ACP server never sends
+  `available_commands_update` and invokes skills only in its TUI.
+- `AgentCommand.source` gains `skill`.
+
+### Fixed
+
+- **A pi extension that asks the user something no longer hangs the turn.**
+  Its dialog (`select`, `confirm`, `input`, `editor` → `extension_ui_request`)
+  waited for an answer nobody on the bridge's surface gives, so the turn never
+  ended; the adapter now declines it at once (`extension_ui_response
+  { cancelled: true }`, pi's answer for a dismissed dialog). Checked against
+  pi's documented RPC protocol, not yet with a real dialog-opening extension.
 
 ### Added — phones and the PC have names every client shares
 
