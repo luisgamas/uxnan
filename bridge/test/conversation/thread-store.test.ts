@@ -604,6 +604,51 @@ test('rename/archive/unarchive update the thread; delete removes it', async () =
   await rmrf(baseDir);
 });
 
+test('an offline rename loses to a later one made elsewhere, and wins over an earlier one', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);
+  // The desktop renames at 50; the phone renamed offline at 30 and sends it at 100.
+  await store.renameThread(thread.id, 'Desktop', 50);
+  const stale = await store.renameThread(thread.id, 'Phone', 100, 'user', 30);
+  assert.equal(stale.title, 'Desktop');
+  // A phone rename decided at 70, after the desktop's, wins — dated when it was
+  // decided, so the list does not treat it as activity at 100.
+  const later = await store.renameThread(thread.id, 'Phone later', 100, 'user', 70);
+  assert.equal(later.title, 'Phone later');
+  assert.equal(later.updatedAt, 70);
+  // A generated title never dates a decision: a user rename queued before it
+  // still lands afterwards.
+  const other = await store.startThread({ projectId: 'p', title: 'New thread' }, 1);
+  await store.renameThread(other.id, 'Draft', 5, 'prompt');
+  await store.applyGeneratedTitle(other.id, 'Generated', 40);
+  const hand = await store.renameThread(other.id, 'Mine', 100, 'user', 20);
+  assert.equal(hand.title, 'Mine');
+  await rmrf(baseDir);
+});
+
+test('the latest archive or unarchive wins, whichever client sent it last', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await store.archiveThread(thread.id, 40);
+  // Unarchived offline at 20, sent at 90: the archive at 40 is newer.
+  assert.equal((await store.unarchiveThread(thread.id, 90, 20)).status, 'archived');
+  // Unarchived offline at 60: newer than the archive.
+  assert.equal((await store.unarchiveThread(thread.id, 90, 60)).status, 'active');
+  await rmrf(baseDir);
+});
+
+test('an offline delete never removes work done after it was decided', async () => {
+  const { store, baseDir } = newStore();
+  const kept = await store.startThread({ projectId: 'p' }, 1);
+  await store.startTurn(kept.id, 'more work on the desktop', 50);
+  assert.equal(await store.deleteThread(kept.id, 30), false);
+  assert.equal((await store.listThreads('p')).threads.length, 1);
+  // Decided after the last activity: it goes.
+  assert.equal(await store.deleteThread(kept.id, 60), true);
+  assert.equal((await store.listThreads('p')).threads.length, 0);
+  await rmrf(baseDir);
+});
+
 test('rename/archive/unarchive/delete reject unknown ids', async () => {
   const { store, baseDir } = newStore();
   await assert.rejects(store.renameThread('nope', 'x', 1), RpcError);

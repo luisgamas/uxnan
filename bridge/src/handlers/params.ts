@@ -57,6 +57,23 @@ export function optionalNumber(params: unknown, key: string): number | undefined
   return value;
 }
 
+/** The oldest offline action a client may still report (a year). */
+const MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * `ageMs`: how long ago, by the client's clock, the user took an action the
+ * client could only send now (architecture/02a §5.8.17). A non-negative
+ * number of milliseconds, at most a year.
+ */
+export function optionalAge(params: unknown): number | undefined {
+  const value = optionalNumber(params, 'ageMs');
+  if (value === undefined) return undefined;
+  if (value < 0 || value > MAX_AGE_MS) {
+    throw RpcError.invalidParams("'ageMs' must be between 0 and a year, in milliseconds");
+  }
+  return value;
+}
+
 function hasControlChars(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
     const code = value.charCodeAt(i);

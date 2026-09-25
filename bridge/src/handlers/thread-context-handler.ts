@@ -21,8 +21,15 @@ import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
 import type { RequestSession } from '../handler-router.js';
-import { optionalBoolean, optionalNumber, optionalString, requireString } from './params.js';
+import {
+  optionalAge,
+  optionalBoolean,
+  optionalNumber,
+  optionalString,
+  requireString,
+} from './params.js';
 import { withLiveState } from './sync-handler.js';
+import { decisionTime } from '../conversation/thread-store.js';
 
 // Every change below is announced by the ThreadStore itself (`onChange`, wired
 // in bridge.ts) once it is on disk, with its sync revision — so no handler can
@@ -99,20 +106,22 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     await ctx.threadStore.setModel(threadId, requireString(p, 'model'), ctx.now());
     return null;
   });
-  router.register('thread/rename', async (p, ctx: BridgeContext) =>
-    withLiveState(
+  router.register('thread/rename', async (p, ctx: BridgeContext) => {
+    const now = ctx.now();
+    return withLiveState(
       await ctx.threadStore.renameThread(
         requireString(p, 'threadId'),
         requireString(p, 'title'),
-        ctx.now(),
+        now,
         // Only a client's own auto-naming may declare itself provisional; anything
         // else is a hand-rename, and that name is final. `'agent'` is deliberately
         // not accepted from the wire — the bridge writes those when it generates one.
         optionalString(p, 'source') === 'prompt' ? 'prompt' : 'user',
+        decisionTime(now, optionalAge(p)),
       ),
       ctx,
-    ),
-  );
+    );
+  });
   router.register('thread/setAccessMode', async (p, ctx: BridgeContext) =>
     ctx.threadStore.setAccessMode(
       requireString(p, 'threadId'),
@@ -120,18 +129,40 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ctx.now(),
     ),
   );
+  // `ageMs`: an action a client took offline and sends now (architecture/02a
+  // §5.8.17). It applies only if nothing decided the same later elsewhere; a
+  // superseded one answers with the thread as it stands.
   router.register('thread/archive', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
-    await ctx.agentManager.closeThreadSession(threadId);
-    return ctx.threadStore.archiveThread(threadId, ctx.now());
+    const age = optionalAge(p);
+    const now = ctx.now();
+    if (age === undefined) {
+      await ctx.agentManager.closeThreadSession(threadId);
+      return ctx.threadStore.archiveThread(threadId, now);
+    }
+    const thread = await ctx.threadStore.archiveThread(threadId, now, decisionTime(now, age));
+    if (thread.status === 'archived') await ctx.agentManager.closeThreadSession(threadId);
+    return thread;
   });
-  router.register('thread/unarchive', (p, ctx: BridgeContext) =>
-    ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now()),
-  );
+  router.register('thread/unarchive', (p, ctx: BridgeContext) => {
+    const now = ctx.now();
+    return ctx.threadStore.unarchiveThread(
+      requireString(p, 'threadId'),
+      now,
+      decisionTime(now, optionalAge(p)),
+    );
+  });
   router.register('thread/delete', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
-    await ctx.agentManager.closeThreadSession(threadId);
-    await ctx.threadStore.deleteThread(threadId);
+    const age = optionalAge(p);
+    if (age === undefined) {
+      await ctx.agentManager.closeThreadSession(threadId);
+      await ctx.threadStore.deleteThread(threadId);
+      return null;
+    }
+    // A superseded delete leaves the conversation, and its agent session, alone.
+    const deleted = await ctx.threadStore.deleteThread(threadId, decisionTime(ctx.now(), age));
+    if (deleted) await ctx.agentManager.closeThreadSession(threadId);
     return null;
   });
 

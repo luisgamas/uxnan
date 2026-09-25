@@ -143,6 +143,28 @@ interface StoredThread {
   origin?: ThreadOrigin;
   /** Sync revision of the last change to its summary. */
   rev?: number;
+  /**
+   * When someone last DECIDED its title (a hand rename) and its status
+   * (archive / unarchive), on the bridge's clock. Private: what lets an action
+   * a client took offline lose to a later one taken elsewhere
+   * (architecture/02a §5.8.17) — the latest decision wins, whoever made it.
+   */
+  decidedAt?: { title?: number; status?: number };
+}
+
+/**
+ * When an action a client reports happened, on the bridge's clock. A client
+ * that could not send it at the time says how long ago it was (`ageMs`, by its
+ * own clock — an age, so the two clocks never have to agree); one sent live
+ * happened now.
+ */
+export function decisionTime(now: number, ageMs?: number): number {
+  return ageMs === undefined ? now : now - Math.max(0, ageMs);
+}
+
+/** Whether a decision dated [at] comes after [previous] (none yet: it does). */
+function isLatest(at: number, previous: number | undefined): boolean {
+  return previous === undefined || at >= previous;
 }
 
 const DEFAULT_TURN_LIMIT = 20;
@@ -512,17 +534,21 @@ export class ThreadStore {
     title: string,
     now: number,
     source: ThreadTitleSource = 'user',
+    at: number = now,
   ): Promise<Thread> {
     return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const weaker =
         source === 'prompt' && (thread.titleSource === 'user' || thread.titleSource === 'agent');
-      if (weaker || (thread.title === title && thread.titleSource === source)) {
+      // A hand rename made offline loses to one made after it, elsewhere.
+      const superseded = source === 'user' && !isLatest(at, thread.decidedAt?.title);
+      if (weaker || superseded || (thread.title === title && thread.titleSource === source)) {
         return toThread(thread);
       }
       thread.title = title;
       thread.titleSource = source;
-      thread.updatedAt = now;
+      if (source === 'user') thread.decidedAt = { ...thread.decidedAt, title: at };
+      thread.updatedAt = Math.max(thread.updatedAt, at);
       this.#bump(thread);
       return toThread(thread);
     });
@@ -589,22 +615,34 @@ export class ThreadStore {
     });
   }
 
-  /** Archives a thread (status → `archived`). Nothing is removed; reversible. */
-  archiveThread(threadId: string, now: number): Promise<Thread> {
-    return this.#setStatus(threadId, 'archived', now);
+  /**
+   * Archives a thread (status → `archived`). Nothing is removed; reversible.
+   * [at] dates the decision (see {@link decisionTime}); one older than the
+   * thread's last archive/unarchive is superseded and changes nothing.
+   */
+  archiveThread(threadId: string, now: number, at: number = now): Promise<Thread> {
+    return this.#setStatus(threadId, 'archived', at);
   }
 
-  /** Restores an archived thread (status → `active`). */
-  unarchiveThread(threadId: string, now: number): Promise<Thread> {
-    return this.#setStatus(threadId, 'active', now);
+  /** Restores an archived thread (status → `active`); [at] as for archiving. */
+  unarchiveThread(threadId: string, now: number, at: number = now): Promise<Thread> {
+    return this.#setStatus(threadId, 'active', at);
   }
 
-  /** Permanently removes a thread (and its turns). Rejects if it is unknown. */
-  deleteThread(threadId: string): Promise<void> {
+  /**
+   * Permanently removes a thread (and its turns). Rejects if it is unknown.
+   *
+   * [at] dates the decision. A delete decided before the thread's last
+   * activity — a turn, a rename, an archive, made after it elsewhere — is
+   * superseded: nobody deletes work they had not seen. Resolves whether the
+   * thread was removed.
+   */
+  deleteThread(threadId: string, at?: number): Promise<boolean> {
     return this.#mutate(async (threads) => {
       const index = threads.findIndex((t) => t.id === threadId);
       if (index === -1) throw notFound(`thread not found: ${threadId}`);
       const thread = threads[index];
+      if (thread && at !== undefined && at < lastDecision(thread)) return { result: false };
       if (thread && this.#metricsSink) {
         const projection = metricProjection(thread);
         // This final projection is strict (not best-effort): the mutable source
@@ -616,16 +654,18 @@ export class ThreadStore {
       }
       threads.splice(index, 1);
       this.#deleted.push({ threadId, rev: this.#ledger.tombstone('thread', threadId) });
-      return { result: undefined, remove: [threadId] };
+      return { result: true, remove: [threadId] };
     });
   }
 
-  #setStatus(threadId: string, status: ThreadStatus, now: number): Promise<Thread> {
+  #setStatus(threadId: string, status: ThreadStatus, at: number): Promise<Thread> {
     return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
+      if (!isLatest(at, thread.decidedAt?.status)) return toThread(thread);
+      thread.decidedAt = { ...thread.decidedAt, status: at };
       if (thread.status !== status) {
         thread.status = status;
-        thread.updatedAt = now;
+        thread.updatedAt = Math.max(thread.updatedAt, at);
         this.#bump(thread);
       }
       return toThread(thread);
@@ -1179,6 +1219,18 @@ function toThread(thread: StoredThread): Thread {
     ...(thread.origin !== undefined ? { origin: { ...thread.origin } } : {}),
     ...(thread.rev !== undefined ? { rev: thread.rev } : {}),
   };
+}
+
+/**
+ * The last moment anyone acted on [thread]: a turn starting or ending, or a
+ * decision on its title or status. A delete decided before it is superseded.
+ */
+function lastDecision(thread: StoredThread): number {
+  let last = Math.max(thread.decidedAt?.title ?? 0, thread.decidedAt?.status ?? 0);
+  for (const turn of thread.turns) {
+    last = Math.max(last, turn.createdAt, turn.completedAt ?? 0);
+  }
+  return last;
 }
 
 /** The next free turn position in [thread] (see `Turn.seq`). */

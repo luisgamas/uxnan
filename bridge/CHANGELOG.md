@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — actions taken offline: the latest one wins
+
+- `thread/rename`, `thread/archive`, `thread/unarchive` and `thread/delete`
+  accept `ageMs`: a client sending an action it took while offline says how
+  long ago it was decided, and the bridge dates it `now - ageMs`. Each thread
+  privately remembers when its title (a hand rename — a generated title does
+  not count) and its status were last decided; an action decided earlier than
+  that is superseded and changes nothing. A delete decided before the thread's
+  last activity (a turn, a rename, an archive) keeps the conversation — nobody
+  deletes work they had not seen — and leaves its agent session alone. A
+  replayed action dates the thread's `updatedAt` when it was decided, not when
+  it arrived.
+
 ### Changed — one layer: the bridge is the source of truth (architecture/02a §5.8.17)
 
 - **Projects are a persistent registry every client mirrors.** `projects.json`

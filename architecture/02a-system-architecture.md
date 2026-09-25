@@ -2656,6 +2656,23 @@ conversacion nacida en el desktop lleva su marca. En el desktop, `ChatStore`
 `projectMirror` une los proyectos del desktop con el registro
 (`uxnandesktop/architecture/02e-bridge-integration.md`).
 
+**Acciones sin conexion: gana la mas reciente.** Ningun cliente depende de
+otro: el desktop chatea con el bridge sin telefono y el telefono sin desktop, y
+el que llega despues lo recibe todo en una sincronizacion. Lo que el telefono
+hace a una conversacion mientras su PC no esta al alcance (renombrar,
+archivar, desarchivar, borrar) se ve al instante en el telefono y espera en una
+bandeja persistente (`ThreadActionOutbox`, tabla `pending_thread_actions`; una
+accion nueva reemplaza las que deja sin efecto). Al volver el PC, la bandeja se
+envia **antes** de leer `sync/changes`, y si falla a medias no se lee nada: un
+estado del bridge nunca pisa una accion que aun no recibio. Cada accion viaja
+con `ageMs` (hace cuanto se decidio, por el reloj del telefono: una edad, no
+una hora, para que los relojes no tengan que coincidir). El bridge la fecha
+`now - ageMs` y la aplica solo si nadie decidio lo mismo despues: guarda en
+privado cuando se decidio por ultima vez el titulo (renombrado a mano; un
+titulo generado no cuenta) y el estado; un borrado anterior a la ultima
+actividad del hilo (un turno, un renombrado, un archivado) se descarta, porque
+nadie borra trabajo que no vio. Una accion que el bridge rechaza se descarta.
+
 **Servicio de usuario.** `uxnan-bridge install-service` registra
 `<node> <cli.js> start --service` (rutas absolutas, `WorkingDirectory` = home)
 en launchd / systemd --user / Programador de tareas; se reinicia si se cae, no

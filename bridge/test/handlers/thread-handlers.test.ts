@@ -422,6 +422,42 @@ test('thread rename/archive/unarchive/delete lifecycle over the router', async (
   await rmrf(baseDir);
 });
 
+test('an action sent late with ageMs applies only when nothing decided it after', async () => {
+  const { bridge, baseDir } = await boot();
+  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+  assert.ok('result' in projectsRes);
+  const projectId = (projectsRes.result as Project[])[0]!.id;
+  const startRes = await bridge.router.dispatch(
+    makeRequest('1', 'thread/start', { projectId, title: 'Orig', agentId: 'echo' }),
+  );
+  assert.ok('result' in startRes);
+  const threadId = (startRes.result as { id: string }).id;
+
+  // Renamed live just now; a rename the phone made an hour ago arrives after.
+  await bridge.router.dispatch(makeRequest('2', 'thread/rename', { threadId, title: 'Live' }));
+  const late = await bridge.router.dispatch(
+    makeRequest('3', 'thread/rename', { threadId, title: 'Offline', ageMs: 3_600_000 }),
+  );
+  assert.ok('result' in late);
+  assert.equal((late.result as { title: string }).title, 'Live');
+
+  // Archived live; a delete decided an hour ago keeps the conversation.
+  await bridge.router.dispatch(makeRequest('4', 'thread/archive', { threadId }));
+  await bridge.router.dispatch(makeRequest('5', 'thread/delete', { threadId, ageMs: 3_600_000 }));
+  const readRes = await bridge.router.dispatch(makeRequest('6', 'thread/read', { threadId }));
+  assert.ok('result' in readRes);
+  assert.equal((readRes.result as { status: string }).status, 'archived');
+
+  // An age that is no age is refused.
+  const bad = await bridge.router.dispatch(
+    makeRequest('7', 'thread/unarchive', { threadId, ageMs: -5 }),
+  );
+  assert.ok('error' in bad && bad.error.code === -32602);
+
+  await bridge.stop();
+  await rmrf(baseDir);
+});
+
 test('thread/start uses the per-project agent/model pin when the phone omits them', async () => {
   const baseDir = join(tmpdir(), `uxnan-th-${randomUUID()}`);
   const projectDir = join(tmpdir(), `uxnan-proj-${randomUUID()}`);
