@@ -1,4 +1,4 @@
-//! The desktop as a client of the Uxnan bridge (plan 029, architecture/02a
+//! The desktop as a client of the Uxnan bridge (architecture/02a
 //! §5.8.15, desktop `02e` §3.4 option B).
 //!
 //! The bridge owns every linked conversation — its agent processes, queue,

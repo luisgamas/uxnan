@@ -17,7 +17,7 @@ const config = {
       // TYPES only (`import type`), so it is erased at build time and adds no
       // runtime dependency: the chat panel draws the very Thread / Turn /
       // Message model the bridge and the phone use, instead of a copy that
-      // would drift (plan 030: one model, no private one).
+      // would drift (architecture/02a §5.8.16: one model, no private one).
       $shared: "../shared/src",
     },
   },

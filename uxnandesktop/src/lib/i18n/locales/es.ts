@@ -2441,7 +2441,7 @@ export const es: Record<MessageKey, string> = {
   "git.refresh": "Actualizar",
 
 
-  // Chat tabs + the bridge connection (plans 029/030)
+  // Chat tabs + the bridge connection (architecture/02a §5.8.15–§5.8.16)
   "launcher.sectionChat": "Chat",
   "launcher.newChat": "Nuevo chat",
   "launcher.newChatDesc": "Una conversación con un agente que lleva el bridge de Uxnan — puedes continuarla desde tu teléfono",

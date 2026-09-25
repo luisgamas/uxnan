@@ -2439,7 +2439,7 @@ export const en = {
   "git.refresh": "Refresh",
 
 
-  // Chat tabs + the bridge connection (plans 029/030)
+  // Chat tabs + the bridge connection (architecture/02a §5.8.15–§5.8.16)
   "launcher.sectionChat": "Chat",
   "launcher.newChat": "New chat",
   "launcher.newChatDesc": "A conversation with an agent, run by the Uxnan bridge — you can continue it from your phone",

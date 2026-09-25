@@ -153,8 +153,8 @@ export interface CommitTab extends BaseTab {
   file?: string;
 }
 
-/** A chat tab: a conversation the Uxnan **bridge** drives (plan 030, "one
- *  owner, two views"). The tab is a view — the thread, its agent process, queue
+/** A chat tab: a conversation the Uxnan **bridge** drives (architecture/02a
+ *  §5.8.16, "one owner, two views"). The tab is a view — the thread, its agent process, queue
  *  and history live on the bridge, which the phone drives too — so this holds
  *  only the pointer. Before its first message it shows the new-chat setup
  *  (agent + model); the first message starts the thread and binds `threadId`. */

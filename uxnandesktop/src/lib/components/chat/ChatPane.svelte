@@ -1,7 +1,7 @@
 <script lang="ts">
   // The body of a chat tab: a conversation the Uxnan bridge drives, shown next
-  // to the terminals (plan 030). Three states — no bridge to talk to, a new
-  // chat choosing its agent, and a running conversation.
+  // to the terminals (architecture/02a §5.8.16). Three states — no bridge to
+  // talk to, a new chat choosing its agent, and a running conversation.
   import { bridge } from "$lib/bridge/client.svelte";
   import type { ChatTab } from "$lib/state/terminals.svelte";
   import ChatBridgeGate from "./ChatBridgeGate.svelte";

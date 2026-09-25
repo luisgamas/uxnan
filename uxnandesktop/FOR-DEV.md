@@ -49,9 +49,9 @@ desktop is a **client** of an installed bridge over its loopback local control
 channel (modes off / attach / managed, `docs/chat.md`), and chat tabs show and
 drive the bridge's threads live alongside the phone. **Pending the maintainer's
 visual review** of the chat UI; still left: packaging the bridge as a sidecar
-(plan 007), pairing and device management from the desktop (plan 008),
-publishing the desktop's projects to the bridge (plan 009), and the mirror /
-hand-off of terminal-launched sessions (plan 030 stages D–E).
+(`02e` §3.1–§3.4), pairing and device management from the desktop (`02e` §5.3),
+publishing the desktop's projects to the bridge, and the mirror / hand-off of
+terminal-launched sessions (below, *Terminal-launched sessions*).
 
 **Built (DONE), in detail:**
 
@@ -1007,7 +1007,7 @@ the list says `driven · N in inbox` (`RunInbox.svelte`, 4 component tests).
 bridge (`../bridge/`) is already implemented and is the contract reference
 (`architecture/02e-bridge-integration.md`); this phase embeds it.
 
-**Done so far (plans 029 + 030 stages B–C, see `## Status`):** the desktop is a
+**Done so far (see `## Status`):** the desktop is a
 **client** of an installed bridge over its loopback local control channel
 (`src-tauri/src/bridgeclient/`, modes off / attach / managed, `02e` §3.5), and
 **chat tabs** drive the bridge's conversations next to the phone
@@ -1021,7 +1021,7 @@ bridge (`../bridge/`) is already implemented and is the contract reference
 - [ ] **Not yet validated in the packaged app with a real agent + a paired
       phone.** The Rust client is tested against the real built bridge and the
       UI against a real bridge (echo agent); the full loop — `npm run tauri dev`,
-      a real CLI (Claude Code is the recommended pilot, plan 030 decision 3) and
+      a real CLI (Claude Code is the recommended pilot) and
       the phone on the same thread — still needs a supervised run.
 - [ ] Image attachments in the composer (`turn/send { attachments }`, gated on
       `AgentCapabilities.images`), the `/` command palette (`agent/commands` +
@@ -1034,11 +1034,12 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       the "+" menu's recent list). Needs a design decision on how chat rows sit
       beside terminal agent rows.
 
-### Terminal-launched sessions (plan 030 stages D–E, absorbing plans 010/011)
+### Terminal-launched sessions
 - [ ] Publish terminal sessions to the bridge's catalog, mirror them read-only
       to the phone (`agentSession/watch`), and the hand-off both ways (desktop →
       bridge after the TUI exits; bridge → desktop via `agentResume.ts`). Needs
-      phase 0 of plan 030 first: the per-agent surface matrix, measured.
+      the per-agent surface matrix first, measured (`bridge/docs/agents.md` →
+      *Drive surface*).
 
 
 ### Backend (Rust)

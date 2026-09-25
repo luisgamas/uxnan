@@ -6,8 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
-- **Chat tabs: agent conversations shared with Uxnan Mobile** (plan 030, "one
-  owner, two views"; architecture/02a §5.8.16). A new tab kind, `chat`, sits
+- **Chat tabs: agent conversations shared with Uxnan Mobile** ("one owner, two
+  views"; architecture/02a §5.8.16). A new tab kind, `chat`, sits
   next to terminals and shows a conversation the **bridge** drives — the same
   threads the phone shows, live in both at once: a message typed on the phone
   appears here before its answer streams, an approval answered here retires on
@@ -72,7 +72,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   when it is unreachable (the install or start command), and the phones
   connected to the bridge right now.
 
-- **The desktop can talk to the Uxnan bridge** (plan 029; architecture/02a
+- **The desktop can talk to the Uxnan bridge** (architecture/02a
   §5.8.15). A new backend module, `bridgeclient/`, connects to the bridge's
   loopback-only local control channel as one more client next to the phone:
   it reads `~/.uxnan/local-control.json` (the file is the credential — size

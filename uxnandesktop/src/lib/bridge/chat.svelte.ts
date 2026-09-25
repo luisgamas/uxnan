@@ -1,9 +1,9 @@
 // The bridge's conversations, as the desktop's chat tabs see them.
 //
-// "One owner, two views" (plan 030): the bridge owns every thread — its agent
-// process, queue, approvals and history — and this window is a client of it
-// exactly like the phone. Whatever either client does reaches the other
-// through the bridge's broadcast (architecture/02a §5.8.16), so this store
+// "One owner, two views": the bridge owns every thread — its agent process,
+// queue, approvals and history — and this window is a client of it exactly
+// like the phone. Whatever either client does reaches the other through the
+// bridge's broadcast (architecture/02a §5.8.16), so this store
 // keeps no private truth: the thread list is the bridge's `thread/list` kept
 // current by `stream/thread/updated|deleted`, and each open conversation is a
 // `Conversation` fed by the timeline notifications.

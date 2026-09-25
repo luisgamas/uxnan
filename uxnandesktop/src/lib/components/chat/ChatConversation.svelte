@@ -2,7 +2,7 @@
   // A started chat: one bridge thread, live. Whatever the phone does to it —
   // a message, a stop, an answered approval, a rename, a model switch — shows
   // up here as it happens, and the reverse, because both are clients of the
-  // same bridge (plan 030, "one owner, two views").
+  // same bridge (architecture/02a §5.8.16, "one owner, two views").
   //
   // A pane like a file or commit tab (`pane.root` / `pane.header`). The header
   // names the conversation and its fixed agent. What can change mid-chat lives

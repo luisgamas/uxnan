@@ -5,12 +5,12 @@
 > **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
 
 > **Resumen ejecutivo (1.1.0):** el desktop ya es **cliente** del bridge sin
-> empaquetarlo (plan 029): se conecta a un bridge instalado por el usuario por
+> empaquetarlo (§3.5): se conecta a un bridge instalado por el usuario por
 > un **canal de control local** — WebSocket solo en `127.0.0.1`, token de un
 > fichero `0600` — que sirve el mismo router JSON-RPC que los telefonos y lo
 > registra como un receptor mas de `stream/*` (§3.5, `02a` §5.8.15). Sobre el,
 > las **pestañas de chat** muestran y conducen las conversaciones del bridge
-> junto a las terminales, las mismas que ve el telefono (plan 030, "un dueño,
+> junto a las terminales, las mismas que ve el telefono (`02a` §5.8.16, "un dueño,
 > dos vistas"). Modos `off` (por defecto, coste cero) / `attach` / `managed`
 > (lanza `uxnan-bridge` si no corre). El modo embebido como sidecar (§3.1–3.4)
 > sigue pendiente y ya no bloquea nada: añadira un modo mas al mismo cliente.

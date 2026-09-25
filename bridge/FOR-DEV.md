@@ -23,7 +23,7 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
-- **Several clients at once** (plans 029/030; architecture/02a §5.8.15–§5.8.16) —
+- **Several clients at once** (architecture/02a §5.8.15–§5.8.16) —
   a loopback-only **local control channel** for Uxnan Desktop
   (`transport/local-control-server.ts`, discovery file
   `~/.uxnan/local-control.json`, config `localControlEnabled`) that serves the
