@@ -13,6 +13,7 @@ import type { ApprovalDecision } from '../models/approval.js';
 import type { QueuePausedReason, Thread, Turn } from '../models/thread.js';
 import type { Project } from '../models/project.js';
 import type { BridgeSettings, ClientPresence } from '../models/sync.js';
+import type { TrustedDevice } from '../models/session.js';
 import type { AgentDescriptor } from '../agents/agent-capabilities.js';
 
 export const StreamNotification = {
@@ -62,6 +63,8 @@ export const StreamNotification = {
   SettingsUpdated: 'stream/settings/updated',
   /** A client connected or disconnected. */
   PresenceUpdated: 'stream/presence/updated',
+  /** A phone was paired, named, described or removed. */
+  DevicesUpdated: 'stream/devices/updated',
   /** An agent became available or unavailable (installed, removed). */
   AgentsUpdated: 'stream/agents/updated',
 } as const;
@@ -245,6 +248,11 @@ export interface SettingsUpdatedParams {
 /** The whole list of connected clients (idempotent; not revisioned). */
 export interface PresenceUpdatedParams {
   clients: ClientPresence[];
+}
+
+/** Every paired phone, as it stands now (idempotent; not revisioned). */
+export interface DevicesUpdatedParams {
+  devices: TrustedDevice[];
 }
 
 /** The whole agent list, as `agent/list` would answer now. */

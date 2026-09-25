@@ -100,14 +100,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 79 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 81 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 79 metodos request/response** + 21 notificaciones de streaming
+> **Total: 81 metodos request/response** + 22 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -237,11 +237,13 @@ project/remove          -> quitar { projectId } del registro -> { removed }. Las
 project/rename          -> { projectId, name } (vacio restaura el nombre de la carpeta)
 ```
 
-**Sincronizacion y ajustes compartidos (3)** (`02a` §5.8.17):
+**Sincronizacion, ajustes y dispositivos compartidos (5)** (`02a` §5.8.17):
 ```
-sync/changes            -> { since?, storeId? } -> SyncChanges { storeId, rev, reset, settings, projects, removedProjectIds, threads, removedThreadIds, clients }. Lo posterior a la revision `since`, o una instantanea completa (`reset: true`) cuando `storeId` difiere o `since` es anterior al horizonte de lapidas. El cliente la llama al (re)conectar, al reanudar y ante un salto de `rev`
-settings/get            -> BridgeSettings { home }
-settings/set            -> { home? } -> BridgeSettings. `home`: carpeta absoluta existente de donde parte la exploracion (por defecto, la carpeta personal)
+sync/changes            -> { since?, storeId? } -> SyncChanges { storeId, rev, reset, settings, projects, removedProjectIds, threads, removedThreadIds, clients, devices }. `devices`: todos los telefonos emparejados, siempre completos. Lo posterior a la revision `since`, o una instantanea completa (`reset: true`) cuando `storeId` difiere o `since` es anterior al horizonte de lapidas. El cliente la llama al (re)conectar, al reanudar y ante un salto de `rev`
+settings/get            -> BridgeSettings { home, name }
+settings/set            -> { home?, name?, ageMs? } -> BridgeSettings. `home`: carpeta absoluta existente de donde parte la exploracion (por defecto, la carpeta personal). `name`: como llaman todos los clientes a este PC (por defecto, el nombre de la maquina; vacio lo restaura; 80 caracteres). `ageMs`: un cambio hecho sin conexion; cada ajuste se aplica solo si nadie lo decidio despues
+device/describe         -> DeviceDescribeParams { name, nameAgeMs?, model?, platform?, osVersion?, appVersion? } -> DeviceDescription { device, nameAgeMs? }. Solo un telefono, sobre si mismo, al conectarse: su nombre por defecto (el modelo) aplica mientras nadie lo haya nombrado; uno elegido por su dueño (`nameAgeMs`) gana si es la decision mas reciente. La respuesta trae el nombre vigente y hace cuanto se decidio, para que el telefono adopte uno puesto en otro cliente
+device/rename           -> { deviceId, name, ageMs? } -> TrustedDevice. Cualquier cliente nombra un telefono; vacio vuelve al nombre del telefono. Gana la decision mas reciente
 ```
 
 **Agentes (5):**
@@ -416,6 +418,7 @@ stream/project/updated      -> ProjectUpdatedParams { project }                 
 stream/project/removed      -> ProjectRemovedParams { projectId, rev }                      (NUEVO 2026-09)
 stream/settings/updated     -> SettingsUpdatedParams { settings, rev }                      (NUEVO 2026-09)
 stream/presence/updated     -> PresenceUpdatedParams { clients }                            (NUEVO 2026-09; en vivo, sin rev)
+stream/devices/updated      -> DevicesUpdatedParams { devices }                             (NUEVO 2026-09; lista completa al emparejar, describir, renombrar o quitar un telefono)
 stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
 ```
 

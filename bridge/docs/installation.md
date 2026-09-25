@@ -150,4 +150,17 @@ Desktop alike, whatever directory the bridge was started from. With a bridge
 running, the command changes it live (through the local control channel) and
 every connected client is told; otherwise it is written to the config for the
 next start.
+
+## Names
+
+```bash
+uxnan-bridge config set name "Studio"   # what every client calls this PC
+```
+
+The PC's name is the one the pairing QR carries and the one the phone and the
+desktop show; empty goes back to the machine's name. Each paired phone has a
+name too: it reports its model when it connects, and anyone can rename it —
+on the phone, or from Uxnan Desktop — with the latest rename winning
+everywhere. Several phones can be paired to one PC.
+
 Configuration reference: [`configuration.md`](./configuration.md).

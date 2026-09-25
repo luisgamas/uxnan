@@ -18,6 +18,7 @@
  */
 import type { Project } from './project.js';
 import type { Thread } from './thread.js';
+import type { TrustedDevice } from './session.js';
 
 /**
  * Settings the bridge shares with every client, editable from any of them
@@ -30,11 +31,23 @@ export interface BridgeSettings {
    * projects under. Defaults to the user's home directory.
    */
   home: string;
+  /**
+   * What every client calls this PC. Defaults to the machine's own name; any
+   * client, or `uxnan-bridge config set name`, can change it.
+   */
+  name: string;
 }
 
 export interface SettingsSetParams {
   /** New start folder: an absolute path to an existing directory. */
   home?: string;
+  /** New name for this PC; empty goes back to the machine's own name. */
+  name?: string;
+  /**
+   * See `ActionAgeMs`: a change made offline and sent now, applied to each
+   * setting only if nobody changed that setting later.
+   */
+  ageMs?: number;
 }
 
 export interface SyncChangesParams {
@@ -76,4 +89,6 @@ export interface SyncChanges {
   removedThreadIds: string[];
   /** Who is connected right now (live, not revisioned). */
   clients: ClientPresence[];
+  /** Every paired phone, as it stands (small; always whole). */
+  devices: TrustedDevice[];
 }

@@ -35,6 +35,17 @@ export class PresenceRegistry {
     this.#emit();
   }
 
+  /** Every connected client of [kind] now goes by [name]. */
+  rename(kind: ClientKind, name: string): void {
+    let changed = false;
+    for (const [id, client] of this.#clients) {
+      if (client.kind !== kind || client.name === name) continue;
+      this.#clients.set(id, { ...client, name });
+      changed = true;
+    }
+    if (changed) this.#emit();
+  }
+
   disconnected(id: string): void {
     if (this.#clients.delete(id)) this.#emit();
   }

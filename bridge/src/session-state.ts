@@ -29,6 +29,13 @@ export class SessionState {
     });
   }
 
+  /** A connected phone was renamed: it shows under [name] from now on. */
+  rename(deviceId: string, name: string): void {
+    const phone = this.#sessions.get(deviceId);
+    if (!phone || phone.displayName === name) return;
+    this.add({ ...phone, displayName: name });
+  }
+
   remove(deviceId: string): boolean {
     const removed = this.#sessions.delete(deviceId);
     if (removed) this.#presence?.disconnected(deviceId);

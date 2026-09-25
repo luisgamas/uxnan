@@ -16,7 +16,7 @@
  * service; `config` reads and changes the settings shared with every client.
  */
 import { fileURLToPath } from 'node:url';
-import { agentLocation, encodePairingQr, locateAgent } from '@uxnan/shared';
+import { agentLocation, encodePairingQr, locateAgent, type BridgeSettings } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
@@ -36,7 +36,12 @@ import { callRunningBridge, runningBridgePairing } from './local-control-client.
 import { enrichProcessPath } from './login-path.js';
 import { runMcpProxy } from './adapters/mcp-proxy.js';
 import { removeGlobalEntry } from './agents/global-mcp-entry.js';
-import { configuredHome, validateHome } from './settings/bridge-settings.js';
+import {
+  configuredHome,
+  configuredName,
+  validateHome,
+  validateName,
+} from './settings/bridge-settings.js';
 
 const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
 
@@ -55,6 +60,7 @@ Commands:
   mcp-proxy          (internal) Uxnan Desktop's tools for Antigravity
   config get [key]           Print the shared settings (or one of them)
   config set home <folder>   Set the start folder new projects are explored from
+  config set name <name>     Set what every client calls this PC
   version            Print the installed version (no daemon is started)
   help               Show this help
 `;
@@ -295,37 +301,51 @@ async function cmdServiceStart(): Promise<void> {
 }
 
 /**
- * `config get [home]` / `config set home <folder>`. A running bridge is changed
- * through its local channel, so every client hears it at once; with none
- * running, the config file is written and the next start uses it.
+ * `config get [home|name]` / `config set home <folder>` / `config set name
+ * <name>`. A running bridge is changed through its local channel, so every
+ * client hears it at once; with none running, the config file is written and
+ * the next start uses it.
  */
 async function cmdConfig(args: string[]): Promise<void> {
-  const [action, key, value] = args;
+  const [action, key, ...rest] = args;
+  const value = rest.join(' ');
   const state = new DaemonState();
   if (action === 'get') {
     const live = await callRunningBridge(state, 'settings/get', undefined).catch(() => undefined);
-    const settings = (live?.result as { home?: string } | undefined) ?? {
-      home: configuredHome(await state.readConfig()),
+    const config = await state.readConfig();
+    const settings = (live?.result as BridgeSettings | undefined) ?? {
+      home: configuredHome(config),
+      name: configuredName(config),
     };
     if (key === undefined) process.stdout.write(`${JSON.stringify(settings, null, 2)}\n`);
-    else if (key === 'home') process.stdout.write(`${settings.home ?? ''}\n`);
+    else if (key === 'home' || key === 'name') process.stdout.write(`${settings[key]}\n`);
     else throw new Error(`unknown setting: ${key}`);
     return;
   }
-  if (action === 'set' && key === 'home' && value !== undefined) {
-    const live = await callRunningBridge(state, 'settings/set', { home: value });
+  if (action === 'set' && (key === 'home' || key === 'name') && rest.length > 0) {
+    const label = key === 'home' ? 'Start folder' : 'PC name';
+    const live = await callRunningBridge(state, 'settings/set', { [key]: value });
     if (live) {
-      process.stdout.write(`Start folder: ${(live.result as { home: string }).home}\n`);
+      process.stdout.write(`${label}: ${(live.result as BridgeSettings)[key]}\n`);
       return;
     }
-    const home = await validateHome(value).catch(() => {
-      throw new Error(`not a folder: ${value}`);
-    });
-    await state.writeConfig({ ...(await state.readConfig()), home });
-    process.stdout.write(`Start folder: ${home} (used from the next start)\n`);
+    const config = await state.readConfig();
+    if (key === 'home') {
+      const home = await validateHome(value).catch(() => {
+        throw new Error(`not a folder: ${value}`);
+      });
+      await state.writeConfig({ ...config, home });
+      process.stdout.write(`${label}: ${home} (used from the next start)\n`);
+    } else {
+      const name = validateName(value);
+      await state.writeConfig({ ...config, name: name.length > 0 ? name : undefined });
+      process.stdout.write(`${label}: ${configuredName({ name })} (used from the next start)\n`);
+    }
     return;
   }
-  throw new Error('usage: uxnan-bridge config get [home] | config set home <folder>');
+  throw new Error(
+    'usage: uxnan-bridge config get [home|name] | config set home <folder> | config set name <name>',
+  );
 }
 
 async function main(): Promise<number> {

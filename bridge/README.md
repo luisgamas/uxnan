@@ -155,7 +155,7 @@ uxnan-bridge install-service  # run as your user's service (Task Scheduler / Lau
 uxnan-bridge uninstall-service
 uxnan-bridge service-status   # installed / running, as JSON (Uxnan Desktop reads it)
 uxnan-bridge service-start    # start the installed service
-uxnan-bridge config get       # shared settings; `config set home <folder>` sets the start folder
+uxnan-bridge config get       # shared settings; `config set home <folder>` / `config set name <name>`
 uxnan-bridge version          # print the installed version (starts nothing)
 ```
 
@@ -200,8 +200,8 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **79 JSON-RPC methods +
-  21 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  E2EE types and runtime validators. The bridge exposes **81 JSON-RPC methods +
+  22 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,

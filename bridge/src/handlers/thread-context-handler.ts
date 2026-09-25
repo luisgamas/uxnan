@@ -41,7 +41,7 @@ function originOf(
   session: RequestSession | undefined,
 ): ThreadOrigin | undefined {
   if (!session) return undefined;
-  if (session.local !== undefined) return { kind: 'desktop', name: ctx.host.machineName };
+  if (session.local !== undefined) return { kind: 'desktop', name: ctx.settings.get().name };
   const phone = ctx.sessions.get(session.deviceId);
   return { kind: 'phone', name: phone?.displayName ?? 'Phone' };
 }

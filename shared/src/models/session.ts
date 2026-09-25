@@ -16,11 +16,62 @@ export interface ConnectedPhone {
 
 export interface TrustedDevice {
   deviceId: string;
+  /**
+   * The phone's name on every client: what the phone calls itself
+   * (`device/describe`) until someone names it (`device/rename`, on the phone
+   * or on the desktop) — then that name, the same everywhere.
+   */
   displayName: string;
   /** Phone Ed25519 identity public key (hex). */
   publicKey: string;
   pairedAt: number;
   lastSeen?: number;
+  /** Who chose `displayName`: the phone itself, or a person. */
+  nameSource?: 'device' | 'user';
+  /** Maker and model, as the phone reports them (e.g. `samsung SM-A556E`). */
+  model?: string;
+  /** `android` or `ios`. */
+  platform?: string;
+  /** The operating system's version. */
+  osVersion?: string;
+  /** The Uxnan app version the phone runs. */
+  appVersion?: string;
+}
+
+/**
+ * `device/describe`: a phone, right after connecting, says what it is and what
+ * it is called (architecture/02a §5.8.17). Only a phone may call it, and only
+ * about itself.
+ */
+export interface DeviceDescribeParams {
+  /** Its name: the one the user gave it, or its own default (the model). */
+  name: string;
+  /**
+   * How long ago the user chose [name] (`ActionAgeMs`); absent while the name
+   * is the phone's default. The bridge keeps the latest decision — this one,
+   * or a rename made on another client since.
+   */
+  nameAgeMs?: number;
+  model?: string;
+  platform?: string;
+  osVersion?: string;
+  appVersion?: string;
+}
+
+/** The phone's record as it stands, and how long ago its name was decided. */
+export interface DeviceDescription {
+  device: TrustedDevice;
+  /** Absent while the name is the phone's default (never decided by a person). */
+  nameAgeMs?: number;
+}
+
+/** `device/rename`: name a paired phone, from any client. */
+export interface DeviceRenameParams {
+  deviceId: string;
+  /** The new name; empty goes back to the phone's own name. */
+  name: string;
+  /** See `ActionAgeMs`: a rename made offline and sent now. */
+  ageMs?: number;
 }
 
 export interface BridgeStatus {

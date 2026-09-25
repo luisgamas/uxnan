@@ -13,7 +13,7 @@ equivalents (see
 [`architecture/02b-contracts-and-requirements.md`](../architecture/02b-contracts-and-requirements.md)
 §1 for the canonical contract list).
 
-> **Status:** implemented and stable — **79 JSON-RPC methods** + **21 streaming
+> **Status:** implemented and stable — **81 JSON-RPC methods** + **22 streaming
 > notifications**, kept lock-step at build time with the `METHOD_NAMES` array and
 > the `StreamNotification` enum (a compile-time assertion in
 > `src/jsonrpc/method-registry.ts` fails the build on any drift). Changes are

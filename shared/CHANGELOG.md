@@ -4,6 +4,18 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — names every client shares
+
+- `device/describe` (`DeviceDescribeParams`, `DeviceDescription`): a phone,
+  after connecting, says what it is called and what it is (model, platform,
+  OS and app version). `device/rename` (`DeviceRenameParams`): any client
+  names a paired phone. `TrustedDevice` gains `nameSource`, `model`,
+  `platform`, `osVersion` and `appVersion`.
+- `BridgeSettings.name` (what every client calls the PC) and
+  `SettingsSetParams { name?, ageMs? }`.
+- `SyncChanges.devices` and `stream/devices/updated` (`DevicesUpdatedParams`):
+  every paired phone, whole. 81 methods, 22 notifications.
+
 ### Added — actions taken offline, the latest one winning
 
 - `ageMs?` (`ActionAgeMs`) on `ThreadRenameParams`, and `ThreadActionParams

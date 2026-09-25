@@ -41,6 +41,7 @@ export const DAEMON_FILES = {
   threads: 'threads.json',
   updateCheck: 'update-check.json',
   metrics: 'metrics.json',
+  settingsDecided: 'settings-decided.json',
 } as const;
 
 /**

@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — phones and the PC have names every client shares
+
+- **Phones stop showing as their id.** A phone describes itself after
+  connecting (`device/describe`: name, model, platform, OS and app version);
+  its own name applies until a person names it with `device/rename`, from any
+  client. The latest decision wins, on whichever side, so a rename made on the
+  phone offline and one made on the desktop settle the same everywhere.
+  `trusted-phones.json` keeps what only the bridge needs (the phone's own name,
+  when a name was decided) beside the public record; re-pairing keeps the name.
+- **The PC's name is a shared setting** (`settings.name`, default the machine's
+  name): the one the pairing QR carries, the desktop's presence and the origin
+  of its conversations. `settings/set` takes `name` and `ageMs`, and each
+  setting's last decision is kept in `settings-decided.json`.
+  `uxnan-bridge config get|set name`.
+- `sync/changes` carries `devices`; `stream/devices/updated` announces every
+  pairing, description, rename and removal, and a connected phone's presence
+  follows its new name at once.
+
 ### Added — actions taken offline: the latest one wins
 
 - `thread/rename`, `thread/archive`, `thread/unarchive` and `thread/delete`

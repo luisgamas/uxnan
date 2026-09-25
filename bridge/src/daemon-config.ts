@@ -144,6 +144,12 @@ export interface DaemonConfig {
    */
   home?: string;
   /**
+   * What every client calls this PC (shared setting `name`, architecture/02a
+   * §5.8.17). Absent → the machine's own name. Edited with `uxnan-bridge
+   * config set name <name>` or from any client (`settings/set`).
+   */
+  name?: string;
+  /**
    * Where `git/createWorktree` puts a worktree when the client does not name a
    * path. Mirrors the desktop's Settings → Git so one repository's checkouts
    * stay grouped in one place no matter which app created them:

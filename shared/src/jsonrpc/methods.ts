@@ -60,7 +60,14 @@ import type {
 } from '../models/sync.js';
 import type { ApprovalResponse } from '../models/approval.js';
 import type { QuestionResponse } from '../models/question.js';
-import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
+import type {
+  BridgeStatus,
+  ConnectedPhone,
+  DeviceDescribeParams,
+  DeviceDescription,
+  DeviceRenameParams,
+  TrustedDevice,
+} from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
 import type {
   AgentCommand,
@@ -517,6 +524,9 @@ export interface JsonRpcMethodRegistry {
   'sync/changes': { params: SyncChangesParams; result: SyncChanges };
   'settings/get': { params: void; result: BridgeSettings };
   'settings/set': { params: SettingsSetParams; result: BridgeSettings };
+  // Paired phones' names (architecture/02a §5.8.17)
+  'device/describe': { params: DeviceDescribeParams; result: DeviceDescription };
+  'device/rename': { params: DeviceRenameParams; result: TrustedDevice };
 
   // Agents
   'agent/list': { params: void; result: AgentListResult };

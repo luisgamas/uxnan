@@ -7,10 +7,12 @@
  * flagged `reset`. It is the call a client makes on every (re)connect and app
  * resume, and whenever a notification's revision skips one.
  */
-import type { SyncChanges, Thread } from '@uxnan/shared';
+import { RpcError, type SyncChanges, type Thread } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
-import type { HandlerRouter } from '../handler-router.js';
-import { asObject, optionalString, requireString } from './params.js';
+import type { HandlerRouter, RequestSession } from '../handler-router.js';
+import { decisionTime } from '../conversation/thread-store.js';
+import { MAX_DEVICE_NAME_LENGTH } from '../transport/trust-store.js';
+import { asObject, optionalAge, optionalString, requireString } from './params.js';
 
 function optionalRevision(params: unknown): number | undefined {
   if (params === undefined || params === null) return undefined;
@@ -48,6 +50,7 @@ export async function syncChanges(
     threads: threads.map((thread) => withLiveState(thread, ctx)),
     removedThreadIds: from === undefined ? [] : ledger.deletedSince('thread', from),
     clients: ctx.presence.list(),
+    devices: await ctx.trustStore.list(),
   };
 }
 
@@ -56,9 +59,61 @@ export function registerSyncHandlers(router: HandlerRouter): void {
     syncChanges(ctx, optionalRevision(p), optionalString(p, 'storeId')),
   );
   router.register('settings/get', (_p, ctx: BridgeContext) => ctx.settings.get());
-  router.register('settings/set', async (p, ctx: BridgeContext) => {
-    const home = optionalString(p, 'home');
-    if (home !== undefined) await ctx.settings.setHome(requireString(p, 'home'));
-    return ctx.settings.get();
+  router.register('settings/set', (p, ctx: BridgeContext) => {
+    const now = ctx.now();
+    return ctx.settings.set(
+      { home: optionalString(p, 'home'), name: optionalString(p, 'name') },
+      decisionTime(now, optionalAge(p)),
+    );
   });
+
+  // Paired phones' names: a phone describes itself; anyone may rename one.
+  router.register('device/describe', (p, ctx: BridgeContext, session?: RequestSession) => {
+    if (session === undefined || session.local !== undefined) {
+      throw RpcError.invalidParams('only a paired phone describes itself');
+    }
+    const now = ctx.now();
+    const nameAge = optionalAge(p, 'nameAgeMs');
+    return ctx.trustStore.describe(
+      session.deviceId,
+      {
+        name: requireDeviceName(p, 'name'),
+        ...optionalDetail(p, 'model'),
+        ...optionalDetail(p, 'platform'),
+        ...optionalDetail(p, 'osVersion'),
+        ...optionalDetail(p, 'appVersion'),
+      },
+      now,
+      nameAge === undefined ? undefined : decisionTime(now, nameAge),
+    );
+  });
+  router.register('device/rename', (p, ctx: BridgeContext) => {
+    const name = optionalString(p, 'name') ?? '';
+    return ctx.trustStore.rename(
+      requireString(p, 'deviceId'),
+      name.length === 0 ? '' : requireDeviceName(p, 'name'),
+      decisionTime(ctx.now(), optionalAge(p)),
+    );
+  });
+}
+
+/** A phone's name: 1..80 printable characters, trimmed. */
+function requireDeviceName(params: unknown, key: string): string {
+  const name = requireString(params, key).trim();
+  if (
+    name.length === 0 ||
+    name.length > MAX_DEVICE_NAME_LENGTH ||
+    /[\u0000-\u001f\u007f]/.test(name)
+  ) {
+    throw RpcError.invalidParams(
+      `'${key}' must be 1 to ${MAX_DEVICE_NAME_LENGTH} printable characters`,
+    );
+  }
+  return name;
+}
+
+/** An optional short descriptive field, dropped when absent or blank. */
+function optionalDetail(params: unknown, key: string): Record<string, string> {
+  const value = optionalString(params, key)?.trim();
+  return value ? { [key]: value.slice(0, 80) } : {};
 }

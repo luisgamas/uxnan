@@ -24,6 +24,7 @@ file is optional; create it to override. Defaults live in
 | `checkpointMaxPerProject` | `25` | Keep at most N newest workspace checkpoints per project (`cwd`); older ones are pruned (ref + metadata) on the next capture. `0` = unlimited. |
 | `checkpointTtlDays` | `0` | Delete workspace checkpoints older than N days on capture. `0` = no TTL. |
 | `home` | *(your home directory)* | The **start folder** shared with every client: where exploring for a new project begins and the boundary a phone may register projects under — **whatever directory `start` ran in**. Change it with `uxnan-bridge config set home <folder>`, from the phone or from Uxnan Desktop; every client hears the change (`stream/settings/updated`). |
+| `name` | *(the machine's name)* | What **every client calls this PC**: the name the pairing QR carries, the desktop's presence and the origin of its conversations. Change it with `uxnan-bridge config set name <name>`, from the phone or from Uxnan Desktop; empty goes back to the machine's name. |
 | `workspaceRoots` | `[]` | Absolute project dirs registered as projects on start (`source: config`). The projects list itself is the persistent registry in `~/.uxnan/projects.json` (below). |
 | `browseRoots` | `[]` | Extra absolute base dirs the phone may **browse** under (`workspace/browseDirs`), after `home` and `workspaceRoots`. |
 | `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |

@@ -20,6 +20,7 @@ import {
   type LocatedAgent,
   type BridgeStatus,
   type PairingPayload,
+  type DevicesUpdatedParams,
   type PresenceUpdatedParams,
   type ProjectRemovedParams,
   type ProjectUpdatedParams,
@@ -227,7 +228,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
       macDeviceId: deviceState.identity.macDeviceId,
       macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-      displayName: hostname(),
+      // The phone files the PC under the name every client uses for it.
+      displayName: settings.get().name,
       now: now(),
       sessionId: pairingSessionId,
     });
@@ -239,6 +241,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     statePath: state.pathFor(DAEMON_FILES.pairingCode),
   });
   const settings = new BridgeSettingsStore({ state, ledger, config });
+  await settings.load();
   const projects = new ProjectRegistry({
     state,
     ledger,
@@ -316,6 +319,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   settings.onChange((change) =>
     broadcast(StreamNotification.SettingsUpdated, change satisfies SettingsUpdatedParams),
   );
+  // A phone named anywhere is named everywhere: every client hears the list,
+  // and a connected phone shows under its new name at once.
+  trustStore.onChange((devices) => {
+    broadcast(StreamNotification.DevicesUpdated, { devices } satisfies DevicesUpdatedParams);
+    for (const device of devices) sessions.rename(device.deviceId, device.displayName);
+  });
+  // The desktop goes by the PC's shared name.
+  settings.onChange(({ settings: next }) => presence.rename('desktop', next.name));
   presence.onChange((clients) =>
     broadcast(StreamNotification.PresenceUpdated, { clients } satisfies PresenceUpdatedParams),
   );
@@ -648,7 +659,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           sessionId,
           macDeviceId: deviceState.identity.macDeviceId,
           macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-          machineName: hostname(),
+          machineName: settings.get().name,
         });
 
       // Serve exactly one phone session over `connection`; resolves when the
@@ -663,7 +674,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             router,
             deviceState,
             trustStore,
-            displayName: hostname(),
+            displayName: settings.get().name,
             transport: 'relay',
             expectedSessionId: sessionId,
           });
@@ -742,7 +753,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             router,
             deviceState,
             trustStore,
-            displayName: hostname(),
+            displayName: settings.get().name,
             transport: 'direct',
             // Consent gate for first-time enrollment (architecture/02a §5.9.1):
             // a qr_bootstrap is only accepted while the operator recently showed
@@ -835,7 +846,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             presence.connected({
               id: localReceiverId(clientId),
               kind: 'desktop',
-              name: host.machineName,
+              name: settings.get().name,
               since: now(),
             });
           }

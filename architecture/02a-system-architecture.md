@@ -2629,6 +2629,22 @@ desktop | cli, machineName }` y `clients[]`; `stream/presence/updated` cada vez
 que un telefono o el desktop se conecta o se va. `Thread.origin { kind, name }`
 dice donde nacio una conversacion.
 
+**Nombres compartidos.** El PC y cada telefono tienen un nombre que ven todos
+los clientes. El del PC es el ajuste `name` (`settings/set`; por defecto el
+nombre de la maquina; `uxnan-bridge config set name`): es el que viaja en el QR,
+el de la presencia del desktop y el origen de sus conversaciones. Un telefono,
+al conectarse, se describe (`device/describe`: nombre, modelo, plataforma,
+version del SO y de la app — un metodo JSON-RPC despues del handshake; el
+protocolo E2EE no cambia); su nombre por defecto (el modelo) aplica mientras
+nadie lo haya nombrado. Cualquier cliente lo renombra (`device/rename`), y el
+telefono tambien a si mismo. En los tres casos gana la decision mas reciente
+(el bridge guarda en privado cuando se decidio cada nombre; un cambio hecho sin
+conexion viaja con su edad), y la respuesta de `device/describe` trae el nombre
+vigente con su edad para que el telefono adopte uno puesto en otro cliente y lo
+lleve a sus demas PCs. La lista completa viaja en `sync/changes.devices` y en
+`stream/devices/updated`; un telefono conectado aparece con su nombre nuevo en
+la presencia al instante. Se pueden emparejar varios telefonos a un mismo PC.
+
 **Agentes: una sola regla de deteccion.** `shared/agent-locations.json` dice
 donde se instala cada CLI; el bridge (`locateAgent`) y el desktop (Rust,
 `include_str!`) resuelven con la misma tabla. El bridge toma al arrancar el

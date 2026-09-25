@@ -68,6 +68,8 @@ export const METHOD_NAMES = [
   'sync/changes',
   'settings/get',
   'settings/set',
+  'device/describe',
+  'device/rename',
   // Agents
   'agent/list',
   'agent/models',
