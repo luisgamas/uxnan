@@ -93,6 +93,32 @@ describe('Conversation', () => {
     expect(c.running).toBe(true);
   });
 
+  it('lands streamed text in one render per window, never out of order', () => {
+    vi.useFakeTimers();
+    try {
+      const { c } = conversation();
+      c.apply(note('stream/turn/created', { turn: turn('x', 'go', 'pending') }));
+      c.apply(note('stream/turn/started', { turnId: 'x' }));
+      c.apply(note('stream/thinking/delta', { turnId: 'x', messageId: 'x-a', delta: 'hmm' }));
+      c.apply(note('stream/message/delta', { turnId: 'x', messageId: 'x-a', delta: 'Hel' }));
+      c.apply(note('stream/message/delta', { turnId: 'x', messageId: 'x-a', delta: 'lo' }));
+      // Nothing rendered yet: the deltas wait for the window.
+      expect(assistantOf(c.turns[0])?.content ?? '').toBe('');
+      vi.advanceTimersByTime(16);
+      expect(assistantOf(c.turns[0])?.content).toBe('Hello');
+      expect(assistantOf(c.turns[0])?.thinking).toBe('hmm');
+      // Any other event lands the buffer first.
+      c.apply(note('stream/message/delta', { turnId: 'x', messageId: 'x-a', delta: '!' }));
+      c.apply(note('stream/content/block', { turnId: 'x', messageId: 'x-a', content: { type: 'tool', toolName: 'Read' } }));
+      expect(assistantOf(c.turns[0])?.segments).toEqual([
+        { type: 'text', text: 'Hello!' },
+        { type: 'tool', toolName: 'Read' },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('adopts the stored turn when one ends, and keeps the usage', async () => {
     const stored = turn('x', 'go', 'completed', 'final answer');
     const { c, call } = conversation(vi.fn(async () => stored as never));
@@ -116,6 +142,7 @@ describe('Conversation', () => {
   it('joins a turn already streaming when it was never told it started', async () => {
     const { c, call } = conversation(vi.fn(async () => turn('z', 'typed elsewhere', 'streaming', '') as never));
     c.apply(note('stream/message/delta', { turnId: 'z', messageId: 'z-a', delta: 'partial' }));
+    c.flush();
     expect(c.turns.map((t) => t.id)).toEqual(['z']);
     expect(c.running).toBe(true);
     await vi.waitFor(() => expect(call).toHaveBeenCalled());

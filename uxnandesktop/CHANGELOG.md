@@ -94,6 +94,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **Chat replies stream at the phone's measured pace, and stay cheap as they
+  grow.** Streamed prose and thinking wait in a buffer for one render window —
+  16 ms for a short reply, growing with its length to 100 ms (the phone's
+  `_streamCoalesceWindow`) — and any other event lands the buffer first, so
+  text and blocks keep their order. The reply renders as settled Markdown
+  chunks (`src/lib/bridge/streamingMarkdown.ts`, the phone's conservative
+  split: never inside a fence, a list, a quote or a table), one `MarkdownView`
+  each, so an update re-parses and re-renders only the chunk still being
+  written; each new chunk fades in once while the turn streams. Measured in
+  the browser harness on a 6.9k-character reply at the bridge's 25 ms batch,
+  CPU throttled 6×: script time 4.3 s → 0.38 s, long tasks 7 (up to 346 ms) →
+  0, worst frame 350 ms → 33 ms.
 - **One copyable code block and one status dot for every settings pane.**
   `CodeBlock` (a command, a script or output, with a copy button) replaces the
   hooks panel's private snippet and now also shows the bridge's install command

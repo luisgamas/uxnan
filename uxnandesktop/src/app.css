@@ -340,3 +340,20 @@ input[type="time"] {
     scroll-behavior: auto;
   }
 }
+
+/* A chat reply being written: each settled Markdown chunk fades in once as it
+   appears (opacity only — nothing moves). Only while the turn streams, so
+   opening an old conversation never replays it. */
+.chat-streaming > .md {
+  transition: opacity 360ms ease-out;
+}
+@starting-style {
+  .chat-streaming > .md {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-streaming > .md {
+    transition: none;
+  }
+}

@@ -25,6 +25,7 @@ import type {
   TurnUsage,
 } from '$shared/jsonrpc/notifications';
 import type { BridgeNotification } from './client.svelte';
+import { streamCoalesceWindow } from './streamingMarkdown';
 
 /** Calls a bridge method (injected so the reducer is testable without Tauri). */
 export type BridgeCall = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -244,6 +245,17 @@ export class Conversation {
   /** Apply one notification that names this thread. */
   apply(notification: BridgeNotification): void {
     const p = record(notification.params);
+    // Streamed prose and thinking wait in a buffer for a moment, so the view
+    // re-renders a few times per second instead of on every delta (the
+    // phone's measured policy, `streamCoalesceWindow`). Every other event
+    // lands the buffer first, so the order of text and blocks is kept.
+    if (notification.method === 'stream/message/delta' || notification.method === 'stream/thinking/delta') {
+      const params = p as unknown as MessageDeltaParams;
+      if (typeof params.delta !== 'string') return;
+      this.#buffer(notification.method === 'stream/thinking/delta' ? 'thinking' : 'text', params);
+      return;
+    }
+    this.flush();
     switch (notification.method) {
       case 'stream/turn/created': {
         const params = p as unknown as TurnCreatedParams;
@@ -259,25 +271,6 @@ export class Conversation {
         const turn = this.#find(turnId);
         if (turn) turn.status = 'streaming';
         else void this.#refreshTurn(turnId);
-        return;
-      }
-      case 'stream/message/delta': {
-        const params = p as unknown as MessageDeltaParams;
-        if (typeof params.delta !== 'string') return;
-        const message = this.#liveAssistant(params.turnId, params.messageId);
-        if (!message) return;
-        message.content = `${typeof message.content === 'string' ? message.content : ''}${params.delta}`;
-        const segments = segmentsOf(message);
-        const last = segments[segments.length - 1];
-        if (isTextSegment(last)) last.text += params.delta;
-        else segments.push({ type: 'text', text: params.delta });
-        return;
-      }
-      case 'stream/thinking/delta': {
-        const params = p as unknown as ThinkingDeltaParams;
-        if (typeof params.delta !== 'string') return;
-        const message = this.#liveAssistant(params.turnId, params.messageId);
-        if (message) message.thinking = `${message.thinking ?? ''}${params.delta}`;
         return;
       }
       case 'stream/content/block': {
@@ -366,6 +359,48 @@ export class Conversation {
   }
 
   /** Record an answer given here right away, before the bridge's echo. */
+  /** Streamed text waiting for the next render, oldest first. */
+  #buffered: { kind: 'text' | 'thinking'; turnId: string; messageId: string; delta: string }[] = [];
+  #flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  #buffer(kind: 'text' | 'thinking', params: MessageDeltaParams | ThinkingDeltaParams): void {
+    const last = this.#buffered[this.#buffered.length - 1];
+    if (last && last.kind === kind && last.turnId === params.turnId && last.messageId === params.messageId) {
+      last.delta += params.delta;
+    } else {
+      this.#buffered.push({ kind, turnId: params.turnId, messageId: params.messageId, delta: params.delta });
+    }
+    if (this.#flushTimer !== null) return;
+    const live = this.#find(params.turnId);
+    const shown = live ? assistantOf(live)?.content : undefined;
+    const length = typeof shown === 'string' ? shown.length : 0;
+    this.#flushTimer = setTimeout(() => this.flush(), streamCoalesceWindow(length));
+  }
+
+  /** Lands every buffered delta now (a non-delta event, a closing view, a test). */
+  flush(): void {
+    if (this.#flushTimer !== null) {
+      clearTimeout(this.#flushTimer);
+      this.#flushTimer = null;
+    }
+    if (this.#buffered.length === 0) return;
+    const pending = this.#buffered;
+    this.#buffered = [];
+    for (const { kind, turnId, messageId, delta } of pending) {
+      const message = this.#liveAssistant(turnId, messageId);
+      if (!message) continue;
+      if (kind === 'thinking') {
+        message.thinking = `${message.thinking ?? ''}${delta}`;
+        continue;
+      }
+      message.content = `${typeof message.content === 'string' ? message.content : ''}${delta}`;
+      const segments = segmentsOf(message);
+      const last = segments[segments.length - 1];
+      if (isTextSegment(last)) last.text += delta;
+      else segments.push({ type: 'text', text: delta });
+    }
+  }
+
   settleApprovalLocally(approvalId: string, decision: ApprovalDecision): void {
     this.approvals = { ...this.approvals, [approvalId]: { decision, timedOut: false } };
   }

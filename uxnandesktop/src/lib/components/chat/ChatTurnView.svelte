@@ -32,6 +32,7 @@
     splitAnswer,
     type TimelineItem,
   } from "$lib/bridge/timeline";
+  import { splitStreamingMarkdown } from "$lib/bridge/streamingMarkdown";
   import { terminals } from "$lib/state/terminals.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
@@ -130,8 +131,13 @@
 {#snippet timeline(list: TimelineItem[], live: boolean)}
   {#each list as item, i (i)}
     {#if item.kind === "text"}
-      <div class={cn(text.body, "min-w-0 px-0.5 leading-6")}>
-        <MarkdownView source={item.text} baseDir={cwd} inline onopenfile={openFile} />
+      <!-- One MarkdownView per settled chunk: a chunk that did not change keeps
+           its parsed document and DOM, so a streamed update re-renders only the
+           chunk still being written (`streamingMarkdown.ts`). -->
+      <div class={cn(text.body, chat.prose, live && "chat-streaming")}>
+        {#each splitStreamingMarkdown(item.text) as chunk, ci (ci)}
+          <MarkdownView source={chunk} baseDir={cwd} inline onopenfile={openFile} />
+        {/each}
       </div>
     {:else if item.kind === "work"}
       <ChatWorkGroup blocks={item.blocks} {live} />

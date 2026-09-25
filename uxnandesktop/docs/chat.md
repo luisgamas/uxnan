@@ -137,7 +137,14 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   fan-out), `chat.svelte.ts` (thread list, actions), `conversation.svelte.ts`
   (one thread's timeline reducer, including `openRequests` for the dock),
   `timeline.ts` (pure: grouping a turn's parts into work groups, splitting the
-  closing answer, work summaries, changed files, durations). Components:
+  closing answer, work summaries, changed files, durations) and
+  `streamingMarkdown.ts` (the phone's streaming split and render window).
+- **Streaming performance.** Deltas are coalesced per render window
+  (`streamCoalesceWindow`: 16–100 ms by reply length) and a reply renders as
+  settled Markdown chunks, one `MarkdownView` each, so only the chunk being
+  written re-renders. To measure a change, stream a long synthetic reply at the
+  bridge's 25 ms batch in a browser with the CPU throttled (6×) and compare
+  script time, long tasks and the worst frame before and after. Components:
   `src/lib/components/chat/`.
 - The conversation model is the bridge's own, imported **type-only** from
   `shared/src` through the `$shared` alias (`svelte.config.js`): no copy that can
