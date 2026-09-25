@@ -238,6 +238,34 @@ describe('ChatStore', () => {
     expect(calls.some((c) => c.method === 'thread/rename')).toBe(false);
   });
 
+  it('sends a picked command without text, and images along with a message', async () => {
+    const { store, calls } = harness({
+      'agent/commands': { commands: [{ name: 'compact', source: 'builtin' }] },
+    });
+    const conversation = store.conversation('t1');
+    conversation.loaded = true;
+    await store.send('t1', '/compact now', { command: { name: 'compact', args: 'now' } });
+    const cmd = calls.find((c) => c.method === 'turn/send')?.params as Record<string, unknown>;
+    expect(cmd.command).toEqual({ name: 'compact', args: 'now' });
+    expect('text' in cmd).toBe(false);
+    expect(conversation.pending[0]?.text).toBe('/compact now');
+
+    const image = { type: 'image' as const, mimeType: 'image/png', base64Data: 'AAAA' };
+    await store.send('t1', '', { attachments: [image] });
+    const pic = calls.filter((c) => c.method === 'turn/send').at(-1)?.params as Record<string, unknown>;
+    expect(pic.attachments).toEqual([image]);
+    expect(conversation.pending.at(-1)?.text).toBe('[1 image attachment]');
+
+    // Commands are asked for once per agent and folder.
+    expect((await store.commandsFor('claude-code', '/repo')).map((c) => c.name)).toEqual(['compact']);
+    await store.commandsFor('claude-code', '/repo');
+    expect(calls.filter((c) => c.method === 'agent/commands')).toHaveLength(1);
+    expect(calls.find((c) => c.method === 'agent/commands')?.params).toEqual({
+      agentId: 'claude-code',
+      cwd: '/repo',
+    });
+  });
+
   it('keeps a failed send on screen with the reason', async () => {
     const { store, client } = harness();
     client.call = vi.fn(async () => {

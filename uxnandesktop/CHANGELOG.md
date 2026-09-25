@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **The chat composer does what the phone's does.** `/` lists the agent's
+  commands in the folder — skills, your commands, the agent's and its
+  built-ins, as the bridge learns them from the agent — and a picked one is
+  sent as a command the bridge runs natively; `@` completes a project file;
+  images come from **+** or a paste (scaled to 2048 px, up to 8), for agents
+  that take them (`ChatSuggestions`, `composerTokens`, `imageAttachment`).
+
 - **One layer with the phone** (architecture/02a §5.8.17). The chat's data is a
   **replica** of the bridge — threads, projects, shared settings and presence —
   converging through `sync/changes` on every (re)connect and whenever a

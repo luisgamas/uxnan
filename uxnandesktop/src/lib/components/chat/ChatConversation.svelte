@@ -26,6 +26,8 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
+  import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
+  import type { TurnAttachment } from "$shared/models/workspace";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
@@ -158,10 +160,22 @@
   }
 
   // --- actions -------------------------------------------------------------
-  async function send(message: string) {
+  async function send(
+    message: string,
+    extras: { command?: AgentCommandInvocation; attachments?: TurnAttachment[] },
+  ) {
     following = true;
-    await chat.send(threadId, message, { options: optionValues });
+    await chat.send(threadId, message, { options: optionValues, ...extras });
   }
+
+  // The thread's agent's commands (one function per agent and folder, so the
+  // composer asks again only when those change).
+  const agentKey = $derived(thread?.agentId);
+  const loadCommands = $derived.by(() => {
+    const id = agentKey;
+    const folder = cwd;
+    return id ? () => chat.commandsFor(id, folder) : undefined;
+  });
 
   async function stop() {
     const turnId = conversation.activeTurnId;
@@ -421,6 +435,9 @@
           : null}
         onsend={send}
         onstop={() => void stop()}
+        {loadCommands}
+        mentionRoot={cwd}
+        acceptsImages={agent?.capabilities?.images === true}
       >
         {#snippet leading()}
           <ModelPicker

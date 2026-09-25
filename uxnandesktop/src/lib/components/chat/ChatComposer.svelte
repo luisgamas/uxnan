@@ -8,11 +8,12 @@
   // back; the text is `bindable`, so the view keeps it as the tab's draft and
   // can put a withdrawn or failed message back into it.
   //
-  // FOR-DEV: image attachments (`turn/send { attachments }`, when the agent
-  // advertises `images`), the `/` command palette (`agent/commands` +
-  // `turn/send { command }`) and `@` file mentions, which the phone's composer
-  // has. Deferred to keep the first chat release reviewable; see FOR-DEV.md →
-  // Phase 6 → Chat tabs.
+  // What the phone's composer does, the same way: `/` opens the agent's
+  // commands (`agent/commands`, grouped: skills, the user's own, built-ins) and
+  // a picked one is sent as `turn/send { command }`; `@` completes a file of
+  // the project; images — from "+", or pasted — ride along as `attachments`
+  // when the agent takes them. The suggestion panel sits over the composer,
+  // which keeps the focus and drives it (↑ ↓, Enter or Tab, Esc).
   //
   // Built on the shared `InputGroup` (the same primitive the command palette's
   // search uses): a `Textarea` over a `block-end` toolbar of quiet pills — the
@@ -22,8 +23,29 @@
   import { Icon } from "$lib/components/ui/icon";
   import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
   import type { Snippet } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import type { AgentCommand, AgentCommandInvocation } from "$shared/agents/agent-capabilities";
+  import type { TurnAttachment } from "$shared/models/workspace";
   import ChatContextRing from "./ChatContextRing.svelte";
+  import ChatSuggestions, { type Suggestion } from "./ChatSuggestions.svelte";
+  import {
+    asCommand,
+    complete,
+    matchCommands,
+    tokenAt,
+    type ComposerToken,
+  } from "$lib/bridge/composerTokens";
+  import {
+    imageFromBlob,
+    imageFromDataUrl,
+    MAX_IMAGES,
+    type ComposerImage,
+  } from "$lib/bridge/imageAttachment";
+  import { searchFilesOn } from "$lib/fsRouter";
+  import { toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
@@ -40,6 +62,9 @@
     leading,
     trailing,
     context = null,
+    loadCommands,
+    mentionRoot,
+    acceptsImages = false,
   }: {
     /** The text being written (the view persists it as the tab's draft). */
     value?: string;
@@ -49,7 +74,11 @@
     disabled?: boolean;
     placeholder?: string;
     autofocus?: boolean;
-    onsend: (text: string) => void | Promise<void>;
+    /** Sends the message; a known `/command` and any images come with it. */
+    onsend: (
+      text: string,
+      extras: { command?: AgentCommandInvocation; attachments?: TurnAttachment[] },
+    ) => void | Promise<void>;
     onstop?: () => void;
     /** Controls shown at the start of the toolbar (the model picker). */
     leading?: Snippet;
@@ -57,10 +86,176 @@
     trailing?: Snippet;
     /** How full the context window is, when the agent reports it. */
     context?: { tokens: number; limit: number } | null;
+    /** The agent's commands for the `/` panel (none offered without it). */
+    loadCommands?: () => Promise<AgentCommand[]>;
+    /** The project folder `@` completes files from (none without it). */
+    mentionRoot?: string;
+    /** Whether the agent takes images (`capabilities.images`). */
+    acceptsImages?: boolean;
   } = $props();
 
   let ref = $state<HTMLTextAreaElement | null>(null);
-  const empty = $derived(value.trim().length === 0);
+  let images = $state<ComposerImage[]>([]);
+  const empty = $derived(value.trim().length === 0 && images.length === 0);
+
+  // ---- the suggestion panel: `/command` or `@file` under the caret ----
+  let token = $state<ComposerToken | undefined>(undefined);
+  /** A token the user dismissed with Esc stays closed until it changes. */
+  let dismissed = $state<string | null>(null);
+  let commands = $state<AgentCommand[] | null>(null);
+  let commandsLoading = $state(false);
+  let files = $state<{ path: string; isDir: boolean }[]>([]);
+  let filesLoading = $state(false);
+  let active = $state(0);
+
+  const tokenKey = $derived(token ? `${token.kind}:${token.start}:${token.query}` : null);
+  const panelOpen = $derived(
+    token !== undefined &&
+      tokenKey !== dismissed &&
+      ((token.kind === "command" && loadCommands !== undefined) ||
+        (token.kind === "mention" && mentionRoot !== undefined)),
+  );
+  const items = $derived<Suggestion[]>(
+    !panelOpen || !token
+      ? []
+      : token.kind === "command"
+        ? matchCommands(commands ?? [], token.query)
+            .slice(0, 60)
+            .map((command) => ({ kind: "command" as const, command }))
+        : files.map((f) => ({ kind: "file" as const, ...f })),
+  );
+
+  function readToken() {
+    token = ref ? tokenAt(value, ref.selectionStart ?? value.length) : undefined;
+  }
+
+  // Another agent (a new chat's picker) has other commands: ask again.
+  $effect(() => {
+    void loadCommands;
+    commands = null;
+  });
+
+  // The agent's commands, asked for the first time `/` is typed.
+  $effect(() => {
+    if (token?.kind !== "command" || !loadCommands || commands !== null || commandsLoading) return;
+    commandsLoading = true;
+    loadCommands()
+      .then((list) => (commands = list))
+      .catch(() => (commands = []))
+      .finally(() => (commandsLoading = false));
+  });
+
+  // The project's files matching the mention, a beat after typing stops.
+  let searchSeq = 0;
+  $effect(() => {
+    if (token?.kind !== "mention" || !mentionRoot || tokenKey === dismissed) return;
+    const query = token.query;
+    const root = mentionRoot;
+    const seq = ++searchSeq;
+    filesLoading = true;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await searchFilesOn(null, root, query, false, { include: "", exclude: "" }, 30);
+        if (seq !== searchSeq) return;
+        files = found.entries.map((e) => ({ path: relativeTo(root, e.path), isDir: e.isDir }));
+      } catch {
+        if (seq === searchSeq) files = [];
+      } finally {
+        if (seq === searchSeq) filesLoading = false;
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  });
+
+  // A new token starts at the top of the list.
+  $effect(() => {
+    void tokenKey;
+    active = 0;
+  });
+
+  function relativeTo(root: string, path: string): string {
+    const base = root.replace(/[\\/]+$/, "");
+    return path.startsWith(`${base}/`) || path.startsWith(`${base}\\`)
+      ? path.slice(base.length + 1)
+      : path;
+  }
+
+  function pick(item: Suggestion) {
+    if (!token) return;
+    const replacement =
+      item.kind === "command" ? `/${item.command.name}` : `@${item.path}${item.isDir ? "/" : ""}`;
+    const next = complete(value, token, replacement);
+    value = next.text;
+    token = undefined;
+    queueMicrotask(() => {
+      ref?.focus();
+      ref?.setSelectionRange(next.caret, next.caret);
+      readToken();
+    });
+  }
+
+  /** Keys the open panel takes; true when it took this one. */
+  function panelKey(e: KeyboardEvent): boolean {
+    if (!panelOpen) return false;
+    if (e.key === "Escape") {
+      dismissed = tokenKey;
+      return true;
+    }
+    if (items.length === 0) return false;
+    if (e.key === "ArrowDown") {
+      active = (active + 1) % items.length;
+      return true;
+    }
+    if (e.key === "ArrowUp") {
+      active = (active - 1 + items.length) % items.length;
+      return true;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      const item = items[active];
+      if (item) pick(item);
+      return true;
+    }
+    return false;
+  }
+
+  // ---- images ----
+  async function addImages(list: ComposerImage[]) {
+    const room = MAX_IMAGES - images.length;
+    if (room <= 0) return;
+    images = [...images, ...list.slice(0, room)];
+  }
+
+  async function chooseImages() {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({
+        multiple: true,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
+      });
+      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+      const ready: ComposerImage[] = [];
+      for (const path of paths) {
+        const dataUrl = await invoke<string>("fs_read_data_url", { path });
+        ready.push(await imageFromDataUrl(dataUrl, path.split(/[\\/]/).pop() ?? "image"));
+      }
+      await addImages(ready);
+      ref?.focus();
+    } catch (err) {
+      toastError(err);
+    }
+  }
+
+  async function onpaste(e: ClipboardEvent) {
+    if (!acceptsImages) return;
+    const pasted = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    try {
+      await addImages(await Promise.all(pasted.map((f) => imageFromBlob(f, f.name || "image"))));
+    } catch (err) {
+      toastError(err);
+    }
+  }
 
   $effect(() => {
     if (autofocus && ref && !disabled) ref.focus();
@@ -69,8 +264,15 @@
   async function submit() {
     if (empty || disabled) return;
     const message = value;
+    const command = asCommand(message, commands ?? []);
+    const attachments = images.map((i) => i.attachment);
     value = "";
-    await onsend(message);
+    images = [];
+    token = undefined;
+    await onsend(message, {
+      ...(command ? { command } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
+    });
   }
 
   /** Which earlier message ↑ put in the composer (an index into `history`). */
@@ -98,6 +300,10 @@
 
   function onkeydown(e: KeyboardEvent) {
     if (e.isComposing) return;
+    if (panelKey(e)) {
+      e.preventDefault();
+      return;
+    }
     const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
     if (plain && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       if (recall(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
@@ -110,17 +316,53 @@
   }
 </script>
 
-<div class="flex flex-col gap-1">
+<div class="relative flex flex-col gap-1">
+  {#if panelOpen}
+    <div class="absolute inset-x-0 bottom-full z-20 mb-2">
+      <ChatSuggestions
+        {items}
+        {active}
+        loading={token?.kind === "command" ? commandsLoading : filesLoading}
+        emptyLabel={token?.kind === "command" ? i18n.t("chat.noCommands") : i18n.t("chat.noFiles")}
+        onpick={pick}
+        onhover={(index) => (active = index)}
+      />
+    </div>
+  {/if}
   <!-- The group dims only when the INPUT is disabled, not whenever any of its
        buttons is (the send button is disabled on an empty draft, and the
        primitive's `has-disabled` would fade the whole composer for it). -->
   <InputGroup.Root
     class="rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[textarea:disabled]:opacity-50"
   >
+    {#if images.length > 0}
+      <InputGroup.Addon align="block-start" class="flex-wrap gap-1.5">
+        {#each images as image (image.id)}
+          <span class="group/thumb relative size-12 overflow-hidden rounded-md ring-1 ring-border/60">
+            <img src={image.previewUrl} alt={image.name} class="size-full object-cover" />
+            <button
+              type="button"
+              class="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-xs transition-opacity group-hover/thumb:opacity-100 focus-visible:opacity-100"
+              aria-label={i18n.t("chat.removeImage", { name: image.name })}
+              onclick={() => (images = images.filter((i) => i.id !== image.id))}
+            >
+              <Icon icon={CancelIcon} class="size-3" />
+            </button>
+          </span>
+        {/each}
+      </InputGroup.Addon>
+    {/if}
     <InputGroup.Textarea
       bind:ref
       bind:value
       {onkeydown}
+      {onpaste}
+      oninput={readToken}
+      onclick={readToken}
+      onkeyup={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") readToken();
+      }}
+      onblur={() => (token = undefined)}
       {disabled}
       rows={1}
       placeholder={placeholder ?? i18n.t("chat.composerPlaceholder")}
@@ -128,6 +370,19 @@
       class={cn("max-h-60 min-h-11 px-3 leading-5", text.body)}
     />
     <InputGroup.Addon align="block-end" class="gap-0.5">
+      {#if acceptsImages}
+        <InputGroup.Button
+          size="icon-sm"
+          variant="ghost"
+          class="rounded-full text-muted-foreground"
+          aria-label={i18n.t("chat.addImages")}
+          title={i18n.t("chat.addImages")}
+          disabled={disabled || images.length >= MAX_IMAGES}
+          onclick={() => void chooseImages()}
+        >
+          <Icon icon={PlusIcon} class={icon.action} />
+        </InputGroup.Button>
+      {/if}
       {#if leading}{@render leading()}{/if}
       {#if trailing}{@render trailing()}{/if}
       <span class="flex-1"></span>

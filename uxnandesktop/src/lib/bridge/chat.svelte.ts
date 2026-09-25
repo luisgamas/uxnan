@@ -18,7 +18,13 @@ import { untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import type { AccessMode, Thread } from '$shared/models/thread';
 import type { ApprovalDecision } from '$shared/models/approval';
-import type { AgentDescriptor, AgentModel } from '$shared/agents/agent-capabilities';
+import type {
+  AgentCommand,
+  AgentCommandInvocation,
+  AgentDescriptor,
+  AgentModel,
+} from '$shared/agents/agent-capabilities';
+import type { TurnAttachment } from '$shared/models/workspace';
 import type { Project } from '$shared/models/project';
 import type { BridgeSettings, ClientPresence, SyncChanges } from '$shared/models/sync';
 import type { TrustedDevice } from '$shared/models/session';
@@ -46,7 +52,18 @@ export function normalizeCwd(path: string): string {
 export interface SendOptions {
   /** Per-model run options (`AgentModel.options` knobs), e.g. reasoning effort. */
   options?: Record<string, string | boolean>;
+  /**
+   * One of the agent's commands (`agent/commands`) instead of free text: the
+   * bridge runs it natively or expands it (`turn/send { command }`), as it does
+   * for the phone.
+   */
+  command?: AgentCommandInvocation;
+  /** Images for the agent to see (only when it advertises `images`). */
+  attachments?: TurnAttachment[];
 }
+
+/** How long an agent's command list for a folder is reused. */
+const COMMANDS_TTL_MS = 60_000;
 
 /** Something the replica changed, for listeners that mirror it (projects). */
 export type ReplicaChange =
@@ -72,6 +89,7 @@ export class ChatStore {
   #syncing: Promise<void> | undefined;
   #syncAgain = false;
   readonly #replicaListeners = new Set<(change: ReplicaChange) => void>();
+  readonly #commands = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** What every thread is doing now (tab chips, sidebar rows). */
   readonly activity = new ThreadActivity();
   #models = new SvelteMap<string, AgentModel[]>();
@@ -279,6 +297,28 @@ export class ChatStore {
   }
 
   /** Models already loaded for an agent (reactive; empty until `modelsFor`). */
+  /**
+   * The commands [agentId] has in [cwd] (`agent/commands`) — its built-ins,
+   * custom commands and skills, as the bridge learns them from the agent.
+   * Reused for a minute per agent and folder; none when the bridge cannot say.
+   */
+  async commandsFor(agentId: string, cwd?: string): Promise<AgentCommand[]> {
+    const key = `${agentId}\n${cwd ?? ''}`;
+    const cached = this.#commands.get(key);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    try {
+      const result = await this.#client.call<{ commands: AgentCommand[] }>('agent/commands', {
+        agentId,
+        ...(cwd ? { cwd } : {}),
+      });
+      const commands = Array.isArray(result?.commands) ? result.commands : [];
+      this.#commands.set(key, { at: Date.now(), commands });
+      return commands;
+    } catch {
+      return cached?.commands ?? [];
+    }
+  }
+
   cachedModels(agentId: string | undefined): AgentModel[] {
     return agentId ? (this.#models.get(agentId) ?? []) : [];
   }
@@ -433,17 +473,28 @@ export class ChatStore {
    *  `stream/turn/created` echo (matched by `clientTurnId`) replaces it. */
   async send(threadId: string, text: string, opts: SendOptions = {}): Promise<void> {
     const trimmed = text.trim();
-    if (trimmed.length === 0) return;
+    const attachments = opts.attachments ?? [];
+    const command = opts.command;
+    if (trimmed.length === 0 && attachments.length === 0 && !command) return;
     const conversation = this.conversation(threadId);
     const clientTurnId = crypto.randomUUID();
-    conversation.addPending({ clientTurnId, text: trimmed });
+    // The bubble shows what history will: the command as typed, the text, or
+    // (for images alone) how many there are — the bridge stores the same.
+    const shown = command
+      ? `/${command.name}${command.args ? ` ${command.args}` : ''}`
+      : trimmed.length > 0
+        ? trimmed
+        : `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`;
+    conversation.addPending({ clientTurnId, text: shown });
     try {
-      // The bridge names the conversation from its first message itself.
+      // The bridge names the conversation from its first message itself. A
+      // command carries no text: the bridge resolves it (as for the phone).
       await this.#client.call('turn/send', {
         threadId,
-        text: trimmed,
+        ...(command ? { command } : { text: trimmed }),
         clientTurnId,
         ...(opts.options && Object.keys(opts.options).length > 0 ? { options: opts.options } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
       });
     } catch (err) {
       conversation.failPending(clientTurnId, err instanceof Error ? err.message : String(err));

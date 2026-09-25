@@ -21,6 +21,8 @@
   import ModelPicker from "$lib/components/ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
   import ChatComposer from "./ChatComposer.svelte";
+  import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
+  import type { TurnAttachment } from "$shared/models/workspace";
   import { chat } from "$lib/bridge/chat.svelte";
   import { bridgeAgentForCommand, bridgeAgentLogo } from "$lib/bridge/agents";
   import { app } from "$lib/state/app.svelte";
@@ -97,7 +99,17 @@
     optionValues = {};
   }
 
-  async function start(message: string) {
+  // The picked agent's commands; a new function when the agent changes, which
+  // is what makes the composer ask again.
+  const loadCommands = $derived.by(() => {
+    const id = agentId;
+    return id ? () => chat.commandsFor(id, tab.cwd) : undefined;
+  });
+
+  async function start(
+    message: string,
+    extras: { command?: AgentCommandInvocation; attachments?: TurnAttachment[] } = {},
+  ) {
     if (!agentId || starting) return;
     starting = true;
     // The message is on its way: drop the saved draft NOW. The debounced save
@@ -118,7 +130,7 @@
       // without a round trip; the bridge names the thread from this message.
       const conversation = chat.conversation(thread.id);
       conversation.loaded = true;
-      await chat.send(thread.id, message, { options: optionValues });
+      await chat.send(thread.id, message, { options: optionValues, ...extras });
     } catch (err) {
       // Nothing was sent: give the text back instead of losing it.
       draft = message;
@@ -193,6 +205,9 @@
         autofocus={active}
         placeholder={i18n.t("chat.startPlaceholder")}
         onsend={start}
+        {loadCommands}
+        mentionRoot={tab.cwd}
+        acceptsImages={chat.agent(agentId)?.capabilities?.images === true}
       >
         {#snippet leading()}
           <Combobox

@@ -229,6 +229,18 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   *Full access*; new chats start at *Full access*, like new chats on the phone)
   — and a ring showing how full the context window is, when the agent reports
   it (amber past 75%, red past 90%; the figures are in its tooltip).
+- **Commands, files and images** — what the phone's composer does, the same
+  way. **`/`** at the start of a message lists the agent's commands in this
+  folder (`agent/commands`, as the bridge learns them from the agent itself),
+  grouped as *Skills*, *Your commands*, *Agent commands* and *Built-in*; ↑ ↓
+  move, Enter or Tab completes, Esc closes, and a known `/name args` is sent as
+  `turn/send { command }` — the bridge runs it natively or expands it — while
+  an unknown `/word` goes as text. **`@`** completes a file of the project (the
+  desktop's own file search, `.gitignore` honoured) and inserts its relative
+  path. **Images** come from **+** or a paste, shown as thumbnails; they are
+  scaled to 2048 px on the long edge (JPEG 85 % when larger, as on the phone),
+  up to 8 per message, and sent as `attachments` — offered only to an agent
+  that takes images (`capabilities.images`).
 
 ## For developers
 
