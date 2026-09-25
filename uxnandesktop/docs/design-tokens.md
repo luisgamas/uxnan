@@ -293,6 +293,8 @@ asserts both.
 | `chat.column` | The centered reading column (`max-w-3xl`) the chat timeline and composer share. |
 | `chat.hero` | A new chat's question, centered over its composer. |
 | `chat.userBubble` / `chat.queuedBubble` | The user's message (muted fill) and a queued follow-up (same shape, dashed outline). |
+| `chat.prose` | The agent's reply: its settled Markdown chunks at paragraph rhythm, a shade softer than the chrome (`foreground/90`). |
+| `chat.fold` / `chat.foldRule` | A settled turn's "Worked for 1m 3s ›": quiet text with no fill, then a hairline to the column's edge. |
 | `chat.activity` | One compact row of the agent's work — a command, an edit, a tool call — and the header of a work group or a folded turn. |
 | `chat.activityList` | An open work group's rows, hung off a quiet rule. |
 | `chat.runningDot` | A step (or a turn) still running: a small pulsing dot. |

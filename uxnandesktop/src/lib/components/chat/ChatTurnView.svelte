@@ -36,7 +36,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { chat, icon, row, text } from "$lib/design";
+  import { chat, focus, icon, row, text } from "$lib/design";
 
   let {
     turn,
@@ -170,13 +170,16 @@
       {:else}
         {#if split.work.length > 0 || assistant?.thinking}
           <Collapsible.Root bind:open={workOpen}>
-            <Collapsible.Trigger class={cn(chat.activity, "w-auto max-w-full self-start")}>
-              <span class="tabular-nums">{foldLabel}</span>
-              <Icon
-                icon={ArrowRight01Icon}
-                class={cn(icon.status, "shrink-0 transition-transform", workOpen && "rotate-90")}
-              />
-            </Collapsible.Trigger>
+            <div class="flex items-center gap-2 px-0.5">
+              <Collapsible.Trigger class={cn(chat.fold, focus.ring)}>
+                <span class="tabular-nums">{foldLabel}</span>
+                <Icon
+                  icon={ArrowRight01Icon}
+                  class={cn(icon.status, "shrink-0 transition-transform", workOpen && "rotate-90")}
+                />
+              </Collapsible.Trigger>
+              <span class={chat.foldRule} aria-hidden="true"></span>
+            </div>
             <Collapsible.Content>
               <div class="mt-1 flex flex-col gap-1 border-l border-border/60 pl-2">
                 {@render thinking()}

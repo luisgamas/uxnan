@@ -371,8 +371,13 @@ export const chat = {
   column: "mx-auto w-full max-w-3xl px-5",
   /** A new chat's question, centered over its composer. */
   hero: "font-title text-xl font-medium tracking-tight text-foreground",
-  /** The agent's prose: its settled Markdown chunks stacked at paragraph rhythm. */
-  prose: "flex min-w-0 flex-col gap-[0.5em] px-0.5 leading-6",
+  /** The agent's prose: its settled Markdown chunks stacked at paragraph rhythm,
+   *  a shade softer than the chrome's foreground so a long reply reads calm. */
+  prose: "flex min-w-0 flex-col gap-[0.5em] px-0.5 leading-6 text-foreground/90",
+  /** A settled turn's fold ("Worked for 1m 3s ›"): quiet text, no fill — the
+   *  hairline after it (`foldRule`) separates the work from the answer. */
+  fold: "inline-flex shrink-0 items-center gap-1 rounded-sm py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground",
+  foldRule: "h-px flex-1 bg-border/50",
   /** The user's message: a quiet muted bubble, right-aligned by its row. */
   userBubble:
     "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-[13px] leading-5",
