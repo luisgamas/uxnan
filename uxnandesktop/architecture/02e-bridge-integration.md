@@ -406,7 +406,8 @@ src/lib/bridge/  client · chat · conversation  →  components/chat/ (pestaña
   propio, generado en cada arranque, mientras el ajuste `browser.mcpEnabled`
   este activo (`desktop/detach` al apagarlo). En el servidor de control ese
   token es `Caller::Bridge { cwd }`: su alcance es el proyecto de la carpeta de
-  la conversacion (cabecera `x-uxnan-cwd`), `current` no nombra nada y nunca
+  la conversacion (cabecera `x-uxnan-cwd`, codificada en porcentaje y
+  decodificada por el servidor), `current` no nombra nada y nunca
   reporta un hook (`docs/control-api.md` → *Callers*).
 - **`off` cuesta cero**: el supervisor espera el cambio de modo sin socket,
   lectura de fichero, temporizador ni proceso.

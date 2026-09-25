@@ -104,7 +104,7 @@ impl<R: tauri::Runtime> ServerCtx<R> {
         }
         if token_eq(&presented, &self.bridge_token) {
             return Some(Caller::Bridge {
-                cwd: header_str(headers, proto_headers::CWD),
+                cwd: header_str(headers, proto_headers::CWD).and_then(|v| percent_decode(&v)),
             });
         }
         None
@@ -125,6 +125,27 @@ fn presented_token(headers: &HeaderMap) -> Option<String> {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
     bearer.or_else(|| header_str(headers, proto_headers::TOKEN))
+}
+
+/// Decodes a percent-encoded header value (the bridge encodes `x-uxnan-cwd`
+/// so a folder with non-ASCII characters survives as a header). `None` for a
+/// malformed escape or bytes that are not UTF-8 — a folder it cannot read
+/// scopes nothing.
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = value.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// Read a header as an owned, trimmed, non-empty string.
@@ -414,6 +435,21 @@ mod tests {
             h.insert(name.clone(), HeaderValue::from_str(value).unwrap());
         }
         h
+    }
+
+    #[test]
+    fn a_bridge_agents_folder_arrives_percent_encoded() {
+        assert_eq!(
+            percent_decode("%2FUsers%2Fana%2FA%C3%B1o%2Frepo").as_deref(),
+            Some("/Users/ana/Año/repo")
+        );
+        assert_eq!(
+            percent_decode("/plain/path").as_deref(),
+            Some("/plain/path")
+        );
+        assert_eq!(percent_decode("%2"), None);
+        assert_eq!(percent_decode("%zz"), None);
+        assert_eq!(percent_decode("%FF%FE"), None);
     }
 
     #[test]

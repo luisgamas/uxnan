@@ -29,8 +29,9 @@ Uxnan Desktop's tools for the agents the bridge runs (architecture/02a
 §5.8.15, 02b §1.2): `DesktopAttachParams { mcpUrl, token }`,
 `DesktopAttachResult`, `SendTurnOptions.desktopTools` (`DesktopTools`), the
 `DESKTOP_CWD_HEADER` (`x-uxnan-cwd`) and `DESKTOP_MCP_SERVER_NAME`
-(`uxnan-browser`) constants, and the `isLoopbackMcpUrl` / `isDesktopToken`
-validators. **72 JSON-RPC methods** (was 70).
+(`uxnan-browser`) constants, `encodeCwdHeader` (the folder travels
+percent-encoded, so any path is a valid header value), and the
+`isLoopbackMcpUrl` / `isDesktopToken` validators. **72 JSON-RPC methods** (was 70).
 
 ### Added — `Thread.activeTurnId`
 

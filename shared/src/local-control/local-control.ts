@@ -144,6 +144,13 @@ export interface DesktopAttachResult {
  *  project that folder belongs to. */
 export const DESKTOP_CWD_HEADER = 'x-uxnan-cwd';
 
+/** The `x-uxnan-cwd` value for a folder: percent-encoded, so a path with
+ *  non-ASCII characters (`…/Año`) survives as an HTTP header; the desktop
+ *  decodes it. */
+export function encodeCwdHeader(cwd: string): string {
+  return encodeURIComponent(cwd);
+}
+
 /** The MCP server name bridge-run agents see the desktop's tools under — the
  *  same one the desktop's terminal agents see, so every agent-facing guide
  *  applies unchanged. */

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isDesktopToken, isLoopbackMcpUrl } from '../src/index.js';
+import { encodeCwdHeader, isDesktopToken, isLoopbackMcpUrl } from '../src/index.js';
 
 test('desktop tools are only accepted at a loopback MCP endpoint', () => {
   assert.equal(isLoopbackMcpUrl('http://127.0.0.1:51234/mcp'), true);
@@ -18,4 +18,13 @@ test('a desktop token is a base64url-ish string of a sane length', () => {
   assert.equal(isDesktopToken('short'), false);
   assert.equal(isDesktopToken('has space in it....'), false);
   assert.equal(isDesktopToken('x'.repeat(600)), false);
+});
+
+test('a folder travels in the cwd header percent-encoded, so any path is a valid header', () => {
+  assert.equal(encodeCwdHeader('/work/repo'), '%2Fwork%2Frepo');
+  assert.equal(
+    encodeCwdHeader('/Users/ana/Proyectos/año 1'),
+    '%2FUsers%2Fana%2FProyectos%2Fa%C3%B1o%201',
+  );
+  assert.equal(decodeURIComponent(encodeCwdHeader('C:\\src\\ñ')), 'C:\\src\\ñ');
 });

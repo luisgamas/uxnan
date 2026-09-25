@@ -39,7 +39,7 @@ import type {
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME } from '@uxnan/shared';
+import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
@@ -633,7 +633,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             UXNAN_HOOK_THREAD_ID: threadId,
           }
         : {}),
-      ...(desktop ? { [DESKTOP_TOKEN_ENV]: desktop.token, [DESKTOP_CWD_ENV]: cwd ?? '' } : {}),
+      ...(desktop
+        ? { [DESKTOP_TOKEN_ENV]: desktop.token, [DESKTOP_CWD_ENV]: encodeCwdHeader(cwd ?? '') }
+        : {}),
     };
     const spawnExtra = {
       // A real pipe, not the default closed stdin — this CLI is reading a

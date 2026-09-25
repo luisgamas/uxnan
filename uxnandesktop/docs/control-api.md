@@ -418,8 +418,9 @@ coordinator sees its terminal. A
 launch request that does not say which terminal it is (no
 `x-uxnan-agent-id` header) reaches no project at all; one whose terminal is in
 the Global space, likewise. A bridge-agent request is scoped the same way by
-the folder its conversation runs in (the `x-uxnan-cwd` header — named by the
-request, as the launch caller names its terminal); one without it, or whose
+the folder its conversation runs in (the `x-uxnan-cwd` header, percent-encoded
+— named by the request, as the launch caller names its terminal); one without
+it, one that does not decode, or whose
 folder is in no registered project, reaches nothing. The control token — the same OS user that can open
 the app and read its data directory — sees every project, so a project list
 in a settings pane would add friction, not a boundary.

@@ -1143,7 +1143,7 @@ test('desktop tools add one MCP server for the run, with the token only in the e
   // The credential is never in argv; the run's env carries it and the cwd.
   assert.equal(args.join(' ').includes('desktop-token-0123456789'), false);
   assert.equal(last().env?.UXNAN_MCP_TOKEN, 'desktop-token-0123456789');
-  assert.equal(last().env?.UXNAN_THREAD_CWD, '/work/repo');
+  assert.equal(last().env?.UXNAN_THREAD_CWD, encodeURIComponent('/work/repo'));
 });
 
 test('without desktop tools a run registers no MCP server', async () => {
