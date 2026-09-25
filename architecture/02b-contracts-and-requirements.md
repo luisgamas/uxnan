@@ -499,7 +499,8 @@ decision del usuario.
   default off).
 - `stream/content/block`: el `content` es un `MessageContent` polimorfico
   serializado (`command_execution` para Bash, `diff` para Edit/Write, un
-  bloque `tool` generico para el resto y `compaction` para un límite de
+  bloque `tool` clasificado (`kind` + `target`) para el resto, `subagent`
+  para un subagente y `compaction` para un límite de
   contexto realmente reportado por el agente). El telefono lo decodifica con
   el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
   **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
@@ -759,14 +760,24 @@ interface ApprovalRequestBlock {
 - `text` (markdown + code blocks)
 - `command_execution` (Bash; output truncado a 4 KB)
 - `diff` (Edit/Write/MultiEdit/NotebookEdit; +/- counts; unified hunks)
-- `tool` (cualquier otra herramienta; output truncado)
+- `tool` (cualquier otra herramienta; output truncado). Since 2026-09 it also
+  carries `kind` — `read | search | list | fetch | web_search | mcp | other`,
+  what the call did, classified by the bridge for every agent — and `target`,
+  what it acted on, ready to show (a path relative to the project, a pattern, a
+  URL, a query). Clients render from these and never from an agent's own tool
+  names (`shared/src/models/tool.ts` → `ToolContentBlock`)
 - `thinking` (razonamiento del agente; colapsable, default off)
 - `assistant_response_boundary` (metadata separating native assistant messages;
   zero text, durable, excluded from copy/previews)
 - `image` (inline, base64)
 - `approval` (bloque interactivo: Approve / Reject / "always allow this session")
-- `plan` (checklist; solo informacional, no bloquea)
-- `subagent` (status updates; solo informacional)
+- `plan` (checklist; solo informacional, no bloquea). An agent resends its
+  whole list on every change, so a turn may carry several: clients show only
+  the latest of a turn
+- `subagent` (`{ state: { id, name, status: 'completed' | 'error', output? } }`:
+  a subagent the agent delegated to — Claude's `Agent`, OpenCode's `task`,
+  Codex's collaboration tools, Antigravity's subagents — once it finished, with
+  its report; `SubagentContentBlock`)
 - `usage` (token usage)
 
 ---

@@ -3260,11 +3260,14 @@ class ImageContent extends MessageContent {
 }
 
 class ToolUseContent extends MessageContent {
-  final String toolName;
+  final String toolName;        // the agent's own name for the tool
   final String toolId;
   final Map<String, dynamic> input;
   final dynamic output;
   final bool isError;
+  final ToolKind kind;          // read | search | list | fetch | webSearch | mcp | other,
+                                // classified by the bridge for every agent
+  final String? target;         // what it acted on, ready to show
 }
 
 class DiffContent extends MessageContent {
@@ -3318,7 +3321,7 @@ class PlanContent extends MessageContent {
 }
 
 class SubagentContent extends MessageContent {
-  final SubagentState state;
+  final SubagentState state;    // id, name (its task), status, actions, output (its report)
 }
 ```
 

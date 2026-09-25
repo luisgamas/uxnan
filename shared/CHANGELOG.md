@@ -4,6 +4,14 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — what a tool call did, for every agent
+
+- `ToolKind` (`read | search | list | fetch | web_search | mcp | other`,
+  `TOOL_KINDS`) and `ToolContentBlock`: a `tool` block now carries `kind` and
+  a ready-to-show `target`, classified by the bridge, so a client never
+  learns an agent's own tool names. `SubagentContentBlock`: a finished
+  subagent with its task, how it ended and its report.
+
 ### Added — names every client shares
 
 - `device/describe` (`DeviceDescribeParams`, `DeviceDescription`): a phone,
