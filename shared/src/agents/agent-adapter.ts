@@ -74,6 +74,21 @@ export interface SendTurnOptions {
    * per-command handling. Absent for an ordinary text turn.
    */
   command?: AgentCommandInvocation;
+  /**
+   * Uxnan Desktop's tools, when the desktop attached them (`desktop/attach`):
+   * its MCP endpoint and the bearer token for bridge-run agents. An adapter that
+   * can register an MCP server for one run does so under
+   * {@link DESKTOP_MCP_SERVER_NAME}, passing the token only through the
+   * environment and the conversation's `cwd` in {@link DESKTOP_CWD_HEADER}.
+   * Absent when no desktop is attached.
+   */
+  desktopTools?: DesktopTools;
+}
+
+/** What `desktop/attach` gave the bridge (see {@link SendTurnOptions.desktopTools}). */
+export interface DesktopTools {
+  mcpUrl: string;
+  token: string;
 }
 
 /** Input for {@link IAgentAdapter.generateTitle}. */

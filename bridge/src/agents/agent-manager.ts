@@ -15,6 +15,7 @@ import {
   StreamNotification,
   makeNotification,
   type AccessMode,
+  type DesktopTools,
   type AgentCommand,
   type AgentCommandInvocation,
   type AgentDescriptor,
@@ -649,6 +650,10 @@ export class AgentManager {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
       ...(options.command !== undefined ? { command: options.command } : {}),
+      // FOR-DEV: only the Claude adapter registers these today; Codex, OpenCode,
+      // Grok, Zero, pi and Antigravity run resident processes that keep their
+      // spawn environment (bridge/FOR-DEV.md → "Uxnan Desktop's tools").
+      ...(this.#desktopTools ? { desktopTools: this.#desktopTools.tools } : {}),
     });
   }
 
@@ -1009,6 +1014,27 @@ export class AgentManager {
 
   activeTurnId(threadId: string): string | undefined {
     return this.#activeTurnByThread.get(threadId);
+  }
+
+  /** Uxnan Desktop's tools for the agents this bridge runs, and the local
+   *  client that attached them (`desktop/attach`). Turns started from now on
+   *  carry them; one already running keeps what it started with. */
+  #desktopTools: { tools: DesktopTools; clientId: string } | undefined;
+
+  setDesktopTools(tools: DesktopTools, clientId: string): void {
+    this.#desktopTools = { tools, clientId };
+  }
+
+  /** Forget the desktop's tools — asked by the desktop, or because the client
+   *  that attached them went away (its token is not good any more). Passing a
+   *  `clientId` forgets them only if that client attached them. */
+  clearDesktopTools(clientId?: string): void {
+    if (clientId !== undefined && this.#desktopTools?.clientId !== clientId) return;
+    this.#desktopTools = undefined;
+  }
+
+  get desktopToolsAttached(): boolean {
+    return this.#desktopTools !== undefined;
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {

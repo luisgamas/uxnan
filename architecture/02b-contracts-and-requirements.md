@@ -100,14 +100,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 70 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 72 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 70 metodos request/response** + 16 notificaciones de streaming
+> **Total: 72 metodos request/response** + 16 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -279,6 +279,15 @@ bridge/trustedDevices            -> lista de dispositivos de confianza
 bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push registration
 ```
 
+**Herramientas del desktop para agentes del bridge (2)** — solo por el canal de
+control local (`02a` §5.8.15); un telefono recibe `-32001`:
+```
+desktop/attach   { mcpUrl, token } -> { attached }  el MCP del desktop (loopback /mcp) + su token
+                                                     para agentes del bridge; lo usan los turnos
+                                                     siguientes, se olvida al desconectarse
+desktop/detach                     -> { attached }  quitar las herramientas
+```
+
 **Metodos eliminados del draft v0.1.0 (no se llegaron a implementar):**
 - `initialize` / `initialized` (handshake estilo MCP): el handshake E2EE
   cubre ese rol; el bridge no implementa un canal de inicializacion
@@ -330,7 +339,8 @@ bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push
   primer turno si no existe; el contrato es uniforme).
 - `desktop/refresh` / `desktop/open` / `desktop/focus`: el bridge no
   expone endpoints de control de la app de escritorio; el desktop
-  consume el bridge, no al reves. Ver
+  consume el bridge, no al reves (`desktop/attach` no controla la app: le da
+  al bridge el MCP del desktop para sus agentes). Ver
   `../../uxnandesktop/architecture/02e-bridge-integration.md` para el
   sentido de la integracion.
 

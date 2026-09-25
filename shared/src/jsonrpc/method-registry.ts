@@ -85,6 +85,9 @@ export const METHOD_NAMES = [
   'bridge/disconnectPhone',
   'bridge/trustedDevices',
   'bridge/removeTrustedDevice',
+  // Desktop tools for bridge-run agents (local control channel only)
+  'desktop/attach',
+  'desktop/detach',
 ] as const;
 
 /**

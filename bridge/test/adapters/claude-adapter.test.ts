@@ -1116,3 +1116,43 @@ test('the adapter advertises steering', () => {
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
   assert.equal(adapter.capabilities.steering, true);
 });
+
+test('desktop tools add one MCP server for the run, with the token only in the env', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    cwd: '/work/repo',
+    desktopTools: { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'desktop-token-0123456789' },
+  });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  const config = JSON.parse(args[args.indexOf('--mcp-config') + 1] ?? '{}') as {
+    mcpServers: Record<string, { type: string; url: string; headers: Record<string, string> }>;
+  };
+  assert.deepEqual(config.mcpServers['uxnan-browser'], {
+    type: 'http',
+    url: 'http://127.0.0.1:51234/mcp',
+    headers: { Authorization: 'Bearer ${UXNAN_MCP_TOKEN}', 'x-uxnan-cwd': '${UXNAN_THREAD_CWD}' },
+  });
+  // The credential is never in argv; the run's env carries it and the cwd.
+  assert.equal(args.join(' ').includes('desktop-token-0123456789'), false);
+  assert.equal(last().env?.UXNAN_MCP_TOKEN, 'desktop-token-0123456789');
+  assert.equal(last().env?.UXNAN_THREAD_CWD, '/work/repo');
+});
+
+test('without desktop tools a run registers no MCP server', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+  assert.equal(last().args.includes('--mcp-config'), false);
+  assert.equal(last().env, undefined);
+});

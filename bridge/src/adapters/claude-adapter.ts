@@ -39,6 +39,7 @@ import type {
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
@@ -447,6 +448,30 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
   }
 }
 
+/** The environment variables a run's desktop MCP config expands: the bearer
+ *  token (the same name the desktop's own launches use) and the conversation's
+ *  working directory, which the desktop scopes the agent to. */
+export const DESKTOP_TOKEN_ENV = 'UXNAN_MCP_TOKEN';
+export const DESKTOP_CWD_ENV = 'UXNAN_THREAD_CWD';
+
+/** `--mcp-config` for a run with Uxnan Desktop's tools: the desktop's MCP
+ *  endpoint under the name its terminal agents know, with the token and the
+ *  cwd read from the environment when Claude loads it. */
+export function claudeDesktopMcpConfig(mcpUrl: string): string {
+  return JSON.stringify({
+    mcpServers: {
+      [DESKTOP_MCP_SERVER_NAME]: {
+        type: 'http',
+        url: mcpUrl,
+        headers: {
+          Authorization: `Bearer \${${DESKTOP_TOKEN_ENV}}`,
+          [DESKTOP_CWD_HEADER]: `\${${DESKTOP_CWD_ENV}}`,
+        },
+      },
+    },
+  });
+}
+
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'claude-code';
   readonly capabilities = CLAUDE_CAPABILITIES;
@@ -592,20 +617,29 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // before when the prompt arrives on stdin (turn 2 of a probe recalled a
     // number given in turn 1, on the same session id, with deltas still streaming).
     if (sessionId) args.push('--resume', sessionId);
+    // Uxnan Desktop's tools, when it attached them: one MCP server for this run
+    // only, named like the desktop's own launches. Verified against claude
+    // 2.1.282: a JSON-string `--mcp-config` connects, lists and calls the
+    // server, and expands `${VAR}` in its headers from the environment — so the
+    // token never reaches argv or a file.
+    const desktop = options.desktopTools;
+    if (desktop) args.push('--mcp-config', claudeDesktopMcpConfig(desktop.mcpUrl));
 
+    const env: Record<string, string> = {
+      ...(interactive
+        ? {
+            UXNAN_HOOK_URL: hookUrl,
+            UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
+            UXNAN_HOOK_THREAD_ID: threadId,
+          }
+        : {}),
+      ...(desktop ? { [DESKTOP_TOKEN_ENV]: desktop.token, [DESKTOP_CWD_ENV]: cwd ?? '' } : {}),
+    };
     const spawnExtra = {
       // A real pipe, not the default closed stdin — this CLI is reading a
       // message stream, so it does not hang on an open one.
       stdin: 'pipe' as const,
-      ...(interactive
-        ? {
-            env: {
-              UXNAN_HOOK_URL: hookUrl,
-              UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
-              UXNAN_HOOK_THREAD_ID: threadId,
-            },
-          }
-        : {}),
+      ...(Object.keys(env).length > 0 ? { env } : {}),
     };
 
     let child: SpawnedProcess;

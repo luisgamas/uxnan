@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   LOCAL_CONTROL_FILE,
+  localReceiverId,
   makeNotification,
   type BridgeStatus,
   type PairingPayload,
@@ -707,7 +708,14 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         bridgeVersion: BRIDGE_VERSION,
         instanceId,
         registry: sessionRegistry,
-        dispatch: (raw) => router.dispatchRaw(raw),
+        // Marked local, so methods only the desktop may call (`desktop/attach`)
+        // can tell it from a phone.
+        dispatch: (raw, clientId) =>
+          router.dispatchRaw(raw, {
+            sessionId: localReceiverId(clientId),
+            deviceId: localReceiverId(clientId),
+            local: clientId,
+          }),
         // A local client can see and answer approvals exactly like a phone, so
         // it counts as "someone is there" for the approval countdown.
         onClientConnected: (clientId) => {
@@ -716,6 +724,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         },
         onClientDisconnected: (clientId) => {
           agentManager.onPhoneDisconnected();
+          // Its tools' token dies with it (the desktop mints a new one).
+          agentManager.clearDesktopTools(clientId);
           logger.info(`local client disconnected: ${clientId}`);
         },
       });

@@ -2478,6 +2478,21 @@ llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
 - Un cliente local conectado cuenta como "hay alguien" para la cuenta atras de
   las aprobaciones, igual que un telefono. No entra en `bridge/connectedPhones`.
 - `bridge/status` → `features.localControl: true` mientras escucha.
+- **Herramientas del desktop para los agentes del bridge**
+  (`desktop/attach { mcpUrl, token }` / `desktop/detach`): el desktop le da al
+  bridge su servidor MCP — el mismo que entrega a los agentes que lanza en sus
+  terminales (navegador, terminales, otros agentes, el catalogo de control) —
+  para que los agentes de las conversaciones del bridge lo usen tambien. **Solo
+  lo acepta un cliente local** (el despacho local marca la peticion con
+  `RequestSession.local`; un telefono recibe `-32001`) y solo para un endpoint
+  loopback `http://127.0.0.1:<port>/mcp`; el token es uno propio del desktop
+  para agentes del bridge, rotado en cada arranque, y el bridge lo olvida al
+  desconectarse ese cliente. Cada adapter registra el servidor **solo para esa
+  ejecucion**, con el nombre `uxnan-browser`, el token **solo en el entorno**
+  (`UXNAN_MCP_TOKEN`, nunca en argv ni en un archivo) y el cwd de la
+  conversacion en la cabecera `x-uxnan-cwd`, que el desktop usa para acotar al
+  agente al proyecto de esa carpeta. Hoy: Claude Code (`--mcp-config` por
+  ejecucion); el resto, pendiente (`bridge/FOR-DEV.md`).
 
 **No es una variante criptografica**: es una ruta local con token, el mismo
 modelo de confianza que `POST /agent-hook/approval`. El E2EE no cambia.

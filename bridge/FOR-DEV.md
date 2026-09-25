@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 737, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 740, shared 38, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -300,10 +300,20 @@ push validation (FOR-HUMAN).
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
       instead of the heuristic (slower, per-CLI).
-- [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` is an empty
-      stub; no `desktop/*` contracts exist in `shared/`. This is the bridge half of
-      the desktop's **Phase 6** (embedded sidecar + mobile pairing); see
-      `uxnandesktop/architecture/02e-bridge-integration.md`. Unbuilt on both sides.
+- [ ] **Uxnan Desktop's tools for the other adapters** — `desktop/attach` is wired
+      for Claude Code only (`claude-adapter.ts` → `claudeDesktopMcpConfig`). Codex
+      (`app-server`: `-c mcp_servers.*` at spawn), OpenCode (`serve`:
+      `OPENCODE_CONFIG_CONTENT`), Grok / Zero (ACP `session/new` `mcpServers`), pi and
+      Antigravity (no known per-run mechanism) are resident processes that keep the
+      environment they were spawned with, so attaching needs a respawn or a
+      per-session config — each to be verified against the driven surface
+      (`docs/agents.md` → *Uxnan Desktop's tools*) before it is claimed.
+- [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` serves
+      only `desktop/attach` / `desktop/detach` (the desktop's tools for bridge-run
+      agents, local channel only); nothing for an embedded sidecar exists. This is
+      the bridge half of the desktop's **Phase 6** (embedded sidecar + mobile
+      pairing); see `uxnandesktop/architecture/02e-bridge-integration.md`. Unbuilt
+      on both sides.
 - [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
       transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
       transport so the phone is dropped immediately.

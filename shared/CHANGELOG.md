@@ -23,6 +23,15 @@ the contract now carries everything a second client needs to converge
 - `TurnSendParams.clientTurnId`: the sender's optimistic-bubble id, echoed on
   `stream/turn/created` so it recognizes its own message.
 
+### Added — `desktop/attach` / `desktop/detach`
+
+Uxnan Desktop's tools for the agents the bridge runs (architecture/02a
+§5.8.15, 02b §1.2): `DesktopAttachParams { mcpUrl, token }`,
+`DesktopAttachResult`, `SendTurnOptions.desktopTools` (`DesktopTools`), the
+`DESKTOP_CWD_HEADER` (`x-uxnan-cwd`) and `DESKTOP_MCP_SERVER_NAME`
+(`uxnan-browser`) constants, and the `isLoopbackMcpUrl` / `isDesktopToken`
+validators. **72 JSON-RPC methods** (was 70).
+
 ### Added — `Thread.activeTurnId`
 
 Live, never persisted: the turn running on the thread right now, which the

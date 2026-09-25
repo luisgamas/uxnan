@@ -117,3 +117,44 @@ export function isValidLocalClientId(id: string): boolean {
 export function localReceiverId(clientId: string): string {
   return `local:${clientId}`;
 }
+
+/**
+ * `desktop/attach` params — sent by Uxnan Desktop over the local control
+ * channel (and accepted **only** there) to give the agents the bridge runs the
+ * desktop's own tools: its MCP server (browser, terminals, other agents, the
+ * control catalog), the same server the desktop hands the agents it launches in
+ * its terminals (architecture/02a §5.8.15).
+ */
+export interface DesktopAttachParams {
+  /** The desktop's MCP endpoint — a loopback `http://127.0.0.1:<port>/mcp`. */
+  mcpUrl: string;
+  /** Bearer token for bridge-run agents, minted by the desktop per start. The
+   *  bridge hands it to an agent only through the environment, never argv or a
+   *  file, and forgets it when the desktop disconnects. */
+  token: string;
+}
+
+/** `desktop/attach` / `desktop/detach` result: whether tools are attached now. */
+export interface DesktopAttachResult {
+  attached: boolean;
+}
+
+/** The header a bridge-run agent's MCP requests carry: the conversation's
+ *  working directory, which scopes what the desktop lets it touch to the
+ *  project that folder belongs to. */
+export const DESKTOP_CWD_HEADER = 'x-uxnan-cwd';
+
+/** The MCP server name bridge-run agents see the desktop's tools under — the
+ *  same one the desktop's terminal agents see, so every agent-facing guide
+ *  applies unchanged. */
+export const DESKTOP_MCP_SERVER_NAME = 'uxnan-browser';
+
+/** Whether `url` is a loopback MCP endpoint the bridge will hand to an agent. */
+export function isLoopbackMcpUrl(url: string): boolean {
+  return /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}\/mcp$/.test(url);
+}
+
+/** Whether `token` has the shape of a desktop-minted token (base64url-ish). */
+export function isDesktopToken(token: string): boolean {
+  return /^[A-Za-z0-9_-]{16,512}$/.test(token);
+}

@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Uxnan Desktop's tools for the agents the bridge runs.** `desktop/attach
+  { mcpUrl, token }` / `desktop/detach` (`handlers/desktop-handler.ts`), accepted
+  only from a local-control client — the local dispatch now marks its requests
+  with `RequestSession.local`, and a phone gets `-32001` — and only for a
+  loopback `/mcp` endpoint. Turns started afterwards carry
+  `SendTurnOptions.desktopTools`; the bridge forgets them when that client
+  disconnects. **Claude Code** registers the server for the run with
+  `--mcp-config '<json>'` under `uxnan-browser`, the token only in
+  `UXNAN_MCP_TOKEN` and the conversation's cwd in `x-uxnan-cwd` (verified
+  against claude 2.1.282). The other adapters are not wired yet (`FOR-DEV.md`).
+  72 JSON-RPC methods.
 - **`thread/list` and `thread/read` carry each thread's live `activeTurnId`**
   (never persisted), so a client that just connected — the desktop's sidebar,
   the phone's list — shows which conversations are working without reading

@@ -65,6 +65,7 @@ import type {
   MetricsSnapshot,
 } from '../models/metrics.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
+import type { DesktopAttachParams, DesktopAttachResult } from '../local-control/local-control.js';
 
 // --- Param shapes -----------------------------------------------------------
 
@@ -507,6 +508,10 @@ export interface JsonRpcMethodRegistry {
   'bridge/disconnectPhone': { params: { deviceId: string }; result: void };
   'bridge/trustedDevices': { params: void; result: TrustedDevice[] };
   'bridge/removeTrustedDevice': { params: { deviceId: string }; result: void };
+
+  // Desktop tools for bridge-run agents (local control channel only)
+  'desktop/attach': { params: DesktopAttachParams; result: DesktopAttachResult };
+  'desktop/detach': { params: void; result: DesktopAttachResult };
 }
 
 export type JsonRpcMethodName = keyof JsonRpcMethodRegistry;

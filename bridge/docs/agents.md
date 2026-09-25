@@ -261,6 +261,25 @@ bridge's own approval hook is unaffected: it uses three of those names
 (`UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID`) for its own server, but it **sets**
 them per turn and a value it sets survives. Only an inherited one is dropped.
 
+### Uxnan Desktop's tools (`desktop/attach`)
+
+When Uxnan Desktop is connected over the local control channel it attaches its
+own MCP server — the one it hands the agents it launches in its terminals
+(browser, terminals, other agents, the control catalog) — with
+`desktop/attach { mcpUrl, token }` (accepted only from a local client, and only
+for a loopback `/mcp` endpoint). Turns started from then on carry
+`SendTurnOptions.desktopTools`; the bridge forgets them when that client
+disconnects. An adapter registers the server **for one run only**, under the
+same name the desktop's launches use (`uxnan-browser`), with the token only in
+the environment (`UXNAN_MCP_TOKEN`) and the conversation's cwd in the
+`x-uxnan-cwd` header (from `UXNAN_THREAD_CWD`), which the desktop scopes the
+agent to:
+
+| Agent | Mechanism | Verified |
+|---|---|---|
+| **Claude Code** | `--mcp-config '<json>'` per run; `${VAR}` in its headers expanded from the env at load | claude 2.1.282: the server connects, lists and is called, with both headers expanded |
+| Codex, OpenCode, pi, Antigravity, Grok, Zero | not wired yet — resident processes keep the environment they were spawned with, so attaching needs a respawn or a per-session config; see `FOR-DEV.md` | — |
+
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models` (`GET /api/model` on
 OpenCode 2), `model/list`,
