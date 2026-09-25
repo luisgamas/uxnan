@@ -507,6 +507,8 @@ const SUMMARY_KEYS = [
   'description',
   'prompt',
   'code',
+  'skill',
+  'name',
 ];
 
 /** The first line of a value, capped: a target is one line of a row. */

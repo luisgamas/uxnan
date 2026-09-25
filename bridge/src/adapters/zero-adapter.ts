@@ -42,9 +42,13 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, sep } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
@@ -61,6 +65,7 @@ import { agentEnv, defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
+import { extractFrontMatter } from './command-scan.js';
 import { acpPlanSteps, acpToolBlock, type AcpToolCall } from './acp-tools.js';
 
 const ZERO_CAPABILITIES: AgentCapabilities = {
@@ -77,13 +82,66 @@ const ZERO_CAPABILITIES: AgentCapabilities = {
   // Verified against a real ACP-driven run: no usage on the wire and none in
   // the session store either (that is an `exec`-only record). See the header.
   reportsContextUsage: false,
-  // No commands reachable on the driven surface (zero 0.9.0): its ACP server
-  // never sends `available_commands_update` (verified live on `initialize` /
-  // `session/new`, and the binary does not contain the name), and its slash
-  // commands and skill invocation are handled by its TUI only. `zero skills
-  // list` exists, but nothing on ACP invokes a skill.
-  commands: false,
+  // Its skills (see listCommands): the ACP server sends no
+  // `available_commands_update` and its slash commands are its TUI's, but the
+  // model loads a named skill with its own skill tool when the prompt asks.
+  commands: true,
 };
+
+/** How long a folder's skill list is reused before `zero skills list` runs again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/**
+ * Zero's skills as commands, from `zero skills list --json`
+ * (`{ skills: [{ name, description, path }] }`) — only the ones the driven
+ * surface can load. That list also shows the shared `~/.agents/skills`
+ * (read-only), but the skill tool of a Zero run over ACP looks only in Zero's
+ * own skills folder (verified on zero 0.9.x: asked for a shared skill, it
+ * answers "no skills are available (looked in ~/.local/share/zero/skills)").
+ * Zero keeps a folded YAML description as its indicator (`>`, `>-`), so that
+ * one is read from the skill's `SKILL.md`.
+ */
+export function parseZeroSkills(
+  raw: unknown,
+  sharedDir: string,
+  readFile: (path: string) => string | undefined = readTextFile,
+): AgentCommand[] {
+  const skills = isRecord(raw) && Array.isArray(raw['skills']) ? raw['skills'] : [];
+  const shared = sharedDir.endsWith(sep) ? sharedDir : `${sharedDir}${sep}`;
+  const commands: AgentCommand[] = [];
+  for (const skill of skills) {
+    if (!isRecord(skill)) continue;
+    const name = str(skill['name']);
+    const path = str(skill['path']);
+    if (!name || !path || path.startsWith(shared)) continue;
+    let description = str(skill['description']).trim();
+    if (!description || /^[>|][+-]?$/.test(description)) {
+      const file = readFile(path);
+      description = file ? (extractFrontMatter(file).fields['description'] ?? '') : '';
+    }
+    commands.push({
+      name,
+      source: 'skill',
+      headlessSupported: true,
+      ...(description ? { description } : {}),
+    });
+  }
+  return commands;
+}
+
+/** The prompt that has Zero load a skill with its skill tool, then act on the arguments. */
+export function zeroSkillPrompt(name: string, args?: string): string {
+  const task = args?.trim();
+  return `Use the "${name}" skill: load it with your skill tool and follow its instructions.${task ? `\n\n${task}` : ''}`;
+}
+
+function readTextFile(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return undefined;
+  }
+}
 
 /** Zero's ACP session modes (from `session/new`'s `availableModes`). */
 type ZeroMode = 'ask' | 'auto';
@@ -162,6 +220,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: ZeroAdapterOptions['onApprovalRequest'];
   readonly #spawnAcp: (env?: Record<string, string>) => SpawnedAcp;
+  /** Each folder's skill list, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
   /** threadId → ACP sessionId, for continuity + history fallback. */
@@ -283,13 +343,14 @@ export class ZeroAdapter extends BaseAgentAdapter {
     });
   }
 
-  /** Spawn `zero <args>` and parse its stdout as JSON (null on any failure). */
-  #json<T>(args: string[]): Promise<T | null> {
+  /** Spawn `zero <args>` (in [cwd]) and parse its stdout as JSON (null on any failure). */
+  #json<T>(args: string[], cwd?: string): Promise<T | null> {
     return new Promise((resolve) => {
       let out = '';
       let child;
       try {
         child = spawn(this.#binaryPath, [...this.#prependArgs, ...args], {
+          ...(cwd !== undefined ? { cwd } : {}),
           stdio: ['ignore', 'pipe', 'ignore'],
           windowsHide: true,
           shell: false,
@@ -315,6 +376,33 @@ export class ZeroAdapter extends BaseAgentAdapter {
 
   get defaultModel(): string | undefined {
     return this.#defaultModel;
+  }
+
+  /**
+   * Zero's skills the driven surface can load ({@link parseZeroSkills}), from
+   * `zero skills list --json` in the thread's folder. Reused per folder for a
+   * minute; a failed listing yields none.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const raw = await this.#json<unknown>(['skills', 'list', '--json'], dir);
+    if (raw === null) return [];
+    const commands = parseZeroSkills(raw, join(homedir(), '.agents', 'skills'));
+    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
+  }
+
+  /**
+   * A picked skill, as the prompt that has Zero load it ({@link zeroSkillPrompt}):
+   * Zero has no command syntax on ACP, but its model loads a named skill with
+   * its skill tool.
+   */
+  async expandCommand(name: string, args?: string, cwd?: string): Promise<string> {
+    const known = (await this.listCommands(cwd)).some((c) => c.name === name);
+    if (!known) throw new Error(`unknown Zero skill: ${name}`);
+    return zeroSkillPrompt(name, args);
   }
 
   start(config: AgentConfig): Promise<void> {

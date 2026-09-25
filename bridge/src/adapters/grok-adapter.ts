@@ -37,15 +37,17 @@
  *  - `session/cancel` (notification) ← cancelTurn.
  *
  * ## Verification note
- * The ACP envelope + handshake + model discovery were exercised live. The per-turn
- * streaming shapes (`tool_call`/`plan`/`session/request_permission`) follow the ACP
- * spec but could NOT be exercised end-to-end because the test account's Grok Build
- * balance was exhausted (HTTP 402). Whether Grok reports per-turn token usage and
- * whether `session/set_mode` actually applies the reasoning effort are likewise
- * unverified — see bridge/FOR-DEV.md.
+ * The handshake, model discovery, the per-turn stream (`tool_call` / `plan`,
+ * mapped in `acp-tools.ts`), token usage and the command list were exercised
+ * live. Still unverified: the `session/request_permission` option kinds on a
+ * real prompt, and whether `session/set_mode` actually applies the reasoning
+ * effort — see bridge/FOR-DEV.md.
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -184,6 +186,56 @@ function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string)
   };
 }
 
+/** How long a folder's command list is reused. */
+const COMMANDS_TTL_MS = 60_000;
+/** How long a listing waits for a fresh session to announce its commands (≈2.5 s measured). */
+const COMMANDS_WAIT_MS = 8_000;
+const COMMANDS_POLL_MS = 100;
+
+/**
+ * Commands Grok announces that the bridge does not offer: the access mode is
+ * the thread's own (`always-approve` would override it behind its back), and
+ * the status line and memory browser are screens of Grok's terminal UI.
+ */
+const GROK_BRIDGE_OWNED_COMMANDS = new Set(['always-approve', 'statusline', 'memory']);
+
+/**
+ * Grok's `availableCommands` (`[{ name, description, input: { hint } | null }]`)
+ * as commands. A command that is one of the skills Grok reads (a `SKILL.md`
+ * in `~/.agents/skills`, `~/.grok/skills` or the same folders of [cwd]) is
+ * labelled a skill; the rest are Grok's own. Both run natively as `/name args`.
+ */
+export function parseGrokCommands(
+  raw: unknown[],
+  cwd?: string,
+  isSkill: (name: string) => boolean = (name) => grokSkillExists(name, cwd),
+): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const name = str(item['name']);
+    if (!name || GROK_BRIDGE_OWNED_COMMANDS.has(name)) continue;
+    const description = str(item['description']);
+    const hint = isRecord(item['input']) ? str(item['input']['hint']) : '';
+    commands.push({
+      name,
+      source: isSkill(name) ? 'skill' : 'acp',
+      headlessSupported: true,
+      ...(description ? { description } : {}),
+      ...(hint ? { argumentHint: hint } : {}),
+    });
+  }
+  return commands;
+}
+
+function grokSkillExists(name: string, cwd?: string): boolean {
+  if (!/^[\w.-]+$/.test(name)) return false;
+  const roots = [homedir(), ...(cwd ? [cwd] : [])];
+  return roots.some((root) =>
+    ['.agents', '.grok'].some((dir) => existsSync(join(root, dir, 'skills', name, 'SKILL.md'))),
+  );
+}
+
 export class GrokAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'grok';
   readonly capabilities = GROK_CAPABILITIES;
@@ -205,8 +257,12 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #modelBySession = new Map<string, string>();
   /** sessionId → last reasoning effort we set. */
   readonly #effortBySession = new Map<string, string>();
-  /** Slash commands from the latest ACP `available_commands_update` (see listCommands). */
-  #commands: AgentCommand[] = [];
+  /** Each folder's commands, from its sessions' `available_commands_update` (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
+  /** sessionId → the folder it runs in, so a command update is filed under it. */
+  readonly #cwdBySession = new Map<string, string>();
+  /** sessionId → the commands its latest update announced (it can beat `session/new`'s answer). */
+  readonly #commandsBySession = new Map<string, AgentCommand[]>();
   /** Model list, captured from the `initialize` handshake (cached for the process). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
@@ -417,6 +473,7 @@ export class GrokAdapter extends BaseAgentAdapter {
       // session/load to re-attach. Try load; fall through to new on failure.
       try {
         await rpc.request('session/load', { sessionId: known, cwd, mcpServers });
+        this.#cwdBySession.set(known, cwd);
         return known;
       } catch {
         this.#sessionByThread.delete(threadId);
@@ -426,6 +483,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     }
     const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers });
     this.#sessionByThread.set(threadId, res.sessionId);
+    this.#cwdBySession.set(res.sessionId, cwd);
     return res.sessionId;
   }
 
@@ -493,7 +551,10 @@ export class GrokAdapter extends BaseAgentAdapter {
     // Slash-command availability is session-scoped and can arrive before any
     // turn — capture it regardless of an active run (see listCommands).
     if (str(update['sessionUpdate']) === 'available_commands_update') {
-      this.#captureCommands(update['availableCommands'] ?? update['available_commands']);
+      this.#captureCommands(
+        str(p['sessionId']),
+        update['availableCommands'] ?? update['available_commands'],
+      );
       return;
     }
     const run = this.#runBySession.get(str(p['sessionId']));
@@ -544,31 +605,57 @@ export class GrokAdapter extends BaseAgentAdapter {
   }
 
   /** Record an ACP `available_commands_update` payload for `agent/commands`. */
-  #captureCommands(raw: unknown): void {
+  #captureCommands(sessionId: string, raw: unknown): void {
     if (!Array.isArray(raw)) return;
-    const commands: AgentCommand[] = [];
-    for (const item of raw) {
-      if (!isRecord(item)) continue;
-      const name = str(item['name']);
-      if (!name) continue;
-      const description = str(item['description']);
-      commands.push({
-        name,
-        source: 'acp',
-        headlessSupported: true,
-        ...(description ? { description } : {}),
-      });
-    }
-    this.#commands = commands;
+    const cwd = this.#cwdBySession.get(sessionId);
+    const commands = parseGrokCommands(raw, cwd);
+    this.#commandsBySession.set(sessionId, commands);
+    if (cwd !== undefined) this.#commandsByCwd.set(cwd, { at: Date.now(), commands });
   }
 
   /**
-   * Slash commands Grok advertised over ACP (`available_commands_update`),
-   * invoked natively through `session/prompt`. Empty until a session is
-   * established and the agent has advertised its commands.
+   * The commands Grok announces for a folder (`available_commands_update`,
+   * {@link parseGrokCommands}): its built-ins and the skills it finds there,
+   * invoked natively as `/name args` through `session/prompt`. Grok announces
+   * them only for a session, so a folder no thread has opened yet gets a
+   * short session of its own — `session/new`, no prompt, no tokens: the list
+   * arrives about 2.5 s later — which is then closed. Reused per folder for a
+   * minute; a thread's own session refreshes it.
    */
-  listCommands(): Promise<AgentCommand[]> {
-    return Promise.resolve(this.#commands.map((c) => ({ ...c })));
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    let rpc: NdjsonRpc;
+    try {
+      rpc = await this.#ensureAcp();
+    } catch {
+      return cached?.commands ?? [];
+    }
+    let sessionId = '';
+    try {
+      const res = await rpc.request<{ sessionId: string }>('session/new', {
+        cwd: dir,
+        mcpServers: [],
+      });
+      sessionId = res.sessionId;
+      this.#cwdBySession.set(sessionId, dir);
+      const deadline = Date.now() + COMMANDS_WAIT_MS;
+      while (!this.#commandsBySession.has(sessionId) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, COMMANDS_POLL_MS));
+      }
+      const commands = this.#commandsBySession.get(sessionId);
+      if (commands) this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+      return commands ?? cached?.commands ?? [];
+    } catch {
+      return cached?.commands ?? [];
+    } finally {
+      if (sessionId) {
+        this.#cwdBySession.delete(sessionId);
+        this.#commandsBySession.delete(sessionId);
+        rpc.request('session/close', { sessionId }).catch(() => undefined);
+      }
+    }
   }
 
   /** Merge a tool_call / tool_call_update; emit a block once it terminates. */

@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 815, shared 39, relay
+standalone). It builds clean and the suite is green (bridge 820, shared 39, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -139,13 +139,14 @@ push validation (FOR-HUMAN).
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
-- **Agent commands** — `agent/commands` discovery + `turn/send` `command`
-  invocation. Custom prompt-template commands (Codex/OpenCode) are scanned
-  and expanded by the bridge (`command-scan.ts`); native control commands run via
-  the CLI's own mechanism — Claude Code (`slash_commands` from `system/init` ∪
-  curated built-ins ∪ `.claude/commands`, sent as `/name args` with `--resume`)
-  and the ACP agents Zero/Grok (`available_commands_update` → `session/prompt`).
-  `capabilities.commands` flags the five command-capable adapters; `pi` has none.
+- **Agent commands** — `agent/commands` + `turn/send` `command`, for every
+  wired agent, each asked on the surface the bridge drives: Claude
+  (`initialize`), Codex (`skills/list` + `compact` + `~/.codex/prompts`),
+  OpenCode (its server, v1 and v2), pi (`get_commands`), Antigravity
+  (`agy -p /skills`), Grok (a session's `available_commands_update`, with a
+  short session of its own for a new folder) and Zero (the skills its runs
+  can load). Run natively, except Codex's custom prompts and Zero's skills,
+  which the bridge expands into a prompt (`docs/agents.md` → *Agent commands*).
 - **Full thread lifecycle** — `thread/rename|archive|unarchive|delete`.
 - **Plug-and-play folder browsing** — `workspace/browseDirs` with a
   `browseRoots` config.

@@ -2,6 +2,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { GrokAdapter, mapGrokModels, type SpawnedAcp } from '../../src/index.js';
+import { parseGrokCommands } from '../../src/adapters/grok-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // A fake `grok agent stdio` process: an ndjson JSON-RPC peer over PassThrough
@@ -480,4 +481,62 @@ test('GrokAdapter surfaces the CLI error detail (not just "Internal error") on a
   // The useful detail is surfaced, not swallowed by the generic JSON-RPC message.
   assert.match(text, /usage balance exhausted/);
   assert.doesNotMatch(text, /Internal error/);
+});
+
+test('listCommands opens a short session for a new folder and reads what it announces', async () => {
+  const { adapter, server } = setup();
+  server.handle((m) => {
+    if (m.method === 'session/new') {
+      // Grok announces a session's commands right after creating it.
+      setTimeout(
+        () =>
+          server.update({
+            sessionUpdate: 'available_commands_update',
+            availableCommands: [
+              { name: 'compact', description: 'Compress history', input: { hint: 'what to keep' } },
+              { name: 'always-approve', description: 'Toggle', input: { hint: 'on|off' } },
+              { name: 'review', description: 'Review the branch', input: null },
+            ],
+          }),
+        5,
+      );
+    } else if (m.method === 'session/close') server.reply(m.id, {});
+  });
+  const commands = await adapter.listCommands('/work/app');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.argumentHint]),
+    [
+      ['compact', 'what to keep'],
+      ['review', undefined],
+    ],
+  );
+  // The listing's own session is closed, and the folder's list is reused.
+  await tick();
+  assert.ok(server.sent.some((m) => m.method === 'session/close'));
+  const opened = server.sent.filter((m) => m.method === 'session/new').length;
+  await adapter.listCommands('/work/app');
+  assert.equal(server.sent.filter((m) => m.method === 'session/new').length, opened);
+});
+
+test('parseGrokCommands labels skills and leaves out what the bridge owns', () => {
+  const commands = parseGrokCommands(
+    [
+      { name: 'figma', description: 'Import Figma', input: null },
+      { name: 'statusline', description: 'Configure', input: null },
+      { name: 'goal', description: 'Set a goal', input: { hint: '<objective>' } },
+      { description: 'no name' },
+    ],
+    '/work/app',
+    (name) => name === 'figma',
+  );
+  assert.deepEqual(commands, [
+    { name: 'figma', source: 'skill', headlessSupported: true, description: 'Import Figma' },
+    {
+      name: 'goal',
+      source: 'acp',
+      headlessSupported: true,
+      description: 'Set a goal',
+      argumentHint: '<objective>',
+    },
+  ]);
 });

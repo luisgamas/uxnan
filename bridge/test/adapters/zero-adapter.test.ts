@@ -393,10 +393,12 @@ test('ZeroAdapter keeps a text block for an image-only turn', async () => {
   assert.deepEqual(prompt.params.prompt, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
 });
 
-test('Zero advertises no commands: its ACP server offers none it can run', () => {
-  // zero 0.9.0 never sends `available_commands_update` and invokes skills only
-  // from its TUI, so the palette must stay empty rather than list the untrue.
+test('Zero advertises its own skills as commands, expanded to a prompt that loads them', () => {
+  // zero 0.9.x sends no `available_commands_update`, but its model loads a
+  // named skill with its skill tool (verified live over ACP), so its skills
+  // are listed (`parseZeroSkills`) and a picked one becomes that prompt.
   const adapter = new ZeroAdapter({ binaryPath: 'zero' });
-  assert.equal(adapter.capabilities.commands, false);
-  assert.equal((adapter as { listCommands?: unknown }).listCommands, undefined);
+  assert.equal(adapter.capabilities.commands, true);
+  assert.equal(typeof adapter.listCommands, 'function');
+  assert.equal(typeof adapter.expandCommand, 'function');
 });

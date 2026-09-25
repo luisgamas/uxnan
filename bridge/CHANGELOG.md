@@ -38,6 +38,18 @@ pi, Antigravity, Zero, Grok):
 
 ### Changed — agent commands come from the agents themselves
 
+- **Grok** lists its commands before the first turn: a folder no thread has
+  opened gets a short ACP session of its own (no prompt, no tokens) whose
+  `available_commands_update` — its built-ins with their argument hints and
+  the skills it finds — is kept per folder; `always-approve` (the thread's
+  access mode is the bridge's), `statusline` and `memory` are left out. Verified
+  on a real Grok, including a native `/session-info`.
+- **Zero** lists the skills its runs can load (`zero skills list --json`, its
+  own skills folder — a Zero run over ACP never loads the shared
+  `~/.agents/skills`), and a picked one becomes a prompt asking it to load the
+  skill with its skill tool; verified end to end with a scratch skill.
+- A skill's folded or literal `description: >-` is read as its text
+  (`extractFrontMatter`), where it was read as `>-`.
 - **Claude Code** lists its commands by asking the CLI (`initialize` control
   request over stream-json: no turn, no tokens) in the thread's folder —
   every built-in, custom command, skill and plugin it has there, with
