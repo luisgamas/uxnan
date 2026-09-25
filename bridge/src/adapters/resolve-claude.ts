@@ -13,6 +13,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { findOnPath } from './path-scan.js';
 
 export interface ResolvedClaude {
   /** Executable to spawn (`shell:false`). For the npm `cli.js` case this is `process.execPath` (node). */
@@ -59,8 +60,12 @@ export function resolveClaudeBinary(configured?: string): ResolvedClaude {
       return { binaryPath: process.execPath, prependArgs: [cli], available: true };
     }
   }
-  // Fall back to the launcher name; availability unknown (PATH lookup at spawn).
+  // Fall back to the launcher on PATH — available only when it is there.
   // On POSIX the `claude` launcher on PATH spawns directly; on Windows the shim
   // would need a shell, so we report it as not available until configured.
-  return { binaryPath: 'claude', prependArgs: [], available: process.platform !== 'win32' };
+  return {
+    binaryPath: 'claude',
+    prependArgs: [],
+    available: process.platform !== 'win32' && findOnPath('claude') !== undefined,
+  };
 }

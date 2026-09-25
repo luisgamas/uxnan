@@ -13,7 +13,7 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.2.
  */
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface, type Interface } from 'node:readline';
 import type {
   AgentCapabilities,
@@ -23,7 +23,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { agentEnv } from './spawn.js';
+import { spawnPiped } from './spawn.js';
 
 export interface ProcessAdapterOptions {
   agentId: AgentId;
@@ -52,12 +52,7 @@ export class ProcessAgentAdapter extends BaseAgentAdapter {
 
   start(config: AgentConfig): Promise<void> {
     if (this.#child) return Promise.resolve();
-    const child = spawn(this.#binaryPath, this.#args, {
-      cwd: config.cwd ?? process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: agentEnv(),
-    });
+    const child = spawnPiped(this.#binaryPath, this.#args, { cwd: config.cwd ?? process.cwd() });
     this.#child = child;
     this.#reader = createInterface({ input: child.stdout });
     this.#reader.on('line', (line) => {

@@ -46,7 +46,6 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
-import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -61,7 +60,7 @@ import type {
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
+import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
@@ -174,14 +173,7 @@ interface GrokModelState {
 
 function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string): () => SpawnedAcp {
   return () => {
-    const child = spawn(binaryPath, [...prependArgs, 'agent', 'stdio'], {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: false,
-      env: agentEnv(),
-    });
-    if (!child.stdout || !child.stdin) throw new Error('grok agent stdio: failed to acquire stdio');
+    const child = spawnPiped(binaryPath, [...prependArgs, 'agent', 'stdio'], { cwd });
     return {
       stdin: child.stdin,
       stdout: child.stdout,

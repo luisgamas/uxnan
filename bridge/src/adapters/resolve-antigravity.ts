@@ -11,7 +11,8 @@
  * launcher name.
  */
 import { existsSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
+import { findOnPath } from './path-scan.js';
 
 export interface ResolvedAntigravity {
   /** Executable to spawn (`shell:false`) — a concrete path when found, else `agy`. */
@@ -47,25 +48,11 @@ function installCandidates(): string[] {
   return candidates;
 }
 
-/** Directories on `PATH` that hold the `agy` launcher, if any. */
-function pathScan(): string | undefined {
-  const rawPath = process.env['PATH'];
-  if (!rawPath) return undefined;
-  const name = launcherName();
-  for (const dir of rawPath.split(delimiter)) {
-    if (!dir) continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
-
 /**
  * Resolve the `agy` binary. An explicit `configured` path always wins; we only
  * report availability for it. Otherwise we probe the default install dir, then
- * scan `PATH`. Failing both we fall back to the bare launcher name — `agy` is a
- * native exe that CreateProcess/execvp resolves on `PATH` at spawn time, so we
- * still report it available (the turn surfaces a clear error if it is missing).
+ * scan `PATH`. Failing both it is not installed: the bare launcher name is
+ * returned, reported unavailable.
  */
 export function resolveAntigravityBinary(configured?: string): ResolvedAntigravity {
   if (configured && configured.length > 0) {
@@ -76,11 +63,10 @@ export function resolveAntigravityBinary(configured?: string): ResolvedAntigravi
       return { binaryPath: candidate, prependArgs: [], available: true };
     }
   }
-  const onPath = pathScan();
+  const onPath = findOnPath(launcherName());
   if (onPath !== undefined) {
     return { binaryPath: onPath, prependArgs: [], available: true };
   }
-  // Fall back to the launcher name; availability unknown (PATH lookup at spawn).
-  // `agy` is a native binary spawnable with `shell:false` on all platforms.
+  // Not found anywhere: not installed.
   return { binaryPath: launcherName(), prependArgs: [], available: false };
 }

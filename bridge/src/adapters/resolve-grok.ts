@@ -14,6 +14,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { findOnPath } from './path-scan.js';
 
 export interface ResolvedGrok {
   /** Executable to spawn (`shell:false`). */
@@ -44,8 +45,9 @@ export function resolveGrokBinary(configured?: string): ResolvedGrok {
       return { binaryPath: candidate, prependArgs: [], available: true };
     }
   }
-  // Fall back to the launcher name; availability unknown (PATH lookup at spawn).
-  // Grok ships a native executable (not a shell shim), so it spawns fine on
-  // every platform once on PATH.
-  return { binaryPath: 'grok', prependArgs: [], available: true };
+  // Grok ships a native executable (not a shell shim), so the launcher on PATH
+  // spawns as-is on every platform — when it is there.
+  const name = process.platform === 'win32' ? 'grok.exe' : 'grok';
+  const onPath = findOnPath(name);
+  return { binaryPath: onPath ?? 'grok', prependArgs: [], available: onPath !== undefined };
 }

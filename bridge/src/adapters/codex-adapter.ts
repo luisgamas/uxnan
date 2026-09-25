@@ -75,7 +75,6 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md
  * (validating adapters).
  */
-import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -101,7 +100,7 @@ import {
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
+import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import {
   buildReplyResult,
   describeServerRequest,
@@ -324,15 +323,7 @@ export function codexUsageTokens(usage: unknown): number | undefined {
  */
 function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () => SpawnedAppServer {
   return () => {
-    const child = spawn(binaryPath, [...prependArgs, 'app-server'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: false,
-      env: agentEnv(),
-    });
-    if (!child.stdout || !child.stdin) {
-      throw new Error('codex app-server: failed to acquire stdio streams');
-    }
+    const child = spawnPiped(binaryPath, [...prependArgs, 'app-server']);
     return {
       stdin: child.stdin,
       stdout: child.stdout,

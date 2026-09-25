@@ -10,6 +10,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { findOnPath } from './path-scan.js';
 
 /** Candidate `.exe` locations for the npm-global OpenCode on Windows. */
 function windowsCandidates(): string[] {
@@ -51,6 +52,6 @@ export function resolveOpenCodeBinary(configured?: string): ResolvedOpenCode {
     // Fall back to the shim name; availability unknown (PATH lookup at spawn).
     return { binaryPath: 'opencode', available: false };
   }
-  // POSIX: the launcher on PATH spawns directly.
-  return { binaryPath: 'opencode', available: true };
+  // POSIX: the launcher on PATH spawns directly — when it is there.
+  return { binaryPath: 'opencode', available: findOnPath('opencode') !== undefined };
 }

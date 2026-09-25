@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A CLI that is not installed can no longer take the bridge down.** The
+  Grok, Zero, Codex `app-server` and line-protocol spawns had no `error`
+  listener, so asking an uninstalled Grok for its models (`agent/models`)
+  crashed the process with `spawn grok ENOENT`. Every long-lived agent process
+  now starts through `spawnPiped` and every one-shot through `defaultSpawn`,
+  both guarded (`guardChild`: the process and its stdin), and `NdjsonRpc`
+  rejects what is pending when its process closes instead of waiting forever.
+- **Availability is true.** The resolvers used to fall back to the bare
+  launcher name and report it available ("PATH lookup at spawn"), so the phone
+  and the desktop offered agents that could not run. They now scan `PATH`
+  (`adapters/path-scan.ts`, one helper for all seven) and report a missing CLI
+  unavailable.
+
 ### Added
 
 - **Uxnan Desktop's tools for the agents the bridge runs.** `desktop/attach

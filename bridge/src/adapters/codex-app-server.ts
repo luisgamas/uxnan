@@ -215,9 +215,12 @@ export class CodexAppServerRpc {
     return this.#closed;
   }
 
-  /** Called by the owner when the child process emits `close`. */
+  /** Called by the owner when the child process emits `close`. The process is
+   *  gone, so nothing pending will ever be answered: reject it all (a process
+   *  that never started must not leave `initialize` waiting forever). */
   onProcessClose(code: number | null): void {
     this.#onClose?.(code);
+    this.close();
   }
 
   #write(msg: object): void {
