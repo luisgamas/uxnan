@@ -16,6 +16,7 @@ import { Conversation } from "$lib/bridge/conversation.svelte";
 import { bridge } from "$lib/bridge/client.svelte";
 import { chat } from "$lib/bridge/chat.svelte";
 import type { Turn } from "$shared/models/thread";
+import ChatActivity from "./ChatActivity.svelte";
 import ChatBlock from "./ChatBlock.svelte";
 import ChatBridgeGate from "./ChatBridgeGate.svelte";
 import ChatTurnView from "./ChatTurnView.svelte";
@@ -139,6 +140,43 @@ describe("ChatWorkGroup", () => {
     const { screen } = mount(ChatWorkGroup, { props: { blocks, live: true } });
     expect(screen.getByText("npm test")).toBeTruthy();
     expect(screen.getByText("src/a.ts")).toBeTruthy();
+  });
+});
+
+describe("ChatActivity", () => {
+  const tool = (toolName: string, kind: string, target: string) => ({ type: "tool", toolName, kind, target });
+
+  it("says what a tool did from its kind, whatever the agent called it", () => {
+    const rows: [Record<string, unknown>, string, string][] = [
+      [tool("view_file", "read", "notes.txt"), "Read", "notes.txt"],
+      [tool("Grep", "search", "alpha · src"), "Searched", "alpha · src"],
+      [tool("list_dir", "list", "src"), "Listed", "src"],
+      [tool("WebFetch", "fetch", "https://example.com"), "Fetched", "https://example.com"],
+      [tool("search_web", "web_search", "uxnan"), "Searched the web", "uxnan"],
+      [tool("mcp__uxnan-browser__browser_open", "mcp", "http://localhost"), "uxnan-browser · browser_open", "http://localhost"],
+      [tool("execute", "other", "run()"), "execute", "run()"],
+    ];
+    for (const [block, verb, detail] of rows) {
+      const { screen } = mount(ChatActivity, { props: { block } });
+      expect(screen.getByText(verb)).toBeTruthy();
+      expect(screen.getByText(detail)).toBeTruthy();
+      screen.unmount();
+    }
+  });
+
+  it("opens a subagent's report and marks one that failed", async () => {
+    const block = {
+      type: "subagent",
+      state: { id: "s1", name: "Count lines", status: "completed", output: "Three lines." },
+    };
+    const { screen, user } = mount(ChatActivity, { props: { block } });
+    await user.click(screen.getByText("Count lines"));
+    await until(() => !folded(screen.queryByText("Three lines.")));
+    screen.unmount();
+    const failed = mount(ChatActivity, {
+      props: { block: { type: "subagent", state: { id: "s2", name: "Audit", status: "error" } } },
+    });
+    expect(failed.screen.getByText("failed")).toBeTruthy();
   });
 });
 

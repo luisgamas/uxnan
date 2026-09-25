@@ -55,10 +55,18 @@ export function isActivity(part: unknown): boolean {
   return ACTIVITY_TYPES.has(typeOf(part));
 }
 
-/** Groups a turn's parts: runs of activity become one `work` item; blank text disappears. */
+/** Groups a turn's parts: runs of activity become one `work` item; blank text
+ *  disappears; and of the plans the turn carries, only the latest stays — an
+ *  agent resends its whole to-do list on every change, so each earlier one is
+ *  a past state of the same list. */
 export function groupParts(parts: readonly unknown[]): TimelineItem[] {
   const items: TimelineItem[] = [];
-  for (const part of parts) {
+  let lastPlan = -1;
+  parts.forEach((part, i) => {
+    if (typeOf(part) === "plan") lastPlan = i;
+  });
+  for (const [i, part] of parts.entries()) {
+    if (typeOf(part) === "plan" && i !== lastPlan) continue;
     const text = textOf(part);
     if (text !== null) {
       if (text.trim()) items.push({ kind: "text", text });
@@ -87,9 +95,10 @@ export function splitAnswer(items: readonly TimelineItem[]): {
   return { work: items.slice(0, cut), answer: items.slice(cut) };
 }
 
-/** Whether an activity block failed (a non-zero exit, an error status, a tool error). */
+/** Whether an activity block failed (a non-zero exit, an error status, a tool error, a failed subagent). */
 export function activityFailed(block: Record<string, unknown>): boolean {
   if (block.status === "error" || block.isError === true) return true;
+  if (record(block.state)?.status === "error") return true;
   return typeof block.exitCode === "number" && block.exitCode !== 0;
 }
 

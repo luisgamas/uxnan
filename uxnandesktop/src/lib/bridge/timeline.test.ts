@@ -51,6 +51,16 @@ describe("groupParts", () => {
     expect(items[1]).toMatchObject({ kind: "work", blocks: [{ command: "ls" }, { filename: "a.ts" }] });
   });
 
+  it("keeps only the latest of a turn's plans, in its place", () => {
+    const plan = (done: boolean) => ({
+      type: "plan",
+      state: { steps: [{ description: "a", status: done ? "completed" : "pending" }] },
+    });
+    const items = groupParts([plan(false), cmd("ls"), plan(true), text("Done.")]);
+    expect(items.map((i) => i.kind)).toEqual(["work", "block", "text"]);
+    expect(items[1]).toEqual({ kind: "block", block: plan(true) });
+  });
+
   it("drops blank text and passes unknown shapes through as lone blocks", () => {
     const items = groupParts([text("  \n"), 42, { type: "future-kind" }]);
     expect(items).toEqual([
@@ -80,6 +90,8 @@ describe("activity state", () => {
     expect(activityFailed(cmd("x", { exitCode: 0 }))).toBe(false);
     expect(activityFailed(cmd("x", { status: "error" }))).toBe(true);
     expect(activityFailed({ type: "tool", isError: true })).toBe(true);
+    expect(activityFailed({ type: "subagent", state: { status: "error" } })).toBe(true);
+    expect(activityFailed({ type: "subagent", state: { status: "completed" } })).toBe(false);
   });
 
   it("recognizes running steps, a subagent's nested state included", () => {

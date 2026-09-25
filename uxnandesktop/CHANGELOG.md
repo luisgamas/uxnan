@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **The chat says what every agent's tools did.** A tool row reads *Read*,
+  *Searched*, *Listed*, *Fetched* or *Searched the web* with its file, pattern
+  or URL — from the `kind` and `target` the bridge classifies for every agent —
+  and an MCP call reads `server · tool`. A subagent opens to its report and
+  shows when it failed, and a turn keeps only its latest plan instead of one
+  card per update (`ChatActivity`, `timeline.ts`).
+
 - **A welcome tour on first run.** Six steps — what Uxnan is, terminal and
   chat, the phone (with *Connect a phone*), agents calling each other through
   the CLI/MCP/API, the agents found on this machine, and the shortcuts to start
