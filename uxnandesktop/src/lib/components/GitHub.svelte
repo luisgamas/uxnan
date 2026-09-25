@@ -11,9 +11,8 @@
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { field, icon, iconButton, panel, row, shell, tab as tabStyle, text } from "$lib/design";
-  import { titlebarInsets } from "$lib/titlebar";
+  import WorkspaceAppBar from "./WorkspaceAppBar.svelte";
   import { dock } from "$lib/state/dock.svelte";
-  import { isMac } from "$lib/keyboard";
   import { toast, toastError } from "$lib/toast";
   import {
     githubPrView,
@@ -1120,63 +1119,37 @@
        (left) / refresh (right) actions live inside the section's own toolbar, not
        in a window-height header bar. -->
   <section class="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
-    <!-- Drag strip: the same appbar every panel starts with. It lets the window
-         be dragged and keeps clear of the window controls in whichever top
-         corner it reaches — the left one once the sidebar is hidden, the right
-         one unless the dock sits beside it. Repo name for context. -->
-    <div
-      data-tauri-drag-region
-      class={cn(
-        shell.appBar,
-        "flex items-center px-4",
-        titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !dock.isOpen() }, isMac),
-      )}
+    <!-- The workspace-view appbar Settings and Automations use: back (close),
+         the repository, the section switcher (PR / Issues / Actions — same
+         project, no card round trip) and refresh — fixed above the scroll, so
+         closing never scrolls away. It reaches the window's top-left corner
+         once the sidebar is hidden, and the top-right one unless the dock sits
+         beside it. -->
+    <WorkspaceAppBar
+      title={github.sectionContext?.nameWithOwner ?? i18n.t("github.title")}
+      onback={close}
+      edges={{ left: !app.settings.leftSidebarOpen, right: !dock.isOpen() }}
     >
-      <span
-        data-tauri-drag-region
-        class="min-w-0 truncate text-[13px] font-medium tracking-tight text-muted-foreground"
-      >
-        {github.sectionContext?.nameWithOwner ?? i18n.t("github.title")}
-      </span>
-    </div>
-
-    <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto">
-      <!-- Section toolbar (inside the section): close on the left, then a
-           section switcher (PR / Issues / Actions — same project, no card round
-           trip), and refresh on the right. Always shown, so the view can be
-           closed even when not signed in. -->
-      <div class="flex items-center gap-2 px-8 pt-6">
-        <TooltipSimple title={i18n.t("common.close")}>
-          {#snippet children(tp)}
-            <Button
-              {...tp}
-              variant="ghost"
-              size="icon-sm"
-              class={iconButton.action}
-              aria-label={i18n.t("common.close")}
-              onclick={close}
-            >
-              <Icon icon={ArrowLeftIcon} class={icon.button} />
-            </Button>
-          {/snippet}
-        </TooltipSimple>
+      {#snippet controls()}
         <Combobox
           value={app.githubSection}
           groups={sectionGroups}
-          triggerClass={field.selectNarrow}
+          searchable={false}
+          triggerVariant="ghost"
+          triggerClass="h-7 w-auto max-w-full gap-1 px-2 text-[13px] font-medium"
           align="start"
-          searchPlaceholder={i18n.t("common.search")}
           itemPrefix={sectionPrefix}
           onChange={(v) => setSection(v as GithubSection)}
         />
-        <div class="flex-1"></div>
+      {/snippet}
+      {#snippet actions()}
         <TooltipSimple title={i18n.t("github.refresh")}>
           {#snippet children(tp)}
             <Button
               {...tp}
               variant="ghost"
               size="icon-sm"
-              class={iconButton.action}
+              class={shell.appBarAction}
               aria-label={i18n.t("github.refresh")}
               onclick={doRefresh}
             >
@@ -1184,14 +1157,16 @@
             </Button>
           {/snippet}
         </TooltipSimple>
-      </div>
+      {/snippet}
+    </WorkspaceAppBar>
 
+    <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto">
       {#if !github.available}
         {@render gatePane()}
       {:else if !github.sectionRepoPath}
         {@render noReposPane()}
       {:else}
-        <div class="px-8 pb-16 pt-4">
+        <div class="px-8 pb-16 pt-6">
           <div class="mx-auto w-full max-w-4xl">
             {#if app.githubSection === "pulls"}
               {@render pullsPane()}

@@ -33,15 +33,19 @@ describe("phase-five chrome and dialog contracts", () => {
     expect(window.trafficLightPosition.x + 2 * 23 + 14).toBeLessThan(80);
   });
 
-  it("keeps full-screen back buttons in the shared workspace header", () => {
-    for (const name of ["Settings.svelte", "Automations.svelte"]) {
+  it("keeps every workspace view's back button in the shared workspace header", () => {
+    // Settings, Automations and the GitHub view share one appbar, so they keep
+    // one height and one back button — fixed above the view, never scrolled away.
+    for (const name of ["Settings.svelte", "Automations.svelte", "GitHub.svelte"]) {
       const source = component(name);
       expect(source, name).toContain("<WorkspaceAppBar");
     }
     const workspace = component("WorkspaceAppBar.svelte");
     expect(workspace).toContain("shell.workspaceHeader");
-    // A full-screen view spans the window, so it clears both top corners.
-    expect(workspace).toContain("titlebarInsets({ left: true, right: true }, isMac)");
+    // A full-screen view spans the window, so by default it clears both top
+    // corners; the GitHub view says which corners it reaches.
+    expect(workspace).toContain("edges = { left: true, right: true }");
+    expect(workspace).toContain("titlebarInsets(edges, isMac)");
     expect(workspace).toContain("class={shell.appBarAction}");
   });
 
@@ -55,7 +59,7 @@ describe("phase-five chrome and dialog contracts", () => {
     expect(terminal).toContain("!app.settings.leftSidebarOpen");
     expect(terminal).toContain("!dock.isOpen()");
     const github = component("GitHub.svelte");
-    expect(github).toContain("titlebarInsets({ left: !app.settings.leftSidebarOpen, right: !dock.isOpen() }, isMac)");
+    expect(github).toContain("edges={{ left: !app.settings.leftSidebarOpen, right: !dock.isOpen() }}");
     expect(component("Dock.svelte")).toContain("titlebarInsets({ left: false, right: true }, isMac)");
     expect(github).not.toMatch(/pr-\[\d+px\]/);
   });
@@ -72,7 +76,6 @@ describe("phase-five chrome and dialog contracts", () => {
       "LeftSidebar.svelte",
       "TerminalArea.svelte",
       "Dock.svelte",
-      "GitHub.svelte",
       "WorkspaceAppBar.svelte",
     ]) {
       expect(component(name), name).toContain("shell.appBar");
