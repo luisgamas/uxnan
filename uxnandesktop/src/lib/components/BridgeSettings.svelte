@@ -33,7 +33,7 @@
   import { app } from "$lib/state/app.svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
-  import BridgePairDialog from "$lib/components/BridgePairDialog.svelte";
+  import { connectPhone } from "$lib/bridge/connectPhone.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { Input } from "$lib/components/ui/input";
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
@@ -81,7 +81,6 @@
   const connectedIds = $derived(
     new Set(chat.clients.filter((c) => c.kind === "phone").map((c) => c.id)),
   );
-  let pairOpen = $state(false);
 
   /** What a phone is, in one quiet line: model · OS · app version. */
   function phoneAbout(phone: TrustedDevice): string {
@@ -422,7 +421,7 @@
         {/each}
         <SettingsRow>
           {#snippet control()}
-            <Button variant="outline" size="sm" onclick={() => (pairOpen = true)}>
+            <Button variant="outline" size="sm" onclick={() => connectPhone.show()}>
               <Icon icon={QrCodeIcon} data-icon="inline-start" />
               {i18n.t("bridge.pairAction")}
             </Button>
@@ -470,6 +469,5 @@
       danger
       onconfirm={confirmRemove}
     />
-    <BridgePairDialog bind:open={pairOpen} />
   {/if}
 </div>

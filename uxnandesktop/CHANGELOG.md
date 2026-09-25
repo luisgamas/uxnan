@@ -31,6 +31,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the **Computer name** every client shows for this PC and the **Start
   folder** new projects are explored from, here and on the phone.
   The profile menu's *Edit profile* is now an icon button beside the name.
+- **Connect a phone in one click.** A row under Search in the left sidebar
+  invites to connect a phone — or, once one is paired, shows it by name with
+  whether it is connected. It opens **Connect a phone**, one dialog for the
+  whole window (`connectPhone`), also used by Settings: the QR shows at once;
+  with the bridge off, one button runs it as your service first; and the
+  dialog notices the phone arrive — newly paired or a paired one connecting —
+  and names it, with *Pair another*.
 - **Agent detection follows one rule, shared with the bridge**
   (`shared/agent-locations.json`, compiled into `agentcli.rs`): the headless
   resolver, Settings → Agents' detection, the hooks' presence check and the

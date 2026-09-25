@@ -61,10 +61,13 @@ every client names it (`sync/changes.devices`, `stream/devices/updated`), with
 its model, OS and app version and whether it is connected now (presence,
 `stream/presence/updated`). A phone is renamed in place (`device/rename`; the
 latest rename wins, even one made on the phone offline) or unpaired
-(`bridge/removeTrustedDevice`). **Pair a phone** shows a QR drawn from the
-running bridge's own payload (its LAN hosts, its session, the pairing window
+(`bridge/removeTrustedDevice`). **Connect a phone** — also one click away in
+the left sidebar, under Search, where the paired phone shows by name with its
+connection — shows a QR drawn from the running bridge's own payload (its LAN hosts, its session, the pairing window
 armed — the one `uxnan-bridge start` prints), with its countdown and *New
-code*; several phones can be paired. **Shared with your phones** holds the
+code*; with the bridge off it offers to run it as your service first, and it
+notices the phone arrive (a new entry in the bridge's list, or a paired phone
+connecting) and names it. Several phones can be paired. **Shared with your phones** holds the
 **Computer name** every client shows for this PC and the **Start folder** the
 bridge explores new projects from, on the phone and here alike
 (`settings/set`).

@@ -28,7 +28,7 @@ const INSTALLED_OLD = {
   command: "npm install -g uxnan-bridge@latest",
 };
 
-function commands(extra: Record<string, () => unknown> = {}) {
+function commands(extra: Record<string, (args: Record<string, unknown>) => unknown> = {}) {
   return {
     bridge_install_probe: () => INSTALLED_OLD,
     update_settings: () => ({ version: 1, repos: [], settings: {}, agentCache: [] }),
