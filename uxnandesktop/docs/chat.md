@@ -24,16 +24,17 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 | **Start the bridge when needed** (`managed`) | Same, but when none is running it starts `uxnan-bridge start` itself (resolved on `PATH`, like any agent CLI) and stops it — through `uxnan-bridge stop`, so the bridge releases its lock cleanly — when the app exits. A bridge you started yourself is never stopped. |
 
 **Installing and updating it from the app.** When `uxnan-bridge` is not on
-`PATH`, a chat tab says so and offers **Install** right there (and the command to
-copy, for whoever prefers a terminal); Settings → Bridge & mobile has the same
-**Install** / **Update** next to the installed and newest versions. Both run
-`npm install -g uxnan-bridge@latest` — only when you press the button — and show
-npm's output. If Uxnan runs the bridge (`managed`) it restarts it on the new
-version; a bridge you run yourself keeps running and the row says it needs a
-restart. Node.js 18+ (and its `npm`) must be installed; without it the row says
-so. **Update automatically** (off by default) updates the bridge Uxnan runs as
-soon as a newer one is published, waiting until no conversation is running on
-any device.
+`PATH`, a chat tab says so and offers **Install** right there, with the command
+underneath for whoever prefers a terminal; Settings → Bridge & mobile has the
+same **Install** / **Update** next to the installed and newest versions, plus
+**Check again** (re-reads what is installed and retries the connection). Both
+run `npm install -g uxnan-bridge@latest` — only when you press the button — and
+show npm's output. If Uxnan runs the bridge (`managed`) it restarts it on the
+new version; a bridge you run yourself keeps running and the status row offers
+**Restart the bridge**. Node.js 18+ (and its `npm`) must be installed; without
+it the row says so. **Update automatically** (off by default) updates the bridge
+Uxnan runs as soon as a newer one is published, waiting until no conversation is
+running on any device.
 
 The status row names the state and, when the bridge is unreachable, why and what
 fixes it:
@@ -41,10 +42,17 @@ fixes it:
 | Status | Meaning |
 |---|---|
 | Connected — bridge `x.y.z` | Live. "started by Uxnan" when `managed` launched it. |
-| No bridge is running | Nothing serves the local channel. Start it, or switch to *Start the bridge when needed*. A bridge started with `localControlEnabled: false` in `~/.uxnan/daemon-config.json` also reads this way. |
+| No bridge is running | Nothing holds the bridge's lock (`~/.uxnan/bridge.lock`). Start it, or switch to *Start the bridge when needed*. |
+| Too old to talk to Uxnan Desktop | A bridge is running, but it was released before the desktop channel and does not publish it. **Update**; in `managed` mode Uxnan then restarts it on the new version. |
+| Running without the desktop channel | A bridge that knows the channel is running without it: an older process still runs after an update (**Restart the bridge**), or it was started with `localControlEnabled: false` in `~/.uxnan/daemon-config.json`. |
 | Not installed | `managed` found no `uxnan-bridge` on `PATH`. |
 | Refused this app | A bridge answered but rejected the token — typically another user's bridge, or a stale file. |
-| Could not connect | Anything else; the detail line says what. |
+| Could not connect | Anything else — including a bridge Uxnan started that exited at once; the detail line says what, and the bridge's log is in `~/.uxnan/logs/`. |
+
+The last three states used to read as "no bridge is running": the app now reads
+the bridge's lock file to tell a bridge that is not there from one that is there
+but cannot talk to the desktop, and `managed` never starts a second bridge over
+one that holds the lock.
 
 While connected, the section also lists the phones connected to the bridge.
 Pairing a phone is still done from a terminal (`uxnan-bridge qr` or
@@ -137,6 +145,7 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - A chat tab (`ChatTab` in `terminals.svelte.ts`) persists only `cwd`,
   `threadId` and the preselected `agentId`.
 - Tests: `src/lib/bridge/*.svelte.test.ts`, `src/lib/bridge/timeline.test.ts`,
+  `src/lib/components/BridgeSettings.svelte.test.ts`,
   `src/lib/state/chatTabs.svelte.test.ts`,
   `src/lib/components/chat/ChatBlock.svelte.test.ts`, and in Rust
   `cargo test bridgeclient` — which includes a contract test against the real
@@ -144,3 +153,7 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - To iterate on the chat UI in a plain browser (`npm run dev`) there is no
   backend, so a chat tab shows the "bridge is off" state; drive the real flow
   with `npm run tauri dev` and a running bridge.
+- To drive it against the bridge in this checkout (for instance before a bridge
+  release carries a contract change): `npm run build` at the repository root,
+  stop any other bridge (`uxnan-bridge stop`), run
+  `node bridge/dist/src/cli.js start`, and pick *Use a running bridge*.

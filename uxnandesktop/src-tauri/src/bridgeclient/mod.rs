@@ -26,6 +26,7 @@ pub mod commands;
 pub mod connection;
 pub mod discovery;
 pub mod install;
+pub mod lock;
 #[cfg(test)]
 mod socket_tests;
 
@@ -76,6 +77,13 @@ pub enum Unavailable {
     /// A bridge answered but refused this app (token mismatch — another
     /// user's bridge, or a stale file).
     Rejected,
+    /// A bridge is running but predates the local channel: it must be
+    /// updated (and restarted) before the desktop can talk to it.
+    Outdated,
+    /// A bridge that knows the local channel is running without it: either an
+    /// older process still runs after an update (restart it), or it was
+    /// started with `localControlEnabled: false`.
+    ChannelOff,
     /// Anything else (unreadable file, failed start, bad handshake).
     Failed,
 }
@@ -244,8 +252,10 @@ impl BridgeClient {
 
     /// Installs or updates the bridge (`npm install -g uxnan-bridge@latest`).
     /// When this app runs the bridge (`managed`), a successful update restarts
-    /// it — the supervisor starts the new version straight away. A bridge the
-    /// user runs is left alone; the result says it needs a restart.
+    /// it — the supervisor starts the new version straight away — and so it
+    /// does, in `managed` mode, for a bridge that serves the desktop no channel
+    /// (it is useless to the app until it runs the new version). Any other
+    /// bridge the user runs is left alone; the result says it needs a restart.
     pub async fn install_or_update(&self, app: &AppHandle) -> InstallResult {
         if self.installing.swap(true, Ordering::SeqCst) {
             return InstallResult {
@@ -260,10 +270,21 @@ impl BridgeClient {
         }
         let outcome = install::install(app).await;
         let mut restarted = false;
+        let serves_no_channel = matches!(
+            self.status().await,
+            Status::Unavailable {
+                reason: Unavailable::Outdated | Unavailable::ChannelOff,
+                ..
+            }
+        );
         if outcome.ok && self.owns_live_bridge() {
             self.stop_managed_bridge().await;
             self.retry_now();
             restarted = true;
+        } else if outcome.ok && self.mode() == Mode::Managed && serves_no_channel {
+            // The running bridge is useless to the desktop until it runs the
+            // new version, and `managed` is the user asking Uxnan to run it.
+            restarted = self.restart().await.is_ok();
         } else if outcome.ok {
             // Not running yet (or the user's own): nudge the supervisor so a
             // `managed` mode that was waiting on "not installed" starts now.
@@ -271,6 +292,45 @@ impl BridgeClient {
         }
         self.installing.store(false, Ordering::SeqCst);
         InstallResult { outcome, restarted }
+    }
+
+    /// Restarts the bridge on the version installed now: stops whichever
+    /// bridge holds the lock — this app's, or one the user started — through
+    /// the bridge's own `stop` command, then lets the supervisor start a fresh
+    /// one. In `attach` mode the new bridge is left running when the app
+    /// exits, like one the user started.
+    pub async fn restart(&self) -> Result<(), String> {
+        self.stop_managed_bridge().await;
+        if let Some(path) = lock::default_path() {
+            if lock::running(&path).is_some() {
+                run_stop_command().await;
+            }
+            // Bounded wait for the old process to release the lock.
+            for _ in 0..40 {
+                if lock::running(&path).is_none() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+            if lock::running(&path).is_some() {
+                return Err("the running bridge did not stop".into());
+            }
+        }
+        if self.mode() != Mode::Off {
+            self.ensure_managed_bridge().await.map_err(|(_, why)| why)?;
+        }
+        self.retry_now();
+        Ok(())
+    }
+
+    /// How this app's bridge process ended, once it has (and forgets it), so a
+    /// start that fails is reported at once instead of after a long wait.
+    async fn managed_exit(&self) -> Option<String> {
+        let mut slot = self.managed_child.lock().await;
+        let status = slot.as_mut()?.try_wait().ok()??;
+        slot.take();
+        self.owns_bridge.store(false, Ordering::SeqCst);
+        Some(status.to_string())
     }
 
     async fn set_status(&self, app: &AppHandle, status: Status) {
@@ -324,18 +384,8 @@ impl BridgeClient {
         }
         // Graceful first, through the bridge's own stop command, so it removes
         // its discovery file and lock; kill only if it will not go.
-        let owns = self.owns_bridge.load(Ordering::SeqCst);
-        if owns {
-            if let Some(bin) = crate::which::resolve("uxnan-bridge") {
-                let mut stop = crate::winproc::command(bin);
-                stop.arg("stop")
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null());
-                if let Ok(mut stopper) = stop.spawn() {
-                    let _ = tokio::time::timeout(Duration::from_secs(5), stopper.wait()).await;
-                }
-            }
+        if self.owns_bridge.load(Ordering::SeqCst) {
+            run_stop_command().await;
         }
         if tokio::time::timeout(Duration::from_secs(5), child.wait())
             .await
@@ -348,6 +398,54 @@ impl BridgeClient {
 
     fn owns_live_bridge(&self) -> bool {
         self.owns_bridge.load(Ordering::SeqCst)
+    }
+}
+
+/// `uxnan-bridge stop`: signals the lock holder, which removes its discovery
+/// file and releases its lock cleanly. Bounded, and silent when it fails.
+async fn run_stop_command() {
+    let Some(bin) = crate::which::resolve("uxnan-bridge") else {
+        return;
+    };
+    let mut stop = crate::winproc::command(bin);
+    stop.arg("stop")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    if let Ok(mut stopper) = stop.spawn() {
+        let _ = tokio::time::timeout(Duration::from_secs(5), stopper.wait()).await;
+    }
+}
+
+/// Why a running bridge serves no local channel (see [`Unavailable::Outdated`]
+/// and [`Unavailable::ChannelOff`]). A bridge that only just started may still
+/// be about to publish it.
+async fn no_channel(running: lock::LockInfo) -> (Unavailable, String) {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    if lock::just_started(&running, now_ms) {
+        return (
+            Unavailable::NotRunning,
+            "the bridge is still starting".to_string(),
+        );
+    }
+    match install::installed_version().await {
+        None => (
+            Unavailable::Outdated,
+            format!(
+                "a bridge is running (pid {}) but predates the desktop channel",
+                running.pid
+            ),
+        ),
+        Some(version) => (
+            Unavailable::ChannelOff,
+            format!(
+                "a bridge is running (pid {}) without the desktop channel; {version} is installed",
+                running.pid
+            ),
+        ),
     }
 }
 
@@ -478,9 +576,18 @@ async fn connect_once(
     let path =
         discovery::default_path().ok_or((Unavailable::Failed, "no home directory".to_string()))?;
     let mut record = discovery::read(&path);
-    if matches!(record, Err(DiscoveryError::Missing)) && mode == Mode::Managed {
-        client.ensure_managed_bridge().await?;
-        record = wait_for_discovery(&path).await;
+    if matches!(record, Err(DiscoveryError::Missing)) {
+        if mode == Mode::Managed && client.owns_live_bridge() {
+            // This app's bridge, still starting (or just restarted).
+            record = wait_for_discovery(client, &path).await?;
+        } else if let Some(running) = lock::default_path().and_then(|p| lock::running(&p)) {
+            // A bridge holds the lock but serves no channel: starting another
+            // would only exit on the held lock.
+            return Err(no_channel(running).await);
+        } else if mode == Mode::Managed {
+            client.ensure_managed_bridge().await?;
+            record = wait_for_discovery(client, &path).await?;
+        }
     }
     let record = match record {
         Ok(record) => record,
@@ -504,22 +611,33 @@ async fn connect_once(
     }
 }
 
-/// Polls for the file a just-started bridge writes once its listener is up.
+/// Polls for the file a just-started bridge writes once its listener is up,
+/// giving up at once when that bridge exits instead (another bridge holds the
+/// lock, a crash) — the reason is then in its log, `~/.uxnan/logs/`.
 async fn wait_for_discovery(
+    client: &BridgeClient,
     path: &std::path::Path,
-) -> Result<discovery::Discovery, DiscoveryError> {
+) -> Result<Result<discovery::Discovery, DiscoveryError>, (Unavailable, String)> {
     let deadline = tokio::time::Instant::now() + MANAGED_START_TIMEOUT;
     loop {
         match discovery::read(path) {
-            Ok(record) => return Ok(record),
-            Err(DiscoveryError::Invalid(why)) => return Err(DiscoveryError::Invalid(why)),
-            Err(DiscoveryError::Missing) if tokio::time::Instant::now() >= deadline => {
-                return Err(DiscoveryError::Missing)
-            }
-            Err(DiscoveryError::Missing) => {
-                tokio::time::sleep(Duration::from_millis(250)).await;
-            }
+            Ok(record) => return Ok(Ok(record)),
+            Err(DiscoveryError::Invalid(why)) => return Ok(Err(DiscoveryError::Invalid(why))),
+            Err(DiscoveryError::Missing) => {}
         }
+        if let Some(exit) = client.managed_exit().await {
+            return Err(match lock::default_path().and_then(|p| lock::running(&p)) {
+                Some(running) => no_channel(running).await,
+                None => (
+                    Unavailable::Failed,
+                    format!("the bridge exited right after starting ({exit}); see ~/.uxnan/logs"),
+                ),
+            });
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(Err(DiscoveryError::Missing));
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 

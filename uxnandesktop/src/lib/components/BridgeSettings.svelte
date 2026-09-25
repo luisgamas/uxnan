@@ -1,32 +1,37 @@
 <script lang="ts">
   // Settings → Bridge & mobile: how the desktop connects to the Uxnan bridge —
   // the process that drives the conversations a chat tab shows, the same ones
-  // the phone shows (plan 029, architecture/02a §5.8.15) — and getting that
-  // bridge installed and current without leaving the app.
+  // the phone shows (architecture/02a §5.8.15) — and getting that bridge
+  // installed, current and running without leaving the app.
+  //
+  // Built like the other panes: `SettingsSection` + `SettingsRow`, the mode in
+  // the settings' `Combobox`, the state as a `StatusDot`, the actions laid out
+  // like Settings → Updates (a check that is always there, the phase action
+  // only when there is one), and the command and npm's output in `CodeBlock`.
   //
   // Three modes and nothing hidden: `off` costs nothing at all, `attach` uses a
   // bridge the user already runs, `managed` also starts one when none runs and
-  // stops it on exit. The status row says which state the connection is in; a
-  // state that cannot be proven is never painted green.
+  // stops it on exit. A state that cannot be proven is never painted green.
   import { Button } from "$lib/components/ui/button";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import * as Select from "$lib/components/ui/select";
   import { Switch } from "$lib/components/ui/switch";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Icon } from "$lib/components/ui/icon";
-  import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import Combobox, { type ComboGroup } from "$lib/components/Combobox.svelte";
+  import CodeBlock from "$lib/components/CodeBlock.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
-  import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
-  import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+  import StatusDot, { type StatusTone } from "$lib/components/StatusDot.svelte";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+  import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { app } from "$lib/state/app.svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
-  import { clipboardWrite } from "$lib/clipboard";
-  import { toast } from "$lib/toast";
+  import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { chat, field, icon, text } from "$lib/design";
+  import { field, focus, icon, text } from "$lib/design";
   import type { BridgeMode } from "$lib/types";
 
   const MODES = ["off", "attach", "managed"] as const satisfies readonly BridgeMode[];
@@ -38,6 +43,10 @@
   const running = $derived(bridgeInstall.status);
   const result = $derived(bridgeInstall.lastResult);
   let outputOpen = $state(false);
+
+  const modeGroups = $derived<ComboGroup[]>([
+    { items: MODES.map((m) => ({ value: m, label: i18n.t(`bridge.modeLabel.${m}`) })) },
+  ]);
 
   // What is installed is read when the pane opens and after every install.
   $effect(() => {
@@ -68,6 +77,16 @@
       .catch(() => (phones = []));
   });
 
+  const tone = $derived<StatusTone>(
+    status.state === "connected"
+      ? "ok"
+      : status.state === "connecting"
+        ? "busy"
+        : status.state === "unavailable"
+          ? "warn"
+          : "off",
+  );
+
   const statusLabel = $derived.by(() => {
     switch (status.state) {
       case "off":
@@ -83,8 +102,21 @@
     }
   });
 
-  /** A newer bridge is published than the one installed (or running). */
+  /** The running bridge predates the desktop channel: only an update helps. */
+  const outdated = $derived(status.state === "unavailable" && status.reason === "outdated");
+  /** A newer bridge is published than the one running. */
   const updateTo = $derived(running?.updateAvailable ? (running.latestVersion ?? null) : null);
+  /** The running bridge is not the version installed now: a restart picks it up. */
+  const restartNeeded = $derived(
+    (status.state === "unavailable" && status.reason === "channelOff") ||
+      (!!result?.ok &&
+        !result.restarted &&
+        status.state === "connected" &&
+        !!info?.version &&
+        status.bridgeVersion !== info.version),
+  );
+  /** Install / Update is on offer: missing, behind, or too old to talk to. */
+  const offerInstall = $derived(!!info && (!info.installed || !!updateTo || outdated));
 
   const versionLine = $derived.by(() => {
     if (!info) return i18n.t("bridge.checking");
@@ -95,28 +127,27 @@
     return updateTo ? `${installed} · ${i18n.t("bridge.updateAvailable", { version: updateTo })}` : installed;
   });
 
-  /** The running bridge is older than the one just installed: it needs a restart. */
-  const restartNeeded = $derived(
-    !!result?.ok &&
-      !result.restarted &&
-      status.state === "connected" &&
-      !!info?.version &&
-      status.bridgeVersion !== info.version,
-  );
-
   async function install() {
     const done = await bridgeInstall.install();
     if (!done?.ok) return;
     toast.success(i18n.t("bridge.installOk", { version: done.version ?? "" }));
-    // Installed for the first time with the connection off: connect now, the
-    // reason the user pressed Install.
+    // Installed with the connection off: connect now, the reason the user
+    // pressed Install.
     if (mode === "off") setBridge({ mode: "managed" });
   }
 
-  async function copyCommand() {
-    if (!info) return;
-    await clipboardWrite(info.command);
-    toast.success(i18n.t("bridge.copied"));
+  async function restart() {
+    try {
+      await bridgeInstall.restart();
+      toast.success(i18n.t("bridge.restartOk"));
+    } catch (err) {
+      toastError(err);
+    }
+  }
+
+  async function checkAgain() {
+    await bridgeInstall.probe();
+    bridge.retry();
   }
 </script>
 
@@ -125,43 +156,38 @@
     <div class="divide-y divide-border/60">
       <SettingsRow label={i18n.t("bridge.mode")} description={i18n.t(`bridge.modeDesc.${mode}`)}>
         {#snippet control()}
-          <Select.Root type="single" value={mode} onValueChange={(v) => setBridge({ mode: v as BridgeMode })}>
-            <Select.Trigger class={field.selectWide} aria-label={i18n.t("bridge.mode")}>
-              {i18n.t(`bridge.modeLabel.${mode}`)}
-            </Select.Trigger>
-            <Select.Content>
-              {#each MODES as m (m)}
-                <Select.Item value={m} label={i18n.t(`bridge.modeLabel.${m}`)}>
-                  {i18n.t(`bridge.modeLabel.${m}`)}
-                </Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
+          <Combobox
+            value={mode}
+            groups={modeGroups}
+            searchable={false}
+            triggerClass={field.selectWide}
+            onChange={(v) => setBridge({ mode: v as BridgeMode })}
+          />
         {/snippet}
       </SettingsRow>
 
       <SettingsRow label={i18n.t("bridge.status")}>
         {#snippet meta()}
           {#if status.state === "unavailable" && status.detail}
-            <span class={cn(text.meta, "break-words")}>{status.detail}</span>
+            <p class={cn(text.meta, "break-words")}>{status.detail}</p>
           {/if}
         {/snippet}
         {#snippet control()}
-          <div class="flex items-center gap-2">
-            {#if status.state === "connecting"}
-              <Spinner class={icon.status} aria-label={i18n.t("bridge.statusConnecting")} />
-            {:else}
-              <span
-                class={cn(
-                  "size-1.5 shrink-0 rounded-full",
-                  status.state === "connected" ? "bg-emerald-500" : "bg-muted-foreground/30",
-                  status.state === "unavailable" && "bg-amber-500",
-                )}
-                aria-hidden="true"
-              ></span>
-            {/if}
-            <span class={text.body}>{statusLabel}</span>
-            {#if status.state === "unavailable"}
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <span class={cn("inline-flex items-center gap-1.5", text.body)}>
+              <StatusDot {tone} />
+              {statusLabel}
+            </span>
+            {#if restartNeeded && mode !== "off"}
+              <Button size="sm" disabled={bridgeInstall.restarting} onclick={() => void restart()}>
+                {#if bridgeInstall.restarting}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                  {i18n.t("bridge.restarting")}
+                {:else}
+                  {i18n.t("bridge.restartAction")}
+                {/if}
+              </Button>
+            {:else if status.state === "unavailable"}
               <Button variant="outline" size="sm" onclick={() => void bridge.retry()}>
                 {i18n.t("bridge.retry")}
               </Button>
@@ -172,63 +198,61 @@
 
       <SettingsRow label={i18n.t("bridge.version")} description={versionLine}>
         {#snippet meta()}
-          {#if restartNeeded}
-            <span class={cn(text.meta, "text-amber-700 dark:text-amber-400")}>
-              {i18n.t("bridge.restartNeeded", { version: info?.version ?? "" })}
-            </span>
-          {/if}
           {#if result && !result.ok}
-            <span class={cn(text.meta, "text-destructive")}>
+            <p class={cn(text.meta, "text-destructive")}>
               {result.permissionDenied ? i18n.t("bridge.permissionDenied") : i18n.t("bridge.installFailed")}
-            </span>
+            </p>
           {/if}
         {/snippet}
         {#snippet control()}
-          <div class="flex items-center gap-1.5">
-            {#if info && (!info.installed || updateTo)}
-              <Button
-                size="sm"
-                disabled={bridgeInstall.installing || !info.npm}
-                onclick={() => void install()}
-              >
+          <!-- Like Settings → Updates: the check is always there; the phase
+               action only when there is one to take. -->
+          <div class="flex flex-wrap items-center justify-end gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bridgeInstall.probing || bridgeInstall.installing}
+              onclick={() => void checkAgain()}
+            >
+              {#if bridgeInstall.probing}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {:else}
+                <Icon icon={RotateCcwIcon} data-icon="inline-start" />
+              {/if}
+              {i18n.t("bridge.checkAgain")}
+            </Button>
+            {#if offerInstall && info}
+              <Button size="sm" disabled={bridgeInstall.installing || !info.npm} onclick={() => void install()}>
                 {#if bridgeInstall.installing}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                {/if}
-                {#if bridgeInstall.installing}
                   {i18n.t(info.installed ? "bridge.updating" : "bridge.installing")}
                 {:else}
+                  <Icon icon={DownloadIcon} data-icon="inline-start" />
                   {i18n.t(info.installed ? "bridge.updateAction" : "bridge.installAction")}
                 {/if}
               </Button>
             {/if}
-            {#if info}
-              <TooltipSimple title={i18n.t("bridge.copyInstall")}>
-                {#snippet children(tp)}
-                  <Button
-                    {...tp}
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={i18n.t("bridge.copyInstall")}
-                    onclick={() => void copyCommand()}
-                  >
-                    <Icon icon={Copy01Icon} class={icon.button} />
-                  </Button>
-                {/snippet}
-              </TooltipSimple>
-            {/if}
           </div>
         {/snippet}
+        {#if offerInstall && info}
+          <div class="space-y-1.5">
+            <p class={text.meta}>{i18n.t("bridge.orRunIt")}</p>
+            <CodeBlock value={info.command} />
+          </div>
+        {/if}
         {#if bridgeInstall.log.length > 0}
           <Collapsible.Root bind:open={outputOpen} class="mt-2">
-            <Collapsible.Trigger class={cn(chat.activity, "w-auto px-1")}>
-              <Icon
-                icon={ArrowRight01Icon}
-                class={cn(icon.status, "transition-transform", outputOpen && "rotate-90")}
-              />
+            <Collapsible.Trigger
+              class={cn("flex w-full items-center justify-between rounded-md py-1 text-left", text.meta, focus.ring)}
+            >
               {i18n.t("bridge.showOutput")}
+              <Icon
+                icon={ChevronDownIcon}
+                class={cn(icon.action, "text-muted-foreground transition-transform", outputOpen && "rotate-180")}
+              />
             </Collapsible.Trigger>
-            <Collapsible.Content>
-              <pre class={cn(chat.output, "mt-1")}>{bridgeInstall.log.join("\n")}</pre>
+            <Collapsible.Content class="pt-1.5">
+              <CodeBlock value={bridgeInstall.log.join("\n")} copyable={false} class="max-h-48" />
             </Collapsible.Content>
           </Collapsible.Root>
         {/if}

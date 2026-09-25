@@ -41,6 +41,7 @@ export class BridgeInstallStore {
   info = $state<BridgeInstallInfo | null>(null);
   probing = $state(false);
   installing = $state(false);
+  restarting = $state(false);
   log = $state<string[]>([]);
   lastResult = $state<BridgeInstallResult | null>(null);
   /** The running bridge's `bridge/status`, when connected. */
@@ -119,6 +120,19 @@ export class BridgeInstallStore {
       return result;
     } finally {
       this.installing = false;
+    }
+  }
+
+  /** Restart the bridge on the version installed now (the running one —
+   *  the app's or the user's — is stopped and a fresh one started). Throws
+   *  the backend's reason when it could not. */
+  async restart(): Promise<void> {
+    if (this.restarting) return;
+    this.restarting = true;
+    try {
+      await invoke('bridge_restart');
+    } finally {
+      this.restarting = false;
     }
   }
 

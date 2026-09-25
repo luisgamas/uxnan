@@ -371,10 +371,12 @@ Settings → Bridge y movil (off | attach | managed)
    ▼
 src-tauri/src/bridgeclient/            ~/.uxnan/local-control.json (0600)
   discovery.rs  ── lee ─────────────►  { port, token, pid, bridgeVersion, instanceId }
+  lock.rs       ── lee ─────────────►  ~/.uxnan/bridge.lock { pid, startedAt }
   connection.rs ── ws://127.0.0.1:<port>/control?client=desktop&resume=<seq>&instance=<id>
                    Authorization: Bearer <token>
   mod.rs        ── supervisor: reconexion con backoff, managed: `uxnan-bridge start|stop`
   commands.rs   ── bridge_client_status · bridge_client_retry · bridge_call
+                   bridge_install_probe · bridge_install · bridge_restart
    │ eventos: bridge:status · bridge:notification
    ▼
 src/lib/bridge/  client · chat · conversation  →  components/chat/ (pestaña `chat`)
@@ -389,6 +391,15 @@ src/lib/bridge/  client · chat · conversation  →  components/chat/ (pestaña
   detiene con `uxnan-bridge stop` (que respeta el lock y borra el descubrimiento).
   El lock de instancia unica del bridge sigue siendo la autoridad: el desktop
   nunca comprueba-y-escribe estado del bridge.
+- **Sin descubrimiento no siempre es "no hay bridge".** El desktop **lee** (nunca
+  escribe) `~/.uxnan/bridge.lock`: si un proceso vivo lo tiene y no publica el
+  canal, el estado es `outdated` (el binario instalado no responde a
+  `uxnan-bridge version`: es anterior al canal) o `channelOff` (lo conoce, pero
+  corre un proceso anterior a la actualizacion o con `localControlEnabled:
+  false`). `managed` no lanza un segundo bridge sobre un lock ocupado, y si el
+  que lanzo termina al arrancar lo informa en el acto. *Update* en `managed`
+  reinicia un bridge que no sirve el canal; `bridge_restart` (a peticion del
+  usuario) detiene el que corre con `uxnan-bridge stop` y arranca uno nuevo.
 - **`off` cuesta cero**: el supervisor espera el cambio de modo sin socket,
   lectura de fichero, temporizador ni proceso.
 

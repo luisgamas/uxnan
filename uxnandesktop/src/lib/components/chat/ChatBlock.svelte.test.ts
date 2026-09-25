@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { mount, until } from "../../../test/render";
+import { mount, mountWithProviders, until } from "../../../test/render";
 
 /** Whether a node sits inside a collapsed section (Bits UI may keep a closed
  *  section's content mounted, marked closed and hidden). */
@@ -204,7 +204,7 @@ describe("ChatBridgeGate", () => {
 
   it("installs a missing bridge in place, then connects to it", async () => {
     bridge.applyStatus({ state: "off" });
-    const { screen, backend, user } = mount(ChatBridgeGate, {
+    const { screen, backend, user } = mountWithProviders(ChatBridgeGate, {
       commands: {
         bridge_install_probe: () => ({
           installed: false,
@@ -232,5 +232,41 @@ describe("ChatBridgeGate", () => {
       bridge?: { mode: string };
     };
     expect(settings.bridge?.mode).toBe("managed");
+  });
+
+  const installedOld = {
+    bridge_install_probe: () => ({
+      installed: true,
+      version: null,
+      npm: true,
+      nodeVersion: "v22.1.0",
+      command: "npm install -g uxnan-bridge@latest",
+    }),
+  };
+
+  it("offers to update a running bridge too old to talk to the desktop", async () => {
+    bridge.applyStatus({
+      state: "unavailable",
+      reason: "outdated",
+      detail: "a bridge is running (pid 42) but predates the desktop channel",
+    });
+    const { screen } = mountWithProviders(ChatBridgeGate, { commands: installedOld });
+    // The install probe is shared app state: wait for this test's answer.
+    await until(
+      () => screen.queryByText("The running bridge is too old to talk to Uxnan Desktop: update it.") !== null,
+    );
+    expect(screen.getByRole("button", { name: "Update" })).toBeTruthy();
+    expect(screen.getByText("npm install -g uxnan-bridge@latest")).toBeTruthy();
+    bridge.applyStatus({ state: "off" });
+  });
+
+  it("restarts a bridge that runs without the channel of the version installed", async () => {
+    bridge.applyStatus({ state: "unavailable", reason: "channelOff", detail: null });
+    const { screen, backend, user } = mountWithProviders(ChatBridgeGate, {
+      commands: { ...installedOld, bridge_restart: () => null },
+    });
+    await user.click(screen.getByRole("button", { name: "Restart the bridge" }));
+    await until(() => backend.called("bridge_restart"));
+    bridge.applyStatus({ state: "off" });
   });
 });

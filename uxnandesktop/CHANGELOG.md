@@ -57,6 +57,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   folder is recognized and explained. New setting `bridge.autoUpdate` (off by
   default): update on its own once a newer bridge is published, only while no
   turn runs on any device (`bridge/status` → `activeTurns`), once per version.
+  **A bridge that cannot talk to the desktop is named, not hidden.** The client
+  reads the bridge's lock (`bridgeclient/lock.rs`, `~/.uxnan/bridge.lock`), so
+  a running bridge that publishes no local channel reads as **too old**
+  (`outdated`: released before the channel — *Update*) or **running without
+  the channel** (`channelOff`: an older process after an update, or
+  `localControlEnabled: false` — *Restart the bridge*, new command
+  `bridge_restart`), instead of "no bridge is running". `managed` no longer
+  starts a second bridge over one holding the lock, reports at once when the
+  bridge it started exits, and after an *Update* restarts a bridge that serves
+  no channel. Settings → Bridge & mobile gains *Check again*.
 - **Settings → Bridge & mobile**: the connection mode (off / use a running
   bridge / start it when needed), the live status with the reason and the fix
   when it is unreachable (the install or start command), and the phones
@@ -86,8 +96,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 - **One copyable code block and one status dot for every settings pane.**
   `CodeBlock` (a command, a script or output, with a copy button) replaces the
-  hooks panel's private snippet; `StatusDot` replaces the hand-drawn dots of
-  Settings → GitHub and SSH hosts, so a tone means the same everywhere.
+  hooks panel's private snippet and now also shows the bridge's install command
+  and npm's output; `StatusDot` replaces the hand-drawn dots of Settings →
+  GitHub, SSH hosts and Bridge & mobile, so a tone means the same everywhere.
+  Settings → Bridge & mobile is rebuilt on them and on the settings' own
+  `Combobox` (the connection mode), laid out like Settings → Updates.
 
 ## [0.0.57] - 20260925
 ### Fixed

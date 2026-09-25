@@ -68,3 +68,15 @@ pub async fn bridge_install(
 ) -> Result<InstallResult, CommandError> {
     Ok(state.bridge.install_or_update(&app).await)
 }
+
+/// Restart the bridge on the version installed now (Settings → Bridge &
+/// mobile, the chat tab's gate): stops the running one — the app's or the
+/// user's — and starts a fresh one. Only ever on the user's request.
+#[tauri::command]
+pub async fn bridge_restart(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state
+        .bridge
+        .restart()
+        .await
+        .map_err(|why| CommandError::new("BRIDGE_RESTART_FAILED", why))
+}

@@ -70,12 +70,7 @@ pub struct InstallOutcome {
 /// `--version` calls; never starts a bridge.
 pub async fn probe() -> InstallInfo {
     let bridge = crate::which::resolve(PACKAGE);
-    let version = match &bridge {
-        Some(path) => first_line_of(path.clone(), &["version"])
-            .await
-            .and_then(parse_version),
-        None => None,
-    };
+    let version = installed_version().await;
     let node_version = match crate::which::resolve("node") {
         Some(node) => first_line_of(node, &["--version"]).await,
         None => None,
@@ -158,22 +153,23 @@ pub async fn install(app: &AppHandle) -> InstallOutcome {
     let tail: Vec<String> = tail.split_off(keep);
     let ok = status.map(|s| s.success()).unwrap_or(false);
     let permission_denied = !ok && mentions_permission_error(&tail);
-    let version = if ok {
-        match crate::which::resolve(PACKAGE) {
-            Some(path) => first_line_of(path, &["version"])
-                .await
-                .and_then(parse_version),
-            None => None,
-        }
-    } else {
-        None
-    };
+    let version = if ok { installed_version().await } else { None };
     InstallOutcome {
         ok,
         version,
         permission_denied,
         tail,
     }
+}
+
+/// The version of the `uxnan-bridge` on `PATH` (`uxnan-bridge version`), or
+/// `None` when it is missing or too old to have that command — the bridges
+/// released before the desktop's local channel.
+pub async fn installed_version() -> Option<String> {
+    let path = crate::which::resolve(PACKAGE)?;
+    first_line_of(path, &["version"])
+        .await
+        .and_then(parse_version)
 }
 
 /// The first non-empty stdout line of `program args`, bounded in time.

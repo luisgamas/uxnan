@@ -2,8 +2,10 @@
   // What a chat tab shows while there is no bridge to talk to. A chat is a
   // conversation the bridge drives (so the phone sees it too); without one
   // there is nothing to show, and this says why and offers the one action that
-  // fixes it — installing the bridge right here when it is missing, so nobody
-  // has to leave the app — never a silent empty pane.
+  // fixes it — installing the bridge right here when it is missing, updating it
+  // when the one running is too old to talk to the desktop, restarting it when
+  // an older process still runs — so nobody has to leave the app, and never a
+  // silent empty pane.
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Icon } from "$lib/components/ui/icon";
@@ -11,16 +13,20 @@
   import { app } from "$lib/state/app.svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
-  import { clipboardWrite } from "$lib/clipboard";
-  import { toast } from "$lib/toast";
+  import CodeBlock from "$lib/components/CodeBlock.svelte";
+  import { toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { chat, icon, text } from "$lib/design";
+  import { icon, text } from "$lib/design";
 
   const status = $derived(bridge.status);
   const info = $derived(bridgeInstall.info);
   /** Nothing to connect to until it is installed. */
   const missing = $derived(info !== null && !info.installed);
+  /** The running bridge predates the desktop channel: update it. */
+  const outdated = $derived(status.state === "unavailable" && status.reason === "outdated");
+  /** A bridge runs without the channel the installed version has: restart it. */
+  const stale = $derived(status.state === "unavailable" && status.reason === "channelOff");
   const result = $derived(bridgeInstall.lastResult);
 
   $effect(() => {
@@ -39,10 +45,12 @@
     if (done?.ok) connect();
   }
 
-  async function copyCommand() {
-    if (!info) return;
-    await clipboardWrite(info.command);
-    toast.success(i18n.t("bridge.copied"));
+  async function restart() {
+    try {
+      await bridgeInstall.restart();
+    } catch (err) {
+      toastError(err);
+    }
   }
 </script>
 
@@ -74,17 +82,23 @@
       {/if}
     </div>
     <div class="flex items-center gap-2">
-      {#if missing}
+      {#if missing || outdated}
         <Button size="sm" disabled={bridgeInstall.installing || !info?.npm} onclick={() => void install()}>
           {#if bridgeInstall.installing}
             <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-            {i18n.t("bridge.installing")}
+            {i18n.t(missing ? "bridge.installing" : "bridge.updating")}
           {:else}
-            {i18n.t("bridge.installAction")}
+            {i18n.t(missing ? "bridge.installAction" : "bridge.updateAction")}
           {/if}
         </Button>
-        <Button size="sm" variant="outline" onclick={() => void copyCommand()}>
-          {i18n.t("bridge.copyInstall")}
+      {:else if stale}
+        <Button size="sm" disabled={bridgeInstall.restarting} onclick={() => void restart()}>
+          {#if bridgeInstall.restarting}
+            <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+            {i18n.t("bridge.restarting")}
+          {:else}
+            {i18n.t("bridge.restartAction")}
+          {/if}
         </Button>
       {:else if status.state === "off"}
         <Button size="sm" onclick={connect}>{i18n.t("chat.gateConnect")}</Button>
@@ -98,7 +112,16 @@
       </Button>
     </div>
     {#if bridgeInstall.installing && bridgeInstall.log.length > 0}
-      <pre class={cn(chat.output, "w-full max-w-md text-left")}>{bridgeInstall.log.slice(-8).join("\n")}</pre>
+      <CodeBlock
+        value={bridgeInstall.log.slice(-8).join("\n")}
+        copyable={false}
+        class="w-full max-w-md text-left"
+      />
+    {:else if (missing || outdated) && info}
+      <div class="flex w-full max-w-md flex-col gap-1.5 text-left">
+        <p class={text.meta}>{i18n.t("bridge.orRunIt")}</p>
+        <CodeBlock value={info.command} />
+      </div>
     {/if}
   {/if}
 </div>

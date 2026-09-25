@@ -1819,7 +1819,13 @@ export interface BridgeInstallResult {
 }
 
 /** Why the bridge is not reachable (mirrors `bridgeclient::Unavailable`). */
-export type BridgeUnavailableReason = "notRunning" | "notInstalled" | "rejected" | "failed";
+export type BridgeUnavailableReason =
+  | "notRunning"
+  | "notInstalled"
+  | "rejected"
+  | "outdated"
+  | "channelOff"
+  | "failed";
 
 /** Live connection state (mirrors `bridgeclient::Status`, event `bridge:status`). */
 export type BridgeClientStatus =
