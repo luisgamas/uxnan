@@ -45,6 +45,31 @@ export interface OpenCodePrompt {
   variant?: string;
 }
 
+/**
+ * A command the server offers in its directory: one of its own (`init`,
+ * `review`), one from the user's or the project's config or command folders,
+ * or — `skill` — a skill it can load into a turn.
+ */
+export interface OpenCodeCommand {
+  /** What the user types after `/` (a skill's id). */
+  name: string;
+  description?: string;
+  /** A skill rather than a command template. */
+  skill: boolean;
+}
+
+/** A command to run in a session: the server expands it itself. */
+export interface OpenCodeCommandRun {
+  name: string;
+  /** Whatever the user typed after the command (may be empty). */
+  args: string;
+  /** Run as a skill (see {@link OpenCodeCommand.skill}). */
+  skill: boolean;
+  /** Split from a `provider/model` id; absent = the session's current model. */
+  model?: OpenCodeModelRef;
+  variant?: string;
+}
+
 /** A model the CLI offers, with its context window when it reports one. */
 export interface OpenCodeModel {
   /** `provider/model`. */
@@ -126,6 +151,17 @@ export interface IOpenCodeServer {
   }): Promise<string>;
   /** Start a turn (returns once accepted; results arrive via `onEvent`). */
   prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void>;
+  /**
+   * The commands and skills the server offers in its directory. Commands load
+   * a moment after the server boots, so an implementation waits for them.
+   */
+  commands(): Promise<OpenCodeCommand[]>;
+  /**
+   * Start a turn that runs a command (returns once accepted; results arrive via
+   * `onEvent`, exactly like {@link prompt}). The server expands the command's
+   * template or loads the skill itself.
+   */
+  runCommand(sessionId: string, command: OpenCodeCommandRun): Promise<void>;
   /** Hand a message to the turn the session is already running. */
   steer(sessionId: string, text: string): Promise<void>;
   /** Stop the session's running turn. */

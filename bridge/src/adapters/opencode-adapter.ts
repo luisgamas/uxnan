@@ -32,8 +32,6 @@
  *
  * See bridge/docs/agents.md (Drive surface) and bridge/docs/testing.md.
  */
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type {
   AgentCapabilities,
   AgentCommand,
@@ -48,11 +46,6 @@ import type {
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { createHash } from 'node:crypto';
-import {
-  expandCustomCommand,
-  scanCustomCommands,
-  type CustomCommandSource,
-} from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
@@ -63,6 +56,7 @@ import {
   permissionPolicyFor,
   splitOpenCodeModel,
   type IOpenCodeServer,
+  type OpenCodeCommand,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
@@ -133,7 +127,9 @@ export interface OpenCodeAdapterOptions {
   serverFactory?: (cwd: string) => IOpenCodeServer;
 }
 
-/** An in-flight turn's mutable state, keyed by the OpenCode session id. */
+/** How long a folder's command list is reused before the server is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
 /** The environment variable OpenCode reads its extra, merged-over config from. */
 const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG_CONTENT';
 
@@ -172,6 +168,7 @@ function toolsFingerprint(desktop: DesktopTools | undefined): string {
   return `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`;
 }
 
+/** An in-flight turn's mutable state, keyed by the OpenCode session id. */
 interface ActiveRun {
   threadId: string;
   turnId: string;
@@ -210,6 +207,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #runBySession = new Map<string, ActiveRun>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  /** cwd → the server's commands there, briefly reused (see `listCommands`). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: OpenCodeCommand[] }>();
   /** model id → context-window tokens. */
   readonly #contextWindowByModel = new Map<string, number>();
   /** The context-window load in flight, or settled with at least one window. */
@@ -359,12 +358,27 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     );
 
     try {
-      await server.prompt(sessionId, {
-        text,
-        ...(modelRef ? { model: modelRef } : {}),
-        ...(variant ? { variant } : {}),
-      });
-      this.#log(`turn ${turnId} prompt accepted`);
+      if (options.command) {
+        // The server runs its own commands and skills: it expands the template
+        // (or loads the skill) itself, and the turn streams like a prompt.
+        const { name } = options.command;
+        const known = (await this.#commandsFor(cwd).catch(() => [])).find((c) => c.name === name);
+        await server.runCommand(sessionId, {
+          name,
+          args: options.command.args?.trim() ?? '',
+          skill: known?.skill ?? false,
+          ...(modelRef ? { model: modelRef } : {}),
+          ...(variant ? { variant } : {}),
+        });
+        this.#log(`turn ${turnId} command /${name} accepted`);
+      } else {
+        await server.prompt(sessionId, {
+          text,
+          ...(modelRef ? { model: modelRef } : {}),
+          ...(variant ? { variant } : {}),
+        });
+        this.#log(`turn ${turnId} prompt accepted`);
+      }
     } catch (err) {
       this.#active.delete(turnId);
       this.#runBySession.delete(sessionId);
@@ -778,30 +792,39 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * OpenCode's custom commands are markdown files under `.opencode/command`
-   * (project) and `~/.config/opencode/command` (user), singular or plural. The
-   * server API doesn't run them, so the bridge scans and expands them itself.
+   * What OpenCode offers in [cwd], as its server lists it: its own commands
+   * (`init`, `review`), the ones from the config (`command` key) and the
+   * command folders (project and user, singular or plural) and its skills —
+   * V1 at `GET /command`, V2 at `GET /api/command` plus `GET /api/skill`.
+   * The server runs a picked one itself (see `sendTurn`), so there is no
+   * {@link expandCommand}. Starts the folder's server if none runs yet (the
+   * turn that follows reuses it); reused per folder for a minute; a server
+   * that cannot say yields no commands.
    */
-  #commandSource(cwd?: string): CustomCommandSource {
-    const dir = cwd ?? this.#defaultCwd;
-    return {
-      dirs: [
-        join(dir, '.opencode', 'command'),
-        join(dir, '.opencode', 'commands'),
-        join(homedir(), '.config', 'opencode', 'command'),
-        join(homedir(), '.config', 'opencode', 'commands'),
-      ],
-      ext: '.md',
-      format: 'markdown',
-    };
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    try {
+      const commands = await this.#commandsFor(cwd ?? this.#defaultCwd);
+      return commands.map(
+        (c): AgentCommand => ({
+          name: c.name,
+          ...(c.description ? { description: c.description } : {}),
+          source: c.skill ? 'skill' : 'custom',
+          headlessSupported: true,
+        }),
+      );
+    } catch {
+      return [];
+    }
   }
 
-  listCommands(cwd?: string): Promise<AgentCommand[]> {
-    return scanCustomCommands(this.#commandSource(cwd));
-  }
-
-  expandCommand(name: string, args?: string, cwd?: string): Promise<string> {
-    return expandCustomCommand(this.#commandSource(cwd), name, args);
+  /** A folder's commands, from the cache or its server. */
+  async #commandsFor(cwd: string): Promise<OpenCodeCommand[]> {
+    const cached = this.#commandsByCwd.get(cwd);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const server = await this.#ensureServer(cwd);
+    const commands = await server.commands();
+    if (commands.length > 0) this.#commandsByCwd.set(cwd, { at: Date.now(), commands });
+    return commands;
   }
 }
 

@@ -157,6 +157,8 @@ export {
   permissionPolicyFor,
   splitOpenCodeModel,
   type IOpenCodeServer,
+  type OpenCodeCommand,
+  type OpenCodeCommandRun,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,

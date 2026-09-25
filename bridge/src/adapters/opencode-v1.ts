@@ -25,6 +25,8 @@ import {
   reconcileSuffix,
   str,
   type IOpenCodeServer,
+  type OpenCodeCommand,
+  type OpenCodeCommandRun,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
@@ -424,6 +426,24 @@ export interface OpenCodeV1ServerOptions {
   env?: Record<string, string>;
 }
 
+/**
+ * `GET /command` entries onto commands. V1 lists skills there too
+ * (`source: "skill"`), and runs them through the same route.
+ */
+export function openCodeV1Commands(data: unknown[]): OpenCodeCommand[] {
+  const out: OpenCodeCommand[] = [];
+  const seen = new Set<string>();
+  for (const c of data) {
+    if (!isRecord(c)) continue;
+    const name = str(c['name']);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const description = str(c['description']);
+    out.push({ name, ...(description ? { description } : {}), skill: c['source'] === 'skill' });
+  }
+  return out;
+}
+
 /** An OpenCode 1.x `opencode serve`, behind the neutral contract. */
 export class OpenCodeV1Server implements IOpenCodeServer {
   readonly protocol = 1 as const;
@@ -497,6 +517,39 @@ export class OpenCodeV1Server implements IOpenCodeServer {
       ...(variant !== undefined ? { variant } : {}),
       parts: [{ type: 'text', text }],
     });
+  }
+
+  /** The server's commands and skills for its directory (loaded at boot). */
+  async commands(): Promise<OpenCodeCommand[]> {
+    await this.start();
+    const value = await this.#serve.request<unknown>(
+      'GET',
+      `/command?directory=${encodeURIComponent(this.#opts.cwd)}`,
+    );
+    return openCodeV1Commands(Array.isArray(value) ? value : []);
+  }
+
+  /**
+   * `POST /session/:id/command` answers only once the turn is over — its reply
+   * is the finished assistant message (verified on 1.18.32) — while the turn's
+   * events stream exactly as a prompt's do. So it is not awaited: the turn runs
+   * on the events, and a refusal (an unknown command, a failure) arrives as the
+   * session's `error` event.
+   */
+  runCommand(sessionId: string, run: OpenCodeCommandRun): Promise<void> {
+    const body = {
+      command: run.name,
+      arguments: run.args,
+      ...(run.model ? { model: `${run.model.providerID}/${run.model.modelID}` } : {}),
+      ...(run.variant !== undefined ? { variant: run.variant } : {}),
+    };
+    void this.#serve
+      .request('POST', `/session/${encodeURIComponent(sessionId)}/command`, body)
+      .catch((err: unknown) => {
+        const message = `opencode command /${run.name} failed: ${err instanceof Error ? err.message : String(err)}`;
+        for (const listener of this.#listeners) listener({ kind: 'error', sessionId, message });
+      });
+    return Promise.resolve();
   }
 
   async interrupt(sessionId: string): Promise<void> {
