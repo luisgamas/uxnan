@@ -16,6 +16,7 @@ import {
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { SpawnExtra } from '../../src/adapters/spawn.js';
+import { parseAntigravitySkills } from '../../src/adapters/antigravity-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // Fixtures mirror `agy` 1.2.7's stream-json, captured live (see the adapter header).
@@ -816,4 +817,69 @@ test('AntigravityAdapter reports `result.status` when a turn ends with no answer
   const events = await done;
   const error = events.find((e) => e.type === 'turn_error');
   assert.equal((error?.data as { text: string }).text, 'Antigravity TIMEOUT');
+});
+
+// --- commands: the skills `agy -p /skills` lists (agy 1.2.11) ---
+
+function skillsSpawner(
+  output: string,
+  code = 0,
+): {
+  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  calls: { args: string[]; cwd: string }[];
+} {
+  const calls: { args: string[]; cwd: string }[] = [];
+  const spawnFn = (_command: string, args: string[], cwd: string): SpawnedProcess => {
+    calls.push({ args, cwd });
+    const stdout = new PassThrough();
+    const emitter = new EventEmitter();
+    setImmediate(() => {
+      stdout.write(output);
+      stdout.end();
+      setImmediate(() => emitter.emit('close', code));
+    });
+    return {
+      stdout,
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  return { spawnFn, calls };
+}
+
+test('listCommands: the skills agy lists in the thread folder, as its workspace', async () => {
+  const { spawnFn, calls } = skillsSpawner(
+    'probe-agy-skill\tProbe skill\ngenerative_ui\tRender rich widgets\n\n',
+  );
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  const commands = await adapter.listCommands('/repo');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.source, c.description]),
+    [
+      ['probe-agy-skill', 'skill', 'Probe skill'],
+      ['generative_ui', 'skill', 'Render rich widgets'],
+    ],
+  );
+  // The workspace's skills come from `--add-dir`, the flag a turn gets too.
+  assert.deepEqual(calls[0], { args: ['-p', '/skills', '--add-dir', '/repo'], cwd: '/repo' });
+  await adapter.listCommands('/repo');
+  assert.equal(calls.length, 1, 'reused for the folder within the minute');
+});
+
+test('listCommands yields none when agy fails', async () => {
+  const { spawnFn } = skillsSpawner('error: not signed in\n', 1);
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  assert.deepEqual(await adapter.listCommands('/repo'), []);
+});
+
+test('parseAntigravitySkills keeps skill lines and skips anything else', () => {
+  assert.deepEqual(
+    parseAntigravitySkills(
+      'warning: something odd happened\nautomation\tSchedule a task\r\nautomation\tdup\nbare-name\n',
+    ).map((c) => [c.name, c.description ?? null]),
+    [
+      ['automation', 'Schedule a task'],
+      ['bare-name', null],
+    ],
+  );
 });

@@ -79,6 +79,7 @@ import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
@@ -109,6 +110,40 @@ const TURN_TIMEOUT = '2h';
 
 /** Hard cap on the `agy models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
+
+/** How long a folder's skill list is reused before `agy` is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/** Hard cap on the `agy -p /skills` spawn (it answers in ~4-5 s, a cold start). */
+const COMMANDS_TIMEOUT_MS = 20_000;
+
+/** What a skill name looks like in `/skills` output: no spaces, no punctuation soup. */
+const SKILL_NAME = /^[A-Za-z0-9][\w.:-]*$/;
+
+/**
+ * The skills in `agy -p /skills` output: one `name<TAB>description` line each
+ * (`agy` 1.2.11), the workspace's own and the user's. Anything else — a blank
+ * line, a warning — is skipped.
+ */
+export function parseAntigravitySkills(output: string): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  const seen = new Set<string>();
+  for (const raw of output.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const tab = line.indexOf('\t');
+    const name = (tab >= 0 ? line.slice(0, tab) : line).trim();
+    if (!SKILL_NAME.test(name) || seen.has(name)) continue;
+    seen.add(name);
+    const description = tab >= 0 ? line.slice(tab + 1).trim() : '';
+    commands.push({
+      name,
+      ...(description ? { description } : {}),
+      source: 'skill',
+      headlessSupported: true,
+    });
+  }
+  return commands;
+}
 
 /**
  * Model used to name a conversation: the cheapest tier `agy models` reports,
@@ -148,6 +183,8 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   // model call's `usage`; the last one of a turn is the context the conversation
   // occupies (see `contextTokens`). Captured from real runs on `agy` 1.2.7.
   reportsContextUsage: true,
+  // Its skills, as `agy -p /skills` lists them; each runs as `/name args`.
+  commands: true,
 };
 
 /**
@@ -573,6 +610,8 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   readonly #conversationByThread = new Map<string, string>();
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
+  /** The folder's skill list, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
 
   #defaultCwd = process.cwd();
 
@@ -1016,6 +1055,70 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       child.stderr?.on('data', collect);
       child.on('error', () => finish([]));
       child.on('close', () => finish(parseAntigravityModelList(output, this.#defaultModel)));
+    });
+  }
+
+  /**
+   * The commands Antigravity runs from the conversation: its **skills** — the
+   * workspace's own and the user's — as `agy -p /skills` lists them, a command
+   * the CLI answers itself (like `/help`), in the thread's folder with the
+   * same `--add-dir` a turn gets (the workspace's skills come from it; verified
+   * on `agy` 1.2.11: without it the project's skill is not listed). A picked
+   * skill is sent as `/name args` on the user message, which `agy` expands
+   * natively — no {@link expandCommand}.
+   *
+   * Nothing else is advertised. The commands `agy` answers itself (`/help`,
+   * `/skills`, …) fail on the stream-json surface the bridge drives ("is
+   * answered by the CLI itself and is unavailable with --input-format
+   * stream-json"), `/compact` is not a command there (it reaches the model as
+   * plain text), and legacy `.agents/workflows` are not expanded — skills
+   * replace them. The stream's `init` event carries no command list. Reused
+   * per folder for a minute; an unanswered request yields none.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const output = await this.#askSkills(dir);
+    if (output === undefined) return [];
+    const commands = parseAntigravitySkills(output);
+    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
+  }
+
+  /** `agy -p /skills` in [cwd]; its stdout, or `undefined` if it failed. */
+  #askSkills(cwd: string): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let output = '';
+      let child: SpawnedProcess;
+      const finish = (result: string | undefined): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+        resolve(result);
+      };
+      try {
+        child = this.#spawn(
+          this.#binaryPath,
+          [...this.#prependArgs, '-p', '/skills', '--add-dir', cwd],
+          cwd,
+        );
+      } catch {
+        resolve(undefined);
+        return;
+      }
+      const timer = setTimeout(() => finish(undefined), COMMANDS_TIMEOUT_MS);
+      child.stdout.on('data', (chunk: unknown) => {
+        output += String(chunk);
+      });
+      child.on('error', () => finish(undefined));
+      child.on('close', (code) => finish(code === 0 ? output : undefined));
     });
   }
 }
