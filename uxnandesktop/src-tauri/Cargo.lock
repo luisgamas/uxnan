@@ -6657,7 +6657,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-cli"
-version = "0.0.56"
+version = "0.0.57"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -6669,7 +6669,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-control-protocol"
-version = "0.0.56"
+version = "0.0.57"
 dependencies = [
  "serde",
  "serde_json",
@@ -6679,7 +6679,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-desktop"
-version = "0.0.56"
+version = "0.0.57"
 dependencies = [
  "axum",
  "base64 0.22.1",
