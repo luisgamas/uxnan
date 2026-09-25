@@ -111,6 +111,7 @@ export {
   codexUsageTokens,
   parseCodexConfigModels,
   parseCodexModelList,
+  parseCodexSkills,
   parseCodexModelWindows,
   parseCodexReasoning,
   type CodexAdapterOptions,

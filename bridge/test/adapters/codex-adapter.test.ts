@@ -10,6 +10,7 @@ import {
   parseCodexModelList,
   parseCodexModelWindows,
   parseCodexReasoning,
+  parseCodexSkills,
   type SpawnFn,
   type SpawnedAppServer,
   type SpawnedProcess,
@@ -1406,4 +1407,216 @@ test('CodexAdapter names a conversation on the cheapest model, at the lowest eff
   // Ephemeral + read-only: naming must not write a session or touch the repo.
   assert.equal(captured.includes('--ephemeral'), true);
   assert.equal(captured[captured.indexOf('-s') + 1], 'read-only');
+});
+
+// ============================================================================
+// Commands: Codex's own compaction, its skills (`skills/list`), custom prompts.
+// Shapes verified against codex-cli 0.156.1 (`skills/list` → `{ data: [{ cwd,
+// skills }] }`; a skill runs as a `{ type:'skill', name, path }` input item;
+// `thread/compact/start` answers `{}` and runs as a turn of its own).
+// ============================================================================
+
+const PROBE_SKILL = {
+  name: 'probe',
+  description: 'A long description written for the model to read',
+  shortDescription: 'Probe the project',
+  path: '/repo/.agents/skills/probe/SKILL.md',
+  scope: 'repo',
+  enabled: true,
+};
+
+/** Answer `skills/list` (and `thread/compact/start`) on the fake app-server. */
+function withSkills(server: FakeAppServer, skills: unknown[]): { lists: () => number } {
+  let lists = 0;
+  server.handle((msg) => {
+    if (msg.method === 'skills/list') {
+      lists += 1;
+      server.feed([
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: msg.id,
+          result: { data: [{ cwd: msg.params.cwds[0], skills, errors: [] }] },
+        }),
+      ]);
+    } else if (msg.method === 'thread/compact/start') {
+      server.feed([JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: {} })]);
+    }
+  });
+  return { lists: () => lists };
+}
+
+/** Run [fn] with an empty home, so no real `~/.codex/prompts` leaks in. */
+async function withHome<T>(files: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const { mkdtemp, mkdir, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join, dirname } = await import('node:path');
+  const home = await mkdtemp(join(tmpdir(), 'uxnan-codex-home-'));
+  for (const [rel, body] of Object.entries(files)) {
+    await mkdir(dirname(join(home, rel)), { recursive: true });
+    await writeFile(join(home, rel), body, 'utf8');
+  }
+  const previous = process.env['HOME'];
+  process.env['HOME'] = home;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env['HOME'];
+    else process.env['HOME'] = previous;
+    await rm(home, { recursive: true, force: true });
+  }
+}
+
+test('parseCodexSkills keeps enabled skills, by their short description', () => {
+  assert.deepEqual(
+    parseCodexSkills({
+      data: [
+        {
+          cwd: '/repo',
+          skills: [
+            PROBE_SKILL,
+            { ...PROBE_SKILL, name: 'off', enabled: false },
+            {
+              name: 'styled',
+              description: 'Long',
+              interface: { shortDescription: 'From the interface' },
+              path: '/s/SKILL.md',
+            },
+            { name: 'plain', description: 'Only this', path: '/p/SKILL.md' },
+            { name: 'no-path', description: 'x' },
+          ],
+        },
+        { cwd: '/other', skills: [PROBE_SKILL] },
+      ],
+    }),
+    [
+      { name: 'probe', path: PROBE_SKILL.path, description: 'Probe the project' },
+      { name: 'styled', path: '/s/SKILL.md', description: 'From the interface' },
+      { name: 'plain', path: '/p/SKILL.md', description: 'Only this' },
+    ],
+  );
+  assert.equal(parseCodexSkills({ nope: true }), undefined);
+});
+
+test('CodexAdapter lists compact, its skills and custom prompts — a prompt keeps its name', async () => {
+  const { adapter, server } = setup();
+  const counter = withSkills(server, [PROBE_SKILL, { ...PROBE_SKILL, name: 'review' }]);
+  const commands = await withHome(
+    { '.codex/prompts/review.md': '---\ndescription: My review\n---\nReview $ARGUMENTS' },
+    () => adapter.listCommands('/repo'),
+  );
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.source, c.description ?? '']),
+    [
+      ['compact', 'builtin', 'Summarize the conversation to free up context'],
+      ['probe', 'skill', 'Probe the project'],
+      ['review', 'custom', 'My review'],
+    ],
+  );
+  // Asked in that folder, then reused for it.
+  const ask = server.sent.find((m: any) => m.method === 'skills/list') as any;
+  assert.deepEqual(ask.params, { cwds: ['/repo'] });
+  await withHome({}, () => adapter.listCommands('/repo'));
+  assert.equal(counter.lists(), 1);
+});
+
+test('CodexAdapter runs a skill as a skill input item, the arguments as its text', async () => {
+  const { adapter, server } = setup();
+  withSkills(server, [PROBE_SKILL]);
+  const { until } = collect(adapter);
+  await withHome({}, async () => {
+    assert.equal(await adapter.expandCommand('probe', 'the API'), '/probe the API');
+    void adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text: '/probe the API\n\n[image: a.png]',
+      cwd: '/repo',
+      command: { name: 'probe', args: 'the API' },
+    });
+    await waitForTurnStarted(until);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const turnStart = server.sent.find((m: any) => m.method === 'turn/start') as any;
+  assert.deepEqual(turnStart.params.input, [
+    { type: 'text', text: 'the API\n\n[image: a.png]' },
+    { type: 'skill', name: 'probe', path: PROBE_SKILL.path },
+  ]);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await new Promise((r) => setImmediate(r));
+});
+
+test('CodexAdapter expands a custom prompt and sends it as plain text', async () => {
+  const { adapter, server } = setup();
+  withSkills(server, [PROBE_SKILL]);
+  const { until } = collect(adapter);
+  await withHome({ '.codex/prompts/probe.md': 'Prompt body: $ARGUMENTS' }, async () => {
+    const text = await adapter.expandCommand('probe', 'x');
+    assert.equal(text, 'Prompt body: x');
+    void adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text,
+      cwd: '/repo',
+      command: { name: 'probe', args: 'x' },
+    });
+    await waitForTurnStarted(until);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const turnStart = server.sent.find((m: any) => m.method === 'turn/start') as any;
+  assert.deepEqual(turnStart.params.input, [{ type: 'text', text: 'Prompt body: x' }]);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  await new Promise((r) => setImmediate(r));
+});
+
+test('CodexAdapter compacts natively, as a turn of its own', async () => {
+  const { adapter, server } = setup();
+  withSkills(server, []);
+  const { done, until } = collect(adapter);
+  await withHome({}, async () => {
+    void adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text: '/compact',
+      command: { name: 'compact' },
+    });
+    await waitForTurnStarted(until);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const compact = server.sent.find((m: any) => m.method === 'thread/compact/start') as any;
+  assert.deepEqual(compact.params, { threadId: '019codex-thread-aaaa-bbbb-cccccccccccc' });
+  assert.equal(
+    server.sent.some((m: any) => m.method === 'turn/start'),
+    false,
+  );
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/started',
+      params: { turn: { id: 'compact-1' } },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: { item: { type: 'contextCompaction' } },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  const events = await done;
+  assert.ok(events.some((e) => e.type === 'block'));
+  assert.equal(events.at(-1)?.type, 'turn_completed');
 });

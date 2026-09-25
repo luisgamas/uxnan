@@ -212,6 +212,61 @@ function permissionToPolicies(mode: CodexPermissionMode): {
 /** Hard cap on the app-server handshake before falling back to config.toml. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
 
+/** How long a folder's skill list is reused before the app-server is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/**
+ * Codex's own compaction, run natively (`thread/compact/start`, verified on
+ * codex-cli 0.156.1: a turn of its own that carries a `contextCompaction`
+ * item).
+ */
+const CODEX_COMPACT_COMMAND: AgentCommand = {
+  name: 'compact',
+  description: 'Summarize the conversation to free up context',
+  source: 'builtin',
+  headlessSupported: true,
+};
+
+/** One enabled skill as `skills/list` reports it. */
+interface CodexSkill {
+  name: string;
+  description?: string;
+  /** Its `SKILL.md`, which a `skill` input item must name. */
+  path: string;
+}
+
+/** How a command turn runs natively (see `#nativeCommand`). */
+type NativeCommand = { kind: 'compact' } | { kind: 'skill'; skill: CodexSkill; text: string };
+
+/**
+ * The enabled skills in a `skills/list` answer (`{ data: [{ cwd, skills }] }`),
+ * or `undefined` for an answer of another shape. A skill's short description
+ * (its own, or its `interface`'s) is preferred to the full one, which is
+ * written for the model and runs long.
+ */
+export function parseCodexSkills(result: unknown): CodexSkill[] | undefined {
+  if (!isRecord(result) || !Array.isArray(result['data'])) return undefined;
+  const skills: CodexSkill[] = [];
+  const seen = new Set<string>();
+  for (const entry of result['data']) {
+    if (!isRecord(entry) || !Array.isArray(entry['skills'])) continue;
+    for (const skill of entry['skills']) {
+      if (!isRecord(skill) || skill['enabled'] === false) continue;
+      const name = str(skill['name']);
+      const path = str(skill['path']);
+      if (!name || !path || seen.has(name)) continue;
+      seen.add(name);
+      const face = isRecord(skill['interface']) ? skill['interface'] : undefined;
+      const description =
+        str(skill['shortDescription']) ||
+        (face ? str(face['shortDescription']) : '') ||
+        str(skill['description']);
+      skills.push({ name, path, ...(description ? { description } : {}) });
+    }
+  }
+  return skills;
+}
+
 /** Hard cap on the lifecycle of a single approval round-trip (matches Claude hook). */
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -407,6 +462,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
   /** Per-turn app-server connection. Spawned lazily, released when idle. */
   #rpc: CodexAppServerRpc | null = null;
+  /** The skills the app-server listed per folder, briefly reused. */
+  readonly #skillsByCwd = new Map<string, { at: number; skills: CodexSkill[] }>();
   #appServerInit: Promise<CodexAppServerRpc> | null = null;
   /** The live process handle, kept so the idle release can end it. */
   #appServerStreams: SpawnedAppServer | null = null;
@@ -639,9 +696,24 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     try {
+      // A plain turn goes out at once; only a command turn looks up how it runs.
+      const native = options.command ? await this.#nativeCommand(options, cwd, rpc) : undefined;
+      if (native?.kind === 'compact') {
+        // Its own turn on the app-server (`turn/started` → a
+        // `contextCompaction` item → `turn/completed`), picked up by the
+        // notification handlers like any other; its id comes on `turn/started`.
+        await rpc.request('thread/compact/start', { threadId: codexThreadId });
+        return;
+      }
       const response = await rpc.request<{ turn: { id: string } }>('turn/start', {
         threadId: codexThreadId,
-        input: [{ type: 'text', text }],
+        input:
+          native?.kind === 'skill'
+            ? [
+                { type: 'text', text: native.text },
+                { type: 'skill', name: native.skill.name, path: native.skill.path },
+              ]
+            : [{ type: 'text', text }],
         ...(typeof model === 'string' ? { model } : {}),
         ...(typeof effort === 'string' ? { effort } : {}),
       });
@@ -877,11 +949,16 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (window > 0) run.contextWindow = Math.round(window);
         return;
       }
-      case 'turn/started':
-        // The bridge already emits `turn_started` immediately when we
-        // receive the `turn/start` response; the app-server's notification
-        // is a duplicate we ignore.
+      case 'turn/started': {
+        // The bridge already emitted `turn_started` when the turn was sent;
+        // this only supplies the app-server's turn id where no `turn/start`
+        // response did — a compaction (`thread/compact/start`) answers `{}`.
+        const turn = isRecord(p['turn']) ? p['turn'] : undefined;
+        const id = turn ? str(turn['id']) : undefined;
+        const run = this.#activeRun();
+        if (run && run.codexTurnId === null && id) run.codexTurnId = id;
         return;
+      }
       case 'item/agentMessage/delta': {
         const delta = typeof p['delta'] === 'string' ? p['delta'] : '';
         if (delta) this.#emitDelta(p, delta);
@@ -1258,68 +1335,156 @@ export class CodexAdapter extends BaseAgentAdapter {
    * process).
    */
   listModels(): Promise<AgentModel[]> {
+    // parseCodexModelList already attaches each model's REAL per-model
+    // reasoning efforts; the config fallback gets a generic effort knob.
+    return this.#withShortLivedAppServer(
+      async (rpc) =>
+        parseCodexModelList((await rpc.request<{ data: unknown }>('model/list', {})).data),
+      [] as AgentModel[],
+    ).then((models) => (models.length > 0 ? models : this.#modelsFromConfig()));
+  }
+
+  /**
+   * Run [ask] against a short-lived app-server of its own — independent of the
+   * long-lived one turns use, so a discovery call never holds a thread's
+   * single writer and still works if a turn crashed that process. Resolves
+   * [fallback] if it cannot start, answer or finish within
+   * {@link MODEL_LIST_TIMEOUT_MS}.
+   */
+  #withShortLivedAppServer<T>(
+    ask: (rpc: CodexAppServerRpc) => Promise<T>,
+    fallback: T,
+  ): Promise<T> {
     return new Promise((resolve) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (models: AgentModel[]): void => {
+      let streams: SpawnedAppServer | undefined;
+      const finish = (value: T): void => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
         try {
-          streams.kill();
+          streams?.kill();
         } catch {
           /* already gone */
         }
-        // parseCodexModelList already attaches each model's REAL per-model
-        // reasoning efforts; the config fallback gets a generic effort knob.
-        resolve(models.length > 0 ? models : this.#modelsFromConfig());
+        resolve(value);
       };
-
-      let streams: SpawnedAppServer;
       try {
         streams = this.#spawnAppServer();
       } catch {
-        resolve(this.#modelsFromConfig());
+        resolve(fallback);
         return;
       }
-
       const rpc = new CodexAppServerRpc(
         { stdin: streams.stdin, stdout: streams.stdout },
         { onNotification: () => undefined, onServerRequest: () => null },
         { requestTimeoutMs: MODEL_LIST_TIMEOUT_MS },
       );
       streams.onClose(() => rpc.onProcessClose(0));
-
-      timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
+      timer = setTimeout(() => finish(fallback), MODEL_LIST_TIMEOUT_MS);
       rpc
         .request('initialize', {
           clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
         })
-        .then(() =>
-          rpc.request<{ data: unknown }>('model/list', {}).then((res) => {
-            finish(parseCodexModelList(res.data));
-          }),
-        )
-        .catch(() => finish([]));
+        .then(() => ask(rpc))
+        .then(finish, () => finish(fallback));
     });
   }
 
   /**
    * Codex's custom prompts live user-level under `~/.codex/prompts/*.md`
-   * (project scope is not supported by Codex). The app-server exposes no
-   * slash-command or compaction RPC headless, so only these prompt templates are
-   * advertised — expanded by {@link expandCommand} rather than run natively.
+   * (Codex supports no project scope). The app-server has no RPC for them, so
+   * the bridge expands them itself ({@link expandCommand}).
    */
   #commandSource(): CustomCommandSource {
     return { dirs: [join(homedir(), '.codex', 'prompts')], ext: '.md', format: 'markdown' };
   }
 
-  listCommands(): Promise<AgentCommand[]> {
-    return scanCustomCommands(this.#commandSource());
+  /**
+   * The commands Codex has in [cwd]: a native `compact`
+   * (`thread/compact/start`), its skills as the app-server lists them there
+   * (`skills/list` — repository, user and system skills, enabled only), and
+   * the user's custom prompts. A custom prompt keeps its name over a skill of
+   * the same name, here and when it runs. Verified on codex-cli 0.156.1.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const [skills, prompts] = await Promise.all([
+      this.#skills(dir),
+      scanCustomCommands(this.#commandSource()),
+    ]);
+    const taken = new Set<string>([CODEX_COMPACT_COMMAND.name, ...prompts.map((c) => c.name)]);
+    return [
+      CODEX_COMPACT_COMMAND,
+      ...skills
+        .filter((skill) => !taken.has(skill.name))
+        .map(
+          (skill): AgentCommand => ({
+            name: skill.name,
+            ...(skill.description ? { description: skill.description } : {}),
+            source: 'skill',
+            headlessSupported: true,
+          }),
+        ),
+      ...prompts.filter((c) => c.name !== CODEX_COMPACT_COMMAND.name),
+    ];
   }
 
-  expandCommand(name: string, args?: string): Promise<string> {
-    return expandCustomCommand(this.#commandSource(), name, args);
+  /**
+   * A custom prompt expands to its text. Anything else — `compact`, a skill —
+   * runs natively ({@link sendTurn} reads `options.command`), so it resolves
+   * to its own `/name args` form, which is what history shows.
+   */
+  async expandCommand(name: string, args?: string): Promise<string> {
+    const source = this.#commandSource();
+    if ((await scanCustomCommands(source)).some((c) => c.name === name)) {
+      return expandCustomCommand(source, name, args);
+    }
+    return args ? `/${name} ${args}` : `/${name}`;
+  }
+
+  /**
+   * How a turn carrying a command runs natively: a compaction, a skill (with
+   * the text that goes with it), or `undefined` for a plain text turn — a
+   * custom prompt, already expanded into the text, among them.
+   */
+  async #nativeCommand(
+    options: SendTurnOptions,
+    cwd: string,
+    rpc: CodexAppServerRpc,
+  ): Promise<NativeCommand | undefined> {
+    const command = options.command;
+    if (!command) return undefined;
+    if (command.name === CODEX_COMPACT_COMMAND.name) return { kind: 'compact' };
+    const prompts = await scanCustomCommands(this.#commandSource());
+    if (prompts.some((c) => c.name === command.name)) return undefined;
+    const skill = (await this.#skills(cwd, rpc)).find((s) => s.name === command.name);
+    if (!skill) return undefined;
+    // The text the manager composed starts with the command's own form; what
+    // follows it (an attachment note) travels with the skill, after the args.
+    const args = command.args?.trim() ?? '';
+    const display = args ? `/${command.name} ${args}` : `/${command.name}`;
+    const rest = options.text.startsWith(display) ? options.text.slice(display.length) : '';
+    return { kind: 'skill', skill, text: `${args}${rest}`.trim() };
+  }
+
+  /**
+   * The enabled skills the app-server sees in [cwd], reused for a minute.
+   * Asked on the turn's own app-server when one is given, otherwise on a
+   * short-lived one; an unanswered request yields none (and is not kept).
+   */
+  async #skills(cwd: string, rpc?: CodexAppServerRpc): Promise<CodexSkill[]> {
+    const cached = this.#skillsByCwd.get(cwd);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.skills;
+    const ask = async (client: CodexAppServerRpc): Promise<CodexSkill[] | undefined> =>
+      parseCodexSkills(await client.request<unknown>('skills/list', { cwds: [cwd] }));
+    const skills = rpc
+      ? await ask(rpc).catch(() => undefined)
+      : await this.#withShortLivedAppServer<CodexSkill[] | undefined>(ask, undefined);
+    if (skills === undefined) return [];
+    this.#skillsByCwd.set(cwd, { at: Date.now(), skills });
+    return skills;
   }
 
   /** Fallback model list read straight from `~/.codex/config.toml`. */
