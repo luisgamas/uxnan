@@ -95,8 +95,10 @@ import {
   commandBlock,
   editDiffBlock,
   fileDiffBlock,
+  runningBlock,
   subagentBlock,
   toolBlock,
+  withBlockId,
   writeDiffBlock,
 } from './content-blocks.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
@@ -573,6 +575,8 @@ interface ActiveSession {
   idleTimer?: NodeJS.Timeout;
   /** Fallback for a tool block id when a step has no `step_index`. */
   toolSequence: number;
+  /** Steps shown as running, not yet ended (see the step handler). */
+  startedSteps: Set<string>;
   /** Each file's text as the agent last read or wrote it, and in which turn. */
   fileText: Map<string, { turnId: string; text: string | null }>;
   exited: boolean;
@@ -853,6 +857,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       child,
       toolSequence: 0,
       fileText: new Map(),
+      startedSteps: new Set(),
       exited: false,
     };
 
@@ -886,6 +891,28 @@ export class AntigravityAdapter extends BaseAgentAdapter {
         const fileTool = update.step_type === 'tool' && ANTIGRAVITY_FILE_TOOLS.has(toolName);
         const params = update.tool_info?.parameters ?? {};
         const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
+        // A step is shown as it starts; its end replaces it in place (same
+        // `blockId`: the tool and its step index). A file step shows only its diff.
+        const stepId =
+          update.step_index !== undefined ? `${toolName}_${update.step_index}` : undefined;
+        if (
+          update.step_type === 'tool' &&
+          update.state === 'ACTIVE' &&
+          stepId !== undefined &&
+          !fileTool &&
+          !session.startedSteps.has(stepId)
+        ) {
+          session.startedSteps.add(stepId);
+          const started = buildAntigravityToolBlock(update);
+          if (started['type'] !== 'diff') {
+            this.emit({
+              type: 'block',
+              threadId,
+              turnId: active.turnId,
+              data: { content: runningBlock(started, stepId) },
+            });
+          }
+        }
         if (update.step_type === 'tool' && (update.state === 'DONE' || update.state === 'ERROR')) {
           // 1.2.x reports only which file a step changed, and announces the
           // step once it is already applied. The text before it is what the
@@ -902,7 +929,9 @@ export class AntigravityAdapter extends BaseAgentAdapter {
             const path = params['AbsolutePath'];
             session.fileText.set(path, { turnId: active.turnId, text: readTextOrNull(path) });
           }
-          const block = buildAntigravityToolBlock(update, session.toolSequence++, change);
+          const settled = buildAntigravityToolBlock(update, session.toolSequence++, change);
+          const block = stepId !== undefined ? withBlockId(settled, stepId) : settled;
+          if (stepId !== undefined) session.startedSteps.delete(stepId);
           this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: block } });
         }
         if (update.step_type === 'agent_response') {

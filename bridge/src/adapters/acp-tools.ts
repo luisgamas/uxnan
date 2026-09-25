@@ -23,6 +23,7 @@ import {
   editDiffBlock,
   extractPlanSteps,
   fileDiffBlock,
+  runningBlock,
   subagentBlock,
   toolBlock,
   writeDiffBlock,
@@ -98,6 +99,28 @@ export function acpToolBlock(tc: AcpToolCall): Record<string, unknown> | null {
   }
   const hint = KIND_BY_ACP[kind];
   return toolBlock(name, tc.toolCallId, input, output, isError, hint ? { kind: hint } : {});
+}
+
+/**
+ * The row an ACP tool call shows while it runs, from its first announcement;
+ * its end replaces it (same `blockId`: the call id). `null` for what shows
+ * only once done: an edit (its diff), the plan, a question.
+ */
+export function acpToolStartBlock(tc: AcpToolCall): Record<string, unknown> | null {
+  if (['edit', 'delete', 'move'].includes(tc.kind.toLowerCase())) return null;
+  if (formatAskUser(tc.rawInput ?? {})) return null;
+  const block = acpToolBlock({ ...tc, status: 'completed', content: [] });
+  if (!block || block['type'] === 'diff' || block['type'] === 'plan') return null;
+  return runningBlock(block, tc.toolCallId);
+}
+
+/** The ACP kind of a tool call: its own, or the one Grok puts in `_meta["x.ai/tool"]`. */
+export function acpToolKind(update: Record<string, unknown>): string {
+  const own = str(update['kind']);
+  if (own) return own;
+  const meta = isRecord(update['_meta']) ? update['_meta'] : {};
+  const tool = isRecord(meta['x.ai/tool']) ? meta['x.ai/tool'] : {};
+  return str(tool['kind']);
 }
 
 /**

@@ -713,7 +713,7 @@ test('AntigravityAdapter emits a tool block for a finished tool step, and no thi
     // The model call that decided to run a tool: usage, no text — and no
     // reasoning text anywhere on this surface, only a `thinking_tokens` count.
     stepDone({ input_tokens: 13210, output_tokens: 897, thinking_tokens: 782 }, 1),
-    // The tool step goes ACTIVE (no block yet) and then DONE (one block).
+    // The tool step goes ACTIVE (a running row) and then DONE (its result, same id).
     JSON.stringify({
       event: 'step_update',
       step_update: {
@@ -747,12 +747,19 @@ test('AntigravityAdapter emits a tool block for a finished tool step, and no thi
   assert.equal(events.filter((e) => e.type === 'thinking').length, 0);
 
   const blockEvents = events.filter((e) => e.type === 'block');
-  assert.equal(blockEvents.length, 1);
+  assert.equal(blockEvents.length, 2);
   assert.deepEqual((blockEvents[0]?.data as { content: unknown }).content, {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: 'run_command_2',
+  });
+  assert.deepEqual((blockEvents[1]?.data as { content: unknown }).content, {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'file1\nfile2\n',
+    blockId: 'run_command_2',
   });
   // The meter shows the LAST model call's context, not the turn's sum.
   const completed = events.find((e) => e.type === 'turn_completed');

@@ -684,3 +684,56 @@ export function withProjectPaths(block: unknown, cwd: string | undefined): unkno
   }
   return block;
 }
+
+/**
+ * A step as it starts: the block its end will send, marked running, carrying
+ * the id its end will reuse (`LiveBlock` in `shared/src/models/tool.ts`).
+ * The end replaces it in place.
+ */
+export function runningBlock(
+  block: Record<string, unknown>,
+  blockId: string,
+): Record<string, unknown> {
+  if (block['type'] === 'subagent' && isRecord(block['state'])) {
+    return { ...block, blockId, state: { ...block['state'], status: 'running' } };
+  }
+  return { ...block, blockId, status: 'running' };
+}
+
+/** A finished step's block, carrying the id of the running one it replaces. */
+export function withBlockId(
+  block: Record<string, unknown>,
+  blockId: string,
+): Record<string, unknown> {
+  return blockId ? { ...block, blockId } : block;
+}
+
+/** The `blockId` a block carries, or undefined. */
+export function blockIdOf(block: unknown): string | undefined {
+  return isRecord(block) && typeof block['blockId'] === 'string' && block['blockId']
+    ? block['blockId']
+    : undefined;
+}
+
+/** Whether a block is a step still running. */
+export function isRunning(block: unknown): boolean {
+  if (!isRecord(block)) return false;
+  if (block['status'] === 'running') return true;
+  return isRecord(block['state']) && block['state']['status'] === 'running';
+}
+
+/**
+ * A running step closed because its turn ended without its result: as having
+ * finished when the turn completed (the agent simply never reported it), as
+ * failed when the turn failed or was stopped.
+ */
+export function settleBlock(block: Record<string, unknown>, ok: boolean): Record<string, unknown> {
+  if (!isRunning(block)) return block;
+  if (block['type'] === 'subagent' && isRecord(block['state'])) {
+    return { ...block, state: { ...block['state'], status: ok ? 'completed' : 'error' } };
+  }
+  if (block['type'] === 'command_execution')
+    return { ...block, status: ok ? 'completed' : 'error' };
+  const { status: _status, ...rest } = block;
+  return ok ? rest : { ...rest, isError: true };
+}

@@ -421,6 +421,15 @@ test('OpenCodeAdapter emits thinking + tool blocks; skips the todo tool part', a
       sessionID: 'ses_1',
       type: 'tool',
       tool: 'bash',
+      state: { status: 'running', input: { command: 'ls' } },
+    },
+  });
+  server.emit('message.part.updated', {
+    part: {
+      id: 'b1',
+      sessionID: 'ses_1',
+      type: 'tool',
+      tool: 'bash',
       state: { status: 'completed', input: { command: 'ls' }, output: 'a.txt' },
     },
   });
@@ -434,12 +443,20 @@ test('OpenCodeAdapter emits thinking + tool blocks; skips the todo tool part', a
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  assert.equal(blocks.length, 1);
+  // Shown as it starts, then replaced by its result (same id: the part id).
+  assert.equal(blocks.length, 2);
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: 'b1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt',
+    blockId: 'b1',
   });
 });
 

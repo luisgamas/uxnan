@@ -117,9 +117,15 @@ export class OpenCodeV2Translator {
       case 'session.tool.input.started':
         this.#toolNames.set(str(d['id']), str(d['name']));
         return [];
-      case 'session.tool.called':
-        if (isRecord(d['input'])) this.#toolInputs.set(str(d['id']), d['input']);
-        return [];
+      case 'session.tool.called': {
+        const id = str(d['id']);
+        const input = isRecord(d['input']) ? d['input'] : {};
+        this.#toolInputs.set(id, input);
+        const name = this.#toolNames.get(id) ?? '';
+        return sessionId && id && name && !isPlanTool(name)
+          ? [{ kind: 'tool_started', sessionId, id, name, input }]
+          : [];
+      }
       case 'session.tool.success':
       case 'session.tool.failed':
         return this.#toolEnded(type === 'session.tool.failed', sessionId, d);

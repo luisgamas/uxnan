@@ -36,7 +36,7 @@ test('V2 translator: text and reasoning stream as deltas, the ended text adds on
   assert.deepEqual(t.translate('session.reasoning.ended', { ...base, text: 'think' }), []);
 });
 
-test('V2 translator: a tool reports its name, input and output once it ends', () => {
+test('V2 translator: a tool is announced when called, and reports its output once it ends', () => {
   const t = new OpenCodeV2Translator();
   const id = 'call_1';
   assert.deepEqual(
@@ -45,7 +45,7 @@ test('V2 translator: a tool reports its name, input and output once it ends', ()
   );
   assert.deepEqual(
     t.translate('session.tool.called', { sessionID: S, id, input: { command: 'echo probe' } }),
-    [],
+    [{ kind: 'tool_started', sessionId: S, id, name: 'shell', input: { command: 'echo probe' } }],
   );
   assert.deepEqual(
     t.translate('session.tool.success', {

@@ -232,14 +232,24 @@ test('PiAdapter emits thinking deltas and pairs tool_execution start/end into a 
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  const command = blocks.find((block) => block['type'] === 'command_execution');
+  const commands = blocks.filter((block) => block['type'] === 'command_execution');
   const boundary = blocks.find((block) => block['type'] === 'assistant_response_boundary');
-  assert.equal(blocks.length, 2);
-  assert.deepEqual(command, {
+  // The command shows as it starts, then its result replaces it (same id).
+  assert.equal(blocks.length, 3);
+  const id = commands[0]?.['blockId'];
+  assert.equal(typeof id, 'string');
+  assert.deepEqual(commands[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: id,
+  });
+  assert.deepEqual(commands[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt\nb.txt',
+    blockId: id,
   });
   assert.deepEqual(boundary, {
     type: 'assistant_response_boundary',

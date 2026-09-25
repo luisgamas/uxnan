@@ -395,8 +395,18 @@ real turn of each agent (2026-09-25):
 | Antigravity | `view_file`, `grep_search`, `find_by_name`, `list_dir`, `read_url_content`, `search_web` | `agy` 1.2.x reports only the file, once changed: the adapter diffs it against the text the agent last read or wrote this turn, else the committed file | — | `invoke_subagent`, `browser_subagent` |
 | Zero / Grok (ACP) | the ACP `kind`, and the tool's name from Grok's `rawInput.variant` or the first word of Zero's title | ACP `diff` content: real hunks when it is the whole file on disk, else the snippet | the ACP `plan` update (the call that wrote it is not shown twice) | a `task` / `agent` call |
 
-A call is shown once it finished: no adapter reports a step while it runs yet
-(see `FOR-DEV.md` → *Live tool rows*).
+**A step shows while it runs.** Every adapter emits a call's row as it starts —
+`status: 'running'` (a subagent's `state.status`), carrying a `blockId` — and
+its result replaces that row in place (same `blockId`; `runningBlock` /
+`withBlockId` in `content-blocks.ts`, `LiveBlock` in `shared/`). The start
+events, measured on each: Claude's `tool_use` (the id), Codex's `item/started`
+(the item id), OpenCode's `session.tool.called` on 2.x and a `running` tool
+part on 1.x (the call/part id), pi's `tool_execution_start` (`toolCallId`), an
+ACP `tool_call` not yet finished (`toolCallId`; Grok puts the kind in
+`_meta["x.ai/tool"]`), Antigravity's `ACTIVE` step (`<tool>_<step_index>`).
+An edit shows only its diff, and the to-do list only as the plan. The store
+replaces by `blockId`, and a turn that ends settles any step still running, so
+nothing spins after the agent stopped.
 
 ### Multiple assistant responses in one turn
 

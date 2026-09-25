@@ -43,11 +43,12 @@ import { BaseAgentAdapter } from './base-adapter.js';
 import {
   extractToolResults,
   extractToolUses,
+  toolUseStartBlock,
   toolUseToBlock,
   type ClaudeToolResult,
   type ClaudeToolUse,
 } from './claude-tools.js';
-import { warningBlock } from './content-blocks.js';
+import { warningBlock, withBlockId } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
@@ -823,8 +824,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // The CLI's own word on which commands only work in its terminal.
       if (event.terminalCommands) this.#terminalCommands = event.terminalCommands;
       // Register tool invocations (with their inputs) so the result can pair.
+      // Each one is shown as it starts, and its result replaces it in place.
       if (event.toolUses) {
-        for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
+        for (const tool of event.toolUses) {
+          if (pendingTools.has(tool.id)) continue;
+          pendingTools.set(tool.id, tool);
+          const started = toolUseStartBlock(tool);
+          if (started) {
+            this.emit({
+              type: 'block',
+              threadId,
+              turnId,
+              data: {
+                content: started,
+                ...(openTextIndex !== undefined ? { beforeText: true } : {}),
+              },
+            });
+          }
+        }
       }
       // Track the latest MAIN assistant-message usage as a completion fallback
       // (a subagent's usage is its own context, not this conversation's).
@@ -850,8 +867,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           const tool = pendingTools.get(result.toolUseId);
           if (!tool) continue;
           pendingTools.delete(result.toolUseId);
-          const content = toolUseToBlock(tool, result);
-          if (!content) continue;
+          const settled = toolUseToBlock(tool, result);
+          if (!settled) continue;
+          const content = withBlockId(settled, tool.id);
           this.emit({
             type: 'block',
             threadId,

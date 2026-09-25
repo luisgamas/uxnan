@@ -66,9 +66,15 @@ import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thre
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
-import { planBlock, warningBlock, type PlanStepBlock } from './content-blocks.js';
+import { planBlock, warningBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
 import { reasoningOption, reasoningValue } from './run-options.js';
-import { acpPlanSteps, acpToolBlock, type AcpToolCall } from './acp-tools.js';
+import {
+  acpPlanSteps,
+  acpToolBlock,
+  acpToolKind,
+  acpToolStartBlock,
+  type AcpToolCall,
+} from './acp-tools.js';
 
 const GROK_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -796,19 +802,34 @@ export class GrokAdapter extends BaseAgentAdapter {
   #onToolUpdate(run: ActiveRun, update: Record<string, unknown>): void {
     const id = str(update['toolCallId']);
     if (!id) return;
-    const prev = run.tools.get(id) ?? { toolCallId: id, title: '', kind: '', status: '' };
+    const known = run.tools.get(id);
+    const prev = known ?? { toolCallId: id, title: '', kind: '', status: '' };
     const merged: AcpToolCall = {
       toolCallId: id,
       title: str(update['title']) || prev.title,
-      kind: str(update['kind']) || prev.kind,
+      kind: acpToolKind(update) || prev.kind,
       status: str(update['status']) || prev.status,
       rawInput: isRecord(update['rawInput']) ? update['rawInput'] : prev.rawInput,
       content: Array.isArray(update['content']) ? (update['content'] as unknown[]) : prev.content,
     };
     run.tools.set(id, merged);
-    if ((merged.status === 'completed' || merged.status === 'failed') && !run.emitted.has(id)) {
+    const finished = merged.status === 'completed' || merged.status === 'failed';
+    // Shown as it starts (its first announcement); its end replaces it in place.
+    if (!known && !finished) {
+      const started = acpToolStartBlock(merged);
+      if (started) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content: started },
+        });
+      }
+    }
+    if (finished && !run.emitted.has(id)) {
       run.emitted.add(id);
-      const content = acpToolBlock(merged);
+      const settled = acpToolBlock(merged);
+      const content = settled ? withBlockId(settled, id) : null;
       if (content) {
         this.emit({
           type: 'block',

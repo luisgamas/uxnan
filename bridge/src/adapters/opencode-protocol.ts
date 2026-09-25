@@ -102,6 +102,14 @@ export type OpenCodeEvent =
   | { kind: 'text'; sessionId: string; delta: string }
   /** Assistant reasoning, as an increment. */
   | { kind: 'reasoning'; sessionId: string; delta: string }
+  /** A tool call that started, with its input (its end follows as `tool`). */
+  | {
+      kind: 'tool_started';
+      sessionId: string;
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+    }
   /** A tool call that reached a terminal state. */
   | {
       kind: 'tool';

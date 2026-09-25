@@ -12,6 +12,7 @@ import {
   extractPlanSteps,
   multiEditDiffBlock,
   planBlock,
+  runningBlock,
   subagentBlock,
   toolBlock,
   writeDiffBlock,
@@ -143,4 +144,23 @@ export function toolUseToBlock(
     );
   }
   return toolBlock(tool.name, tool.id, input, result.text, result.isError);
+}
+
+/**
+ * The row a tool shows while it runs (`runningBlock`), from its `tool_use`
+ * alone; its result replaces it (`toolUseToBlock`, same `blockId`). `null`
+ * for what shows only once done: an edit (its diff), the to-do list, and
+ * what is never shown.
+ */
+export function toolUseStartBlock(tool: ClaudeToolUse): Record<string, unknown> | null {
+  if (HIDDEN_TOOLS.has(tool.name) || tool.name === 'TodoWrite') return null;
+  if (['Edit', 'MultiEdit', 'Write', 'NotebookEdit'].includes(tool.name)) return null;
+  if (tool.name === 'Bash') {
+    return runningBlock(commandBlock(str(tool.input['command']), '', false), tool.id);
+  }
+  if (SUBAGENT_TOOLS.has(tool.name)) {
+    const task = str(tool.input['description']) || str(tool.input['prompt']);
+    return runningBlock(subagentBlock(tool.id, task, '', false), tool.id);
+  }
+  return runningBlock(toolBlock(tool.name, tool.id, tool.input, '', false), tool.id);
 }

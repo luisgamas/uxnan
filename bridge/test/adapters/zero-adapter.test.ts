@@ -206,11 +206,19 @@ test('ZeroAdapter streams thinking/text/blocks and completes on prompt result', 
   const deltas = events.filter((e) => e.type === 'delta').map((e) => (e.data as any).text);
   assert.deepEqual(deltas, ['Hello ', 'world']);
   const blocks = events.filter((e) => e.type === 'block').map((e) => (e.data as any).content);
+  // Shown as it starts, then replaced by its result (same id).
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: 't1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt',
+    blockId: 't1',
   });
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as any).text, 'Hello world');

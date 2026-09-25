@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 825, shared 39, relay
+standalone). It builds clean and the suite is green (bridge 834, shared 39, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -399,18 +399,6 @@ push validation (FOR-HUMAN).
       answerable needs Zero to route `ask_user` to the ACP client (an **upstream** change,
       e.g. a vendor `_zero/ask_user` request or reusing `session/request_permission`);
       once it does, wire it into the existing `requestQuestion` round-trip.
-- [ ] **Live tool rows** — every adapter emits a tool call's block once it
-      finished, so a client shows nothing while a long command or a subagent
-      runs, then the finished row. Most drive surfaces announce a step as it
-      starts (Claude's `tool_use`, Codex `item/started`, ACP `tool_call` with
-      `in_progress`, Antigravity's `ACTIVE` step, OpenCode's
-      `session.tool.called`, pi's `tool_execution_start`). Showing it needs a
-      contract for a block that is replaced when it settles: an id on the block
-      and a `stream/content/block` that updates the one with that id (store,
-      phone and desktop replicas), which does not exist yet. Where: `shared/`
-      (the block id), `thread-store.ts` (replace by id), each adapter's start
-      event, and the clients' timelines (the desktop already draws a running
-      step, `ChatActivity`).
 
 ### Adding the next agent (recipe — do these one by one)
 

@@ -268,15 +268,25 @@ test('ClaudeCodeAdapter pairs tool_use with tool_result and emits structured blo
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  assert.equal(blocks.length, 2);
+  // The command shows as it starts (the edit only once done: its diff), and
+  // each result replaces its step by the tool_use id.
+  assert.equal(blocks.length, 3);
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'type a.txt',
+    status: 'running',
+    blockId: 'tu_1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'type a.txt',
     status: 'completed',
     output: 'hello',
+    blockId: 'tu_1',
   });
-  assert.equal(blocks[1]?.['type'], 'diff');
-  assert.equal(blocks[1]?.['filename'], 'a.dart');
+  assert.equal(blocks[2]?.['type'], 'diff');
+  assert.equal(blocks[2]?.['filename'], 'a.dart');
+  assert.equal(blocks[2]?.['blockId'], 'tu_2');
 });
 
 test('ClaudeCodeAdapter falls back to the assistant message when no token deltas stream', async () => {
@@ -803,10 +813,11 @@ test('ClaudeCodeAdapter flags a subagent block landing mid-text as beforeText', 
 
   const events = await done;
   const blocks = events.filter((e) => e.type === 'block');
-  const activityBlocks = blocks.filter(
-    (event) =>
-      (event.data as { content: { type?: string } }).content.type !== 'assistant_response_boundary',
-  );
+  // The finished steps (each also showed as running when it started).
+  const activityBlocks = blocks.filter((event) => {
+    const content = (event.data as { content: { type?: string; status?: string } }).content;
+    return content.type !== 'assistant_response_boundary' && content.status !== 'running';
+  });
   const boundaries = blocks.filter(
     (event) =>
       (event.data as { content: { type?: string } }).content.type === 'assistant_response_boundary',

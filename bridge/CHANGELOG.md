@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a step shows while it runs, for every agent
+
+- Every adapter emits a call's row as it starts (`status: 'running'`, with a
+  `blockId`) and its result replaces it in place: Claude (`tool_use`), Codex
+  (`item/started`), OpenCode (`session.tool.called` / a `running` part), pi
+  (`tool_execution_start`), Zero and Grok (the first ACP `tool_call`),
+  Antigravity (the `ACTIVE` step). Verified on a real turn of each but Codex
+  (its login on the verifying machine had expired; covered by tests on the
+  app-server's own item shapes).
+- The store replaces a block by its `blockId`, and a turn that ends settles
+  any step its agent left running.
+
 ### Fixed — Grok's effort and approvals, verified on a real Grok
 
 - **The reasoning effort you pick now reaches Grok.** Grok offers it as a

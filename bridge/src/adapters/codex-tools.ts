@@ -13,6 +13,7 @@ import {
   commandBlock,
   extractPlanSteps,
   planBlock,
+  runningBlock,
   subagentBlock,
   toolBlock,
   unwrapShellCommand,
@@ -202,4 +203,20 @@ export function codexToolItemBlock(item: Record<string, unknown>): Record<string
     default:
       return null;
   }
+}
+
+/**
+ * The row an app-server item shows while it runs (`item/started`), or `null`
+ * for one that shows only once done (a file change: its diff). Its
+ * `item/completed` replaces it (same `blockId`: the item id).
+ */
+export function codexItemStartBlock(item: Record<string, unknown>): Record<string, unknown> | null {
+  const id = str(item['id']);
+  if (!id) return null;
+  if (item['type'] === 'commandExecution') {
+    const command = str(item['command']);
+    return command ? runningBlock(commandBlock(unwrapShellCommand(command), '', false), id) : null;
+  }
+  const block = codexToolItemBlock({ ...item, status: 'inProgress', result: null, error: null });
+  return block ? runningBlock(block, id) : null;
 }

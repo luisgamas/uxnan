@@ -111,7 +111,12 @@ import {
   type PendingCodexApproval,
 } from './codex-approval.js';
 import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
-import { codexReasoningText, codexToolItemBlock, type CodexFileChange } from './codex-tools.js';
+import {
+  codexItemStartBlock,
+  codexReasoningText,
+  codexToolItemBlock,
+  type CodexFileChange,
+} from './codex-tools.js';
 import {
   assistantResponseBoundaryBlock,
   commandBlock,
@@ -121,6 +126,7 @@ import {
   planBlock,
   unifiedDiffBlock,
   unwrapShellCommand,
+  withBlockId,
   writeDiffBlock,
 } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
@@ -979,10 +985,21 @@ export class CodexAdapter extends BaseAgentAdapter {
         // block we emit on `item/completed`; skip per-chunk updates to avoid
         // spamming the phone with intermediate state.
         return;
-      case 'item/started':
-        // Item begin — we don't need it (the relevant state arrives on
-        // `item/completed`); ignore for now.
+      case 'item/started': {
+        // A step is shown as it starts; `item/completed` replaces it in place.
+        const item = isRecord(p['item']) ? p['item'] : undefined;
+        const run = this.#activeRun();
+        const started = item ? codexItemStartBlock(item) : null;
+        if (run && started) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content: started },
+          });
+        }
         return;
+      }
       case 'item/completed': {
         const item = isRecord(p['item']) ? p['item'] : undefined;
         if (item) await this.#onItemCompleted(item);
@@ -1097,7 +1114,12 @@ export class CodexAdapter extends BaseAgentAdapter {
             turnId: run.bridgeTurnId,
             // Codex runs every command through the login shell
             // (`/bin/zsh -lc '…'`); the row shows what ran.
-            data: { content: commandBlock(unwrapShellCommand(command), output, isError) },
+            data: {
+              content: withBlockId(
+                commandBlock(unwrapShellCommand(command), output, isError),
+                str(item['id']),
+              ),
+            },
           });
         }
         return;
@@ -1158,13 +1180,13 @@ export class CodexAdapter extends BaseAgentAdapter {
       case 'webSearch':
       case 'imageView':
       case 'collabAgentToolCall': {
-        const content = codexToolItemBlock(item);
-        if (content) {
+        const settled = codexToolItemBlock(item);
+        if (settled) {
           this.emit({
             type: 'block',
             threadId: run.threadId,
             turnId: run.bridgeTurnId,
-            data: { content },
+            data: { content: withBlockId(settled, str(item['id'])) },
           });
         }
         return;

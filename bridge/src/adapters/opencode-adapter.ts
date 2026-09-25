@@ -48,8 +48,8 @@ import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@u
 import { createHash } from 'node:crypto';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
-import { compactionBlock, planBlock, type PlanStepBlock } from './content-blocks.js';
+import { mergePlanSteps, opencodeToolBlock, opencodeToolStartBlock } from './opencode-tools.js';
+import { compactionBlock, planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
 import { reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn } from './spawn.js';
 import {
@@ -587,18 +587,28 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           data: { text: event.delta },
         });
         return;
+      case 'tool_started': {
+        // Shown as it starts; its end (`tool`) replaces it in place.
+        const started = opencodeToolStartBlock(event.name, event.id, event.input);
+        if (started) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.turnId,
+            data: { content: started },
+          });
+        }
+        return;
+      }
       case 'tool':
         this.emit({
           type: 'block',
           threadId: run.threadId,
           turnId: run.turnId,
           data: {
-            content: opencodeToolBlock(
-              event.name,
+            content: withBlockId(
+              opencodeToolBlock(event.name, event.id, event.input, event.output, event.error),
               event.id,
-              event.input,
-              event.output,
-              event.error,
             ),
           },
         });

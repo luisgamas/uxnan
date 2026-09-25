@@ -81,9 +81,9 @@ import {
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
+import { piResultText, piToolBlock, piToolStartBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
-import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
+import { assistantResponseBoundaryBlock, compactionBlock, withBlockId } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -802,6 +802,11 @@ export class PiAdapter extends BaseAgentAdapter {
         });
       } else if (event.kind === 'tool_start' && event.tool) {
         active.pendingTools.set(event.toolCallId ?? '', event.tool);
+        // Shown as it starts; its end replaces it in place.
+        const started = piToolStartBlock(event.tool);
+        if (started) {
+          this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: started } });
+        }
       } else if (event.kind === 'tool_end') {
         const tool = active.pendingTools.get(event.toolCallId ?? '');
         if (tool) {
@@ -811,7 +816,10 @@ export class PiAdapter extends BaseAgentAdapter {
             threadId,
             turnId: active.turnId,
             data: {
-              content: piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true),
+              content: withBlockId(
+                piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true),
+                tool.id,
+              ),
             },
           });
         }

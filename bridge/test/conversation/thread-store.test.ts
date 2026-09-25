@@ -874,3 +874,52 @@ test('an aborted turn does not accept late output either', async () => {
   assert.equal(assistant?.content, 'partial');
   await rmrf(baseDir);
 });
+
+test('a settled step replaces the running one in place, in blocks and segments', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  const running = { type: 'command_execution', command: 'ls', status: 'running', blockId: 'c1' };
+  await store.appendBlock(thread.id, turnId, running, 3);
+  await store.appendDelta(thread.id, turnId, 'Listing done.', 4);
+  const done = { ...running, status: 'completed', output: 'a.txt' };
+  await store.appendBlock(thread.id, turnId, done, 5);
+  await store.completeTurn(thread.id, turnId, undefined, 6);
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.blocks, [done]);
+  assert.deepEqual(assistant?.segments, [done, { type: 'text', text: 'Listing done.' }]);
+  await rmrf(baseDir);
+});
+
+test('a turn that ends settles the steps its agent left running', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const completed = await store.startTurn(thread.id, 'one', 2);
+  await store.appendBlock(
+    thread.id,
+    completed.turnId,
+    { type: 'tool', toolName: 'Read', status: 'running', blockId: 't1', isError: false },
+    3,
+  );
+  await store.completeTurn(thread.id, completed.turnId, undefined, 4);
+  const stopped = await store.startTurn(thread.id, 'two', 5);
+  await store.appendBlock(
+    thread.id,
+    stopped.turnId,
+    { type: 'subagent', blockId: 's1', state: { id: 's1', name: 'Audit', status: 'running' } },
+    6,
+  );
+  await store.abortTurn(thread.id, stopped.turnId, 7);
+
+  const blocksOf = async (turnId: string) =>
+    (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant')?.blocks;
+  assert.deepEqual(await blocksOf(completed.turnId), [
+    { type: 'tool', toolName: 'Read', blockId: 't1', isError: false },
+  ]);
+  assert.deepEqual(await blocksOf(stopped.turnId), [
+    { type: 'subagent', blockId: 's1', state: { id: 's1', name: 'Audit', status: 'error' } },
+  ]);
+  await rmrf(baseDir);
+});

@@ -33,6 +33,7 @@ import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { provisionalTitle } from '../agents/thread-title.js';
 import { SyncLedger } from '../sync/sync-ledger.js';
+import { blockIdOf, isRunning, settleBlock } from '../adapters/content-blocks.js';
 import { utcDayKey } from '../metrics/day.js';
 import type { ConversationMetricEvent, TurnMetricEvent } from '../metrics/metrics-store.js';
 
@@ -877,6 +878,22 @@ export class ThreadStore {
     return this.#mutateThread(threadId, async (threads) => {
       if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
+      // A step that settles replaces the running one it started as, in place
+      // (`LiveBlock`, shared/src/models/tool.ts).
+      const blockId = blockIdOf(content);
+      if (blockId !== undefined) {
+        const same = (b: unknown) => blockIdOf(b) === blockId;
+        const blocks = assistant.blocks ?? [];
+        const segments = assistant.segments ?? [];
+        const inBlocks = blocks.findIndex(same);
+        const inSegments = segments.findIndex(same);
+        if (inBlocks >= 0 || inSegments >= 0) {
+          if (inBlocks >= 0) blocks[inBlocks] = content;
+          if (inSegments >= 0) segments[inSegments] = content;
+          this.#touch(threads, threadId, now);
+          return;
+        }
+      }
       assistant.blocks = [...(assistant.blocks ?? []), content];
       const segments = (assistant.segments ??= []);
       const last = segments[segments.length - 1];
@@ -924,6 +941,7 @@ export class ThreadStore {
       }
       turn.status = 'completed';
       turn.completedAt = now;
+      settleRunningSteps(turn, true);
       this.#touch(threads, threadId, now);
       this.#bumpId(threads, threadId);
     });
@@ -963,7 +981,10 @@ export class ThreadStore {
       // Only a terminal status stamps `completedAt`. `beginQueuedTurn` moves a
       // turn from `queued` to `streaming` — it is starting, not ending, and
       // stamping it there would date a live turn as finished.
-      if (TERMINAL_TURN_STATUSES.has(status)) turn.completedAt = now;
+      if (TERMINAL_TURN_STATUSES.has(status)) {
+        turn.completedAt = now;
+        settleRunningSteps(turn, false);
+      }
       this.#touch(threads, threadId, now);
       this.#bumpId(threads, threadId);
     });
@@ -1528,4 +1549,18 @@ function reconcileAssistantWithFinalText(assistant: StoredMessage, finalText: st
   const segments = (assistant.segments ??= [{ type: 'text', text: streamed }]);
   segments.push(boundary, { type: 'text', text: finalText });
   assistant.text = streamed + finalText;
+}
+
+/**
+ * Closes the steps a turn left running when it ended (`LiveBlock`): a turn
+ * that ended is never still working. As finished on a completed turn, as
+ * failed on one that failed or was stopped.
+ */
+function settleRunningSteps(turn: StoredTurn, ok: boolean): void {
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  if (!assistant) return;
+  const settle = (list: unknown[] | undefined) =>
+    list?.map((b) => (isRunning(b) ? settleBlock(b as Record<string, unknown>, ok) : b));
+  if (assistant.blocks) assistant.blocks = settle(assistant.blocks)!;
+  if (assistant.segments) assistant.segments = settle(assistant.segments)!;
 }

@@ -57,6 +57,8 @@ interface SessionState {
   reasoningTexts: Map<string, string>;
   /** Tool part ids already reported (a part updates many times). */
   emittedTools: Set<string>;
+  /** Tool parts already announced as running. */
+  startedTools: Set<string>;
 }
 
 /** Turns V1 bus events into neutral {@link OpenCodeEvent}s. Pure but stateful. */
@@ -124,6 +126,7 @@ export class OpenCodeV1Translator {
         partTexts: new Map(),
         reasoningTexts: new Map(),
         emittedTools: new Set(),
+        startedTools: new Set(),
       };
       this.#sessions.set(sessionId, state);
     }
@@ -197,6 +200,11 @@ export class OpenCodeV1Translator {
         if (isPlanTool(name)) return [];
         const toolState = isRecord(part['state']) ? part['state'] : {};
         const status = str(toolState['status']);
+        const input = isRecord(toolState['input']) ? toolState['input'] : {};
+        if (status === 'running' && !state.startedTools.has(id)) {
+          state.startedTools.add(id);
+          return [{ kind: 'tool_started', sessionId, id, name, input }];
+        }
         if ((status !== 'completed' && status !== 'error') || state.emittedTools.has(id)) return [];
         state.emittedTools.add(id);
         return [
