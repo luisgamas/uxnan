@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
+import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/managers/bridge_replica.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart'
     show FileBrowserManager;
 import 'package:uxnan/application/managers/git_action_manager.dart';
+import 'package:uxnan/application/managers/phone_name_manager.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
-import 'package:uxnan/application/managers/thread_action_outbox.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
@@ -23,6 +24,7 @@ import 'package:uxnan/domain/entities/bridge_status.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
 import 'package:uxnan/domain/entities/git/git_action_log_entry.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
+import 'package:uxnan/domain/entities/paired_phone.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -44,6 +46,7 @@ import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
 import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
+import 'package:uxnan/domain/value_objects/phone_details.dart';
 import 'package:uxnan/domain/value_objects/profile_avatar.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
@@ -720,10 +723,10 @@ final gitStatusBusProvider = Provider<GitStatusBus>((ref) {
   return bus;
 });
 
-/// Conversation actions taken while their PC was out of reach, waiting to be
-/// sent to it (architecture/02a §5.8.17).
-final threadActionOutboxProvider = Provider<ThreadActionOutbox>(
-  (ref) => ThreadActionOutbox(
+/// Actions taken while their PC was out of reach, waiting to be sent to it
+/// (architecture/02a §5.8.17).
+final actionOutboxProvider = Provider<ActionOutbox>(
+  (ref) => ActionOutbox(
     repository: ref.watch(bridgeReplicaRepositoryProvider),
   ),
 );
@@ -747,11 +750,30 @@ final threadManagerProvider = Provider<ThreadManager>((ref) {
     currentDeviceId: () => ref.read(connectedDeviceProvider).value?.macDeviceId,
     // Renames, archives and deletes made while the PC is out of reach wait
     // here, and the replica sends them first when it is back.
-    outbox: ref.watch(threadActionOutboxProvider),
+    outbox: ref.watch(actionOutboxProvider),
   );
   ref.onDispose(manager.dispose);
   return manager;
 });
+
+/// This phone's name, the same on every PC it is paired to.
+final phoneNameManagerProvider = Provider<PhoneNameManager>((ref) {
+  final manager = PhoneNameManager(
+    repository: ref.watch(phoneProfileRepositoryProvider),
+  );
+  ref.onDispose(manager.dispose);
+  return manager;
+});
+
+/// What this phone is (its default name, model, platform and versions).
+final phoneDetailsProvider = FutureProvider<PhoneDetails>(
+  (ref) => ref.watch(phoneNameManagerProvider).details(),
+);
+
+/// The name this phone goes by (`null` until it is known).
+final phoneNameProvider = StreamProvider<String?>(
+  (ref) => ref.watch(phoneNameManagerProvider).nameStream,
+);
 
 /// This phone's copy of the connected PC's bridge — its conversations,
 /// projects, start folder and who is connected — kept converged by revision
@@ -766,11 +788,18 @@ final bridgeReplicaProvider = Provider<BridgeReplica>((ref) {
     domainEvents: processor.bind(coordinator.incomingMessages),
     connectionPhases: coordinator.connectionPhaseStream,
     currentDeviceId: () => ref.read(connectedDeviceProvider).value?.macDeviceId,
-    outbox: ref.watch(threadActionOutboxProvider),
+    outbox: ref.watch(actionOutboxProvider),
+    phoneName: ref.watch(phoneNameManagerProvider),
+    pcs: ref.watch(trustedDeviceRepositoryProvider),
   );
   ref.onDispose(replica.dispose);
   return replica;
 });
+
+/// The phones paired to the connected PC (this one among them).
+final pairedPhonesProvider = StreamProvider<List<PairedPhone>>(
+  (ref) => ref.watch(bridgeReplicaProvider).devicesStream,
+);
 
 /// Who is connected to the connected PC's bridge right now.
 final bridgePresenceProvider = StreamProvider<List<ClientPresence>>(

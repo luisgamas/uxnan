@@ -6,10 +6,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 ### Added
+- **This phone has a name on every PC, and the PCs have names too.** On
+  connecting, the phone describes itself (`device/describe`): its name — the
+  one set in the system settings on Android, the model on iOS, until its owner
+  names it — model, OS and app version (`device_info_plus`). "My devices" opens
+  with a **This phone** card to rename it; the connected PC hears it at once,
+  the others the next time the phone connects to them, and a name given to it
+  on Uxnan Desktop is adopted here and carried to the other PCs
+  (`PhoneNameManager`; the latest decision wins). Renaming a PC now renames it
+  for every client (`settings/set { name }`), and a name given to it elsewhere
+  shows here. The replica keeps the PC's phones (`sync/changes.devices`,
+  `stream/devices/updated`).
 - **What you do offline is never lost.** Renaming, archiving, unarchiving or
-  deleting a conversation while its PC is out of reach (no connection, or
-  another PC connected) shows here at once and waits in a persistent outbox
-  (`ThreadActionOutbox`, drift schema v8: `pending_thread_actions`; a newer
+  deleting a conversation, or renaming a PC, while that PC is out of reach (no
+  connection, or another PC connected) shows here at once and waits in a
+  persistent outbox (`ActionOutbox`; drift schema v9: `pending_actions`, which
+  takes over v8's conversation-only table and what was waiting in it; a newer
   action replaces the ones it makes moot). When the PC is back, the replica
   sends it **before** reading `sync/changes` — and reads nothing if it could not,
   so no snapshot undoes an action the bridge has not heard — each action with

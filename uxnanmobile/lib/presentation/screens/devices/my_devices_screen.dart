@@ -66,9 +66,9 @@ class MyDevicesScreen extends ConsumerWidget {
   ) async {
     final name = await _DeviceNameDialog.show(context, device.displayName);
     if (name == null || name.isEmpty) return;
-    await ref
-        .read(trustedDeviceRepositoryProvider)
-        .saveDevice(device.copyWith(displayName: name));
+    // The PC's name is shared: every client shows the new one (now, or once
+    // this PC is reachable again — the latest rename wins).
+    await ref.read(bridgeReplicaProvider).renamePc(device.macDeviceId, name);
   }
 
   Future<void> _remove(
@@ -207,6 +207,7 @@ class MyDevicesScreen extends ConsumerWidget {
           )
         else ...[
           const SliverToBoxAdapter(child: _OverviewHeadline()),
+          const SliverToBoxAdapter(child: _ThisPhoneCard()),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
               UxnanSpacing.lg,
@@ -748,14 +749,100 @@ class _RevealableAddressState extends State<_RevealableAddress> {
   }
 }
 
-class _DeviceNameDialog extends StatefulWidget {
-  const _DeviceNameDialog({required this.initial});
-  final String initial;
+/// This phone, as its PCs see it: the name every paired PC shows for it (the
+/// same on all of them), and what it is. Renaming here reaches the connected
+/// PC now and the others the next time the phone connects to them.
+class _ThisPhoneCard extends ConsumerWidget {
+  const _ThisPhoneCard();
 
-  static Future<String?> show(BuildContext context, String initial) {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final name = ref.watch(phoneNameProvider).value;
+    final details = ref.watch(phoneDetailsProvider).value;
+    final shown = name ?? details?.defaultName;
+    if (shown == null) return const SizedBox.shrink();
+    final about = [
+      if (details?.model case final String model when model != shown) model,
+      if (details?.osVersion case final String os)
+        if (details?.platform == 'ios') 'iOS $os' else 'Android $os',
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        0,
+        UxnanSpacing.lg,
+        UxnanSpacing.md,
+      ),
+      child: NeCard(
+        child: Row(
+          children: [
+            UxIcon(UxIcons.smartphone, color: colors.primary),
+            const SizedBox(width: UxnanSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.thisPhoneLabel,
+                    style: textTheme.labelMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    shown,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleSmall,
+                  ),
+                  if (about.isNotEmpty)
+                    Text(
+                      about,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: l10n.thisPhoneRename,
+              icon: const UxIcon(UxIcons.edit, size: 20),
+              color: colors.onSurfaceVariant,
+              onPressed: () async {
+                final next = await _DeviceNameDialog.show(
+                  context,
+                  shown,
+                  title: l10n.thisPhoneRename,
+                );
+                if (next == null || next.isEmpty) return;
+                await ref.read(bridgeReplicaProvider).renameThisPhone(next);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeviceNameDialog extends StatefulWidget {
+  const _DeviceNameDialog({required this.initial, this.title});
+  final String initial;
+  final String? title;
+
+  static Future<String?> show(
+    BuildContext context,
+    String initial, {
+    String? title,
+  }) {
     return showDialog<String>(
       context: context,
-      builder: (_) => _DeviceNameDialog(initial: initial),
+      builder: (_) => _DeviceNameDialog(initial: initial, title: title),
     );
   }
 
@@ -777,7 +864,7 @@ class _DeviceNameDialogState extends State<_DeviceNameDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: Text(l10n.deviceNameTitle),
+      title: Text(widget.title ?? l10n.deviceNameTitle),
       content: TextField(
         controller: _controller,
         autofocus: true,

@@ -342,13 +342,17 @@ and composed in `application_providers.dart`. The important ones:
    the bridge reports reaches the store — so no second writer can disagree
    with it. Messages sort by the bridge's `Turn.seq`
    (`orderIndex = seq * 1000`, the prompt before its reply).
-   What the user does to a conversation while its PC is out of reach — rename,
-   archive, unarchive, delete — shows at once and waits in
-   `ThreadActionOutbox` (`pending_thread_actions`). The replica sends it
+   What the user does while a PC is out of reach — renaming, archiving,
+   unarchiving or deleting a conversation, renaming the PC — shows at once and
+   waits in `ActionOutbox` (`pending_actions`). The replica sends it
    **first** when that PC is back, each action with `ageMs` (how long ago it
    was decided, so the two clocks never have to agree), and reads nothing if
    it could not: the bridge applies an action only if nothing decided the same
    thing later elsewhere — the latest one wins.
+   Names are shared too: the PC's (`settings.name`, adopted into the paired
+   PC's record here) and each phone's. On connecting, `PhoneNameManager`
+   describes this phone (`device/describe`) with its name and how long ago it
+   was chosen, and adopts a name given to it on another client later.
 4. `ThreadManager` applies streaming events to a `TurnTimelineSnapshot` (via a
    reducer), persists finalized messages to drift, and exposes the timeline as a
    `BehaviorSubject` stream. A completion re-reads the authoritative turn and

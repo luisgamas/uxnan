@@ -3,7 +3,7 @@ import 'dart:math';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
-import 'package:uxnan/application/managers/thread_action_outbox.dart';
+import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
@@ -27,7 +27,7 @@ import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
-import 'package:uxnan/domain/value_objects/pending_thread_action.dart';
+import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
@@ -55,7 +55,7 @@ class ThreadManager {
     Stream<ConnectionPhase>? connectionPhases,
     String? Function()? foregroundThreadId,
     String? Function()? currentDeviceId,
-    ThreadActionOutbox? outbox,
+    ActionOutbox? outbox,
     Uuid? uuid,
     Duration resyncTimeout = const Duration(seconds: 8),
     Duration externalSyncInterval = const Duration(seconds: 3),
@@ -105,7 +105,7 @@ class ThreadManager {
 
   /// Where a conversation action waits while its PC is out of reach; `null`
   /// sends every action right away, best-effort.
-  final ThreadActionOutbox? _outbox;
+  final ActionOutbox? _outbox;
 
   final Uuid _uuid;
 
@@ -432,7 +432,7 @@ class ThreadManager {
     }
     await _deliver(
       threadId,
-      PendingThreadActionKind.rename,
+      PendingActionKind.renameThread,
       deviceId: thread?.deviceId,
       title: trimmed,
     );
@@ -446,7 +446,7 @@ class ThreadManager {
     await _forgetThread(threadId);
     await _deliver(
       threadId,
-      PendingThreadActionKind.delete,
+      PendingActionKind.deleteThread,
       deviceId: deviceId,
     );
   }
@@ -455,46 +455,34 @@ class ThreadManager {
   ///
   /// Sent right away while that PC is the one connected. Otherwise — another
   /// PC is connected, none is, or the request is lost on the way — it waits in
-  /// the [ThreadActionOutbox] and is sent, dated, when the PC is reachable
-  /// again; the bridge applies it only if nothing decided the same thing
-  /// later elsewhere (architecture/02a §5.8.17). An action the bridge refuses
-  /// is not kept: there is nothing to retry.
+  /// the [ActionOutbox] and is sent, dated, when the PC is reachable again; the
+  /// bridge applies it only if nothing decided the same thing later elsewhere
+  /// (architecture/02a §5.8.17). An action the bridge refuses is not kept.
   Future<void> _deliver(
     String threadId,
-    PendingThreadActionKind kind, {
+    PendingActionKind kind, {
     String? deviceId,
     String? title,
   }) async {
-    final action = PendingThreadAction(
-      deviceId: deviceId ?? _currentDeviceId?.call() ?? '',
-      threadId: threadId,
-      kind: kind,
-      title: title,
-      decidedAt: DateTime.now(),
-    );
+    final pc = deviceId ?? _currentDeviceId?.call() ?? '';
     final outbox = _outbox;
-    final canKeep = outbox != null && action.deviceId.isNotEmpty;
-    if (!canKeep || _reaches(action.deviceId)) {
-      try {
-        final response = await _sendRequest(kind.method, action.params());
-        if (response.error case final RpcError refused) {
-          AppLogger.warn('${kind.method} refused', refused);
-        }
-        return;
-      } on RpcError catch (error, stackTrace) {
-        AppLogger.warn('${kind.method} refused', error, stackTrace);
-        return;
-      } on Object catch (error, stackTrace) {
-        AppLogger.warn('${kind.method} did not arrive', error, stackTrace);
-        if (!canKeep) return;
-      }
-    }
-    await outbox.keep(
-      deviceId: action.deviceId,
-      threadId: threadId,
+    final action = PendingAction(
+      deviceId: pc,
       kind: kind,
-      title: title,
+      targetId: threadId,
+      value: title,
+      decidedAt: outbox?.now() ?? DateTime.now(),
     );
+    if (outbox == null || pc.isEmpty) {
+      // Nowhere to keep it: best-effort, now.
+      try {
+        await _sendRequest(kind.method, action.params());
+      } on Object catch (error, stackTrace) {
+        AppLogger.warn('${kind.method} failed', error, stackTrace);
+      }
+      return;
+    }
+    await outbox.deliver(action, _sendRequest, reachable: _reaches(pc));
   }
 
   /// Whether the PC [deviceId] is the one this app is connected to now.
@@ -661,8 +649,8 @@ class ThreadManager {
     await _deliver(
       threadId,
       archived
-          ? PendingThreadActionKind.archive
-          : PendingThreadActionKind.unarchive,
+          ? PendingActionKind.archiveThread
+          : PendingActionKind.unarchiveThread,
       deviceId: thread?.deviceId,
     );
   }
@@ -2096,6 +2084,8 @@ class ThreadManager {
             ProjectRemovedEvent() ||
             SettingsUpdatedEvent() ||
             PresenceUpdatedEvent() ||
+            DevicesUpdatedEvent() ||
+            DevicesUpdatedEvent() ||
             AgentsUpdatedEvent() ||
             UnknownDomainEvent():
         break;
@@ -2621,6 +2611,7 @@ class ThreadManager {
         ProjectRemovedEvent() ||
         SettingsUpdatedEvent() ||
         PresenceUpdatedEvent() ||
+        DevicesUpdatedEvent() ||
         AgentsUpdatedEvent() ||
         UnknownDomainEvent() =>
           null,

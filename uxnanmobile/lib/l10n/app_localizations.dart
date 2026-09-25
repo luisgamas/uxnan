@@ -1340,6 +1340,18 @@ abstract class AppLocalizations {
   /// **'Device name'**
   String get deviceNameTitle;
 
+  /// No description provided for @thisPhoneLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone'**
+  String get thisPhoneLabel;
+
+  /// No description provided for @thisPhoneRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Name this phone'**
+  String get thisPhoneRename;
+
   /// No description provided for @deviceNameHint.
   ///
   /// In en, this message translates to:

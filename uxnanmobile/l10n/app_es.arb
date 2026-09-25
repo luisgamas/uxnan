@@ -275,6 +275,8 @@
   "deviceVerifyOk": "El bridge responde.",
   "deviceVerifyFailed": "El bridge no respondió. Reconectando…",
   "deviceNameTitle": "Nombre del dispositivo",
+  "thisPhoneLabel": "Este teléfono",
+  "thisPhoneRename": "Nombrar este teléfono",
   "deviceNameHint": "p. ej. MacBook del trabajo",
   "deviceRemove": "Eliminar dispositivo",
   "deviceRemoveTitle": "¿Eliminar {device}?",

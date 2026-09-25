@@ -23,6 +23,7 @@ dependencies:
   cryptography: ^2.9.0 # X25519, Ed25519, HKDF
   cryptography_flutter: ^2.3.4 # native crypto acceleration
   cupertino_icons: ^1.0.8
+  device_info_plus: ^12.4.0 # the phone's own name and model (device/describe)
   dio: ^5.4.0 # HTTP client for relay REST endpoints
   drift: ^2.18.0 # SQLite ORM (local persistence)
   drift_flutter: ^0.2.0 # drift Flutter integration

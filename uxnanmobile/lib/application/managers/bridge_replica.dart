@@ -1,15 +1,19 @@
 import 'dart:async';
 
 import 'package:rxdart/rxdart.dart';
-import 'package:uxnan/application/managers/thread_action_outbox.dart';
+import 'package:uxnan/application/managers/action_outbox.dart';
+import 'package:uxnan/application/managers/phone_name_manager.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
+import 'package:uxnan/domain/entities/paired_phone.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/repositories/i_bridge_replica_repository.dart';
+import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/value_objects/client_presence.dart';
+import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/replica_cursor.dart';
 
 /// This phone's copy of what the connected PC's bridge shares — its
@@ -26,7 +30,7 @@ import 'package:uxnan/domain/value_objects/replica_cursor.dart';
 ///   (something was missed in between).
 ///
 /// Before reading, it sends what the user did here while that PC was out of
-/// reach ([ThreadActionOutbox]), each action dated so the latest one wins.
+/// reach ([ActionOutbox]), each action dated so the latest one wins.
 ///
 /// So a conversation or a project started on Uxnan Desktop while the phone was
 /// asleep, or before it was ever paired, is here when it connects — the
@@ -42,8 +46,12 @@ class BridgeReplica {
     required Stream<DomainEvent> domainEvents,
     required String? Function() currentDeviceId,
     Stream<ConnectionPhase>? connectionPhases,
-    ThreadActionOutbox? outbox,
+    ActionOutbox? outbox,
+    PhoneNameManager? phoneName,
+    ITrustedDeviceRepository? pcs,
   })  : _repository = repository,
+        _phoneName = phoneName,
+        _pcs = pcs,
         _threads = threadManager,
         _sendRequest = sendRequest,
         _currentDeviceId = currentDeviceId,
@@ -56,7 +64,9 @@ class BridgeReplica {
   final ThreadManager _threads;
   final RpcSend _sendRequest;
   final String? Function() _currentDeviceId;
-  final ThreadActionOutbox? _outbox;
+  final ActionOutbox? _outbox;
+  final PhoneNameManager? _phoneName;
+  final ITrustedDeviceRepository? _pcs;
   late final StreamSubscription<DomainEvent> _eventsSub;
   StreamSubscription<ConnectionPhase>? _phaseSub;
 
@@ -64,6 +74,8 @@ class BridgeReplica {
       BehaviorSubject.seeded(const []);
   final BehaviorSubject<String?> _home = BehaviorSubject.seeded(null);
   final PublishSubject<void> _agentsChanged = PublishSubject<void>();
+  final BehaviorSubject<List<PairedPhone>> _devices =
+      BehaviorSubject.seeded(const []);
 
   /// The cursor of the connected PC, as last applied (in memory).
   ReplicaCursor? _cursor;
@@ -78,6 +90,9 @@ class BridgeReplica {
 
   /// The PC's shared start folder, when known.
   Stream<String?> get homeStream => _home.stream;
+
+  /// The phones paired to the connected PC — this one among them.
+  Stream<List<PairedPhone>> get devicesStream => _devices.stream;
 
   /// Fires when the PC's installed agents changed (re-read `agent/list`).
   Stream<void> get agentsChanged => _agentsChanged.stream;
@@ -135,6 +150,9 @@ class BridgeReplica {
         final result = response.result;
         if (result is! Map) continue;
         await _apply(deviceId, result.cast<String, dynamic>());
+        // Then say what this phone is called — and adopt a name given to it
+        // on another client since.
+        await _phoneName?.describe(_sendRequest);
       } on Object catch (error, stackTrace) {
         AppLogger.warn('sync/changes failed', error, stackTrace);
       }
@@ -170,6 +188,10 @@ class BridgeReplica {
       _ => null,
     };
     _home.add(home);
+    if (settings case {'name': final String name}) {
+      await _adoptPcName(deviceId, name);
+    }
+    _applyDevices(changes['devices']);
     _presence.add(ClientPresence.listFromJson(changes['clients']));
     final storeId = changes['storeId'];
     final rev = changes['rev'];
@@ -257,9 +279,10 @@ class BridgeReplica {
             return _repository.deleteProjects(deviceId, [projectId]);
           }),
         );
-      case SettingsUpdatedEvent(:final home, :final rev):
+      case SettingsUpdatedEvent(:final home, :final name, :final rev):
         unawaited(
           _whenAdmitted(deviceId, rev, () async {
+            if (name != null) await _adoptPcName(deviceId, name);
             _home.add(home);
             final cursor = _cursor;
             if (cursor != null) {
@@ -269,6 +292,8 @@ class BridgeReplica {
         );
       case PresenceUpdatedEvent(:final clients):
         _presence.add(ClientPresence.listFromJson(clients));
+      case DevicesUpdatedEvent(:final devices):
+        _applyDevices(devices);
       case AgentsUpdatedEvent():
         _agentsChanged.add(null);
       default:
@@ -340,6 +365,61 @@ class BridgeReplica {
     }
   }
 
+  /// Renames the PC [deviceId] for every client (`settings/set { name }`):
+  /// shown here at once, and sent now — or, while that PC is out of reach,
+  /// kept and sent dated when it is back (the latest rename wins).
+  Future<void> renamePc(String deviceId, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    await _adoptPcName(deviceId, trimmed);
+    final action = PendingAction(
+      deviceId: deviceId,
+      kind: PendingActionKind.renamePc,
+      targetId: deviceId,
+      value: trimmed,
+      decidedAt: _outbox?.now() ?? DateTime.now(),
+    );
+    final reachable =
+        _phase == ConnectionPhase.connected && _currentDeviceId() == deviceId;
+    final outbox = _outbox;
+    if (outbox == null) {
+      if (reachable) await _sendRequest(action.kind.method, action.params());
+      return;
+    }
+    await outbox.deliver(action, _sendRequest, reachable: reachable);
+  }
+
+  /// Renames this phone on every PC it is paired to: the connected one hears
+  /// it now, the others the next time the phone connects to them.
+  Future<void> renameThisPhone(String name) async {
+    final phoneName = _phoneName;
+    if (phoneName == null) return;
+    await phoneName.rename(name);
+    if (_phase == ConnectionPhase.connected && _currentDeviceId() != null) {
+      await phoneName.describe(_sendRequest);
+    }
+  }
+
+  /// Stores [name] as what this phone shows for the PC [deviceId].
+  Future<void> _adoptPcName(String deviceId, String name) async {
+    final pcs = _pcs;
+    if (pcs == null || name.isEmpty) return;
+    final pc = await pcs.getDevice(deviceId);
+    if (pc == null || pc.displayName == name) return;
+    await pcs.saveDevice(pc.copyWith(displayName: name));
+  }
+
+  void _applyDevices(Object? json) {
+    final phones = PairedPhone.listFromJson(json);
+    _devices.add(phones);
+    // Renamed on another client: describe again, which settles on the latest
+    // name and adopts it here.
+    final phoneName = _phoneName;
+    if (phoneName != null && phoneName.isRenamedIn(phones)) {
+      unawaited(phoneName.describe(_sendRequest));
+    }
+  }
+
   /// Forgets everything kept for [deviceId] (the PC was removed).
   Future<void> forgetDevice(String deviceId) async {
     await _repository.forgetDevice(deviceId);
@@ -360,6 +440,7 @@ class BridgeReplica {
     _disposed = true;
     await _eventsSub.cancel();
     await _phaseSub?.cancel();
+    await _devices.close();
     await _presence.close();
     await _home.close();
     await _agentsChanged.close();

@@ -32,11 +32,14 @@ connected to live bridge data, validated on-device against a real bridge.
   desktop-origin mark tell the two setups apart. Another client's prompt is
   placed above its answer (`stream/turn/created` + `clientTurnId`), and a card
   answered elsewhere settles here (`stream/approval|question/resolved`).
-  A rename, archive, unarchive or delete made while the PC is out of reach
-  waits in `ThreadActionOutbox` and is sent, dated (`ageMs`), before the next
-  sync — the latest action wins, whichever device took it.
-  Covered by `bridge_replica_test`, `thread_manager_test`,
-  `thread_action_outbox_test`, `thread_manager_outbox_test`,
+  A rename, archive, unarchive or delete — or a PC rename — made while the PC
+  is out of reach waits in `ActionOutbox` and is sent, dated (`ageMs`), before
+  the next sync; the latest action wins, whichever device took it. The phone
+  describes itself on connecting (`device/describe`) and keeps one name on
+  every PC (`PhoneNameManager`, "This phone" card in My devices).
+  Covered by `bridge_replica_test`, `bridge_replica_names_test`,
+  `thread_manager_test`, `action_outbox_test`, `thread_manager_outbox_test`,
+  `phone_name_manager_test`,
   `incoming_message_processor_test`, `workspace_grouping_test`,
   `threads_list_test` and `new_conversation_card_test`, and by the bridge's
   own end-to-end tests. **Not yet device-verified against a running desktop** —

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uxnan/application/managers/thread_action_outbox.dart';
+import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
@@ -48,7 +48,7 @@ void main() {
       domainEvents: events.stream,
       connectionPhases: phases.stream,
       currentDeviceId: () => connectedPc,
-      outbox: ThreadActionOutbox(repository: replica),
+      outbox: ActionOutbox(repository: replica),
       sendRequest: (method, [params]) async {
         sent.add(method);
         return answer(method);
@@ -76,8 +76,8 @@ void main() {
   });
 
   Future<List<String>> waiting(String pc) async => [
-        for (final a in await replica.pendingThreadActions(pc))
-          '${a.threadId}:${a.kind.name}',
+        for (final a in await replica.pendingActions(pc))
+          '${a.targetId}:${a.kind.name}',
       ];
 
   test('goes right away to the connected PC', () async {
@@ -93,7 +93,7 @@ void main() {
     await manager.archiveThread('t1');
 
     expect(sent, isEmpty);
-    expect(await waiting('pc-1'), ['t1:rename', 't1:archive']);
+    expect(await waiting('pc-1'), ['t1:renameThread', 't1:archiveThread']);
     final stored = await threads.getThread('t1');
     expect(stored?.title, 'Offline name');
     expect(stored?.status, ThreadStatus.archived);
@@ -103,20 +103,20 @@ void main() {
       () async {
     await manager.deleteThread('t2');
     expect(sent, isEmpty);
-    expect(await waiting('pc-2'), ['t2:delete']);
+    expect(await waiting('pc-2'), ['t2:deleteThread']);
     expect(await threads.getThread('t2'), isNull);
   });
 
   test('one lost on the way waits; one the bridge refuses does not', () async {
     answer = (_) => throw TimeoutException('lost');
     await manager.unarchiveThread('t1');
-    expect(await waiting('pc-1'), ['t1:unarchive']);
+    expect(await waiting('pc-1'), ['t1:unarchiveThread']);
 
     answer = (_) => const RpcMessage(
           id: '1',
           error: RpcError(code: -32008, message: 'thread not found'),
         );
     await manager.renameThread('t1', 'Named');
-    expect(await waiting('pc-1'), ['t1:unarchive']);
+    expect(await waiting('pc-1'), ['t1:unarchiveThread']);
   });
 }

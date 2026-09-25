@@ -9,6 +9,7 @@ import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_metrics_repository.dart';
+import 'package:uxnan/domain/repositories/i_phone_profile_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
@@ -23,6 +24,7 @@ import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repositor
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_metrics_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
+import 'package:uxnan/infrastructure/repositories/phone_profile_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/infrastructure/storage/appearance_preferences_store.dart';
@@ -252,4 +254,10 @@ final trustedDeviceRepositoryProvider = Provider<ITrustedDeviceRepository>(
     ref.watch(databaseProvider),
     ref.watch(secureStoreProvider),
   ),
+);
+
+/// This phone's own profile: what it is and the name its owner chose
+/// (architecture/02a §5.8.17).
+final phoneProfileRepositoryProvider = Provider<IPhoneProfileRepository>(
+  (ref) => PhoneProfileRepository(),
 );

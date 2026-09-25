@@ -319,16 +319,19 @@ class ProjectRemovedEvent extends DomainEvent {
 /// The PC's shared settings changed (`stream/settings/updated`).
 class SettingsUpdatedEvent extends DomainEvent {
   /// Creates a [SettingsUpdatedEvent].
-  const SettingsUpdatedEvent({this.home, this.rev});
+  const SettingsUpdatedEvent({this.home, this.name, this.rev});
 
   /// The start folder new projects are explored from.
   final String? home;
+
+  /// What every client calls the PC.
+  final String? name;
 
   /// Sync revision of the change.
   final int? rev;
 
   @override
-  List<Object?> get props => [home, rev];
+  List<Object?> get props => [home, name, rev];
 }
 
 /// Who is connected to the PC's bridge changed (`stream/presence/updated`):
@@ -342,6 +345,19 @@ class PresenceUpdatedEvent extends DomainEvent {
 
   @override
   List<Object?> get props => [clients];
+}
+
+/// A phone was paired to the PC, described, renamed or removed
+/// (`stream/devices/updated`): the whole list, so applying it is idempotent.
+class DevicesUpdatedEvent extends DomainEvent {
+  /// Creates a [DevicesUpdatedEvent].
+  const DevicesUpdatedEvent({required this.devices});
+
+  /// The wire `TrustedDevice` entries.
+  final List<Object?> devices;
+
+  @override
+  List<Object?> get props => [devices];
 }
 
 /// An agent CLI appeared or disappeared on the PC (`stream/agents/updated`).

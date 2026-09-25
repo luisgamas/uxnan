@@ -3973,12 +3973,12 @@ class ReplicaCursorsTableCompanion extends UpdateCompanion<ReplicaCursorRow> {
   }
 }
 
-class $PendingThreadActionsTableTable extends PendingThreadActionsTable
-    with TableInfo<$PendingThreadActionsTableTable, PendingThreadActionRow> {
+class $PendingActionsTableTable extends PendingActionsTable
+    with TableInfo<$PendingActionsTableTable, PendingActionRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $PendingThreadActionsTableTable(this.attachedDatabase, [this._alias]);
+  $PendingActionsTableTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<int> id = GeneratedColumn<int>(
@@ -3994,21 +3994,21 @@ class $PendingThreadActionsTableTable extends PendingThreadActionsTable
   late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
       'device_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _threadIdMeta =
-      const VerificationMeta('threadId');
-  @override
-  late final GeneratedColumn<String> threadId = GeneratedColumn<String>(
-      'thread_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _kindMeta = const VerificationMeta('kind');
   @override
   late final GeneratedColumn<String> kind = GeneratedColumn<String>(
       'kind', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  static const VerificationMeta _targetIdMeta =
+      const VerificationMeta('targetId');
   @override
-  late final GeneratedColumn<String> title = GeneratedColumn<String>(
-      'title', aliasedName, true,
+  late final GeneratedColumn<String> targetId = GeneratedColumn<String>(
+      'target_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+      'value', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _decidedAtMeta =
       const VerificationMeta('decidedAt');
@@ -4018,15 +4018,14 @@ class $PendingThreadActionsTableTable extends PendingThreadActionsTable
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, deviceId, threadId, kind, title, decidedAt];
+      [id, deviceId, kind, targetId, value, decidedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'pending_thread_actions_table';
+  static const String $name = 'pending_actions_table';
   @override
-  VerificationContext validateIntegrity(
-      Insertable<PendingThreadActionRow> instance,
+  VerificationContext validateIntegrity(Insertable<PendingActionRow> instance,
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
@@ -4039,21 +4038,21 @@ class $PendingThreadActionsTableTable extends PendingThreadActionsTable
     } else if (isInserting) {
       context.missing(_deviceIdMeta);
     }
-    if (data.containsKey('thread_id')) {
-      context.handle(_threadIdMeta,
-          threadId.isAcceptableOrUnknown(data['thread_id']!, _threadIdMeta));
-    } else if (isInserting) {
-      context.missing(_threadIdMeta);
-    }
     if (data.containsKey('kind')) {
       context.handle(
           _kindMeta, kind.isAcceptableOrUnknown(data['kind']!, _kindMeta));
     } else if (isInserting) {
       context.missing(_kindMeta);
     }
-    if (data.containsKey('title')) {
+    if (data.containsKey('target_id')) {
+      context.handle(_targetIdMeta,
+          targetId.isAcceptableOrUnknown(data['target_id']!, _targetIdMeta));
+    } else if (isInserting) {
+      context.missing(_targetIdMeta);
+    }
+    if (data.containsKey('value')) {
       context.handle(
-          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+          _valueMeta, value.isAcceptableOrUnknown(data['value']!, _valueMeta));
     }
     if (data.containsKey('decided_at')) {
       context.handle(_decidedAtMeta,
@@ -4067,91 +4066,91 @@ class $PendingThreadActionsTableTable extends PendingThreadActionsTable
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  PendingThreadActionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+  PendingActionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return PendingThreadActionRow(
+    return PendingActionRow(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
       deviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
-      threadId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}thread_id'])!,
       kind: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}kind'])!,
-      title: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}title']),
+      targetId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}target_id'])!,
+      value: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}value']),
       decidedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}decided_at'])!,
     );
   }
 
   @override
-  $PendingThreadActionsTableTable createAlias(String alias) {
-    return $PendingThreadActionsTableTable(attachedDatabase, alias);
+  $PendingActionsTableTable createAlias(String alias) {
+    return $PendingActionsTableTable(attachedDatabase, alias);
   }
 }
 
-class PendingThreadActionRow extends DataClass
-    implements Insertable<PendingThreadActionRow> {
+class PendingActionRow extends DataClass
+    implements Insertable<PendingActionRow> {
   /// Insertion order.
   final int id;
 
-  /// `macDeviceId` of the conversation's PC.
+  /// `macDeviceId` of the PC.
   final String deviceId;
 
-  /// The conversation.
-  final String threadId;
-
-  /// `PendingThreadActionKind.name`.
+  /// `PendingActionKind.name`.
   final String kind;
 
-  /// The new title, for a rename.
-  final String? title;
+  /// What it was done to: a conversation id, or the PC's own id.
+  final String targetId;
+
+  /// The new name, for a rename.
+  final String? value;
 
   /// When the user decided it (this phone's clock).
   final DateTime decidedAt;
-  const PendingThreadActionRow(
+  const PendingActionRow(
       {required this.id,
       required this.deviceId,
-      required this.threadId,
       required this.kind,
-      this.title,
+      required this.targetId,
+      this.value,
       required this.decidedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['device_id'] = Variable<String>(deviceId);
-    map['thread_id'] = Variable<String>(threadId);
     map['kind'] = Variable<String>(kind);
-    if (!nullToAbsent || title != null) {
-      map['title'] = Variable<String>(title);
+    map['target_id'] = Variable<String>(targetId);
+    if (!nullToAbsent || value != null) {
+      map['value'] = Variable<String>(value);
     }
     map['decided_at'] = Variable<DateTime>(decidedAt);
     return map;
   }
 
-  PendingThreadActionsTableCompanion toCompanion(bool nullToAbsent) {
-    return PendingThreadActionsTableCompanion(
+  PendingActionsTableCompanion toCompanion(bool nullToAbsent) {
+    return PendingActionsTableCompanion(
       id: Value(id),
       deviceId: Value(deviceId),
-      threadId: Value(threadId),
       kind: Value(kind),
-      title:
-          title == null && nullToAbsent ? const Value.absent() : Value(title),
+      targetId: Value(targetId),
+      value:
+          value == null && nullToAbsent ? const Value.absent() : Value(value),
       decidedAt: Value(decidedAt),
     );
   }
 
-  factory PendingThreadActionRow.fromJson(Map<String, dynamic> json,
+  factory PendingActionRow.fromJson(Map<String, dynamic> json,
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return PendingThreadActionRow(
+    return PendingActionRow(
       id: serializer.fromJson<int>(json['id']),
       deviceId: serializer.fromJson<String>(json['deviceId']),
-      threadId: serializer.fromJson<String>(json['threadId']),
       kind: serializer.fromJson<String>(json['kind']),
-      title: serializer.fromJson<String?>(json['title']),
+      targetId: serializer.fromJson<String>(json['targetId']),
+      value: serializer.fromJson<String?>(json['value']),
       decidedAt: serializer.fromJson<DateTime>(json['decidedAt']),
     );
   }
@@ -4161,48 +4160,47 @@ class PendingThreadActionRow extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'deviceId': serializer.toJson<String>(deviceId),
-      'threadId': serializer.toJson<String>(threadId),
       'kind': serializer.toJson<String>(kind),
-      'title': serializer.toJson<String?>(title),
+      'targetId': serializer.toJson<String>(targetId),
+      'value': serializer.toJson<String?>(value),
       'decidedAt': serializer.toJson<DateTime>(decidedAt),
     };
   }
 
-  PendingThreadActionRow copyWith(
+  PendingActionRow copyWith(
           {int? id,
           String? deviceId,
-          String? threadId,
           String? kind,
-          Value<String?> title = const Value.absent(),
+          String? targetId,
+          Value<String?> value = const Value.absent(),
           DateTime? decidedAt}) =>
-      PendingThreadActionRow(
+      PendingActionRow(
         id: id ?? this.id,
         deviceId: deviceId ?? this.deviceId,
-        threadId: threadId ?? this.threadId,
         kind: kind ?? this.kind,
-        title: title.present ? title.value : this.title,
+        targetId: targetId ?? this.targetId,
+        value: value.present ? value.value : this.value,
         decidedAt: decidedAt ?? this.decidedAt,
       );
-  PendingThreadActionRow copyWithCompanion(
-      PendingThreadActionsTableCompanion data) {
-    return PendingThreadActionRow(
+  PendingActionRow copyWithCompanion(PendingActionsTableCompanion data) {
+    return PendingActionRow(
       id: data.id.present ? data.id.value : this.id,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
-      threadId: data.threadId.present ? data.threadId.value : this.threadId,
       kind: data.kind.present ? data.kind.value : this.kind,
-      title: data.title.present ? data.title.value : this.title,
+      targetId: data.targetId.present ? data.targetId.value : this.targetId,
+      value: data.value.present ? data.value.value : this.value,
       decidedAt: data.decidedAt.present ? data.decidedAt.value : this.decidedAt,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('PendingThreadActionRow(')
+    return (StringBuffer('PendingActionRow(')
           ..write('id: $id, ')
           ..write('deviceId: $deviceId, ')
-          ..write('threadId: $threadId, ')
           ..write('kind: $kind, ')
-          ..write('title: $title, ')
+          ..write('targetId: $targetId, ')
+          ..write('value: $value, ')
           ..write('decidedAt: $decidedAt')
           ..write(')'))
         .toString();
@@ -4210,77 +4208,76 @@ class PendingThreadActionRow extends DataClass
 
   @override
   int get hashCode =>
-      Object.hash(id, deviceId, threadId, kind, title, decidedAt);
+      Object.hash(id, deviceId, kind, targetId, value, decidedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is PendingThreadActionRow &&
+      (other is PendingActionRow &&
           other.id == this.id &&
           other.deviceId == this.deviceId &&
-          other.threadId == this.threadId &&
           other.kind == this.kind &&
-          other.title == this.title &&
+          other.targetId == this.targetId &&
+          other.value == this.value &&
           other.decidedAt == this.decidedAt);
 }
 
-class PendingThreadActionsTableCompanion
-    extends UpdateCompanion<PendingThreadActionRow> {
+class PendingActionsTableCompanion extends UpdateCompanion<PendingActionRow> {
   final Value<int> id;
   final Value<String> deviceId;
-  final Value<String> threadId;
   final Value<String> kind;
-  final Value<String?> title;
+  final Value<String> targetId;
+  final Value<String?> value;
   final Value<DateTime> decidedAt;
-  const PendingThreadActionsTableCompanion({
+  const PendingActionsTableCompanion({
     this.id = const Value.absent(),
     this.deviceId = const Value.absent(),
-    this.threadId = const Value.absent(),
     this.kind = const Value.absent(),
-    this.title = const Value.absent(),
+    this.targetId = const Value.absent(),
+    this.value = const Value.absent(),
     this.decidedAt = const Value.absent(),
   });
-  PendingThreadActionsTableCompanion.insert({
+  PendingActionsTableCompanion.insert({
     this.id = const Value.absent(),
     required String deviceId,
-    required String threadId,
     required String kind,
-    this.title = const Value.absent(),
+    required String targetId,
+    this.value = const Value.absent(),
     required DateTime decidedAt,
   })  : deviceId = Value(deviceId),
-        threadId = Value(threadId),
         kind = Value(kind),
+        targetId = Value(targetId),
         decidedAt = Value(decidedAt);
-  static Insertable<PendingThreadActionRow> custom({
+  static Insertable<PendingActionRow> custom({
     Expression<int>? id,
     Expression<String>? deviceId,
-    Expression<String>? threadId,
     Expression<String>? kind,
-    Expression<String>? title,
+    Expression<String>? targetId,
+    Expression<String>? value,
     Expression<DateTime>? decidedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (deviceId != null) 'device_id': deviceId,
-      if (threadId != null) 'thread_id': threadId,
       if (kind != null) 'kind': kind,
-      if (title != null) 'title': title,
+      if (targetId != null) 'target_id': targetId,
+      if (value != null) 'value': value,
       if (decidedAt != null) 'decided_at': decidedAt,
     });
   }
 
-  PendingThreadActionsTableCompanion copyWith(
+  PendingActionsTableCompanion copyWith(
       {Value<int>? id,
       Value<String>? deviceId,
-      Value<String>? threadId,
       Value<String>? kind,
-      Value<String?>? title,
+      Value<String>? targetId,
+      Value<String?>? value,
       Value<DateTime>? decidedAt}) {
-    return PendingThreadActionsTableCompanion(
+    return PendingActionsTableCompanion(
       id: id ?? this.id,
       deviceId: deviceId ?? this.deviceId,
-      threadId: threadId ?? this.threadId,
       kind: kind ?? this.kind,
-      title: title ?? this.title,
+      targetId: targetId ?? this.targetId,
+      value: value ?? this.value,
       decidedAt: decidedAt ?? this.decidedAt,
     );
   }
@@ -4294,14 +4291,14 @@ class PendingThreadActionsTableCompanion
     if (deviceId.present) {
       map['device_id'] = Variable<String>(deviceId.value);
     }
-    if (threadId.present) {
-      map['thread_id'] = Variable<String>(threadId.value);
-    }
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
-    if (title.present) {
-      map['title'] = Variable<String>(title.value);
+    if (targetId.present) {
+      map['target_id'] = Variable<String>(targetId.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
     }
     if (decidedAt.present) {
       map['decided_at'] = Variable<DateTime>(decidedAt.value);
@@ -4311,12 +4308,12 @@ class PendingThreadActionsTableCompanion
 
   @override
   String toString() {
-    return (StringBuffer('PendingThreadActionsTableCompanion(')
+    return (StringBuffer('PendingActionsTableCompanion(')
           ..write('id: $id, ')
           ..write('deviceId: $deviceId, ')
-          ..write('threadId: $threadId, ')
           ..write('kind: $kind, ')
-          ..write('title: $title, ')
+          ..write('targetId: $targetId, ')
+          ..write('value: $value, ')
           ..write('decidedAt: $decidedAt')
           ..write(')'))
         .toString();
@@ -4340,8 +4337,8 @@ abstract class _$UxnanDatabase extends GeneratedDatabase {
       $ConnectionSessionsTableTable(this);
   late final $ReplicaCursorsTableTable replicaCursorsTable =
       $ReplicaCursorsTableTable(this);
-  late final $PendingThreadActionsTableTable pendingThreadActionsTable =
-      $PendingThreadActionsTableTable(this);
+  late final $PendingActionsTableTable pendingActionsTable =
+      $PendingActionsTableTable(this);
   late final Index idxMessagesThreadId = Index('idx_messages_thread_id',
       'CREATE INDEX idx_messages_thread_id ON messages_table (thread_id, order_index)');
   late final Index idxTurnsThreadId = Index('idx_turns_thread_id',
@@ -4360,7 +4357,7 @@ abstract class _$UxnanDatabase extends GeneratedDatabase {
         gitActionLogTable,
         connectionSessionsTable,
         replicaCursorsTable,
-        pendingThreadActionsTable,
+        pendingActionsTable,
         idxMessagesThreadId,
         idxTurnsThreadId
       ];
@@ -6297,28 +6294,28 @@ typedef $$ReplicaCursorsTableTableProcessedTableManager = ProcessedTableManager<
     ),
     ReplicaCursorRow,
     PrefetchHooks Function()>;
-typedef $$PendingThreadActionsTableTableCreateCompanionBuilder
-    = PendingThreadActionsTableCompanion Function({
+typedef $$PendingActionsTableTableCreateCompanionBuilder
+    = PendingActionsTableCompanion Function({
   Value<int> id,
   required String deviceId,
-  required String threadId,
   required String kind,
-  Value<String?> title,
+  required String targetId,
+  Value<String?> value,
   required DateTime decidedAt,
 });
-typedef $$PendingThreadActionsTableTableUpdateCompanionBuilder
-    = PendingThreadActionsTableCompanion Function({
+typedef $$PendingActionsTableTableUpdateCompanionBuilder
+    = PendingActionsTableCompanion Function({
   Value<int> id,
   Value<String> deviceId,
-  Value<String> threadId,
   Value<String> kind,
-  Value<String?> title,
+  Value<String> targetId,
+  Value<String?> value,
   Value<DateTime> decidedAt,
 });
 
-class $$PendingThreadActionsTableTableFilterComposer
-    extends Composer<_$UxnanDatabase, $PendingThreadActionsTableTable> {
-  $$PendingThreadActionsTableTableFilterComposer({
+class $$PendingActionsTableTableFilterComposer
+    extends Composer<_$UxnanDatabase, $PendingActionsTableTable> {
+  $$PendingActionsTableTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -6331,22 +6328,22 @@ class $$PendingThreadActionsTableTableFilterComposer
   ColumnFilters<String> get deviceId => $composableBuilder(
       column: $table.deviceId, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get threadId => $composableBuilder(
-      column: $table.threadId, builder: (column) => ColumnFilters(column));
-
   ColumnFilters<String> get kind => $composableBuilder(
       column: $table.kind, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get title => $composableBuilder(
-      column: $table.title, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get targetId => $composableBuilder(
+      column: $table.targetId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get decidedAt => $composableBuilder(
       column: $table.decidedAt, builder: (column) => ColumnFilters(column));
 }
 
-class $$PendingThreadActionsTableTableOrderingComposer
-    extends Composer<_$UxnanDatabase, $PendingThreadActionsTableTable> {
-  $$PendingThreadActionsTableTableOrderingComposer({
+class $$PendingActionsTableTableOrderingComposer
+    extends Composer<_$UxnanDatabase, $PendingActionsTableTable> {
+  $$PendingActionsTableTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -6359,22 +6356,22 @@ class $$PendingThreadActionsTableTableOrderingComposer
   ColumnOrderings<String> get deviceId => $composableBuilder(
       column: $table.deviceId, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get threadId => $composableBuilder(
-      column: $table.threadId, builder: (column) => ColumnOrderings(column));
-
   ColumnOrderings<String> get kind => $composableBuilder(
       column: $table.kind, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get title => $composableBuilder(
-      column: $table.title, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get targetId => $composableBuilder(
+      column: $table.targetId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get decidedAt => $composableBuilder(
       column: $table.decidedAt, builder: (column) => ColumnOrderings(column));
 }
 
-class $$PendingThreadActionsTableTableAnnotationComposer
-    extends Composer<_$UxnanDatabase, $PendingThreadActionsTableTable> {
-  $$PendingThreadActionsTableTableAnnotationComposer({
+class $$PendingActionsTableTableAnnotationComposer
+    extends Composer<_$UxnanDatabase, $PendingActionsTableTable> {
+  $$PendingActionsTableTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -6387,79 +6384,78 @@ class $$PendingThreadActionsTableTableAnnotationComposer
   GeneratedColumn<String> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
 
-  GeneratedColumn<String> get threadId =>
-      $composableBuilder(column: $table.threadId, builder: (column) => column);
-
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
-  GeneratedColumn<String> get title =>
-      $composableBuilder(column: $table.title, builder: (column) => column);
+  GeneratedColumn<String> get targetId =>
+      $composableBuilder(column: $table.targetId, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
 
   GeneratedColumn<DateTime> get decidedAt =>
       $composableBuilder(column: $table.decidedAt, builder: (column) => column);
 }
 
-class $$PendingThreadActionsTableTableTableManager extends RootTableManager<
+class $$PendingActionsTableTableTableManager extends RootTableManager<
     _$UxnanDatabase,
-    $PendingThreadActionsTableTable,
-    PendingThreadActionRow,
-    $$PendingThreadActionsTableTableFilterComposer,
-    $$PendingThreadActionsTableTableOrderingComposer,
-    $$PendingThreadActionsTableTableAnnotationComposer,
-    $$PendingThreadActionsTableTableCreateCompanionBuilder,
-    $$PendingThreadActionsTableTableUpdateCompanionBuilder,
+    $PendingActionsTableTable,
+    PendingActionRow,
+    $$PendingActionsTableTableFilterComposer,
+    $$PendingActionsTableTableOrderingComposer,
+    $$PendingActionsTableTableAnnotationComposer,
+    $$PendingActionsTableTableCreateCompanionBuilder,
+    $$PendingActionsTableTableUpdateCompanionBuilder,
     (
-      PendingThreadActionRow,
-      BaseReferences<_$UxnanDatabase, $PendingThreadActionsTableTable,
-          PendingThreadActionRow>
+      PendingActionRow,
+      BaseReferences<_$UxnanDatabase, $PendingActionsTableTable,
+          PendingActionRow>
     ),
-    PendingThreadActionRow,
+    PendingActionRow,
     PrefetchHooks Function()> {
-  $$PendingThreadActionsTableTableTableManager(
-      _$UxnanDatabase db, $PendingThreadActionsTableTable table)
+  $$PendingActionsTableTableTableManager(
+      _$UxnanDatabase db, $PendingActionsTableTable table)
       : super(TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$PendingThreadActionsTableTableFilterComposer(
-                  $db: db, $table: table),
+              $$PendingActionsTableTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$PendingThreadActionsTableTableOrderingComposer(
+              $$PendingActionsTableTableOrderingComposer(
                   $db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$PendingThreadActionsTableTableAnnotationComposer(
+              $$PendingActionsTableTableAnnotationComposer(
                   $db: db, $table: table),
           updateCompanionCallback: ({
             Value<int> id = const Value.absent(),
             Value<String> deviceId = const Value.absent(),
-            Value<String> threadId = const Value.absent(),
             Value<String> kind = const Value.absent(),
-            Value<String?> title = const Value.absent(),
+            Value<String> targetId = const Value.absent(),
+            Value<String?> value = const Value.absent(),
             Value<DateTime> decidedAt = const Value.absent(),
           }) =>
-              PendingThreadActionsTableCompanion(
+              PendingActionsTableCompanion(
             id: id,
             deviceId: deviceId,
-            threadId: threadId,
             kind: kind,
-            title: title,
+            targetId: targetId,
+            value: value,
             decidedAt: decidedAt,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
             required String deviceId,
-            required String threadId,
             required String kind,
-            Value<String?> title = const Value.absent(),
+            required String targetId,
+            Value<String?> value = const Value.absent(),
             required DateTime decidedAt,
           }) =>
-              PendingThreadActionsTableCompanion.insert(
+              PendingActionsTableCompanion.insert(
             id: id,
             deviceId: deviceId,
-            threadId: threadId,
             kind: kind,
-            title: title,
+            targetId: targetId,
+            value: value,
             decidedAt: decidedAt,
           ),
           withReferenceMapper: (p0) => p0
@@ -6469,23 +6465,22 @@ class $$PendingThreadActionsTableTableTableManager extends RootTableManager<
         ));
 }
 
-typedef $$PendingThreadActionsTableTableProcessedTableManager
-    = ProcessedTableManager<
-        _$UxnanDatabase,
-        $PendingThreadActionsTableTable,
-        PendingThreadActionRow,
-        $$PendingThreadActionsTableTableFilterComposer,
-        $$PendingThreadActionsTableTableOrderingComposer,
-        $$PendingThreadActionsTableTableAnnotationComposer,
-        $$PendingThreadActionsTableTableCreateCompanionBuilder,
-        $$PendingThreadActionsTableTableUpdateCompanionBuilder,
-        (
-          PendingThreadActionRow,
-          BaseReferences<_$UxnanDatabase, $PendingThreadActionsTableTable,
-              PendingThreadActionRow>
-        ),
-        PendingThreadActionRow,
-        PrefetchHooks Function()>;
+typedef $$PendingActionsTableTableProcessedTableManager = ProcessedTableManager<
+    _$UxnanDatabase,
+    $PendingActionsTableTable,
+    PendingActionRow,
+    $$PendingActionsTableTableFilterComposer,
+    $$PendingActionsTableTableOrderingComposer,
+    $$PendingActionsTableTableAnnotationComposer,
+    $$PendingActionsTableTableCreateCompanionBuilder,
+    $$PendingActionsTableTableUpdateCompanionBuilder,
+    (
+      PendingActionRow,
+      BaseReferences<_$UxnanDatabase, $PendingActionsTableTable,
+          PendingActionRow>
+    ),
+    PendingActionRow,
+    PrefetchHooks Function()>;
 
 class $UxnanDatabaseManager {
   final _$UxnanDatabase _db;
@@ -6509,7 +6504,6 @@ class $UxnanDatabaseManager {
           _db, _db.connectionSessionsTable);
   $$ReplicaCursorsTableTableTableManager get replicaCursorsTable =>
       $$ReplicaCursorsTableTableTableManager(_db, _db.replicaCursorsTable);
-  $$PendingThreadActionsTableTableTableManager get pendingThreadActionsTable =>
-      $$PendingThreadActionsTableTableTableManager(
-          _db, _db.pendingThreadActionsTable);
+  $$PendingActionsTableTableTableManager get pendingActionsTable =>
+      $$PendingActionsTableTableTableManager(_db, _db.pendingActionsTable);
 }

@@ -311,6 +311,21 @@ void main() {
       );
       expect((settings as SettingsUpdatedEvent).home, '/work');
       expect(settings.rev, 9);
+      final named = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {'home': '/work', 'name': 'Studio'},
+          'rev': 10,
+        }),
+      );
+      expect((named as SettingsUpdatedEvent).name, 'Studio');
+      final devices = processor.classify(
+        note('stream/devices/updated', {
+          'devices': [
+            {'deviceId': 'p1', 'displayName': 'Pixel'},
+          ],
+        }),
+      );
+      expect((devices as DevicesUpdatedEvent).devices, hasLength(1));
       final presence = processor.classify(
         note('stream/presence/updated', {
           'clients': [

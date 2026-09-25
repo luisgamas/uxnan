@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/application/managers/action_outbox.dart';
 import 'package:uxnan/application/managers/bridge_replica.dart';
-import 'package:uxnan/application/managers/thread_action_outbox.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
-import 'package:uxnan/domain/value_objects/pending_thread_action.dart';
+import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_bridge_replica_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -63,7 +63,7 @@ void main() {
   late List<(String, Map<String, dynamic>?)> calls;
   late List<Map<String, dynamic>> answers;
   late String? deviceId;
-  late ThreadActionOutbox outbox;
+  late ActionOutbox outbox;
   // When set, a request for this method is lost on the way.
   String? lose;
 
@@ -77,7 +77,7 @@ void main() {
     answers = [];
     deviceId = 'pc-1';
     lose = null;
-    outbox = ThreadActionOutbox(repository: replicaRepo);
+    outbox = ActionOutbox(repository: replicaRepo);
     Future<RpcMessage> send(String method, [Map<String, dynamic>? params]) {
       calls.add((method, params));
       if (method == lose) return Future.error(TimeoutException('lost'));
@@ -315,27 +315,33 @@ void main() {
   test('what was done offline reaches the bridge before its state is read',
       () async {
     await outbox.keep(
-      deviceId: 'pc-1',
-      threadId: 'x',
-      kind: PendingThreadActionKind.archive,
+      PendingAction(
+        deviceId: 'pc-1',
+        kind: PendingActionKind.archiveThread,
+        targetId: 'x',
+        decidedAt: DateTime.now(),
+      ),
     );
     await replica.sync();
     expect(calls.map((c) => c.$1), ['thread/archive', 'sync/changes']);
     expect(calls.first.$2?['ageMs'], isA<int>());
-    expect(await replicaRepo.pendingThreadActions('pc-1'), isEmpty);
+    expect(await replicaRepo.pendingActions('pc-1'), isEmpty);
   });
 
   test('if the PC is lost again, nothing is read over what it did not hear',
       () async {
     await outbox.keep(
-      deviceId: 'pc-1',
-      threadId: 'x',
-      kind: PendingThreadActionKind.delete,
+      PendingAction(
+        deviceId: 'pc-1',
+        kind: PendingActionKind.deleteThread,
+        targetId: 'x',
+        decidedAt: DateTime.now(),
+      ),
     );
     lose = 'thread/delete';
     await replica.sync();
     expect(syncParams(), isEmpty);
-    expect(await replicaRepo.pendingThreadActions('pc-1'), hasLength(1));
+    expect(await replicaRepo.pendingActions('pc-1'), hasLength(1));
   });
 
   test('without a connected PC nothing is asked', () async {

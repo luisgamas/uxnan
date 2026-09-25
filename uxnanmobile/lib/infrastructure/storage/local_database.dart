@@ -4,7 +4,7 @@ import 'package:uxnan/infrastructure/storage/tables/composer_drafts_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/connection_sessions_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/git_action_log_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/messages_table.dart';
-import 'package:uxnan/infrastructure/storage/tables/pending_thread_actions_table.dart';
+import 'package:uxnan/infrastructure/storage/tables/pending_actions_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/projects_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/replica_cursors_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/threads_table.dart';
@@ -29,7 +29,7 @@ part 'local_database.g.dart';
     GitActionLogTable,
     ConnectionSessionsTable,
     ReplicaCursorsTable,
-    PendingThreadActionsTable,
+    PendingActionsTable,
   ],
 )
 class UxnanDatabase extends _$UxnanDatabase {
@@ -40,7 +40,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -91,10 +91,29 @@ class UxnanDatabase extends _$UxnanDatabase {
             await m.createTable(projectsTable);
             await m.createTable(replicaCursorsTable);
           }
-          // v8: conversation actions taken while their PC was out of reach
-          // wait here until it is reachable (architecture/02a §5.8.17).
-          if (from < 8) {
-            await m.createTable(pendingThreadActionsTable);
+          // v8 kept conversation actions taken offline in
+          // `pending_thread_actions_table`; v9 generalizes it to every action
+          // the phone may take while its PC is out of reach (a conversation,
+          // the PC's name), architecture/02a §5.8.17. What was waiting moves.
+          if (from < 9) {
+            await m.createTable(pendingActionsTable);
+            if (from == 8) {
+              await customStatement('''
+                INSERT INTO pending_actions_table
+                  (device_id, kind, target_id, value, decided_at)
+                SELECT device_id,
+                  CASE kind
+                    WHEN 'rename' THEN 'renameThread'
+                    WHEN 'archive' THEN 'archiveThread'
+                    WHEN 'unarchive' THEN 'unarchiveThread'
+                    ELSE 'deleteThread'
+                  END,
+                  thread_id, title, decided_at
+                FROM pending_thread_actions_table
+                ORDER BY id
+              ''');
+              await m.deleteTable('pending_thread_actions_table');
+            }
           }
         },
         beforeOpen: (details) async {

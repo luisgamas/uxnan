@@ -756,6 +756,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceNameTitle => 'Nombre del dispositivo';
 
   @override
+  String get thisPhoneLabel => 'Este teléfono';
+
+  @override
+  String get thisPhoneRename => 'Nombrar este teléfono';
+
+  @override
   String get deviceNameHint => 'p. ej. MacBook del trabajo';
 
   @override

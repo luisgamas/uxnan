@@ -217,6 +217,7 @@ class PushRegistrar {
             ProjectRemovedEvent() ||
             SettingsUpdatedEvent() ||
             PresenceUpdatedEvent() ||
+            DevicesUpdatedEvent() ||
             AgentsUpdatedEvent() ||
             GitProgressEvent() ||
             UnknownDomainEvent():

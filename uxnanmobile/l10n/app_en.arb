@@ -329,6 +329,8 @@
   "deviceVerifyOk": "The bridge is reachable.",
   "deviceVerifyFailed": "The bridge did not respond. Reconnecting…",
   "deviceNameTitle": "Device name",
+  "thisPhoneLabel": "This phone",
+  "thisPhoneRename": "Name this phone",
   "deviceNameHint": "e.g. Work MacBook",
   "deviceRemove": "Remove device",
   "@deviceRemove": {

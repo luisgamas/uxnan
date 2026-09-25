@@ -2675,10 +2675,10 @@ conversacion nacida en el desktop lleva su marca. En el desktop, `ChatStore`
 **Acciones sin conexion: gana la mas reciente.** Ningun cliente depende de
 otro: el desktop chatea con el bridge sin telefono y el telefono sin desktop, y
 el que llega despues lo recibe todo en una sincronizacion. Lo que el telefono
-hace a una conversacion mientras su PC no esta al alcance (renombrar,
-archivar, desarchivar, borrar) se ve al instante en el telefono y espera en una
-bandeja persistente (`ThreadActionOutbox`, tabla `pending_thread_actions`; una
-accion nueva reemplaza las que deja sin efecto). Al volver el PC, la bandeja se
+hace mientras su PC no esta al alcance (renombrar, archivar, desarchivar o
+borrar una conversacion; renombrar el PC) se ve al instante en el telefono y
+espera en una bandeja persistente (`ActionOutbox`, tabla `pending_actions`; una
+accion nueva reemplaza las que deja sin efecto sobre lo mismo). Al volver el PC, la bandeja se
 envia **antes** de leer `sync/changes`, y si falla a medias no se lee nada: un
 estado del bridge nunca pisa una accion que aun no recibio. Cada accion viaja
 con `ageMs` (hace cuanto se decidio, por el reloj del telefono: una edad, no

@@ -96,6 +96,10 @@ class IncomingMessageProcessor {
             {'home': final String home} => home,
             _ => null,
           },
+          name: switch (params['settings']) {
+            {'name': final String name} => name,
+            _ => null,
+          },
           rev: params['rev'] is int ? params['rev'] as int : null,
         ),
       'stream/presence/updated' => PresenceUpdatedEvent(
@@ -104,6 +108,11 @@ class IncomingMessageProcessor {
               : const [],
         ),
       'stream/agents/updated' => const AgentsUpdatedEvent(),
+      'stream/devices/updated' => DevicesUpdatedEvent(
+          devices: params['devices'] is List
+              ? params['devices'] as List<Object?>
+              : const [],
+        ),
       'stream/turn/created' => _turnCreated(
           params['turn'],
           threadId,
