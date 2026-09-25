@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **Chat drafts, recall and edit.** A chat's unsent text is kept as its tab's
+  draft (saved with the layout, `SavedTab.draft`), surviving tab switches and
+  restarts. On an empty composer ↑ / ↓ walk the thread's earlier messages. A
+  queued message can be **edited** — taken off the queue (`turn/cancel`) and
+  put back into the composer once the bridge confirms — and a message that
+  failed to send offers **Edit** next to *Dismiss*. Text put back is added
+  below whatever is being written, never over it.
 - **Chats in the sidebar, with the phone's conversations.** A worktree's agent
   view lists its bridge conversations beside its terminal agents (`ChatRow`,
   the same row tokens): the ones open in a tab or doing something, then the

@@ -166,6 +166,8 @@ export interface ChatTab extends BaseTab {
   threadId?: string;
   /** Agent preselected for a chat not started yet (bridge `AgentId`). */
   agentId?: string;
+  /** The composer's unsent text — a draft survives closing the app. */
+  draft?: string;
 }
 
 export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab;
@@ -477,6 +479,7 @@ function serializeTab(t: GroupTab): SavedTab {
       cwd: t.cwd,
       threadId: t.threadId,
       agentId: t.agentId,
+      ...(t.draft ? { draft: t.draft } : {}),
     };
   }
   if (t.kind === 'file') {
@@ -546,6 +549,7 @@ function buildTab(t: SavedTab): GroupTab {
       cwd: t.cwd,
       threadId: t.threadId,
       agentId: t.agentId,
+      ...(t.draft ? { draft: t.draft } : {}),
     };
   }
   if (t.kind === 'file') {

@@ -1634,6 +1634,8 @@ export type SavedTab =
       threadId?: string;
       /** Agent preselected for a chat not started yet (bridge `AgentId`). */
       agentId?: string;
+      /** The composer's unsent text, kept across restarts. */
+      draft?: string;
     };
 
 export type SavedTermNode =

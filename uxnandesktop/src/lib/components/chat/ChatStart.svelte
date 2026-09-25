@@ -9,6 +9,7 @@
   // agent (the same `Combobox` + `AgentLogo` the new-worktree dialog uses) and
   // the model with its run options (`ModelPicker`) as quiet pills; the conversations
   // already running here are listed below it.
+  import { untrack } from "svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
@@ -30,6 +31,13 @@
   let model = $state("");
   let optionValues = $state<Record<string, string | boolean>>({});
   let starting = $state(false);
+  // The composer's text is the tab's draft (persisted with the layout).
+  let draft = $state(untrack(() => tab.draft ?? ""));
+  $effect(() => {
+    const text = draft;
+    const timer = setTimeout(() => (tab.draft = text || undefined), 300);
+    return () => clearTimeout(timer);
+  });
   let modelsLoading = $state(false);
 
   // Preselect: the agent the launcher asked for, else the desktop's default
@@ -130,6 +138,7 @@
 
     <div class="flex flex-col gap-1.5">
       <ChatComposer
+        bind:value={draft}
         disabled={!agentId || starting}
         autofocus={active}
         placeholder={i18n.t("chat.startPlaceholder")}

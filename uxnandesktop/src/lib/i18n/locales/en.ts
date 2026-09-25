@@ -2549,6 +2549,8 @@ export const en = {
   "chat.emptyThread": "No messages yet.",
   "chat.dismiss": "Dismiss",
   "chat.cancelQueued": "Cancel",
+  "chat.edit": "Edit",
+  "chat.editQueued": "Edit (take it off the queue)",
   "chat.jumpToEnd": "Jump to the latest message",
   "chat.queuePausedStopped": "The queue is paused because the agent was stopped.",
   "chat.queuePausedError": "The queue is paused because the last turn failed.",

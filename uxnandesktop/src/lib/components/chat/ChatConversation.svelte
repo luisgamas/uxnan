@@ -20,6 +20,7 @@
   import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
   import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+  import PencilEdit02Icon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import type { AccessMode } from "$shared/models/thread";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import TabRenameDialog from "$lib/components/TabRenameDialog.svelte";
@@ -31,6 +32,7 @@
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
+  import { userText } from "$lib/bridge/conversation.svelte";
   import { requestIdOf } from "$lib/bridge/timeline";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
   import { toastError } from "$lib/toast";
@@ -56,6 +58,34 @@
   // `$derived`, which may not write state. `ChatPane` re-keys this component
   // per thread, so one instance always shows one conversation.
   const conversation = chat.conversation(untrack(() => threadId));
+
+  // --- the composer's text ---------------------------------------------------
+  // Kept as the tab's draft (persisted with the layout), a beat after typing
+  // stops, so it survives switching tabs and closing the app.
+  let draft = $state(untrack(() => tab.draft ?? ""));
+  $effect(() => {
+    const text = draft;
+    const timer = setTimeout(() => (tab.draft = text || undefined), 300);
+    return () => clearTimeout(timer);
+  });
+  /** Earlier messages of this thread, oldest first, for ↑ recall. */
+  const history = $derived(conversation.turns.map((t) => userText(t)).filter((t) => t.length > 0));
+
+  /** Puts a message back into the composer without losing what is there. */
+  function putBack(text: string) {
+    draft = draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text;
+  }
+
+  /** Withdraws a queued message into the composer — only once the bridge has
+   *  taken it off the queue, so it is never both queued and in the draft. */
+  async function editQueued(turnId: string, text: string) {
+    try {
+      await chat.cancel(threadId, turnId);
+      putBack(text);
+    } catch (err) {
+      toastError(err);
+    }
+  }
 
   // While this conversation is in view, a finished or failed turn is not
   // news: the tab chip and the sidebar row go back to idle.
@@ -261,6 +291,17 @@
                     variant="link"
                     size="xs"
                     class="h-auto px-0"
+                    onclick={() => {
+                      conversation.dropPending(p.clientTurnId);
+                      putBack(p.text);
+                    }}
+                  >
+                    {i18n.t("chat.edit")}
+                  </Button>
+                  <Button
+                    variant="link"
+                    size="xs"
+                    class="h-auto px-0"
                     onclick={() => conversation.dropPending(p.clientTurnId)}
                   >
                     {i18n.t("chat.dismiss")}
@@ -334,6 +375,16 @@
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    aria-label={i18n.t("chat.editQueued")}
+                    title={i18n.t("chat.editQueued")}
+                    onclick={() =>
+                      void editQueued(turn.id, String(turn.messages.find((m) => m.role === "user")?.content ?? ""))}
+                  >
+                    <Icon icon={PencilEdit02Icon} class={icon.status} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={i18n.t("chat.cancelQueued")}
                     title={i18n.t("chat.cancelQueued")}
                     onclick={() => void chat.cancel(threadId, turn.id).catch(toastError)}
@@ -348,6 +399,8 @@
       {/if}
 
       <ChatComposer
+        bind:value={draft}
+        {history}
         running={conversation.running}
         disabled={thread?.status === "archived"}
         autofocus={active}

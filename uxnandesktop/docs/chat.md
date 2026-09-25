@@ -146,8 +146,15 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   again.
 - **Queue**: a message sent while the agent works is queued behind the running
   turn (or handed to it, on agents that take input mid-turn); queued messages
-  are listed in the dock, each with a cancel button. A stopped or failed turn
-  pauses the queue: *Resume* or *Discard*.
+  are listed in the dock, each with **Edit** (takes it off the queue and puts
+  it back in the composer — only once the bridge confirms) and cancel. A
+  stopped or failed turn pauses the queue: *Resume* or *Discard*.
+- **Drafts and recall**: the composer's unsent text is the tab's draft, saved
+  with the layout, so it survives switching tabs and restarting. On an empty
+  composer **↑** recalls the thread's earlier messages (newest first) and **↓**
+  walks back. A message that failed to send offers **Edit** (back into the
+  composer) or *Dismiss*; nothing put back ever overwrites text being written —
+  it is added below it.
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it. Its toolbar holds what can change mid-chat — the
   model (every client sees the change), the model's knobs (reasoning effort, …)

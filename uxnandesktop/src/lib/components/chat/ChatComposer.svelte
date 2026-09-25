@@ -3,7 +3,10 @@
   // composition is never cut short). While the agent works the button stops
   // it; typing meanwhile sends a follow-up the bridge queues behind the running
   // turn — or hands to it directly, on agents that take input mid-turn — which
-  // is exactly what the phone does with the same message.
+  // is exactly what the phone does with the same message. On an empty
+  // composer ↑ recalls the thread's earlier messages (newest first) and ↓ walks
+  // back; the text is `bindable`, so the view keeps it as the tab's draft and
+  // can put a withdrawn or failed message back into it.
   //
   // FOR-DEV: image attachments (`turn/send { attachments }`, when the agent
   // advertises `images`), the `/` command palette (`agent/commands` +
@@ -26,6 +29,8 @@
   import { chat, icon, text } from "$lib/design";
 
   let {
+    value = $bindable(""),
+    history = [],
     running = false,
     disabled = false,
     placeholder,
@@ -36,6 +41,10 @@
     trailing,
     context = null,
   }: {
+    /** The text being written (the view persists it as the tab's draft). */
+    value?: string;
+    /** The thread's earlier messages, oldest first, for ↑ / ↓ recall. */
+    history?: string[];
     running?: boolean;
     disabled?: boolean;
     placeholder?: string;
@@ -50,7 +59,6 @@
     context?: { tokens: number; limit: number } | null;
   } = $props();
 
-  let value = $state("");
   let ref = $state<HTMLTextAreaElement | null>(null);
   const empty = $derived(value.trim().length === 0);
 
@@ -65,9 +73,39 @@
     await onsend(message);
   }
 
+  /** Which earlier message ↑ put in the composer (an index into `history`). */
+  let recalled = $state<number | null>(null);
+
+  /** ↑ / ↓ walk the history while the composer is empty or still shows a
+   *  recalled message untouched; any edit ends the walk. */
+  function recall(step: -1 | 1): boolean {
+    if (history.length === 0) return false;
+    const walking = recalled !== null && value === history[recalled];
+    if (!walking && value !== "") return false;
+    if (!walking && step === 1) return false;
+    const next = (walking ? (recalled as number) : history.length) + step;
+    if (next < 0) return true;
+    if (next >= history.length) {
+      recalled = null;
+      value = "";
+      return true;
+    }
+    recalled = next;
+    value = history[next];
+    queueMicrotask(() => ref?.setSelectionRange(value.length, value.length));
+    return true;
+  }
+
   function onkeydown(e: KeyboardEvent) {
-    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    if (e.isComposing) return;
+    const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
+    if (plain && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (recall(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
+      return;
+    }
+    if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
+    recalled = null;
     void submit();
   }
 </script>
