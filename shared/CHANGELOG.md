@@ -4,6 +4,14 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — a step shows while it runs
+
+- `LiveBlock`: any structured block may carry a `blockId`; a later block of
+  the same turn with the same id replaces it in place, so a step shows as it
+  starts (`status: 'running'`) and settles where it stood.
+  `ToolContentBlock.status?: 'running'`; `SubagentContentBlock` state status
+  `running`.
+
 ### Added — what a tool call did, for every agent
 
 - `ToolKind` (`read | search | list | fetch | web_search | mcp | other`,

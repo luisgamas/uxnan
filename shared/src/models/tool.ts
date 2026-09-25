@@ -26,10 +26,24 @@ export const TOOL_KINDS: readonly ToolKind[] = [
 ];
 
 /**
+ * A step shown while it runs. Any structured block may carry a `blockId`, the
+ * id of the step it stands for: a later block of the **same turn** with the
+ * same `blockId` replaces it in place — in the bridge's store and in every
+ * client's live view — so a step appears as it starts (`status: 'running'`,
+ * or `state.status: 'running'` for a subagent) and settles into its result
+ * where it stood. Once the turn ends a step is never running: the bridge
+ * settles any the agent left open, and a client treats a running step of a
+ * turn that is no longer live as settled.
+ */
+export interface LiveBlock {
+  blockId?: string;
+}
+
+/**
  * A tool call that is not a shell command, an edit, a plan or a subagent,
  * as a `stream/content/block` (persisted with the assistant message).
  */
-export interface ToolContentBlock {
+export interface ToolContentBlock extends LiveBlock {
   type: 'tool';
   /** The agent's own name for the tool (`Read`, `grep`, `server/tool`…). */
   toolName: string;
@@ -37,6 +51,8 @@ export interface ToolContentBlock {
   input: Record<string, unknown>;
   output?: string;
   isError: boolean;
+  /** `running` while the call is in flight (see {@link LiveBlock}); absent once it finished. */
+  status?: 'running';
   /** What the call did, classified by the bridge. */
   kind: ToolKind;
   /**
@@ -48,15 +64,16 @@ export interface ToolContentBlock {
 
 /**
  * A subagent the agent delegated to (Claude's `Agent`, OpenCode's `task`,
- * Codex's collaboration tools, Antigravity's subagents), once it finished.
+ * Codex's collaboration tools, Antigravity's subagents): running, then
+ * finished with its report.
  */
-export interface SubagentContentBlock {
+export interface SubagentContentBlock extends LiveBlock {
   type: 'subagent';
   state: {
     id: string;
     /** What the subagent was asked to do, in a few words. */
     name: string;
-    status: 'completed' | 'error';
+    status: 'running' | 'completed' | 'error';
     /** Its final report, truncated for the wire. */
     output?: string;
   };

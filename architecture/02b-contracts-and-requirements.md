@@ -505,6 +505,15 @@ decision del usuario.
   el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
   **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
   del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
+  - `blockId?` on the content (2026-09, additive): the step a block stands for.
+    A later block of the **same turn** with the same `blockId` replaces it in
+    place — in the bridge's store and in every client's live view — so a step
+    shows as it starts (`status: 'running'`, `state.status: 'running'` for a
+    subagent) and settles into its result where it stood. When a turn ends the
+    bridge settles any step left running (as finished on a completed turn, as
+    failed on one that failed or was stopped), and a client treats a running
+    step of a turn that is no longer live as settled (`LiveBlock`,
+    `shared/src/models/tool.ts`).
   - `beforeText?` (2026-07, aditivo): `true` cuando el bloque proviene de una
     actividad **paralela/en background** (p.ej. la herramienta de un subagente
     Task de Claude Code) que llego mientras el texto principal del asistente
@@ -774,7 +783,7 @@ interface ApprovalRequestBlock {
 - `plan` (checklist; solo informacional, no bloquea). An agent resends its
   whole list on every change, so a turn may carry several: clients show only
   the latest of a turn
-- `subagent` (`{ state: { id, name, status: 'completed' | 'error', output? } }`:
+- `subagent` (`{ state: { id, name, status: 'running' | 'completed' | 'error', output? } }`:
   a subagent the agent delegated to — Claude's `Agent`, OpenCode's `task`,
   Codex's collaboration tools, Antigravity's subagents — once it finished, with
   its report; `SubagentContentBlock`)
