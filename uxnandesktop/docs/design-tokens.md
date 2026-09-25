@@ -81,6 +81,11 @@ Settings and editors follow the same rule. `SettingsSection` owns the header and
 canonical `panel.settingsBody` band, `SettingsRow` consumes `row.settings`, and
 editor/list callers compose the named `row.*`, `field.*`, `tab.*`, and `control.*`
 roles. A pixel-equivalent local class is not a substitute for the shared role.
+Choices use the settings' `Combobox` (`searchable={false}` for a short fixed
+list); a connection's state is a `StatusDot` (`ok` / `warn` / `error` / `busy` /
+`off`) beside its label; a command, a script or captured output is a
+`CodeBlock` (copy button in its corner, `copyable={false}` for output that is
+only read).
 
 A settings row that stands for an *entity* rather than a preference — an agent in
 **Hooks** or in **Browser → Agents** — is still a `SettingsRow` underneath, via

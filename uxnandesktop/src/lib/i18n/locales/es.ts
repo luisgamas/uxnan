@@ -56,6 +56,7 @@ export const es: Record<MessageKey, string> = {
   "common.adding": "Agregando…",
   "common.creating": "Creando…",
   "common.loading": "Cargando…",
+  "common.copy": "Copiar",
   "common.search": "Buscar…",
 
   // Selector de icono (proyecto y rama)

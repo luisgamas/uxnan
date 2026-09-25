@@ -22,6 +22,7 @@
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
+  import StatusDot from "$lib/components/StatusDot.svelte";
 
   function errText(e: unknown): string {
     if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -144,7 +145,7 @@
     <SettingsRow label={i18n.t("github.account.status")}>
       {#snippet control()}
         <span class={cn("inline-flex items-center gap-1.5", text.body)}>
-          <span class={cn("size-2 rounded-full", github.available ? "bg-emerald-500" : "bg-muted-foreground/50")}></span>
+          <StatusDot tone={github.available ? "ok" : "off"} />
           {github.available ? i18n.t("github.account.connected") : i18n.t("github.account.disconnected")}
         </span>
       {/snippet}

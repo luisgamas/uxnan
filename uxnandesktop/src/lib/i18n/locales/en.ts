@@ -59,6 +59,7 @@ export const en = {
   "common.adding": "Adding…",
   "common.creating": "Creating…",
   "common.loading": "Loading…",
+  "common.copy": "Copy",
   "common.search": "Search…",
 
   // Icon picker (project & branch icons)

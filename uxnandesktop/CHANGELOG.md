@@ -82,6 +82,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (MIT, no TLS features — the socket is loopback only); `futures-util` gains
   its `sink` feature.
 
+### Changed
+
+- **One copyable code block and one status dot for every settings pane.**
+  `CodeBlock` (a command, a script or output, with a copy button) replaces the
+  hooks panel's private snippet; `StatusDot` replaces the hand-drawn dots of
+  Settings → GitHub and SSH hosts, so a tone means the same everywhere.
+
 ## [0.0.57] - 20260925
 ### Fixed
 
