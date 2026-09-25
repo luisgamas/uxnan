@@ -165,11 +165,13 @@ class IncomingMessageProcessor {
     bool beforeText = false,
   }) {
     if (content is Map) {
+      final blockId = content['blockId'];
       return ContentBlockEvent(
         turnId: turnId,
         threadId: threadId,
         content: MessageContent.fromJson(content.cast<String, dynamic>()),
         beforeText: beforeText,
+        blockId: blockId is String && blockId.isNotEmpty ? blockId : null,
       );
     }
     return const UnknownDomainEvent(method: 'stream/content/block');

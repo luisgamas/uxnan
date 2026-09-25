@@ -2660,10 +2660,17 @@ class _WorkLogRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: UxIcon(
-                tool.isError ? UxIcons.error : UxIcons.build,
+                tool.running
+                    ? UxIcons.autorenew
+                    : tool.isError
+                        ? UxIcons.error
+                        : UxIcons.build,
                 size: 14,
-                color:
-                    tool.isError ? UxnanColors.error : colors.onSurfaceVariant,
+                color: tool.running
+                    ? UxnanColors.connecting
+                    : tool.isError
+                        ? UxnanColors.error
+                        : colors.onSurfaceVariant,
               ),
             ),
             const SizedBox(width: UxnanSpacing.sm),

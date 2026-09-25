@@ -391,6 +391,7 @@ class ToolUseContent extends MessageContent with EquatableMixin {
     this.isError = false,
     this.kind = ToolKind.other,
     this.target,
+    this.running = false,
   });
 
   /// Decodes a [ToolUseContent].
@@ -402,6 +403,7 @@ class ToolUseContent extends MessageContent with EquatableMixin {
         isError: json['isError'] as bool? ?? false,
         kind: ToolKind.fromWire(json['kind']),
         target: json['target'] as String?,
+        running: json['status'] == 'running',
       );
 
   /// Tool name, as the agent calls it.
@@ -425,6 +427,9 @@ class ToolUseContent extends MessageContent with EquatableMixin {
   /// What it acted on, ready to show (a path, a pattern, a URL, a query).
   final String? target;
 
+  /// Whether the call is still in flight (a later block replaces it).
+  final bool running;
+
   /// Wire type discriminator.
   static const String typeName = 'tool';
 
@@ -444,11 +449,12 @@ class ToolUseContent extends MessageContent with EquatableMixin {
         'isError': isError,
         'kind': kind.wire,
         if (target != null) 'target': target,
+        if (running) 'status': 'running',
       };
 
   @override
   List<Object?> get props =>
-      [toolName, toolId, input, output, isError, kind, target];
+      [toolName, toolId, input, output, isError, kind, target, running];
 }
 
 /// A unified diff for a single file.

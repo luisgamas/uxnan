@@ -1969,8 +1969,14 @@ class ThreadManager {
         if (threadId == _activeThreadId) {
           _rebuildActiveTimelineCoalesced(live.streamedLength);
         }
-      case ContentBlockEvent(:final turnId, :final content, :final beforeText):
-        _ensureLive(threadId, turnId).addBlock(content, beforeText: beforeText);
+      case ContentBlockEvent(
+          :final turnId,
+          :final content,
+          :final beforeText,
+          :final blockId,
+        ):
+        _ensureLive(threadId, turnId)
+            .addBlock(content, beforeText: beforeText, blockId: blockId);
         _noteAwaitingInput(threadId, content);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case TurnCompletedEvent(
@@ -2667,6 +2673,9 @@ class _LiveTurn {
   /// the response instead of grouping all activity above the text.
   final List<MessageContent> segments = [];
 
+  /// The block each step id currently stands as (see [addBlock]).
+  final Map<String, MessageContent> _byBlockId = {};
+
   /// How much prose is on screen for this turn — what a rebuild has to
   /// re-parse, and so what decides how often it is worth rebuilding.
   int get streamedLength {
@@ -2710,7 +2719,25 @@ class _LiveTurn {
   /// see `ContentBlockEvent.beforeText`) it is inserted BEFORE the trailing
   /// open text run, so the run is never severed and the next delta keeps
   /// extending it in place; otherwise it appends in arrival order.
-  void addBlock(MessageContent content, {bool beforeText = false}) {
+  ///
+  /// A block carrying a [blockId] already seen this turn is a step settling
+  /// (`LiveBlock`): it replaces the running one where it stood.
+  void addBlock(
+    MessageContent content, {
+    bool beforeText = false,
+    String? blockId,
+  }) {
+    if (blockId != null) {
+      final previous = _byBlockId[blockId];
+      _byBlockId[blockId] = content;
+      if (previous != null) {
+        final index = segments.indexWhere((s) => identical(s, previous));
+        if (index >= 0) {
+          segments[index] = content;
+          return;
+        }
+      }
+    }
     final last = segments.isNotEmpty ? segments.last : null;
     if (beforeText && last is TextContent) {
       segments.insert(segments.length - 1, content);

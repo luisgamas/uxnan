@@ -99,6 +99,22 @@ void main() {
       expect(plain.beforeText, isFalse);
     });
 
+    test('stream/content/block carries the step id a later block replaces', () {
+      final event = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'content': {
+            'type': 'tool',
+            'toolName': 'Read',
+            'status': 'running',
+            'blockId': 'tu_1',
+          },
+        }),
+      ) as ContentBlockEvent;
+      expect(event.blockId, 'tu_1');
+      expect((event.content as ToolUseContent).running, isTrue);
+    });
+
     test('stream/turn/completed', () {
       final event = processor.classify(
         note('stream/turn/completed', {'turnId': 't1'}),

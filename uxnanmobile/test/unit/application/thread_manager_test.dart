@@ -645,6 +645,53 @@ void main() {
     expect((streaming.contents[1] as TextContent).text, 'y si reporta');
   });
 
+  test('a settled step replaces its running row where it stood', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turnL', threadId: 'th1'))
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turnL',
+          threadId: 'th1',
+          content: CommandExecutionContent(
+            command: 'npm test',
+            status: CommandStatus.running,
+          ),
+          blockId: 'c1',
+        ),
+      )
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnL',
+          threadId: 'th1',
+          delta: 'Tests ran.',
+        ),
+      )
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turnL',
+          threadId: 'th1',
+          content: CommandExecutionContent(
+            command: 'npm test',
+            status: CommandStatus.completed,
+            output: 'ok',
+          ),
+          blockId: 'c1',
+        ),
+      );
+    await _settle();
+
+    final streaming =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnL');
+    expect(streaming.contents.length, 2);
+    final step = streaming.contents[0] as CommandExecutionContent;
+    expect(step.status, CommandStatus.completed);
+    expect(step.output, 'ok');
+    expect((streaming.contents[1] as TextContent).text, 'Tests ran.');
+  });
+
   test('an unflagged block still breaks the run at a real boundary', () async {
     await manager.selectThread('th1');
     await _settle();

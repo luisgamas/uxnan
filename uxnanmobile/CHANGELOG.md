@@ -6,6 +6,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 ### Added
+- **The work log shows a step while it runs.** A command or tool call appears
+  as it starts, marked running, and its result replaces it where it stood (the
+  live turn replaces a block by its `blockId`).
 - **The work log says what each tool did, for every agent.** A tool row reads
   "Read notes.txt" or "Searched alpha" from the `kind` and `target` the bridge
   classified, instead of each agent's own tool name (`view_file`,

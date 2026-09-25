@@ -80,6 +80,23 @@ void main() {
       );
     });
 
+    test('a running tool call says so, and a settled one does not', () {
+      const running = ToolUseContent(
+        toolName: 'Read',
+        toolId: 't',
+        input: {},
+        running: true,
+      );
+      expect(roundTrip(running), running);
+      expect(running.toJson()['status'], 'running');
+      expect(
+        (MessageContent.fromJson({'type': 'tool', 'toolName': 'Read'})
+                as ToolUseContent)
+            .running,
+        isFalse,
+      );
+    });
+
     test('a finished subagent carries its report', () {
       const c = SubagentContent(
         SubagentState(

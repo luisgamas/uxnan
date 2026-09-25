@@ -82,6 +82,7 @@ class ContentBlockEvent extends DomainEvent {
     required this.content,
     this.threadId,
     this.beforeText = false,
+    this.blockId,
   });
 
   /// The turn that produced the block.
@@ -102,8 +103,13 @@ class ContentBlockEvent extends DomainEvent {
   /// identical.
   final bool beforeText;
 
+  /// The step this block stands for (`LiveBlock`, shared/src/models/tool.ts):
+  /// a later block of the same turn with the same id replaces it in place — a
+  /// step shows as it starts (running) and settles where it stood.
+  final String? blockId;
+
   @override
-  List<Object?> get props => [turnId, threadId, content, beforeText];
+  List<Object?> get props => [turnId, threadId, content, beforeText, blockId];
 }
 
 /// A turn finished successfully.
