@@ -46,12 +46,13 @@ function changes(extra: Partial<SyncChanges> = {}): SyncChanges {
     storeId: 's1',
     rev: 10,
     reset: true,
-    settings: { home: '/Users/me' },
+    settings: { home: '/Users/me', name: 'Studio' },
     projects: [],
     removedProjectIds: [],
     threads: [],
     removedThreadIds: [],
     clients: [],
+    devices: [],
     ...extra,
   };
 }
@@ -140,6 +141,38 @@ describe('ChatStore', () => {
       params: { agents: [{ agentId: 'zero', displayName: 'Zero', available: true }] },
     });
     expect(store.agents.map((a) => a.agentId)).toEqual(['zero']);
+  });
+
+  it('keeps the paired phones and renames them and the PC for every client', async () => {
+    const phone = { deviceId: 'p1', displayName: 'Pixel 9', publicKey: 'k', pairedAt: 1 };
+    const { store, calls } = harness({
+      'sync/changes': changes({ devices: [phone] }),
+      'device/rename': { ...phone, displayName: 'Work phone', nameSource: 'user' },
+      'settings/set': { home: '/Users/me', name: 'Desk' },
+    });
+    await store.sync();
+    expect(store.devices.map((d) => d.displayName)).toEqual(['Pixel 9']);
+    expect(store.settings?.name).toBe('Studio');
+
+    await store.renamePhone('p1', 'Work phone');
+    expect(calls.at(-1)).toEqual({
+      method: 'device/rename',
+      params: { deviceId: 'p1', name: 'Work phone' },
+    });
+    expect(store.devices[0]?.displayName).toBe('Work phone');
+
+    await store.setPcName('Desk');
+    expect(calls.at(-1)).toEqual({ method: 'settings/set', params: { name: 'Desk' } });
+    expect(store.settings?.name).toBe('Desk');
+
+    store.apply({ method: 'stream/devices/updated', params: { devices: [] } });
+    expect(store.devices).toEqual([]);
+
+    await store.removePhone('p1');
+    expect(calls.at(-1)).toEqual({
+      method: 'bridge/removeTrustedDevice',
+      params: { deviceId: 'p1' },
+    });
   });
 
   it('adopts threads created, renamed and deleted by another client', () => {

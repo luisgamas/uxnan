@@ -56,12 +56,17 @@ the bridge's lock file to tell a bridge that is not there from one that is there
 but cannot talk to the desktop, and `managed` never starts a second bridge over
 one that holds the lock.
 
-While connected, the section also lists the phones connected right now —
-presence, kept live by the bridge (`stream/presence/updated`) — and **Pair a
-phone**: a QR drawn from the running bridge's own payload (its LAN hosts, its
-session, the pairing window armed — the one `uxnan-bridge start` prints), with
-its countdown and *New code*. **Projects → Start folder** shows and changes the
-folder the bridge explores new projects from, on the phone and here alike
+While connected, the section also lists **every paired phone** — named as
+every client names it (`sync/changes.devices`, `stream/devices/updated`), with
+its model, OS and app version and whether it is connected now (presence,
+`stream/presence/updated`). A phone is renamed in place (`device/rename`; the
+latest rename wins, even one made on the phone offline) or unpaired
+(`bridge/removeTrustedDevice`). **Pair a phone** shows a QR drawn from the
+running bridge's own payload (its LAN hosts, its session, the pairing window
+armed — the one `uxnan-bridge start` prints), with its countdown and *New
+code*; several phones can be paired. **Shared with your phones** holds the
+**Computer name** every client shows for this PC and the **Start folder** the
+bridge explores new projects from, on the phone and here alike
 (`settings/set`).
 
 ## One list of projects with the phone

@@ -24,9 +24,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the service.
 - **Pair a phone from Settings → Bridge & mobile**: a QR drawn from the running
   bridge's own payload (`bridge_pairing_qr`, crate `qrcode`), with a countdown
-  and *New code*. The phones connected right now come from the bridge's
-  presence, live. **Start folder** shows and changes where new projects are
-  explored from, here and on the phone.
+  and *New code*. **Phones** lists every paired phone with its model, OS and
+  app version and whether it is connected now; rename one in place (the phone
+  and every other client show the new name — the latest rename wins, even one
+  made on the phone offline) or unpair it. **Shared with your phones** holds
+  the **Computer name** every client shows for this PC and the **Start
+  folder** new projects are explored from, here and on the phone.
+  The profile menu's *Edit profile* is now an icon button beside the name.
 - **Agent detection follows one rule, shared with the bridge**
   (`shared/agent-locations.json`, compiled into `agentcli.rs`): the headless
   resolver, Settings → Agents' detection, the hooks' presence check and the

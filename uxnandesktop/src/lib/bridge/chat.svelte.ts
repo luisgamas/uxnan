@@ -21,8 +21,10 @@ import type { ApprovalDecision } from '$shared/models/approval';
 import type { AgentDescriptor, AgentModel } from '$shared/agents/agent-capabilities';
 import type { Project } from '$shared/models/project';
 import type { BridgeSettings, ClientPresence, SyncChanges } from '$shared/models/sync';
+import type { TrustedDevice } from '$shared/models/session';
 import type {
   AgentsUpdatedParams,
+  DevicesUpdatedParams,
   PresenceUpdatedParams,
   ProjectRemovedParams,
   ProjectUpdatedParams,
@@ -57,10 +59,12 @@ export class ChatStore {
   threadsLoaded = $state(false);
   /** The bridge's project registry, by id — the list the phone shows too. */
   projects = new SvelteMap<string, Project>();
-  /** Settings shared with every client (the start folder). */
+  /** Settings shared with every client (the start folder, the PC's name). */
   settings = $state<BridgeSettings | null>(null);
   /** Who is connected to the bridge right now (phones, this desktop). */
   clients = $state<ClientPresence[]>([]);
+  /** Every phone paired to this PC, as the bridge names them. */
+  devices = $state<TrustedDevice[]>([]);
   agents = $state<AgentDescriptor[]>([]);
   /** The last sync revision applied, and the store it belongs to. */
   #rev: number | undefined;
@@ -158,6 +162,7 @@ export class ChatStore {
     }
     this.settings = changes.settings;
     this.clients = changes.clients;
+    if (Array.isArray(changes.devices)) this.devices = changes.devices;
     this.activity.adoptList([...this.threads.values()]);
     this.#rev = changes.rev;
     this.#storeId = changes.storeId;
@@ -208,6 +213,23 @@ export class ChatStore {
   /** Change the shared start folder (every client hears it). */
   async setHome(home: string): Promise<void> {
     this.settings = await this.#client.call<BridgeSettings>('settings/set', { home });
+  }
+
+  /** Rename this PC for every client; empty restores the machine's name. */
+  async setPcName(name: string): Promise<void> {
+    this.settings = await this.#client.call<BridgeSettings>('settings/set', { name });
+  }
+
+  /** Name a paired phone for every client; empty restores its own name. */
+  async renamePhone(deviceId: string, name: string): Promise<void> {
+    const renamed = await this.#client.call<TrustedDevice>('device/rename', { deviceId, name });
+    this.devices = this.devices.map((d) => (d.deviceId === renamed.deviceId ? renamed : d));
+  }
+
+  /** Unpair a phone: it can no longer reconnect until it is paired again. */
+  async removePhone(deviceId: string): Promise<void> {
+    await this.#client.call('bridge/removeTrustedDevice', { deviceId });
+    this.devices = this.devices.filter((d) => d.deviceId !== deviceId);
   }
 
   async loadAgents(): Promise<void> {
@@ -355,6 +377,11 @@ export class ChatStore {
       case 'stream/presence/updated': {
         const clients = (notification.params as PresenceUpdatedParams | undefined)?.clients;
         if (Array.isArray(clients)) this.clients = clients;
+        return;
+      }
+      case 'stream/devices/updated': {
+        const devices = (notification.params as DevicesUpdatedParams | undefined)?.devices;
+        if (Array.isArray(devices)) this.devices = devices;
         return;
       }
       case 'stream/agents/updated': {

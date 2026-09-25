@@ -34,12 +34,17 @@
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
   import BridgePairDialog from "$lib/components/BridgePairDialog.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import { Input } from "$lib/components/ui/input";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import DeleteIcon from "@hugeicons/core-free-icons/Delete02Icon";
+  import type { TrustedDevice } from "$shared/models/session";
   import QrCodeIcon from "@hugeicons/core-free-icons/QrCodeIcon";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { field, focus, icon, text } from "$lib/design";
+  import { field, focus, icon, iconButton, text } from "$lib/design";
   import type { BridgeMode } from "$lib/types";
 
   const MODES = ["off", "attach", "managed"] as const satisfies readonly BridgeMode[];
@@ -70,10 +75,74 @@
     void app.persistSettings();
   }
 
-  /** Phones connected to the bridge right now — presence, kept live by the
-   *  bridge (`stream/presence/updated`). */
-  const phones = $derived(chat.clients.filter((c) => c.kind === "phone"));
+  /** Every paired phone, named as every client names it
+   *  (`stream/devices/updated`), and which of them are connected right now. */
+  const phones = $derived(chat.devices);
+  const connectedIds = $derived(
+    new Set(chat.clients.filter((c) => c.kind === "phone").map((c) => c.id)),
+  );
   let pairOpen = $state(false);
+
+  /** What a phone is, in one quiet line: model · OS · app version. */
+  function phoneAbout(phone: TrustedDevice): string {
+    const os =
+      phone.osVersion && phone.platform
+        ? `${phone.platform === "ios" ? "iOS" : "Android"} ${phone.osVersion}`
+        : null;
+    return [phone.model, os, phone.appVersion ? `Uxnan ${phone.appVersion}` : null]
+      .filter((part): part is string => Boolean(part))
+      .join(" · ");
+  }
+
+  // Renaming a phone happens in place: its row turns into the name field.
+  let renamingId = $state<string | null>(null);
+  let renameValue = $state("");
+  function startRename(phone: TrustedDevice): void {
+    renamingId = phone.deviceId;
+    renameValue = phone.displayName;
+  }
+  async function commitRename(): Promise<void> {
+    const id = renamingId;
+    if (id === null) return;
+    renamingId = null;
+    const current = phones.find((p) => p.deviceId === id)?.displayName;
+    if (renameValue.trim() === current) return;
+    try {
+      await chat.renamePhone(id, renameValue.trim());
+    } catch (err) {
+      toastError(err);
+    }
+  }
+
+  let removing = $state<TrustedDevice | null>(null);
+  let removeOpen = $state(false);
+  async function confirmRemove(): Promise<void> {
+    const phone = removing;
+    if (!phone) return;
+    try {
+      await chat.removePhone(phone.deviceId);
+      toast.success(i18n.t("bridge.phoneRemoved", { name: phone.displayName }));
+    } catch (err) {
+      toastError(err);
+    }
+  }
+
+  // The PC's name, edited in place and saved when the field is left.
+  let pcName = $state("");
+  $effect(() => {
+    pcName = chat.settings?.name ?? "";
+  });
+  async function commitPcName(): Promise<void> {
+    const next = pcName.trim();
+    if (next === (chat.settings?.name ?? "")) return;
+    try {
+      await chat.setPcName(next);
+      toast.success(i18n.t("bridge.pcNameChanged"));
+    } catch (err) {
+      pcName = chat.settings?.name ?? "";
+      toastError(err);
+    }
+  }
 
   let choosingHome = $state(false);
   async function chooseHome() {
@@ -293,14 +362,59 @@
   {#if status.state === "connected"}
     <SettingsSection title={i18n.t("bridge.phones")} description={i18n.t("bridge.phonesDesc")}>
       <div class="divide-y divide-border/60">
-        {#each phones as phone (phone.id)}
-          <SettingsRow label={phone.name}>
+        {#each phones as phone (phone.deviceId)}
+          {@const connected = connectedIds.has(phone.deviceId)}
+          <SettingsRow label={renamingId === phone.deviceId ? undefined : phone.displayName}>
+            {#snippet meta()}
+              {#if renamingId === phone.deviceId}
+                <Input
+                  class={cn(field.selectStandard, "w-full")}
+                  aria-label={i18n.t("bridge.phoneRename")}
+                  bind:value={renameValue}
+                  maxlength={80}
+                  autofocus
+                  onblur={() => void commitRename()}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") renamingId = null;
+                  }}
+                />
+              {/if}
+              <p class={cn(text.meta, "flex min-w-0 items-center gap-1.5")}>
+                <StatusDot tone={connected ? "ok" : "off"} />
+                <span class="truncate">
+                  {connected ? i18n.t("bridge.phoneConnected") : i18n.t("bridge.phoneAway")}{phoneAbout(phone)
+                    ? ` · ${phoneAbout(phone)}`
+                    : ""}
+                </span>
+              </p>
+            {/snippet}
             {#snippet control()}
-              <span class={text.meta}>
-                {i18n.t("bridge.phoneSince", {
-                  time: new Date(phone.since).toLocaleTimeString(i18n.locale),
-                })}
-              </span>
+              <div class="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class={cn(iconButton.action, "text-muted-foreground")}
+                  aria-label={i18n.t("bridge.phoneRename")}
+                  title={i18n.t("bridge.phoneRename")}
+                  onclick={() => startRename(phone)}
+                >
+                  <Icon icon={PencilIcon} class={icon.button} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class={cn(iconButton.action, "text-muted-foreground hover:text-destructive")}
+                  aria-label={i18n.t("bridge.phoneRemove")}
+                  title={i18n.t("bridge.phoneRemove")}
+                  onclick={() => {
+                    removing = phone;
+                    removeOpen = true;
+                  }}
+                >
+                  <Icon icon={DeleteIcon} class={icon.button} />
+                </Button>
+              </div>
             {/snippet}
           </SettingsRow>
         {:else}
@@ -317,8 +431,22 @@
       </div>
     </SettingsSection>
 
-    <SettingsSection title={i18n.t("bridge.projects")} description={i18n.t("bridge.projectsDesc")}>
+    <SettingsSection title={i18n.t("bridge.shared")} description={i18n.t("bridge.sharedDesc")}>
       <div class="divide-y divide-border/60">
+        <SettingsRow label={i18n.t("bridge.pcName")} description={i18n.t("bridge.pcNameDesc")}>
+          {#snippet control()}
+            <Input
+              class={cn(field.selectStandard, "w-56")}
+              aria-label={i18n.t("bridge.pcName")}
+              bind:value={pcName}
+              maxlength={80}
+              onblur={() => void commitPcName()}
+              onkeydown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+          {/snippet}
+        </SettingsRow>
         <SettingsRow label={i18n.t("bridge.home")} description={i18n.t("bridge.homeDesc")}>
           {#snippet meta()}
             {#if chat.settings?.home}
@@ -334,6 +462,14 @@
       </div>
     </SettingsSection>
 
+    <ConfirmDialog
+      bind:open={removeOpen}
+      title={i18n.t("bridge.phoneRemoveTitle", { name: removing?.displayName ?? "" })}
+      description={i18n.t("bridge.phoneRemoveDesc")}
+      confirmLabel={i18n.t("bridge.phoneRemove")}
+      danger
+      onconfirm={confirmRemove}
+    />
     <BridgePairDialog bind:open={pairOpen} />
   {/if}
 </div>
