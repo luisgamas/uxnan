@@ -30,14 +30,21 @@
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
 
-  let { block }: { block: Record<string, unknown> } = $props();
+  let {
+    block,
+    live = true,
+  }: {
+    block: Record<string, unknown>;
+    /** The step's turn is still running: only then is a running step animated. */
+    live?: boolean;
+  } = $props();
 
   let open = $state(false);
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
   const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
   const type = $derived(str(block.type));
-  const running = $derived(activityRunning(block));
+  const running = $derived(live && activityRunning(block));
   const failed = $derived(activityFailed(block));
   const sub = $derived(
     block.state && typeof block.state === "object" ? (block.state as Record<string, unknown>) : {},

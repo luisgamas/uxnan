@@ -93,6 +93,20 @@ describe('Conversation', () => {
     expect(c.running).toBe(true);
   });
 
+  it('replaces a running step with its result, in place', () => {
+    const { c } = conversation();
+    c.apply(note('stream/turn/created', { turn: turn('x', 'go', 'pending') }));
+    c.apply(note('stream/turn/started', { turnId: 'x' }));
+    const running = { type: 'command_execution', command: 'ls', status: 'running', blockId: 'c1' };
+    c.apply(note('stream/content/block', { turnId: 'x', messageId: 'x-a', content: running }));
+    c.apply(note('stream/message/delta', { turnId: 'x', messageId: 'x-a', delta: 'Done.' }));
+    const done = { ...running, status: 'completed', output: 'a.txt' };
+    c.apply(note('stream/content/block', { turnId: 'x', messageId: 'x-a', content: done }));
+    const answer = assistantOf(c.turns[0]);
+    expect(answer?.segments).toEqual([done, { type: 'text', text: 'Done.' }]);
+    expect(answer?.blocks).toEqual([done]);
+  });
+
   it('lands streamed text in one render per window, never out of order', () => {
     vi.useFakeTimers();
     try {

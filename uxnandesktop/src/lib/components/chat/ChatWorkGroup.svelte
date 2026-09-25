@@ -36,7 +36,7 @@
 </script>
 
 {#if blocks.length === 1}
-  <ChatActivity block={blocks[0]} />
+  <ChatActivity block={blocks[0]} {live} />
 {:else}
   <Collapsible.Root bind:open>
     <Collapsible.Trigger class={chat.activity}>
@@ -57,7 +57,7 @@
     <Collapsible.Content>
       <div class={chat.activityList}>
         {#each blocks as block, i (i)}
-          <ChatActivity {block} />
+          <ChatActivity {block} {live} />
         {/each}
       </div>
     </Collapsible.Content>

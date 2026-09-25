@@ -164,6 +164,15 @@ describe("ChatActivity", () => {
     }
   });
 
+  it("animates a running step only while its turn is live", () => {
+    const block = { type: "command_execution", command: "npm test", status: "running", blockId: "c1" };
+    const live = mount(ChatActivity, { props: { block, live: true } });
+    expect(live.screen.getByRole("status")).toBeTruthy();
+    live.screen.unmount();
+    const settled = mount(ChatActivity, { props: { block, live: false } });
+    expect(settled.screen.queryByRole("status")).toBeNull();
+  });
+
   it("opens a subagent's report and marks one that failed", async () => {
     const block = {
       type: "subagent",

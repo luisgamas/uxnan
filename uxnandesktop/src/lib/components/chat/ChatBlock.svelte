@@ -60,7 +60,7 @@
 </script>
 
 {#if isActivity(b)}
-  <ChatActivity block={b} />
+  <ChatActivity block={b} {live} />
 {:else if (type === "approval" && str(req.approvalId)) || (type === "question" && str(req.questionId))}
   <ChatRequest block={b} {threadId} {conversation} {live} {compact} />
 {:else if type === "plan" && steps.length > 0}

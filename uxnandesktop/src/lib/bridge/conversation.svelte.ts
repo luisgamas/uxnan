@@ -270,6 +270,21 @@ export class Conversation {
         if (!params.content || typeof params.content !== 'object') return;
         const message = this.#liveAssistant(params.turnId, params.messageId);
         if (!message) return;
+        // A step that settles replaces the running one it started as, in place
+        // (`LiveBlock`, shared/src/models/tool.ts).
+        const blockId = blockIdOf(params.content);
+        if (blockId !== undefined) {
+          const same = (b: unknown) => blockIdOf(b) === blockId;
+          const blocks = blocksOf(message);
+          const segments = segmentsOf(message);
+          const inBlocks = blocks.findIndex(same);
+          const inSegments = segments.findIndex(same);
+          if (inBlocks >= 0 || inSegments >= 0) {
+            if (inBlocks >= 0) blocks[inBlocks] = params.content;
+            if (inSegments >= 0) segments[inSegments] = params.content;
+            return;
+          }
+        }
         blocksOf(message).push(params.content);
         const segments = segmentsOf(message);
         // A block from a parallel activity lands BEFORE the text run that is
@@ -530,4 +545,11 @@ export function orderBySeq(turns: Turn[]): Turn[] {
   if (numbered.length === 0) return turns;
   const unnumbered = turns.filter((t) => typeof t.seq !== 'number');
   return [...[...numbered].sort((a, b) => (a.seq as number) - (b.seq as number)), ...unnumbered];
+}
+
+/** The `blockId` a block carries (`LiveBlock`), or undefined. */
+function blockIdOf(block: unknown): string | undefined {
+  if (!block || typeof block !== "object") return undefined;
+  const id = (block as Record<string, unknown>).blockId;
+  return typeof id === "string" && id ? id : undefined;
 }

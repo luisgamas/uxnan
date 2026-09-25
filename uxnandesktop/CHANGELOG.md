@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **The chat shows a step while it runs.** A command, a tool call or a
+  subagent appears as it starts, with the running dot, and its result replaces
+  it where it stood (`LiveBlock`, replaced by `blockId` in the conversation
+  replica). A step of a turn that ended never spins.
+
 - **The chat says what every agent's tools did.** A tool row reads *Read*,
   *Searched*, *Listed*, *Fetched* or *Searched the web* with its file, pattern
   or URL — from the `kind` and `target` the bridge classifies for every agent —
