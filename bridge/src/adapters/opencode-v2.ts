@@ -328,6 +328,8 @@ export interface OpenCodeV2ServerOptions {
   cwd: string;
   /** Spawns `opencode serve` (injected in tests). */
   spawnFn?: SpawnFn;
+  /** Extra environment for `opencode serve` (Uxnan Desktop's tools). */
+  env?: Record<string, string>;
 }
 
 /** An OpenCode 2.x `opencode serve`, behind the neutral contract. */
@@ -348,6 +350,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
       eventPath: '/api/event',
       password: true,
       ...(opts.spawnFn ? { spawnFn: opts.spawnFn } : {}),
+      ...(opts.env ? { env: opts.env } : {}),
     });
     this.#serve.onData((data) => {
       const type = str(data['type']);

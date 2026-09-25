@@ -300,14 +300,17 @@ push validation (FOR-HUMAN).
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
       instead of the heuristic (slower, per-CLI).
-- [ ] **Uxnan Desktop's tools for the other adapters** — `desktop/attach` is wired
-      for Claude Code only (`claude-adapter.ts` → `claudeDesktopMcpConfig`). Codex
-      (`app-server`: `-c mcp_servers.*` at spawn), OpenCode (`serve`:
-      `OPENCODE_CONFIG_CONTENT`), Grok / Zero (ACP `session/new` `mcpServers`), pi and
-      Antigravity (no known per-run mechanism) are resident processes that keep the
-      environment they were spawned with, so attaching needs a respawn or a
-      per-session config — each to be verified against the driven surface
-      (`docs/agents.md` → *Uxnan Desktop's tools*) before it is claimed.
+- [ ] **Uxnan Desktop's tools for Zero and Antigravity** — Claude Code, Codex,
+      OpenCode and pi are wired and verified, Grok is wired behind its ACP
+      capability (`docs/agents.md` → *Uxnan Desktop's tools*). `zero acp` (0.9.0)
+      ignores ACP `mcpServers`, and `agy` (1.2.10) has no per-run mechanism: both
+      only read a user-global config. Both pass a stdio server the environment of
+      the agent that starts it, so a **secret-free** entry (`uxnan-browser` → a
+      bridge-shipped stdio proxy that reads `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` /
+      `UXNAN_THREAD_CWD` and offers nothing outside a bridge run) would work.
+      Blocked on a maintainer decision: it means writing into the user's own
+      config, which the desktop's per-launch rule (`uxnandesktop/src-tauri/src/mcpinject.rs`)
+      has so far refused. Also owed: run Grok's path against the real binary.
 - [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` serves
       only `desktop/attach` / `desktop/detach` (the desktop's tools for bridge-run
       agents, local channel only); nothing for an embedded sidecar exists. This is

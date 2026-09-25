@@ -31,10 +31,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   start (`desktop/attach`, over the local channel; `desktop/detach` when
   Settings → Browser's `mcpEnabled` goes off). On the control server that token
   is a new caller, `Caller::Bridge { cwd }`: scoped to the project of the
-  conversation's folder (`x-uxnan-cwd`), `current` naming nothing, never a hook,
-  audited as `bridge`; its browser calls land in that folder's browser. The
-  bridge registers it for Claude Code today — verified end to end with the
-  branch's bridge and a real `claude` turn calling a tool with both headers.
+  conversation's folder (`x-uxnan-cwd`, percent-encoded by the bridge and
+  decoded here, so a folder with spaces or non-ASCII characters is still a
+  valid header), `current` naming nothing, never a hook, audited as `bridge`;
+  its browser calls land in that folder's browser. The bridge registers it for
+  Claude Code, Codex, OpenCode, pi and Grok (Zero and Antigravity only read a
+  user-global config) — verified end to end with the branch's bridge and real
+  `claude`, `codex`, `opencode` and `pi` turns calling a tool with both headers.
 - **Chat drafts, recall and edit.** A chat's unsent text is kept as its tab's
   draft (saved with the layout, `SavedTab.draft`), surviving tab switches and
   restarts. On an empty composer ↑ / ↓ walk the thread's earlier messages. A

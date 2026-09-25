@@ -55,6 +55,7 @@ import type {
   TurnAttachment,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { agentEnv, defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
@@ -167,6 +168,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
   /** Discovered model list, cached for the process lifetime (probing is costly). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
+  /** The ACP process advertised HTTP MCP servers (`initialize`) — Zero 0.9 does not (it ignores `mcpServers` and keeps its own config), so its sessions get the tools the day it does. */
+  #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
   #defaultCwd = process.cwd();
 
@@ -332,7 +335,12 @@ export class ZeroAdapter extends BaseAgentAdapter {
     // Resolve the ACP session for this thread (new, or load a persisted one).
     let sessionId: string;
     try {
-      sessionId = await this.#ensureSession(rpc, threadId, cwd);
+      sessionId = await this.#ensureSession(
+        rpc,
+        threadId,
+        cwd,
+        acpDesktopMcpServers(options.desktopTools, cwd, this.#mcpHttp),
+      );
     } catch (err) {
       return this.#failTurn(threadId, turnId, `zero session failed: ${errorMessage(err)}`);
     }
@@ -417,7 +425,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
       );
       streams.onClose((code) => rpc.onProcessClose(code));
       try {
-        await rpc.request('initialize', {
+        const init = await rpc.request<unknown>('initialize', {
           protocolVersion: 1,
           clientCapabilities: {
             fs: { readTextFile: false, writeTextFile: false },
@@ -425,6 +433,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
           },
           clientInfo: { name: 'uxnan-bridge', version: '1.0.0' },
         });
+        this.#mcpHttp = acpSupportsHttpMcp(init);
       } catch (err) {
         rpc.close();
         streams.kill();
@@ -440,13 +449,18 @@ export class ZeroAdapter extends BaseAgentAdapter {
   }
 
   /** Get (or create/load) the ACP session id for a thread. */
-  async #ensureSession(rpc: NdjsonRpc, threadId: string, cwd: string): Promise<string> {
+  async #ensureSession(
+    rpc: NdjsonRpc,
+    threadId: string,
+    cwd: string,
+    mcpServers: AcpMcpServerHttp[] = [],
+  ): Promise<string> {
     const known = this.#sessionByThread.get(threadId);
     if (known) {
       // The same acp process still holds it (common case); a restarted process
       // needs session/load to re-attach. Try load; fall through to new on failure.
       try {
-        await rpc.request('session/load', { sessionId: known, cwd, mcpServers: [] });
+        await rpc.request('session/load', { sessionId: known, cwd, mcpServers });
         return known;
       } catch {
         this.#sessionByThread.delete(threadId);
@@ -454,7 +468,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
         this.#modelBySession.delete(known);
       }
     }
-    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers: [] });
+    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers });
     this.#sessionByThread.set(threadId, res.sessionId);
     return res.sessionId;
   }

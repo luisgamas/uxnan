@@ -89,9 +89,11 @@ import type {
   AgentModel,
   AgentModelOption,
   ApprovalDecision,
+  DesktopTools,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import {
   expandCustomCommand,
   scanCustomCommands,
@@ -321,6 +323,33 @@ export function codexUsageTokens(usage: unknown): number | undefined {
  * production; tests inject a `spawnAppServer` that wires a fake app-server
  * (NDJSON over a PassThrough) so the JSON-RPC client can be exercised.
  */
+/**
+ * Uxnan Desktop's tools for one Codex thread: a per-thread `config` override on
+ * `thread/start` / `thread/resume` registering the desktop's MCP server, with
+ * the thread's own folder in `x-uxnan-cwd`. Per thread because one app-server
+ * serves every thread (and cwd) with a turn in flight. The token rides in that
+ * JSON-RPC message on the app-server's stdin — never argv or a file. Verified
+ * against codex-cli 0.156.1: the server connects for that thread only, sends
+ * both headers, and neither reaches the rollout, the state DB or the logs.
+ */
+export function codexDesktopConfig(
+  desktop: DesktopTools | undefined,
+  cwd: string,
+): { config?: Record<string, unknown> } {
+  if (!desktop) return {};
+  return {
+    config: {
+      [`mcp_servers.${DESKTOP_MCP_SERVER_NAME}`]: {
+        url: desktop.mcpUrl,
+        http_headers: {
+          Authorization: `Bearer ${desktop.token}`,
+          [DESKTOP_CWD_HEADER]: encodeCwdHeader(cwd),
+        },
+      },
+    },
+  };
+}
+
 function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () => SpawnedAppServer {
   return () => {
     const child = spawnPiped(binaryPath, [...prependArgs, 'app-server']);
@@ -534,6 +563,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           approvalPolicy,
           sandbox,
           ...(typeof model === 'string' ? { model } : {}),
+          ...codexDesktopConfig(options.desktopTools, cwd),
         });
         this.#loadedThreads.add(codexThreadId);
       } catch (err) {
@@ -575,6 +605,7 @@ export class CodexAdapter extends BaseAgentAdapter {
             // `thread_source` unset, which no first-party client does).
             threadSource: 'user',
             ...(typeof effort === 'string' ? { effort } : {}),
+            ...codexDesktopConfig(options.desktopTools, cwd),
           },
         );
         codexThreadId = started.thread.id;

@@ -420,6 +420,8 @@ export interface OpenCodeV1ServerOptions {
   cwd: string;
   /** Spawns the short-lived `opencode models` runs (injected in tests). */
   spawnFn?: SpawnFn;
+  /** Extra environment for `opencode serve` (Uxnan Desktop's tools). */
+  env?: Record<string, string>;
 }
 
 /** An OpenCode 1.x `opencode serve`, behind the neutral contract. */
@@ -439,6 +441,7 @@ export class OpenCodeV1Server implements IOpenCodeServer {
       password: false,
       extraArgs: ['--print-logs'],
       ...(opts.spawnFn ? { spawnFn: opts.spawnFn } : {}),
+      ...(opts.env ? { env: opts.env } : {}),
     });
     this.#serve.onData((data) => {
       const type = str(data['type']);

@@ -59,6 +59,7 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
@@ -209,6 +210,8 @@ export class GrokAdapter extends BaseAgentAdapter {
   /** Model list, captured from the `initialize` handshake (cached for the process). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
+  /** The ACP process advertised HTTP MCP servers (`initialize`) — Uxnan Desktop's tools are offered only then. */
+  #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
   #defaultCwd = process.cwd();
 
@@ -287,7 +290,12 @@ export class GrokAdapter extends BaseAgentAdapter {
     // Resolve the ACP session for this thread (new, or load a persisted one).
     let sessionId: string;
     try {
-      sessionId = await this.#ensureSession(rpc, threadId, cwd);
+      sessionId = await this.#ensureSession(
+        rpc,
+        threadId,
+        cwd,
+        acpDesktopMcpServers(options.desktopTools, cwd, this.#mcpHttp),
+      );
     } catch (err) {
       return this.#failTurn(threadId, turnId, `grok session failed: ${errorMessage(err)}`);
     }
@@ -378,6 +386,7 @@ export class GrokAdapter extends BaseAgentAdapter {
           },
           clientInfo: { name: 'uxnan-bridge', version: '1.0.0' },
         });
+        this.#mcpHttp = acpSupportsHttpMcp(init);
         // Grok reports its models in the handshake — cache them for `agent/models`.
         const models = mapGrokModels(init?._meta?.modelState, this.#defaultModel);
         if (models.length > 0) this.#modelsCache = models;
@@ -396,13 +405,18 @@ export class GrokAdapter extends BaseAgentAdapter {
   }
 
   /** Get (or create/load) the ACP session id for a thread. */
-  async #ensureSession(rpc: NdjsonRpc, threadId: string, cwd: string): Promise<string> {
+  async #ensureSession(
+    rpc: NdjsonRpc,
+    threadId: string,
+    cwd: string,
+    mcpServers: AcpMcpServerHttp[] = [],
+  ): Promise<string> {
     const known = this.#sessionByThread.get(threadId);
     if (known) {
       // The same process still holds it (common case); a restarted process needs
       // session/load to re-attach. Try load; fall through to new on failure.
       try {
-        await rpc.request('session/load', { sessionId: known, cwd, mcpServers: [] });
+        await rpc.request('session/load', { sessionId: known, cwd, mcpServers });
         return known;
       } catch {
         this.#sessionByThread.delete(threadId);
@@ -410,7 +424,7 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#effortBySession.delete(known);
       }
     }
-    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers: [] });
+    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers });
     this.#sessionByThread.set(threadId, res.sessionId);
     return res.sessionId;
   }

@@ -269,16 +269,29 @@ own MCP server — the one it hands the agents it launches in its terminals
 `desktop/attach { mcpUrl, token }` (accepted only from a local client, and only
 for a loopback `/mcp` endpoint). Turns started from then on carry
 `SendTurnOptions.desktopTools`; the bridge forgets them when that client
-disconnects. An adapter registers the server **for one run only**, under the
-same name the desktop's launches use (`uxnan-browser`), with the token only in
-the environment (`UXNAN_MCP_TOKEN`) and the conversation's cwd in the
-`x-uxnan-cwd` header (from `UXNAN_THREAD_CWD`), which the desktop scopes the
-agent to:
+disconnects. An adapter registers the server **for its own conversation only**,
+under the same name the desktop's launches use (`uxnan-browser`), with the token
+never in argv or a file (only in the environment or in a message on the agent's
+stdin) and the conversation's folder in the `x-uxnan-cwd` header,
+percent-encoded (`encodeCwdHeader`) so any path is a valid header value — the
+desktop decodes it and scopes the agent to that project. A change of attachment
+(attached, detached, a new token after a desktop restart) reaches the next turn:
 
 | Agent | Mechanism | Verified |
 |---|---|---|
-| **Claude Code** | `--mcp-config '<json>'` per run; `${VAR}` in its headers expanded from the env at load | claude 2.1.282: the server connects, lists and is called, with both headers expanded |
-| Codex, OpenCode, pi, Antigravity, Grok, Zero | not wired yet — resident processes keep the environment they were spawned with, so attaching needs a respawn or a per-session config; see `FOR-DEV.md` | — |
+| **Claude Code** | `--mcp-config '<json>'` per run; `${UXNAN_MCP_TOKEN}` / `${UXNAN_THREAD_CWD}` in its headers expanded from the env at load | claude 2.1.282: connects, lists and calls, both headers expanded |
+| **Codex** | per-thread `config` on `thread/start` / `thread/resume` (`mcp_servers.uxnan-browser` with `http_headers`) — one app-server serves every thread, so the override is per thread, not per process | codex-cli 0.156.1: connects for that thread only; the token reaches neither the rollout, the state DB nor the logs |
+| **OpenCode** | `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve` (merged over the user's config), token by reference (`{env:UXNAN_MCP_TOKEN}`); an idle server restarts when the attachment changes | opencode 2.0.16: connects once the folder loads, sends both headers, calls |
+| **pi** | no MCP client of its own, so the bridge ships one: `-e dist/src/adapters/pi-desktop-extension.js` (Streamable HTTP over `fetch`, one pi tool per MCP tool), fed `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` through the env; the resident process recycles on a change of attachment. **Not in the read-only posture** (`--tools` is a strict allowlist, and the tools act) | pi 0.85.1, through the bridge: the model is offered the tools, a call with arguments reaches the server and its answer ends the turn; the token reaches no session file |
+| **Grok** | ACP `mcpServers` (http variant) on `session/new` / `session/load`, sent only when `initialize` advertises `agentCapabilities.mcpCapabilities.http` | unit-tested against the ACP schema; **not run** against the binary (not installed on the verifying machine) |
+| **Zero** | the same ACP code path — but `zero acp` advertises no `mcpCapabilities` and ignores `mcpServers`, so nothing is sent | zero 0.9.0: `initialize` advertises none, a `session/new` with an http server never contacts it |
+| **Antigravity** | none: `agy` has no per-run MCP flag or environment; its only channel is the user-global `~/.gemini/config/mcp_config.json` (`agy mcp add`) | agy 1.2.10 |
+
+Zero and Antigravity can only be reached through their user-global config, and
+both hand a stdio server the environment of the agent that starts it (verified on
+zero 0.9.0) — so a secret-free entry pointing at a bridge-shipped stdio proxy
+would work there. Writing into a user's own config is not something the bridge
+does on its own (`FOR-DEV.md`).
 
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models` (`GET /api/model` on

@@ -8,7 +8,10 @@
  *
  * Process shape (spawned on a thread's first turn, reused by the next ones):
  *   pi --mode rpc [--tools read,grep,find,ls | --approve] [--model <id>]
- *      [--thinking <level>] [--session-id <id>]
+ *      [--thinking <level>] [--session-id <id>] [-e <pi-desktop-extension.js>]
+ *
+ * `-e` loads Uxnan Desktop's tools while the desktop is attached (see
+ * {@link piDesktopLaunch}); pi has no MCP client, so the bridge ships one.
  *
  * Why `--mode rpc` and not `-p --mode json`: print mode reads ALL of stdin as the
  * initial prompt and has no input channel while it works; RPC mode leaves stdin
@@ -59,17 +62,21 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
+import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import type {
-  AgentCapabilities,
-  AgentConfig,
-  AgentId,
-  AgentModel,
-  AgentModelOption,
-  CompactionReason,
-  GenerateTitleOptions,
-  SendTurnOptions,
+import { fileURLToPath } from 'node:url';
+import {
+  encodeCwdHeader,
+  type AgentCapabilities,
+  type AgentConfig,
+  type AgentId,
+  type AgentModel,
+  type AgentModelOption,
+  type CompactionReason,
+  type DesktopTools,
+  type GenerateTitleOptions,
+  type SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
@@ -85,6 +92,36 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
  * one cold start, never any history.
  */
 export const DEFAULT_PI_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/** The extension that gives pi Uxnan Desktop's tools (compiled next to this file). */
+export const PI_DESKTOP_EXTENSION = fileURLToPath(
+  new URL('./pi-desktop-extension.js', import.meta.url),
+);
+
+/**
+ * How a pi process is handed Uxnan Desktop's tools: the extension on `-e`, and
+ * the endpoint, token and folder in its environment — never argv or a file.
+ * Nothing in the read-only posture: its `--tools` allowlist is strict (it would
+ * hide the extension's tools anyway), and the desktop's tools act — they open
+ * terminals and message other agents. `key` tells a live process whether it was
+ * started with the same attachment (a recycle compares it).
+ */
+export function piDesktopLaunch(
+  desktop: DesktopTools | undefined,
+  cwd: string,
+  permissionMode: PiPermissionMode,
+): { args: string[]; env: Record<string, string>; key: string } {
+  if (!desktop || permissionMode === 'default') return { args: [], env: {}, key: '' };
+  return {
+    args: ['-e', PI_DESKTOP_EXTENSION],
+    env: {
+      UXNAN_MCP_URL: desktop.mcpUrl,
+      UXNAN_MCP_TOKEN: desktop.token,
+      UXNAN_THREAD_CWD: encodeCwdHeader(cwd),
+    },
+    key: `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`,
+  };
+}
 
 /** Hard cap on the `--list-models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
@@ -182,6 +219,8 @@ interface ActiveSession {
   model?: string;
   effort?: string;
   permissionMode: PiPermissionMode;
+  /** Which desktop attachment the process was started with (`piDesktopLaunch`). */
+  desktopKey: string;
   idleTimer?: NodeJS.Timeout;
   activeTurn?: ActiveTurn;
   exited: boolean;
@@ -536,9 +575,10 @@ export class PiAdapter extends BaseAgentAdapter {
 
   /**
    * The thread's resident process, spawning one when there is none or when the
-   * live one was started with a different cwd / model / effort / posture —
-   * those are process arguments, so honouring a change means a new process. The
-   * new one resumes the same session via `--session-id`.
+   * live one was started with a different cwd / model / effort / posture /
+   * desktop attachment — those are process arguments, so honouring a change
+   * means a new process. The new one resumes the same session via
+   * `--session-id`.
    */
   #getOrCreateSession(
     threadId: string,
@@ -546,7 +586,9 @@ export class PiAdapter extends BaseAgentAdapter {
     model: string | undefined,
     effort: string | undefined,
     permissionMode: PiPermissionMode,
+    desktopTools: DesktopTools | undefined,
   ): ActiveSession {
+    const desktop = piDesktopLaunch(desktopTools, cwd, permissionMode);
     const existing = this.#sessions.get(threadId);
     if (
       existing &&
@@ -554,7 +596,8 @@ export class PiAdapter extends BaseAgentAdapter {
       existing.cwd === cwd &&
       existing.model === model &&
       existing.effort === effort &&
-      existing.permissionMode === permissionMode
+      existing.permissionMode === permissionMode &&
+      existing.desktopKey === desktop.key
     ) {
       if (existing.idleTimer) {
         clearTimeout(existing.idleTimer);
@@ -575,9 +618,11 @@ export class PiAdapter extends BaseAgentAdapter {
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
     if (effort) args.push('--thinking', effort);
     if (sessionId) args.push('--session-id', sessionId);
+    args.push(...desktop.args);
 
     const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
       stdin: 'pipe',
+      ...(desktop.key ? { env: desktop.env } : {}),
     });
 
     const send = (command: Record<string, unknown>): boolean => {
@@ -599,6 +644,7 @@ export class PiAdapter extends BaseAgentAdapter {
       model,
       effort,
       permissionMode,
+      desktopKey: desktop.key,
       exited: false,
       send,
     };
@@ -757,7 +803,14 @@ export class PiAdapter extends BaseAgentAdapter {
 
     let session: ActiveSession;
     try {
-      session = this.#getOrCreateSession(threadId, cwd, model, effort, permissionMode);
+      session = this.#getOrCreateSession(
+        threadId,
+        cwd,
+        model,
+        effort,
+        permissionMode,
+        options.desktopTools,
+      );
     } catch (err) {
       this.emit({
         type: 'turn_error',

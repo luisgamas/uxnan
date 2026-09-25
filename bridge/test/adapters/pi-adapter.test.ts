@@ -12,10 +12,13 @@ import {
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
+import { PI_DESKTOP_EXTENSION, piDesktopLaunch } from '../../src/adapters/pi-adapter.js';
 
 // --- a fake `pi` process whose stdout we feed with agent-session JSON lines ---
 interface FakeSpawn {
   args: string[];
+  /** The environment the spawn added (`extra.env`). */
+  env?: Record<string, string>;
   /** Whether the spawn asked for a writable stdin (`--mode rpc`). */
   pipedStdin: boolean;
   /** RPC commands written to stdin, in order — the prompt, then any steer. */
@@ -34,16 +37,17 @@ function fakeSpawner(): {
     command: string,
     args: string[],
     cwd: string,
-    extra?: { stdin?: 'pipe' | 'ignore' },
+    extra?: { stdin?: 'pipe' | 'ignore'; env?: Record<string, string> },
   ) => SpawnedProcess;
   last(): FakeSpawn;
+  count(): number;
 } {
   const spawns: FakeSpawn[] = [];
   const spawnFn = (
     _command: string,
     args: string[],
     _cwd?: string,
-    extra?: { stdin?: 'pipe' | 'ignore' },
+    extra?: { stdin?: 'pipe' | 'ignore'; env?: Record<string, string> },
   ): SpawnedProcess => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
@@ -51,6 +55,7 @@ function fakeSpawner(): {
     stdout.on('end', () => emitter.emit('close', 0));
     const record: FakeSpawn = {
       args,
+      ...(extra?.env ? { env: extra.env } : {}),
       pipedStdin: extra?.stdin === 'pipe',
       sent: [],
       stdinEnded: false,
@@ -92,7 +97,7 @@ function fakeSpawner(): {
     spawns.push(record);
     return proc;
   };
-  return { spawnFn, last: () => spawns[spawns.length - 1]! };
+  return { spawnFn, last: () => spawns[spawns.length - 1]!, count: () => spawns.length };
 }
 
 /** Let the fake stdin's 'data' listeners run before asserting on `sent`. */
@@ -442,6 +447,60 @@ test('PiAdapter maps the permission posture to the right tool flags', async () =
     if (hasTools) assert.equal(args[args.indexOf('--tools') + 1], 'read,grep,find,ls');
     assert.equal(args.includes('--approve'), hasApprove);
   }
+});
+
+test('PiAdapter loads the desktop-tools extension while the desktop is attached', async () => {
+  const { spawnFn, last, count } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
+  const turn = async (turnId: string, tools?: typeof desktopTools): Promise<void> => {
+    const { done } = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId,
+      text: 'hi',
+      cwd: '/w/a b',
+      ...(tools ? { desktopTools: tools } : {}),
+    });
+    // Keep stdout open: the process stays resident, as the real one does.
+    last().feedOpen([STATE, assistantEnd('ok'), AGENT_END, AGENT_SETTLED]);
+    await done;
+  };
+
+  await turn('u1', desktopTools);
+  const args = last().args;
+  assert.equal(args[args.indexOf('-e') + 1], PI_DESKTOP_EXTENSION);
+  assert.deepEqual(last().env, {
+    UXNAN_MCP_URL: desktopTools.mcpUrl,
+    UXNAN_MCP_TOKEN: desktopTools.token,
+    UXNAN_THREAD_CWD: '%2Fw%2Fa%20b',
+  });
+  assert.ok(!args.some((a) => a.includes(desktopTools.token)), 'the token never reaches argv');
+
+  // Same attachment: the resident process is reused.
+  await turn('u2', desktopTools);
+  assert.equal(count(), 1);
+
+  // Detached: pi restarts (on the same session) without the extension.
+  await turn('u3');
+  assert.equal(count(), 2);
+  assert.equal(last().args.includes('-e'), false);
+  assert.equal(last().env, undefined);
+  await adapter.stop();
+});
+
+test('piDesktopLaunch offers nothing in the read-only posture or without the desktop', () => {
+  const desktop = { mcpUrl: 'http://127.0.0.1:1/mcp', token: 'k'.repeat(43) };
+  assert.deepEqual(piDesktopLaunch(desktop, '/w', 'default'), { args: [], env: {}, key: '' });
+  assert.deepEqual(piDesktopLaunch(undefined, '/w', 'acceptEdits'), { args: [], env: {}, key: '' });
+  const launch = piDesktopLaunch(desktop, '/w', 'bypassPermissions');
+  assert.deepEqual(launch.args, ['-e', PI_DESKTOP_EXTENSION]);
+  assert.ok(launch.key.startsWith(desktop.mcpUrl));
+  assert.ok(!launch.key.includes(desktop.token));
+  assert.notEqual(
+    piDesktopLaunch({ ...desktop, token: 'j'.repeat(43) }, '/w', 'acceptEdits').key,
+    launch.key,
+  );
 });
 
 test('PiAdapter surfaces an error stopReason as turn_error', async () => {

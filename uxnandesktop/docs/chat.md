@@ -132,9 +132,11 @@ to (`docs/control-api.md` → *Callers*). The desktop hands the bridge its
 endpoint and a token of its own for chat agents (`desktop/attach`, over the
 local channel only; the token rotates on every start and the bridge forgets it
 when the desktop disconnects). Settings → Browser's switch that gives the
-agents Uxnan's tools (`mcpEnabled`) governs chats too. Today the bridge
-registers it for **Claude Code**; the other agents it drives are listed in
-`bridge/FOR-DEV.md`.
+agents Uxnan's tools (`mcpEnabled`) governs chats too. The bridge registers it
+for **Claude Code**, **Codex**, **OpenCode**, **pi** (outside its read-only
+posture) and **Grok** (when its CLI advertises HTTP MCP servers); **Zero** and
+**Antigravity** only read a user-global config, so their chats run without it
+for now (`bridge/docs/agents.md` → *Uxnan Desktop's tools*).
 
 ## A new chat
 

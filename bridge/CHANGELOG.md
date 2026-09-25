@@ -28,11 +28,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   with `RequestSession.local`, and a phone gets `-32001` — and only for a
   loopback `/mcp` endpoint. Turns started afterwards carry
   `SendTurnOptions.desktopTools`; the bridge forgets them when that client
-  disconnects. **Claude Code** registers the server for the run with
-  `--mcp-config '<json>'` under `uxnan-browser`, the token only in
-  `UXNAN_MCP_TOKEN` and the conversation's cwd in `x-uxnan-cwd` (verified
-  against claude 2.1.282). The other adapters are not wired yet (`FOR-DEV.md`).
-  72 JSON-RPC methods.
+  disconnects. Each adapter registers the server under `uxnan-browser` for its
+  own conversation, the token never in argv or a file, and the conversation's
+  folder percent-encoded in `x-uxnan-cwd`: **Claude Code** with
+  `--mcp-config '<json>'` (claude 2.1.282); **Codex** with a per-thread `config`
+  on `thread/start` / `thread/resume` (codex-cli 0.156.1); **OpenCode** with
+  `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve`, restarted when idle
+  if the attachment changed (opencode 2.0.16); **pi** through a bridge-shipped
+  extension (`adapters/pi-desktop-extension.ts`, loaded with `-e`: a Streamable
+  HTTP MCP client registering one pi tool per MCP tool; not in the read-only
+  posture), the resident process recycling on a change of attachment (pi
+  0.85.1, run through the bridge); **Grok** with ACP `mcpServers` on
+  `session/new` / `session/load`, only when `initialize` advertises
+  `mcpCapabilities.http` (unit-tested; the binary was not available to run).
+  **Zero** (`zero acp` 0.9.0 ignores `mcpServers`) and **Antigravity** (no
+  per-run mechanism) are not wired (`FOR-DEV.md`). `OPENCODE_CONFIG_CONTENT` is
+  now also scrubbed from an inherited environment. 72 JSON-RPC methods.
 - **`thread/list` and `thread/read` carry each thread's live `activeTurnId`**
   (never persisted), so a client that just connected — the desktop's sidebar,
   the phone's list — shows which conversations are working without reading

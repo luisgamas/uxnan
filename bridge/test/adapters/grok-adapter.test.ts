@@ -16,6 +16,8 @@ class FakeAcp {
   private closeCbs: ((code: number | null) => void)[] = [];
   private handlers: Array<(m: any) => void> = [];
   sessionId = 'grok_sess_1';
+  /** `agentCapabilities` the handshake advertises (none by default). */
+  agentCapabilities: unknown = undefined;
 
   constructor() {
     let buf = '';
@@ -41,6 +43,7 @@ class FakeAcp {
         this.reply(m.id, {
           protocolVersion: 1,
           authMethods: [],
+          ...(this.agentCapabilities ? { agentCapabilities: this.agentCapabilities } : {}),
           _meta: {
             modelState: {
               currentModelId: 'grok-4.5',
@@ -213,6 +216,42 @@ test('GrokAdapter discovers models from the initialize handshake', async () => {
   const ids = models.map((m) => m.id).sort();
   assert.deepEqual(ids, ['grok-4.5', 'grok-composer-2.5-fast']);
   assert.equal(models.find((m) => m.id === 'grok-4.5')?.contextWindow, 500000);
+});
+
+test('GrokAdapter hands a session the desktop tools only when Grok takes HTTP MCP servers', async () => {
+  const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
+  for (const http of [true, false]) {
+    const { adapter, server } = setup();
+    if (http) server.agentCapabilities = { mcpCapabilities: { http: true } };
+    server.handle((m) => {
+      if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+    });
+    const done = collect(adapter);
+    await adapter.sendTurn({
+      threadId: `mcp-${http}`,
+      turnId: 'u1',
+      text: 'hi',
+      cwd: '/w/a b',
+      desktopTools,
+    });
+    await done;
+    const created = server.sent.find((m) => m.method === 'session/new');
+    if (http) {
+      assert.deepEqual(created.params.mcpServers, [
+        {
+          type: 'http',
+          name: 'uxnan-browser',
+          url: desktopTools.mcpUrl,
+          headers: [
+            { name: 'Authorization', value: `Bearer ${desktopTools.token}` },
+            { name: 'x-uxnan-cwd', value: '%2Fw%2Fa%20b' },
+          ],
+        },
+      ]);
+    } else {
+      assert.deepEqual(created.params.mcpServers, []);
+    }
+  }
 });
 
 test('GrokAdapter streams thinking/text/blocks and completes on prompt result', async () => {

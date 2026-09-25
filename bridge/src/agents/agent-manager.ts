@@ -650,9 +650,9 @@ export class AgentManager {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
       ...(options.command !== undefined ? { command: options.command } : {}),
-      // FOR-DEV: only the Claude adapter registers these today; Codex, OpenCode,
-      // Grok, Zero, pi and Antigravity run resident processes that keep their
-      // spawn environment (bridge/FOR-DEV.md → "Uxnan Desktop's tools").
+      // FOR-DEV: every adapter registers these except Zero and Antigravity,
+      // which only read a user-global config (bridge/FOR-DEV.md → "Uxnan
+      // Desktop's tools for Zero and Antigravity").
       ...(this.#desktopTools ? { desktopTools: this.#desktopTools.tools } : {}),
     });
   }

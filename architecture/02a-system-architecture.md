@@ -2487,12 +2487,23 @@ llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
   `RequestSession.local`; un telefono recibe `-32001`) y solo para un endpoint
   loopback `http://127.0.0.1:<port>/mcp`; el token es uno propio del desktop
   para agentes del bridge, rotado en cada arranque, y el bridge lo olvida al
-  desconectarse ese cliente. Cada adapter registra el servidor **solo para esa
-  ejecucion**, con el nombre `uxnan-browser`, el token **solo en el entorno**
-  (`UXNAN_MCP_TOKEN`, nunca en argv ni en un archivo) y el cwd de la
-  conversacion en la cabecera `x-uxnan-cwd`, que el desktop usa para acotar al
-  agente al proyecto de esa carpeta. Hoy: Claude Code (`--mcp-config` por
-  ejecucion); el resto, pendiente (`bridge/FOR-DEV.md`).
+  desconectarse ese cliente. Cada adapter registra el servidor **solo para su
+  conversacion**, con el nombre `uxnan-browser`, el token **nunca en argv ni en
+  un archivo** (solo en el entorno o en un mensaje por el stdin del agente) y la
+  carpeta de la conversacion en la cabecera `x-uxnan-cwd`, **codificada en
+  porcentaje** (`encodeCwdHeader`, para que cualquier ruta sea un valor de
+  cabecera valido), que el desktop decodifica y usa para acotar al agente al
+  proyecto de esa carpeta. Un cambio de adjunto llega al siguiente turno.
+  Mecanismo por agente: **Claude Code** `--mcp-config` por ejecucion; **Codex**
+  `config` por hilo en `thread/start` / `thread/resume`; **OpenCode**
+  `OPENCODE_CONFIG_CONTENT` en el `opencode serve` de la carpeta (se reinicia
+  ocioso si cambia el adjunto); **pi** una extension que el bridge distribuye
+  (`-e`, cliente MCP Streamable HTTP; no en la postura de solo lectura);
+  **Grok** `mcpServers` de ACP en `session/new` / `session/load`, solo si
+  `initialize` anuncia `mcpCapabilities.http`. **Zero** (su `acp` ignora
+  `mcpServers`) y **Antigravity** (sin mecanismo por ejecucion) solo leen una
+  configuracion global del usuario: pendiente de decision
+  (`bridge/FOR-DEV.md`).
 
 **No es una variante criptografica**: es una ruta local con token, el mismo
 modelo de confianza que `POST /agent-hook/approval`. El E2EE no cambia.

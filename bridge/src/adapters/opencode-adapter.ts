@@ -42,9 +42,12 @@ import type {
   AgentModel,
   ApprovalDecision,
   QuestionItem,
+  DesktopTools,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
+import { createHash } from 'node:crypto';
 import {
   expandCustomCommand,
   scanCustomCommands,
@@ -131,6 +134,44 @@ export interface OpenCodeAdapterOptions {
 }
 
 /** An in-flight turn's mutable state, keyed by the OpenCode session id. */
+/** The environment variable OpenCode reads its extra, merged-over config from. */
+const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG_CONTENT';
+
+/**
+ * Uxnan Desktop's tools for the `opencode serve` of one folder: the desktop's
+ * MCP server merged over the user's config (`OPENCODE_CONFIG_CONTENT`), the
+ * token read by OpenCode from `UXNAN_MCP_TOKEN` (`{env:…}`) and the folder in
+ * `x-uxnan-cwd` — one server per folder, so the header is that folder's. The
+ * same mechanism the desktop uses for the OpenCode it launches in a terminal.
+ * Verified against opencode 2.0.16: the server connects once the folder loads
+ * and sends both headers. Empty without desktop tools.
+ */
+export function openCodeDesktopEnv(
+  desktop: DesktopTools | undefined,
+  cwd: string,
+): Record<string, string> {
+  if (!desktop) return {};
+  const config = {
+    mcp: {
+      [DESKTOP_MCP_SERVER_NAME]: {
+        type: 'remote',
+        url: desktop.mcpUrl,
+        headers: {
+          Authorization: `Bearer {env:UXNAN_MCP_TOKEN}`,
+          [DESKTOP_CWD_HEADER]: encodeCwdHeader(cwd),
+        },
+      },
+    },
+  };
+  return { [OPENCODE_CONFIG_ENV]: JSON.stringify(config), UXNAN_MCP_TOKEN: desktop.token };
+}
+
+/** What a folder's server was started with, to tell when it must restart. */
+function toolsFingerprint(desktop: DesktopTools | undefined): string {
+  if (!desktop) return '';
+  return `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`;
+}
+
 interface ActiveRun {
   threadId: string;
   turnId: string;
@@ -159,6 +200,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #serverFactory: OpenCodeAdapterOptions['serverFactory'];
   /** cwd → the server for that project directory (created, maybe not started yet). */
   readonly #serverByCwd = new Map<string, Promise<IOpenCodeServer>>();
+  /** cwd → the desktop tools the next turn there wants (see `sendTurn`). */
+  readonly #wantedTools = new Map<string, DesktopTools | undefined>();
+  /** cwd → fingerprint of the desktop tools its server was started with. */
+  readonly #toolsByCwd = new Map<string, string>();
   /** threadId → OpenCode session id, for continuity + the history fallback. */
   readonly #sessionByThread = new Map<string, string>();
   /** OpenCode session id → in-flight run, to route session-scoped events. */
@@ -247,6 +292,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const modelRef = model !== undefined ? splitOpenCodeModel(model) : undefined;
     const variant = reasoningValue(options);
     void this.loadContextWindows();
+
+    // A folder's server carries the desktop's tools it was started with; when
+    // they changed (attached, detached, a new token) and nothing runs there,
+    // restart it — sessions are OpenCode's own, so the thread keeps its history.
+    await this.#refreshServerTools(cwd, options.desktopTools);
 
     let server: IOpenCodeServer;
     try {
@@ -398,17 +448,36 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return protocolFor(await detectOpenCodeMajor(this.#spawn, this.#binaryPath, cwd));
   }
 
+  /** Closes a folder's idle server when the desktop's tools it holds are not
+   *  the ones wanted now, so the next start carries the right ones. */
+  async #refreshServerTools(cwd: string, desktop: DesktopTools | undefined): Promise<void> {
+    const wanted = toolsFingerprint(desktop);
+    this.#wantedTools.set(cwd, desktop);
+    if (!this.#serverByCwd.has(cwd)) return;
+    if ((this.#toolsByCwd.get(cwd) ?? '') === wanted) return;
+    const busy = [...this.#active.values()].some((run) => run.cwd === cwd && !run.finished);
+    if (busy) return;
+    const server = await this.#existingServer(cwd);
+    this.#serverByCwd.delete(cwd);
+    this.#toolsByCwd.delete(cwd);
+    await server?.close().catch(() => undefined);
+  }
+
   /** The server for a cwd, created (and subscribed to) on first use, not started. */
   #serverFor(cwd: string): Promise<IOpenCodeServer> {
     let pending = this.#serverByCwd.get(cwd);
     if (!pending) {
+      const desktop = this.#wantedTools.get(cwd);
+      this.#toolsByCwd.set(cwd, toolsFingerprint(desktop));
       pending = (async () => {
+        const env = openCodeDesktopEnv(desktop, cwd);
         const server = this.#serverFactory
           ? this.#serverFactory(cwd)
           : createOpenCodeServer(await this.#protocol(cwd), {
               binaryPath: this.#binaryPath,
               cwd,
               spawnFn: this.#spawn,
+              ...(Object.keys(env).length > 0 ? { env } : {}),
             });
         server.onEvent((event) => this.#onServerEvent(event, server));
         server.onClose(() => this.#handleServerClose(cwd, pending!));
