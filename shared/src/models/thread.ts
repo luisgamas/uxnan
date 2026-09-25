@@ -126,6 +126,14 @@ export interface Thread {
   /** Per-thread access (approval) mode; see {@link AccessMode}. */
   accessMode?: AccessMode;
   /**
+   * Live, never persisted: the turn running on this thread right now, set by
+   * the bridge on `thread/list` and `thread/read` responses (the same value as
+   * `TurnList.activeTurnId`). Lets a client that just connected show which
+   * conversations are working without reading each one's turns. Absent when
+   * nothing runs.
+   */
+  activeTurnId?: string;
+  /**
    * Where {@link title} came from, so a better title can replace a weaker one
    * without ever overwriting a name the **user** chose.
    *

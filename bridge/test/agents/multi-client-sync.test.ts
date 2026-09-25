@@ -315,6 +315,20 @@ test('turn/send passes a sane clientTurnId through and drops an oversized one', 
       result: { activeTurns?: number };
     };
     assert.equal(status.result.activeTurns, 1);
+    // And the thread itself carries the running turn, live, on list and read —
+    // what a client that just connected needs to show it as working.
+    const listed = (
+      (await bridge.router.dispatch(makeRequest('l', 'thread/list'))) as {
+        result: { threads: Thread[] };
+      }
+    ).result.threads.find((t) => t.id === thread.id);
+    assert.equal(typeof listed?.activeTurnId, 'string');
+    const read = (
+      (await bridge.router.dispatch(makeRequest('r', 'thread/read', { threadId: thread.id }))) as {
+        result: Thread;
+      }
+    ).result;
+    assert.equal(read.activeTurnId, listed?.activeTurnId);
   } finally {
     await bridge.stop();
     await rmrf(baseDir);

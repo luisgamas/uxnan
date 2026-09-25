@@ -36,12 +36,21 @@ function announce(ctx: BridgeContext, thread: Thread): Thread {
   return thread;
 }
 
+/** A thread with its live state (never persisted) added. */
+function withLiveState(thread: Thread, ctx: BridgeContext): Thread {
+  const activeTurnId = ctx.agentManager.activeTurnId(thread.id);
+  return activeTurnId !== undefined ? { ...thread, activeTurnId } : thread;
+}
+
 export function registerThreadHandlers(router: HandlerRouter): void {
-  router.register('thread/list', (p, ctx: BridgeContext) =>
-    ctx.threadStore.listThreads(optionalString(p, 'projectId')),
-  );
-  router.register('thread/read', (p, ctx: BridgeContext) =>
-    ctx.threadStore.getThread(requireString(p, 'threadId')),
+  // Both carry the live `activeTurnId`, so a client that just connected sees
+  // which conversations are working without reading each one's turns.
+  router.register('thread/list', async (p, ctx: BridgeContext) => {
+    const list = await ctx.threadStore.listThreads(optionalString(p, 'projectId'));
+    return { ...list, threads: list.threads.map((t) => withLiveState(t, ctx)) };
+  });
+  router.register('thread/read', async (p, ctx: BridgeContext) =>
+    withLiveState(await ctx.threadStore.getThread(requireString(p, 'threadId')), ctx),
   );
   router.register('thread/start', async (p, ctx: BridgeContext) => {
     const projectId = requireString(p, 'projectId');

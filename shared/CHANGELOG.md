@@ -23,6 +23,14 @@ the contract now carries everything a second client needs to converge
 - `TurnSendParams.clientTurnId`: the sender's optimistic-bubble id, echoed on
   `stream/turn/created` so it recognizes its own message.
 
+### Added — `Thread.activeTurnId`
+
+Live, never persisted: the turn running on the thread right now, which the
+bridge sets on `thread/list` and `thread/read` responses (the same value as
+`TurnList.activeTurnId`), so a client that just connected shows which
+conversations are working without reading each one's turns (architecture/02b
+§1.2).
+
 ### Added — `BridgeStatus.activeTurns`
 
 Threads with a turn in flight, whichever client started it (optional; absent

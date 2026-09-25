@@ -114,8 +114,8 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 
 **Threads y turns (17):**
 ```
-thread/list             -> lista de threads del PC, con filtro opcional
-thread/read             -> datos completos de un thread
+thread/list             -> lista de threads del PC, con filtro opcional. Cada Thread lleva, en vivo y sin persistir, `activeTurnId?` (el turno que corre ahora, igual que `TurnList.activeTurnId`): un cliente recien conectado sabe que conversaciones trabajan sin leer los turnos de cada una
+thread/read             -> datos completos de un thread (con el mismo `activeTurnId?` en vivo)
 thread/start            -> crear nuevo thread (agentId, model, cwd, opcional)
 thread/resume           -> reanudar thread existente (best-effort)
 thread/fork             -> fork de un thread en uno nuevo

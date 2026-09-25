@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **`thread/list` and `thread/read` carry each thread's live `activeTurnId`**
+  (never persisted), so a client that just connected — the desktop's sidebar,
+  the phone's list — shows which conversations are working without reading
+  each one's turns.
 - **Local control channel for Uxnan Desktop** (architecture/02a §5.8.15).
   `uxnan-bridge start` now also opens a WebSocket listener bound to
   **`127.0.0.1` only**, on a free port, and publishes its address plus a fresh
