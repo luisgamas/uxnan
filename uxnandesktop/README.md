@@ -242,6 +242,10 @@ available today are:
   from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).
+- **A welcome tour on first run.** Six short steps — terminal and chat, the
+  phone, agents working together, the CLIs Uxnan found on this machine — drawn
+  from the app's own interface. It shows once per version of the tour and
+  reopens from the profile menu → **Welcome tour**.
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated

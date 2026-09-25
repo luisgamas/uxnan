@@ -27,6 +27,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
+  import WelcomeTour from "$lib/components/welcome/WelcomeTour.svelte";
   import CloseGuardDialog from "$lib/components/CloseGuardDialog.svelte";
   import ChatActionDialogs from "$lib/components/chat/ChatActionDialogs.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
@@ -320,6 +321,8 @@
   <SaveDiscardDialog />
   <CloseGuardDialog />
   <ChatActionDialogs />
+  <!-- The welcome tour: first start, or reopened from the profile menu. -->
+  <WelcomeTour />
 
   <!-- Content region below the title bar. The three-panel body stays mounted
        even while Settings is open (Settings overlays it), so terminals/PTYs are

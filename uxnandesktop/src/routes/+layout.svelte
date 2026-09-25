@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { welcome } from "$lib/state/welcome.svelte";
   import "../app.css";
   import { onMount, untrack } from "svelte";
   import { bridge } from "$lib/bridge/client.svelte";
@@ -63,6 +64,8 @@
       if (app.backend === "ready") {
         await projects.init();
         await projects.reconcileRestoredWorkspaces();
+        // First start (or a newer tour): welcome the user once.
+        welcome.showIfNew();
       }
     })();
     // Listen for agents detected (or stopped) in any terminal.

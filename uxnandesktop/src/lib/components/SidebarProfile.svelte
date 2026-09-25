@@ -24,6 +24,8 @@
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
   import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import { welcome } from "$lib/state/welcome.svelte";
 
   let editOpen = $state(false);
   let menuOpen = $state(false);
@@ -173,6 +175,11 @@
           </DropdownMenu.SubContent>
         </DropdownMenu.Sub>
       {/if}
+      <DropdownMenu.Separator />
+      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => deferModalOpen(() => welcome.show())}>
+        <Icon icon={SparklesIcon} class={icon.button} />
+        <span class="flex-1">{i18n.t("sidebarProfile.welcome")}</span>
+      </DropdownMenu.Item>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
 </div>

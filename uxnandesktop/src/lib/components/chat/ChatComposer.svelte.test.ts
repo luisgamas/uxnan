@@ -106,7 +106,6 @@ describe("ChatComposer", () => {
   it("offers images only to an agent that takes them", () => {
     const without = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
     expect(without.screen.queryByRole("button", { name: "Add images" })).toBeNull();
-    without.unmount?.();
     const withImages = mountWithProviders(ChatComposer, {
       props: { onsend: () => undefined, acceptsImages: true },
     });

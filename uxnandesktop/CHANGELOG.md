@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **A welcome tour on first run.** Six steps — what Uxnan is, terminal and
+  chat, the phone (with *Connect a phone*), agents calling each other through
+  the CLI/MCP/API, the agents found on this machine, and the shortcuts to start
+  (with *Add your first project* when there is none). The visuals are
+  recreations of the app, not screenshots. It opens once per tour version
+  (`welcomeSeen` in the settings) and again from the profile menu →
+  **Welcome tour** (`WelcomeTour`, `welcome.svelte.ts`).
+
 - **The chat composer does what the phone's does.** `/` lists the agent's
   commands in the folder — skills, your commands, the agent's and its
   built-ins, as the bridge learns them from the agent — and a picked one is

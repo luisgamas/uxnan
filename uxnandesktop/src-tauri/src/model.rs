@@ -703,6 +703,11 @@ pub struct AppSettings {
     /// the app stays exactly the standalone ADE until the user opts in.
     #[serde(default)]
     pub bridge: BridgeSettings,
+    /// The welcome tour's version the user has been through (finished or
+    /// skipped). `None` shows it on the next start; a newer tour version than
+    /// this shows it again. Frontend-owned (`src/lib/state/welcome.svelte.ts`).
+    #[serde(default)]
+    pub welcome_seen: Option<u32>,
     /// Resource mode (Settings → Resources → Resource mode): the explicit
     /// efficiency/degradation profile plus per-capability overrides. All fields
     /// default (profile `balanced` = the pre-mode behavior), so older state
@@ -1451,6 +1456,7 @@ impl Default for AppSettings {
             profile: None,
             resources: ResourceSettings::default(),
             bridge: BridgeSettings::default(),
+            welcome_seen: None,
             resource_mode: ResourceModeSettings::default(),
             worktrees: WorktreeSettings::default(),
             control: ControlSettings::default(),

@@ -396,6 +396,9 @@ export interface AppSettings {
   /** Connection to the Uxnan bridge (Settings → Bridge). Absent = `off`: the
    *  app is the standalone ADE, with no socket, file read, timer or process. */
   bridge?: BridgeSettings;
+  /** The welcome tour's version the user has been through (finished or
+   *  skipped); absent shows it on the next start (`state/welcome.svelte.ts`). */
+  welcomeSeen?: number | null;
   /** Where new worktrees are created. Absent = the managed root
    *  (`<home>/uxnan/worktrees/<repo>/<branch>`). Only affects worktrees created
    *  from now on: the ones already on disk are read from git and keep working
