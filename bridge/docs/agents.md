@@ -638,7 +638,7 @@ The bridge discovers each agent's special ("slash") commands (`agent/commands` �
 
 | Agent | How commands are discovered | How they run |
 |---|---|---|
-| **Claude Code** | `slash_commands` from the `system/init` line (cached per turn) ∪ curated headless-safe built-ins (`compact`, `context`, `status`, `cost`, `usage`) ∪ `.claude/commands/*.md` scan | native — sent as `/name args`, resolved against the thread's `--resume` session |
+| **Claude Code** | **asked of the CLI itself**: a stream-json `initialize` control request (no turn, no tokens; ~0.5 s, reused per folder for a minute) lists every command it has in the thread's folder — built-ins, custom commands (project and user `.claude/commands`), skills and plugins — with descriptions and argument hints. Hidden: what its own `system/init` `terminal_slash_commands` says only its TUI runs (`doctor`, `color`, `focus`, `reload-plugins`), and what the bridge owns or must not touch (`clear`, `rename`, `model`, `effort`, `fast`, `config`, `status` — which fails headless —, account and internal ones) | native — sent as `/name args`, resolved against the thread's `--resume` session |
 | **Zero**, **Grok** (ACP) | the ACP `available_commands_update` notification (captured, previously dropped) | native — via `session/prompt` |
 | **Codex** | scan `~/.codex/prompts/*.md` | bridge expands the template (`expandCommand`) — the app-server has no slash/compaction RPC |
 | **OpenCode** | scan `.opencode/command(s)/*.md` (+ `~/.config/opencode/command`) | bridge expands |

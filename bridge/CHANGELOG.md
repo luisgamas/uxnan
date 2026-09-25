@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — agent commands come from the agents themselves
+
+- **Claude Code** lists its commands by asking the CLI (`initialize` control
+  request over stream-json: no turn, no tokens) in the thread's folder —
+  every built-in, custom command, skill and plugin it has there, with
+  descriptions and argument hints — instead of a hand-kept list, a folder
+  scan and the names the last turn happened to report. What only its terminal
+  runs (its own `terminal_slash_commands`) and what the bridge owns (`clear`,
+  `rename`, `model`, `effort`, `config`, `status`, …) are left out.
+
 ### Added — phones and the PC have names every client shares
 
 - **Phones stop showing as their id.** A phone describes itself after

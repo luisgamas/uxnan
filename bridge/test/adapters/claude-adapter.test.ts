@@ -9,6 +9,7 @@ import {
   parseClaudeLine,
   type SpawnedProcess,
 } from '../../src/index.js';
+import { parseInitializeCommands } from '../../src/adapters/claude-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `claude` process whose stdout we feed with stream-json lines ---
@@ -1155,4 +1156,101 @@ test('without desktop tools a run registers no MCP server', async () => {
   await done;
   assert.equal(last().args.includes('--mcp-config'), false);
   assert.equal(last().env, undefined);
+});
+
+// --- commands: the CLI's own list, from a stream-json `initialize` ---
+
+function commandsSpawner(response: unknown): {
+  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  calls: { args: string[]; cwd: string; written: string[] }[];
+} {
+  const calls: { args: string[]; cwd: string; written: string[] }[] = [];
+  const spawnFn = (_command: string, args: string[], cwd: string): SpawnedProcess => {
+    const stdout = new PassThrough();
+    const stdin = new PassThrough();
+    const emitter = new EventEmitter();
+    const call = { args, cwd, written: [] as string[] };
+    calls.push(call);
+    stdin.on('data', (chunk: Buffer) => {
+      call.written.push(chunk.toString('utf8'));
+      stdout.write(`${JSON.stringify({ type: 'control_response', response })}\n`);
+    });
+    return {
+      stdout,
+      stdin,
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
+  };
+  return { spawnFn, calls };
+}
+
+test('commands: the CLI lists them itself, minus what only its terminal or the bridge runs', async () => {
+  const { spawnFn, calls } = commandsSpawner({
+    subtype: 'success',
+    request_id: 'uxnan-commands',
+    response: {
+      commands: [
+        {
+          name: 'compact',
+          description: 'Free up context',
+          argumentHint: '<instructions>',
+          builtin: true,
+        },
+        { name: 'probecmd', description: 'Project command', argumentHint: '<word>' },
+        { name: 'hyperframes', description: 'A skill' },
+        { name: 'color', description: 'Prompt bar color', builtin: true },
+        { name: 'model', description: 'Set the model', builtin: true },
+        { name: '__remote-workflow', builtin: true },
+        { name: 'agents', description: '(removed) Ask Claude to…', builtin: true },
+      ],
+    },
+  });
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const commands = await adapter.listCommands('/repo');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.source, c.argumentHint ?? '']),
+    [
+      ['compact', 'builtin', '<instructions>'],
+      ['probecmd', 'custom', '<word>'],
+      ['hyperframes', 'custom', ''],
+    ],
+  );
+  // Asked in the thread's folder, with an `initialize` control request.
+  assert.equal(calls[0]!.cwd, '/repo');
+  assert.ok(calls[0]!.args.includes('stream-json'));
+  assert.match(calls[0]!.written.join(''), /"subtype":"initialize"/);
+  // Reused for the folder: no second process within the minute.
+  await adapter.listCommands('/repo');
+  assert.equal(calls.length, 1);
+});
+
+test('commands: a CLI that does not answer yields none, and is asked again', async () => {
+  const spawnFn = (): SpawnedProcess => {
+    const emitter = new EventEmitter();
+    const stdout = new PassThrough();
+    setImmediate(() => emitter.emit('close', 1));
+    return {
+      stdout,
+      stdin: new PassThrough(),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  assert.deepEqual(await adapter.listCommands('/repo'), []);
+});
+
+test('parseInitializeCommands reads only the initialize answer', () => {
+  assert.equal(parseInitializeCommands('{"type":"system","subtype":"init"}'), undefined);
+  assert.equal(parseInitializeCommands('not json'), undefined);
+  assert.deepEqual(
+    parseInitializeCommands(
+      JSON.stringify({
+        type: 'control_response',
+        response: { response: { commands: [{ name: 'x', builtin: true }, { nope: 1 }] } },
+      }),
+    ),
+    [{ name: 'x', builtin: true }],
+  );
 });

@@ -25,8 +25,6 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type {
   AgentCapabilities,
@@ -41,7 +39,6 @@ import type {
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
   extractToolResults,
@@ -84,23 +81,48 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
 };
 
 /**
- * Built-in slash commands Claude Code runs in headless (`-p`) mode — sent as the
- * prompt string, resolved against the thread's `--resume` session so
- * history-dependent ones (`/compact`) work. A conservative, maintained set;
- * interactive-only commands (`/config`, `/login`) are excluded. The running
- * CLI's own `system/init` `slash_commands` list (captured per turn) augments
- * this with skills/plugins and any custom commands it actually sees.
+ * Commands the CLI itself says only work in its terminal UI (`system/init`
+ * `terminal_slash_commands`, verified on claude 2.1.282). Replaced by what the
+ * running CLI reports as soon as a turn has run.
  */
-const CLAUDE_BUILTIN_COMMANDS: readonly { name: string; description: string }[] = [
-  { name: 'compact', description: 'Summarize the conversation to free up context' },
-  { name: 'context', description: 'Show current context usage' },
-  { name: 'status', description: 'Show session status' },
-  { name: 'cost', description: 'Show token cost for this session' },
-  { name: 'usage', description: 'Show plan usage limits' },
-];
+const CLAUDE_TERMINAL_COMMANDS = ['doctor', 'color', 'focus', 'reload-plugins'];
 
-/** Slash commands that only work in the interactive TUI — never advertised. */
-const CLAUDE_EXCLUDED_COMMANDS = new Set(['config', 'login', 'logout', 'doctor']);
+/**
+ * Commands the CLI can run headless but that the bridge must not offer: it
+ * owns what they change (the conversation's context and name, its model and
+ * effort, the agent's settings), they manage the user's account, or they are
+ * internal. `/status` is advertised but answers "isn't available in this
+ * environment" in `-p` mode.
+ */
+const CLAUDE_BRIDGE_OWNED_COMMANDS = new Set([
+  'clear',
+  'rename',
+  'model',
+  'effort',
+  'fast',
+  'config',
+  'output-style',
+  'autocompact',
+  'status',
+  'mcp',
+  'import',
+  'heapdump',
+  'auto-mode-setup',
+  'usage-credits',
+  'extra-usage',
+  'design',
+  'design-consent',
+  'design-revoke',
+  'workflow-launch-exec',
+  'login',
+  'logout',
+]);
+
+/** How long a folder's command list is reused before the CLI is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/** How long the CLI may take to answer `initialize`. */
+const COMMANDS_TIMEOUT_MS = 10_000;
 
 /**
  * Stable `--model` aliases Claude Code accepts. Claude Code has no enumerate
@@ -258,7 +280,8 @@ export interface ClaudeEvent {
    * Only set for `init`: the slash commands the running CLI reports as available
    * in this session (built-ins + skills + custom), used to advertise `agent/commands`.
    */
-  slashCommands?: string[];
+  /** `system/init` `terminal_slash_commands`: commands only its TUI runs. */
+  terminalCommands?: string[];
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
@@ -364,14 +387,14 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
         return { kind: 'other', ...base };
       }
       const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined;
-      const slashCommands = Array.isArray(parsed['slash_commands'])
-        ? parsed['slash_commands'].filter((c): c is string => typeof c === 'string')
+      const terminalCommands = Array.isArray(parsed['terminal_slash_commands'])
+        ? parsed['terminal_slash_commands'].filter((c): c is string => typeof c === 'string')
         : undefined;
       return {
         kind: 'init',
         ...base,
         ...(model !== undefined ? { model } : {}),
-        ...(slashCommands !== undefined ? { slashCommands } : {}),
+        ...(terminalCommands !== undefined ? { terminalCommands } : {}),
       };
     }
     case 'stream_event': {
@@ -488,8 +511,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #spawn: SpawnFn;
   /** threadId → Claude session id, for `--resume` continuity. */
   readonly #sessionByThread = new Map<string, string>();
-  /** Slash commands the CLI reported in the last turn's `system/init` (see listCommands). */
-  #slashCommands: string[] = [];
+  /** What the CLI last said only works in its terminal (see listCommands). */
+  #terminalCommands: string[] = CLAUDE_TERMINAL_COMMANDS;
+  /** The CLI's command list per folder, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
@@ -795,8 +820,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // never fold into the main message or close the main text run.
       const subagent = event.parentToolUseId !== undefined;
       if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
-      // Cache the CLI's advertised slash commands for `agent/commands` discovery.
-      if (event.slashCommands) this.#slashCommands = event.slashCommands;
+      // The CLI's own word on which commands only work in its terminal.
+      if (event.terminalCommands) this.#terminalCommands = event.terminalCommands;
       // Register tool invocations (with their inputs) so the result can pair.
       if (event.toolUses) {
         for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
@@ -1086,39 +1111,120 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * Slash commands Claude Code exposes: the curated headless-safe built-ins,
-   * plus project/user custom commands (`.claude/commands/*.md`), plus whatever
-   * the running CLI last reported in `system/init` (skills, plugins, custom).
-   * Claude runs them natively in `-p` mode, so there is no {@link expandCommand}
-   * — the bridge sends `/name args` and the CLI expands it against the thread's
-   * `--resume` session. Discovery only; deduped by name.
+   * The commands Claude Code has in [cwd], as the CLI itself lists them: a
+   * stream-json `initialize` control request answers with every command it
+   * knows there — built-ins, custom commands (`.claude/commands`, project and
+   * user), skills and plugins — with descriptions and argument hints, without
+   * running a turn or spending a token (verified on claude 2.1.282). Left out:
+   * what only its terminal runs (its own `terminal_slash_commands`) and what
+   * the bridge owns ({@link CLAUDE_BRIDGE_OWNED_COMMANDS}). A picked command
+   * is sent as `/name args`, which Claude expands natively against the
+   * thread's `--resume` session — no {@link expandCommand}. Reused per folder
+   * for a minute; an unanswered request yields no commands.
    */
   async listCommands(cwd?: string): Promise<AgentCommand[]> {
-    const byName = new Map<string, AgentCommand>();
-    for (const b of CLAUDE_BUILTIN_COMMANDS) {
-      byName.set(b.name, {
-        name: b.name,
-        description: b.description,
-        source: 'builtin',
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const reported = await this.#askCommands(dir);
+    const hidden = new Set([...this.#terminalCommands, ...CLAUDE_BRIDGE_OWNED_COMMANDS]);
+    const commands: AgentCommand[] = [];
+    const seen = new Set<string>();
+    for (const raw of reported) {
+      const name = raw.name.replace(/^\//, '');
+      if (!name || name.startsWith('_') || hidden.has(name) || seen.has(name)) continue;
+      // A retired built-in says so in its description ("(removed) …").
+      if (raw.description?.startsWith('(removed)')) continue;
+      seen.add(name);
+      commands.push({
+        name,
+        ...(raw.description ? { description: raw.description } : {}),
+        ...(raw.argumentHint ? { argumentHint: raw.argumentHint } : {}),
+        source: raw.builtin ? 'builtin' : 'custom',
         headlessSupported: true,
       });
     }
-    const dir = cwd ?? this.#defaultCwd;
-    const scanned = await scanCustomCommands({
-      dirs: [join(dir, '.claude', 'commands'), join(homedir(), '.claude', 'commands')],
-      ext: '.md',
-      format: 'markdown',
-    });
-    for (const c of scanned) byName.set(c.name, c);
-    // Names the running CLI advertised last turn — authoritative, covers skills/
-    // plugins we don't scan. Names only (no description). Skip interactive-only.
-    for (const raw of this.#slashCommands) {
-      const name = raw.replace(/^\//, '');
-      if (!name || CLAUDE_EXCLUDED_COMMANDS.has(name) || byName.has(name)) continue;
-      byName.set(name, { name, source: 'builtin', headlessSupported: true });
-    }
-    return [...byName.values()];
+    if (reported.length > 0) this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
   }
+
+  /** Ask the CLI in [cwd] for its commands (`initialize`); [] if it will not say. */
+  #askCommands(cwd: string): Promise<ClaudeReportedCommand[]> {
+    return new Promise((resolve) => {
+      const args = [
+        '-p',
+        '--input-format',
+        'stream-json',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+      ];
+      let child: SpawnedProcess;
+      try {
+        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
+          stdin: 'pipe',
+        });
+      } catch {
+        resolve([]);
+        return;
+      }
+      let settled = false;
+      const finish = (commands: ClaudeReportedCommand[]): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        child.kill();
+        resolve(commands);
+      };
+      const timer = setTimeout(() => finish([]), COMMANDS_TIMEOUT_MS);
+      const reader = createInterface({ input: child.stdout });
+      reader.on('line', (line) => {
+        const commands = parseInitializeCommands(line);
+        if (commands) finish(commands);
+      });
+      child.on('close', () => finish([]));
+      child.on('error', () => finish([]));
+      child.stdin?.write(
+        `${JSON.stringify({ type: 'control_request', request_id: 'uxnan-commands', request: { subtype: 'initialize' } })}\n`,
+      );
+    });
+  }
+}
+
+/** One command as `initialize` reports it. */
+interface ClaudeReportedCommand {
+  name: string;
+  description?: string;
+  argumentHint?: string;
+  builtin?: boolean;
+}
+
+/**
+ * The commands in a stream-json `control_response` to `initialize`, or
+ * `undefined` for any other line.
+ */
+export function parseInitializeCommands(line: string): ClaudeReportedCommand[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || parsed['type'] !== 'control_response') return undefined;
+  const outer = parsed['response'];
+  const inner = isRecord(outer) && isRecord(outer['response']) ? outer['response'] : outer;
+  if (!isRecord(inner) || !Array.isArray(inner['commands'])) return [];
+  const commands: ClaudeReportedCommand[] = [];
+  for (const c of inner['commands']) {
+    if (!isRecord(c) || typeof c['name'] !== 'string') continue;
+    commands.push({
+      name: c['name'],
+      ...(typeof c['description'] === 'string' ? { description: c['description'] } : {}),
+      ...(typeof c['argumentHint'] === 'string' ? { argumentHint: c['argumentHint'] } : {}),
+      ...(c['builtin'] === true ? { builtin: true } : {}),
+    });
+  }
+  return commands;
 }
 
 function extractAssistantText(content: unknown): string {
