@@ -56,21 +56,18 @@ describe("ThreadActivity", () => {
 });
 
 describe("sidebarChats", () => {
-  it("always lists open and active conversations, then fills with the most recent", () => {
+  it("lists what is open in a tab or needs attention, never the idle history", () => {
     const threads = [
       thread("a", 50),
       thread("b", 40),
-      thread("c", 30),
-      thread("d", 20),
       thread("open", 10),
       thread("busy", 5),
       thread("gone", 60, { status: "archived" }),
     ];
     const shown = sidebarChats(threads, {
-      open: new Set(["open"]),
+      open: new Set(["open", "gone"]),
       activityOf: (id) => (id === "busy" ? "working" : "idle"),
-      limit: 3,
     });
-    expect(shown.map((t) => t.id)).toEqual(["a", "open", "busy"]);
+    expect(shown.map((t) => t.id)).toEqual(["open", "busy"]);
   });
 });

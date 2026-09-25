@@ -5,11 +5,15 @@
   // how long ago it moved; a quiet second line says what it is doing (or, idle,
   // that it is a chat and on which model). A conversation started on the phone
   // is listed here as soon as the bridge knows it; clicking opens it in a tab
-  // (or focuses the tab already showing it).
+  // (or focuses the tab already showing it). Right-click offers the chat's
+  // actions (`chatActionsFor`: open, rename, archive, delete) — the same list
+  // as the chat's header menu.
   import type { Thread } from "$shared/models/thread";
   import { cn } from "$lib/utils";
   import { focus, icon, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import * as ContextMenu from "$lib/components/ui/context-menu";
+  import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { i18n } from "$lib/i18n";
   import { clock, relTime } from "$lib/time.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
@@ -38,36 +42,54 @@
   });
 </script>
 
-<TooltipSimple title={thread.title}>
-  {#snippet children(tp)}
-    <button
-      {...tp}
-      class={cn(row.agent, focus.ring, "hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]")}
-      onclick={onopen}
-    >
-      {#if active}
-        <span class={row.agentActiveIndicator} aria-hidden="true"></span>
-      {/if}
-      <span class={cn(row.agentLeading, icon.nav)}>
-        <AgentStatusIndicator {status} />
-      </span>
-      <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(row.agentLeading, icon.brand)} />
-      <span class="flex min-w-0 flex-1 flex-col leading-tight">
-        <span class="flex items-baseline gap-1.5">
-          <span
-            class={cn(
-              "min-w-0 flex-1 truncate text-xs",
-              active ? "font-medium text-foreground" : "text-foreground/90",
-            )}
+<ContextMenu.Root>
+  <ContextMenu.Trigger>
+    {#snippet child({ props })}
+      <TooltipSimple title={thread.title}>
+        {#snippet children(tp)}
+          <button
+            {...props}
+            {...tp}
+            class={cn(row.agent, focus.ring, "hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]")}
+            onclick={onopen}
           >
-            {thread.title || i18n.t("chat.newChat")}
-          </span>
-          {#if time}
-            <span class={cn("shrink-0 tabular-nums", text.meta)}>{time}</span>
-          {/if}
-        </span>
-        <span class={cn("min-w-0 truncate", text.meta)}>{secondary}</span>
-      </span>
-    </button>
-  {/snippet}
-</TooltipSimple>
+            {#if active}
+              <span class={row.agentActiveIndicator} aria-hidden="true"></span>
+            {/if}
+            <span class={cn(row.agentLeading, icon.nav)}>
+              <AgentStatusIndicator {status} />
+            </span>
+            <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(row.agentLeading, icon.brand)} />
+            <span class="flex min-w-0 flex-1 flex-col leading-tight">
+              <span class="flex items-baseline gap-1.5">
+                <span
+                  class={cn(
+                    "min-w-0 flex-1 truncate text-xs",
+                    active ? "font-medium text-foreground" : "text-foreground/90",
+                  )}
+                >
+                  {thread.title || i18n.t("chat.newChat")}
+                </span>
+                {#if time}
+                  <span class={cn("shrink-0 tabular-nums", text.meta)}>{time}</span>
+                {/if}
+              </span>
+              <span class={cn("min-w-0 truncate", text.meta)}>{secondary}</span>
+            </span>
+          </button>
+        {/snippet}
+      </TooltipSimple>
+    {/snippet}
+  </ContextMenu.Trigger>
+  <ContextMenu.Content width="simple">
+    {#each chatActionsFor(thread) as action (action)}
+      {#if action === "delete"}<ContextMenu.Separator />{/if}
+      <ContextMenu.Item
+        class={cn(text.menu, action === "delete" && "text-destructive")}
+        onclick={() => chatActionUi.run(action, thread, onopen)}
+      >
+        {i18n.t(`chat.action.${action}`)}
+      </ContextMenu.Item>
+    {/each}
+  </ContextMenu.Content>
+</ContextMenu.Root>

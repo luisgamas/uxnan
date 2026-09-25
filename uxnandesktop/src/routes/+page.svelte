@@ -28,6 +28,7 @@
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
   import CloseGuardDialog from "$lib/components/CloseGuardDialog.svelte";
+  import ChatActionDialogs from "$lib/components/chat/ChatActionDialogs.svelte";
   import WindowControls from "$lib/components/WindowControls.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import Dock from "$lib/components/Dock.svelte";
@@ -318,6 +319,7 @@
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->
   <SaveDiscardDialog />
   <CloseGuardDialog />
+  <ChatActionDialogs />
 
   <!-- Content region below the title bar. The three-panel body stays mounted
        even while Settings is open (Settings overlays it), so terminals/PTYs are

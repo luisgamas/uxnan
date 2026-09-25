@@ -85,10 +85,28 @@ folder on an SSH host is not one it can work in):
 A worktree's agent view lists its bridge conversations next to its terminal
 agents, in the same rows (`ChatRow`): the state glyph, the agent's mark, the
 title and when it last moved; a second line says what it is doing, or — idle —
-that it is a chat and on which model. Listed are every conversation open in a
-tab or doing something, then the most recent others up to four
-(`sidebarChats`); a conversation started on the phone appears as soon as the
-bridge knows it. A click opens it in a chat tab, or focuses the tab showing it.
+that it is a chat and on which model. Like a terminal agent, a chat is listed
+while it is **open in a tab** or while it **needs attention** (working, waiting
+on you, failed, finished and not yet seen) — never the idle history
+(`sidebarChats`). A click opens it in a chat tab, or focuses the tab showing
+it; right-click offers its actions.
+
+## A chat's lifecycle
+
+The bridge owns every conversation, so these mean the same on the desktop and
+the phone:
+
+| Action | What happens | Where |
+|---|---|---|
+| **Close the tab** | Only the view closes. The conversation goes on (a running turn keeps running) and stays on the phone and in *Continue a conversation*; it comes back to the sidebar if its agent finishes, fails or needs you. | the tab's × |
+| **Archive** | Out of every list on every device (the bridge stops a running turn first). Restorable; an open tab of it turns read-only with *Restore*. | sidebar row menu, chat header menu, *Continue a conversation* |
+| **Restore** | Back in the lists, on every device. | the *Archived* section of a new chat, an archived tab |
+| **Delete** | Gone for every device, with its history — after a confirmation that says so. A tab still showing it offers a new chat instead. | the same menus |
+
+One list of actions for every surface (`chatActionsFor`), one set of dialogs
+for the window (`ChatActionDialogs`). The history lives in the new-chat
+screen: *Continue a conversation* (the folder's chats, newest first, *Show
+all*) and *Archived* (collapsed, with the same actions).
 
 The state is the one every chat surface reads (`ThreadActivity`), the same five
 a terminal agent shows: **working** while a turn runs, **waiting** while an

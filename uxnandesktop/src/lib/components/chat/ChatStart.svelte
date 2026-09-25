@@ -10,6 +10,13 @@
   // the model with its run options (`ModelPicker`) as quiet pills; the conversations
   // already running here are listed below it.
   import { untrack } from "svelte";
+  import type { Thread } from "$shared/models/thread";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import * as ContextMenu from "$lib/components/ui/context-menu";
+  import { Button } from "$lib/components/ui/button";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
@@ -22,7 +29,7 @@
   import { toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { chat as chatTokens, icon, row, text } from "$lib/design";
+  import { chat as chatTokens, focus, icon, row, text } from "$lib/design";
 
   let { tab, active }: { tab: ChatTab; active: boolean } = $props();
 
@@ -76,6 +83,9 @@
       ?.options ?? [],
   );
   const existing = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status !== "archived"));
+  const archived = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status === "archived"));
+  let showAll = $state(false);
+  let archivedOpen = $state(false);
   const folder = $derived(
     tab.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? tab.cwd,
   );
@@ -122,6 +132,38 @@
     terminals.bindChatThread(tab.id, threadId);
   }
 </script>
+
+{#snippet threadRow(thread: Thread)}
+  <!-- A conversation of this folder, with the same actions as its sidebar row
+       (right-click): open, rename, archive or restore, delete. -->
+  <ContextMenu.Root>
+    <ContextMenu.Trigger>
+      {#snippet child({ props })}
+        <button
+          {...props}
+          type="button"
+          class={cn(row.list, row.listInactive, thread.status === "archived" && "opacity-70")}
+          onclick={() => openExisting(thread.id)}
+        >
+          <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
+          <span class="min-w-0 flex-1 truncate text-foreground">{thread.title}</span>
+          <span class={cn(text.meta, "shrink-0")}>{relativeTime(thread.updatedAt, i18n.locale)}</span>
+        </button>
+      {/snippet}
+    </ContextMenu.Trigger>
+    <ContextMenu.Content width="simple">
+      {#each chatActionsFor(thread) as action (action)}
+        {#if action === "delete"}<ContextMenu.Separator />{/if}
+        <ContextMenu.Item
+          class={cn(text.menu, action === "delete" && "text-destructive")}
+          onclick={() => chatActionUi.run(action, thread, () => openExisting(thread.id))}
+        >
+          {i18n.t(`chat.action.${action}`)}
+        </ContextMenu.Item>
+      {/each}
+    </ContextMenu.Content>
+  </ContextMenu.Root>
+{/snippet}
 
 {#snippet agentPrefix(item: ComboItem)}
   <AgentLogo logo={bridgeAgentLogo(item.value)} class={cn(icon.brand, "shrink-0")} />
@@ -174,18 +216,36 @@
     {#if existing.length > 0}
       <div class="flex flex-col gap-1 pt-2">
         <span class={cn(text.section, "px-1")}>{i18n.t("chat.continue")}</span>
-        {#each existing.slice(0, 8) as thread (thread.id)}
-          <button
-            type="button"
-            class={cn(row.list, row.listInactive)}
-            onclick={() => openExisting(thread.id)}
-          >
-            <AgentLogo logo={bridgeAgentLogo(thread.agentId)} class={cn(icon.brand, "shrink-0")} />
-            <span class="min-w-0 flex-1 truncate text-foreground">{thread.title}</span>
-            <span class={cn(text.meta, "shrink-0")}>{relativeTime(thread.updatedAt, i18n.locale)}</span>
-          </button>
+        {#each showAll ? existing : existing.slice(0, 8) as thread (thread.id)}
+          {@render threadRow(thread)}
         {/each}
+        {#if existing.length > 8}
+          <Button variant="ghost" size="sm" class="self-start" onclick={() => (showAll = !showAll)}>
+            {showAll ? i18n.t("chat.showFewer") : i18n.t("chat.showAll", { n: String(existing.length) })}
+          </Button>
+        {/if}
       </div>
+    {/if}
+
+    {#if archived.length > 0}
+      <Collapsible.Root bind:open={archivedOpen}>
+        <Collapsible.Trigger
+          class={cn("flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left", text.section, focus.ring)}
+        >
+          {i18n.t("chat.archivedSection")}
+          <span class="tabular-nums text-muted-foreground/60">{archived.length}</span>
+          <Icon
+            icon={ChevronDownIcon}
+            class={cn(icon.status, "ml-auto transition-transform", archivedOpen && "rotate-180")}
+          />
+        </Collapsible.Trigger>
+        <Collapsible.Content class="flex flex-col gap-1 pt-1">
+          <p class={cn(text.meta, "px-1 pb-1")}>{i18n.t("chat.archivedHint")}</p>
+          {#each archived as thread (thread.id)}
+            {@render threadRow(thread)}
+          {/each}
+        </Collapsible.Content>
+      </Collapsible.Root>
     {/if}
   </div>
 </div>

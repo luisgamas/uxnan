@@ -2530,6 +2530,17 @@ si (`thread/setModel`, y lo ven todos los clientes via `stream/thread/updated`).
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
 
+**Ciclo de vida de una conversacion (igual en todos los clientes).** Cerrar la
+vista de una conversacion (la pestaña del desktop, salir de la pantalla en el
+telefono) no la toca: sigue en el bridge y un turno en curso sigue corriendo.
+**Archivar** (`thread/archive`, reversible con `thread/unarchive`) la saca de
+las listas de todos los clientes via `stream/thread/updated`; **eliminar**
+(`thread/delete`, siempre confirmado y advirtiendo que es para todos los
+dispositivos) la borra via `stream/thread/deleted`. Las listas de uso diario
+muestran lo abierto o lo que necesita atencion (trabajando, esperando al
+usuario, fallido, terminado sin ver — `activeTurnId` y los eventos de turno), no
+todo el historial.
+
 #### 5.9.1 Protocolo de handshake completo
 
 > ✅ **Implementado** (rama `uxnanmobile`): primitivas crypto en `lib/infrastructure/crypto/` (verificadas contra vectores RFC 8032/7748/5869 y NIST) + la mecánica de transporte en `lib/infrastructure/transport/`: `WebSocketTransport`/`WebSocketChannelTransport`, `SecureTransportLayer.performHandshake` (flujo clientHello→serverHello→clientAuth→ready con verificación de nonce/expiry/identidad/firma), `SecureChannel` (cifrado + `seq` 1-based + rechazo de replay), `RequestCorrelator`, `BackoffCalculator`, `OutboundMessageBuffer`. Probado con un handshake de dos partes sobre un transporte en memoria. **Pendiente** (siguiente incremento): `SessionCoordinator` (máquina `ConnectionPhase` + bucle de reconexión + providers), `TransportSelector` (descubrimiento LAN), `IncomingMessageProcessor` e integración WS en vivo contra un bridge real.

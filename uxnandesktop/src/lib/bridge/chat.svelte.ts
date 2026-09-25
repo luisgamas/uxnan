@@ -327,8 +327,25 @@ export class ChatStore {
     if (thread && typeof thread.id === 'string') this.threads.set(thread.id, thread);
   }
 
+  /** Archive: out of every list, on every client (the bridge stops a running
+   *  turn first); restorable with {@link unarchive}. Adopted at once. */
   async archive(threadId: string): Promise<void> {
-    await this.#client.call('thread/archive', { threadId });
+    this.#adopt(await this.#client.call<Thread>('thread/archive', { threadId }));
+  }
+
+  async unarchive(threadId: string): Promise<void> {
+    this.#adopt(await this.#client.call<Thread>('thread/unarchive', { threadId }));
+  }
+
+  /** Delete the conversation for every device (the bridge's `thread/delete`;
+   *  every client drops it on `stream/thread/deleted`). */
+  async remove(threadId: string): Promise<void> {
+    await this.#client.call('thread/delete', { threadId });
+    this.threads.delete(threadId);
+  }
+
+  #adopt(thread: Thread | null | undefined): void {
+    if (thread && typeof thread.id === 'string') this.threads.set(thread.id, thread);
   }
 
   async resumeQueue(threadId: string): Promise<void> {

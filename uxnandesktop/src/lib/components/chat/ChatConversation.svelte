@@ -23,7 +23,6 @@
   import PencilEdit02Icon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import type { AccessMode } from "$shared/models/thread";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
-  import TabRenameDialog from "$lib/components/TabRenameDialog.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
@@ -31,6 +30,7 @@
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
   import { userText } from "$lib/bridge/conversation.svelte";
   import { requestIdOf } from "$lib/bridge/timeline";
@@ -52,7 +52,6 @@
     active: boolean;
   } = $props();
 
-  let renaming = $state(false);
 
   // Created (and loaded) once, when the pane mounts — never inside a
   // `$derived`, which may not write state. `ChatPane` re-keys this component
@@ -194,13 +193,6 @@
     }
   }
 
-  async function archive() {
-    try {
-      await chat.archive(threadId);
-    } catch (err) {
-      toastError(err);
-    }
-  }
 </script>
 
 {#if missing}
@@ -238,12 +230,19 @@
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content width="simple" align="end">
-          <DropdownMenu.Item class={text.menu} onclick={() => (renaming = true)}>
-            {i18n.t("chat.rename")}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item class={text.menu} onclick={() => void archive()}>
-            {i18n.t("chat.archive")}
-          </DropdownMenu.Item>
+          <!-- The same actions as the chat's sidebar row (`chatActionsFor`);
+               opening is moot here. -->
+          {#if thread}
+            {#each chatActionsFor(thread).filter((a) => a !== "open") as action (action)}
+              {#if action === "delete"}<DropdownMenu.Separator />{/if}
+              <DropdownMenu.Item
+                class={cn(text.menu, action === "delete" && "text-destructive")}
+                onclick={() => chatActionUi.run(action, thread, () => undefined)}
+              >
+                {i18n.t(`chat.action.${action}`)}
+              </DropdownMenu.Item>
+            {/each}
+          {/if}
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </header>
@@ -327,6 +326,19 @@
 
     <!-- Dock + composer -->
     <div class={cn(chatTokens.column, "shrink-0 pb-4 pt-1")}>
+      {#if thread?.status === "archived"}
+        <!-- Archived here or on the phone: read-only until restored. -->
+        <div class="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <span class="flex-1">{i18n.t("chat.archivedBanner")}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onclick={() => void chat.unarchive(threadId).catch(toastError)}
+          >
+            {i18n.t("chat.action.unarchive")}
+          </Button>
+        </div>
+      {/if}
       {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused}
         <div class={chatTokens.dock}>
           {#each conversation.openRequests as request (requestIdOf(request))}
@@ -430,6 +442,3 @@
   </div>
 {/if}
 
-{#if renaming}
-  <TabRenameDialog {tab} onclose={() => (renaming = false)} />
-{/if}

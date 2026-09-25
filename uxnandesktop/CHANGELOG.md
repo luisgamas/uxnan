@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **A chat's lifecycle, the same on every device.** Closing a chat's tab only
+  closes the view — the conversation goes on, on the bridge and the phone. The
+  sidebar lists a chat only while it is open in a tab or needs attention
+  (working, waiting on you, failed, finished unseen), never the idle history,
+  so twenty old chats no longer appear under a worktree when the bridge starts.
+  **Archive** (restorable; an open tab turns read-only with *Restore*) and
+  **Delete** (confirmed, "for every device") are explicit, from one action list
+  (`chatActionsFor`) shared by the sidebar row's right-click menu, the chat's
+  header menu and the new-chat screen, whose history now has *Show all* and a
+  collapsed *Archived* section. They go through the bridge (`thread/archive`,
+  `thread/unarchive`, `thread/delete`), so the phone follows.
 - **Chats on the control surface.** Three catalog entries reach the bridge's
   conversations through the app's bridge client, scoped like everything else
   (a chat whose folder is outside the caller's scope is *scope denied*):
