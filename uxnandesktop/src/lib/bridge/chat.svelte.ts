@@ -12,6 +12,7 @@
 // never changes (another CLI cannot continue a native session); its model can
 // (`thread/setModel`), and every client sees it.
 
+import { untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
 import type { AccessMode, Thread, ThreadList } from '$shared/models/thread';
 import type { ApprovalDecision } from '$shared/models/approval';
@@ -52,6 +53,9 @@ export class ChatStore {
   threadsLoaded = $state(false);
   agents = $state<AgentDescriptor[]>([]);
   #models = new SvelteMap<string, AgentModel[]>();
+  /** `agent/models` requests in flight, by agent. */
+  readonly #modelRequests = new Map<string, Promise<AgentModel[]>>();
+  #prefetching = false;
   #conversations = new SvelteMap<string, Conversation>();
   #started = false;
 
@@ -103,20 +107,39 @@ export class ChatStore {
     }
   }
 
-  /** The models an agent's CLI reports (cached per agent). */
-  async modelsFor(agentId: string): Promise<AgentModel[]> {
-    const cached = this.#models.get(agentId);
-    if (cached) return cached;
+  /** Loads every available agent's models in the background, one agent at a
+   *  time, so a model menu opens on a full list instead of a spinner. Cheap to
+   *  call again: cached agents are skipped. */
+  async prefetchModels(): Promise<void> {
+    if (this.#prefetching) return;
+    this.#prefetching = true;
     try {
-      const result = await this.#client.call<{ models: AgentModel[] }>('agent/models', {
-        agentId,
-      });
-      const models = result?.models ?? [];
-      this.#models.set(agentId, models);
-      return models;
-    } catch {
-      return [];
+      for (const agent of untrack(() => this.agents)) {
+        if (agent.available) await this.modelsFor(agent.agentId);
+      }
+    } finally {
+      this.#prefetching = false;
     }
+  }
+
+  /** The models an agent's CLI reports (cached per agent; concurrent asks for
+   *  the same agent share one request). */
+  modelsFor(agentId: string): Promise<AgentModel[]> {
+    const cached = this.#models.get(agentId);
+    if (cached) return Promise.resolve(cached);
+    const inFlight = this.#modelRequests.get(agentId);
+    if (inFlight) return inFlight;
+    const request = this.#client
+      .call<{ models: AgentModel[] }>('agent/models', { agentId })
+      .then((result) => {
+        const models = result?.models ?? [];
+        this.#models.set(agentId, models);
+        return models;
+      })
+      .catch(() => [] as AgentModel[])
+      .finally(() => this.#modelRequests.delete(agentId));
+    this.#modelRequests.set(agentId, request);
+    return request;
   }
 
   /** Models already loaded for an agent (reactive; empty until `modelsFor`). */

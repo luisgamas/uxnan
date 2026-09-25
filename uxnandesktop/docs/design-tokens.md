@@ -303,9 +303,10 @@ asserts both.
 | `chat.messageMeta` | A message's time and copy button, revealed while its row (`group/message`) is hovered or focused. |
 
 The chat composes these with the shared primitives rather than drawing its own:
-`InputGroup` + `Textarea` for the composer, `AiModelPicker` (its `ghost`
-variant) for the model, `Combobox` (its `ghost` trigger) for the agent, `Select`
-for the access mode and the run options, `Collapsible` for work groups and
+`InputGroup` + `Textarea` for the composer, the app's one `ModelPicker` (its
+`pill` variant, run options as `Segmented` inside) for the model, `Combobox`
+(its `ghost` trigger) for the agent, the standard `DropdownMenu` radio group
+(`ChatAccessMenu`) for the access mode, `Collapsible` for work groups and
 folded turns, `DiffView` for changed files, `Badge` for small states,
 `TooltipSimple` for the context ring, and `AgentStatusIndicator` on its tab
 chip.

@@ -601,7 +601,8 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   "latest"), o en vivo para OpenCode (`opencode models`), Antigravity
   (`agy models`), Grok (`grok models`) y Codex (`codex app-server` `model/list`);
   siempre con una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
-  **buscable y con scroll** (`AiModelPicker.svelte`) porque algunos agentes
+  **buscable, con scroll y agrupado por proveedor** (`ModelPicker.svelte`, el
+  unico selector de modelos de la app, el mismo del chat) porque algunos agentes
   listan cientos de modelos.
   Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
   (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`

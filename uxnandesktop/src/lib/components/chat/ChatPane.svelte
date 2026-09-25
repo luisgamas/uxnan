@@ -2,7 +2,9 @@
   // The body of a chat tab: a conversation the Uxnan bridge drives, shown next
   // to the terminals (architecture/02a §5.8.16). Three states — no bridge to
   // talk to, a new chat choosing its agent, and a running conversation.
+  import { untrack } from "svelte";
   import { bridge } from "$lib/bridge/client.svelte";
+  import { chat } from "$lib/bridge/chat.svelte";
   import type { ChatTab } from "$lib/state/terminals.svelte";
   import ChatBridgeGate from "./ChatBridgeGate.svelte";
   import ChatStart from "./ChatStart.svelte";
@@ -10,6 +12,12 @@
   import { pane } from "$lib/design";
 
   let { tab, active }: { tab: ChatTab; active: boolean } = $props();
+
+  // The first chat opened loads every agent's models in the background, so
+  // the model menu opens on a full list (the agents load with the bridge).
+  $effect(() => {
+    if (bridge.connected && chat.agents.length > 0) untrack(() => void chat.prefetchModels());
+  });
 </script>
 
 <div class={pane.root}>

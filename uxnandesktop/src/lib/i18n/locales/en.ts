@@ -60,6 +60,11 @@ export const en = {
   "common.creating": "Creating…",
   "common.loading": "Loading…",
   "common.copy": "Copy",
+  "modelPicker.label": "Model",
+  "modelPicker.default": "Default model",
+  "modelPicker.search": "Search models…",
+  "modelPicker.loading": "Loading models…",
+  "modelPicker.noMatch": "No model matches.",
   "common.search": "Search…",
 
   // Icon picker (project & branch icons)
@@ -850,10 +855,6 @@ export const en = {
   "settings.aiCommitNoAgents":
     "None of the supported agents were found installed.",
   "settings.aiCommitModel": "Model",
-  "settings.aiCommitModelDefault": "Default",
-  "settings.aiCommitModelLoading": "Loading models…",
-  "settings.aiCommitModelSearch": "Search models…",
-  "settings.aiCommitModelNoMatch": "No models match.",
   "settings.aiCommitModelDesc":
     "Which model the agent uses. “Default” lets the CLI pick its configured model.",
   "settings.aiCommitLanguage": "Language",

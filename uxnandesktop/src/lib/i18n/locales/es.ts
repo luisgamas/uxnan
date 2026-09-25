@@ -57,6 +57,11 @@ export const es: Record<MessageKey, string> = {
   "common.creating": "Creando…",
   "common.loading": "Cargando…",
   "common.copy": "Copiar",
+  "modelPicker.label": "Modelo",
+  "modelPicker.default": "Modelo por defecto",
+  "modelPicker.search": "Buscar modelos…",
+  "modelPicker.loading": "Cargando modelos…",
+  "modelPicker.noMatch": "Ningún modelo coincide.",
   "common.search": "Buscar…",
 
   // Selector de icono (proyecto y rama)
@@ -854,10 +859,6 @@ export const es: Record<MessageKey, string> = {
   "settings.aiCommitNoAgents":
     "No se encontró instalado ninguno de los agentes soportados.",
   "settings.aiCommitModel": "Modelo",
-  "settings.aiCommitModelDefault": "Predeterminado",
-  "settings.aiCommitModelLoading": "Cargando modelos…",
-  "settings.aiCommitModelSearch": "Buscar modelos…",
-  "settings.aiCommitModelNoMatch": "Ningún modelo coincide.",
   "settings.aiCommitModelDesc":
     "Qué modelo usa el agente. «Predeterminado» deja que la CLI elija su modelo configurado.",
   "settings.aiCommitLanguage": "Idioma",

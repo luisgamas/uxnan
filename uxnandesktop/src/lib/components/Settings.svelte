@@ -56,7 +56,7 @@
   import { clipboardWrite } from "$lib/clipboard";
   import TerminalProfileEditor from "./TerminalProfileEditor.svelte";
   import AgentProfileEditor from "./AgentProfileEditor.svelte";
-  import AiModelPicker from "./AiModelPicker.svelte";
+  import ModelPicker from "./ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
@@ -1353,7 +1353,7 @@
               {#if ai.agentId && aiAgentInstalled(ai.agentId)}
                 <SettingsRow label={i18n.t("settings.aiCommitModel")} description={i18n.t("settings.aiCommitModelDesc")}>
                   {#snippet control()}
-                    <AiModelPicker
+                    <ModelPicker
                       models={aiModels}
                       value={ai.model}
                       loading={aiModelsLoading}

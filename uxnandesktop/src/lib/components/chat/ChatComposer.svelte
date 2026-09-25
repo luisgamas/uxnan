@@ -13,17 +13,14 @@
   //
   // Built on the shared `InputGroup` (the same primitive the command palette's
   // search uses): a `Textarea` over a `block-end` toolbar of quiet pills — the
-  // model (`leading`), the model's run options, the access mode (`trailing`) —
-  // then the context ring and the round send / stop button.
+  // agent and the model with its run options (`leading`), the access mode
+  // (`trailing`) — then the context ring and the round send / stop button.
   import * as InputGroup from "$lib/components/ui/input-group";
-  import * as Select from "$lib/components/ui/select";
   import { Icon } from "$lib/components/ui/icon";
-  import { Switch } from "$lib/components/ui/switch";
   import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
   import type { Snippet } from "svelte";
   import ChatContextRing from "./ChatContextRing.svelte";
-  import type { AgentModelOption } from "$shared/agents/agent-capabilities";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
@@ -32,8 +29,6 @@
     running = false,
     disabled = false,
     placeholder,
-    runOptions = [],
-    optionValues = $bindable({}),
     autofocus = false,
     onsend,
     onstop,
@@ -44,16 +39,12 @@
     running?: boolean;
     disabled?: boolean;
     placeholder?: string;
-    /** Per-model run-option knobs to offer (reasoning effort, …). */
-    runOptions?: AgentModelOption[];
-    /** The chosen value per knob key. */
-    optionValues?: Record<string, string | boolean>;
     autofocus?: boolean;
     onsend: (text: string) => void | Promise<void>;
     onstop?: () => void;
     /** Controls shown at the start of the toolbar (the model picker). */
     leading?: Snippet;
-    /** Controls shown after the run options (the access mode). */
+    /** Controls shown after the leading ones (the access mode). */
     trailing?: Snippet;
     /** How full the context window is, when the agent reports it. */
     context?: { tokens: number; limit: number } | null;
@@ -62,8 +53,6 @@
   let value = $state("");
   let ref = $state<HTMLTextAreaElement | null>(null);
   const empty = $derived(value.trim().length === 0);
-  const enumOptions = $derived(runOptions.filter((o) => o.kind === "enum" && o.values?.length));
-  const toggleOptions = $derived(runOptions.filter((o) => o.kind === "toggle"));
 
   $effect(() => {
     if (autofocus && ref && !disabled) ref.focus();
@@ -80,11 +69,6 @@
     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
     e.preventDefault();
     void submit();
-  }
-
-  function optionLabel(option: AgentModelOption): string {
-    const current = optionValues[option.key] ?? option.default;
-    return option.values?.find((v) => v.value === current)?.label ?? option.label;
   }
 </script>
 
@@ -107,31 +91,6 @@
     />
     <InputGroup.Addon align="block-end" class="gap-0.5">
       {#if leading}{@render leading()}{/if}
-      {#each enumOptions as option (option.key)}
-        <Select.Root
-          type="single"
-          value={String(optionValues[option.key] ?? option.default ?? "")}
-          onValueChange={(v) => (optionValues = { ...optionValues, [option.key]: v })}
-        >
-          <Select.Trigger size="compact" class={chat.pill} aria-label={option.label}>
-            {optionLabel(option)}
-          </Select.Trigger>
-          <Select.Content>
-            {#each option.values ?? [] as v (v.value)}
-              <Select.Item value={v.value} label={v.label}>{v.label}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-      {/each}
-      {#each toggleOptions as option (option.key)}
-        <label class={cn("flex h-7 items-center gap-1.5 px-2", text.meta)}>
-          <Switch
-            checked={(optionValues[option.key] ?? option.default) === true}
-            onCheckedChange={(on) => (optionValues = { ...optionValues, [option.key]: on })}
-          />
-          {option.label}
-        </label>
-      {/each}
       {#if trailing}{@render trailing()}{/if}
       <span class="flex-1"></span>
       {#if context && context.limit > 0}

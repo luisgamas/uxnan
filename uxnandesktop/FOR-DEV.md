@@ -344,7 +344,7 @@ terminal-launched sessions (below, *Terminal-launched sessions*).
   same path as a hand-made worktree, so it gets its agent like any other; optional
   **AI PR-body drafting** (the `aicommit` one-shot runner) configured in a full
   **AI-PR-authoring settings section** built like Settings → AI commit (enable switch,
-  agent picker with logos + install state, shared `AiModelPicker`, language,
+  agent picker with logos + install state, the shared `ModelPicker`, language,
   instructions).
   PR detail is split into **Conversation / Files-changed tabs** with the action bar
   available from both. Creating a PR **picks its `base ← head`** — **either side can be

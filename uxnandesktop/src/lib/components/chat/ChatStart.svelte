@@ -7,10 +7,10 @@
   //
   // A centered hero: the question, then the composer, whose toolbar carries the
   // agent (the same `Combobox` + `AgentLogo` the new-worktree dialog uses) and
-  // the model (the shared `AiModelPicker`) as quiet pills; the conversations
+  // the model with its run options (`ModelPicker`) as quiet pills; the conversations
   // already running here are listed below it.
   import AgentLogo from "$lib/components/AgentLogo.svelte";
-  import AiModelPicker from "$lib/components/AiModelPicker.svelte";
+  import ModelPicker from "$lib/components/ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
   import ChatComposer from "./ChatComposer.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
@@ -62,7 +62,11 @@
     },
   ]);
   const models = $derived(chat.cachedModels(agentId));
-  const runOptions = $derived(models.find((m) => m.id === model)?.options ?? []);
+  // "Default" runs the agent's own default model: offer that model's knobs.
+  const runOptions = $derived(
+    (models.find((m) => m.id === model) ?? (model ? undefined : models.find((m) => m.isDefault)))
+      ?.options ?? [],
+  );
   const existing = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status !== "archived"));
   const folder = $derived(
     tab.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? tab.cwd,
@@ -125,8 +129,6 @@
     <div class="flex flex-col gap-1.5">
       <ChatComposer
         disabled={!agentId || starting}
-        {runOptions}
-        bind:optionValues
         autofocus={active}
         placeholder={i18n.t("chat.startPlaceholder")}
         onsend={start}
@@ -143,13 +145,13 @@
             disabled={agents.length === 0}
             onChange={pickAgent}
           />
-          <AiModelPicker
+          <ModelPicker
+            variant="pill"
             {models}
             value={model}
             loading={modelsLoading}
-            size="sm"
-            variant="ghost"
-            triggerClass={cn(chatTokens.pill, "max-w-52")}
+            options={runOptions}
+            bind:optionValues
             disabled={!agentId}
             onSelect={(id) => (model = id)}
           />

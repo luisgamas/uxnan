@@ -94,6 +94,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **One model picker for the whole app.** `ModelPicker` replaces both
+  `AiModelPicker` (Settings → AI commit, GitHub PR drafts, orchestration steps)
+  and the chat's own: models searchable and grouped by provider (OpenCode and pi
+  report hundreds of `provider/model` ids), "Default model" first, and — in a
+  chat — the model's run options (reasoning effort, …) as segmented controls
+  above the list, summarized on the trigger ("Opus 5 · High"). It comes as a
+  `field` (forms) or a `pill` (the chat composer). The chat store preloads
+  every agent's models the first time a chat opens, deduplicating concurrent
+  requests, so the menu opens on a full list. The chat's access mode moves to
+  the standard radio menu with an icon and one line per mode
+  (`ChatAccessMenu`).
 - **Chat replies stream at the phone's measured pace, and stay cheap as they
   grow.** Streamed prose and thinking wait in a buffer for one render window —
   16 ms for a short reply, growing with its length to 100 ms (the phone's

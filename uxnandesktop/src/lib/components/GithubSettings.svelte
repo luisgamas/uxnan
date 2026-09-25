@@ -18,7 +18,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import Combobox, { type ComboGroup } from "$lib/components/Combobox.svelte";
-  import AiModelPicker from "$lib/components/AiModelPicker.svelte";
+  import ModelPicker from "$lib/components/ModelPicker.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
@@ -280,7 +280,7 @@
       {#if app.settings.github?.aiAgentId && aiAgentInstalled(app.settings.github.aiAgentId)}
         <SettingsRow label={i18n.t("github.settings.aiModel")} description={i18n.t("settings.aiCommitModelDesc")}>
           {#snippet control()}
-            <AiModelPicker
+            <ModelPicker
               models={aiModels}
               value={app.settings.github?.aiModel ?? ""}
               loading={aiModelsLoading}

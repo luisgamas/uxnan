@@ -6,13 +6,12 @@
   //
   // A pane like a file or commit tab (`pane.root` / `pane.header`). The header
   // names the conversation and its fixed agent. What can change mid-chat lives
-  // in the composer's toolbar: the model (`AiModelPicker`), its run options and
-  // the access mode. Anything waiting on the user — an open approval or
+  // in the composer's toolbar: the model and its run options (`ModelPicker`)
+  // and the access mode (`ChatAccessMenu`). Anything waiting on the user — an open approval or
   // question, follow-ups queued behind the running turn — is pinned above the
   // composer (the dock) until it is answered, here or on the phone.
   import { tick, untrack } from "svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import * as Select from "$lib/components/ui/select";
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -23,10 +22,11 @@
   import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
   import type { AccessMode } from "$shared/models/thread";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
-  import AiModelPicker from "$lib/components/AiModelPicker.svelte";
   import TabRenameDialog from "$lib/components/TabRenameDialog.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
+  import ModelPicker from "$lib/components/ModelPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
@@ -72,11 +72,6 @@
     void chat.modelsFor(id).finally(() => (modelsLoading = false));
   });
 
-  const ACCESS_MODES = [
-    "requestApproval",
-    "approveForMe",
-    "fullAccess",
-  ] as const satisfies readonly AccessMode[];
   const accessMode = $derived<AccessMode>(thread?.accessMode ?? "fullAccess");
 
   /** Turns shown in the timeline; queued ones wait below, as ghosts. */
@@ -346,8 +341,6 @@
       <ChatComposer
         running={conversation.running}
         disabled={thread?.status === "archived"}
-        runOptions={model?.options ?? []}
-        bind:optionValues
         autofocus={active}
         context={conversation.usage?.contextWindow
           ? { tokens: conversation.usage.tokens, limit: conversation.usage.contextWindow }
@@ -356,36 +349,19 @@
         onstop={() => void stop()}
       >
         {#snippet leading()}
-          <AiModelPicker
+          <ModelPicker
+            variant="pill"
             {models}
             value={thread?.model ?? ""}
             loading={modelsLoading}
-            size="sm"
-            variant="ghost"
-            triggerClass={cn(chatTokens.pill, "max-w-52")}
+            allowDefault={false}
+            options={model?.options ?? []}
+            bind:optionValues
             onSelect={(id) => void setModel(id)}
           />
         {/snippet}
         {#snippet trailing()}
-          <Select.Root
-            type="single"
-            value={accessMode}
-            onValueChange={(v) => void setAccess(v as AccessMode)}
-          >
-            <Select.Trigger size="compact" class={chatTokens.pill} aria-label={i18n.t("chat.accessLabel")}>
-              {i18n.t(`chat.access.${accessMode}`)}
-            </Select.Trigger>
-            <Select.Content>
-              {#each ACCESS_MODES as mode (mode)}
-                <Select.Item value={mode} label={i18n.t(`chat.access.${mode}`)}>
-                  <div class="flex min-w-0 flex-col">
-                    <span>{i18n.t(`chat.access.${mode}`)}</span>
-                    <span class={text.meta}>{i18n.t(`chat.accessDesc.${mode}`)}</span>
-                  </div>
-                </Select.Item>
-              {/each}
-            </Select.Content>
-          </Select.Root>
+          <ChatAccessMenu value={accessMode} onChange={(mode) => void setAccess(mode)} />
         {/snippet}
       </ChatComposer>
     </div>
