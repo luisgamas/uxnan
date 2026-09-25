@@ -92,9 +92,10 @@ Open it **per project**, from either entry point — both land in the same view:
 
 It opens **in place of the center** — the left sidebar (projects) and the right
 dock stay visible — scoped to that project, so
-there's no repository selector. A **section switcher** (Pull Requests / Issues /
-Actions) sits next to a **close** button (left) and a **refresh** button (right), all
-inside the view's own toolbar. **Close** it with that button or by activating any
+there's no repository selector. Its top bar is the one Settings and Automations use:
+a **back** button that closes the view (left), the repository, a **section switcher**
+(Pull Requests / Issues / Actions) and a **refresh** button (right) — fixed above the
+content, so they never scroll away. **Close** it with that button or by activating any
 worktree — clicking a worktree/project opens its terminal as usual and returns to the
 workspace. Sections:
 

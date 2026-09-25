@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **The GitHub view's back button no longer scrolls away.** Its close, section
+  switcher and refresh sat in a toolbar inside the scrolling content, under a top
+  bar that only named the repository. The view now uses the top bar Settings and
+  Automations use — back, the repository, the switcher and refresh, fixed above
+  the content — so the three views share one height and one back button.
+
 ## [0.0.56] - 20260924
 ### Fixed
 

@@ -227,7 +227,11 @@ fills. Top-level icon controls use the square `shell.appBarAction` or
 `shell.appBarCompactAction`; both are 40×40px. The fixed window-control overlay
 uses `shell.appBarOverlay`, which intentionally has no second hairline because
 the longer appbar below it owns that line. `WorkspaceAppBar` reuses this anatomy
-for Settings and Automations. **Every panel starts with this appbar** — the left
+for the views that take over the workspace — Settings, Automations and the inline
+GitHub view: a back button that closes the view, its title, and optional slots
+for the view's own controls (the GitHub section switcher) and right-end actions
+(refresh). One component, so they keep one height and a back button that never
+scrolls away. **Every panel starts with this appbar** — the left
 sidebar, the center tab strips, the right dock (whatever surface it shows) and
 the inline GitHub view — so the top band reads as one line across the window; a
 panel with nothing to show there still renders an empty `shell.appBar` drag
@@ -260,9 +264,10 @@ hard-codes a padding for them. `titlebarInsets(edges, isMac)` in
 `macTrafficLightsInset` (80px, macOS only) on the left,
 `macWindowControlsInset` (40px) or `windowControlsInset` (160px) on the right.
 `TerminalArea` asks it per region (`regionEdges` — only a region touching the
-area's top corner, with the panel on that side hidden), the inline GitHub view
-per the sidebar and dock state, the `Dock` for the right corner (it is always
-the right-most panel), and `WorkspaceAppBar` for both corners.
+area's top corner, with the panel on that side hidden), the `Dock` for the right
+corner (it is always the right-most panel), and `WorkspaceAppBar` for the corners
+its `edges` name — both for a full-screen view, and for the inline GitHub view
+whichever the sidebar and the dock leave it.
 
 The overlay titlebar does **not** place those buttons for us: AppKit keeps the
 position it computed for the 32px system titlebar it replaced, which reads 4px
