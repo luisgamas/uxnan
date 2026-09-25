@@ -408,6 +408,26 @@
   "@conversationWorkLog": {
     "description": "Header of the collapsible list of commands/tools an agent turn ran."
   },
+  "conversationToolRead": "Read",
+  "@conversationToolRead": {
+    "description": "Work-log verb for a tool call that read a file; followed by the file."
+  },
+  "conversationToolSearched": "Searched",
+  "@conversationToolSearched": {
+    "description": "Work-log verb for a tool call that searched files; followed by the pattern."
+  },
+  "conversationToolListed": "Listed",
+  "@conversationToolListed": {
+    "description": "Work-log verb for a tool call that listed a folder; followed by the folder."
+  },
+  "conversationToolFetched": "Fetched",
+  "@conversationToolFetched": {
+    "description": "Work-log verb for a tool call that fetched a URL; followed by the URL."
+  },
+  "conversationToolSearchedWeb": "Searched the web",
+  "@conversationToolSearchedWeb": {
+    "description": "Work-log verb for a web search; followed by the query."
+  },
   "conversationChangedFiles": "Changed files",
   "@conversationChangedFiles": {
     "description": "Header of the collapsible list of files an agent turn modified."

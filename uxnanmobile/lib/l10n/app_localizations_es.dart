@@ -939,6 +939,21 @@ class AppLocalizationsEs extends AppLocalizations {
   String get conversationWorkLog => 'Registro de actividad';
 
   @override
+  String get conversationToolRead => 'Leyó';
+
+  @override
+  String get conversationToolSearched => 'Buscó';
+
+  @override
+  String get conversationToolListed => 'Listó';
+
+  @override
+  String get conversationToolFetched => 'Abrió';
+
+  @override
+  String get conversationToolSearchedWeb => 'Buscó en la web';
+
+  @override
   String get conversationChangedFiles => 'Archivos modificados';
 
   @override

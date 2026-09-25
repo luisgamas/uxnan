@@ -1688,6 +1688,36 @@ abstract class AppLocalizations {
   /// **'Work log'**
   String get conversationWorkLog;
 
+  /// Work-log verb for a tool call that read a file; followed by the file.
+  ///
+  /// In en, this message translates to:
+  /// **'Read'**
+  String get conversationToolRead;
+
+  /// Work-log verb for a tool call that searched files; followed by the pattern.
+  ///
+  /// In en, this message translates to:
+  /// **'Searched'**
+  String get conversationToolSearched;
+
+  /// Work-log verb for a tool call that listed a folder; followed by the folder.
+  ///
+  /// In en, this message translates to:
+  /// **'Listed'**
+  String get conversationToolListed;
+
+  /// Work-log verb for a tool call that fetched a URL; followed by the URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetched'**
+  String get conversationToolFetched;
+
+  /// Work-log verb for a web search; followed by the query.
+  ///
+  /// In en, this message translates to:
+  /// **'Searched the web'**
+  String get conversationToolSearchedWeb;
+
   /// Header of the collapsible list of files an agent turn modified.
   ///
   /// In en, this message translates to:

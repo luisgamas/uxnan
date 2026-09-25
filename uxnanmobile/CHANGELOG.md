@@ -6,6 +6,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 ### Added
+- **The work log says what each tool did, for every agent.** A tool row reads
+  "Read notes.txt" or "Searched alpha" from the `kind` and `target` the bridge
+  classified, instead of each agent's own tool name (`view_file`,
+  `read_file`…). A finished subagent opens to its report, and a turn shows only
+  its latest plan — an agent resends the whole list on every change.
 - **This phone has a name on every PC, and the PCs have names too.** On
   connecting, the phone describes itself (`device/describe`): its name — the
   one set in the system settings on Android, the model on iOS, until its owner

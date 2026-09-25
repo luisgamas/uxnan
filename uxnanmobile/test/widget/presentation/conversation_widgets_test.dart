@@ -394,6 +394,57 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Approve'), findsOneWidget);
   });
 
+  testWidgets('a turn shows its latest plan, a subagent report and tool verbs',
+      (tester) async {
+    PlanContent plan(PlanStepStatus status) => PlanContent(
+          PlanState(
+            steps: [PlanStep(description: 'Write tests', status: status)],
+          ),
+        );
+    final message = Message(
+      id: 'm3',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: [
+        plan(PlanStepStatus.pending),
+        const ToolUseContent(
+          toolName: 'view_file',
+          toolId: 'v1',
+          input: {},
+          kind: ToolKind.read,
+          target: 'notes.txt',
+        ),
+        plan(PlanStepStatus.completed),
+        const SubagentContent(
+          SubagentState(
+            id: 's1',
+            name: 'Count lines',
+            status: 'completed',
+            output: 'Three lines.',
+          ),
+        ),
+        const TextContent('Done.'),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    // One plan card: the earlier resend is a past state of the same list.
+    expect(find.text('Write tests'), findsOneWidget);
+    // The work log names the act, not the agent's own tool name.
+    expect(find.text('Read notes.txt'), findsOneWidget);
+    expect(find.text('view_file'), findsNothing);
+    expect(find.text('Three lines.'), findsNothing);
+    await tester.tap(find.text('Count lines'));
+    await tester.pumpAndSettle();
+    expect(find.text('Three lines.'), findsOneWidget);
+  });
+
   testWidgets(
     'a resolved approval card stays resolved after scroll/restart '
     '(no buttons reappear, decision persists in the store)',

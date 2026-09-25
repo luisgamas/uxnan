@@ -937,6 +937,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationWorkLog => 'Work log';
 
   @override
+  String get conversationToolRead => 'Read';
+
+  @override
+  String get conversationToolSearched => 'Searched';
+
+  @override
+  String get conversationToolListed => 'Listed';
+
+  @override
+  String get conversationToolFetched => 'Fetched';
+
+  @override
+  String get conversationToolSearchedWeb => 'Searched the web';
+
+  @override
   String get conversationChangedFiles => 'Changed files';
 
   @override
