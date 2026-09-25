@@ -8,6 +8,7 @@ import 'package:uxnan/application/managers/file_browser_manager.dart'
     show FileBrowserManager;
 import 'package:uxnan/application/managers/git_action_manager.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
+import 'package:uxnan/application/managers/thread_action_outbox.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
@@ -719,6 +720,14 @@ final gitStatusBusProvider = Provider<GitStatusBus>((ref) {
   return bus;
 });
 
+/// Conversation actions taken while their PC was out of reach, waiting to be
+/// sent to it (architecture/02a §5.8.17).
+final threadActionOutboxProvider = Provider<ThreadActionOutbox>(
+  (ref) => ThreadActionOutbox(
+    repository: ref.watch(bridgeReplicaRepositoryProvider),
+  ),
+);
+
 /// Coordinates threads and the active conversation timeline.
 final threadManagerProvider = Provider<ThreadManager>((ref) {
   final coordinator = ref.watch(sessionCoordinatorProvider);
@@ -736,6 +745,9 @@ final threadManagerProvider = Provider<ThreadManager>((ref) {
     foregroundThreadId: () => ref.read(foregroundThreadProvider),
     // A thread another client starts is filed under the PC we are on.
     currentDeviceId: () => ref.read(connectedDeviceProvider).value?.macDeviceId,
+    // Renames, archives and deletes made while the PC is out of reach wait
+    // here, and the replica sends them first when it is back.
+    outbox: ref.watch(threadActionOutboxProvider),
   );
   ref.onDispose(manager.dispose);
   return manager;
@@ -754,6 +766,7 @@ final bridgeReplicaProvider = Provider<BridgeReplica>((ref) {
     domainEvents: processor.bind(coordinator.incomingMessages),
     connectionPhases: coordinator.connectionPhaseStream,
     currentDeviceId: () => ref.read(connectedDeviceProvider).value?.macDeviceId,
+    outbox: ref.watch(threadActionOutboxProvider),
   );
   ref.onDispose(replica.dispose);
   return replica;

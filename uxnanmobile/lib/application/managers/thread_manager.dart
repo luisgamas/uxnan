@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
+import 'package:uxnan/application/managers/thread_action_outbox.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
@@ -26,6 +27,7 @@ import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/pending_thread_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
@@ -53,6 +55,7 @@ class ThreadManager {
     Stream<ConnectionPhase>? connectionPhases,
     String? Function()? foregroundThreadId,
     String? Function()? currentDeviceId,
+    ThreadActionOutbox? outbox,
     Uuid? uuid,
     Duration resyncTimeout = const Duration(seconds: 8),
     Duration externalSyncInterval = const Duration(seconds: 3),
@@ -61,6 +64,7 @@ class ThreadManager {
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
         _currentDeviceId = currentDeviceId,
+        _outbox = outbox,
         _uuid = uuid ?? const Uuid(),
         _resyncTimeout = resyncTimeout,
         _externalSyncInterval = externalSyncInterval {
@@ -98,6 +102,10 @@ class ThreadManager {
   /// The PC this app is connected to, so a thread another client starts on it
   /// is filed under that PC the moment `stream/thread/updated` announces it.
   final String? Function()? _currentDeviceId;
+
+  /// Where a conversation action waits while its PC is out of reach; `null`
+  /// sends every action right away, best-effort.
+  final ThreadActionOutbox? _outbox;
 
   final Uuid _uuid;
 
@@ -413,9 +421,8 @@ class ThreadManager {
   }
 
   /// Renames a thread (`thread/rename`), mirroring the new title locally first
-  /// so the UI updates immediately. The bridge call is best-effort: it degrades
-  /// gracefully (keeping the local rename) when the bridge does not yet
-  /// implement the method.
+  /// so the UI updates immediately; the bridge hears it now, or when its PC is
+  /// reachable again (see [_deliver]).
   Future<void> renameThread(String threadId, String title) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
@@ -423,40 +430,79 @@ class ThreadManager {
     if (thread != null) {
       await _threadRepository.saveThread(thread.copyWith(title: trimmed));
     }
-    await _syncThreadTitle(threadId, trimmed);
-  }
-
-  /// Pushes a title the user chose to the bridge (a hand rename: final).
-  Future<void> _syncThreadTitle(String threadId, String title) async {
-    try {
-      await _sendRequest('thread/rename', {
-        'threadId': threadId,
-        'title': title,
-      });
-    } on Object catch (error, stackTrace) {
-      AppLogger.warn(
-        'thread/rename failed (kept local rename)',
-        error,
-        stackTrace,
-      );
-    }
+    await _deliver(
+      threadId,
+      PendingThreadActionKind.rename,
+      deviceId: thread?.deviceId,
+      title: trimmed,
+    );
   }
 
   /// Deletes a thread (`thread/delete`), removing it locally first. Clears the
-  /// active timeline if the deleted thread was active. The bridge call is
-  /// best-effort and degrades gracefully if unsupported (a later `loadThreads`
-  /// would re-sync it from the bridge until then).
+  /// active timeline if the deleted thread was active. The bridge hears it now,
+  /// or when its PC is reachable again (see [_deliver]).
   Future<void> deleteThread(String threadId) async {
+    final deviceId = (await _threadRepository.getThread(threadId))?.deviceId;
     await _forgetThread(threadId);
-    try {
-      await _sendRequest('thread/delete', {'threadId': threadId});
-    } on Object catch (error, stackTrace) {
-      AppLogger.warn(
-        'thread/delete failed (removed locally)',
-        error,
-        stackTrace,
-      );
+    await _deliver(
+      threadId,
+      PendingThreadActionKind.delete,
+      deviceId: deviceId,
+    );
+  }
+
+  /// Tells the conversation's PC what the user did to it.
+  ///
+  /// Sent right away while that PC is the one connected. Otherwise — another
+  /// PC is connected, none is, or the request is lost on the way — it waits in
+  /// the [ThreadActionOutbox] and is sent, dated, when the PC is reachable
+  /// again; the bridge applies it only if nothing decided the same thing
+  /// later elsewhere (architecture/02a §5.8.17). An action the bridge refuses
+  /// is not kept: there is nothing to retry.
+  Future<void> _deliver(
+    String threadId,
+    PendingThreadActionKind kind, {
+    String? deviceId,
+    String? title,
+  }) async {
+    final action = PendingThreadAction(
+      deviceId: deviceId ?? _currentDeviceId?.call() ?? '',
+      threadId: threadId,
+      kind: kind,
+      title: title,
+      decidedAt: DateTime.now(),
+    );
+    final outbox = _outbox;
+    final canKeep = outbox != null && action.deviceId.isNotEmpty;
+    if (!canKeep || _reaches(action.deviceId)) {
+      try {
+        final response = await _sendRequest(kind.method, action.params());
+        if (response.error case final RpcError refused) {
+          AppLogger.warn('${kind.method} refused', refused);
+        }
+        return;
+      } on RpcError catch (error, stackTrace) {
+        AppLogger.warn('${kind.method} refused', error, stackTrace);
+        return;
+      } on Object catch (error, stackTrace) {
+        AppLogger.warn('${kind.method} did not arrive', error, stackTrace);
+        if (!canKeep) return;
+      }
     }
+    await outbox.keep(
+      deviceId: action.deviceId,
+      threadId: threadId,
+      kind: kind,
+      title: title,
+    );
+  }
+
+  /// Whether the PC [deviceId] is the one this app is connected to now.
+  bool _reaches(String deviceId) {
+    if (_lastPhase != null && _lastPhase != ConnectionPhase.connected) {
+      return false;
+    }
+    return _currentDeviceId?.call() == deviceId;
   }
 
   /// Drops everything this app holds for [threadId] — the stored thread, its
@@ -589,22 +635,20 @@ class ThreadManager {
   }
 
   /// Archives a thread (`thread/archive`): sets its local status to
-  /// [ThreadStatus.archived] first (so it leaves the active list immediately),
-  /// then calls the bridge best-effort. Nothing is deleted — the thread stays
-  /// in local storage and can be restored with [unarchiveThread]. Degrades
-  /// gracefully when the bridge does not implement the method.
+  /// [ThreadStatus.archived] first (so it leaves the active list immediately);
+  /// the bridge hears it now, or when its PC is reachable again (see
+  /// [_deliver]). Nothing is deleted — [unarchiveThread] restores it.
   Future<void> archiveThread(String threadId) =>
-      _setArchived(threadId, archived: true, method: 'thread/archive');
+      _setArchived(threadId, archived: true);
 
   /// Restores an archived thread (`thread/unarchive`): sets its local status
-  /// back to [ThreadStatus.active], then calls the bridge best-effort.
+  /// back to [ThreadStatus.active]; the bridge hears it as for [archiveThread].
   Future<void> unarchiveThread(String threadId) =>
-      _setArchived(threadId, archived: false, method: 'thread/unarchive');
+      _setArchived(threadId, archived: false);
 
   Future<void> _setArchived(
     String threadId, {
     required bool archived,
-    required String method,
   }) async {
     final thread = await _threadRepository.getThread(threadId);
     if (thread != null) {
@@ -614,11 +658,13 @@ class ThreadManager {
         ),
       );
     }
-    try {
-      await _sendRequest(method, {'threadId': threadId});
-    } on Object catch (error, stackTrace) {
-      AppLogger.warn('$method failed (kept local change)', error, stackTrace);
-    }
+    await _deliver(
+      threadId,
+      archived
+          ? PendingThreadActionKind.archive
+          : PendingThreadActionKind.unarchive,
+      deviceId: thread?.deviceId,
+    );
   }
 
   /// Resumes [threadId] on the bridge (`thread/resume`) so its agent session can

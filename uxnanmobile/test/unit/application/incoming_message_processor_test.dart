@@ -320,7 +320,8 @@ void main() {
       );
       expect((presence as PresenceUpdatedEvent).clients, hasLength(1));
       expect(
-        processor.classify(note('stream/agents/updated', {'agents': []})),
+        processor
+            .classify(note('stream/agents/updated', {'agents': <Object>[]})),
         isA<AgentsUpdatedEvent>(),
       );
     });

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:rxdart/rxdart.dart';
+import 'package:uxnan/application/managers/thread_action_outbox.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
@@ -24,6 +25,9 @@ import 'package:uxnan/domain/value_objects/replica_cursor.dart';
 /// - whenever a notification's revision is not the one after the last applied
 ///   (something was missed in between).
 ///
+/// Before reading, it sends what the user did here while that PC was out of
+/// reach ([ThreadActionOutbox]), each action dated so the latest one wins.
+///
 /// So a conversation or a project started on Uxnan Desktop while the phone was
 /// asleep, or before it was ever paired, is here when it connects — the
 /// replay window alone could not promise that. A revisioned change is only
@@ -38,10 +42,12 @@ class BridgeReplica {
     required Stream<DomainEvent> domainEvents,
     required String? Function() currentDeviceId,
     Stream<ConnectionPhase>? connectionPhases,
+    ThreadActionOutbox? outbox,
   })  : _repository = repository,
         _threads = threadManager,
         _sendRequest = sendRequest,
-        _currentDeviceId = currentDeviceId {
+        _currentDeviceId = currentDeviceId,
+        _outbox = outbox {
     _eventsSub = domainEvents.listen(_onEvent);
     _phaseSub = connectionPhases?.listen(_onPhase);
   }
@@ -50,6 +56,7 @@ class BridgeReplica {
   final ThreadManager _threads;
   final RpcSend _sendRequest;
   final String? Function() _currentDeviceId;
+  final ThreadActionOutbox? _outbox;
   late final StreamSubscription<DomainEvent> _eventsSub;
   StreamSubscription<ConnectionPhase>? _phaseSub;
 
@@ -113,6 +120,13 @@ class BridgeReplica {
       final deviceId = _currentDeviceId();
       if (deviceId == null || _disposed) return;
       try {
+        // What the user did here while this PC was out of reach goes first:
+        // the bridge's state is read only once it has heard all of it, so a
+        // snapshot can never undo an action it has not received yet.
+        final outbox = _outbox;
+        if (outbox != null && !await outbox.flush(deviceId, _sendRequest)) {
+          return;
+        }
         final cursor = await _cursorFor(deviceId);
         final response = await _sendRequest('sync/changes', {
           if (cursor != null) 'since': cursor.rev,

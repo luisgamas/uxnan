@@ -4,6 +4,7 @@ import 'package:uxnan/infrastructure/storage/tables/composer_drafts_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/connection_sessions_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/git_action_log_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/messages_table.dart';
+import 'package:uxnan/infrastructure/storage/tables/pending_thread_actions_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/projects_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/replica_cursors_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/threads_table.dart';
@@ -28,6 +29,7 @@ part 'local_database.g.dart';
     GitActionLogTable,
     ConnectionSessionsTable,
     ReplicaCursorsTable,
+    PendingThreadActionsTable,
   ],
 )
 class UxnanDatabase extends _$UxnanDatabase {
@@ -38,7 +40,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -88,6 +90,11 @@ class UxnanDatabase extends _$UxnanDatabase {
             await m.deleteTable('projects_table');
             await m.createTable(projectsTable);
             await m.createTable(replicaCursorsTable);
+          }
+          // v8: conversation actions taken while their PC was out of reach
+          // wait here until it is reachable (architecture/02a §5.8.17).
+          if (from < 8) {
+            await m.createTable(pendingThreadActionsTable);
           }
         },
         beforeOpen: (details) async {

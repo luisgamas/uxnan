@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/repositories/i_bridge_replica_repository.dart';
+import 'package:uxnan/domain/value_objects/pending_thread_action.dart';
 import 'package:uxnan/domain/value_objects/replica_cursor.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 
@@ -70,6 +71,66 @@ class DriftBridgeReplicaRepository implements IBridgeReplicaRepository {
   }
 
   @override
+  Future<void> enqueueThreadAction(PendingThreadAction action) async {
+    final moot = switch (action.kind) {
+      PendingThreadActionKind.rename => [PendingThreadActionKind.rename],
+      PendingThreadActionKind.archive || PendingThreadActionKind.unarchive => [
+          PendingThreadActionKind.archive,
+          PendingThreadActionKind.unarchive,
+        ],
+      PendingThreadActionKind.delete => PendingThreadActionKind.values,
+    };
+    await _db.transaction(() async {
+      await (_db.delete(_db.pendingThreadActionsTable)
+            ..where(
+              (a) =>
+                  a.deviceId.equals(action.deviceId) &
+                  a.threadId.equals(action.threadId) &
+                  a.kind.isIn(moot.map((k) => k.name)),
+            ))
+          .go();
+      await _db.into(_db.pendingThreadActionsTable).insert(
+            PendingThreadActionsTableCompanion.insert(
+              deviceId: action.deviceId,
+              threadId: action.threadId,
+              kind: action.kind.name,
+              title: Value(action.title),
+              decidedAt: action.decidedAt,
+            ),
+          );
+    });
+  }
+
+  @override
+  Future<List<PendingThreadAction>> pendingThreadActions(
+    String deviceId,
+  ) async {
+    final rows = await (_db.select(_db.pendingThreadActionsTable)
+          ..where((a) => a.deviceId.equals(deviceId))
+          ..orderBy([(a) => OrderingTerm.asc(a.id)]))
+        .get();
+    return [
+      for (final row in rows)
+        if (PendingThreadActionKind.fromName(row.kind) case final kind?)
+          PendingThreadAction(
+            id: row.id,
+            deviceId: row.deviceId,
+            threadId: row.threadId,
+            kind: kind,
+            title: row.title,
+            decidedAt: row.decidedAt,
+          ),
+    ];
+  }
+
+  @override
+  Future<void> removeThreadAction(int id) async {
+    await (_db.delete(_db.pendingThreadActionsTable)
+          ..where((a) => a.id.equals(id)))
+        .go();
+  }
+
+  @override
   Future<void> forgetDevice(String deviceId) async {
     await _db.transaction(() async {
       await (_db.delete(_db.projectsTable)
@@ -77,6 +138,9 @@ class DriftBridgeReplicaRepository implements IBridgeReplicaRepository {
           .go();
       await (_db.delete(_db.replicaCursorsTable)
             ..where((c) => c.deviceId.equals(deviceId)))
+          .go();
+      await (_db.delete(_db.pendingThreadActionsTable)
+            ..where((a) => a.deviceId.equals(deviceId)))
           .go();
     });
   }

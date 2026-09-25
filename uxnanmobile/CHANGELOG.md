@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 ### Added
+- **What you do offline is never lost.** Renaming, archiving, unarchiving or
+  deleting a conversation while its PC is out of reach (no connection, or
+  another PC connected) shows here at once and waits in a persistent outbox
+  (`ThreadActionOutbox`, drift schema v8: `pending_thread_actions`; a newer
+  action replaces the ones it makes moot). When the PC is back, the replica
+  sends it **before** reading `sync/changes` — and reads nothing if it could not,
+  so no snapshot undoes an action the bridge has not heard — each action with
+  `ageMs`, how long ago it was decided. The bridge applies it only if nothing
+  decided the same thing later elsewhere: the latest action wins, on whichever
+  device it was taken. An action lost on the way waits; one the bridge refuses
+  is dropped. Before, such an action was sent once, failed, and stayed only on
+  this phone until the conversation next changed on the PC.
 - **One layer: the phone is a replica of the PC's bridge** (architecture/02a
   §5.8.17). `BridgeReplica` (`lib/application/managers/bridge_replica.dart`)
   keeps what the bridge owns — conversations, projects, the start folder,

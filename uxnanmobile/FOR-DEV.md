@@ -32,7 +32,11 @@ connected to live bridge data, validated on-device against a real bridge.
   desktop-origin mark tell the two setups apart. Another client's prompt is
   placed above its answer (`stream/turn/created` + `clientTurnId`), and a card
   answered elsewhere settles here (`stream/approval|question/resolved`).
+  A rename, archive, unarchive or delete made while the PC is out of reach
+  waits in `ThreadActionOutbox` and is sent, dated (`ageMs`), before the next
+  sync — the latest action wins, whichever device took it.
   Covered by `bridge_replica_test`, `thread_manager_test`,
+  `thread_action_outbox_test`, `thread_manager_outbox_test`,
   `incoming_message_processor_test`, `workspace_grouping_test`,
   `threads_list_test` and `new_conversation_card_test`, and by the bridge's
   own end-to-end tests. **Not yet device-verified against a running desktop** —
@@ -403,6 +407,9 @@ shipping.
       device against a bridge running as the user's service with the desktop
       open — add and remove a project on each side, archive and start
       conversations with the phone away and confirm they appear on reconnect,
+      rename / archive / delete on the phone with the PC out of reach (and the
+      same conversation changed on the desktop meanwhile) and confirm the
+      latest action wins on both after reconnecting,
       change the start folder on each side, open a conversation from a push, and
       confirm the "Linked with Uxnan Desktop" line follows the desktop opening
       and closing. The screens are also pending the maintainer's visual review.
