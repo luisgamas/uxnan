@@ -12,7 +12,11 @@ import {
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
-import { PI_DESKTOP_EXTENSION, piDesktopLaunch } from '../../src/adapters/pi-adapter.js';
+import {
+  PI_DESKTOP_EXTENSION,
+  parsePiCommands,
+  piDesktopLaunch,
+} from '../../src/adapters/pi-adapter.js';
 
 // --- a fake `pi` process whose stdout we feed with agent-session JSON lines ---
 interface FakeSpawn {
@@ -894,4 +898,107 @@ test('PiAdapter ends the turn on agent_settled, not on an agent_end pi will retr
   const all = await done;
   const completed = all.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { text: string }).text, 'PING');
+});
+
+// --- commands: pi's own list (`get_commands`) ---
+
+function commandsSpawner(commands: unknown[]): {
+  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  calls: { args: string[]; cwd: string; written: string[] }[];
+} {
+  const calls: { args: string[]; cwd: string; written: string[] }[] = [];
+  const spawnFn = (_command: string, args: string[], cwd: string): SpawnedProcess => {
+    const stdout = new PassThrough();
+    const stdin = new PassThrough();
+    const emitter = new EventEmitter();
+    const call = { args, cwd, written: [] as string[] };
+    calls.push(call);
+    stdin.on('data', (chunk: Buffer) => {
+      call.written.push(chunk.toString('utf8'));
+      stdout.write(
+        `${JSON.stringify({ type: 'response', command: 'get_commands', success: true, data: { commands } })}\n`,
+      );
+    });
+    return {
+      stdout,
+      stdin,
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
+  };
+  return { spawnFn, calls };
+}
+
+test('listCommands: prompts and skills as pi lists them; extension commands left out', async () => {
+  const { spawnFn, calls } = commandsSpawner([
+    { name: 'llama', description: 'Manage models', source: 'extension' },
+    { name: 'fix-tests', description: 'Fix failing tests', source: 'prompt', location: 'project' },
+    { name: 'skill:brave-search', description: 'Web search', source: 'skill', location: 'user' },
+  ]);
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const commands = await adapter.listCommands('/repo');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.source, c.description]),
+    [
+      ['fix-tests', 'custom', 'Fix failing tests'],
+      ['skill:brave-search', 'skill', 'Web search'],
+    ],
+  );
+  // A throwaway process in the thread's folder that never makes a session.
+  assert.equal(calls[0]!.cwd, '/repo');
+  assert.deepEqual(calls[0]!.args, ['--mode', 'rpc', '--no-session']);
+  assert.match(calls[0]!.written.join(''), /"type":"get_commands"/);
+  // Reused for the folder within the minute.
+  await adapter.listCommands('/repo');
+  assert.equal(calls.length, 1);
+});
+
+test('listCommands asks with the posture a turn runs with, so it lists what runs', async () => {
+  for (const [permissionMode, flags] of [
+    ['default', ['--tools', 'read,grep,find,ls']],
+    ['bypassPermissions', ['--approve']],
+  ] as const) {
+    const { spawnFn, calls } = commandsSpawner([]);
+    const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, permissionMode });
+    await adapter.listCommands('/repo');
+    assert.deepEqual(calls[0]!.args, ['--mode', 'rpc', '--no-session', ...flags]);
+  }
+});
+
+test('listCommands yields none when pi does not answer', async () => {
+  const spawnFn = (): SpawnedProcess => {
+    const emitter = new EventEmitter();
+    setImmediate(() => emitter.emit('close', 1));
+    return {
+      stdout: new PassThrough(),
+      stdin: new PassThrough(),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  assert.deepEqual(await adapter.listCommands('/repo'), []);
+});
+
+test('parsePiCommands reads only the get_commands answer', () => {
+  assert.equal(
+    parsePiCommands('{"type":"response","command":"get_state","success":true}'),
+    undefined,
+  );
+  assert.equal(parsePiCommands('No API key found'), undefined);
+  assert.deepEqual(
+    parsePiCommands(
+      JSON.stringify({
+        type: 'response',
+        command: 'get_commands',
+        success: true,
+        data: { commands: [{ name: 'x', source: 'prompt' }, { nope: 1 }] },
+      }),
+    ),
+    [{ name: 'x', source: 'prompt' }],
+  );
+  assert.deepEqual(
+    parsePiCommands('{"type":"response","command":"get_commands","success":false}'),
+    [],
+  );
 });

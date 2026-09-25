@@ -69,6 +69,7 @@ import { fileURLToPath } from 'node:url';
 import {
   encodeCwdHeader,
   type AgentCapabilities,
+  type AgentCommand,
   type AgentConfig,
   type AgentId,
   type AgentModel,
@@ -126,6 +127,87 @@ export function piDesktopLaunch(
 /** Hard cap on the `--list-models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
 
+/** How long a folder's command list is reused before pi is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/** How long a `get_commands` answer may take. */
+const COMMANDS_TIMEOUT_MS = 10_000;
+
+/**
+ * The tool posture as `pi` flags: read-only tools, pi's defaults, or pi's
+ * defaults plus `--approve` — which also decides whether pi trusts the
+ * project's own files (its `.pi` prompts, `.agents/skills`, settings and
+ * extensions; see `docs/security.md` → *Project Trust*). A turn and a command
+ * listing take the same flags, so what is listed is what a turn can run.
+ */
+export function piPostureArgs(permissionMode: PiPermissionMode): string[] {
+  if (permissionMode === 'default') return ['--tools', 'read,grep,find,ls'];
+  if (permissionMode === 'bypassPermissions') return ['--approve'];
+  return [];
+}
+
+/** One command as pi's `get_commands` reports it. */
+export interface PiReportedCommand {
+  name: string;
+  description?: string;
+  source: string;
+}
+
+/**
+ * The commands in a `get_commands` response line, or `undefined` for any other
+ * line (pi 0.85.1: `{ type: "response", command: "get_commands", success,
+ * data: { commands: [{ name, description?, source, location?, path? }] } }`).
+ */
+export function parsePiCommands(line: string): PiReportedCommand[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || parsed['type'] !== 'response' || parsed['command'] !== 'get_commands') {
+    return undefined;
+  }
+  const data = parsed['data'];
+  if (parsed['success'] !== true || !isRecord(data) || !Array.isArray(data['commands'])) return [];
+  const commands: PiReportedCommand[] = [];
+  for (const c of data['commands']) {
+    if (!isRecord(c) || typeof c['name'] !== 'string' || typeof c['source'] !== 'string') continue;
+    commands.push({
+      name: c['name'],
+      source: c['source'],
+      ...(typeof c['description'] === 'string' ? { description: c['description'] } : {}),
+    });
+  }
+  return commands;
+}
+
+/**
+ * What the bridge advertises of pi's commands. Prompt templates (`custom`) and
+ * skills (`skill`, named `skill:<name>` — the form pi expects after the `/`)
+ * run headless: pi expands them from the `prompt` command. Extension commands
+ * are left out: one may open a dialog (`select`, `confirm`, `input`), which pi
+ * turns into an `extension_ui_request` that blocks until a client answers — and
+ * nothing on the bridge's surface does, so the turn would never end. pi's TUI
+ * built-ins are never in the list (rpc.md).
+ */
+export function piAgentCommands(reported: PiReportedCommand[]): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  const seen = new Set<string>();
+  for (const c of reported) {
+    if (c.source !== 'prompt' && c.source !== 'skill') continue;
+    if (!c.name || seen.has(c.name)) continue;
+    seen.add(c.name);
+    commands.push({
+      name: c.name,
+      ...(c.description ? { description: c.description } : {}),
+      source: c.source === 'skill' ? 'skill' : 'custom',
+      headlessSupported: true,
+    });
+  }
+  return commands;
+}
+
 const PI_CAPABILITIES: AgentCapabilities = {
   // Plan mode is a pi extension, not core, so it's not advertised here.
   planMode: false,
@@ -141,6 +223,8 @@ const PI_CAPABILITIES: AgentCapabilities = {
   images: true,
   reportsContextUsage: true,
   reportsCompaction: true,
+  // Prompt templates and skills, as pi lists them (`get_commands`).
+  commands: true,
   // pi's RPC protocol has a first-class `steer` command, drained by the agent
   // loop at its next boundary — so a follow-up joins the running turn instead
   // of waiting for it. This is why the adapter runs `--mode rpc` rather than
@@ -475,6 +559,8 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #sessions = new Map<string, ActiveSession>();
   /** model id → context-window tokens, cached from `--list-models` for `usage`. */
   readonly #contextWindowByModel = new Map<string, number>();
+  /** The folder's command list, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   #defaultCwd = process.cwd();
 
   /**
@@ -611,9 +697,7 @@ export class PiAdapter extends BaseAgentAdapter {
     // Resume the session pi announced on this thread's first `get_state`; on the
     // very first spawn there is none yet and pi creates one.
     const sessionId = this.#sessionByThread.get(threadId);
-    const args = ['--mode', 'rpc'];
-    if (permissionMode === 'default') args.push('--tools', 'read,grep,find,ls');
-    else if (permissionMode === 'bypassPermissions') args.push('--approve');
+    const args = ['--mode', 'rpc', ...piPostureArgs(permissionMode)];
     if (model) args.push('--model', model);
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
     if (effort) args.push('--thinking', effort);
@@ -1019,6 +1103,70 @@ export class PiAdapter extends BaseAgentAdapter {
         }
         finish(models);
       });
+    });
+  }
+
+  /**
+   * The commands pi has in [cwd], as pi itself lists them (`get_commands`,
+   * verified on pi 0.85.1): its prompt templates and skills, project and user,
+   * with descriptions — see {@link piAgentCommands} for what is left out. A
+   * picked one is sent as `/name args` on the `prompt` command, which pi
+   * expands itself, so there is no {@link expandCommand}.
+   *
+   * Asked of a short-lived `pi --mode rpc --no-session` started with the same
+   * posture flags as a turn ({@link piPostureArgs}): pi loads a project's own
+   * prompts and skills only when it trusts the project (`--approve`, or a
+   * saved decision in its `trust.json`), and a listing that trusted what the
+   * turn does not would advertise commands that do not run. A thread's
+   * resident process is not asked: the answer would interleave with its turn's
+   * stream. Reused per folder for a minute; an unanswered request yields none.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const reported = await this.#askCommands(dir);
+    if (reported === undefined) return [];
+    const commands = piAgentCommands(reported);
+    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
+  }
+
+  /** Ask pi in [cwd] for its commands; `undefined` if it will not say. */
+  #askCommands(cwd: string): Promise<PiReportedCommand[] | undefined> {
+    return new Promise((resolve) => {
+      const args = ['--mode', 'rpc', '--no-session', ...piPostureArgs(this.#permissionMode)];
+      let child: SpawnedProcess;
+      try {
+        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
+          stdin: 'pipe',
+        });
+      } catch {
+        resolve(undefined);
+        return;
+      }
+      let settled = false;
+      const finish = (commands: PiReportedCommand[] | undefined): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          child.stdin?.end();
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+        resolve(commands);
+      };
+      const timer = setTimeout(() => finish(undefined), COMMANDS_TIMEOUT_MS);
+      const reader = createInterface({ input: child.stdout as unknown as Readable });
+      reader.on('line', (line) => {
+        const commands = parsePiCommands(line);
+        if (commands) finish(commands);
+      });
+      child.on('close', () => finish(undefined));
+      child.on('error', () => finish(undefined));
+      child.stdin?.write(`${JSON.stringify({ type: 'get_commands' })}\n`);
     });
   }
 }
