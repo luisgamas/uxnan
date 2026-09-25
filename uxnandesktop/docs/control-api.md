@@ -89,8 +89,8 @@ below) without touching the others. Trust order:
 |---|---|---|
 | `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `chat/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
 | `ui` | `app/focus`, `terminal/reveal`, `chat/open`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
-| `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run` | shipped |
-| `converse` | `agent/send`, `agent/wait`, `terminal/read`, `chat/send` (a bridge conversation: queued behind a running turn, seen by every client) | shipped |
+| `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `chat/start` (a chat with a bridge agent in a worktree, + first message — in a tab and on the phone), `run/start`, `automation/run` | shipped |
+| `converse` | `agent/send`, `agent/wait`, `terminal/read`, `chat/send` (a bridge conversation: queued behind a running turn, seen by every client), `chat/read` (its newest turns: the message, the answer, the steps taken — redacted), `chat/wait` (`idle` or `waiting`) | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
 
 [`docs/control-api-reference.md`](./control-api-reference.md) is every entry
@@ -568,6 +568,10 @@ uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempote
 uxnan-cli chat ls [--worktree <worktree>] [--archived]
 uxnan-cli chat open <chat>
 uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]
+uxnan-cli chat start --agent <agent> [--worktree <worktree>] [--model <model>] [--title <t>]
+                     [--message-file <file>] [--no-open] [--idempotency-key <key>]
+uxnan-cli chat read <chat> [--turns <n>]
+uxnan-cli chat wait <chat> [--for idle|waiting] [--timeout <seconds>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]
@@ -765,5 +769,5 @@ diff <(uxnan-cli skills get control --full) \
   file's mtime moved) and `--with /bin/sh` was refused with the three editors
   this machine offers; `status` reported `0/4 slots in use · 2466 MiB free
   (needs 768 MiB)`. Every result was checked against the entry's **live**
-  `outputSchema` from `tools/list` (52 tools): required fields present,
+  `outputSchema` from `tools/list` (52 tools at the time): required fields present,
   declared types respected, no undocumented field.

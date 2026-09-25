@@ -701,7 +701,7 @@ sobre el estado reportado por los hooks, dormido en el notificador
 **redaccion** de secretos en el backend antes de salir, auditado, y desconectable
 por proyecto con `settings.control.terminalReadDisabledProjects`; `chat/send`: un
 mensaje completo a una conversacion del bridge, que el bridge encola tras el turno
-en curso y todos sus clientes ven — con `chat/list` en `read` y `chat/open` en
+en curso y todos sus clientes ven; `chat/read`: los ultimos turnos de una conversacion (mensaje, respuesta y pasos, con redaccion); `chat/wait --for idle|waiting`, maximo 15 s por llamada — con `chat/start` en `create` (una conversacion nueva con un agente del bridge en un worktree, visible en una pestana y en el telefono), `chat/list` en `read` y `chat/open` en
 `ui`, por el cliente del bridge de la app y acotados como todo lo demas: una
 conversacion cuya carpeta queda fuera del alcance es *scope denied*) y
 `orchestrate` v2 (`run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` — una corrida conducida por un agente coordinador, §3.9). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),

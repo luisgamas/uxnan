@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **An agent can start another agent as a chat, and follow it.** `chat/start`
+  (create group) starts a conversation with a bridge agent in a worktree — in
+  a tab and on the phone, like one started in the chat tab — optionally with a
+  first message; `chat/read` returns its newest turns (the message, the answer,
+  the steps taken; redacted) and `chat/wait` waits for it to end its turn or
+  ask something. On `uxnan-cli chat start|read|wait` and as MCP tools.
+
 - **The chat shows a step while it runs.** A command, a tool call or a
   subagent appears as it starts, with the running dot, and its result replaces
   it where it stood (`LiveBlock`, replaced by `blockId` in the conversation

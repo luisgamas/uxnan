@@ -292,6 +292,49 @@ enum ChatCmd {
         /// The chat (`id:<id>` from `chat ls`).
         chat: String,
     },
+    /// Start a chat with an agent in a worktree (shown in a tab and on the phone).
+    Start {
+        /// The worktree (`current`, `path:<folder>`, `branch:<name>`).
+        #[arg(long, default_value = "current")]
+        worktree: String,
+        /// The agent: `claude`, `codex`, `opencode`, `pi`, `agy`, `zero` or `grok`.
+        #[arg(long)]
+        agent: String,
+        /// A model for it, as the agent names it.
+        #[arg(long)]
+        model: Option<String>,
+        /// A title (default: named from the first message).
+        #[arg(long)]
+        title: Option<String>,
+        /// A file whose contents are the first message.
+        #[arg(long)]
+        message_file: Option<std::path::PathBuf>,
+        /// Do not show it in a chat tab.
+        #[arg(long)]
+        no_open: bool,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Read a chat's newest turns: the message, the answer, the steps taken.
+    Read {
+        /// The chat (`id:<id>` from `chat ls` or `chat start`).
+        chat: String,
+        /// How many of its newest turns (default 1, at most 20).
+        #[arg(long, default_value_t = 1)]
+        turns: u64,
+    },
+    /// Wait until a chat's turn ends (`idle`) or it asks something (`waiting`).
+    Wait {
+        /// The chat (`id:<id>`).
+        chat: String,
+        /// `idle` (default) or `waiting`.
+        #[arg(long = "for", default_value = "idle")]
+        state: String,
+        /// Give up after this many seconds (default 600). Heartbeats go to stderr.
+        #[arg(long, default_value_t = 600)]
+        timeout: u64,
+    },
     /// Send a whole message to a chat (queued behind a running turn).
     Send {
         /// The chat (`id:<id>` from `chat ls`).
@@ -732,6 +775,49 @@ fn plan(command: Command) -> Result<Plan, String> {
                 with("chat/list", p)
             }
             ChatCmd::Open { chat } => with("chat/open", json!({ "chat": chat })),
+            ChatCmd::Start {
+                worktree,
+                agent,
+                model,
+                title,
+                message_file,
+                no_open,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "worktree": worktree, "agent": agent });
+                if let Some(m) = sel(model) {
+                    p["model"] = json!(m);
+                }
+                if let Some(t) = sel(title) {
+                    p["title"] = json!(t);
+                }
+                if let Some(file) = message_file {
+                    p["message"] = json!(read_prompt_file(&file)?);
+                }
+                if no_open {
+                    p["open"] = json!(false);
+                }
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("chat/start", p)
+            }
+            ChatCmd::Read { chat, turns } => {
+                with("chat/read", json!({ "chat": chat, "turns": turns }))
+            }
+            ChatCmd::Wait {
+                chat,
+                state,
+                timeout,
+            } => Ok(Plan::Wait(Repeat {
+                method: "chat/wait",
+                params: json!({ "chat": chat, "for": state.clone() }),
+                timeout: Duration::from_secs(timeout.max(1)),
+                what: format!("`{state}`"),
+                settled: |_| true,
+                carry: &[],
+                state: "current",
+            })),
             ChatCmd::Send {
                 to,
                 message_file,
