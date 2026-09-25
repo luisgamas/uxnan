@@ -163,25 +163,32 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
 
     /// The caller's scope, computed once per request. A launch caller's is the
     /// project containing the folder its own PTY was opened in — backend state,
-    /// so it needs no window and cannot be claimed by the request.
+    /// so it needs no window. A bridge-run agent's is the project containing
+    /// its conversation's folder (the `x-uxnan-cwd` header — named by the
+    /// request, as a launch caller names its terminal); a folder in no
+    /// registered project reaches nothing. Only the control token reaches all.
     pub async fn scope(&self) -> &Scope {
         self.scope
             .get_or_init(|| async {
-                let Caller::Launch { agent_id } = self.caller else {
-                    return Scope::All;
-                };
-                let Some(id) = agent_id else {
-                    return Scope::None;
-                };
-                let state = self.app.state::<AppState>();
-                let cwd = state
-                    .pty
-                    .live_sessions()
-                    .into_iter()
-                    .find(|(pty, _)| pty == id)
-                    .map(|(_, cwd)| cwd);
-                let Some(cwd) = cwd else {
-                    return Scope::None;
+                let cwd = match self.caller {
+                    Caller::Control => return Scope::All,
+                    Caller::Bridge { cwd: None } | Caller::Launch { agent_id: None } => {
+                        return Scope::None
+                    }
+                    Caller::Bridge { cwd: Some(cwd) } => cwd.clone(),
+                    Caller::Launch { agent_id: Some(id) } => {
+                        let state = self.app.state::<AppState>();
+                        let cwd = state
+                            .pty
+                            .live_sessions()
+                            .into_iter()
+                            .find(|(pty, _)| pty == id)
+                            .map(|(_, cwd)| cwd);
+                        let Some(cwd) = cwd else {
+                            return Scope::None;
+                        };
+                        cwd
+                    }
                 };
                 match self.project_of(&cwd).await {
                     Some(project) => {
@@ -287,6 +294,12 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
                 "reaches only the project of the terminal it names, and this request named none (send the agent-id header, or use uxnan-cli inside the terminal)"
             }
             Caller::Control => "is outside the caller's scope",
+            Caller::Bridge { cwd: Some(_) } => {
+                "reaches only the project its conversation's folder belongs to"
+            }
+            Caller::Bridge { cwd: None } => {
+                "reaches only the project of the folder it names, and this request named none (send the x-uxnan-cwd header)"
+            }
         };
         RpcError::new(
             ErrorCode::ScopeDenied,
@@ -317,6 +330,10 @@ impl<'a, R: tauri::Runtime> Resolver<'a, R> {
             Caller::Control => Err(RpcError::new(
                 ErrorCode::InvalidParams,
                 "`current` only works from inside a Uxnan terminal; use `id:`, `path:`, `branch:` or `name:`",
+            )),
+            Caller::Bridge { .. } => Err(RpcError::new(
+                ErrorCode::InvalidParams,
+                "`current` names a terminal, and an agent of a bridge conversation runs in none; use `id:`, `path:`, `branch:` or `name:`",
             )),
         }
     }

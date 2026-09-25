@@ -105,6 +105,19 @@ the tab renames the thread (`thread/rename`), a rename on the phone shows here,
 and a name given to a new chat's tab before its first message becomes the
 thread's name.
 
+## The chat's agent gets Uxnan's tools
+
+While the desktop is connected, the agent of a chat gets the same MCP server the
+agents launched in a terminal get — the browser, terminals, other agents, the
+whole control catalog — scoped to the project the conversation's folder belongs
+to (`docs/control-api.md` → *Callers*). The desktop hands the bridge its
+endpoint and a token of its own for chat agents (`desktop/attach`, over the
+local channel only; the token rotates on every start and the bridge forgets it
+when the desktop disconnects). Settings → Browser's switch that gives the
+agents Uxnan's tools (`mcpEnabled`) governs chats too. Today the bridge
+registers it for **Claude Code**; the other agents it drives are listed in
+`bridge/FOR-DEV.md`.
+
 ## A new chat
 
 A new chat opens on one question — *What should we build in <folder>?* — over

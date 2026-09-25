@@ -51,7 +51,7 @@ fn budget(params: &Value) -> Duration {
 fn own_terminal(caller: &Caller) -> Option<String> {
     match caller {
         Caller::Launch { agent_id } => agent_id.clone(),
-        Caller::Control => None,
+        Caller::Control | Caller::Bridge { .. } => None,
     }
 }
 

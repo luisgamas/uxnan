@@ -394,12 +394,13 @@ collide, and picking one silently would be worse than the error.
 
 Every route first refuses a caller whose `Host` or `Origin` is not loopback
 (the CSRF / DNS-rebinding vector a web page would use), then requires a token.
-Two tokens exist, both minted fresh on every start, neither ever logged:
+Three tokens exist, all minted fresh on every start, none ever logged:
 
 | Caller | Token | Where it comes from | What `current` means | Scope |
 |---|---|---|---|---|
 | A process the app launched (an agent's MCP client, or `uxnan-cli` run inside that terminal) | **per-launch** token | injected into the terminal as `UXNAN_HOOK_TOKEN` (named to the agent's MCP config as `UXNAN_MCP_TOKEN`), with `UXNAN_HOOK_URL` and `UXNAN_AGENT_ID` | that terminal | **its terminal's project** |
 | The user's own shell, a script, an agent launched elsewhere | **control** token | the discovery file `control.json` under the app's data directory | nothing — use explicit selectors | every project |
+| An agent the Uxnan bridge runs for a chat (`docs/chat.md`) | **bridge-agent** token | handed to the bridge over its local channel (`desktop/attach`) while Settings → Browser's *agents get Uxnan's tools* (`mcpEnabled`) is on; the bridge passes it to the agent as `UXNAN_MCP_TOKEN` and the conversation's folder in the `x-uxnan-cwd` header | nothing — it runs in no terminal | **its conversation folder's project**; never a hook |
 
 **Scope.** The per-launch token travels in agent processes — the least trusted
 caller — so it reaches only the project its terminal was opened in: listings
@@ -416,7 +417,10 @@ coordinator's workers run: a worker there is in the project's scope, and the
 coordinator sees its terminal. A
 launch request that does not say which terminal it is (no
 `x-uxnan-agent-id` header) reaches no project at all; one whose terminal is in
-the Global space, likewise. The control token — the same OS user that can open
+the Global space, likewise. A bridge-agent request is scoped the same way by
+the folder its conversation runs in (the `x-uxnan-cwd` header — named by the
+request, as the launch caller names its terminal); one without it, or whose
+folder is in no registered project, reaches nothing. The control token — the same OS user that can open
 the app and read its data directory — sees every project, so a project list
 in a settings pane would add friction, not a boundary.
 
@@ -679,7 +683,9 @@ diff <(uxnan-cli skills get control --full) \
   window answering the tab list: listings narrowed, the other project's
   worktree and terminal *scope denied*, a headerless launch request reaching
   nothing, the control token seeing all; and a worker in a **linked worktree
-  outside the checkout** resolving `current` and seen by the coordinator) — and, for `create`: a worktree created on a **real temporary repository** where
+  outside the checkout** resolving `current` and seen by the coordinator), **the
+  bridge-agent token's scope** (its folder's project only, the other *scope
+  denied*, `current` naming nothing, no folder reaching nothing, no hook) — and, for `create`: a worktree created on a **real temporary repository** where
   the project's policy puts it, receipted, written to the audit log, not
   created twice under the same key, a prompt refused before anything exists,
   and saved-only refusals for runs and automations; for `converse`: a message

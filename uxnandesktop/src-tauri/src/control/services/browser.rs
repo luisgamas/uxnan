@@ -55,7 +55,8 @@ fn rpc(e: CommandError) -> RpcError {
 }
 
 /// The workspace a caller's browser calls act on: an agent's own terminal's
-/// workspace, else the one on screen.
+/// workspace, a chat agent's conversation folder (a local workspace's key is
+/// its path), else the one on screen.
 pub async fn workspace_of<R: tauri::Runtime>(
     app: &AppHandle<R>,
     caller: &Caller,
@@ -63,6 +64,9 @@ pub async fn workspace_of<R: tauri::Runtime>(
     if let Caller::Launch { agent_id: Some(_) } = caller {
         let tab = Resolver::new(app, caller).current_terminal().await?;
         return Ok(tab.workspace);
+    }
+    if let Caller::Bridge { cwd: Some(cwd) } = caller {
+        return Ok(cwd.clone());
     }
     let active = Bridge::ask(app, "browser/active", Value::Null).await?;
     Ok(active
@@ -308,6 +312,7 @@ async fn asker<R: tauri::Runtime>(app: &AppHandle<R>, caller: &Caller) -> String
             .await
             .map(|t| t.agent_name.unwrap_or(t.title))
             .unwrap_or_else(|_| "An agent".into()),
+        Caller::Bridge { .. } => "A chat's agent".into(),
         _ => "uxnan-cli".into(),
     }
 }

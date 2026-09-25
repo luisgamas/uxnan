@@ -155,6 +155,30 @@ pub struct BridgeClient {
     owns_bridge: AtomicBool,
     /// An install/update is running (one at a time).
     installing: AtomicBool,
+    /// This app's tools for the agents the bridge runs (`desktop/attach`),
+    /// known once the control server is up.
+    desktop_tools: std::sync::Mutex<Option<DesktopTools>>,
+    /// Settings → Browser → "give agents Uxnan's tools" (`mcp_enabled`): the
+    /// same switch that registers the server for the agents launched in a
+    /// terminal decides whether the bridge's agents get it.
+    tools_enabled: AtomicBool,
+}
+
+/// The desktop's MCP endpoint and the token for bridge-run agents. The token
+/// never reaches a log: `Debug` redacts it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DesktopTools {
+    pub mcp_url: String,
+    pub token: String,
+}
+
+impl std::fmt::Debug for DesktopTools {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DesktopTools")
+            .field("mcp_url", &self.mcp_url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 impl BridgeClient {
@@ -168,7 +192,65 @@ impl BridgeClient {
             managed_child: Mutex::new(None),
             owns_bridge: AtomicBool::new(false),
             installing: AtomicBool::new(false),
+            desktop_tools: std::sync::Mutex::new(None),
+            tools_enabled: AtomicBool::new(true),
         })
+    }
+
+    /// The control server is up: remember its MCP endpoint and the token the
+    /// bridge's agents will present, and hand them to a connected bridge.
+    pub async fn set_desktop_tools(&self, tools: DesktopTools) {
+        *self.desktop_tools.lock().unwrap_or_else(|e| e.into_inner()) = Some(tools);
+        self.sync_desktop_tools().await;
+    }
+
+    /// Settings changed whether agents get Uxnan's tools. No-op when unchanged.
+    pub async fn set_tools_enabled(&self, enabled: bool) {
+        if self.tools_enabled.swap(enabled, Ordering::SeqCst) != enabled {
+            self.sync_desktop_tools().await;
+        }
+    }
+
+    /// What the bridge should hold now: the tools when they are known and
+    /// enabled, else nothing.
+    fn wanted_tools(&self) -> Option<DesktopTools> {
+        if !self.tools_enabled.load(Ordering::SeqCst) {
+            return None;
+        }
+        self.desktop_tools
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Tell a connected bridge what it should hold (`desktop/attach` or
+    /// `desktop/detach`). A bridge too old for these methods answers "method
+    /// not found": its agents simply run without the tools. Never fatal.
+    async fn sync_desktop_tools(&self) {
+        if self.connection.read().await.is_none() {
+            return;
+        }
+        let result = match self.wanted_tools() {
+            Some(tools) => {
+                self.call(
+                    "desktop/attach",
+                    serde_json::json!({ "mcpUrl": tools.mcp_url, "token": tools.token }),
+                    Duration::from_secs(10),
+                )
+                .await
+            }
+            None => {
+                self.call("desktop/detach", Value::Null, Duration::from_secs(10))
+                    .await
+            }
+        };
+        if let Err(err) = result {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "bridge",
+                &format!("the bridge did not take this app's tools for its agents: {err}"),
+            );
+        }
     }
 
     /// Switches mode; the supervisor reacts at once. No-op when unchanged.
@@ -509,6 +591,12 @@ async fn supervise(app: AppHandle, client: Arc<BridgeClient>) {
                         },
                     )
                     .await;
+                // Every (re)connect: a restarted bridge forgot them, and the
+                // token is only good for this app's run.
+                {
+                    let client = client.clone();
+                    tauri::async_runtime::spawn(async move { client.sync_desktop_tools().await });
+                }
                 // Pump notifications until the socket closes or the mode moves.
                 loop {
                     tokio::select! {

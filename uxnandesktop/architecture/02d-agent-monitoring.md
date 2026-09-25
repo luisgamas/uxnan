@@ -714,8 +714,7 @@ ventana como evento `control:request` y esperan su unica respuesta por el comand
 que no responde en 5 s produce *unavailable*, distinto de "no".
 
 **Autenticacion y aislamiento:** toda ruta rechaza primero un llamador cuyo
-`Host`/`Origin` no sea loopback y exige despues un token. Hay **dos tokens**,
-ambos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
+`Host`/`Origin` no sea loopback y exige despues un token. Hay **tres tokens**, todos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
 referenciado por la config MCP del agente como `UXNAN_MCP_TOKEN`; con
 `UXNAN_HOOK_URL` y `UXNAN_AGENT_ID`) identifica un proceso que el ADE arranco y
 ancla `current` en su terminal; el **token de control** vive solo en el archivo de
@@ -749,8 +748,7 @@ puede llamar a esta API — eso llega con el estado de agente en el host
 esta escrita para entonces. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
 **cada config de lanzamiento envia el id de la terminal en cada llamada**,
 expandido de `UXNAN_AGENT_ID` como cada CLI expande variables (tabla abajo);
-`current` se resuelve asi tambien desde una tool. Ninguno de los dos tokens se
-escribe en la config de ningun CLI ni se registra en logs.
+`current` se resuelve asi tambien desde una tool. El tercero, el **token de agente del bridge**, se entrega al bridge Uxnan por su canal local (`desktop/attach`, `02e` §3.5) para los agentes de sus conversaciones: llega al agente como `UXNAN_MCP_TOKEN`, identifica a un `Caller::Bridge` cuyo alcance es el proyecto de la carpeta de la conversacion (cabecera `x-uxnan-cwd`), no ancla `current` y nunca reporta un hook. Ninguno de los tokens se escribe en la config de ningun CLI ni se registra en logs.
 
 **`uxnan-cli`:** resultados en stdout, errores en stderr, `--json` estable, codigos
 de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,

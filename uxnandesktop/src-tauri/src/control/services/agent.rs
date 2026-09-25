@@ -311,7 +311,7 @@ pub async fn visible<R: tauri::Runtime>(app: &AppHandle<R>, caller: &Caller) -> 
     let scope = resolver.scope().await;
     let own = match caller {
         Caller::Launch { agent_id } => agent_id.clone(),
-        Caller::Control => None,
+        Caller::Control | Caller::Bridge { .. } => None,
     };
     all(app)
         .await

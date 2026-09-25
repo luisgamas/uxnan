@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **A chat's agent gets Uxnan's tools.** While connected, the desktop gives the
+  bridge its MCP endpoint and a **bridge-agent token** of its own, minted every
+  start (`desktop/attach`, over the local channel; `desktop/detach` when
+  Settings → Browser's `mcpEnabled` goes off). On the control server that token
+  is a new caller, `Caller::Bridge { cwd }`: scoped to the project of the
+  conversation's folder (`x-uxnan-cwd`), `current` naming nothing, never a hook,
+  audited as `bridge`; its browser calls land in that folder's browser. The
+  bridge registers it for Claude Code today — verified end to end with the
+  branch's bridge and a real `claude` turn calling a tool with both headers.
 - **Chat drafts, recall and edit.** A chat's unsent text is kept as its tab's
   draft (saved with the layout, `SavedTab.draft`), surviving tab switches and
   restarts. On an empty composer ↑ / ↓ walk the thread's earlier messages. A

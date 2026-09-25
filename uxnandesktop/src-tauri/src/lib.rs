@@ -256,15 +256,36 @@ pub fn run() {
             let mcp_config_handle = hook_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let launch_token = uuid::Uuid::new_v4().to_string();
+                // The token the Uxnan bridge's agents present (`desktop/attach`):
+                // its own, so they are scoped as chat agents, never as a
+                // terminal or as the user's shell.
+                let bridge_token = format!(
+                    "{}{}",
+                    uuid::Uuid::new_v4().simple(),
+                    uuid::Uuid::new_v4().simple()
+                );
                 match crate::control::server::start(
-                    hook_handle,
+                    hook_handle.clone(),
                     launch_token,
                     control_token.clone(),
+                    bridge_token.clone(),
                     hooks_dir_for_server,
                 )
                 .await
                 {
                     Ok(started) => {
+                        {
+                            let state = hook_handle.state::<crate::state::AppState>();
+                            let enabled = state.data.read().await.settings.browser.mcp_enabled;
+                            state.bridge.set_tools_enabled(enabled).await;
+                            state
+                                .bridge
+                                .set_desktop_tools(crate::bridgeclient::DesktopTools {
+                                    mcp_url: crate::mcpinject::mcp_endpoint(&started.hook.url),
+                                    token: bridge_token,
+                                })
+                                .await;
+                        }
                         // Write Claude Code's per-launch MCP config for this
                         // window now that the endpoint is known, so it is on disk
                         // before the first agent is launched (`mcpinject.rs`).

@@ -400,6 +400,14 @@ src/lib/bridge/  client · chat · conversation  →  components/chat/ (pestaña
   que lanzo termina al arrancar lo informa en el acto. *Update* en `managed`
   reinicia un bridge que no sirve el canal; `bridge_restart` (a peticion del
   usuario) detiene el que corre con `uxnan-bridge stop` y arranca uno nuevo.
+- **Herramientas del desktop para los agentes del bridge.** Al conectar, el
+  cliente llama `desktop/attach { mcpUrl, token }` (`02a` §5.8.15) con el
+  endpoint `/mcp` de su servidor de control y un **token de agente del bridge**
+  propio, generado en cada arranque, mientras el ajuste `browser.mcpEnabled`
+  este activo (`desktop/detach` al apagarlo). En el servidor de control ese
+  token es `Caller::Bridge { cwd }`: su alcance es el proyecto de la carpeta de
+  la conversacion (cabecera `x-uxnan-cwd`), `current` no nombra nada y nunca
+  reporta un hook (`docs/control-api.md` → *Callers*).
 - **`off` cuesta cero**: el supervisor espera el cambio de modo sin socket,
   lectura de fichero, temporizador ni proceso.
 

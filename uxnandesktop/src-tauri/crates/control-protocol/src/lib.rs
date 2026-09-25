@@ -55,4 +55,9 @@ pub mod headers {
     pub const TOKEN: &str = "x-uxnan-token";
     /// The caller's own terminal id, so `current` resolves to it.
     pub const AGENT_ID: &str = "x-uxnan-agent-id";
+    /// The working directory of the bridge conversation an agent runs in
+    /// (bridge-run agents only): it scopes what the agent may touch to the
+    /// project that folder belongs to. Same name as the bridge's
+    /// `DESKTOP_CWD_HEADER` (`shared/`).
+    pub const CWD: &str = "x-uxnan-cwd";
 }

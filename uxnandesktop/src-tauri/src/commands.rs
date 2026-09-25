@@ -45,7 +45,12 @@ pub async fn update_settings(
     state.resources.apply_settings(&data.settings.resources);
     // Same for the bridge connection: a no-op unless the mode changed.
     state.bridge.set_mode(data.settings.bridge.mode);
-    Ok(data.clone())
+    let tools_enabled = data.settings.browser.mcp_enabled;
+    let snapshot = data.clone();
+    // Never hold the settings lock across a call to the bridge.
+    drop(data);
+    state.bridge.set_tools_enabled(tools_enabled).await;
+    Ok(snapshot)
 }
 
 /// Merge a settings payload from the UI over what is already stored, keeping the

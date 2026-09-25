@@ -58,6 +58,11 @@ pub enum Caller {
     /// The user's own shell (or something they run in it), authorized by the
     /// control token.
     Control,
+    /// An agent the Uxnan bridge runs for one of its conversations, authorized
+    /// by the bridge-agent token the desktop gave the bridge (`desktop/attach`).
+    /// `cwd` is the conversation's folder — what scopes it — when the request
+    /// said so; it has no terminal, so `current` names nothing.
+    Bridge { cwd: Option<String> },
 }
 
 /// Shared context handed to the axum handlers.
@@ -68,6 +73,8 @@ pub(crate) struct ServerCtx<R: tauri::Runtime> {
     /// The control token (RPC from outside). Behind a lock so it can be rotated
     /// from Settings without restarting the server.
     pub control_token: Arc<RwLock<String>>,
+    /// The token for agents the bridge runs (MCP and RPC only — never a hook).
+    pub bridge_token: String,
 }
 
 // By hand: a derive would demand `R: Clone`, which a runtime is not, while an
@@ -78,6 +85,7 @@ impl<R: tauri::Runtime> Clone for ServerCtx<R> {
             app: self.app.clone(),
             launch_token: self.launch_token.clone(),
             control_token: self.control_token.clone(),
+            bridge_token: self.bridge_token.clone(),
         }
     }
 }
@@ -93,6 +101,11 @@ impl<R: tauri::Runtime> ServerCtx<R> {
         }
         if token_eq(&presented, &self.control_token.read().await) {
             return Some(Caller::Control);
+        }
+        if token_eq(&presented, &self.bridge_token) {
+            return Some(Caller::Bridge {
+                cwd: header_str(headers, proto_headers::CWD),
+            });
         }
         None
     }
@@ -257,6 +270,7 @@ pub async fn start<R: tauri::Runtime>(
     app: AppHandle<R>,
     launch_token: String,
     control_token: Arc<RwLock<String>>,
+    bridge_token: String,
     hooks_dir: PathBuf,
 ) -> std::io::Result<Started> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -269,6 +283,7 @@ pub async fn start<R: tauri::Runtime>(
         app,
         launch_token: launch_token.clone(),
         control_token,
+        bridge_token,
     };
     let router = Router::new()
         .route("/hook", post(route_hook::<R>))
