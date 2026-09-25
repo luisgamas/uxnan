@@ -184,8 +184,29 @@ export interface ThreadSetModelParams {
   threadId: string;
   model: string;
 }
+/**
+ * How long ago, in milliseconds by the client's own clock, the user took an
+ * action the client could not send at the time (it was offline) and sends now
+ * (architecture/02a §5.8.17). Absent for an action sent as it happens.
+ *
+ * The bridge dates the action `now - ageMs` and applies it only if nothing
+ * decided the same thing later — on another client, while this one was away:
+ * the latest decision wins, whoever made it. An age rather than a timestamp,
+ * so the phone's clock never has to agree with the PC's. At most a year.
+ */
+export type ActionAgeMs = number;
+
+/** `thread/archive`, `thread/unarchive`, `thread/delete`. */
+export interface ThreadActionParams {
+  threadId: string;
+  /** See {@link ActionAgeMs}. A superseded delete keeps the conversation. */
+  ageMs?: ActionAgeMs;
+}
+
 export interface ThreadRenameParams {
   threadId: string;
+  /** See {@link ActionAgeMs}. */
+  ageMs?: ActionAgeMs;
   /** New, non-empty title for the thread. */
   title: string;
   /**
@@ -431,9 +452,9 @@ export interface JsonRpcMethodRegistry {
   'thread/setModel': { params: ThreadSetModelParams; result: void };
   'thread/rename': { params: ThreadRenameParams; result: Thread };
   'thread/setAccessMode': { params: ThreadSetAccessModeParams; result: Thread };
-  'thread/archive': { params: { threadId: string }; result: Thread };
-  'thread/unarchive': { params: { threadId: string }; result: Thread };
-  'thread/delete': { params: { threadId: string }; result: void };
+  'thread/archive': { params: ThreadActionParams; result: Thread };
+  'thread/unarchive': { params: ThreadActionParams; result: Thread };
+  'thread/delete': { params: ThreadActionParams; result: void };
   'turn/list': { params: TurnListParams; result: TurnList };
   'turn/read': { params: { turnId: string }; result: Turn };
   'turn/send': { params: TurnSendParams; result: TurnSendResult };

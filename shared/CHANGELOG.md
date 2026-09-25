@@ -4,6 +4,14 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — actions taken offline, the latest one winning
+
+- `ageMs?` (`ActionAgeMs`) on `ThreadRenameParams`, and `ThreadActionParams
+  { threadId, ageMs? }` for `thread/archive`, `thread/unarchive` and
+  `thread/delete`: how long ago, by the client's clock, the user took an action
+  it could only send now. The bridge applies it only if nothing decided the same
+  thing later elsewhere (architecture/02a §5.8.17, 02b §1.2).
+
 ### Added — one layer: replica sync, a mirrored project registry, presence
 
 The bridge is the source of truth for everything clients share
