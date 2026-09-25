@@ -741,8 +741,10 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const run = this.#runBySession.get(str(p['sessionId']));
     const options = Array.isArray(p['options']) ? (p['options'] as Record<string, unknown>[]) : [];
     const toolCall = isRecord(p['toolCall']) ? p['toolCall'] : {};
+    // A request for no turn of ours is refused: nothing the user set allows it.
+    if (!run) return cancelledOutcome();
     // Non-interactive postures auto-answer without troubling the phone.
-    if (!run || !this.#onApprovalRequest || run.posture === 'approveAll') {
+    if (run.posture === 'approveAll') {
       return selectOption(options, 'approve') ?? cancelledOutcome();
     }
     if (run.posture === 'approveSession') {
@@ -752,6 +754,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
         cancelledOutcome()
       );
     }
+    // Interactive, with no one to ask: refuse.
+    if (!this.#onApprovalRequest) return selectOption(options, 'reject') ?? cancelledOutcome();
     // Interactive: ask the phone.
     let decision: ApprovalDecision = 'reject';
     try {

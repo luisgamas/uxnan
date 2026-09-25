@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — Grok's effort and approvals, verified on a real Grok
+
+- **The reasoning effort you pick now reaches Grok.** Grok offers it as a
+  session config option (`reasoning_effort`, category `thought_level`), set
+  with `session/set_config_option`; the adapter used `session/set_mode`, which
+  Grok accepts for any value and ignores.
+- **A permission request for no turn of the bridge's is refused** (Grok and
+  Zero approved it).
+- **A thread that asks first is told when Grok will not.** Grok decides by
+  itself whether to ask — its `[ui] permission_mode`, or the `defaultMode` of
+  the Claude settings it also reads — and under `auto` it ran `rm -rf` on a
+  thread set to request approval. ACP offers no per-session way to turn that
+  off, so the turn carries a warning, once per session, naming the mode and
+  the file that sets it. With Grok asking, the approval reaches the phone and
+  a rejection blocks the command (verified).
+
 ### Changed — every agent's work reads the same
 
 Measured on a real turn of each wired agent (Claude Code, Codex, OpenCode 2,

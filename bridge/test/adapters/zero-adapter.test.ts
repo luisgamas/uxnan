@@ -402,3 +402,26 @@ test('Zero advertises its own skills as commands, expanded to a prompt that load
   assert.equal(typeof adapter.listCommands, 'function');
   assert.equal(typeof adapter.expandCommand, 'function');
 });
+
+test('a permission request for no turn of ours is refused, never approved', async () => {
+  const { adapter, server } = setup({ onApprovalRequest: () => Promise.resolve('approve') });
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method !== 'session/prompt') return;
+    server.feed({
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 'someone-else',
+        toolCall: { toolCallId: 't', title: 'rm -rf build', kind: 'execute' },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      },
+    });
+    setTimeout(() => server.reply(m.id, { stopReason: 'end_turn' }), 10);
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'fullAccess' });
+  await done;
+  const reply = server.sent.find((m) => m.id === 42 && m.result?.outcome);
+  assert.deepEqual(reply.result.outcome, { outcome: 'cancelled' });
+});

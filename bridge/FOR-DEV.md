@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 820, shared 39, relay
+standalone). It builds clean and the suite is green (bridge 825, shared 39, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -411,17 +411,6 @@ push validation (FOR-HUMAN).
       (the block id), `thread-store.ts` (replace by id), each adapter's start
       event, and the clients' timelines (the desktop already draws a running
       step, `ChatActivity`).
-- [ ] **Grok live-turn verification (balance-blocked)** — the ACP envelope,
-      handshake and model discovery were exercised against a live `grok 0.2.93`, but
-      a real turn could **not** be run because the test account's Grok Build balance
-      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). A funded account has
-      since confirmed the hook vocabulary, **token usage** and — on a real turn
-      (2026-09-25) — the `tool_call` / `plan` shapes (`rawInput.variant` names the
-      tool, the title is for people; see `acp-tools.ts`); still to re-verify on a
-      real turn: the `session/request_permission` option `kind`s, and whether
-      `session/set_mode { modeId: <effort> }` actually applies the
-      reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
-      in `grok-adapter.ts`.
 
 ### Adding the next agent (recipe — do these one by one)
 
