@@ -162,6 +162,59 @@ If it affects contracts in `shared/`, all consuming components must be updated i
 
 ## During implementation
 
+### How we build (principles that bind every change)
+
+These come from work that shipped wrong first and had to be redone. Each one is
+a rule, not a preference.
+
+- **One layer, never layers on layers.** When a behavior needs to change, change
+  the layer that owns it — rewrite it if it has to — and delete the old path in
+  the same change. A second mechanism beside the first (a fallback, a
+  compatibility shim, a parallel store, a "v2" next to "v1") is two sources of
+  truth that will disagree. Going the extra mile to rebuild one complete,
+  correct layer is always cheaper than maintaining two half ones. There are no
+  users to keep compatible yet (see *Project status*).
+- **One owner per piece of state, one writer per owner.** Shared state has
+  exactly one home — the bridge owns projects, conversations, shared settings
+  and presence (architecture/02a §5.8.17) — and every client is a *replica*.
+  Inside a client, exactly one component writes what the owner sends; nothing
+  else may write it "just this once". Change notifications are emitted by the
+  store that changed (after it is on disk), never remembered by each handler.
+- **Converge, don't trust delivery.** A client must reach the same state after
+  any gap — asleep, offline, restarted, paired later — by asking the owner what
+  changed since the last revision it applied, not by hoping every notification
+  arrived. A late notification must never undo a newer state.
+- **Every surface works on its own.** The phone with only the bridge, the
+  desktop with no phone, a CLI with neither: each is a complete product. When
+  the others connect, what happened is simply there. A user action taken while
+  its owner is out of reach is kept durably and sent later, dated, and the
+  latest decision wins — it is never silently dropped or silently reverted.
+- **Every wired agent, every surface.** Agent-facing work is done when it works
+  for every agent the bridge drives and on every surface that shows it (phone,
+  desktop chat, desktop terminal, CLI) — verified on each, or recorded as a
+  `FOR-DEV:` item naming the agent and the reason. Never one agent "for now".
+- **Across devices, send ages, not timestamps.** Two clocks never agree; "how
+  long ago" survives the trip, "at what time" does not.
+- **A short-lived command talks to the running daemon.** A CLI command that
+  shows or changes live state (a pairing QR, a setting) asks the running
+  process over its local channel; it never stands up a second instance whose
+  state the daemon never sees.
+- **Test doubles speak the real contract.** A fake that answers in a shape the
+  real peer never sends hides the bug it should catch (a thread list that
+  "worked" for months against a fake and loaded nothing from a real bridge).
+  Take the shape from `shared/`, and prove behavior against the real process —
+  a scratch bridge, the real CLI — before calling it done.
+- **Tests and short commands never touch the user's real environment.** Agent
+  global configs, services and credentials are written only by the long-running
+  daemon or an explicit user command, behind a flag tests cannot set by accident.
+- **Nothing a service prints is private.** A service's stdout is a log file:
+  never write a credential, pairing code or token there.
+- **Reuse the design system; never override a primitive's layout.** Build UI
+  from the existing components and tokens (and the component's own slots — a
+  dialog's header/body/footer), and verify it against the skill for that app.
+  Re-laying a primitive out from the outside is how a dialog's footer ended up
+  narrower than the dialog.
+
 ### Conventions by component
 
 **Flutter (uxnanmobile/):**
