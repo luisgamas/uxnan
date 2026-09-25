@@ -7,6 +7,11 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The phone's "New conversation" mockup picks a project.** The app replaced
+  its single "Working directory" card with the PC's project registry — the
+  same list Uxnan Desktop shows — as one card group with the chosen project
+  filled and an "Add a project" row last, so the mockup draws that.
+
 - **The desktop mockup's right side is the dock now.** The app replaced its
   Files / Changes / History / GitHub tab row (and the separate browser panel)
   with one dock whose top band holds a surface selector, so the mockup draws
