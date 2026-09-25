@@ -1035,10 +1035,16 @@ export class CodexAdapter extends BaseAgentAdapter {
         // those. Ignore.
         return;
       case 'error': {
-        // An error notification is rare but the app-server uses it for
-        // catastrophic failures (e.g. context overflow). Surface to the
-        // current in-flight turn.
-        const message = typeof p['message'] === 'string' ? p['message'] : 'codex app-server error';
+        // The app-server also reports a dropped stream it is about to retry
+        // (`willRetry: true`, "Reconnecting... 2/5") — the turn carries on, so
+        // ending it there cut working turns short (measured 2026-09-25). Only
+        // an error it will not retry ends the turn (e.g. context overflow).
+        if (p['willRetry'] === true) return;
+        const error = isRecord(p['error']) ? p['error'] : {};
+        const message =
+          str(error['message']) ||
+          (typeof p['message'] === 'string' ? p['message'] : '') ||
+          'codex app-server error';
         const run = this.#currentRun();
         this.#emitTurnErrorForActive(message);
         // The bridge ends the turn on this event, so the adapter must too:

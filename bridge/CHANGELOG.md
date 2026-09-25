@@ -17,6 +17,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - The store replaces a block by its `blockId`, and a turn that ends settles
   any step its agent left running.
 
+### Fixed
+
+- **Codex turns no longer end when its stream drops and it reconnects.** The
+  app-server reports a retry as an `error` with `willRetry: true`
+  ("Reconnecting... 2/5"); the adapter ended and interrupted the turn on it.
+  An error it will not retry now shows its real message (`error.message`),
+  not "codex app-server error".
+
 ### Fixed — Grok's effort and approvals, verified on a real Grok
 
 - **The reasoning effort you pick now reaches Grok.** Grok offers it as a

@@ -933,6 +933,63 @@ test('CodexAdapter releases the app-server after a catastrophic app-server error
   assert.equal(server.stdout.writableEnded, true);
 });
 
+test('CodexAdapter keeps a turn going through a dropped stream Codex retries', async () => {
+  const { adapter, server } = setup();
+  const run = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(run.until);
+  // As the app-server reports it (captured 2026-09-25): a reconnect it retries…
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'error',
+      params: {
+        error: {
+          message: 'Reconnecting... 2/5',
+          additionalDetails: 'stream disconnected before completion',
+        },
+        willRetry: true,
+      },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+  const events = await run.done;
+  // …does not end the turn: it completes, with no error and no interrupt.
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  assert.ok(events.some((e) => e.type === 'turn_completed'));
+  assert.equal(
+    server.sent.some((m: any) => m.method === 'turn/interrupt'),
+    false,
+  );
+});
+
+test('CodexAdapter reads the message of an error it will not retry', async () => {
+  const { adapter, server } = setup();
+  const run = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'one' });
+  await waitForTurnStarted(run.until);
+  const errored = run.until((e) => e.type === 'turn_error');
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'error',
+      params: { error: { message: 'usage limit reached' }, willRetry: false },
+    }),
+  ]);
+  const events = await errored;
+  assert.equal(
+    (events.find((e) => e.type === 'turn_error')?.data as { text: string }).text,
+    'usage limit reached',
+  );
+});
+
 test('CodexAdapter resumes a thread adopted after a bridge restart instead of starting a new one', async () => {
   const { adapter, server } = setup();
   // A fresh process (empty map) is handed the id the bridge persisted before.
