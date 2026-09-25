@@ -1840,7 +1840,7 @@ struct TableAgent {
 /// create. An explicit **Install** in Settings is not gated: asking for it is
 /// answer enough.
 fn table_agent_present(agent: &TableAgent) -> bool {
-    if crate::which::resolve(agent.command).is_some() {
+    if crate::agentcli::command_installed(agent.command) {
         return true;
     }
     let Some(path) = (agent.path)() else {
@@ -2733,7 +2733,7 @@ fn agent_present(id: &str) -> bool {
     }
     // The hand-written six: their executable names, which differ from the hook
     // kind for Antigravity (`agy`) — the same split `agentStatus.titleAgentId`
-    // handles on the frontend.
+    // handles on the frontend — found with the rule shared with the bridge.
     let command = match id {
         "claude" => "claude",
         "codex" => "codex",
@@ -2743,7 +2743,7 @@ fn agent_present(id: &str) -> bool {
         "antigravity" => "agy",
         _ => return false,
     };
-    crate::which::resolve(command).is_some()
+    crate::agentcli::command_installed(command)
 }
 
 /// Read one agent's install state, whichever machinery owns it.

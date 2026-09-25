@@ -537,6 +537,7 @@ pub fn run() {
             bridgeclient::commands::bridge_install_probe,
             bridgeclient::commands::bridge_install,
             bridgeclient::commands::bridge_restart,
+            bridgeclient::commands::bridge_pairing_qr,
             commands::get_app_state,
             commands::update_settings,
             commands::quick_commands_set,
@@ -788,11 +789,8 @@ pub fn run() {
                     // Release any keep-awake helper (kills caffeinate /
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
-                    // Stop the bridge this app started in `managed` mode, if
-                    // any, through its own `stop` (it releases its lock and
-                    // removes its discovery file). A bridge the user runs
-                    // themselves is never touched.
-                    state.bridge.shutdown_blocking();
+                    // The bridge is the user's service: it keeps serving the
+                    // phone after the desktop closes, so nothing stops it here.
                     // The control token dies with the server: remove the file
                     // that carries it (a client also checks pid + start time,
                     // so an unclean exit leaves nothing usable either).

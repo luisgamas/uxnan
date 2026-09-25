@@ -219,3 +219,33 @@ describe('notification routing helpers', () => {
     expect(threadIdOf({ method: 'x' })).toBeUndefined();
   });
 });
+
+describe('orderBySeq', () => {
+  it('orders by the bridge position, keeping unnumbered placeholders last', async () => {
+    const { orderBySeq } = await import('./conversation.svelte');
+    const numbered = (id: string, seq: number): Turn => ({ ...turn(id, id), seq });
+    const placeholder = turn('live', 'live', 'streaming');
+    expect(
+      orderBySeq([numbered('c', 3), placeholder, numbered('a', 1), numbered('b', 2)]).map((t) => t.id),
+    ).toEqual(['a', 'b', 'c', 'live']);
+    // Without any numbers (an older bridge) the order is left alone.
+    const legacy = [turn('x', 'x'), turn('y', 'y')];
+    expect(orderBySeq(legacy)).toBe(legacy);
+  });
+
+  it('places a turn this window missed where it belongs, not at the bottom', () => {
+    const conversation = new Conversation('t1', vi.fn() as never);
+    conversation.adoptPage({
+      turns: [
+        { ...turn('t1-1', 'one'), seq: 1 },
+        { ...turn('t1-3', 'three'), seq: 3 },
+      ],
+      total: 2,
+    } as TurnList);
+    conversation.apply({
+      method: 'stream/turn/created',
+      params: { threadId: 't1', turn: { ...turn('t1-2', 'two', 'completed'), seq: 2 } },
+    });
+    expect(conversation.turns.map((t) => t.id)).toEqual(['t1-1', 't1-2', 't1-3']);
+  });
+});

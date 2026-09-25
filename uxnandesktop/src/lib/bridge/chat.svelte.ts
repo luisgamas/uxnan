@@ -2,11 +2,13 @@
 //
 // "One owner, two views": the bridge owns every thread — its agent process,
 // queue, approvals and history — and this window is a client of it exactly
-// like the phone. Whatever either client does reaches the other through the
-// bridge's broadcast (architecture/02a §5.8.16), so this store
-// keeps no private truth: the thread list is the bridge's `thread/list` kept
-// current by `stream/thread/updated|deleted`, and each open conversation is a
-// `Conversation` fed by the timeline notifications.
+// like the phone. This store is a REPLICA of what the bridge shares
+// (architecture/02a §5.8.17): threads, projects, the shared settings and who
+// is connected. It converges through `sync/changes` — on every (re)connect,
+// and whenever a notification's revision is not the one after the last
+// applied — never by trusting that every notification arrived. Each open
+// conversation is a `Conversation` fed by the timeline notifications and
+// ordered by `Turn.seq`.
 //
 // Agent fixed, model free: a thread's agent is chosen at `thread/start` and
 // never changes (another CLI cannot continue a native session); its model can
@@ -14,27 +16,24 @@
 
 import { untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
-import type { AccessMode, Thread, ThreadList } from '$shared/models/thread';
+import type { AccessMode, Thread } from '$shared/models/thread';
 import type { ApprovalDecision } from '$shared/models/approval';
 import type { AgentDescriptor, AgentModel } from '$shared/agents/agent-capabilities';
 import type { Project } from '$shared/models/project';
-import type { ThreadDeletedParams, ThreadUpdatedParams } from '$shared/jsonrpc/notifications';
+import type { BridgeSettings, ClientPresence, SyncChanges } from '$shared/models/sync';
+import type {
+  AgentsUpdatedParams,
+  PresenceUpdatedParams,
+  ProjectRemovedParams,
+  ProjectUpdatedParams,
+  SettingsUpdatedParams,
+  ThreadDeletedParams,
+  ThreadUpdatedParams,
+} from '$shared/jsonrpc/notifications';
 import { bridge, type BridgeClientStore, type BridgeNotification } from './client.svelte';
 import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelte';
 import { isUserFacingAgent } from './agents';
 import { ThreadActivity, type ChatActivity } from './activity.svelte';
-
-/** Longest provisional title (the bridge's `TITLE_MAX_LENGTH`). */
-const TITLE_MAX_LENGTH = 72;
-
-/** The provisional title of a new thread: its opening message, collapsed and
- *  clipped — the same rule the phone applies (`thread/rename` with
- *  `source: 'prompt'`, so the agent's generated name can still replace it). */
-export function provisionalTitle(text: string): string {
-  const normalized = text.trim().replace(/\s+/g, ' ');
-  if (normalized.length <= TITLE_MAX_LENGTH) return normalized;
-  return `${normalized.slice(0, TITLE_MAX_LENGTH - 1).trimEnd()}…`;
-}
 
 /** One spelling for comparing directories: forward slashes, no trailing slash. */
 export function normalizeCwd(path: string): string {
@@ -47,12 +46,28 @@ export interface SendOptions {
   options?: Record<string, string | boolean>;
 }
 
+/** Something the replica changed, for listeners that mirror it (projects). */
+export type ReplicaChange =
+  | { type: 'projects'; projects: Project[]; removed: Project[]; reset: boolean };
+
 export class ChatStore {
   readonly #client: BridgeClientStore;
   /** Every thread the bridge knows, by id. */
   threads = new SvelteMap<string, Thread>();
   threadsLoaded = $state(false);
+  /** The bridge's project registry, by id — the list the phone shows too. */
+  projects = new SvelteMap<string, Project>();
+  /** Settings shared with every client (the start folder). */
+  settings = $state<BridgeSettings | null>(null);
+  /** Who is connected to the bridge right now (phones, this desktop). */
+  clients = $state<ClientPresence[]>([]);
   agents = $state<AgentDescriptor[]>([]);
+  /** The last sync revision applied, and the store it belongs to. */
+  #rev: number | undefined;
+  #storeId: string | undefined;
+  #syncing: Promise<void> | undefined;
+  #syncAgain = false;
+  readonly #replicaListeners = new Set<(change: ReplicaChange) => void>();
   /** What every thread is doing now (tab chips, sidebar rows). */
   readonly activity = new ThreadActivity();
   #models = new SvelteMap<string, AgentModel[]>();
@@ -75,29 +90,124 @@ export class ChatStore {
     if (this.#client.connected) void this.resync();
   }
 
-  /** After (re)connecting: reload the list, the agents, and every open thread. */
+  /** Listen for what the replica changed (the project mirror). */
+  onReplicaChange(listener: (change: ReplicaChange) => void): () => void {
+    this.#replicaListeners.add(listener);
+    return () => this.#replicaListeners.delete(listener);
+  }
+
+  /** After (re)connecting: catch up on everything, reload the agents and
+   *  every open thread. */
   async resync(): Promise<void> {
     await Promise.allSettled([
-      this.loadThreads(),
+      this.sync(),
       this.loadAgents(),
       ...[...this.#conversations.values()].map((c) => c.load()),
     ]);
   }
 
-  async loadThreads(): Promise<void> {
-    try {
-      const list = await this.#client.call<ThreadList>('thread/list', {});
-      const next = new Map<string, Thread>();
-      for (const thread of list?.threads ?? []) {
-        if (thread && typeof thread.id === 'string') next.set(thread.id, thread);
-      }
-      for (const id of [...this.threads.keys()]) if (!next.has(id)) this.threads.delete(id);
-      for (const [id, thread] of next) this.threads.set(id, thread);
-      this.activity.adoptList([...next.values()]);
-      this.threadsLoaded = true;
-    } catch {
-      /* not connected; the next connect resyncs */
+  /**
+   * Converge with the bridge: everything that changed after the last revision
+   * applied (or a full snapshot when the bridge says so). Calls that arrive
+   * while one runs are folded into one more pass afterwards.
+   */
+  sync(): Promise<void> {
+    if (this.#syncing) {
+      this.#syncAgain = true;
+      return this.#syncing;
     }
+    this.#syncing = (async () => {
+      do {
+        this.#syncAgain = false;
+        try {
+          const changes = await this.#client.call<SyncChanges>('sync/changes', {
+            ...(this.#rev !== undefined ? { since: this.#rev } : {}),
+            ...(this.#storeId !== undefined ? { storeId: this.#storeId } : {}),
+          });
+          if (changes) this.applySync(changes);
+        } catch {
+          /* not connected; the next connect syncs */
+        }
+      } while (this.#syncAgain);
+    })().finally(() => {
+      this.#syncing = undefined;
+    });
+    return this.#syncing;
+  }
+
+  /** Apply one `sync/changes` answer to the replica. */
+  applySync(changes: SyncChanges): void {
+    const removedProjects: Project[] = [];
+    if (changes.reset) {
+      const keepThreads = new Set(changes.threads.map((t) => t.id));
+      for (const id of [...this.threads.keys()]) if (!keepThreads.has(id)) this.threads.delete(id);
+      const keepProjects = new Set(changes.projects.map((p) => p.id));
+      for (const id of [...this.projects.keys()]) if (!keepProjects.has(id)) this.projects.delete(id);
+    }
+    for (const thread of changes.threads) {
+      if (thread && typeof thread.id === 'string') this.threads.set(thread.id, thread);
+    }
+    for (const id of changes.removedThreadIds) this.threads.delete(id);
+    for (const project of changes.projects) {
+      if (project && typeof project.id === 'string') this.projects.set(project.id, project);
+    }
+    for (const id of changes.removedProjectIds) {
+      const gone = this.projects.get(id);
+      if (gone) removedProjects.push(gone);
+      this.projects.delete(id);
+    }
+    this.settings = changes.settings;
+    this.clients = changes.clients;
+    this.activity.adoptList([...this.threads.values()]);
+    this.#rev = changes.rev;
+    this.#storeId = changes.storeId;
+    this.threadsLoaded = true;
+    this.#emitReplica({
+      type: 'projects',
+      projects: [...this.projects.values()],
+      removed: removedProjects,
+      reset: changes.reset,
+    });
+  }
+
+  /**
+   * A revisioned change arrived. The next one after the last applied is
+   * simply taken; one further ahead means something was missed in between,
+   * so the replica catches up with `sync/changes`; an older one is stale.
+   * Returns whether to apply this change directly.
+   */
+  #admit(rev: number | undefined): boolean {
+    if (rev === undefined || this.#rev === undefined) {
+      if (this.#rev === undefined) void this.sync();
+      return true;
+    }
+    if (rev <= this.#rev) return false;
+    if (rev === this.#rev + 1) {
+      this.#rev = rev;
+      return true;
+    }
+    void this.sync();
+    return true;
+  }
+
+  #emitReplica(change: ReplicaChange): void {
+    for (const listener of this.#replicaListeners) {
+      try {
+        listener(change);
+      } catch {
+        /* a listener's failure is its own */
+      }
+    }
+  }
+
+  /** Projects by name (the bridge's registry). */
+  projectList(): Project[] {
+    return [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Change the shared start folder (every client hears it). */
+  async setHome(home: string): Promise<void> {
+    this.settings = await this.#client.call<BridgeSettings>('settings/set', { home });
   }
 
   async loadAgents(): Promise<void> {
@@ -208,12 +318,50 @@ export class ChatStore {
     switch (notification.method) {
       case 'stream/thread/updated': {
         const thread = (notification.params as ThreadUpdatedParams | undefined)?.thread;
-        if (thread && typeof thread.id === 'string') this.threads.set(thread.id, thread);
+        if (thread && typeof thread.id === 'string' && this.#admit(thread.rev)) {
+          this.threads.set(thread.id, thread);
+        }
         return;
       }
       case 'stream/thread/deleted': {
-        const threadId = (notification.params as ThreadDeletedParams | undefined)?.threadId;
-        if (typeof threadId === 'string') this.threads.delete(threadId);
+        const params = notification.params as ThreadDeletedParams | undefined;
+        if (typeof params?.threadId === 'string' && this.#admit(params.rev)) {
+          this.threads.delete(params.threadId);
+        }
+        return;
+      }
+      case 'stream/project/updated': {
+        const project = (notification.params as ProjectUpdatedParams | undefined)?.project;
+        if (project && typeof project.id === 'string' && this.#admit(project.rev)) {
+          this.projects.set(project.id, project);
+          this.#emitReplica({ type: 'projects', projects: [project], removed: [], reset: false });
+        }
+        return;
+      }
+      case 'stream/project/removed': {
+        const params = notification.params as ProjectRemovedParams | undefined;
+        if (typeof params?.projectId === 'string' && this.#admit(params.rev)) {
+          const gone = this.projects.get(params.projectId);
+          this.projects.delete(params.projectId);
+          if (gone) this.#emitReplica({ type: 'projects', projects: [], removed: [gone], reset: false });
+        }
+        return;
+      }
+      case 'stream/settings/updated': {
+        const params = notification.params as SettingsUpdatedParams | undefined;
+        if (params?.settings && this.#admit(params.rev)) this.settings = params.settings;
+        return;
+      }
+      case 'stream/presence/updated': {
+        const clients = (notification.params as PresenceUpdatedParams | undefined)?.clients;
+        if (Array.isArray(clients)) this.clients = clients;
+        return;
+      }
+      case 'stream/agents/updated': {
+        const agents = (notification.params as AgentsUpdatedParams | undefined)?.agents;
+        if (Array.isArray(agents)) {
+          this.agents = agents.filter((a) => !a.deprecated && isUserFacingAgent(a.agentId));
+        }
         return;
       }
     }
@@ -229,27 +377,28 @@ export class ChatStore {
     }
   }
 
-  /** Start a thread in `cwd` with `agentId` (fixed from now on) and `model`. */
-  /** Starts a thread; a `title` (a name the user gave the tab before its
-   *  first message) is the user's, so nothing generated replaces it. */
+  /** Starts a thread in `cwd` with `agentId` (fixed from now on) and
+   *  `model`. The folder decides the project (the bridge registers it). A
+   *  `title` — a name the user gave the tab before its first message — is the
+   *  user's, so nothing generated replaces it; otherwise the bridge names the
+   *  conversation from its first message. */
   async startThread(input: {
     cwd: string;
     agentId: string;
     model?: string;
     title?: string;
   }): Promise<Thread> {
-    const project = await this.#client.call<Project>('project/resolve', { cwd: input.cwd });
+    const title = input.title?.trim();
     const thread = await this.#client.call<Thread>('thread/start', {
-      projectId: project.id,
       agentId: input.agentId,
       cwd: input.cwd,
       ...(input.model ? { model: input.model } : {}),
+      ...(title ? { title } : {}),
     });
     this.threads.set(thread.id, thread);
     // Same starting posture as a thread started on the phone, so a
     // conversation behaves alike whichever client opened it.
     void this.setAccessMode(thread.id, 'fullAccess').catch(() => undefined);
-    if (input.title?.trim()) await this.rename(thread.id, input.title).catch(() => undefined);
     return this.threads.get(thread.id) ?? thread;
   }
 
@@ -260,33 +409,17 @@ export class ChatStore {
     if (trimmed.length === 0) return;
     const conversation = this.conversation(threadId);
     const clientTurnId = crypto.randomUUID();
-    const firstMessage = conversation.loaded && conversation.turns.length === 0;
     conversation.addPending({ clientTurnId, text: trimmed });
     try {
+      // The bridge names the conversation from its first message itself.
       await this.#client.call('turn/send', {
         threadId,
         text: trimmed,
         clientTurnId,
         ...(opts.options && Object.keys(opts.options).length > 0 ? { options: opts.options } : {}),
       });
-      if (firstMessage) void this.#nameFromPrompt(threadId, trimmed);
     } catch (err) {
       conversation.failPending(clientTurnId, err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  /** A new thread is titled by its opening message until the agent names it. */
-  async #nameFromPrompt(threadId: string, text: string): Promise<void> {
-    const thread = this.threads.get(threadId);
-    if (thread?.titleSource && thread.titleSource !== 'prompt') return;
-    try {
-      await this.#client.call('thread/rename', {
-        threadId,
-        title: provisionalTitle(text),
-        source: 'prompt',
-      });
-    } catch {
-      /* cosmetic */
     }
   }
 

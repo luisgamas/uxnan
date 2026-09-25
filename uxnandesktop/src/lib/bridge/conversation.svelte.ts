@@ -178,7 +178,7 @@ export class Conversation {
     const turns = Array.isArray(page.turns) ? page.turns : [];
     this.total = typeof page.total === 'number' ? page.total : turns.length;
     this.oldestOffset = Math.max(0, this.total - turns.length);
-    this.turns = turns;
+    this.turns = orderBySeq(turns);
     this.activeTurnId = page.activeTurnId ?? null;
     this.queue = {
       turnIds: page.queuedTurnIds ?? [],
@@ -211,7 +211,7 @@ export class Conversation {
       });
       const known = new Set(this.turns.map((t) => t.id));
       const older = (page.turns ?? []).filter((t) => !known.has(t.id));
-      this.turns = [...older, ...this.turns];
+      this.turns = orderBySeq([...older, ...this.turns]);
       this.oldestOffset = start;
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
@@ -413,15 +413,15 @@ export class Conversation {
     return this.turns.find((t) => t.id === turnId);
   }
 
-  /** Insert or replace a turn by id; returns whether it was new. */
+  /** Insert or replace a turn by id, keeping the bridge's order (`Turn.seq`,
+   *  never arrival order: a turn this window missed and read later still lands
+   *  in its place); returns whether it was new. */
   #upsert(turn: Turn): boolean {
     const index = this.turns.findIndex((t) => t.id === turn.id);
-    if (index === -1) {
-      this.turns = [...this.turns, turn];
-      return true;
-    }
-    this.turns[index] = turn;
-    return false;
+    const isNew = index === -1;
+    const next = isNew ? [...this.turns, turn] : this.turns.map((t, i) => (i === index ? turn : t));
+    this.turns = orderBySeq(next);
+    return isNew;
   }
 
   /** The assistant message of a streaming turn, created when the stream is the
@@ -518,4 +518,16 @@ export function assistantOf(turn: Turn | undefined): Message | undefined {
 export function userText(turn: Turn | undefined): string {
   const message = turn?.messages.find((m) => m.role === 'user');
   return typeof message?.content === 'string' ? message.content : '';
+}
+
+/**
+ * Turns in the bridge's order: by `seq` where known; a turn without one yet (a
+ * placeholder for a stream this window joined mid-way) keeps its place after
+ * the numbered ones. Stable, so equal or missing positions keep their order.
+ */
+export function orderBySeq(turns: Turn[]): Turn[] {
+  const numbered = turns.filter((t) => typeof t.seq === 'number');
+  if (numbered.length === 0) return turns;
+  const unnumbered = turns.filter((t) => typeof t.seq !== 'number');
+  return [...[...numbered].sort((a, b) => (a.seq as number) - (b.seq as number)), ...unnumbered];
 }

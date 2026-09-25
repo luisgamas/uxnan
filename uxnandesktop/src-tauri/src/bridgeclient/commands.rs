@@ -4,6 +4,8 @@
 
 use std::time::Duration;
 
+use base64::Engine as _;
+use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
 
@@ -79,4 +81,73 @@ pub async fn bridge_restart(state: State<'_, AppState>) -> Result<(), CommandErr
         .restart()
         .await
         .map_err(|why| CommandError::new("BRIDGE_RESTART_FAILED", why))
+}
+
+/// A pairing QR for the phone, drawn from the RUNNING bridge's own payload
+/// (`bridge/generatePairingQr`: its LAN hosts, its session, the pairing window
+/// armed) — the same one `uxnan-bridge start` prints.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PairingQr {
+    /// The QR as an SVG document (generated here, never from outside input).
+    pub svg: String,
+    /// When the payload stops being accepted (epoch ms).
+    pub expires_at: i64,
+}
+
+/// The QR's text: the payload JSON, base64 — `encodePairingQr` in `shared/`,
+/// which the phone decodes.
+pub fn pairing_qr_text(payload: &Value) -> String {
+    base64::engine::general_purpose::STANDARD.encode(payload.to_string())
+}
+
+/// Render [text] as a QR SVG sized for the settings dialog.
+pub fn pairing_qr_svg(text: &str) -> Result<String, CommandError> {
+    let code = qrcode::QrCode::with_error_correction_level(text.as_bytes(), qrcode::EcLevel::M)
+        .map_err(|err| CommandError::new("QR_FAILED", err.to_string()))?;
+    Ok(code
+        .render::<qrcode::render::svg::Color>()
+        .min_dimensions(240, 240)
+        .quiet_zone(true)
+        .build())
+}
+
+/// Ask the running bridge for a pairing payload and draw it.
+#[tauri::command]
+pub async fn bridge_pairing_qr(state: State<'_, AppState>) -> Result<PairingQr, CommandError> {
+    let payload = state
+        .bridge
+        .call(
+            "bridge/generatePairingQr",
+            Value::Null,
+            Duration::from_secs(15),
+        )
+        .await
+        .map_err(|err| CommandError::new("BRIDGE_ERROR", err.to_string()))?;
+    let expires_at = payload
+        .get("expiresAt")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    Ok(PairingQr {
+        svg: pairing_qr_svg(&pairing_qr_text(&payload))?,
+        expires_at,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_qr_carries_the_payload_the_phone_decodes() {
+        let payload = serde_json::json!({ "v": 2, "sessionId": "s", "expiresAt": 5 });
+        let text = pairing_qr_text(&payload);
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&text)
+            .unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&decoded).unwrap(), payload);
+        let svg = pairing_qr_svg(&text).unwrap();
+        assert!(svg.starts_with("<?xml") || svg.starts_with("<svg"));
+        assert!(svg.contains("<svg"));
+    }
 }

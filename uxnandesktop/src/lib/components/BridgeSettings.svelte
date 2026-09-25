@@ -10,8 +10,13 @@
   // only when there is one), and the command and npm's output in `CodeBlock`.
   //
   // Three modes and nothing hidden: `off` costs nothing at all, `attach` uses a
-  // bridge the user already runs, `managed` also starts one when none runs and
-  // stops it on exit. A state that cannot be proven is never painted green.
+  // bridge the user already runs, `managed` keeps it running as the user's
+  // service (so the phone works while Uxnan is closed). A state that cannot be
+  // proven is never painted green.
+  //
+  // With the bridge connected: the phones connected right now (presence, live),
+  // pairing a new one, and the start folder the projects list is explored from —
+  // settings every client shares (architecture/02a §5.8.17).
   import { Button } from "$lib/components/ui/button";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Switch } from "$lib/components/ui/switch";
@@ -27,6 +32,9 @@
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { app } from "$lib/state/app.svelte";
   import { bridge } from "$lib/bridge/client.svelte";
+  import { chat } from "$lib/bridge/chat.svelte";
+  import BridgePairDialog from "$lib/components/BridgePairDialog.svelte";
+  import QrCodeIcon from "@hugeicons/core-free-icons/QrCodeIcon";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
@@ -62,20 +70,32 @@
     void app.persistSettings();
   }
 
-  /** Phones connected to the bridge right now (read when connected). */
-  let phones = $state<{ deviceId: string; displayName: string; connectedAt: number }[]>([]);
-  $effect(() => {
-    if (status.state !== "connected") {
-      phones = [];
-      return;
+  /** Phones connected to the bridge right now — presence, kept live by the
+   *  bridge (`stream/presence/updated`). */
+  const phones = $derived(chat.clients.filter((c) => c.kind === "phone"));
+  let pairOpen = $state(false);
+
+  let choosingHome = $state(false);
+  async function chooseHome() {
+    if (choosingHome) return;
+    choosingHome = true;
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        directory: true,
+        title: i18n.t("bridge.home"),
+        ...(chat.settings?.home ? { defaultPath: chat.settings.home } : {}),
+      });
+      if (typeof selected !== "string") return;
+      await chat.setHome(selected);
+      toast.success(i18n.t("bridge.homeChanged"));
+    } catch (err) {
+      toastError(err);
+    } finally {
+      choosingHome = false;
     }
-    void bridge
-      .call<{ deviceId: string; displayName: string; connectedAt: number }[]>(
-        "bridge/connectedPhones",
-      )
-      .then((list) => (phones = Array.isArray(list) ? list : []))
-      .catch(() => (phones = []));
-  });
+  }
 
   const tone = $derived<StatusTone>(
     status.state === "connected"
@@ -273,12 +293,12 @@
   {#if status.state === "connected"}
     <SettingsSection title={i18n.t("bridge.phones")} description={i18n.t("bridge.phonesDesc")}>
       <div class="divide-y divide-border/60">
-        {#each phones as phone (phone.deviceId)}
-          <SettingsRow label={phone.displayName}>
+        {#each phones as phone (phone.id)}
+          <SettingsRow label={phone.name}>
             {#snippet control()}
               <span class={text.meta}>
                 {i18n.t("bridge.phoneSince", {
-                  time: new Date(phone.connectedAt).toLocaleTimeString(i18n.locale),
+                  time: new Date(phone.since).toLocaleTimeString(i18n.locale),
                 })}
               </span>
             {/snippet}
@@ -286,7 +306,34 @@
         {:else}
           <SettingsRow description={i18n.t("bridge.noPhones")} />
         {/each}
+        <SettingsRow>
+          {#snippet control()}
+            <Button variant="outline" size="sm" onclick={() => (pairOpen = true)}>
+              <Icon icon={QrCodeIcon} data-icon="inline-start" />
+              {i18n.t("bridge.pairAction")}
+            </Button>
+          {/snippet}
+        </SettingsRow>
       </div>
     </SettingsSection>
+
+    <SettingsSection title={i18n.t("bridge.projects")} description={i18n.t("bridge.projectsDesc")}>
+      <div class="divide-y divide-border/60">
+        <SettingsRow label={i18n.t("bridge.home")} description={i18n.t("bridge.homeDesc")}>
+          {#snippet meta()}
+            {#if chat.settings?.home}
+              <p class={cn(text.meta, "break-all font-mono")}>{chat.settings.home}</p>
+            {/if}
+          {/snippet}
+          {#snippet control()}
+            <Button variant="outline" size="sm" disabled={choosingHome} onclick={() => void chooseHome()}>
+              {i18n.t("bridge.homeChange")}
+            </Button>
+          {/snippet}
+        </SettingsRow>
+      </div>
+    </SettingsSection>
+
+    <BridgePairDialog bind:open={pairOpen} />
   {/if}
 </div>

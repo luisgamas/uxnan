@@ -264,32 +264,52 @@ async fn talks_to_the_real_bridge_when_it_is_built() {
         .unwrap();
     assert_eq!(status["features"]["localControl"], json!(true));
 
-    // Start a thread: every client — this one included — is told about it.
-    let projects = connection
-        .call("project/list", Value::Null, Duration::from_secs(10))
-        .await
-        .unwrap();
-    let project_id = projects[0]["id"].as_str().unwrap().to_string();
+    // Start a thread in a folder: the bridge registers its project, and every
+    // client — this one included — is told about both, with revisions.
     let thread = connection
         .call(
             "thread/start",
-            json!({ "projectId": project_id, "agentId": "echo" }),
+            json!({ "cwd": state.to_string_lossy(), "agentId": "echo" }),
             Duration::from_secs(10),
         )
         .await
         .unwrap();
-    let announced = tokio::time::timeout(Duration::from_secs(10), events.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    match announced {
-        Event::Notification { seq, message } => {
-            assert!(seq >= 1);
-            assert_eq!(message["method"], "stream/thread/updated");
-            assert_eq!(message["params"]["thread"]["id"], thread["id"]);
+    let mut announced = None;
+    for _ in 0..10 {
+        let event = tokio::time::timeout(Duration::from_secs(10), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        match event {
+            Event::Notification { seq, message } => {
+                assert!(seq >= 1);
+                // Presence and the project announcement may come first.
+                if message["method"] == "stream/thread/updated" {
+                    announced = Some(message);
+                    break;
+                }
+            }
+            other => panic!("expected notifications, got {other:?}"),
         }
-        other => panic!("expected the thread announcement, got {other:?}"),
     }
+    let announced = announced.expect("the thread was announced");
+    assert_eq!(announced["params"]["thread"]["id"], thread["id"]);
+    assert!(announced["params"]["thread"]["rev"].as_u64().unwrap() >= 1);
+    assert_eq!(announced["params"]["thread"]["origin"]["kind"], "desktop");
+
+    // The replica catches up from nothing: the thread and its project are there.
+    let changes = connection
+        .call("sync/changes", json!({}), Duration::from_secs(10))
+        .await
+        .unwrap();
+    assert_eq!(changes["reset"], json!(true));
+    assert!(changes["threads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == thread["id"]));
+    assert_eq!(changes["projects"].as_array().unwrap().len(), 1);
+    assert_eq!(changes["projects"][0]["id"], thread["projectId"]);
 
     // A method the bridge does not know comes back as an RPC error.
     let unknown = connection

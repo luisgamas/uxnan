@@ -6,7 +6,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Thread } from '$shared/models/thread';
 import { BridgeClientStore } from './client.svelte';
-import { ChatStore, normalizeCwd, provisionalTitle } from './chat.svelte';
+import { ChatStore, normalizeCwd, type ReplicaChange } from './chat.svelte';
+import type { SyncChanges } from '$shared/models/sync';
 import { bridgeAgentForCommand, bridgeAgentLogo, isUserFacingAgent } from './agents';
 
 function thread(id: string, cwd: string, updatedAt: number, extra: Partial<Thread> = {}): Thread {
@@ -30,28 +31,115 @@ function harness(responses: Record<string, unknown> = {}) {
   const calls: { method: string; params: unknown }[] = [];
   client.call = vi.fn(async (method: string, params?: unknown) => {
     calls.push({ method, params });
-    if (method in responses) return responses[method] as never;
+    if (method in responses) {
+      const answer = responses[method];
+      return (typeof answer === 'function' ? (answer as () => unknown)() : answer) as never;
+    }
     return {} as never;
   }) as BridgeClientStore['call'];
   const store = new ChatStore(client);
   return { client, store, calls };
 }
 
+function changes(extra: Partial<SyncChanges> = {}): SyncChanges {
+  return {
+    storeId: 's1',
+    rev: 10,
+    reset: true,
+    settings: { home: '/Users/me' },
+    projects: [],
+    removedProjectIds: [],
+    threads: [],
+    removedThreadIds: [],
+    clients: [],
+    ...extra,
+  };
+}
+
 describe('ChatStore', () => {
   it('lists the threads of one folder, newest first and archived last', async () => {
     const { store } = harness({
-      'thread/list': {
+      'sync/changes': changes({
         threads: [
           thread('old', '/repo', 1),
           thread('new', '/repo/', 5),
           thread('gone', '/repo', 9, { status: 'archived' }),
           thread('elsewhere', '/other', 7),
         ],
-      },
+      }),
     });
-    await store.loadThreads();
+    await store.sync();
     expect(store.threadsFor('/repo').map((t) => t.id)).toEqual(['new', 'old', 'gone']);
     expect(store.threadsFor('C:\\repo').map((t) => t.id)).toEqual([]);
+  });
+
+  it('is a replica: it catches up from the last revision, and a snapshot replaces it', async () => {
+    const { store, calls } = harness({ 'sync/changes': changes() });
+    await store.sync();
+    expect(calls[0]).toEqual({ method: 'sync/changes', params: {} });
+    expect(store.settings?.home).toBe('/Users/me');
+    expect(store.threadsLoaded).toBe(true);
+    // The next sync asks only for what came after.
+    await store.sync();
+    expect(calls[1]).toEqual({ method: 'sync/changes', params: { since: 10, storeId: 's1' } });
+
+    // A snapshot drops what the bridge no longer has; an incremental answer
+    // applies deletions and changes only.
+    store.applySync(changes({ threads: [thread('a', '/r', 1), thread('b', '/r', 1)] }));
+    store.applySync(
+      changes({ reset: false, rev: 12, threads: [thread('c', '/r', 1)], removedThreadIds: ['a'] }),
+    );
+    expect([...store.threads.keys()].sort()).toEqual(['b', 'c']);
+    store.applySync(changes({ rev: 13, threads: [thread('d', '/r', 1)] }));
+    expect([...store.threads.keys()]).toEqual(['d']);
+  });
+
+  it('catches up when a revision skips one, and ignores a stale one', async () => {
+    let answers = 0;
+    const { store, calls } = harness({
+      'sync/changes': () =>
+        answers++ === 0
+          ? changes({ rev: 5 })
+          : changes({ reset: false, rev: 9, threads: [thread('y', '/r', 1, { rev: 9 })] }),
+    });
+    await store.sync();
+    const synced = () => calls.filter((c) => c.method === 'sync/changes').length;
+    store.apply({ method: 'stream/thread/updated', params: { thread: thread('x', '/r', 1, { rev: 6 }) } });
+    expect(store.threads.has('x')).toBe(true);
+    expect(synced()).toBe(1);
+    store.apply({ method: 'stream/thread/updated', params: { thread: thread('y', '/r', 1, { rev: 9 }) } });
+    await vi.waitFor(() => expect(synced()).toBe(2));
+    store.apply({
+      method: 'stream/thread/updated',
+      params: { thread: thread('x', '/r', 1, { rev: 3, title: 'old' }) },
+    });
+    expect(store.threads.get('x')?.title).toBe('x');
+  });
+
+  it('mirrors projects, settings, presence and agents as they change', async () => {
+    const { store } = harness({ 'sync/changes': changes({ rev: 1 }) });
+    await store.sync();
+    const seen: ReplicaChange[] = [];
+    store.onReplicaChange((c) => seen.push(c));
+    const project = { id: 'proj_a', name: 'app', cwd: '/w/app', rev: 2 };
+    store.apply({ method: 'stream/project/updated', params: { project } });
+    expect(store.projectList().map((p) => p.name)).toEqual(['app']);
+    store.apply({ method: 'stream/project/removed', params: { projectId: 'proj_a', rev: 3 } });
+    expect(store.projects.size).toBe(0);
+    expect(seen.map((c) => [c.projects.length, c.removed.map((p) => p.id)])).toEqual([
+      [1, []],
+      [0, ['proj_a']],
+    ]);
+    store.apply({ method: 'stream/settings/updated', params: { settings: { home: '/p' }, rev: 4 } });
+    expect(store.settings?.home).toBe('/p');
+    const phone = { id: 'dev1', kind: 'phone' as const, name: 'Pixel', since: 1 };
+    store.apply({ method: 'stream/presence/updated', params: { clients: [phone] } });
+    expect(store.clients).toEqual([phone]);
+    store.apply({
+      method: 'stream/agents/updated',
+      params: { agents: [{ agentId: 'zero', displayName: 'Zero', available: true }] },
+    });
+    expect(store.agents.map((a) => a.agentId)).toEqual(['zero']);
   });
 
   it('adopts threads created, renamed and deleted by another client', () => {
@@ -84,16 +172,19 @@ describe('ChatStore', () => {
   });
 
   it('starts a thread in a folder with a fixed agent and the phone-default access', async () => {
-    const { store, calls } = harness({
-      'project/resolve': { id: 'proj_1', name: 'repo', cwd: '/repo' },
-      'thread/start': thread('new', '/repo', 1),
+    const { store, calls } = harness({ 'thread/start': thread('new', '/repo', 1) });
+    const started = await store.startThread({
+      cwd: '/repo',
+      agentId: 'codex',
+      model: 'gpt-5',
+      title: ' Named tab ',
     });
-    const started = await store.startThread({ cwd: '/repo', agentId: 'codex', model: 'gpt-5' });
     expect(started.id).toBe('new');
-    expect(calls[0]).toEqual({ method: 'project/resolve', params: { cwd: '/repo' } });
-    expect(calls[1]).toEqual({
+    // The folder decides the project; a name given before the first message
+    // travels with the start, as the user's.
+    expect(calls[0]).toEqual({
       method: 'thread/start',
-      params: { projectId: 'proj_1', agentId: 'codex', cwd: '/repo', model: 'gpt-5' },
+      params: { agentId: 'codex', cwd: '/repo', model: 'gpt-5', title: 'Named tab' },
     });
     await vi.waitFor(() =>
       expect(calls.some((c) => c.method === 'thread/setAccessMode')).toBe(true),
@@ -101,7 +192,7 @@ describe('ChatStore', () => {
     expect(store.threads.has('new')).toBe(true);
   });
 
-  it('sends with an echo id and titles a new thread from its first message', async () => {
+  it('sends with an echo id and leaves naming the thread to the bridge', async () => {
     const { store, calls } = harness();
     const conversation = store.conversation('t1');
     conversation.loaded = true;
@@ -111,13 +202,7 @@ describe('ChatStore', () => {
     expect(params.text).toBe('fix the flaky test');
     expect(params.options).toEqual({ reasoning: 'high' });
     expect(conversation.pending.map((p) => p.clientTurnId)).toEqual([params.clientTurnId]);
-    await vi.waitFor(() =>
-      expect(calls.find((c) => c.method === 'thread/rename')?.params).toEqual({
-        threadId: 't1',
-        title: 'fix the flaky test',
-        source: 'prompt',
-      }),
-    );
+    expect(calls.some((c) => c.method === 'thread/rename')).toBe(false);
   });
 
   it('keeps a failed send on screen with the reason', async () => {
@@ -163,13 +248,6 @@ describe('ChatStore', () => {
 });
 
 describe('helpers', () => {
-  it('titles like the phone and the bridge do', () => {
-    expect(provisionalTitle('  a   b\nc ')).toBe('a b c');
-    const long = provisionalTitle('x'.repeat(100));
-    expect(long).toHaveLength(72);
-    expect(long.endsWith('…')).toBe(true);
-  });
-
   it('compares folders in one spelling', () => {
     expect(normalizeCwd('C:\\repo\\')).toBe('C:/repo');
     expect(normalizeCwd('/repo//')).toBe('/repo');

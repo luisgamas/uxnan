@@ -30,11 +30,11 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,005 Rust tests (928 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+`docs/chat.md`). 1,010 Rust tests (933 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,538 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,548 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -46,12 +46,17 @@ matrix** (`tests/platform-support.json` + `docs/platform-support.md`, checked by
 the suite and gating releases): Windows announces `smoke`, macOS (both arches)
 and Linux announce `builds`. **Phase 6 (bridge integration) is PARTIAL:** the
 desktop is a **client** of an installed bridge over its loopback local control
-channel (modes off / attach / managed, `docs/chat.md`), and chat tabs show and
-drive the bridge's threads live alongside the phone. **Pending the maintainer's
-visual review** of the chat UI; still left: packaging the bridge as a sidecar
-(`02e` §3.1–§3.4), pairing and device management from the desktop (`02e` §5.3),
-publishing the desktop's projects to the bridge, and the mirror / hand-off of
-terminal-launched sessions (below, *Terminal-launched sessions*).
+channel (modes off / attach / managed — `managed` keeps the bridge running as
+the user's service, `docs/chat.md`); chat tabs show and drive the bridge's
+threads live alongside the phone, as a revisioned **replica** of the bridge's
+threads, projects, shared settings and presence; the desktop's projects and the
+phone's are **one mirrored registry**; a phone is **paired from Settings** with
+the running bridge's own QR; and agent detection follows the table shared with
+the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
+review** of the chat and Bridge & mobile UI; still left: packaging the bridge
+without Node (`02e` §3.1–§3.4, plan 007), trusted-device management from the
+desktop (revoke), and the mirror / hand-off of terminal-launched sessions
+(below, *Terminal-launched sessions*).
 
 **Built (DONE), in detail:**
 
@@ -1066,8 +1071,9 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       mobile UI (`uxnanmobile/FOR-DEV.md`).
 
 ### Frontend (Svelte)
-- [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
-      trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
+- [ ] Settings → Bridge & mobile: trusted-device management (list and revoke,
+      reusing the bridge's `bridge/trustedDevices` / `bridge/removeTrustedDevice`).
+      The QR pairing dialog and the live connected-phone list are done.
 
 ## Remote hosts over SSH ☐
 
@@ -1738,7 +1744,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,005 Rust + 1,538 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,010 Rust + 1,548 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -100,6 +100,11 @@
   async function start(message: string) {
     if (!agentId || starting) return;
     starting = true;
+    // The message is on its way: drop the saved draft NOW. The debounced save
+    // above is cancelled when this view gives way to the conversation, and
+    // the conversation reads `tab.draft` — so a draft left here came back into
+    // the composer after the first message.
+    tab.draft = undefined;
     try {
       const thread = await chat.startThread({
         cwd: tab.cwd,
@@ -110,11 +115,14 @@
       });
       terminals.bindChatThread(tab.id, thread.id);
       // The conversation is empty on the bridge, so the first page is known
-      // without a round trip — and `send` titles the thread from this message.
+      // without a round trip; the bridge names the thread from this message.
       const conversation = chat.conversation(thread.id);
       conversation.loaded = true;
       await chat.send(thread.id, message, { options: optionValues });
     } catch (err) {
+      // Nothing was sent: give the text back instead of losing it.
+      draft = message;
+      tab.draft = message;
       toastError(err);
     } finally {
       starting = false;

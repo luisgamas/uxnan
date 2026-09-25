@@ -6,6 +6,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **One layer with the phone** (architecture/02a §5.8.17). The chat's data is a
+  **replica** of the bridge — threads, projects, shared settings and presence —
+  converging through `sync/changes` on every (re)connect and whenever a
+  revision skips one, so a conversation or a project started on the phone while
+  the desktop was away is there when it connects. Turns are ordered by the
+  bridge's `Turn.seq`, never by arrival.
+- **Projects are one list with the phone.** `projectMirror.svelte.ts` mirrors
+  the bridge's project registry both ways: a project added or removed here is
+  added or removed on the phone and vice versa (conversations are never
+  deleted); on connect the lists are united, never pruned by absence, and a
+  removal made while the bridge was away is sent on reconnect.
+- **The bridge runs as your service.** *Run it as a service* (`managed`)
+  installs and starts the bridge's user service through its own CLI and only
+  connects to it (`bridgeclient/service.rs`); it keeps serving the phone while
+  Uxnan is closed, and Uxnan never stops it. An update re-installs and restarts
+  the service.
+- **Pair a phone from Settings → Bridge & mobile**: a QR drawn from the running
+  bridge's own payload (`bridge_pairing_qr`, crate `qrcode`), with a countdown
+  and *New code*. The phones connected right now come from the bridge's
+  presence, live. **Start folder** shows and changes where new projects are
+  explored from, here and on the phone.
+- **Agent detection follows one rule, shared with the bridge**
+  (`shared/agent-locations.json`, compiled into `agentcli.rs`): the headless
+  resolver, Settings → Agents' detection, the hooks' presence check and the
+  well-known `PATH` folders all read it, and it finds npm installs under the
+  running node's own prefix (nvm, Homebrew, fnm).
+
 - **A chat's lifecycle, the same on every device.** Closing a chat's tab only
   closes the view — the conversation goes on, on the bridge and the phone. The
   sidebar lists a chat only while it is open in a tab or needs attention
@@ -174,6 +201,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   GitHub, SSH hosts and Bridge & mobile, so a tone means the same everywhere.
   Settings → Bridge & mobile is rebuilt on them and on the settings' own
   `Combobox` (the connection mode), laid out like Settings → Updates.
+
+### Fixed
+
+- **The first message of a new chat no longer stays in the composer.** Its
+  debounced draft save was cancelled when the view gave way to the
+  conversation, which then read the stale draft back; the draft is now dropped
+  when the message goes out (and given back if the conversation could not
+  start).
+- **Titles are the bridge's.** The desktop no longer renames a new thread from
+  its first message (a late rename could overwrite the generated title); a name
+  given to the tab before the first message travels with `thread/start`.
 
 ## [0.0.57] - 20260925
 ### Fixed

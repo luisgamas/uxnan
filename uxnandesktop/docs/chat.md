@@ -10,7 +10,8 @@ driven by you through the PTY. A chat is the other way to run an agent — as a
 conversation you can take with you.
 
 Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a-system-architecture.md)
-§5.8.15 (the local control channel) and §5.8.16 (how clients converge);
+§5.8.15 (the local control channel), §5.8.16 (how clients converge) and §5.8.17
+(one layer: the bridge as the source of truth);
 [`architecture/02e-bridge-integration.md`](../architecture/02e-bridge-integration.md) §3.5.
 
 ## Connecting to the bridge
@@ -21,7 +22,7 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 |---|---|
 | **Off** (default) | Nothing: no socket, no file read, no timer, no process. Chat tabs say the bridge is off and offer *Connect*. |
 | **Use a running bridge** (`attach`) | Connects to a bridge you already run — as a service (`uxnan-bridge install-service`) or with `uxnan-bridge start` in a terminal. |
-| **Start the bridge when needed** (`managed`) | Same, but when none is running it starts `uxnan-bridge start` itself (resolved on `PATH`, like any agent CLI) and stops it — through `uxnan-bridge stop`, so the bridge releases its lock cleanly — when the app exits. A bridge you started yourself is never stopped. |
+| **Run it as a service** (`managed`) | Same, but when none is running Uxnan makes sure the bridge runs as **your user's service** — installed and started through its own CLI (`uxnan-bridge service-status` → `install-service` → `service-start`, `bridgeclient/service.rs`) — and only connects to it. The service keeps serving the phone while Uxnan is closed, so the app never stops it. |
 
 **Installing and updating it from the app.** When `uxnan-bridge` is not on
 `PATH`, a chat tab says so and offers **Install** right there, with the command
@@ -29,9 +30,9 @@ underneath for whoever prefers a terminal; Settings → Bridge & mobile has the
 same **Install** / **Update** next to the installed and newest versions, plus
 **Check again** (re-reads what is installed and retries the connection). Both
 run `npm install -g uxnan-bridge@latest` — only when you press the button — and
-show npm's output. If Uxnan runs the bridge (`managed`) it restarts it on the
-new version; a bridge you run yourself keeps running and the status row offers
-**Restart the bridge**. Node.js 18+ (and its `npm`) must be installed; without
+show npm's output. In `managed` mode Uxnan re-installs the service on the new
+version (so it points at the new node and entry) and restarts it; a bridge you
+run yourself keeps running and the status row offers **Restart the bridge**. Node.js 18+ (and its `npm`) must be installed; without
 it the row says so. **Update automatically** (off by default) updates the bridge
 Uxnan runs as soon as a newer one is published, waiting until no conversation is
 running on any device.
@@ -41,11 +42,12 @@ fixes it:
 
 | Status | Meaning |
 |---|---|
-| Connected — bridge `x.y.z` | Live. "started by Uxnan" when `managed` launched it. |
+| Connected — bridge `x.y.z` | Live. "kept running by Uxnan" in `managed` mode. |
 | No bridge is running | Nothing holds the bridge's lock (`~/.uxnan/bridge.lock`). Start it, or switch to *Start the bridge when needed*. |
 | Too old to talk to Uxnan Desktop | A bridge is running, but it was released before the desktop channel and does not publish it. **Update**; in `managed` mode Uxnan then restarts it on the new version. |
 | Running without the desktop channel | A bridge that knows the channel is running without it: an older process still runs after an update (**Restart the bridge**), or it was started with `localControlEnabled: false` in `~/.uxnan/daemon-config.json`. |
 | Not installed | `managed` found no `uxnan-bridge` on `PATH`. |
+| Could not start the service | `managed` could not install or start the bridge's service; the detail line quotes the bridge's own error. |
 | Refused this app | A bridge answered but rejected the token — typically another user's bridge, or a stale file. |
 | Could not connect | Anything else — including a bridge Uxnan started that exited at once; the detail line says what, and the bridge's log is in `~/.uxnan/logs/`. |
 
@@ -54,9 +56,32 @@ the bridge's lock file to tell a bridge that is not there from one that is there
 but cannot talk to the desktop, and `managed` never starts a second bridge over
 one that holds the lock.
 
-While connected, the section also lists the phones connected to the bridge.
-Pairing a phone is still done from a terminal (`uxnan-bridge qr` or
-`uxnan-bridge code`).
+While connected, the section also lists the phones connected right now —
+presence, kept live by the bridge (`stream/presence/updated`) — and **Pair a
+phone**: a QR drawn from the running bridge's own payload (its LAN hosts, its
+session, the pairing window armed — the one `uxnan-bridge start` prints), with
+its countdown and *New code*. **Projects → Start folder** shows and changes the
+folder the bridge explores new projects from, on the phone and here alike
+(`settings/set`).
+
+## One list of projects with the phone
+
+Your projects here and the phone's are the bridge's one registry
+(`projects.json`, architecture/02a §5.8.17), mirrored both ways by
+`src/lib/bridge/projectMirror.svelte.ts`: a project you add here is published
+to the registry, one the phone adds appears here, and removing one on either
+side removes it on the other — its conversations are never deleted. On every
+(re)connect the two lists are **united**, never pruned by absence; a removal
+made here while the bridge was unreachable is remembered and sent on the next
+connection. Only local projects take part (an SSH project is on another
+machine). Folders are compared through the bridge's own resolution, which
+follows symlinks and maps a worktree to its repository.
+
+The chat's data is a **replica** (`src/lib/bridge/chat.svelte.ts`): threads,
+projects, the shared settings and presence converge through `sync/changes` on
+every (re)connect and whenever a notification's revision is not the next one —
+never by trusting that every notification arrived. A conversation's turns are
+ordered by the bridge's `Turn.seq`.
 
 ### How the connection works
 
@@ -118,10 +143,11 @@ live `activeTurnId` says which conversations are already working. Chats count
 toward the worktree's leading state, its "last moved" time, the needs-you
 count and the sidebar's status order.
 
-**Names.** A chat's title is its thread's, the same on every client: renaming
-the tab renames the thread (`thread/rename`), a rename on the phone shows here,
-and a name given to a new chat's tab before its first message becomes the
-thread's name.
+**Names.** A chat's title is its thread's, the same on every client: the bridge
+names a new conversation from its first message and then asks the agent for a
+real title; renaming the tab renames the thread (`thread/rename`), a rename on
+the phone shows here, and a name given to a new chat's tab before its first
+message becomes the thread's name (`thread/start { title }`).
 
 ## The chat's agent gets Uxnan's tools
 

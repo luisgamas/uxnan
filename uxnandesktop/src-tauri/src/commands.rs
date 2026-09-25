@@ -905,14 +905,16 @@ pub async fn pty_paste_submit(
     Ok(())
 }
 
-/// Return the subset of `commands` that resolve to an installed executable
-/// (PATH + PATHEXT). Used by the Settings agent catalog to enable only the
-/// agents actually present on the machine.
+/// Return the subset of `commands` that are installed. Used by the Settings
+/// agent catalog to enable only the agents actually present on the machine. A
+/// known agent CLI is found with the rule shared with the bridge
+/// (`agentcli::command_installed` — npm installs `PATH` does not show
+/// included); any other command by `PATH` (+ `PATHEXT`).
 #[tauri::command]
 pub async fn agents_detect(commands: Vec<String>) -> Result<Vec<String>, CommandError> {
     Ok(commands
         .into_iter()
-        .filter(|c| crate::which::is_command_available(c))
+        .filter(|c| crate::agentcli::command_installed(c))
         .collect())
 }
 

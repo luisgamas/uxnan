@@ -76,6 +76,8 @@ serde_json = "1"
 # (git.rs `image_diff`) and the project/branch icon fetcher (commands.rs
 # `image_fetch_data_url`). Pure Rust, tiny, widely used.
 base64 = "0.22"
+# Pairing QR shown in Settings → Bridge & mobile (pure Rust, MIT/Apache-2.0).
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # HTTP client for downloading a project/branch icon from a URL or a git host
 # avatar into an inline data URL (commands.rs `image_fetch_data_url`). Doing the
 # GET in Rust sidesteps webview CORS/canvas-taint entirely. rustls (no OpenSSL);

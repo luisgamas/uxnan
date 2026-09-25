@@ -96,85 +96,175 @@ fn node() -> Option<String> {
     crate::which::resolve("node").map(|p| p.to_string_lossy().to_string())
 }
 
-/// npm-global `node_modules/<rel…>` candidates for the platform (matches the
-/// bridge: `%APPDATA%/npm/...` on Windows; `/usr/local/lib/...` and
-/// `~/.npm-global/lib/...` on POSIX).
-fn npm_global_candidates(rel: &[&str]) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let push = |out: &mut Vec<PathBuf>, mut base: PathBuf| {
-        for c in rel {
-            base.push(c);
+/// The shared table of where every agent CLI installs — the same file the
+/// bridge resolves from (`shared/agent-locations.json`, architecture/02a
+/// §5.8.17), compiled in so the desktop's terminals, its AI commit and
+/// automations, and the chat the bridge drives can never disagree about which
+/// agents are installed.
+const AGENT_LOCATIONS: &str = include_str!("../../../shared/agent-locations.json");
+
+#[derive(serde::Deserialize)]
+struct Family {
+    posix: Vec<String>,
+    win32: Vec<String>,
+}
+
+impl Family {
+    fn here(&self) -> &[String] {
+        if cfg!(windows) {
+            &self.win32
+        } else {
+            &self.posix
         }
-        out.push(base);
-    };
-    if cfg!(windows) {
-        if let Some(appdata) = std::env::var_os("APPDATA") {
-            let mut p = PathBuf::from(appdata);
-            p.push("npm");
-            p.push("node_modules");
-            push(&mut out, p);
-        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentLocation {
+    desktop_id: String,
+    command: String,
+    native: Option<Family>,
+    npm_entry: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocationTable {
+    npm_roots: Family,
+    path_dirs: Family,
+    agents: Vec<AgentLocation>,
+}
+
+fn location_table() -> &'static LocationTable {
+    static TABLE: std::sync::OnceLock<LocationTable> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        serde_json::from_str(AGENT_LOCATIONS).expect("shared/agent-locations.json is valid")
+    })
+}
+
+/// Folders a login `PATH` normally has (the table's `pathDirs`), expanded.
+pub fn well_known_path_dirs() -> Vec<PathBuf> {
+    location_table()
+        .path_dirs
+        .here()
+        .iter()
+        .filter_map(|raw| expand_location(raw))
+        .collect()
+}
+
+/// The install prefix of the `node` on `PATH` (global npm packages live under
+/// it: `<prefix>/lib/node_modules`, `<prefix>\node_modules` on Windows).
+fn node_prefix() -> Option<PathBuf> {
+    let node = crate::which::resolve("node")?;
+    let bin = node.parent()?;
+    Some(if cfg!(windows) {
+        bin.to_path_buf()
     } else {
-        push(&mut out, PathBuf::from("/usr/local/lib/node_modules"));
-        if let Some(mut home) = home_dir() {
-            home.push(".npm-global");
-            home.push("lib");
-            home.push("node_modules");
-            push(&mut out, home);
-        }
-    }
-    out
+        bin.parent()?.to_path_buf()
+    })
 }
 
-/// Resolve an npm-packaged CLI to `node <entry.js>`, or the POSIX launcher on
-/// PATH. On Windows the bare shim needs a shell, so we report unresolved.
-fn resolve_node_cli(rel: &[&str], launcher: &str) -> Option<Resolved> {
-    for cli in npm_global_candidates(rel) {
-        if cli.is_file() {
-            return Some(Resolved {
-                program: node()?,
-                prepend: vec![cli.to_string_lossy().to_string()],
-            });
+/// Expand the table's tokens (`~`, `%APPDATA%`, `%LOCALAPPDATA%`,
+/// `%PROGRAMFILES%`, `$NODE_PREFIX`); `None` when one names nothing here.
+fn expand_location(raw: &str) -> Option<PathBuf> {
+    let mut out = raw.to_string();
+    if out == "~" || out.starts_with("~/") {
+        out = format!("{}{}", home_dir()?.to_string_lossy(), &out[1..]);
+    }
+    if out.contains("$NODE_PREFIX") {
+        out = out.replace("$NODE_PREFIX", &node_prefix()?.to_string_lossy());
+    }
+    for (token, var) in [
+        ("%APPDATA%", "APPDATA"),
+        ("%LOCALAPPDATA%", "LOCALAPPDATA"),
+        ("%PROGRAMFILES%", "ProgramFiles"),
+    ] {
+        if out.contains(token) {
+            out = out.replace(token, &std::env::var(var).ok()?);
         }
     }
-    if !cfg!(windows) {
-        if let Some(p) = crate::which::resolve(launcher) {
-            return Some(Resolved {
-                program: p.to_string_lossy().to_string(),
-                prepend: vec![],
-            });
-        }
-    }
-    None
+    Some(PathBuf::from(out))
 }
 
-/// Resolve a CLI that ships as one native executable on `PATH`.
-fn resolve_native(command: &str) -> Option<Resolved> {
-    crate::which::resolve(command).map(|p| Resolved {
-        program: p.to_string_lossy().to_string(),
+/// Whether a native candidate can run here (on Windows: a PE for this CPU).
+fn runnable_native(path: &std::path::Path) -> bool {
+    path.is_file() && (!cfg!(windows) || exe_runnable(path))
+}
+
+/// Find `agent_id` with the shared rule: native installs, then the npm entry
+/// under each npm root (run as `node <entry>`), then the command on `PATH` — on
+/// Windows only a real `.exe`/`.com` there, since npm's `.cmd` shim needs a
+/// shell.
+fn locate(agent_id: &str) -> Option<Resolved> {
+    let table = location_table();
+    let location = table.agents.iter().find(|a| a.desktop_id == agent_id)?;
+    if let Some(native) = &location.native {
+        for raw in native.here() {
+            if let Some(path) = expand_location(raw).filter(|p| runnable_native(p)) {
+                return Some(Resolved {
+                    program: path.to_string_lossy().to_string(),
+                    prepend: vec![],
+                });
+            }
+        }
+    }
+    if let Some(entry) = &location.npm_entry {
+        for raw in table.npm_roots.here() {
+            let Some(root) = expand_location(raw) else {
+                continue;
+            };
+            let script = root.join(entry);
+            if script.is_file() {
+                return Some(Resolved {
+                    program: node()?,
+                    prepend: vec![script.to_string_lossy().to_string()],
+                });
+            }
+        }
+    }
+    let found = crate::which::resolve(&location.command)?;
+    if cfg!(windows) {
+        let is_exe = found
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("com"))
+            .unwrap_or(false);
+        if !is_exe || !exe_runnable(&found) {
+            return None;
+        }
+    }
+    Some(Resolved {
+        program: found.to_string_lossy().to_string(),
         prepend: vec![],
     })
 }
 
-/// Resolve Claude Code: the native `~/.local/bin/claude[.exe]` if present, else
-/// the npm `@anthropic-ai/claude-code/cli.js` via node.
-fn resolve_claude() -> Option<Resolved> {
-    if let Some(mut native) = home_dir() {
-        native.push(".local");
-        native.push("bin");
-        native.push(if cfg!(windows) {
-            "claude.exe"
-        } else {
-            "claude"
-        });
-        if native.is_file() {
-            return Some(Resolved {
-                program: native.to_string_lossy().to_string(),
-                prepend: vec![],
-            });
-        }
+/// The agent whose launcher is `command` (a bare name, a path, or a Windows
+/// shim), when it is one Uxnan knows where to find.
+pub fn agent_for_command(command: &str) -> Option<&'static str> {
+    let base = command
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(command)
+        .trim_end_matches(".exe")
+        .trim_end_matches(".cmd")
+        .trim_end_matches(".ps1")
+        .trim_end_matches(".bat");
+    location_table()
+        .agents
+        .iter()
+        .find(|a| a.command == base)
+        .map(|a| a.desktop_id.as_str())
+}
+
+/// Whether the command a profile launches is installed: a known agent with the
+/// shared rule (which finds npm installs `PATH` does not show), anything else
+/// on `PATH`.
+pub fn command_installed(command: &str) -> bool {
+    match agent_for_command(command) {
+        Some(agent) => resolve(agent).is_some(),
+        None => crate::which::is_command_available(command),
     }
-    resolve_node_cli(&["@anthropic-ai", "claude-code", "cli.js"], "claude")
 }
 
 const IMAGE_FILE_MACHINE_I386: u16 = 0x014c;
@@ -245,58 +335,6 @@ fn exe_runnable(path: &std::path::Path) -> bool {
             .map(host_runs_machine)
             .unwrap_or(false),
         Err(_) => true,
-    }
-}
-
-/// Resolve OpenCode: its native `.exe` (the npm shim forwards to it) on Windows,
-/// else the launcher on PATH. Wrong-arch `.exe` candidates are skipped so we don't
-/// spawn a binary Windows can't run.
-fn resolve_opencode() -> Option<Resolved> {
-    if cfg!(windows) {
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Some(appdata) = std::env::var_os("APPDATA") {
-            candidates.push(
-                PathBuf::from(appdata)
-                    .join("npm")
-                    .join("node_modules")
-                    .join("opencode-ai")
-                    .join("bin")
-                    .join("opencode.exe"),
-            );
-        }
-        if let Some(pf) = std::env::var_os("ProgramFiles") {
-            candidates.push(PathBuf::from(pf).join("opencode").join("opencode.exe"));
-        }
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            candidates.push(PathBuf::from(local).join("opencode").join("opencode.exe"));
-        }
-        for c in candidates {
-            if c.is_file() && exe_runnable(&c) {
-                return Some(Resolved {
-                    program: c.to_string_lossy().to_string(),
-                    prepend: vec![],
-                });
-            }
-        }
-        // A native opencode.exe on PATH is fine too (but not a .cmd shim).
-        if let Some(p) = crate::which::resolve("opencode") {
-            let is_exe = p
-                .extension()
-                .map(|e| e.eq_ignore_ascii_case("exe") || e.eq_ignore_ascii_case("com"))
-                .unwrap_or(false);
-            if is_exe && exe_runnable(&p) {
-                return Some(Resolved {
-                    program: p.to_string_lossy().to_string(),
-                    prepend: vec![],
-                });
-            }
-        }
-        None
-    } else {
-        crate::which::resolve("opencode").map(|p| Resolved {
-            program: p.to_string_lossy().to_string(),
-            prepend: vec![],
-        })
     }
 }
 
@@ -382,22 +420,12 @@ pub async fn opencode_major_version() -> Option<u32> {
 }
 
 /// Resolve a supported agent id to a spawnable form, or `None` if it isn't
-/// installed in a runnable shape.
+/// installed in a runnable shape — the shared rule (see [`locate`]).
 pub fn resolve(agent_id: &str) -> Option<Resolved> {
-    match agent_id {
-        "claude" => resolve_claude(),
-        "codex" => resolve_node_cli(&["@openai", "codex", "bin", "codex.js"], "codex"),
-        "opencode" => resolve_opencode(),
-        "pi" => resolve_node_cli(
-            &["@earendil-works", "pi-coding-agent", "dist", "cli.js"],
-            "pi",
-        ),
-        // Antigravity and Grok ship a single native binary on `PATH` (no npm
-        // package to walk), so a plain lookup is the whole resolution.
-        "agy" | "grok" => resolve_native(agent_id),
-        "zero" => resolve_node_cli(&["@gitlawb", "zero", "bin", "zero.js"], "zero"),
-        _ => None,
+    if !SUPPORTED.contains(&agent_id) {
+        return None;
     }
+    locate(agent_id)
 }
 
 /// The non-interactive (print-mode) args for `agent_id`, with an optional
@@ -779,6 +807,42 @@ pub fn parse_codex_models(data: &serde_json::Value) -> Vec<AgentModel> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_supported_agent_is_in_the_table_shared_with_the_bridge() {
+        for id in SUPPORTED {
+            assert!(
+                location_table().agents.iter().any(|a| a.desktop_id == id),
+                "{id} missing from shared/agent-locations.json"
+            );
+        }
+        assert!(!location_table().npm_roots.here().is_empty());
+    }
+
+    #[test]
+    fn a_profile_command_names_its_agent_whatever_its_spelling() {
+        assert_eq!(agent_for_command("claude"), Some("claude"));
+        assert_eq!(agent_for_command("/usr/local/bin/agy"), Some("agy"));
+        assert_eq!(agent_for_command("C:\\tools\\codex.cmd"), Some("codex"));
+        assert_eq!(agent_for_command("zero.exe"), Some("zero"));
+        assert_eq!(agent_for_command("aider"), None);
+    }
+
+    #[test]
+    fn table_tokens_expand_or_name_nothing() {
+        let home = home_dir().expect("a home directory");
+        assert_eq!(
+            expand_location("~/.grok/bin/grok"),
+            Some(home.join(".grok/bin/grok"))
+        );
+        assert_eq!(
+            expand_location("/usr/local/bin"),
+            Some(PathBuf::from("/usr/local/bin"))
+        );
+        if std::env::var_os("APPDATA").is_none() {
+            assert_eq!(expand_location("%APPDATA%/npm"), None);
+        }
+    }
 
     #[test]
     fn supported_ids_resolve_to_args() {

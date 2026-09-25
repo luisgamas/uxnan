@@ -1816,7 +1816,7 @@ export interface BridgeInstallResult {
   version: string | null;
   permissionDenied: boolean;
   tail: string[];
-  /** The app's own (`managed`) bridge was restarted on the new version. */
+  /** The bridge's service was restarted on the new version (`managed`). */
   restarted: boolean;
 }
 
@@ -1824,6 +1824,7 @@ export interface BridgeInstallResult {
 export type BridgeUnavailableReason =
   | "notRunning"
   | "notInstalled"
+  | "serviceFailed"
   | "rejected"
   | "outdated"
   | "channelOff"
