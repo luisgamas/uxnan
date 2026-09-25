@@ -1,10 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.3.0
-> **Fecha:** 2026-09-23
+> **Version:** 1.4.0
+> **Fecha:** 2026-09-25
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.4.0):** one layer. The bridge is the single source of
+> truth for projects (a persistent, mirrored registry — add or remove on any
+> client, conversations are never deleted with a project), conversations,
+> shared settings (the `home` start folder), presence and installed agents;
+> phones and Uxnan Desktop are replicas that converge through revisioned
+> `sync/changes`, never by trusting that every notification arrived. Turns
+> carry a canonical `seq`, titles are named only by the bridge, opening a
+> conversation no longer un-archives it, agent detection follows one table
+> shared with the desktop plus the user's login-shell PATH, and the bridge runs
+> as the user's service (§5.8.17).
 
 > **Executive summary (1.3.0):** the bridge is the single owner of every
 > conversation and any number of clients drive it at once — paired phones over
@@ -2529,17 +2540,12 @@ en vez de dibujar el mensaje dos veces. Los demas clientes lo insertan en su
 sitio, por encima de la respuesta que esta por llegar.
 
 **Reconexion:** el `seq` por cliente del `OutboundLog` + replay es la
-re-sincronizacion fina; `turn/list` (ya paginado: `limit`, `cursor`,
-`fromEnd`, `total`) es la gruesa cuando hay hueco. No hace falta un `seq` por
-hilo: el estado que viaja es idempotente (hilo completo, cola completa).
-
-**Agente fijo, modelo variable.** El agente de un hilo se fija en
-`thread/start` y no cambia (cambiar de CLI rompe la sesion nativa); el modelo
-si (`thread/setModel`, y lo ven todos los clientes via `stream/thread/updated`).
-
-### 5.9 Transporte seguro y mensajeria E2EE
-
-El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
+re-sincronizacion fina de lo que llega en vivo, pero **no alcanza**: el log
+vive en memoria (un reinicio del bridge lo pierde), un telefono solo tiene log
+desde que se conecto en ese proceso, y la ventana (500 mensajes / 10 MB) la
+consumen los deltas de cualquier hilo. La convergencia la garantiza la
+**sincronizacion por revision** de §5.8.17 (`sync/changes`) y el orden de cada
+conversacion lo fija `Turn.seq`, nunca el orden de llegada.
 
 **Ciclo de vida de una conversacion (igual en todos los clientes).** Cerrar la
 vista de una conversacion (la pestaña del desktop, salir de la pantalla en el
@@ -2551,6 +2557,98 @@ dispositivos) la borra via `stream/thread/deleted`. Las listas de uso diario
 muestran lo abierto o lo que necesita atencion (trabajando, esperando al
 usuario, fallido, terminado sin ver — `activeTurnId` y los eventos de turno), no
 todo el historial.
+
+
+**Agente fijo, modelo variable.** El agente de un hilo se fija en
+`thread/start` y no cambia (cambiar de CLI rompe la sesion nativa); el modelo
+si (`thread/setModel`, y lo ven todos los clientes via `stream/thread/updated`).
+
+#### 5.8.17 Una sola capa: el bridge como fuente de verdad (2026-09)
+
+Mobile y desktop son **replicas** del estado que el bridge posee: proyectos,
+conversaciones, ajustes compartidos, presencia y agentes disponibles. El
+telefono funciona sin desktop; lo que se hizo sin desktop aparece en el desktop
+al conectarse, y viceversa. Contratos: `shared/src/models/{project,sync}.ts`,
+`02b` §1.2/§1.4.
+
+**Registro de proyectos persistente** (`~/.uxnan/projects.json`,
+`bridge/src/projects/project-registry.ts`). Un proyecto es una carpeta
+canonica (symlinks resueltos); un worktree pertenece al proyecto de su
+repositorio (`git rev-parse --git-common-dir`). Entra por `project/add`
+(`source: user`, o `desktop` desde el canal local — el desktop publica los
+suyos), al iniciar una conversacion en su carpeta (`thread`) o por
+`workspaceRoots` (`config`); sale solo por `project/remove`, que **no toca las
+conversaciones**. `project/rename` cambia el nombre (vacio lo restaura).
+Espejo total: agregar o quitar en cualquier cliente se refleja en todos
+(`stream/project/updated|removed`). Al crearse por primera vez, el registro se
+siembra con las carpetas de todas las conversaciones existentes, y en cada
+arranque cada conversacion se re-enlaza al proyecto de su carpeta. Un telefono
+solo registra carpetas dentro de las raices de exploracion; el desktop
+cualquiera. `thread/start` decide el proyecto por la carpeta (`cwd`), nunca al
+reves, y lo registra.
+
+**Carpeta de inicio compartida** (`settings/get|set`, `home` en
+`daemon-config.json`, `stream/settings/updated`): de donde parte la exploracion
+para agregar proyectos, sin importar desde que carpeta se ejecuto `start`. Por
+defecto, la carpeta personal. Se cambia desde el telefono, el desktop o
+`uxnan-bridge config set home <carpeta>` (que usa el canal local si hay un
+bridge corriendo). Raices de exploracion = `home` + `browseRoots` +
+`workspaceRoots`.
+
+**Sincronizacion por revision** (`bridge/src/sync/sync-ledger.ts`,
+`~/.uxnan/sync.json`). Un contador global persistido numera cada cambio de
+resumen de un hilo (titulo, estado, modelo, acceso, origen, turnos creados o
+terminados — nunca los deltas), de un proyecto o de los ajustes; el cambio se
+escribe en disco **antes** de difundirse, y cada notificacion lleva su `rev`.
+Las eliminaciones quedan como lapidas acotadas (2 000). `sync/changes { since,
+storeId }` devuelve lo posterior a `since`, o una instantanea completa
+(`reset: true`) si `storeId` difiere o `since` es anterior al horizonte. El
+cliente la llama al (re)conectar, al volver la app y cuando una notificacion
+trae un `rev` que no es el siguiente al ultimo aplicado. El almacen de hilos y
+el registro de proyectos son la **unica** fuente de esas notificaciones
+(`onChange`), de modo que ningun handler puede cambiar algo y olvidar avisar.
+
+**Orden canonico:** `Turn.seq` (1..n por hilo, asignado al guardar el turno y
+nunca reutilizado; los turnos anteriores se numeran en su orden guardado). Un
+turno importado de la historia nativa toma la siguiente posicion. Los clientes
+ordenan por `seq`.
+
+**Abrir no cambia nada:** `thread/resume` ya no pone `status: active` ni toca
+`updatedAt` (desarchivaba en silencio lo abierto en el telefono). Solo
+`thread/unarchive` desarchiva.
+
+**Titulos solo en el bridge:** el provisional se pone al guardar el primer
+turno si el titulo es el marcador (`titleSource: prompt`); el generado tras un
+turno completado mientras la fuente sea `prompt`/ausente, con hasta 2 intentos
+(no depende de `turnCount`: un primer turno fallido, detenido o con mensaje en
+cola ya no deja el nombre provisional para siempre). Un `thread/rename
+{ source: 'prompt' }` no pisa un titulo `user`/`agent`. Los clientes no
+renombran por su cuenta.
+
+**Presencia y origen:** `bridge/status` lleva `host { launchedBy: service |
+desktop | cli, machineName }` y `clients[]`; `stream/presence/updated` cada vez
+que un telefono o el desktop se conecta o se va. `Thread.origin { kind, name }`
+dice donde nacio una conversacion.
+
+**Agentes: una sola regla de deteccion.** `shared/agent-locations.json` dice
+donde se instala cada CLI; el bridge (`locateAgent`) y el desktop (Rust,
+`include_str!`) resuelven con la misma tabla. El bridge toma al arrancar el
+PATH del shell de login del usuario (`$SHELL -ilc`, `bridge/src/login-path.ts`)
+— un servicio o una app grafica solo tienen `/usr/bin:/bin` — y re-detecta en
+vivo (`agent/list`, a lo sumo cada 10 s): un agente instalado despues aparece
+sin reiniciar y se avisa con `stream/agents/updated`; `agent/doctor` explica
+donde busco y que encontro.
+
+**Servicio de usuario.** `uxnan-bridge install-service` registra
+`<node> <cli.js> start --service` (rutas absolutas, `WorkingDirectory` = home)
+en launchd / systemd --user / Programador de tareas; se reinicia si se cae, no
+si se detiene a proposito. `service-status` / `service-start` permiten al
+desktop administrarlo; el bridge sigue sirviendo al telefono con el desktop
+cerrado.
+
+### 5.9 Transporte seguro y mensajeria E2EE
+
+El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
 
 #### 5.9.1 Protocolo de handshake completo
 

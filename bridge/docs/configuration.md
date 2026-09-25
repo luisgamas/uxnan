@@ -23,12 +23,27 @@ file is optional; create it to override. Defaults live in
 | `defaultAgent` | `opencode` | Agent used when a thread doesn't pick one. |
 | `checkpointMaxPerProject` | `25` | Keep at most N newest workspace checkpoints per project (`cwd`); older ones are pruned (ref + metadata) on the next capture. `0` = unlimited. |
 | `checkpointTtlDays` | `0` | Delete workspace checkpoints older than N days on capture. `0` = no TTL. |
-| `workspaceRoots` | `[]` | Absolute project dirs exposed via `project/list` (empty → the bridge cwd). |
-| `browseRoots` | `[]` | Absolute base dirs the phone may **browse** under (`workspace/browseDirs`). Empty → falls back to `workspaceRoots`, then the **bridge's launch directory** (`process.cwd()`). So with nothing configured, the phone browses from wherever you started the bridge — zero-config plug-and-play. |
+| `home` | *(your home directory)* | The **start folder** shared with every client: where exploring for a new project begins and the boundary a phone may register projects under — **whatever directory `start` ran in**. Change it with `uxnan-bridge config set home <folder>`, from the phone or from Uxnan Desktop; every client hears the change (`stream/settings/updated`). |
+| `workspaceRoots` | `[]` | Absolute project dirs registered as projects on start (`source: config`). The projects list itself is the persistent registry in `~/.uxnan/projects.json` (below). |
+| `browseRoots` | `[]` | Extra absolute base dirs the phone may **browse** under (`workspace/browseDirs`), after `home` and `workspaceRoots`. |
 | `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
 | `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
+
+## Projects: one registry every client mirrors
+
+`~/.uxnan/projects.json` holds the projects the phone and Uxnan Desktop both
+show (architecture/02a §5.8.17). A project is a canonical folder; a git
+worktree belongs to its repository's project. It is registered by
+`project/add` (from the phone, only inside the browse roots; from the desktop,
+which publishes its own projects, anywhere), by starting a conversation in its
+folder, or from `workspaceRoots`; `project/remove` takes it out and never
+deletes a conversation. The first time the registry is created it is seeded
+with the folders of every conversation you already had, so nothing done on the
+phone alone is lost when the desktop connects. Every change carries a sync
+revision (`~/.uxnan/sync.json`) and reaches every client, including one that
+was away (`sync/changes`).
 
 > **`browseRoots` bounds browsing, not reading.** A paired phone already reads
 > any `cwd` it names (`workspace/readFile` confines the read to that `cwd`, not

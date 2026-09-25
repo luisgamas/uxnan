@@ -29,7 +29,7 @@ import {
   createLogger,
   startBridge,
 } from '../../src/index.js';
-import { rmrf } from '../helpers/fs.js';
+import { rmrf, seedProject } from '../helpers/fs.js';
 
 interface Note {
   method: string;
@@ -223,6 +223,7 @@ test('answered, skipped and timed-out questions are announced', async () => {
 
 test('thread handlers announce every change to every client, and deletion too', async () => {
   const baseDir = join(tmpdir(), `uxnan-sync-h-${randomUUID()}`);
+  await seedProject(baseDir);
   const bridge = await startBridge({
     baseDir,
     secretStore: new InMemorySecretStore(),
@@ -262,9 +263,13 @@ test('thread handlers announce every change to every client, and deletion too', 
     assert.equal(updates[3]?.thread.accessMode, 'requestApproval');
     assert.equal(updates[4]?.thread.status, 'archived');
     assert.equal(updates[5]?.thread.status, 'active');
-    assert.deepEqual(of<ThreadDeletedParams>(notes, StreamNotification.ThreadDeleted), [
-      { threadId: fork.id },
-    ]);
+    assert.deepEqual(
+      of<ThreadDeletedParams>(notes, StreamNotification.ThreadDeleted).map((d) => d.threadId),
+      [fork.id],
+    );
+    // Every change carries a strictly increasing sync revision.
+    const revs = updates.map((u) => u.thread.rev ?? 0);
+    assert.ok(revs.every((rev, i) => i === 0 || rev > revs[i - 1]!));
   } finally {
     await bridge.stop();
     await rmrf(baseDir);
@@ -273,6 +278,7 @@ test('thread handlers announce every change to every client, and deletion too', 
 
 test('turn/send passes a sane clientTurnId through and drops an oversized one', async () => {
   const baseDir = join(tmpdir(), `uxnan-sync-c-${randomUUID()}`);
+  await seedProject(baseDir);
   const bridge = await startBridge({
     baseDir,
     secretStore: new InMemorySecretStore(),

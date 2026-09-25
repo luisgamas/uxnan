@@ -30,7 +30,6 @@ import {
   type TurnAttachment,
   type ApprovalResolvedParams,
   type QuestionResolvedParams,
-  type ThreadUpdatedParams,
   type TurnCreatedParams,
   type TurnDeliveredParams,
 } from '@uxnan/shared';
@@ -283,6 +282,20 @@ export class AgentManager {
 
   hasAdapter(agentId: AgentId): boolean {
     return this.#adapters.has(agentId);
+  }
+
+  /** Record that an agent's CLI appeared or disappeared (`AgentInstalls`). */
+  setAvailable(agentId: AgentId, available: boolean): void {
+    const meta = this.#meta.get(agentId);
+    if (meta && meta.deprecated !== true) meta.available = available;
+  }
+
+  /** Whether a turn of [agentId] is running right now, on any thread. */
+  hasActiveWork(agentId: AgentId): boolean {
+    for (const threadId of this.#activeTurnByThread.keys()) {
+      if (this.#agentByThread.get(threadId) === agentId) return true;
+    }
+    return false;
   }
 
   /** Whether the agent's binary resolved (its CLI is installed/usable). */
@@ -650,9 +663,9 @@ export class AgentManager {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
       ...(options.command !== undefined ? { command: options.command } : {}),
-      // FOR-DEV: every adapter registers these except Zero and Antigravity,
-      // which only read a user-global config (bridge/FOR-DEV.md → "Uxnan
-      // Desktop's tools for Zero and Antigravity").
+      // FOR-DEV: every adapter registers these except Zero, whose sandbox
+      // blocks its MCP servers' network (bridge/FOR-DEV.md → "Uxnan Desktop's
+      // tools for Zero").
       ...(this.#desktopTools ? { desktopTools: this.#desktopTools.tools } : {}),
     });
   }
@@ -722,27 +735,28 @@ export class AgentManager {
    * client (a thread uxnan creates comes back from Codex with `name: null`), so
    * uxnan names its own conversations, exactly as their desktop clients do.
    *
-   * Only ever runs **once per thread**, and only while the title is still the
-   * provisional one taken from the opening message: `applyGeneratedTitle`
-   * refuses to overwrite a name the user chose, so a rename made while the turn
-   * was running always wins.
+   * Runs after a completed turn while the title is still the provisional one
+   * the bridge took from the opening message, at most `MAX_TITLE_ATTEMPTS`
+   * times (`ThreadStore.claimTitleGeneration`) — so a first turn that failed,
+   * was stopped or had a follow-up queued behind it still gets a real name on a
+   * later turn. `applyGeneratedTitle` refuses to overwrite a name the user
+   * chose, so a rename made while the turn was running always wins; the store
+   * announces the new name itself.
    *
    * Entirely best-effort. A failure here must never touch the conversation, so
    * everything is swallowed and the thread simply keeps its provisional name.
    */
   async #nameThread(threadId: string, turnId: string, assistantText: string): Promise<void> {
     try {
-      const thread = await this.#options.store.getThread(threadId);
-      if (thread.titleSource !== undefined && thread.titleSource !== 'prompt') return;
-      // Second and later turns: the name was already decided (or declined).
-      if (thread.turnCount > 1) return;
-
       const agentId = this.#agentByThread.get(threadId) ?? this.#options.defaultAgent;
       const adapter = this.#adapters.get(agentId);
       if (!adapter?.generateTitle) return;
 
       const userText = await this.#userText(turnId);
       if (!userText) return;
+      // Counts the attempt; declines once the name is final or tries ran out.
+      if (!(await this.#options.store.claimTitleGeneration(threadId))) return;
+      const thread = await this.#options.store.getThread(threadId);
 
       const title = await adapter.generateTitle({
         userText,
@@ -757,13 +771,8 @@ export class AgentManager {
         this.#options.now(),
       );
       // `undefined` means the store declined — the user renamed it meanwhile,
-      // or the name was already this. Either way there is nothing to announce.
+      // or the name was already this. Either way there is nothing to mirror.
       if (!updated) return;
-      this.#options.notify(
-        makeNotification(StreamNotification.ThreadUpdated, {
-          thread: updated,
-        } satisfies ThreadUpdatedParams),
-      );
       // Then mirror the name onto the agent's own session when its CLI keeps
       // one, so the same conversation is recognizable in that agent's client
       // rather than untitled (Codex today). After the notification, never

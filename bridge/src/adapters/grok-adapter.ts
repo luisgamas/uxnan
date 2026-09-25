@@ -94,7 +94,7 @@ const GROK_CAPABILITIES: AgentCapabilities = {
 type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
 
 export interface GrokAdapterOptions {
-  /** Resolved `grok` executable path (see resolve-grok.ts). */
+  /** Resolved `grok` executable path (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[grok.js]` when run via node). */
   prependArgs?: string[];

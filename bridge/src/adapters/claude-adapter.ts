@@ -162,7 +162,7 @@ export interface ClaudeModelSpec {
 }
 
 export interface ClaudeCodeAdapterOptions {
-  /** Executable to spawn (resolved path; see resolve-claude.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[cli.js]` when running via node). */
   prependArgs?: string[];

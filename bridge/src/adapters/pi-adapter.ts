@@ -164,7 +164,7 @@ const PI_REASONING_OPTION: AgentModelOption = reasoningOption(effortValues(PI_TH
 export type PiPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
 export interface PiAdapterOptions {
-  /** Executable to spawn (resolved path; see resolve-pi.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[cli.js]` when running via node). */
   prependArgs?: string[];

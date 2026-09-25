@@ -56,6 +56,7 @@ import type {
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
+import { proxyLaunchEnv } from './mcp-proxy.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { agentEnv, defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
@@ -88,7 +89,7 @@ type ZeroMode = 'ask' | 'auto';
 type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
 
 export interface ZeroAdapterOptions {
-  /** Resolved `zero` executable path (see resolve-zero.ts). */
+  /** Resolved `zero` executable path (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[zero.js]` when run via node). */
   prependArgs?: string[];
@@ -103,8 +104,8 @@ export interface ZeroAdapterOptions {
     threadId: string,
     info: { toolName: string; input: Record<string, unknown> },
   ) => Promise<ApprovalDecision>;
-  /** Injected `zero acp` spawner (tests). */
-  spawnAcp?: () => SpawnedAcp;
+  /** Injected `zero acp` spawner (tests); [env] is added to the process's. */
+  spawnAcp?: (env?: Record<string, string>) => SpawnedAcp;
 }
 
 /** Streams + lifecycle a `spawnAcp` implementation returns. */
@@ -130,9 +131,16 @@ interface ActiveRun {
   finished: boolean;
 }
 
-function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string): () => SpawnedAcp {
-  return () => {
-    const child = spawnPiped(binaryPath, [...prependArgs, 'acp'], { cwd });
+function defaultSpawnAcp(
+  binaryPath: string,
+  prependArgs: string[],
+  cwd: string,
+): (env?: Record<string, string>) => SpawnedAcp {
+  return (env) => {
+    const child = spawnPiped(binaryPath, [...prependArgs, 'acp'], {
+      cwd,
+      ...(env && Object.keys(env).length > 0 ? { env } : {}),
+    });
     return {
       stdin: child.stdin,
       stdout: child.stdout,
@@ -150,7 +158,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: ZeroAdapterOptions['onApprovalRequest'];
-  readonly #spawnAcp: () => SpawnedAcp;
+  readonly #spawnAcp: (env?: Record<string, string>) => SpawnedAcp;
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
   /** threadId → ACP sessionId, for continuity + history fallback. */
@@ -171,6 +179,10 @@ export class ZeroAdapter extends BaseAgentAdapter {
   /** The ACP process advertised HTTP MCP servers (`initialize`) — Zero 0.9 does not (it ignores `mcpServers` and keeps its own config), so its sessions get the tools the day it does. */
   #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
+  /** Which desktop attachment the running `zero acp` was started with (`proxyLaunchEnv`). */
+  #acpDesktopKey = '';
+  /** Ends the running `zero acp` process (closing the RPC alone leaves it alive). */
+  #killAcp: (() => void) | undefined;
   #defaultCwd = process.cwd();
 
   /**
@@ -318,6 +330,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
       this.#rpc = null;
       this.#init = null;
     }
+    this.#killAcp?.();
+    this.#killAcp = undefined;
   }
 
   async sendTurn(options: SendTurnOptions): Promise<void> {
@@ -325,9 +339,19 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
 
+    // Uxnan Desktop's tools reach Zero through its global `uxnan-browser` entry
+    // (`mcp-proxy.ts`), which reads the endpoint from this process's
+    // environment — so an idle process started with another attachment is
+    // restarted first. Its sessions reload (`session/load`); each one's proxy
+    // starts in that conversation's folder.
+    const desktop = proxyLaunchEnv(options.desktopTools);
+    if (this.#rpc && desktop.key !== this.#acpDesktopKey && this.#active.size === 0) {
+      await this.#restartAcp();
+    }
+
     let rpc: NdjsonRpc;
     try {
-      rpc = await this.#ensureAcp();
+      rpc = await this.#ensureAcp(desktop);
     } catch (err) {
       return this.#failTurn(threadId, turnId, `failed to start zero acp: ${errorMessage(err)}`);
     }
@@ -411,11 +435,27 @@ export class ZeroAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_aborted', threadId, turnId });
   }
 
+  /** Close the running `zero acp` so the next turn starts a fresh one. */
+  async #restartAcp(): Promise<void> {
+    const rpc = this.#rpc;
+    this.#rpc = null;
+    this.#init = null;
+    this.#modeBySession.clear();
+    this.#modelBySession.clear();
+    rpc?.close();
+    this.#killAcp?.();
+    this.#killAcp = undefined;
+  }
+
   /** Lazy ACP lifecycle: spawn `zero acp` → initialize → return the RPC client. */
-  #ensureAcp(): Promise<NdjsonRpc> {
+  #ensureAcp(
+    desktop: { env: Record<string, string>; key: string } = { env: {}, key: '' },
+  ): Promise<NdjsonRpc> {
     if (this.#init) return this.#init;
+    this.#acpDesktopKey = desktop.key;
     this.#init = (async () => {
-      const streams = this.#spawnAcp();
+      const streams = this.#spawnAcp(desktop.env);
+      this.#killAcp = () => streams.kill();
       const rpc = new NdjsonRpc(
         { stdin: streams.stdin, stdout: streams.stdout, onClose: () => this.#handleAcpClose() },
         {

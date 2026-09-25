@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 742, shared 38, relay
+standalone). It builds clean and the suite is green (bridge 768, shared 39, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,21 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **One layer: the bridge is the source of truth** (architecture/02a §5.8.17) —
+  a persistent, mirrored **project registry** (`projects/project-registry.ts`,
+  `~/.uxnan/projects.json`: `project/add|remove|rename`, worktrees map to their
+  repository, seeded from existing conversations, removal never deletes a
+  conversation); **revisioned replica sync** (`sync/sync-ledger.ts`,
+  `~/.uxnan/sync.json`, `sync/changes`) with the thread store and the registry
+  as the only sources of change announcements; canonical **`Turn.seq`**; the
+  shared **start folder** (`settings/get|set`, `config get|set home`);
+  **presence** (`bridge/status.host|clients`, `stream/presence/updated`) and
+  `Thread.origin`; **titles only in the bridge** (provisional on the first turn,
+  generated with retries, a provisional rename never overwrites a final one);
+  `thread/resume` changes nothing; **agent detection** from the table shared
+  with the desktop (`shared/agent-locations.json`) plus the login-shell `PATH`,
+  live (`stream/agents/updated`, `agent/doctor`); the bridge as the user's
+  **service** (`start --service`, `service-status`, `service-start`).
 - **Several clients at once** (architecture/02a §5.8.15–§5.8.16) —
   a loopback-only **local control channel** for Uxnan Desktop
   (`transport/local-control-server.ts`, discovery file
@@ -69,8 +84,11 @@ push validation (FOR-HUMAN).
   has an answer, as a **one-shot with no session id** (nothing enters the
   thread's history) on the agent's **cheapest** model. Wired for all seven
   agents, **six verified live**; a generated title never overwrites one the user
-  chose (`Thread.titleSource`), and `stream/thread/renamed` converges every
-  client. Best-effort throughout: a failure keeps the provisional name.
+  chose (`Thread.titleSource`), and `stream/thread/updated` converges every
+  client. The bridge sets the provisional name itself when the first turn is
+  stored, and asks for a generated one after any completed turn while the name
+  is provisional (at most twice). Best-effort throughout: a failure keeps the
+  provisional name.
 - **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
   queued (status `queued`) instead of clobbering it, and drains automatically on
   completion; run options are frozen at queue time; the queue holds after a stop
@@ -300,17 +318,15 @@ push validation (FOR-HUMAN).
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
       instead of the heuristic (slower, per-CLI).
-- [ ] **Uxnan Desktop's tools for Zero and Antigravity** — Claude Code, Codex,
-      OpenCode and pi are wired and verified, Grok is wired behind its ACP
-      capability (`docs/agents.md` → *Uxnan Desktop's tools*). `zero acp` (0.9.0)
-      ignores ACP `mcpServers`, and `agy` (1.2.10) has no per-run mechanism: both
-      only read a user-global config. Both pass a stdio server the environment of
-      the agent that starts it, so a **secret-free** entry (`uxnan-browser` → a
-      bridge-shipped stdio proxy that reads `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` /
-      `UXNAN_THREAD_CWD` and offers nothing outside a bridge run) would work.
-      Blocked on a maintainer decision: it means writing into the user's own
-      config, which the desktop's per-launch rule (`uxnandesktop/src-tauri/src/mcpinject.rs`)
-      has so far refused. Also owed: run Grok's path against the real binary.
+- [ ] **Uxnan Desktop's tools for Zero** — Claude Code, Codex, OpenCode, pi and
+      Antigravity are wired and verified, Grok behind its ACP capability
+      (`docs/agents.md` → *Uxnan Desktop's tools*). Zero cannot be reached:
+      `zero acp` (0.9.0) ignores ACP `mcpServers`, and its stdio MCP servers run
+      in its macOS sandbox with the network denied (`EPERM` on loopback HTTP and
+      Unix sockets). Unblocked by Zero honoring ACP `mcpServers` (the bridge
+      already sends them when it advertises HTTP MCP) or offering a sandbox
+      allowance for one MCP server. Also owed: run Grok's path against the real
+      binary with an account that has access.
 - [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` serves
       only `desktop/attach` / `desktop/detach` (the desktop's tools for bridge-run
       agents, local channel only); nothing for an embedded sidecar exists. This is

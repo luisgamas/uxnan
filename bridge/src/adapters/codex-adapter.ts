@@ -226,7 +226,7 @@ const CODEX_FALLBACK_REASONING: AgentModelOption = reasoningOption(
 );
 
 export interface CodexAdapterOptions {
-  /** Resolved binary entry (see resolve-codex.ts). */
+  /** Resolved binary entry (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[codex.js]` when running via node). */
   prependArgs?: string[];

@@ -5,6 +5,59 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — one layer: the bridge is the source of truth (architecture/02a §5.8.17)
+
+- **Projects are a persistent registry every client mirrors.** `projects.json`
+  replaces the list derived from `workspaceRoots` or the directory `start` ran
+  in (which showed a desktop-launched bridge's phone only `/`). New
+  `project/add`, `project/remove` (conversations are never deleted),
+  `project/rename`; `stream/project/updated|removed`. A worktree belongs to its
+  repository's project; folders are canonicalized. The first run seeds the
+  registry with every existing conversation's folder, and every start relinks
+  conversations to their project. `thread/start` files a conversation by its
+  folder and registers the project.
+- **Replica sync by revision.** One persisted revision counter (`sync.json`)
+  numbers every change to a thread's summary, a project or the shared
+  settings; the thread store and the project registry are the only sources of
+  those announcements, written to disk before they are sent, each carrying its
+  `rev`. `sync/changes { since, storeId }` returns what changed, or a snapshot
+  (`reset`) — how a phone that was away, or that connected after a bridge
+  restart, catches up without trusting the replay window.
+- **`Turn.seq`**: a turn's position in its conversation, handed out once;
+  clients order by it. An imported native turn takes the next position.
+- **The start folder is a shared setting** (`home`, default the home
+  directory): `settings/get|set`, `stream/settings/updated`,
+  `uxnan-bridge config get|set home <folder>`. Browsing starts there whatever
+  directory `start` ran in.
+- **Presence and origin**: `bridge/status.host { launchedBy, machineName }` and
+  `clients`, `stream/presence/updated`; `Thread.origin`.
+- **Titles are the bridge's alone.** The provisional name is set when the first
+  turn is stored; a generated one is asked for after any completed turn while
+  the name is provisional, at most twice (a failed or stopped first turn, or a
+  message queued behind it, no longer leaves it provisional for good); a
+  provisional rename never overwrites a generated or hand-picked name.
+- **`thread/resume` changes nothing** — it used to mark the thread active and
+  bump `updatedAt` without telling anyone, un-archiving what a phone opened.
+- **Agent detection is one rule, live.** The seven `resolve-*.ts` resolvers are
+  replaced by `locateAgent` over the table shared with Uxnan Desktop
+  (`@uxnan/shared/agent-locations.json`), which also looks under the running
+  node's own npm prefix and Homebrew's; `start` adds the user's login-shell
+  `PATH`; `agent/list` re-checks (≤ every 10 s) and an agent installed later
+  gets its adapter built where it was found (`agents/agent-installs.ts`,
+  `stream/agents/updated`); `agent/doctor` shows where each was looked for.
+- **A proper user service.** `install-service` registers `start --service` with
+  absolute paths, the home directory as working directory, and restarts only a
+  crashed bridge (a deliberate stop stays stopped; a service start finding a
+  bridge already running exits cleanly instead of looping); new
+  `service-status` and `service-start`.
+- **Uxnan Desktop's tools for Antigravity** through one secret-free
+  `uxnan-browser` entry in its global MCP config, kept by the running daemon
+  (`agents/global-mcp-entry.ts`) and served by `uxnan-bridge mcp-proxy`
+  (`adapters/mcp-proxy.ts`, sharing its MCP client with the pi extension) —
+  verified with a real `agy` turn; removed by `uninstall-service`. Zero stays
+  unreachable (its sandbox denies its MCP servers the network; `FOR-DEV.md`).
+  79 JSON-RPC methods, 21 streaming notifications.
+
 ### Fixed
 
 - **A CLI that is not installed can no longer take the bridge down.** The

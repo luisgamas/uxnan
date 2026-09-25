@@ -37,6 +37,9 @@ export function newPhoneIdentity(): PhoneIdentity {
   return { privateKey: keys.privateKey, publicKeyHex, deviceId: randomUUID() };
 }
 
+/** Notifications about the connection itself, not a conversation. */
+const HOUSEKEEPING = new Set(['stream/presence/updated', 'stream/agents/updated']);
+
 export class FakePhone {
   private constructor(
     private readonly io: MessageIO,
@@ -135,8 +138,22 @@ export class FakePhone {
     return new FakePhone(io, queue, channel, options.sessionId, identity, sessionKey);
   }
 
-  /** Read and decrypt the next inbound envelope (e.g. a server notification). */
+  /** Notifications that arrived while a request waited for its response. */
+  readonly #pending: Record<string, unknown>[] = [];
+
+  /**
+   * Read the next server notification, skipping the live connection
+   * housekeeping every client gets (who is connected, which agents are
+   * installed) — tests read the conversation's own notifications.
+   */
   async receive(): Promise<Record<string, unknown>> {
+    for (;;) {
+      const message = this.#pending.shift() ?? (await this.#decryptNext());
+      if (!HOUSEKEEPING.has(message['method'] as string)) return message;
+    }
+  }
+
+  async #decryptNext(): Promise<Record<string, unknown>> {
     const envelope = await nextJson(this.queue);
     const plaintext = this.channel.decrypt(envelope as never);
     return JSON.parse(plaintext.toString('utf-8')) as Record<string, unknown>;
@@ -151,9 +168,13 @@ export class FakePhone {
         'utf-8',
       ),
     );
-    const envelope = await nextJson(this.queue);
-    const plaintext = this.channel.decrypt(envelope as never);
-    return JSON.parse(plaintext.toString('utf-8')) as JsonRpcResponse;
+    // Notifications can arrive before the response (another client's change,
+    // presence): keep them for `receive()` in order.
+    for (;;) {
+      const message = await this.#decryptNext();
+      if (message['id'] === request.id) return message as unknown as JsonRpcResponse;
+      this.#pending.push(message);
+    }
   }
 
   close(): void {

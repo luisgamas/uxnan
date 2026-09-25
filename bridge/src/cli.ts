@@ -11,10 +11,12 @@
  *
  * `start` boots the daemon with the live LAN (and optional relay) transport and
  * prints the pairing QR + manual code; `stop`, `status`, `code`, `qr` and
- * `install-service`/`uninstall-service` manage the running daemon.
+ * `install-service`/`uninstall-service` manage the running daemon;
+ * `service-status`/`service-start` let Uxnan Desktop run it as the user's
+ * service; `config` reads and changes the settings shared with every client.
  */
 import { fileURLToPath } from 'node:url';
-import { encodePairingQr } from '@uxnan/shared';
+import { agentLocation, encodePairingQr, locateAgent } from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
@@ -24,24 +26,37 @@ import { LockFile, isProcessAlive } from './lock-file.js';
 import {
   currentServiceEnv,
   installService,
+  isServiceInstalled,
   isServicePlatformSupported,
+  startService,
   uninstallService,
 } from './service-installer.js';
+import { BRIDGE_HOST_ENV } from './presence/host-info.js';
+import { callRunningBridge } from './local-control-client.js';
+import { enrichProcessPath } from './login-path.js';
+import { runMcpProxy } from './adapters/mcp-proxy.js';
+import { removeGlobalEntry } from './agents/global-mcp-entry.js';
+import { configuredHome, validateHome } from './settings/bridge-settings.js';
 
 const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
 
 Usage: uxnan-bridge <command>
 
 Commands:
-  start            Start the bridge daemon (LAN/relay transport + pairing)
-  status           Print the current bridge status
-  qr               Print the pairing QR code in the terminal
-  code             Print the current manual-pairing code (matches the daemon)
-  stop             Stop the running daemon
-  install-service    Start the bridge automatically at logon (as the current user)
-  uninstall-service  Remove the autostart entry
-  version          Print the installed version (no daemon is started)
-  help             Show this help
+  start              Start the bridge daemon (LAN/relay transport + pairing)
+  status             Print the current bridge status
+  qr                 Print the pairing QR code in the terminal
+  code               Print the current manual-pairing code (matches the daemon)
+  stop               Stop the running daemon
+  install-service    Run the bridge as your user's service (starts at logon, now too)
+  uninstall-service  Remove the service
+  service-status     Print whether the service is installed and running (JSON)
+  service-start      Start the installed service now
+  mcp-proxy          (internal) Uxnan Desktop's tools for Antigravity
+  config get [key]           Print the shared settings (or one of them)
+  config set home <folder>   Set the start folder new projects are explored from
+  version            Print the installed version (no daemon is started)
+  help               Show this help
 `;
 
 /**
@@ -109,16 +124,24 @@ async function cmdStart(): Promise<void> {
   const state = new DaemonState();
   await state.ensureDir();
   const lock = new LockFile(state.pathFor(DAEMON_FILES.lock));
+  const asService = process.argv.includes('--service');
+  if (asService) process.env[BRIDGE_HOST_ENV] = 'service';
   if (!(await lock.acquire())) {
     const held = await lock.read();
     process.stderr.write(
       `uxnan-bridge is already running${held ? ` (pid ${held.pid})` : ''}. Run 'uxnan-bridge stop' first.\n`,
     );
-    process.exitCode = 1;
+    // The service manager restarts a service that fails; a bridge already
+    // running (started by hand) is not a failure, and restarting against it
+    // would only loop. Exit cleanly and let that one serve.
+    process.exitCode = asService ? 0 : 1;
     return;
   }
 
-  const bridge = await startBridge();
+  // A service or a GUI launch gets a minimal PATH: take the user's own first,
+  // so installed agents (and `node` for their launchers) are found.
+  await enrichProcessPath().catch(() => undefined);
+  const bridge = await startBridge({ manageGlobalEntries: true });
 
   if (bridge.context.config.lanEnabled) {
     try {
@@ -216,6 +239,80 @@ async function cmdUninstallService(): Promise<void> {
   }
   const plan = await uninstallService(currentServiceEnv(bridgeCliPath()));
   process.stdout.write(`${plan.uninstallNote}\n`);
+  // The `uxnan-browser` entry the service kept in Antigravity's config goes
+  // with it.
+  await enrichProcessPath().catch(() => undefined);
+  for (const agent of ['antigravity-cli'] as const) {
+    const location = agentLocation(agent);
+    const located = location ? locateAgent(location) : undefined;
+    if (located?.available && (await removeGlobalEntry(agent, located))) {
+      process.stdout.write(`Removed the uxnan-browser entry from ${agent}.\n`);
+    }
+  }
+}
+
+async function cmdServiceStatus(): Promise<void> {
+  const supported = isServicePlatformSupported(process.platform);
+  const installed = supported
+    ? await isServiceInstalled(currentServiceEnv(bridgeCliPath()))
+    : false;
+  const held = await new LockFile(new DaemonState().pathFor(DAEMON_FILES.lock)).read();
+  const running = held !== null && held !== undefined && isProcessAlive(held.pid);
+  process.stdout.write(
+    `${JSON.stringify({ supported, installed, running, ...(running ? { pid: held.pid } : {}) })}\n`,
+  );
+}
+
+async function cmdServiceStart(): Promise<void> {
+  if (!isServicePlatformSupported(process.platform)) {
+    process.stderr.write(`Services are not supported on '${process.platform}'.\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const env = currentServiceEnv(bridgeCliPath());
+  if (!(await isServiceInstalled(env))) {
+    process.stderr.write(
+      "The bridge service is not installed. Run 'uxnan-bridge install-service'.\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  await startService(env);
+  process.stdout.write('Started the bridge service.\n');
+}
+
+/**
+ * `config get [home]` / `config set home <folder>`. A running bridge is changed
+ * through its local channel, so every client hears it at once; with none
+ * running, the config file is written and the next start uses it.
+ */
+async function cmdConfig(args: string[]): Promise<void> {
+  const [action, key, value] = args;
+  const state = new DaemonState();
+  if (action === 'get') {
+    const live = await callRunningBridge(state, 'settings/get', undefined).catch(() => undefined);
+    const settings = (live?.result as { home?: string } | undefined) ?? {
+      home: configuredHome(await state.readConfig()),
+    };
+    if (key === undefined) process.stdout.write(`${JSON.stringify(settings, null, 2)}\n`);
+    else if (key === 'home') process.stdout.write(`${settings.home ?? ''}\n`);
+    else throw new Error(`unknown setting: ${key}`);
+    return;
+  }
+  if (action === 'set' && key === 'home' && value !== undefined) {
+    const live = await callRunningBridge(state, 'settings/set', { home: value });
+    if (live) {
+      process.stdout.write(`Start folder: ${(live.result as { home: string }).home}\n`);
+      return;
+    }
+    const home = await validateHome(value).catch(() => {
+      throw new Error(`not a folder: ${value}`);
+    });
+    await state.writeConfig({ ...(await state.readConfig()), home });
+    process.stdout.write(`Start folder: ${home} (used from the next start)\n`);
+    return;
+  }
+  throw new Error('usage: uxnan-bridge config get [home] | config set home <folder>');
 }
 
 async function main(): Promise<number> {
@@ -241,6 +338,20 @@ async function main(): Promise<number> {
       return 0;
     case 'uninstall-service':
       await cmdUninstallService();
+      return 0;
+    case 'service-status':
+      await cmdServiceStatus();
+      return 0;
+    case 'service-start':
+      await cmdServiceStart();
+      return 0;
+    case 'config':
+      await cmdConfig(process.argv.slice(3));
+      return 0;
+    case 'mcp-proxy':
+      // Started by Zero / Antigravity as their `uxnan-browser` MCP server.
+      // stdout is the protocol: nothing else may be written to it.
+      await runMcpProxy({ input: process.stdin, output: process.stdout, version: BRIDGE_VERSION });
       return 0;
     case 'version':
     case '--version':

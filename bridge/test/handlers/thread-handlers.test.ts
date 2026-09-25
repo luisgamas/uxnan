@@ -13,7 +13,7 @@ import {
   startBridge,
   type Bridge,
 } from '../../src/index.js';
-import { rmrf } from '../helpers/fs.js';
+import { rmrf, seedProject } from '../helpers/fs.js';
 
 /**
  * A controllable in-process agent (no subprocess): `sendTurn` opens a turn but
@@ -51,6 +51,7 @@ class ControlledAdapter extends BaseAgentAdapter {
 
 async function boot(): Promise<{ bridge: Bridge; baseDir: string }> {
   const baseDir = join(tmpdir(), `uxnan-th-${randomUUID()}`);
+  await seedProject(baseDir);
   const bridge = await startBridge({
     baseDir,
     secretStore: new InMemorySecretStore(),

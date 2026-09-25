@@ -5,12 +5,10 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { JsonRpcErrorCode, RpcError, StreamNotification, makeNotification } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import type {
   AccessMode,
-  Thread,
-  ThreadDeletedParams,
-  ThreadUpdatedParams,
+  ThreadOrigin,
   AgentCommandInvocation,
   AgentId,
   ApprovalDecision,
@@ -22,24 +20,23 @@ import type {
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SendTurnOptions } from '../agents/agent-manager.js';
+import type { RequestSession } from '../handler-router.js';
 import { optionalBoolean, optionalNumber, optionalString, requireString } from './params.js';
+import { withLiveState } from './sync-handler.js';
 
-/**
- * Tell every client a thread changed and return it, so a handler can end with
- * `return announce(ctx, thread)`. The phone that made the change gets it too,
- * which is harmless: the notification is an idempotent upsert.
- */
-function announce(ctx: BridgeContext, thread: Thread): Thread {
-  ctx.sessionRegistry.broadcast(
-    makeNotification(StreamNotification.ThreadUpdated, { thread } satisfies ThreadUpdatedParams),
-  );
-  return thread;
-}
+// Every change below is announced by the ThreadStore itself (`onChange`, wired
+// in bridge.ts) once it is on disk, with its sync revision — so no handler can
+// change a thread and forget to tell the clients.
 
-/** A thread with its live state (never persisted) added. */
-function withLiveState(thread: Thread, ctx: BridgeContext): Thread {
-  const activeTurnId = ctx.agentManager.activeTurnId(thread.id);
-  return activeTurnId !== undefined ? { ...thread, activeTurnId } : thread;
+/** Which client is starting a conversation (`Thread.origin`). */
+function originOf(
+  ctx: BridgeContext,
+  session: RequestSession | undefined,
+): ThreadOrigin | undefined {
+  if (!session) return undefined;
+  if (session.local !== undefined) return { kind: 'desktop', name: ctx.host.machineName };
+  const phone = ctx.sessions.get(session.deviceId);
+  return { kind: 'phone', name: phone?.displayName ?? 'Phone' };
 }
 
 export function registerThreadHandlers(router: HandlerRouter): void {
@@ -52,14 +49,16 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('thread/read', async (p, ctx: BridgeContext) =>
     withLiveState(await ctx.threadStore.getThread(requireString(p, 'threadId')), ctx),
   );
-  router.register('thread/start', async (p, ctx: BridgeContext) => {
-    const projectId = requireString(p, 'projectId');
-    // The phone provides the cwd (e.g. a folder-browser directory, which
-    // `project/resolve` SYNTHESIZES into a project that is NOT in
-    // workspaceRoots). Use that cwd directly; only resolve the project by id to
-    // get a cwd fallback when none is given — otherwise a browsed folder failed
-    // `byId` with "unknown project", and the thread was never created.
-    const cwd = optionalString(p, 'cwd') ?? ctx.projects.byId(projectId).cwd;
+  router.register('thread/start', async (p, ctx: BridgeContext, session) => {
+    // The folder decides the project, never the other way round: a client that
+    // sent a stale or mismatched `projectId` next to its `cwd` must not file the
+    // conversation under another project. Without a `cwd` the project's folder
+    // is used. Either way the project is registered, so a conversation always
+    // lists under a project every client knows.
+    const requestedCwd = optionalString(p, 'cwd');
+    const cwd = requestedCwd ?? ctx.projects.byId(requireString(p, 'projectId')).cwd;
+    const project = await ctx.projects.add(cwd, { source: 'thread' });
+    const projectId = project.id;
     // Per-project pin: when the phone omits agent/model, fall back to the
     // project's configured agent (then the bridge's global default). The pinned
     // model only applies when the resolved agent IS the pinned one, so we never
@@ -82,26 +81,26 @@ export function registerThreadHandlers(router: HandlerRouter): void {
         agentId,
         ...(model !== undefined ? { model } : {}),
         cwd,
+        ...(originOf(ctx, session) ? { origin: originOf(ctx, session) } : {}),
       },
       ctx.now(),
     );
-    return announce(ctx, thread);
+    return thread;
   });
+  // Opening a conversation changes nothing on it (see ThreadStore.resumeThread).
   router.register('thread/resume', (p, ctx: BridgeContext) =>
-    ctx.threadStore.resumeThread(requireString(p, 'threadId'), ctx.now()),
+    ctx.threadStore.resumeThread(requireString(p, 'threadId')),
   );
-  router.register('thread/fork', async (p, ctx: BridgeContext) =>
-    announce(ctx, await ctx.threadStore.forkThread(requireString(p, 'threadId'), ctx.now())),
+  router.register('thread/fork', (p, ctx: BridgeContext) =>
+    ctx.threadStore.forkThread(requireString(p, 'threadId'), ctx.now()),
   );
   router.register('thread/setModel', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
     await ctx.threadStore.setModel(threadId, requireString(p, 'model'), ctx.now());
-    announce(ctx, await ctx.threadStore.getThread(threadId));
     return null;
   });
   router.register('thread/rename', async (p, ctx: BridgeContext) =>
-    announce(
-      ctx,
+    withLiveState(
       await ctx.threadStore.renameThread(
         requireString(p, 'threadId'),
         requireString(p, 'title'),
@@ -111,35 +110,28 @@ export function registerThreadHandlers(router: HandlerRouter): void {
         // not accepted from the wire — the bridge writes those when it generates one.
         optionalString(p, 'source') === 'prompt' ? 'prompt' : 'user',
       ),
+      ctx,
     ),
   );
   router.register('thread/setAccessMode', async (p, ctx: BridgeContext) =>
-    announce(
-      ctx,
-      await ctx.threadStore.setAccessMode(
-        requireString(p, 'threadId'),
-        parseAccessMode(requireString(p, 'mode')),
-        ctx.now(),
-      ),
+    ctx.threadStore.setAccessMode(
+      requireString(p, 'threadId'),
+      parseAccessMode(requireString(p, 'mode')),
+      ctx.now(),
     ),
   );
   router.register('thread/archive', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
     await ctx.agentManager.closeThreadSession(threadId);
-    return announce(ctx, await ctx.threadStore.archiveThread(threadId, ctx.now()));
+    return ctx.threadStore.archiveThread(threadId, ctx.now());
   });
-  router.register('thread/unarchive', async (p, ctx: BridgeContext) =>
-    announce(ctx, await ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now())),
+  router.register('thread/unarchive', (p, ctx: BridgeContext) =>
+    ctx.threadStore.unarchiveThread(requireString(p, 'threadId'), ctx.now()),
   );
   router.register('thread/delete', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
     await ctx.agentManager.closeThreadSession(threadId);
     await ctx.threadStore.deleteThread(threadId);
-    ctx.sessionRegistry.broadcast(
-      makeNotification(StreamNotification.ThreadDeleted, {
-        threadId,
-      } satisfies ThreadDeletedParams),
-    );
     return null;
   });
 

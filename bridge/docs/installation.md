@@ -99,20 +99,32 @@ so and offers the command to copy. *Update automatically* does the same on its
 own when a newer version is published, but only while no conversation is
 running on any device (`bridge/status` → `activeTurns`).
 
-## Autostart (run at logon, no open terminal)
+## Run it as your user's service (the normal way)
 
 ```bash
-uxnan-bridge install-service     # start the bridge automatically at logon
-uxnan-bridge uninstall-service   # remove the autostart entry
+uxnan-bridge install-service     # run as your service: at logon, and now
+uxnan-bridge service-status      # {"supported","installed","running","pid"} as JSON
+uxnan-bridge service-start       # start the installed service after a deliberate stop
+uxnan-bridge uninstall-service   # remove the service (and the Antigravity entry, below)
 ```
 
-It registers autostart **as the logged-in user, never elevated**:
+This is how the bridge is meant to live: **Uxnan Desktop installs it for you
+(Settings → Bridge & mobile, mode *Managed*) and from then on only connects to
+it**, and it keeps serving the phone while the desktop is closed. It registers
+`<node> <cli.js> start --service` with absolute paths, **as the logged-in user,
+never elevated**, with your home as its working directory, and it is restarted
+when it crashes — not when you stop it on purpose:
 
 | OS | Mechanism |
 |---|---|
 | Windows | Task Scheduler logon task (`/SC ONLOGON /RL LIMITED`); **falls back to a hidden Startup-folder `.vbs`** if Task Scheduler is denied (restricted account/policy) — no admin, no console window. |
-| macOS | per-user LaunchAgent in `~/Library/LaunchAgents` (`RunAtLoad` + `KeepAlive`). |
-| Linux | systemd `--user` unit; run `loginctl enable-linger $USER` so it survives logout. |
+| macOS | per-user LaunchAgent in `~/Library/LaunchAgents` (`RunAtLoad`, `KeepAlive` on a failed exit, `WorkingDirectory` = home). |
+| Linux | systemd `--user` unit (`Restart=on-failure`); run `loginctl enable-linger $USER` so it survives logout. |
+
+A service gets the service manager's minimal `PATH` (`/usr/bin:/bin` on macOS),
+where Homebrew, npm's global bin and every agent CLI are missing. At start the
+bridge therefore asks your login shell for its `PATH` (`$SHELL -ilc`) and adds
+what is missing, so it finds the same agents your terminal does.
 
 The legacy `scripts/install-service-*` files remain as a manual reference; the CLI
 commands above supersede them.
@@ -120,6 +132,20 @@ commands above supersede them.
 ## Where things live
 
 `~/.uxnan/` holds the daemon config, pairing session, trusted-phones list, thread
-store, checkpoints metadata, the update-check cache (`update-check.json`), the
-single-instance lock, and daily-rotated logs.
+store, the project registry (`projects.json`), the sync revision ledger
+(`sync.json`), checkpoints metadata, the update-check cache
+(`update-check.json`), the single-instance lock, and daily-rotated logs.
+
+## The start folder
+
+```bash
+uxnan-bridge config get          # the shared settings as JSON
+uxnan-bridge config set home ~/Projects
+```
+
+`home` is where exploring for a new project begins, on the phone and in Uxnan
+Desktop alike, whatever directory the bridge was started from. With a bridge
+running, the command changes it live (through the local control channel) and
+every connected client is told; otherwise it is written to the config for the
+next start.
 Configuration reference: [`configuration.md`](./configuration.md).

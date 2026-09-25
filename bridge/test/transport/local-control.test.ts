@@ -423,8 +423,11 @@ test('bridge: startLocalControl publishes the file, serves the router, and clean
     ws.on('message', (data) => frames.push(JSON.parse(data.toString()) as LocalControlFrame));
     await new Promise((resolve) => ws.once('open', resolve));
     ws.send(JSON.stringify(makeRequest('s', 'bridge/status')));
-    await got(2);
-    const reply = frames[1];
+    // Its own presence announcement may arrive first; find the response.
+    const isReply = (f: LocalControlFrame): boolean =>
+      f.type === 'message' && (f.message as { id?: unknown }).id === 's';
+    for (let n = 2; !frames.some(isReply); n++) await got(n);
+    const reply = frames.find(isReply);
     assert.ok(reply && reply.type === 'message');
     const result = (reply.message as { result: { features: { localControl?: boolean } } }).result;
     // The same router answers over this channel as over the phones' one.

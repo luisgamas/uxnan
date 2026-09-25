@@ -261,6 +261,23 @@ bridge's own approval hook is unaffected: it uses three of those names
 (`UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID`) for its own server, but it **sets**
 them per turn and a value it sets survives. Only an inherited one is dropped.
 
+### Which agents are installed (one rule, shared with Uxnan Desktop)
+
+Every agent CLI is found with `locateAgent` (`@uxnan/shared`) over the table in
+`shared/agent-locations.json` — the same file Uxnan Desktop compiles into its
+Rust resolver, so the phone, the desktop's chat and its terminals agree on what
+is installed. Per agent, in order: native install paths, then the npm entry
+under each npm root (including the running node's own prefix — nvm, fnm,
+Homebrew, a custom npm prefix), then the command on `PATH` (on Windows only a
+real `.exe`/`.com`). A path configured in `agents.<id>.binaryPath` always wins.
+
+`uxnan-bridge start` first adds the user's login-shell `PATH` to its own
+(`login-path.ts`), because a service or a GUI launch starts with a minimal one.
+Detection is live: `agent/list` re-checks at most every 10 s, an agent
+installed while the bridge runs gets its adapter built where it was found, and
+every client hears it (`stream/agents/updated`). `agent/doctor` lists, per
+agent, the command it runs and every location it checked.
+
 ### Uxnan Desktop's tools (`desktop/attach`)
 
 When Uxnan Desktop is connected over the local control channel it attaches its
@@ -284,14 +301,14 @@ desktop decodes it and scopes the agent to that project. A change of attachment
 | **OpenCode** | `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve` (merged over the user's config), token by reference (`{env:UXNAN_MCP_TOKEN}`); an idle server restarts when the attachment changes | opencode 2.0.16: connects once the folder loads, sends both headers, calls |
 | **pi** | no MCP client of its own, so the bridge ships one: `-e dist/src/adapters/pi-desktop-extension.js` (Streamable HTTP over `fetch`, one pi tool per MCP tool), fed `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` through the env; the resident process recycles on a change of attachment. **Not in the read-only posture** (`--tools` is a strict allowlist, and the tools act) | pi 0.85.1, through the bridge: the model is offered the tools, a call with arguments reaches the server and its answer ends the turn; the token reaches no session file |
 | **Grok** | ACP `mcpServers` (http variant) on `session/new` / `session/load`, sent only when `initialize` advertises `agentCapabilities.mcpCapabilities.http` | unit-tested against the ACP schema; **not run** against the binary (not installed on the verifying machine) |
-| **Zero** | the same ACP code path — but `zero acp` advertises no `mcpCapabilities` and ignores `mcpServers`, so nothing is sent | zero 0.9.0: `initialize` advertises none, a `session/new` with an http server never contacts it |
-| **Antigravity** | none: `agy` has no per-run MCP flag or environment; its only channel is the user-global `~/.gemini/config/mcp_config.json` (`agy mcp add`) | agy 1.2.10 |
+| **Antigravity** | `agy` reads MCP servers only from its user-global `~/.gemini/config/mcp_config.json`, so the running bridge keeps ONE secret-free entry there (`agy mcp add uxnan-browser -- <node> <cli.js> mcp-proxy`, `agents/global-mcp-entry.ts`): a stdio proxy (`adapters/mcp-proxy.ts`) that reads `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` from the environment the bridge gives `agy` while the desktop is attached, and outside a bridge run answers as a server with no tools. The resident process recycles on a change of attachment. Removed by `uninstall-service` | agy 1.2.10, real turn: the tools are discovered through the proxy and a call answers, token and folder on every request |
+| **Zero** | **not reachable.** `zero acp` ignores ACP `mcpServers` (the bridge still sends them the moment it advertises HTTP MCP — same code path as Grok), and its stdio MCP servers run inside its macOS sandbox with the network denied, so a proxy cannot reach the desktop either | zero 0.9.0: `initialize` advertises no `mcpCapabilities`; a stdio server's loopback HTTP and Unix-socket connections fail with `EPERM` (`ZERO_SANDBOXED=1`) |
 
-Zero and Antigravity can only be reached through their user-global config, and
-both hand a stdio server the environment of the agent that starts it (verified on
-zero 0.9.0) — so a secret-free entry pointing at a bridge-shipped stdio proxy
-would work there. Writing into a user's own config is not something the bridge
-does on its own (`FOR-DEV.md`).
+The proxy entry is only ever written by the long-running daemon (`uxnan-bridge
+start`), never by a test or a short-lived command, and is left alone once it
+already points at this bridge. Launched from one of Uxnan Desktop's own
+terminals, the same proxy forwards that terminal's `UXNAN_AGENT_ID`, so the
+desktop scopes it like any agent it launched.
 
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models` (`GET /api/model` on

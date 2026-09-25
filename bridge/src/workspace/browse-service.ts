@@ -26,15 +26,33 @@ export function browseRootIdFor(cwd: string): string {
 }
 
 export class BrowseService {
-  readonly #roots: string[];
+  #roots: string[] = [];
+  readonly #fallback: string;
 
-  // Defaults the root to the bridge's launch directory (`process.cwd()`) so a
-  // zero-config install is plug-and-play: start the bridge inside the folder you
-  // want the phone to reach, and that folder (plus its sub-directories) is the
-  // root — no `browseRoots`/`workspaceRoots` to configure. Matches ProjectRegistry.
+  /**
+   * The bridge passes the shared start folder (`home`) first, then any
+   * configured `browseRoots` / `workspaceRoots`; [fallback] is only used when
+   * the list is empty (tests, and a caller with nothing configured).
+   */
   constructor(roots: string[], fallback: string = process.cwd()) {
+    this.#fallback = fallback;
+    this.setRoots(roots);
+  }
+
+  /** Replace the roots — the start folder changed (`settings/set`). */
+  setRoots(roots: string[]): void {
     const resolved = [...new Set(roots.map((r) => resolve(r)).filter((r) => r.length > 0))];
-    this.#roots = resolved.length > 0 ? resolved : [resolve(fallback)];
+    this.#roots = resolved.length > 0 ? resolved : [resolve(this.#fallback)];
+  }
+
+  /** Whether [path] (absolute, canonical) lies inside one of the roots. */
+  contains(path: string): boolean {
+    const fold = (p: string): string => (process.platform === 'win32' ? p.toLowerCase() : p);
+    const target = fold(resolve(path));
+    return this.#roots.some((r) => {
+      const root = fold(r);
+      return target === root || target.startsWith(root.endsWith(sep) ? root : root + sep);
+    });
   }
 
   listRoots(): BrowseRoot[] {

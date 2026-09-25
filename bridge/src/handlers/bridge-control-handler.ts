@@ -26,6 +26,8 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
       now: ctx.now(),
       localControl: ctx.localControlActive(),
       activeTurns: ctx.agentManager.activeTurnCount(),
+      host: ctx.host,
+      clients: ctx.presence.list(),
       ...(update?.latestVersion !== undefined ? { latestVersion: update.latestVersion } : {}),
       ...(update?.updateAvailable ? { updateAvailable: true } : {}),
     });

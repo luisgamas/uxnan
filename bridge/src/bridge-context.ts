@@ -16,6 +16,11 @@ import type { BrowseService } from './workspace/browse-service.js';
 import type { PushService } from './push/push-service.js';
 import type { UpdateStatus } from './update-check.js';
 import type { Logger } from './logger.js';
+import type { SyncLedger } from './sync/sync-ledger.js';
+import type { BridgeSettingsStore } from './settings/bridge-settings.js';
+import type { PresenceRegistry } from './presence/presence-registry.js';
+import type { BridgeHost } from '@uxnan/shared';
+import type { AgentInstalls } from './agents/agent-installs.js';
 
 export interface BridgeContext {
   readonly version: string;
@@ -36,8 +41,18 @@ export interface BridgeContext {
   readonly sessionHistory: SessionHistoryReader;
   /** Agent turn orchestration. */
   readonly agentManager: AgentManager;
-  /** The project directories the phone may open. */
+  /** Which agent CLIs are installed, kept true while the bridge runs. */
+  readonly agentInstalls: AgentInstalls;
+  /** The registry of projects every client mirrors (§5.8.17). */
   readonly projects: ProjectRegistry;
+  /** The global sync revision counter behind `sync/changes`. */
+  readonly ledger: SyncLedger;
+  /** Settings shared with every client (the start folder). */
+  readonly settings: BridgeSettingsStore;
+  /** Who is connected right now. */
+  readonly presence: PresenceRegistry;
+  /** What started this bridge and on which machine. */
+  readonly host: BridgeHost;
   /** Root-confined directory browsing for plug-and-play project selection. */
   readonly browse: BrowseService;
   /** Push-notification coordination (token registration + turn-end delivery). */

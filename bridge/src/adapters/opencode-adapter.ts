@@ -105,7 +105,7 @@ export function decisionToPermissionReply(decision: ApprovalDecision): Permissio
 }
 
 export interface OpenCodeAdapterOptions {
-  /** Executable to spawn (resolved exe path; see resolve-opencode.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Default model (`provider/model`) when the thread/turn doesn't pick one. */
   defaultModel?: string;

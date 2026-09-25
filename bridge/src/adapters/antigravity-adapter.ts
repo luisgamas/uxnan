@@ -82,6 +82,7 @@ import type {
   AgentConfig,
   AgentId,
   AgentModel,
+  DesktopTools,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
@@ -89,6 +90,7 @@ import { BaseAgentAdapter } from './base-adapter.js';
 import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './content-blocks.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+import { proxyLaunchEnv } from './mcp-proxy.js';
 
 /**
  * How long a thread's resident `agy` process may sit without a turn before it is
@@ -436,7 +438,7 @@ function asNumber(value: unknown): number | undefined {
 }
 
 export interface AntigravityAdapterOptions {
-  /** Executable to spawn (resolved path; see resolve-antigravity.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (unused for the native `agy` exe). */
   prependArgs?: string[];
@@ -474,6 +476,8 @@ interface ActiveSession {
   cwd: string;
   model: string | undefined;
   mode: AntigravityPermissionMode;
+  /** Which desktop attachment the process was started with (`proxyLaunchEnv`). */
+  desktopKey: string;
   child: SpawnedProcess;
   idleTimer?: NodeJS.Timeout;
   /** Fallback for a tool block id when a step has no `step_index`. */
@@ -699,14 +703,20 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     cwd: string,
     model: string | undefined,
     mode: AntigravityPermissionMode,
+    desktopTools?: DesktopTools,
   ): ActiveSession {
+    // Uxnan Desktop's tools reach `agy` through its global `uxnan-browser`
+    // entry (`mcp-proxy.ts`), which reads the endpoint from this process's
+    // environment — so a change of attachment restarts the process too.
+    const desktop = proxyLaunchEnv(desktopTools, cwd);
     const existing = this.#sessions.get(threadId);
     if (
       existing &&
       !existing.exited &&
       existing.cwd === cwd &&
       existing.model === model &&
-      existing.mode === mode
+      existing.mode === mode &&
+      existing.desktopKey === desktop.key
     ) {
       if (existing.idleTimer) {
         clearTimeout(existing.idleTimer);
@@ -735,6 +745,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
       stdin: 'pipe',
+      ...(desktop.key ? { env: desktop.env } : {}),
     });
 
     const session: ActiveSession = {
@@ -743,6 +754,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       cwd,
       model,
       mode,
+      desktopKey: desktop.key,
       child,
       toolSequence: 0,
       exited: false,
@@ -838,7 +850,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     let session: ActiveSession;
     try {
-      session = this.#getOrCreateSession(threadId, cwd, model, mode);
+      session = this.#getOrCreateSession(threadId, cwd, model, mode, options.desktopTools);
     } catch (err) {
       this.emit({
         type: 'turn_error',

@@ -30,7 +30,16 @@ export {
   type AgentSettings,
   type AgentModelSpec,
 } from './daemon-config.js';
-export { ProjectRegistry, projectIdFor } from './projects/project-registry.js';
+export {
+  ProjectRegistry,
+  projectIdFor,
+  canonicalFolder,
+  repositoryRoot,
+} from './projects/project-registry.js';
+export { AgentInstalls, type InstalledAgentSpec } from './agents/agent-installs.js';
+export { SyncLedger } from './sync/sync-ledger.js';
+export { BridgeSettingsStore } from './settings/bridge-settings.js';
+export { PresenceRegistry } from './presence/presence-registry.js';
 export {
   PushService,
   type PushServiceOptions,
@@ -109,7 +118,6 @@ export {
   type SpawnedAppServer,
   type CodexPermissionMode,
 } from './adapters/codex-adapter.js';
-export { resolveCodexBinary, type ResolvedCodex } from './adapters/resolve-codex.js';
 export {
   PiAdapter,
   parsePiLine,
@@ -121,7 +129,6 @@ export {
   type PiEvent,
   type PiPermissionMode,
 } from './adapters/pi-adapter.js';
-export { resolvePiBinary, type ResolvedPi } from './adapters/resolve-pi.js';
 export {
   AntigravityAdapter,
   antigravityPermissionMode,
@@ -140,10 +147,6 @@ export {
   type AntigravityResult,
   type AntigravityUsage,
 } from './adapters/antigravity-adapter.js';
-export {
-  resolveAntigravityBinary,
-  type ResolvedAntigravity,
-} from './adapters/resolve-antigravity.js';
 export {
   OpenCodeAdapter,
   decisionToPermissionReply,
@@ -185,7 +188,6 @@ export {
   parseOpenCodeMajor,
   protocolFor,
 } from './adapters/opencode-version.js';
-export { resolveOpenCodeBinary, type ResolvedOpenCode } from './adapters/resolve-opencode.js';
 export {
   ZeroAdapter,
   parseZeroModels,
@@ -195,10 +197,8 @@ export {
   type ZeroProvider,
 } from './adapters/zero-adapter.js';
 export { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './adapters/zero-tools.js';
-export { resolveZeroBinary, type ResolvedZero } from './adapters/resolve-zero.js';
 export { GrokAdapter, mapGrokModels, type GrokAdapterOptions } from './adapters/grok-adapter.js';
 export { grokToolBlock, grokPlanSteps, type GrokToolCall } from './adapters/grok-tools.js';
-export { resolveGrokBinary, type ResolvedGrok } from './adapters/resolve-grok.js';
 export {
   agentEnv,
   defaultSpawn,
@@ -216,7 +216,6 @@ export {
   type ClaudeModelSpec,
   type ClaudePermissionMode,
 } from './adapters/claude-adapter.js';
-export { resolveClaudeBinary, type ResolvedClaude } from './adapters/resolve-claude.js';
 export { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 export {
   ProcessAgentAdapter,
