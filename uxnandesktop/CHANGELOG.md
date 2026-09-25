@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.57] - 20260925
 ### Fixed
 
 - **The GitHub view's back button no longer scrolls away.** Its close, section
