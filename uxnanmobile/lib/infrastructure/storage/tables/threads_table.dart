@@ -40,6 +40,12 @@ class ThreadsTable extends Table {
   /// Row creation timestamp in epoch milliseconds.
   IntColumn get createdAtMs => integer()();
 
+  /// Where the conversation was started (`phone` / `desktop`), if known.
+  TextColumn get originKind => text().nullable()();
+
+  /// The name of the device that started it, if known.
+  TextColumn get originName => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

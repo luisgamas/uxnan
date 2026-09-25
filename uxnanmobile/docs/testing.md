@@ -102,7 +102,7 @@ These need a real device and/or a live bridge+relay; defer until reachable:
   camera permission, speech-to-text. Also verify an Android cloud/device-transfer
   restore and an iOS device restore require re-pairing (the secure phone identity
   must not migrate), then confirm profile activity rehydrates from the bridge.
-- **Live bridge contracts:** the exact JSON shapes of `thread/list`,
+- **Live bridge contracts:** the exact JSON shapes of `sync/changes`,
   `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent`/
   `compaction`/`assistant_response_boundary` payloads are decoded with
   **tolerant** parsers; confirm field names against a real bridge / a real

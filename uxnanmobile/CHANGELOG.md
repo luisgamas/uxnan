@@ -6,32 +6,62 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 ### Added
-- **Conversations stay in step with the desktop and other phones.** The bridge
-  now announces everything another client does, and the app applies it
-  (`ThreadManager`):
-  - `stream/thread/updated` upserts the thread — a conversation started on the
-    desktop appears in the list at once, filed under the connected PC — and a
-    `prompt`-sourced title never replaces the one already shown;
-    `stream/thread/deleted` removes it.
-  - `stream/turn/created` places a prompt typed elsewhere **above** the answer
-    that is about to stream (it used to arrive only after it, so it sorted
-    below). `turn/send` now carries `clientTurnId` (the local bubble id), so this
-    app's own echo confirms its bubble instead of drawing the message twice.
-  - `stream/approval/resolved` / `stream/question/resolved` retire an approval
-    or question card answered on another client, or timed out, showing the
-    decision or chosen labels; wired app-wide from the root (`_PushHost`) into
-    `ApprovalResponses.adoptResolution` / `QuestionResponses.adoptResolution`.
+- **One layer: the phone is a replica of the PC's bridge** (architecture/02a
+  §5.8.17). `BridgeReplica` (`lib/application/managers/bridge_replica.dart`)
+  keeps what the bridge owns — conversations, projects, the start folder,
+  presence — per PC, behind a cursor `{ storeId, rev, home }` stored in the new
+  `replica_cursors` table. It calls `sync/changes` on connect, on app resume and
+  whenever a notification's `rev` skips one, applies a snapshot (`reset`) by
+  replacing that PC's threads and projects, and applies a notification only
+  when it is newer than what it applied — so a late one can never undo a newer
+  state and a missed one is caught up instead of lost. What was done on the
+  desktop while the phone was away (new conversations, archived ones, projects)
+  is on the phone the next time it connects, and the other way round.
+- **The PC's project registry, mirrored.** The conversation list shows the
+  registry Uxnan Desktop shows, including projects with no conversation yet;
+  "New conversation" picks one of them or **adds a project** by browsing the PC
+  from its start folder (`project/add`); a project folder's long-press sheet can
+  **remove it from the registry** (`project/remove` — its folder and its
+  conversations stay). `stream/project/updated|removed` keep it live.
+- **Start folder.** The PC screen shows the bridge's shared start folder (where
+  browsing for a new project begins) and changes it (`settings/set`); the change
+  reaches Uxnan Desktop and the bridge's CLI alike (`stream/settings/updated`).
+- **Is Uxnan Desktop there?** With the desktop connected to the same bridge the
+  list says "Linked with Uxnan Desktop on <machine>" (`stream/presence/updated`);
+  alone with the bridge it says nothing, which is the normal, fully working
+  case. A conversation started in the desktop carries a laptop mark
+  (`Thread.origin`).
+- **Agents installed later appear** without reconnecting: `stream/agents/updated`
+  re-reads `agent/list`.
+- **Another client's prompt is placed above the answer** that is about to
+  stream (`stream/turn/created`), and `turn/send` carries `clientTurnId` so this
+  app's own echo confirms its bubble instead of drawing the message twice. An
+  approval or question answered on another client, or timed out, settles here
+  (`stream/approval|question/resolved`, wired app-wide from `_PushHost`).
 
 ### Changed
+- **Messages sort by the bridge's `Turn.seq`** (`orderIndex = seq * 1000`, the
+  prompt before its reply), so two clients never show one conversation in two
+  orders, and a turn the bridge reports again never duplicates a bubble.
+- **Titles come from the bridge only.** The app no longer turns the first
+  prompt into a title itself; the bridge names every conversation — provisional,
+  then generated — the same for every client.
+- **Starting a conversation sends its folder, not a project id:** the bridge
+  decides (and registers) the project from the folder.
+- `ThreadManager.loadThreads` / `loadProjects` / `resolveProject` are gone:
+  the replica carries the list. `stream/thread/updated|deleted` are applied by
+  `BridgeReplica` after a revision check, never directly. `projectsProvider` is
+  a stream over the replica's per-PC table (drift schema v7: `projects` keyed by
+  PC + id, `threads.origin_kind|origin_name`, `replica_cursors`).
 - `ThreadRenamedEvent` is replaced by `ThreadUpdatedEvent` (the bridge retired
   `stream/thread/renamed`).
 
 ### Fixed
-- **The thread list never loaded from a real bridge.** `loadThreads` read the
-  `thread/list` result as a bare list, but the contract (and the bridge) return
-  `ThreadList` — `{ threads: [...] }` — so nothing was stored and a thread
-  created on another client could never appear. The test double returned the
-  bare list, which is why it went unnoticed; it now returns the real shape.
+- **A conversation opened from a notification could not be found later:**
+  opening one the app had not stored yet now reads it from the bridge and files
+  it under its PC.
+- **Removing a PC left its projects and cursor behind:** `forgetDevice` drops
+  them with it.
 
 
 ## [0.0.23-alpha.20260922+20260922] - 20260922

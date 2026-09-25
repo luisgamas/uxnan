@@ -274,13 +274,83 @@ class ThreadUpdatedEvent extends DomainEvent {
 /// another client.
 class ThreadDeletedEvent extends DomainEvent {
   /// Creates a [ThreadDeletedEvent].
-  const ThreadDeletedEvent({this.threadId});
+  const ThreadDeletedEvent({this.threadId, this.rev});
 
   /// The deleted thread.
   final String? threadId;
 
+  /// Sync revision of the deletion (architecture/02a §5.8.17), when sent.
+  final int? rev;
+
   @override
-  List<Object?> get props => [threadId];
+  List<Object?> get props => [threadId, rev];
+}
+
+/// A project entered or changed in the PC's registry (`stream/project/updated`,
+/// architecture/02a §5.8.17) — added on this phone, another one, or Uxnan
+/// Desktop. Carries the whole wire project (with its sync `rev`).
+class ProjectUpdatedEvent extends DomainEvent {
+  /// Creates a [ProjectUpdatedEvent].
+  const ProjectUpdatedEvent({required this.project});
+
+  /// The wire `Project`.
+  final Map<String, dynamic> project;
+
+  @override
+  List<Object?> get props => [project];
+}
+
+/// A project left the PC's registry (`stream/project/removed`). Its
+/// conversations are untouched.
+class ProjectRemovedEvent extends DomainEvent {
+  /// Creates a [ProjectRemovedEvent].
+  const ProjectRemovedEvent({required this.projectId, this.rev});
+
+  /// The removed project.
+  final String projectId;
+
+  /// Sync revision of the removal.
+  final int? rev;
+
+  @override
+  List<Object?> get props => [projectId, rev];
+}
+
+/// The PC's shared settings changed (`stream/settings/updated`).
+class SettingsUpdatedEvent extends DomainEvent {
+  /// Creates a [SettingsUpdatedEvent].
+  const SettingsUpdatedEvent({this.home, this.rev});
+
+  /// The start folder new projects are explored from.
+  final String? home;
+
+  /// Sync revision of the change.
+  final int? rev;
+
+  @override
+  List<Object?> get props => [home, rev];
+}
+
+/// Who is connected to the PC's bridge changed (`stream/presence/updated`):
+/// the whole list, so applying it is idempotent.
+class PresenceUpdatedEvent extends DomainEvent {
+  /// Creates a [PresenceUpdatedEvent].
+  const PresenceUpdatedEvent({required this.clients});
+
+  /// The wire `ClientPresence` entries.
+  final List<Object?> clients;
+
+  @override
+  List<Object?> get props => [clients];
+}
+
+/// An agent CLI appeared or disappeared on the PC (`stream/agents/updated`).
+class AgentsUpdatedEvent extends DomainEvent {
+  /// Creates an [AgentsUpdatedEvent].
+  const AgentsUpdatedEvent();
+
+  @override
+  List<Object?> get props => const [];
 }
 
 /// A user turn was stored on the bridge (`stream/turn/created`) — started or

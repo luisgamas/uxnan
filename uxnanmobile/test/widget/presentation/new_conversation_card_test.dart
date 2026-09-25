@@ -17,7 +17,12 @@ Widget _wrap({
   return ProviderScope(
     overrides: [
       projectsProvider.overrideWith(
-        (ref) async => const [Project(id: 'p1', name: 'App', cwd: '/app')],
+        (ref) => Stream.value(
+          const [
+            Project(id: 'p1', name: 'App', cwd: '/app'),
+            Project(id: 'p2', name: 'Site', cwd: '/site'),
+          ],
+        ),
       ),
       agentsProvider.overrideWith(
         (ref) async =>
@@ -87,6 +92,35 @@ void main() {
     expect(find.text('Streaming'), findsNothing);
     expect(find.text('Approvals'), findsNothing);
     expect(find.text('Select an agent'), findsNothing);
+  });
+
+  testWidgets("the PC's projects are the choice, plus adding one", (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(requiresLogin: false));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project'), findsOneWidget);
+    expect(find.text('App'), findsOneWidget);
+    expect(find.text('Site'), findsOneWidget);
+    expect(find.text('Add a project'), findsOneWidget);
+
+    // The first project starts selected; tapping another moves the choice.
+    bool selected(String name) => tester
+        .widgetList<Semantics>(
+          find.ancestor(of: find.text(name), matching: find.byType(Semantics)),
+        )
+        .any((s) => s.properties.selected ?? false);
+    expect(selected('App'), isTrue);
+    await tester.tap(find.text('Site'));
+    await tester.pumpAndSettle();
+    expect(selected('Site'), isTrue);
+    expect(selected('App'), isFalse);
   });
 
   testWidgets('selecting an agent expands only its capability chips', (
@@ -247,8 +281,9 @@ void main() {
         ProviderScope(
           overrides: [
             projectsProvider.overrideWith(
-              (ref) async =>
-                  const [Project(id: 'p1', name: 'App', cwd: '/app')],
+              (ref) => Stream.value(
+                const [Project(id: 'p1', name: 'App', cwd: '/app')],
+              ),
             ),
             agentsProvider.overrideWith(
               (ref) async => const <AgentDescriptor>[],

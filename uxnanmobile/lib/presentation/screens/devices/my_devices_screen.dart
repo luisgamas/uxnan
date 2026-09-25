@@ -104,6 +104,7 @@ class MyDevicesScreen extends ConsumerWidget {
     await ref
         .read(threadRepositoryProvider)
         .deleteThreadsByDeviceId(device.macDeviceId);
+    await ref.read(bridgeReplicaProvider).forgetDevice(device.macDeviceId);
     await ref
         .read(trustedDeviceRepositoryProvider)
         .deleteDevice(device.macDeviceId);

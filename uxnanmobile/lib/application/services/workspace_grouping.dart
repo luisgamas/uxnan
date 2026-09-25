@@ -10,6 +10,7 @@ class WorkspaceGroup {
     required this.label,
     required this.threads,
     this.path,
+    this.projectId,
     this.repoKey,
     this.repoLabel,
     this.branch,
@@ -28,6 +29,10 @@ class WorkspaceGroup {
   /// The path as it was actually reported, for display and copying. The [key]
   /// is folded for matching and is not what a user should ever read.
   final String? path;
+
+  /// The PC's registered project this folder is (`project/list`), when it is
+  /// one — what removing it from the list acts on.
+  final String? projectId;
 
   /// The normalized path of the repository's MAIN worktree, when the bridge
   /// told us — `git/worktrees`, never a path prefix, because worktrees are
@@ -116,18 +121,13 @@ String workspaceLabel(String path) {
 
 /// Groups [threads] by the folder they run in.
 ///
-/// One level, not two. `uxnandesktop` shows repositories over their worktrees
-/// because it KNOWS which is which; the phone does not — the bridge reports a
-/// flat list of configured roots and nothing about worktrees, which live as
-/// siblings of their repository. A "project" level built on that knowledge
-/// would have been a folder heading one folder, plus a bucket named "other"
-/// holding most of the real work. So the folder is the top of the tree until
-/// the bridge can say more (`git/worktrees`), at which point a project level
-/// can come back meaning what it does on the desktop.
+/// One level: the folder. Which folders are worktrees of one repository is
+/// what `git/worktrees` ([repos]) adds on top, in [buildWorkspaceTree].
 ///
-/// [projects] is still used, for naming only: a folder that IS a configured
-/// root takes the project's name, which is usually friendlier than its
-/// basename.
+/// [projects] is the PC's project registry — the same list Uxnan Desktop
+/// shows (architecture/02a §5.8.17). A folder that is a project takes its
+/// name, and a project with no conversation yet still gets its (empty) group,
+/// so a project added on either side is on both at once.
 ///
 /// Paths are matched and de-duplicated after normalising separators and case,
 /// so `C:\Dev\App` and `c:/dev/app/` are one folder however they reached us.
@@ -137,9 +137,9 @@ List<WorkspaceGroup> groupThreadsByWorkspace({
   required List<Project> projects,
   Map<String, WorkspaceRepo> repos = const {},
 }) {
-  final names = {
+  final byProject = {
     for (final project in projects)
-      normalizeWorkspacePath(project.cwd): project.name,
+      normalizeWorkspacePath(project.cwd): project,
   };
 
   final byKey = <String, List<Thread>>{};
@@ -152,9 +152,15 @@ List<WorkspaceGroup> groupThreadsByWorkspace({
     if (cwd != null && cwd.isNotEmpty) paths.add(cwd);
     labels.putIfAbsent(
       key,
-      () => key.isEmpty ? '' : (names[key] ?? workspaceLabel(cwd!)),
+      () => key.isEmpty ? '' : (byProject[key]?.name ?? workspaceLabel(cwd!)),
     );
     (byKey[key] ??= []).add(thread);
+  }
+  for (final MapEntry(:key, value: project) in byProject.entries) {
+    if (byKey.containsKey(key)) continue;
+    byKey[key] = [];
+    labels[key] = project.name;
+    pathsOf[key] = {project.cwd};
   }
 
   return [
@@ -168,6 +174,7 @@ List<WorkspaceGroup> groupThreadsByWorkspace({
           final paths? when paths.isNotEmpty => paths.first,
           _ => null,
         },
+        projectId: byProject[entry.key]?.id,
         repoKey: repos[entry.key]?.key,
         repoLabel: repos[entry.key]?.label,
         branch: repos[entry.key]?.branch,

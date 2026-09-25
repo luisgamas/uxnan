@@ -5,6 +5,7 @@ import 'package:uxnan/infrastructure/storage/tables/connection_sessions_table.da
 import 'package:uxnan/infrastructure/storage/tables/git_action_log_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/messages_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/projects_table.dart';
+import 'package:uxnan/infrastructure/storage/tables/replica_cursors_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/threads_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/trusted_devices_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/turns_table.dart';
@@ -26,6 +27,7 @@ part 'local_database.g.dart';
     ComposerDraftsTable,
     GitActionLogTable,
     ConnectionSessionsTable,
+    ReplicaCursorsTable,
   ],
 )
 class UxnanDatabase extends _$UxnanDatabase {
@@ -36,7 +38,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -75,6 +77,17 @@ class UxnanDatabase extends _$UxnanDatabase {
           // relay-vs-direct split) on the profile / per-PC screens.
           if (from < 6) {
             await m.createTable(connectionSessionsTable);
+          }
+          // v7: the phone is a replica of each PC's bridge (architecture/02a
+          // §5.8.17): conversations remember where they were started, each
+          // PC's project registry is kept per PC (the old table was never
+          // filled), and how far each copy has caught up is recorded.
+          if (from < 7) {
+            await m.addColumn(threadsTable, threadsTable.originKind);
+            await m.addColumn(threadsTable, threadsTable.originName);
+            await m.deleteTable('projects_table');
+            await m.createTable(projectsTable);
+            await m.createTable(replicaCursorsTable);
           }
         },
         beforeOpen: (details) async {

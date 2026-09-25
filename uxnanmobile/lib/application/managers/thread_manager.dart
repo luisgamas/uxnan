@@ -4,14 +4,12 @@ import 'dart:math';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
-import 'package:uxnan/core/extensions/string_ext.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/message.dart';
-import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
@@ -29,6 +27,7 @@ import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
+import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 
@@ -69,7 +68,9 @@ class ThreadManager {
     _phaseSub = connectionPhases?.listen(_onConnectionPhase);
   }
 
-  static const int _automaticTitleMaxLength = 72;
+  /// Room for one turn's messages in the order index: a message's position is
+  /// its turn's `seq` times this, plus its slot in the turn (see [_seqOrder]).
+  static const int _orderStride = 1000;
 
   final IThreadRepository _threadRepository;
   final IMessageRepository _messageRepository;
@@ -330,49 +331,36 @@ class ThreadManager {
   /// The active thread id, if any.
   String? get activeThreadId => _activeThreadId;
 
-  /// Loads the thread list from the bridge and persists it.
-  Future<void> loadThreads({String? projectId, String? deviceId}) async {
-    final response = await _sendRequest(
-      'thread/list',
-      projectId != null ? {'projectId': projectId} : null,
-    );
-    // The contract is `ThreadList` — `{ threads: [...] }`, not a bare list.
-    // Reading a bare list here silently loaded nothing from a real bridge, so
-    // a thread started on another client never reached this list.
-    final result = response.result;
-    final threads = result is Map ? result['threads'] : null;
-    if (threads is! List) return;
+  /// Applies one `sync/changes` answer's conversations to this phone's copy
+  /// of [deviceId]'s bridge (architecture/02a §5.8.17): upserts [threads],
+  /// forgets [removedIds], and on a full snapshot ([reset]) also forgets every
+  /// conversation of that PC the bridge no longer has. A thread the bridge
+  /// reports as running shows as working at once.
+  Future<void> applyReplicaThreads({
+    required String deviceId,
+    required List<Object?> threads,
+    required List<String> removedIds,
+    required bool reset,
+  }) async {
+    final kept = <String>{};
     for (final raw in threads) {
-      if (raw is Map) {
-        // Tag each synced thread with the PC it came from so the list can be
-        // scoped to the selected device.
-        final thread = _parseThread(raw.cast<String, dynamic>());
-        await _threadRepository.saveThread(
-          deviceId != null ? thread.copyWith(deviceId: deviceId) : thread,
-        );
+      if (raw is! Map || raw['id'] is! String) continue;
+      final json = raw.cast<String, dynamic>();
+      await _adoptBridgeThread(json, deviceId: deviceId);
+      kept.add(json['id'] as String);
+      if (json['activeTurnId'] is String && !_live.containsKey(json['id'])) {
+        _setActivity(json['id'] as String, ThreadActivity.running);
       }
     }
-  }
-
-  /// Resolves (or creates) the project rooted at [cwd] (`project/resolve`), so
-  /// a folder picked via the workspace browser can be started as a thread.
-  Future<Project?> resolveProject(String cwd) async {
-    final response = await _sendRequest('project/resolve', {'cwd': cwd});
-    final result = response.result;
-    return result is Map
-        ? Project.fromJson(result.cast<String, dynamic>())
-        : null;
-  }
-
-  /// Loads the bridge's project list (`project/list`).
-  Future<List<Project>> loadProjects() async {
-    final response = await _sendRequest('project/list');
-    final result = response.result;
-    if (result is! List) return const [];
-    return [
-      for (final raw in result)
-        if (raw is Map) Project.fromJson(raw.cast<String, dynamic>()),
-    ];
+    for (final id in removedIds) {
+      await _forgetThread(id);
+    }
+    if (!reset) return;
+    for (final thread in await _threadRepository.getThreads()) {
+      if (thread.deviceId == deviceId && !kept.contains(thread.id)) {
+        await _forgetThread(thread.id);
+      }
+    }
   }
 
   /// Asks the bridge which folders are worktrees of the repository at [cwd].
@@ -438,23 +426,12 @@ class ThreadManager {
     await _syncThreadTitle(threadId, trimmed);
   }
 
-  /// Pushes a title to the bridge.
-  ///
-  /// [automatic] marks the throwaway name derived from the opening message.
-  /// The bridge reads a plain `thread/rename` as **the user renaming by hand**
-  /// — final, never replaced — so without this flag our own placeholder would
-  /// masquerade as a deliberate choice and block the real generated title from
-  /// ever landing.
-  Future<void> _syncThreadTitle(
-    String threadId,
-    String title, {
-    bool automatic = false,
-  }) async {
+  /// Pushes a title the user chose to the bridge (a hand rename: final).
+  Future<void> _syncThreadTitle(String threadId, String title) async {
     try {
       await _sendRequest('thread/rename', {
         'threadId': threadId,
         'title': title,
-        if (automatic) 'source': 'prompt',
       });
     } on Object catch (error, stackTrace) {
       AppLogger.warn(
@@ -498,27 +475,20 @@ class ThreadManager {
     }
   }
 
-  /// Adopts a thread the bridge announced (`stream/thread/updated`): a new one
-  /// another client started is stored under the connected PC; a known one is
-  /// updated in place, keeping what only this app knows (its PC, its worktree
-  /// path).
-  ///
-  /// A `prompt`-sourced title never replaces a title this app already shows:
-  /// it is the provisional name taken from the opening message, which this
-  /// app derives on its own. `agent` and `user` titles are authoritative.
-  Future<void> _adoptBridgeThread(Map<String, dynamic> json) async {
+  /// Adopts a thread the bridge announced (`stream/thread/updated`) or
+  /// synced (`sync/changes`): a new one another client started is stored under
+  /// its PC; a known one is updated in place, keeping what only this app knows
+  /// (its PC, its worktree path). The title is the bridge's — it names every
+  /// conversation, provisional and generated, for every client alike.
+  Future<void> _adoptBridgeThread(
+    Map<String, dynamic> json, {
+    String? deviceId,
+  }) async {
     final incoming = _parseThread(json);
     final existing = await _threadRepository.getThread(incoming.id);
-    final source = json['titleSource'];
-    final provisional = source == null || source == 'prompt';
-    final keepTitle = existing != null &&
-        provisional &&
-        !_hasPlaceholderTitle(existing) &&
-        existing.title.trim().isNotEmpty;
     await _threadRepository.saveThread(
       incoming.copyWith(
-        title: keepTitle ? existing.title : null,
-        deviceId: existing?.deviceId ?? _currentDeviceId?.call(),
+        deviceId: existing?.deviceId ?? deviceId ?? _currentDeviceId?.call(),
         worktreePath: existing?.worktreePath,
       ),
     );
@@ -557,6 +527,8 @@ class ThreadManager {
     String? clientTurnId,
   ) {
     final turnId = turn['id'] as String;
+    _noteSeq(turnId, turn['seq']);
+    final userOrder = _seqOrder(turn['seq'], MessageRole.user);
     final queued = turn['status'] == 'queued';
     final state =
         queued ? MessageDeliveryState.queued : MessageDeliveryState.sent;
@@ -570,7 +542,11 @@ class ThreadManager {
           // state (failed, cancelled) came from something newer than this.
           if (message.deliveryState != MessageDeliveryState.sending) return;
           await _messageRepository.saveMessage(
-            message.copyWith(turnId: turnId, deliveryState: state),
+            message.copyWith(
+              turnId: turnId,
+              deliveryState: state,
+              orderIndex: userOrder,
+            ),
           );
           return;
         }
@@ -589,7 +565,7 @@ class ThreadManager {
           role: MessageRole.user,
           contents: [TextContent(user.text)],
           deliveryState: state,
-          orderIndex: _maxOrder(messages) + 1,
+          orderIndex: userOrder ?? _maxOrder(messages) + 1,
           createdAt: _millisToDate(user.createdAt ?? turn['createdAt']),
         ),
       );
@@ -823,7 +799,7 @@ class ThreadManager {
   /// Starts a new thread (`thread/start`) for [projectId], optionally overriding
   /// the agent/model/title/cwd, persists it locally and returns it.
   Future<Thread> startThread({
-    required String projectId,
+    String? projectId,
     String? title,
     String? agentId,
     String? model,
@@ -831,8 +807,11 @@ class ThreadManager {
     String? deviceId,
     String? worktreePath,
   }) async {
+    // The folder decides the project (the bridge registers it); a project id
+    // only stands in for a folder when none is given.
     final response = await _sendRequest('thread/start', {
-      'projectId': projectId,
+      if (projectId != null && (cwd == null || cwd.isEmpty))
+        'projectId': projectId,
       if (title != null && title.isNotEmpty) 'title': title,
       if (agentId != null) 'agentId': agentId,
       if (model != null && model.isNotEmpty) 'model': model,
@@ -850,8 +829,8 @@ class ThreadManager {
       throw StateError('thread/start returned no thread');
     }
     final base = _parseThread(result.cast<String, dynamic>());
-    // Keep the bridge title. If it is still a placeholder, the first user
-    // prompt becomes a concise conversation title in [sendUserMessage].
+    // The bridge names it from its first message (and asks the agent for a
+    // better name after the first answer).
     var thread = deviceId != null ? base.copyWith(deviceId: deviceId) : base;
     // The bridge doesn't track the worktree, so persist the path the app
     // created it at — this surfaces the "Remove worktree" action.
@@ -874,6 +853,9 @@ class ThreadManager {
   /// re-syncs the thread from the bridge to recover anything missed.
   Future<void> selectThread(String threadId) async {
     _activeThreadId = threadId;
+    // Opened from a notification, a conversation may not be in this phone's
+    // copy yet: fetch it, so it stays in the list after leaving the screen.
+    unawaited(_ensureThreadKnown(threadId));
     markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];
     _renderLimit = _historyPageSize; // reset the window for the new thread
@@ -1239,6 +1221,9 @@ class ThreadManager {
       final turnId = rawTurn['id'] as String?;
       final messages = rawTurn['messages'];
       if (turnId == null || messages is! List) continue;
+      _noteSeq(turnId, rawTurn['seq']);
+      final userOrder = _seqOrder(rawTurn['seq'], MessageRole.user);
+      final assistantOrder = _seqOrder(rawTurn['seq'], MessageRole.assistant);
       for (final rawMsg in messages) {
         if (rawMsg is! Map) continue;
         final role = rawMsg['role'];
@@ -1249,12 +1234,22 @@ class ThreadManager {
           // `turn/send`, so matching by (turn, role) preserves their UUID,
           // attachments, and delivery state. A missing user is genuinely from
           // another client and gets a deterministic local id.
-          if (userByTurn.containsKey(turnId)) continue;
+          final known = userByTurn[turnId];
+          if (known != null) {
+            // Put it where the bridge says it belongs (repairs a message
+            // placed by arrival before positions existed).
+            if (userOrder != null && known.orderIndex != userOrder) {
+              toSave.add(known.copyWith(orderIndex: userOrder));
+            }
+            continue;
+          }
           // Adopt the local echo instead of inserting beside it: same row, now
           // stamped with the turn it turned out to belong to.
           final orphans = orphanUsers[content];
           if (orphans != null && orphans.isNotEmpty) {
-            final adopted = orphans.removeAt(0).copyWith(turnId: turnId);
+            final adopted = orphans
+                .removeAt(0)
+                .copyWith(turnId: turnId, orderIndex: userOrder);
             toSave.add(adopted);
             userByTurn[turnId] = adopted;
             continue;
@@ -1268,10 +1263,16 @@ class ThreadManager {
             deliveryState: rawTurn['status'] == 'cancelled'
                 ? MessageDeliveryState.cancelled
                 : MessageDeliveryState.sent,
-            orderIndex: 0,
+            orderIndex: userOrder ?? 0,
             createdAt: _millisToDate(rawMsg['createdAt']),
           );
-          pending.add(message);
+          // Placed by the bridge's position when it sent one; otherwise
+          // relative to the window below.
+          if (userOrder != null) {
+            toSave.add(message);
+          } else {
+            pending.add(message);
+          }
           userByTurn[turnId] = message;
           continue;
         }
@@ -1323,28 +1324,35 @@ class ThreadManager {
                 presentThinking != thinking ||
                 presentBlocks != blocks.length;
           }
-          if (changed) {
+          final moved =
+              assistantOrder != null && present.orderIndex != assistantOrder;
+          if (changed || moved) {
             toSave.add(
               present.copyWith(
-                contents: contents,
-                deliveryState: MessageDeliveryState.delivered,
+                contents: changed ? contents : null,
+                deliveryState: changed ? MessageDeliveryState.delivered : null,
+                orderIndex: assistantOrder,
               ),
             );
           }
           continue;
         }
-        pending.add(
-          Message(
-            id: id,
-            threadId: threadId,
-            turnId: turnId,
-            role: MessageRole.assistant,
-            contents: contents,
-            deliveryState: MessageDeliveryState.delivered,
-            orderIndex: 0, // assigned below, relative to the existing window
-            createdAt: _millisToDate(rawMsg['createdAt']),
-          ),
+        final answer = Message(
+          id: id,
+          threadId: threadId,
+          turnId: turnId,
+          role: MessageRole.assistant,
+          contents: contents,
+          deliveryState: MessageDeliveryState.delivered,
+          // The bridge's position, or assigned below relative to the window.
+          orderIndex: assistantOrder ?? 0,
+          createdAt: _millisToDate(rawMsg['createdAt']),
         );
+        if (assistantOrder != null) {
+          toSave.add(answer);
+        } else {
+          pending.add(answer);
+        }
       }
     }
     // Assign order indices: an older page sits below the current minimum, the
@@ -1410,6 +1418,16 @@ class ThreadManager {
       }
     }
     if (windowStart == null) return;
+    // A turn newer than every turn of the page (created while it was in
+    // flight) is not the page's to judge — whatever the phone's clock says.
+    var pageMaxSeq = 0;
+    for (final rawTurn in turns) {
+      if (rawTurn is Map && rawTurn['seq'] is int) {
+        pageMaxSeq = max(pageMaxSeq, rawTurn['seq'] as int);
+      }
+    }
+    final newerThanPage =
+        pageMaxSeq > 0 ? (pageMaxSeq + 1) * _orderStride : null;
     final liveTurnId = _live[threadId]?.turnId;
     final queued = queueOf(threadId).turnIds.toSet();
     for (final message in existing) {
@@ -1418,6 +1436,7 @@ class ThreadManager {
           message.turnId == liveTurnId ||
           queued.contains(message.turnId) ||
           message.orderIndex < windowStart ||
+          (newerThanPage != null && message.orderIndex >= newerThanPage) ||
           !message.createdAt.isBefore(staleBefore)) {
         continue;
       }
@@ -1450,7 +1469,8 @@ class ThreadManager {
       ...images,
     ];
     if (contents.isEmpty) return;
-    await _titleFromFirstPrompt(threadId, text);
+    // The bridge names the conversation from this message itself (and asks
+    // the agent for a better name after the turn) — no client renames.
     final message = Message(
       id: _uuid.v4(),
       threadId: threadId,
@@ -1725,8 +1745,11 @@ class ThreadManager {
         // not where it was typed: it was stored while the previous turn was
         // still running, so its original index would file it above that turn's
         // reply — as if the user had said it before getting an answer.
+        // With the bridge's position known, that position already is where it
+        // was delivered.
         final movedToEnd = reorderToEnd &&
-            message.deliveryState == MessageDeliveryState.queued;
+            message.deliveryState == MessageDeliveryState.queued &&
+            !_seqByTurn.containsKey(turnId);
         await _messageRepository.saveMessage(
           message.copyWith(
             deliveryState: state,
@@ -1754,29 +1777,6 @@ class ThreadManager {
       MessageDeliveryState.sent,
       reorderToEnd: true,
     );
-  }
-
-  Future<void> _titleFromFirstPrompt(String threadId, String text) async {
-    final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (normalized.isEmpty) return;
-
-    final thread = await _threadRepository.getThread(threadId);
-    if (thread == null || !_hasPlaceholderTitle(thread)) return;
-
-    final messages = await _messageRepository.getMessages(threadId);
-    if (messages.any((message) => message.role == MessageRole.user)) return;
-
-    final title = normalized.truncate(_automaticTitleMaxLength);
-    await _threadRepository.saveThread(thread.copyWith(title: title));
-    unawaited(_syncThreadTitle(threadId, title, automatic: true));
-  }
-
-  static bool _hasPlaceholderTitle(Thread thread) {
-    final title = thread.title.trim();
-    return title.isEmpty ||
-        title == thread.id ||
-        title == 'New' ||
-        title == 'New thread';
   }
 
   /// Responds to a pending approval ([approvalId]) on [threadId] with
@@ -2009,13 +2009,11 @@ class ThreadManager {
         // against it every time it changes.
         unawaited(_settleLocalQueueEchoes(threadId, queuedTurnIds));
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
-      case ThreadUpdatedEvent(:final thread):
-        // Created or changed anywhere — here, another phone, the desktop, or a
-        // title the bridge generated. Upserting it is what makes a thread
-        // started on another client appear in the list without a refresh.
-        unawaited(_adoptBridgeThread(thread));
-      case ThreadDeletedEvent():
-        unawaited(_forgetThread(threadId));
+      case ThreadUpdatedEvent() || ThreadDeletedEvent():
+        // Applied by BridgeReplica, which checks each change's sync revision
+        // first (a late notification must not undo a newer state) and calls
+        // [applyReplicaThreads] — the one way a thread is written.
+        break;
       case TurnCreatedEvent(:final turn, :final clientTurnId):
         unawaited(_adoptCreatedTurn(threadId, turn, clientTurnId));
       case ApprovalResolvedEvent(
@@ -2046,7 +2044,14 @@ class ThreadManager {
             timedOut: timedOut,
           ),
         );
-      case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
+      case GitProgressEvent() ||
+            ModelResolvedEvent() ||
+            ProjectUpdatedEvent() ||
+            ProjectRemovedEvent() ||
+            SettingsUpdatedEvent() ||
+            PresenceUpdatedEvent() ||
+            AgentsUpdatedEvent() ||
+            UnknownDomainEvent():
         break;
     }
   }
@@ -2171,7 +2176,8 @@ class ThreadManager {
       contents: contents,
       deliveryState:
           failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
-      orderIndex: await _orderIndexFor(threadId),
+      orderIndex: _seqOrder(_seqByTurn[turnId], MessageRole.assistant) ??
+          await _orderIndexFor(threadId),
       createdAt: live.startedAt,
     );
     if (threadId == _activeThreadId) {
@@ -2391,6 +2397,22 @@ class ThreadManager {
     _activity.add(next);
   }
 
+  /// Where a message of the turn at position [seq] (`Turn.seq`) sits in its
+  /// conversation: the bridge's order, never the order this phone happened to
+  /// hear about turns — so a turn it missed and read later still lands in its
+  /// place. The user's message first, the answer after it. `null` when the
+  /// bridge sent no position.
+  static int? _seqOrder(Object? seq, MessageRole role) => seq is int && seq > 0
+      ? seq * _orderStride + (role == MessageRole.user ? 0 : 1)
+      : null;
+
+  /// Positions (`Turn.seq`) of the turns this phone has seen, by turn id.
+  final Map<String, int> _seqByTurn = {};
+
+  void _noteSeq(String turnId, Object? seq) {
+    if (seq is int && seq > 0) _seqByTurn[turnId] = seq;
+  }
+
   Future<int> _orderIndexFor(String threadId) async {
     if (threadId == _activeThreadId) return _maxOrder(_activePersisted) + 1;
     final existing = await _messageRepository.getMessages(threadId);
@@ -2547,7 +2569,15 @@ class ThreadManager {
         TurnCreatedEvent(:final threadId) => threadId,
         ApprovalResolvedEvent(:final threadId) => threadId,
         QuestionResolvedEvent(:final threadId) => threadId,
-        UnknownDomainEvent() => null,
+        // The PC's registry, settings, presence and agents belong to no thread
+        // (BridgeReplica applies them).
+        ProjectUpdatedEvent() ||
+        ProjectRemovedEvent() ||
+        SettingsUpdatedEvent() ||
+        PresenceUpdatedEvent() ||
+        AgentsUpdatedEvent() ||
+        UnknownDomainEvent() =>
+          null,
       };
 
   Thread _parseThread(Map<String, dynamic> json) {
@@ -2573,6 +2603,7 @@ class ThreadManager {
       createdAt: createdAt is int
           ? DateTime.fromMillisecondsSinceEpoch(createdAt)
           : null,
+      origin: ThreadOrigin.fromJson(json['origin']),
     );
   }
 

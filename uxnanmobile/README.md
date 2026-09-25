@@ -69,8 +69,8 @@ this app:
   into an expandable **N previous messages** section after completion, a live
   context-usage indicator, durable markers where an agent
   compacted earlier context, a message scroll rail to jump
-  through your prompts, automatic first-prompt conversation titles that remain
-  manually renameable, per-agent sign-in status, voice and image input, a full
+  through your prompts, automatic conversation titles (named by the PC, the same on
+  the desktop) that remain manually renameable, per-agent sign-in status, voice and image input, a full
   Git screen, and a searchable workspace file browser are all available from
   the phone. Its viewer covers editable highlighted text, selectable diffs,
   GitHub-style Markdown with relative badges/images/links, animated GIF, SVG

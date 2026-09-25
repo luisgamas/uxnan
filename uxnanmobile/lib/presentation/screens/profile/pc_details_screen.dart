@@ -8,9 +8,11 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
+import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -19,7 +21,9 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// Per-PC metrics: the same activity heatmap, stat tiles and per-agent
 /// breakdown as the profile, but scoped to a single paired PC (its
 /// conversations, work, connection time and agents used). Reached from the
-/// device card's overflow menu. All local — no bridge call.
+/// device card's overflow menu. The metrics are all local; while this PC is
+/// connected the screen also shows its shared start folder (`settings/set`,
+/// architecture/02a §5.8.17), which the phone can change.
 class PcDetailsScreen extends ConsumerWidget {
   /// Creates a [PcDetailsScreen] for the PC with [deviceId].
   const PcDetailsScreen({required this.deviceId, super.key});
@@ -93,6 +97,10 @@ class PcDetailsScreen extends ConsumerWidget {
               isConnected: isConnected,
               relayConnected: relayConnected,
             ),
+            if (isConnected) ...[
+              const SizedBox(height: UxnanSpacing.lg),
+              const _StartFolderCard(),
+            ],
             const SizedBox(height: UxnanSpacing.lg),
             MetricsStatGrid(metrics: m),
             const SizedBox(height: UxnanSpacing.xl),
@@ -103,6 +111,90 @@ class PcDetailsScreen extends ConsumerWidget {
         ),
       ),
     ];
+  }
+}
+
+/// The connected PC's start folder: where exploring for a new project begins,
+/// on this phone and in Uxnan Desktop alike. Tapping it browses the PC to pick
+/// another one; the bridge checks it and every client follows.
+class _StartFolderCard extends ConsumerStatefulWidget {
+  const _StartFolderCard();
+
+  @override
+  ConsumerState<_StartFolderCard> createState() => _StartFolderCardState();
+}
+
+class _StartFolderCardState extends ConsumerState<_StartFolderCard> {
+  bool _saving = false;
+
+  Future<void> _change() async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final folder = await WorkspaceBrowserSheet.show(context);
+    if (folder == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(bridgeReplicaProvider).setHome(folder);
+    } on Object {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.bridgeHomeFailed)));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final home = ref.watch(bridgeHomeProvider).value;
+    return NeCard(
+      onTap: _saving ? null : _change,
+      child: Row(
+        children: [
+          UxIcon(UxIcons.folderOpen, color: colors.primary),
+          const SizedBox(width: UxnanSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.bridgeHomeTitle, style: textTheme.titleSmall),
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  home ?? '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: UxnanTypography.codeSmall.copyWith(
+                    color: colors.onSurface,
+                  ),
+                ),
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  l10n.bridgeHomeSubtitle,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          if (_saving)
+            const SizedBox.square(dimension: 20, child: PolygonLoader())
+          else
+            Semantics(
+              label: l10n.bridgeHomeChange,
+              child: UxIcon(
+                UxIcons.edit,
+                size: 20,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

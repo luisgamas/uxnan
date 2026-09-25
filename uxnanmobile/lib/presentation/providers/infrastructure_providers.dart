@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/discovered_bridge.dart';
+import 'package:uxnan/domain/repositories/i_bridge_replica_repository.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
@@ -15,6 +16,7 @@ import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
+import 'package:uxnan/infrastructure/repositories/drift_bridge_replica_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_connection_session_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
@@ -60,6 +62,12 @@ final threadRepositoryProvider = Provider<IThreadRepository>(
 /// Composer-draft repository, backed by drift.
 final composerDraftRepositoryProvider = Provider<IComposerDraftRepository>(
   (ref) => DriftComposerDraftRepository(ref.watch(databaseProvider)),
+);
+
+/// Each paired PC's project registry and sync cursor (architecture/02a
+/// §5.8.17), backed by drift.
+final bridgeReplicaRepositoryProvider = Provider<IBridgeReplicaRepository>(
+  (ref) => DriftBridgeReplicaRepository(ref.watch(databaseProvider)),
 );
 
 /// Message repository, backed by drift.

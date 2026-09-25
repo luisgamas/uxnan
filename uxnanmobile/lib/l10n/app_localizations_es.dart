@@ -336,6 +336,21 @@ class AppLocalizationsEs extends AppLocalizations {
   String get spacesCopyPath => 'Copiar ruta';
 
   @override
+  String get spacesRemoveProject => 'Quitar proyecto';
+
+  @override
+  String spacesRemoveProjectTitle(String name) {
+    return '¿Quitar $name?';
+  }
+
+  @override
+  String get spacesRemoveProjectBody =>
+      'Sale de la lista de proyectos aquí y en Uxnan Desktop. Su carpeta y sus conversaciones se conservan.';
+
+  @override
+  String get spacesRemoveProjectFailed => 'No se pudo quitar el proyecto';
+
+  @override
   String get spacesConversations => 'Conversaciones';
 
   @override
@@ -1238,6 +1253,38 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get newThreadWorkingDir => 'Directorio de trabajo';
+
+  @override
+  String get newThreadAddProject => 'Agregar un proyecto';
+
+  @override
+  String get newThreadAddProjectHint =>
+      'Elige una carpeta de tu PC. También aparece en Uxnan Desktop.';
+
+  @override
+  String get newThreadAddProjectFailed =>
+      'No se pudo agregar esa carpeta. Los proyectos deben estar dentro de la carpeta de inicio de la PC.';
+
+  @override
+  String threadsDesktopLinked(String machine) {
+    return 'Enlazado con Uxnan Desktop en $machine';
+  }
+
+  @override
+  String get threadOriginDesktop => 'Iniciada en Uxnan Desktop';
+
+  @override
+  String get bridgeHomeTitle => 'Carpeta de inicio';
+
+  @override
+  String get bridgeHomeSubtitle =>
+      'Desde donde se exploran los proyectos nuevos. Compartida con Uxnan Desktop.';
+
+  @override
+  String get bridgeHomeChange => 'Cambiar carpeta de inicio';
+
+  @override
+  String get bridgeHomeFailed => 'No se pudo cambiar la carpeta de inicio';
 
   @override
   String get newThreadBrowse => 'Examinar…';

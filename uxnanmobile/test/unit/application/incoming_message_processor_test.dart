@@ -273,6 +273,58 @@ void main() {
       expect((event as ThreadDeletedEvent).threadId, 'th9');
     });
 
+    test('stream/thread/deleted carries its revision', () {
+      final event = processor.classify(
+        note('stream/thread/deleted', {'threadId': 'th9', 'rev': 14}),
+      );
+      expect((event as ThreadDeletedEvent).rev, 14);
+    });
+
+    test('stream/project/updated and stream/project/removed', () {
+      final updated = processor.classify(
+        note('stream/project/updated', {
+          'project': {'id': 'proj_a', 'name': 'app', 'cwd': '/w/app', 'rev': 3},
+        }),
+      );
+      expect((updated as ProjectUpdatedEvent).project['cwd'], '/w/app');
+      final removed = processor.classify(
+        note('stream/project/removed', {'projectId': 'proj_a', 'rev': 4}),
+      );
+      expect((removed as ProjectRemovedEvent).projectId, 'proj_a');
+      expect(removed.rev, 4);
+      expect(
+        processor.classify(note('stream/project/updated', {})),
+        isA<UnknownDomainEvent>(),
+      );
+      expect(
+        processor.classify(note('stream/project/removed', {})),
+        isA<UnknownDomainEvent>(),
+      );
+    });
+
+    test('stream/settings, stream/presence and stream/agents', () {
+      final settings = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {'home': '/work'},
+          'rev': 9,
+        }),
+      );
+      expect((settings as SettingsUpdatedEvent).home, '/work');
+      expect(settings.rev, 9);
+      final presence = processor.classify(
+        note('stream/presence/updated', {
+          'clients': [
+            {'id': 'local:desktop', 'kind': 'desktop', 'name': 'studio'},
+          ],
+        }),
+      );
+      expect((presence as PresenceUpdatedEvent).clients, hasLength(1));
+      expect(
+        processor.classify(note('stream/agents/updated', {'agents': []})),
+        isA<AgentsUpdatedEvent>(),
+      );
+    });
+
     test('stream/turn/created keeps the turn and the sender echo id', () {
       final event = processor.classify(
         note('stream/turn/created', {

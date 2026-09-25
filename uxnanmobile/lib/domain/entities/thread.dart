@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
+import 'package:uxnan/domain/value_objects/thread_origin.dart';
 
 /// A conversation thread handled by a coding agent.
 ///
@@ -22,6 +23,7 @@ class Thread extends Equatable {
     this.model,
     this.lastActivity,
     this.createdAt,
+    this.origin,
   });
 
   /// Unique thread identifier.
@@ -63,6 +65,10 @@ class Thread extends Equatable {
   /// Wire identifier of the agent that handles this thread.
   final String agentId;
 
+  /// Where the conversation was started (a phone, or Uxnan Desktop), when the
+  /// bridge knows.
+  final ThreadOrigin? origin;
+
   /// Returns a copy of this thread with the given fields replaced.
   Thread copyWith({
     String? title,
@@ -76,6 +82,7 @@ class Thread extends Equatable {
     DateTime? lastActivity,
     DateTime? createdAt,
     String? agentId,
+    ThreadOrigin? origin,
   }) {
     return Thread(
       id: id,
@@ -90,6 +97,7 @@ class Thread extends Equatable {
       lastActivity: lastActivity ?? this.lastActivity,
       createdAt: createdAt ?? this.createdAt,
       agentId: agentId ?? this.agentId,
+      origin: origin ?? this.origin,
     );
   }
 
@@ -107,5 +115,6 @@ class Thread extends Equatable {
         lastActivity,
         createdAt,
         agentId,
+        origin,
       ];
 }

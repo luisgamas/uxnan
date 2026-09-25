@@ -335,6 +335,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get spacesCopyPath => 'Copy path';
 
   @override
+  String get spacesRemoveProject => 'Remove project';
+
+  @override
+  String spacesRemoveProjectTitle(String name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String get spacesRemoveProjectBody =>
+      'It leaves the project list here and in Uxnan Desktop. Its folder and its conversations are kept.';
+
+  @override
+  String get spacesRemoveProjectFailed => 'Couldn\'t remove the project';
+
+  @override
   String get spacesConversations => 'Conversations';
 
   @override
@@ -1234,6 +1249,38 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newThreadWorkingDir => 'Working directory';
+
+  @override
+  String get newThreadAddProject => 'Add a project';
+
+  @override
+  String get newThreadAddProjectHint =>
+      'Pick a folder on your PC. It shows in Uxnan Desktop too.';
+
+  @override
+  String get newThreadAddProjectFailed =>
+      'Couldn\'t add that folder. Projects must be inside the PC\'s start folder.';
+
+  @override
+  String threadsDesktopLinked(String machine) {
+    return 'Linked with Uxnan Desktop on $machine';
+  }
+
+  @override
+  String get threadOriginDesktop => 'Started in Uxnan Desktop';
+
+  @override
+  String get bridgeHomeTitle => 'Start folder';
+
+  @override
+  String get bridgeHomeSubtitle =>
+      'Where new projects are browsed from. Shared with Uxnan Desktop.';
+
+  @override
+  String get bridgeHomeChange => 'Change start folder';
+
+  @override
+  String get bridgeHomeFailed => 'Couldn\'t change the start folder';
 
   @override
   String get newThreadBrowse => 'Browse…';

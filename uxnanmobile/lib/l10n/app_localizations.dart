@@ -608,6 +608,30 @@ abstract class AppLocalizations {
   /// **'Copy path'**
   String get spacesCopyPath;
 
+  /// No description provided for @spacesRemoveProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove project'**
+  String get spacesRemoveProject;
+
+  /// No description provided for @spacesRemoveProjectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String spacesRemoveProjectTitle(String name);
+
+  /// No description provided for @spacesRemoveProjectBody.
+  ///
+  /// In en, this message translates to:
+  /// **'It leaves the project list here and in Uxnan Desktop. Its folder and its conversations are kept.'**
+  String get spacesRemoveProjectBody;
+
+  /// No description provided for @spacesRemoveProjectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t remove the project'**
+  String get spacesRemoveProjectFailed;
+
   /// No description provided for @spacesConversations.
   ///
   /// In en, this message translates to:
@@ -2179,6 +2203,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Working directory'**
   String get newThreadWorkingDir;
+
+  /// No description provided for @newThreadAddProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a project'**
+  String get newThreadAddProject;
+
+  /// No description provided for @newThreadAddProjectHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a folder on your PC. It shows in Uxnan Desktop too.'**
+  String get newThreadAddProjectHint;
+
+  /// No description provided for @newThreadAddProjectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t add that folder. Projects must be inside the PC\'s start folder.'**
+  String get newThreadAddProjectFailed;
+
+  /// No description provided for @threadsDesktopLinked.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked with Uxnan Desktop on {machine}'**
+  String threadsDesktopLinked(String machine);
+
+  /// No description provided for @threadOriginDesktop.
+  ///
+  /// In en, this message translates to:
+  /// **'Started in Uxnan Desktop'**
+  String get threadOriginDesktop;
+
+  /// No description provided for @bridgeHomeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start folder'**
+  String get bridgeHomeTitle;
+
+  /// No description provided for @bridgeHomeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Where new projects are browsed from. Shared with Uxnan Desktop.'**
+  String get bridgeHomeSubtitle;
+
+  /// No description provided for @bridgeHomeChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change start folder'**
+  String get bridgeHomeChange;
+
+  /// No description provided for @bridgeHomeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t change the start folder'**
+  String get bridgeHomeFailed;
 
   /// No description provided for @newThreadBrowse.
   ///

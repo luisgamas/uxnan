@@ -140,7 +140,11 @@ class _PushHostState extends ConsumerState<_PushHost>
     // hydrated from disk well before any PC connection — the registrar then
     // sends the user's choices (not the defaults) on the first
     // `notifications/register`.
-    ref.read(notificationPreferencesProvider);
+    ref
+      ..read(notificationPreferencesProvider)
+      // The replica of the connected PC lives for the whole app: it catches up
+      // on every connection, so it must be listening before the first one.
+      ..read(bridgeReplicaProvider);
     final registrar = ref.read(pushRegistrarProvider);
     // Taps while the app is alive or resumed from the background.
     _tapSub = registrar.onNotificationTap.listen(_openThread);
@@ -177,6 +181,9 @@ class _PushHostState extends ConsumerState<_PushHost>
     // landed while away appear without leaving + re-entering it.
     unawaited(ref.read(sessionCoordinatorProvider).resume());
     unawaited(ref.read(threadManagerProvider).resyncActive());
+    // Catch the PC's copy up too: conversations and projects another client
+    // added (or removed) while the phone slept.
+    unawaited(ref.read(bridgeReplicaProvider).sync());
     // A store release may have shipped while we were backgrounded; re-check
     // (throttled, so frequent resumes don't spam the store).
     unawaited(ref.read(appUpdateControllerProvider.notifier).maybeCheck());

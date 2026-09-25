@@ -76,7 +76,34 @@ class IncomingMessageProcessor {
               : null,
         ),
       'stream/thread/updated' => _threadUpdated(params['thread']),
-      'stream/thread/deleted' => ThreadDeletedEvent(threadId: threadId),
+      'stream/thread/deleted' => ThreadDeletedEvent(
+          threadId: threadId,
+          rev: params['rev'] is int ? params['rev'] as int : null,
+        ),
+      'stream/project/updated' => params['project'] is Map
+          ? ProjectUpdatedEvent(
+              project: (params['project'] as Map).cast<String, dynamic>(),
+            )
+          : const UnknownDomainEvent(method: 'stream/project/updated'),
+      'stream/project/removed' => params['projectId'] is String
+          ? ProjectRemovedEvent(
+              projectId: params['projectId'] as String,
+              rev: params['rev'] is int ? params['rev'] as int : null,
+            )
+          : const UnknownDomainEvent(method: 'stream/project/removed'),
+      'stream/settings/updated' => SettingsUpdatedEvent(
+          home: switch (params['settings']) {
+            {'home': final String home} => home,
+            _ => null,
+          },
+          rev: params['rev'] is int ? params['rev'] as int : null,
+        ),
+      'stream/presence/updated' => PresenceUpdatedEvent(
+          clients: params['clients'] is List
+              ? params['clients'] as List<Object?>
+              : const [],
+        ),
+      'stream/agents/updated' => const AgentsUpdatedEvent(),
       'stream/turn/created' => _turnCreated(
           params['turn'],
           threadId,

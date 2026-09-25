@@ -9,6 +9,7 @@ import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
+import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
@@ -146,6 +147,22 @@ void main() {
     await events.close();
     await db.close();
   });
+
+  // What `sync/changes` hands the replica for the paired PC: one thread.
+  Future<void> seedThread() => manager.applyReplicaThreads(
+        deviceId: 'pc-1',
+        threads: [
+          {
+            'id': 'th1',
+            'title': 'Thread 1',
+            'agentId': 'codex',
+            'status': 'active',
+            'model': 'gpt-5',
+          },
+        ],
+        removedIds: const [],
+        reset: false,
+      );
 
   test('selectThread builds the timeline from local messages', () async {
     await messageRepo.saveMessages([
@@ -1192,21 +1209,52 @@ void main() {
     expect((await manager.activityStream.first).containsKey('other'), isFalse);
   });
 
-  test('loadThreads parses and persists the thread list (incl. model)',
+  test('applyReplicaThreads stores the synced threads under their PC',
       () async {
-    await manager.loadThreads();
+    await seedThread();
     final threads = await threadRepo.getThreads();
     expect(threads.map((t) => t.id).toList(), ['th1']);
     expect(threads.single.title, 'Thread 1');
     expect(threads.single.model, 'gpt-5');
-    expect(sentMethods, contains('thread/list'));
+    expect(threads.single.deviceId, 'pc-1');
+    // The replica carries the list; the manager asks for nothing.
+    expect(sentMethods, isEmpty);
   });
 
-  test('loadProjects parses the project list', () async {
-    final projects = await manager.loadProjects();
-    expect(projects.single.id, 'p1');
-    expect(projects.single.cwd, '/projects/app');
-    expect(sentMethods, contains('project/list'));
+  test('applyReplicaThreads applies removals, and a snapshot replaces',
+      () async {
+    await seedThread();
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-1',
+      threads: [
+        {'id': 'th2', 'title': 'Two', 'agentId': 'codex', 'status': 'active'},
+      ],
+      removedIds: const ['th1'],
+      reset: false,
+    );
+    expect((await threadRepo.getThreads()).map((t) => t.id), ['th2']);
+
+    // A snapshot drops what the bridge no longer has — of that PC only.
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-2',
+      threads: [
+        {'id': 'elsewhere', 'title': 'Other PC', 'status': 'active'},
+      ],
+      removedIds: const [],
+      reset: false,
+    );
+    await manager.applyReplicaThreads(
+      deviceId: 'pc-1',
+      threads: [
+        {'id': 'th3', 'title': 'Three', 'agentId': 'codex', 'status': 'active'},
+      ],
+      removedIds: const [],
+      reset: true,
+    );
+    expect(
+      (await threadRepo.getThreads()).map((t) => t.id).toSet(),
+      {'th3', 'elsewhere'},
+    );
   });
 
   test('loadAgents parses the agent list', () async {
@@ -1265,7 +1313,7 @@ void main() {
 
   test('renameThread updates the local title and sends thread/rename',
       () async {
-    await manager.loadThreads();
+    await seedThread();
     await manager.renameThread('th1', '  Renamed  ');
 
     final thread = await threadRepo.getThread('th1');
@@ -1274,7 +1322,7 @@ void main() {
   });
 
   test('renameThread ignores a blank title', () async {
-    await manager.loadThreads();
+    await seedThread();
     await manager.renameThread('th1', '   ');
 
     final thread = await threadRepo.getThread('th1');
@@ -1284,7 +1332,7 @@ void main() {
 
   test('renameThread keeps the local rename when the bridge call fails',
       () async {
-    await manager.loadThreads();
+    await seedThread();
     final failingEvents = StreamController<DomainEvent>.broadcast();
     final failing = ThreadManager(
       threadRepository: threadRepo,
@@ -1302,7 +1350,7 @@ void main() {
   });
 
   test('deleteThread removes it locally and sends thread/delete', () async {
-    await manager.loadThreads();
+    await seedThread();
     await manager.deleteThread('th1');
 
     expect(await threadRepo.getThread('th1'), isNull);
@@ -1311,7 +1359,7 @@ void main() {
 
   test('deleteThread clears the active timeline for the active thread',
       () async {
-    await manager.loadThreads();
+    await seedThread();
     await manager.selectThread('th1');
     await _settle();
 
@@ -1321,7 +1369,7 @@ void main() {
 
   test('archiveThread sets the local status and sends thread/archive',
       () async {
-    await manager.loadThreads();
+    await seedThread();
     await manager.archiveThread('th1');
 
     final thread = await threadRepo.getThread('th1');
@@ -1330,7 +1378,7 @@ void main() {
   });
 
   test('unarchiveThread restores active and sends thread/unarchive', () async {
-    await manager.loadThreads();
+    await seedThread();
     await manager.archiveThread('th1');
     await manager.unarchiveThread('th1');
 
@@ -1374,59 +1422,13 @@ void main() {
     expect(_text(user!), 'hola');
   });
 
-  test('first prompt replaces an id placeholder with a conversation title',
-      () async {
-    await manager.loadThreads();
+  test('sendUserMessage leaves naming the thread to the bridge', () async {
+    await seedThread();
     await threadRepo.saveThread(
       (await threadRepo.getThread('th1'))!.copyWith(title: 'th1'),
     );
 
-    await manager.sendUserMessage(
-      'th1',
-      '  Explain   how the streaming timeline works.  ',
-    );
-
-    expect(
-      (await threadRepo.getThread('th1'))!.title,
-      'Explain how the streaming timeline works.',
-    );
-    expect(
-      sentMethods.where((method) => method == 'thread/rename'),
-      hasLength(1),
-    );
-  });
-
-  test('first prompt preserves an explicit thread title', () async {
-    await manager.loadThreads();
-    await manager.renameThread('th1', 'Manual title');
-    sentMethods.clear();
-
-    await manager.sendUserMessage('th1', 'First prompt');
-
-    expect((await threadRepo.getThread('th1'))!.title, 'Manual title');
-    expect(sentMethods, isNot(contains('thread/rename')));
-  });
-
-  test('later prompts never replace an existing placeholder title', () async {
-    await manager.loadThreads();
-    await threadRepo.saveThread(
-      (await threadRepo.getThread('th1'))!.copyWith(title: 'th1'),
-    );
-    await messageRepo.saveMessage(
-      Message(
-        id: 'existing-user',
-        threadId: 'th1',
-        turnId: 'turn-existing',
-        role: MessageRole.user,
-        contents: const [TextContent('Earlier prompt')],
-        deliveryState: MessageDeliveryState.delivered,
-        orderIndex: 0,
-        createdAt: DateTime(2026),
-      ),
-    );
-    sentMethods.clear();
-
-    await manager.sendUserMessage('th1', 'Later prompt');
+    await manager.sendUserMessage('th1', 'Explain the streaming timeline.');
 
     expect((await threadRepo.getThread('th1'))!.title, 'th1');
     expect(sentMethods, isNot(contains('thread/rename')));
@@ -1499,7 +1501,7 @@ void main() {
 
   test('forkThread sends thread/fork and persists the returned thread',
       () async {
-    await manager.loadThreads();
+    await seedThread();
     await _settle();
 
     final forked = await manager.forkThread('th1');
@@ -1513,7 +1515,7 @@ void main() {
   });
 
   test('resumeThread sends thread/resume', () async {
-    await manager.loadThreads();
+    await seedThread();
     await _settle();
 
     await manager.resumeThread('th1');
@@ -1964,74 +1966,69 @@ void main() {
           ],
         };
 
-    test('a thread another client started appears under the connected PC',
-        () async {
-      final bus = StreamController<DomainEvent>.broadcast();
-      final other = ThreadManager(
-        threadRepository: threadRepo,
-        messageRepository: messageRepo,
-        domainEvents: bus.stream,
-        sendRequest: (method, [params]) async =>
-            RpcMessage.response(id: '1', result: <String, dynamic>{}),
-        currentDeviceId: () => 'pc-1',
-      );
-      bus.add(
-        const ThreadUpdatedEvent(
-          threadId: 'th-desk',
-          thread: {
+    test('a thread another client started appears under its PC', () async {
+      await manager.applyReplicaThreads(
+        deviceId: 'pc-1',
+        threads: [
+          {
             'id': 'th-desk',
             'title': 'Started on the desktop',
             'agentId': 'claude-code',
             'status': 'active',
             'model': 'opus',
-            'titleSource': 'user',
+            'origin': {'kind': 'desktop', 'name': 'studio'},
           },
-        ),
+        ],
+        removedIds: const [],
+        reset: false,
       );
-      await _settle();
       final stored = await threadRepo.getThread('th-desk');
       expect(stored?.title, 'Started on the desktop');
       expect(stored?.deviceId, 'pc-1');
       expect(stored?.agentId, 'claude-code');
-      await other.dispose();
-      await bus.close();
+      expect(stored?.origin?.kind, ClientKind.desktop);
+      expect(stored?.origin?.name, 'studio');
     });
 
-    test('a prompt-sourced title never replaces the one shown here', () async {
-      await manager.loadThreads();
-      events.add(
-        const ThreadUpdatedEvent(
-          threadId: 'th1',
-          thread: {
+    test("the bridge's title is the one shown, keeping local-only fields",
+        () async {
+      await seedThread();
+      await threadRepo.saveThread(
+        (await threadRepo.getThread('th1'))!.copyWith(worktreePath: '/wt'),
+      );
+      await manager.applyReplicaThreads(
+        deviceId: 'pc-1',
+        threads: [
+          {
             'id': 'th1',
-            'title': 'provisional',
-            'titleSource': 'prompt',
+            'title': 'Generated',
+            'agentId': 'codex',
+            'status': 'active',
             'model': 'gpt-5.1',
           },
-        ),
+        ],
+        removedIds: const [],
+        reset: false,
       );
-      await _settle();
-      var stored = await threadRepo.getThread('th1');
-      expect(stored?.title, 'Thread 1');
-      // The rest of the update still lands.
-      expect(stored?.model, 'gpt-5.1');
-
-      events.add(
-        const ThreadUpdatedEvent(
-          threadId: 'th1',
-          thread: {'id': 'th1', 'title': 'Generated', 'titleSource': 'agent'},
-        ),
-      );
-      await _settle();
-      stored = await threadRepo.getThread('th1');
+      final stored = await threadRepo.getThread('th1');
       expect(stored?.title, 'Generated');
+      expect(stored?.model, 'gpt-5.1');
+      expect(stored?.worktreePath, '/wt');
     });
 
-    test('a thread deleted on another client leaves this one', () async {
-      await manager.loadThreads();
-      events.add(const ThreadDeletedEvent(threadId: 'th1'));
+    test('thread notifications are left to the replica', () async {
+      await seedThread();
+      events
+        ..add(
+          const ThreadUpdatedEvent(
+            threadId: 'th1',
+            thread: {'id': 'th1', 'title': 'Unchecked'},
+          ),
+        )
+        ..add(const ThreadDeletedEvent(threadId: 'th1'));
       await _settle();
-      expect(await threadRepo.getThread('th1'), isNull);
+      // Only BridgeReplica writes a thread, after checking its revision.
+      expect((await threadRepo.getThread('th1'))?.title, 'Thread 1');
     });
 
     test("another client's prompt is placed before its answer streams",

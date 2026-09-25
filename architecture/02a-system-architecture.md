@@ -637,7 +637,7 @@ class SessionCoordinator {
 
 #### 5.2.2 ThreadManager
 
-> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/managers/thread_manager.dart`. Construye el `TurnTimelineSnapshot` del thread activo desde el repositorio local y aplica eventos de streaming (start/delta/complete, persistiendo el mensaje final); `loadThreads` (`thread/list`) y `sendUserMessage` (`turn/send`) sobre un `RpcSend` inyectado; dedup vía `MessageDeduplicator`. Expone `threadsStream`/`timelineStream` a providers Riverpod. Probado con DB in-memory + stream de eventos controlable. Adaptación: el spec usa `ValueNotifier`; se usan streams (BehaviorSubject) para Riverpod 3.x. Pendiente (FUTURO): paginación remota (`loadMoreHistory`), `startNewThread`/`resumeThread`/`fork`.
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/managers/thread_manager.dart`. Construye el `TurnTimelineSnapshot` del thread activo desde el repositorio local y aplica eventos de streaming (start/delta/complete, persistiendo el mensaje final); `sendUserMessage` (`turn/send`) sobre un `RpcSend` inyectado; la lista de hilos ya no se pide aqui: la escribe `BridgeReplica` (§5.8.17) con `applyReplicaThreads`, el unico camino por el que se guarda un hilo del bridge; dedup vía `MessageDeduplicator`. Expone `threadsStream`/`timelineStream` a providers Riverpod. Probado con DB in-memory + stream de eventos controlable. Adaptación: el spec usa `ValueNotifier`; se usan streams (BehaviorSubject) para Riverpod 3.x. Pendiente (FUTURO): paginación remota (`loadMoreHistory`), `startNewThread`/`resumeThread`/`fork`.
 
 ```dart
 // lib/application/managers/thread_manager.dart
@@ -647,8 +647,7 @@ class ThreadManager {
   final ValueNotifier<Thread?> activeThread;
   final ValueNotifier<Map<String, TurnTimelineSnapshot>> timelines;
 
-  // Acciones
-  Future<void> loadThreads({String? projectId});
+  // Acciones (la lista de hilos llega por BridgeReplica, §5.8.17)
   Future<void> selectThread(String threadId);
   Future<void> loadMoreHistory(String threadId);
   Future<Thread> startNewThread(StartThreadParams params);
@@ -2638,6 +2637,24 @@ PATH del shell de login del usuario (`$SHELL -ilc`, `bridge/src/login-path.ts`)
 vivo (`agent/list`, a lo sumo cada 10 s): un agente instalado despues aparece
 sin reiniciar y se avisa con `stream/agents/updated`; `agent/doctor` explica
 donde busco y que encontro.
+
+**Replicas en los clientes.** En el telefono, `BridgeReplica`
+(`uxnanmobile/lib/application/managers/bridge_replica.dart`) es la unica capa
+que escribe lo que el bridge posee: guarda por PC un cursor `{ storeId, rev,
+home }` (tabla `replica_cursors`), llama `sync/changes` al conectar, al volver
+la app y al detectar un salto de `rev`, y aplica cada notificacion solo si es
+posterior a lo aplicado (una tardia nunca deshace un estado nuevo). Los hilos
+entran por `ThreadManager.applyReplicaThreads`; los proyectos, por PC, en la
+tabla `projects`. La lista agrupa por carpeta y muestra tambien los proyectos
+sin conversaciones; "Nueva conversacion" elige entre los proyectos del registro
+o agrega uno (`project/add`) explorando desde la carpeta de inicio; la hoja de
+detalles de una carpeta ofrece quitarla del registro. La pantalla del PC
+muestra y cambia la carpeta de inicio. Con el desktop conectado al mismo
+bridge, la lista dice "Enlazado con Uxnan Desktop en <maquina>"; una
+conversacion nacida en el desktop lleva su marca. En el desktop, `ChatStore`
+(`uxnandesktop/src/lib/bridge/chat.svelte.ts`) aplica la misma regla y
+`projectMirror` une los proyectos del desktop con el registro
+(`uxnandesktop/architecture/02e-bridge-integration.md`).
 
 **Servicio de usuario.** `uxnan-bridge install-service` registra
 `<node> <cli.js> start --service` (rutas absolutas, `WorkingDirectory` = home)

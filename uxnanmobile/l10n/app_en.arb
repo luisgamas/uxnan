@@ -144,6 +144,15 @@
   "drawerNoDevices": "No PC paired yet",
   "drawerBackToOverview": "Back to overview",
   "spacesCopyPath": "Copy path",
+  "spacesRemoveProject": "Remove project",
+  "spacesRemoveProjectTitle": "Remove {name}?",
+  "@spacesRemoveProjectTitle": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "spacesRemoveProjectBody": "It leaves the project list here and in Uxnan Desktop. Its folder and its conversations are kept.",
+  "spacesRemoveProjectFailed": "Couldn't remove the project",
   "spacesConversations": "Conversations",
   "spacesNoMatch": "No space matches these filters",
   "spacesClearFilters": "Clear filters",
@@ -633,6 +642,20 @@
   "newThreadTitle": "New conversation",
   "newThreadProject": "Project",
   "newThreadWorkingDir": "Working directory",
+  "newThreadAddProject": "Add a project",
+  "newThreadAddProjectHint": "Pick a folder on your PC. It shows in Uxnan Desktop too.",
+  "newThreadAddProjectFailed": "Couldn't add that folder. Projects must be inside the PC's start folder.",
+  "threadsDesktopLinked": "Linked with Uxnan Desktop on {machine}",
+  "@threadsDesktopLinked": {
+    "placeholders": {
+      "machine": {"type": "String"}
+    }
+  },
+  "threadOriginDesktop": "Started in Uxnan Desktop",
+  "bridgeHomeTitle": "Start folder",
+  "bridgeHomeSubtitle": "Where new projects are browsed from. Shared with Uxnan Desktop.",
+  "bridgeHomeChange": "Change start folder",
+  "bridgeHomeFailed": "Couldn't change the start folder",
   "newThreadBrowse": "Browse…",
   "newThreadChangeFolder": "Change",
   "newThreadFolderLabel": "Folder",

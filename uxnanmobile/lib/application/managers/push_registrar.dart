@@ -213,6 +213,11 @@ class PushRegistrar {
             TurnDeliveredEvent() ||
             QueueUpdatedEvent() ||
             ModelResolvedEvent() ||
+            ProjectUpdatedEvent() ||
+            ProjectRemovedEvent() ||
+            SettingsUpdatedEvent() ||
+            PresenceUpdatedEvent() ||
+            AgentsUpdatedEvent() ||
             GitProgressEvent() ||
             UnknownDomainEvent():
         break;

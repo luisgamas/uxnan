@@ -37,9 +37,11 @@ const Set<String> _hiddenAgentIds = {
   'echo',
 };
 
-/// Material 3 dialog to start a new conversation: pick the working directory,
-/// compare the available agents directly, choose an optional model, and
-/// optionally create a worktree. Full-screen on a phone, bounded on a wide
+/// Material 3 dialog to start a new conversation: pick the project — the PC's
+/// registry, the same list Uxnan Desktop shows (architecture/02a §5.8.17), or
+/// add one from the PC's start folder — compare the available agents
+/// directly, choose an optional model, and optionally create a worktree.
+/// Full-screen on a phone, bounded on a wide
 /// window — see [show]. The descriptive headline lives in the
 /// content area so translated text never competes with the close and start
 /// actions in the compact top bar. Resolves with the new thread id (or null).
@@ -48,8 +50,8 @@ class NewConversationScreen extends ConsumerStatefulWidget {
   const NewConversationScreen({this.initialCwd, super.key});
 
   /// Folder to start in, when the screen was opened from somewhere that
-  /// already knows one — a project's "+" in the spaces list. Null opens on the
-  /// bridge's first root, as before.
+  /// already knows one — a project's "+" in the spaces list. Null selects the
+  /// first project.
   final String? initialCwd;
 
   /// Opens the form and resolves with the new thread id.
@@ -93,15 +95,13 @@ class NewConversationScreen extends ConsumerStatefulWidget {
 class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final TextEditingController _model = TextEditingController();
   final TextEditingController _worktreeBranch = TextEditingController();
-  Project? _project;
   AgentDescriptor? _agent;
 
   @override
   void initState() {
     super.initState();
-    // Opened from a project: start in ITS folder rather than the bridge's
-    // first root, which is almost never the one you meant.
-    _browsedCwd = widget.initialCwd;
+    // Opened from a project (or one of its worktrees): start in that folder.
+    _cwd = widget.initialCwd;
   }
 
   bool _modelTouched = false;
@@ -116,9 +116,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   /// record the worktree as one uxnan placed.
   bool _worktreeManaged = false;
 
-  /// Absolute working dir chosen via the folder browser (overrides the default
-  /// project root); null = use the default root.
-  String? _browsedCwd;
+  /// The folder the conversation will run in: a project's, or the folder the
+  /// screen was opened for. Null = the first project.
+  String? _cwd;
+
+  /// Registering a folder picked in the browser is in flight.
+  bool _adding = false;
 
   @override
   void dispose() {
@@ -134,35 +137,37 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     });
   }
 
-  /// Opens the folder browser; the chosen directory is resolved to a project
-  /// (`project/resolve`) and used as the thread's working directory.
-  Future<void> _browseFolder() async {
+  /// Adds a project: browse the PC from its start folder, register the chosen
+  /// folder in the PC's registry (`project/add`) — so it shows in Uxnan
+  /// Desktop too — and select it.
+  Future<void> _addProject() async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final cwd = await WorkspaceBrowserSheet.show(context);
     if (cwd == null || !mounted) return;
-    final project = await ref.read(threadManagerProvider).resolveProject(cwd);
-    if (!mounted) return;
-    if (project == null) {
+    setState(() => _adding = true);
+    try {
+      final project = await ref.read(bridgeReplicaProvider).addProject(cwd);
+      if (!mounted) return;
+      setState(() => _cwd = project?.cwd ?? cwd);
+    } on Object {
+      if (!mounted) return;
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(l10n.newThreadLoadFailed)));
-      return;
+        ..showSnackBar(SnackBar(content: Text(l10n.newThreadAddProjectFailed)));
+    } finally {
+      if (mounted) setState(() => _adding = false);
     }
-    setState(() {
-      _project = project;
-      _browsedCwd = cwd;
-    });
   }
 
-  Future<void> _start(Project project, String? cwd) async {
+  Future<void> _start(String cwd) async {
     final agent = _agent;
     if (agent == null) return;
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _starting = true);
     try {
-      var workingCwd = cwd ?? project.cwd;
+      var workingCwd = cwd;
       final branch = _worktreeBranch.text.trim();
       // Optionally run the conversation in a fresh worktree, then point it at
       // the created checkout so the agent never touches the base working tree.
@@ -194,7 +199,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       // Tag with the PC we actually hold a live channel to.
       final deviceId = coordinator.connectedDevice?.macDeviceId;
       final thread = await ref.read(threadManagerProvider).startThread(
-            projectId: project.id,
             agentId: agent.agentId,
             model: _model.text.trim(),
             cwd: workingCwd,
@@ -219,6 +223,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     }
   }
 
+  static bool _samePath(String a, String b) =>
+      a.replaceAll(RegExp(r'[\\/]+$'), '') ==
+      b.replaceAll(RegExp(r'[\\/]+$'), '');
+
   static String _basename(String path) {
     final parts =
         path.split(RegExp(r'[\\/]')).where((s) => s.isNotEmpty).toList();
@@ -233,16 +241,20 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     final projects = ref.watch(projectsProvider);
     final agentsAsync = ref.watch(agentsProvider);
 
-    // Default the working directory to the bridge's root (first project) until
-    // the user browses to a sub-folder. No manual project list to pick from.
-    final defaultProject = projects.value?.firstOrNull;
-    final activeProject = _project ?? defaultProject;
-    final workingCwd = _browsedCwd ?? activeProject?.cwd;
+    // The first project until one is chosen.
+    final projectList = projects.value ?? const <Project>[];
+    final workingCwd = _cwd ?? projectList.firstOrNull?.cwd;
+    // A folder the screen was opened for that is not itself a project root
+    // (a worktree) is shown above the list, selected.
+    final openedFolder = workingCwd != null &&
+            !projectList.any((p) => _samePath(p.cwd, workingCwd))
+        ? workingCwd
+        : null;
 
     final agent = _agent;
     final models =
         agent != null ? ref.watch(agentModelsProvider(agent.agentId)) : null;
-    final canStart = activeProject != null && agent != null && !_starting;
+    final canStart = workingCwd != null && agent != null && !_starting;
 
     return NeScaffold(
       // M3 full-screen dialog: keep variable-length headlines in the content
@@ -262,8 +274,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           Padding(
             padding: const EdgeInsets.only(right: UxnanSpacing.sm),
             child: TextButton(
-              onPressed:
-                  canStart ? () => _start(activeProject, workingCwd) : null,
+              onPressed: canStart ? () => _start(workingCwd) : null,
               child: Text(l10n.newThreadStart),
             ),
           ),
@@ -300,17 +311,40 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         style: textTheme.headlineMedium,
                       ),
                     ),
-                    _SectionHeader(label: l10n.newThreadWorkingDir),
-                    if (projects.isLoading && workingCwd == null)
+                    _SectionHeader(label: l10n.newThreadProject),
+                    if (projects.isLoading && projectList.isEmpty)
                       const _Loading()
-                    else if (workingCwd == null)
-                      _Error(message: l10n.newThreadLoadFailed)
-                    else
-                      _WorkingDirCard(
-                        name: _basename(workingCwd),
-                        path: workingCwd,
-                        onBrowse: _browseFolder,
+                    else ...[
+                      if (openedFolder != null) ...[
+                        _WorkingDirCard(
+                          name: _basename(openedFolder),
+                          path: openedFolder,
+                          onBrowse: _addProject,
+                        ),
+                        const SizedBox(height: UxnanSpacing.sm),
+                      ],
+                      ExpressiveCardGroup(
+                        count: projectList.length + 1,
+                        itemBuilder: (context, index, position) {
+                          if (index == projectList.length) {
+                            return _AddProjectCard(
+                              position: position,
+                              busy: _adding,
+                              onTap: _adding ? null : _addProject,
+                            );
+                          }
+                          final project = projectList[index];
+                          return _ProjectCard(
+                            project: project,
+                            position: position,
+                            selected: openedFolder == null &&
+                                workingCwd != null &&
+                                _samePath(project.cwd, workingCwd),
+                            onTap: () => setState(() => _cwd = project.cwd),
+                          );
+                        },
                       ),
+                    ],
                     const SizedBox(height: UxnanSpacing.lg),
                     _SectionHeader(label: l10n.newThreadAgent),
                     agentsAsync.when(
@@ -369,6 +403,119 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One project of the PC's registry, selectable as the conversation's folder.
+class _ProjectCard extends StatelessWidget {
+  const _ProjectCard({
+    required this.project,
+    required this.position,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Project project;
+  final CardGroupPosition position;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final foreground = selected ? colors.onPrimaryContainer : colors.onSurface;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: ExpressiveCard(
+        position: position,
+        onTap: onTap,
+        color: selected ? colors.primaryContainer : colors.surfaceContainer,
+        child: Row(
+          children: [
+            UxIcon(UxIcons.folder, color: foreground),
+            const SizedBox(width: UxnanSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    project.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleMedium?.copyWith(color: foreground),
+                  ),
+                  Text(
+                    project.cwd,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UxnanTypography.codeSmall.copyWith(
+                      color: foreground.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              UxIcon(UxIcons.checkCircle, color: foreground),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The last row of the project list: add a folder of the PC as a project.
+class _AddProjectCard extends StatelessWidget {
+  const _AddProjectCard({
+    required this.position,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final CardGroupPosition position;
+  final bool busy;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return ExpressiveCard(
+      position: position,
+      onTap: onTap,
+      color: colors.surfaceContainer,
+      child: Row(
+        children: [
+          if (busy)
+            const SizedBox.square(dimension: 24, child: PolygonLoader())
+          else
+            UxIcon(UxIcons.add, color: colors.primary),
+          const SizedBox(width: UxnanSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.newThreadAddProject,
+                  style: textTheme.titleMedium?.copyWith(color: colors.primary),
+                ),
+                Text(
+                  l10n.newThreadAddProjectHint,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
