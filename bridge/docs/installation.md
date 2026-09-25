@@ -39,7 +39,7 @@ uxnan-bridge start
 
 ```bash
 uxnan-bridge start     # boot the daemon: LAN server + relay + print the pairing QR
-uxnan-bridge qr        # just print the pairing QR
+uxnan-bridge qr        # print the pairing QR (the running bridge's, when one runs)
 uxnan-bridge status    # print status as JSON
 uxnan-bridge stop      # signal the running daemon to stop
 ```
@@ -54,10 +54,12 @@ reconnects to the trusted device without re-scanning.
 > lapsed, just run `uxnan-bridge qr` (or `code`) again.
 >
 > **Running as a service?** `install-service` starts the daemon with no console,
-> and `uxnan-bridge qr`/`code` then run in a *separate* process — so **pair with
-> the manual code**, not the QR. Looking the code up reaches the daemon that
-> serves the handshake; a scanned QR does not. Re-pairing an already-trusted
-> phone is never gated.
+> and it prints no QR or code (its output is a log file). Run `uxnan-bridge qr`:
+> it asks the running bridge for its own payload over the local control
+> channel and opens that bridge's pairing window, so the scan pairs with the
+> service. Uxnan Desktop's **Pair a phone** does the same. The manual code
+> (`uxnan-bridge code`) keeps working too. Re-pairing an already-trusted phone
+> is never gated.
 
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
   no hosting. (Primary plug-and-play path.)

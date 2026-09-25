@@ -32,6 +32,8 @@ import {
   writeDiscoveryFile,
 } from '../../src/local-control-discovery.js';
 import { InMemorySecretStore, startBridge } from '../../src/index.js';
+import { DaemonState } from '../../src/daemon-state.js';
+import { runningBridgePairing } from '../../src/local-control-client.js';
 import { rmrf } from '../helpers/fs.js';
 
 const TOKEN = 'test-token-0123456789';
@@ -436,6 +438,29 @@ test('bridge: startLocalControl publishes the file, serves the router, and clean
   } finally {
     await bridge.stop();
     assert.equal(await readDiscoveryFile(join(baseDir, LOCAL_CONTROL_FILE)), undefined);
+    await rmrf(baseDir);
+  }
+});
+
+test("bridge: `uxnan-bridge qr` prints the running bridge's own payload, not a new one", async () => {
+  const baseDir = join(tmpdir(), `uxnan-bridge-lc-${randomUUID()}`);
+  const state = new DaemonState(baseDir);
+  // Nothing runs yet: the command must stand up its own.
+  assert.equal(await runningBridgePairing(state), undefined);
+  const bridge = await startBridge({
+    baseDir,
+    secretStore: new InMemorySecretStore(),
+    logLevel: 'error',
+  });
+  try {
+    await bridge.startLocalControl();
+    const payload = await runningBridgePairing(state);
+    assert.ok(payload);
+    // The daemon's identity and relay session — what a scan pairs with.
+    assert.equal(payload.macDeviceId, bridge.pairingInfo().macDeviceId);
+    assert.equal(payload.sessionId, bridge.pairingInfo().sessionId);
+  } finally {
+    await bridge.stop();
     await rmrf(baseDir);
   }
 });

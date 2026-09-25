@@ -2,7 +2,8 @@
  * A one-shot client of the RUNNING bridge's local control channel
  * (architecture/02a §5.8.15), for CLI commands that must change the live
  * daemon rather than a file it read at startup — `uxnan-bridge config set`
- * goes through here so every connected phone and desktop hears the change.
+ * goes through here so every connected phone and desktop hears the change,
+ * and `uxnan-bridge qr` asks it for its own pairing payload.
  *
  * Connects as the local client `cli` (not `desktop`: it is not Uxnan Desktop
  * and must not appear as one), sends one request, and closes.
@@ -11,7 +12,9 @@ import {
   LOCAL_CONTROL_FILE,
   LOCAL_CONTROL_PATH,
   makeRequest,
+  validatePairingPayload,
   type LocalControlFrame,
+  type PairingPayload,
 } from '@uxnan/shared';
 import WebSocket from 'ws';
 import type { DaemonState } from './daemon-state.js';
@@ -70,4 +73,23 @@ export async function callRunningBridge(
       }
     });
   });
+}
+
+/**
+ * The pairing payload of the RUNNING bridge, asked over its local control
+ * channel (`bridge/generatePairingQr`), which also opens that bridge's pairing
+ * window — so a phone that scans it pairs with the daemon that will serve it,
+ * the service included. `undefined` when no bridge runs (or it answers with
+ * something that is not a valid payload).
+ */
+export async function runningBridgePairing(
+  state: DaemonState,
+  now: number = Date.now(),
+): Promise<PairingPayload | undefined> {
+  const live = await callRunningBridge(state, 'bridge/generatePairingQr', undefined).catch(
+    () => undefined,
+  );
+  if (!live) return undefined;
+  const checked = validatePairingPayload(live.result, now);
+  return checked.valid ? checked.payload : undefined;
 }

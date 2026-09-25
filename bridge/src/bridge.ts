@@ -113,6 +113,12 @@ export interface Bridge {
    * before the first check resolves. */
   updateStatus(): UpdateStatus | undefined;
   generatePairingQr(): PairingPayload;
+  /**
+   * The same payload WITHOUT opening the pairing window — its addresses and
+   * relay session, for a bridge that starts as a service and pairs only when
+   * asked (`uxnan-bridge qr`, Uxnan Desktop).
+   */
+  pairingInfo(): PairingPayload;
   /** The current manual-pairing code to show on the PC (rotates on expiry). */
   currentPairingCode(): string;
   /** Connect to the relay as `mac` and serve a phone for the given session. */
@@ -630,6 +636,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       pairingCodeService.arm();
       return buildPairingPayload();
     },
+    pairingInfo: buildPairingPayload,
     currentPairingCode: () => {
       pairingCodeService.arm();
       return pairingCodeService.currentCode();

@@ -49,7 +49,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   absolute paths, the home directory as working directory, and restarts only a
   crashed bridge (a deliberate stop stays stopped; a service start finding a
   bridge already running exits cleanly instead of looping); new
-  `service-status` and `service-start`.
+  `service-status` and `service-start`. A service prints no pairing QR or code
+  (its output is a log file, and both are credentials while the window is
+  open) and does not open the pairing window when it starts.
+- **`uxnan-bridge qr` pairs with the bridge that is running.** It asks the
+  daemon for its own payload over the local control channel
+  (`bridge/generatePairingQr`), which opens that daemon's pairing window — so
+  scanning pairs with the service. Before, it printed a separate process's
+  payload whose window the daemon never saw, and the only way to pair a
+  console-less daemon was the manual code.
 - **Uxnan Desktop's tools for Antigravity** through one secret-free
   `uxnan-browser` entry in its global MCP config, kept by the running daemon
   (`agents/global-mcp-entry.ts`) and served by `uxnan-bridge mcp-proxy`

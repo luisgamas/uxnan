@@ -32,7 +32,7 @@ import {
   uninstallService,
 } from './service-installer.js';
 import { BRIDGE_HOST_ENV } from './presence/host-info.js';
-import { callRunningBridge } from './local-control-client.js';
+import { callRunningBridge, runningBridgePairing } from './local-control-client.js';
 import { enrichProcessPath } from './login-path.js';
 import { runMcpProxy } from './adapters/mcp-proxy.js';
 import { removeGlobalEntry } from './agents/global-mcp-entry.js';
@@ -80,22 +80,25 @@ async function printUpdateNotice(options: { force?: boolean } = {}): Promise<voi
 }
 
 async function cmdQr(): Promise<void> {
-  // Note: this arms the PAIRING WINDOW on THIS short-lived process's own
-  // PairingCodeService instance (see bridge.ts `generatePairingQr`), not on a
-  // separately-running autostarted daemon — and a phone that SCANS this QR goes
-  // straight to the handshake without calling `/pair/resolve`, so nothing arms
-  // that daemon either. Against a hidden daemon, pair with the manual code
-  // instead (`uxnan-bridge code`): resolving it arms the daemon that serves it.
-  // See the "Cross-process arming" item in FOR-DEV.md.
-  const bridge = await startBridge();
-  const payload = bridge.generatePairingQr();
+  // A running bridge (the service, or one started by hand) prints ITS payload
+  // and opens ITS pairing window. Only with none running does this process
+  // stand one up to print a payload of its own.
+  const live = await runningBridgePairing(new DaemonState());
+  const bridge = live ? undefined : await startBridge();
+  const payload = live ?? bridge!.generatePairingQr();
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\n`);
   process.stdout.write('Scan with the Uxnan mobile app.\n');
-  process.stdout.write(`Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`);
+  if (bridge) {
+    process.stdout.write(
+      `Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`,
+    );
+  } else {
+    process.stdout.write("Or enter the code 'uxnan-bridge code' prints.\n");
+  }
   process.stdout.write(`Expires at: ${new Date(payload.expiresAt).toISOString()}\n`);
   process.stdout.write(`Payload: ${encodePairingQr(payload)}\n`);
-  await bridge.stop();
+  await bridge?.stop();
   await printUpdateNotice();
 }
 
@@ -161,13 +164,23 @@ async function cmdStart(): Promise<void> {
     }
   }
 
-  const payload = bridge.generatePairingQr();
-  const qr = await renderPairingQr(payload);
-  process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
-  // Manual-code pairing: this RUNNING daemon serves `GET /pair/resolve`, so its
-  // own in-memory code is the one the phone must enter (the `qr` command runs a
-  // separate, short-lived process with a different code).
-  process.stdout.write(`Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`);
+  // A service's output lands in a log file, and a pairing QR or code is a
+  // credential while its window is open: the service prints neither, and
+  // pairing goes through `uxnan-bridge qr` or Uxnan Desktop, which ask it.
+  const payload = asService ? bridge.pairingInfo() : bridge.generatePairingQr();
+  if (asService) {
+    process.stdout.write(
+      "Running as your user's service. Pair a phone with 'uxnan-bridge qr' or from Uxnan Desktop.\n",
+    );
+  } else {
+    const qr = await renderPairingQr(payload);
+    process.stdout.write(`${qr}\nScan with the Uxnan mobile app.\n`);
+    // Manual-code pairing: this RUNNING daemon serves `GET /pair/resolve`, so
+    // its own in-memory code is the one the phone must enter.
+    process.stdout.write(
+      `Or enter this pairing code on the phone: ${bridge.currentPairingCode()}\n`,
+    );
+  }
   if (payload.hosts && payload.hosts.length > 0) {
     process.stdout.write(`Direct addresses (LAN/Tailscale): ${payload.hosts.join(', ')}\n`);
   }
@@ -185,7 +198,7 @@ async function cmdStart(): Promise<void> {
   }
 
   await printUpdateNotice({ force: true });
-  process.stdout.write('Press Ctrl+C to stop.\n');
+  if (!asService) process.stdout.write('Press Ctrl+C to stop.\n');
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {
       void Promise.allSettled([bridge.stop(), lock.release()]).then(() => resolve());

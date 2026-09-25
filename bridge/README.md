@@ -148,7 +148,7 @@ npm install -g uxnan-bridge
 ```bash
 uxnan-bridge start            # start the daemon: LAN server + (optional) relay pairing session
 uxnan-bridge status           # print current status as JSON
-uxnan-bridge qr               # print the pairing QR in the terminal (with the manual code)
+uxnan-bridge qr               # print the pairing QR — the running bridge's (the service's) when one runs
 uxnan-bridge code             # print just the current pairing code
 uxnan-bridge stop             # stop the running daemon (via the lock file)
 uxnan-bridge install-service  # run as your user's service (Task Scheduler / LaunchAgent / systemd --user)

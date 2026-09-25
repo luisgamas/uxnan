@@ -2722,12 +2722,14 @@ CONSTANTES:
 > window (an already-trusted phone reconnects at any time), and the relay path
 > is NOT gated by it either (it already scopes a bootstrap to one
 > `expectedSessionId` per connection). **Deferred hardening (see
-> `bridge/FOR-DEV.md`):** (1) binding enrollment to a phone-computed proof that
+> `bridge/FOR-DEV.md`):** binding enrollment to a phone-computed proof that
 > it holds the pairing code — i.e. to *this* phone rather than to *some* open
-> window — needs coordinated mobile work that isn't wired yet; (2) arming a
-> hidden daemon for the QR-**scan** path, which never calls `/pair/resolve` and
-> so is not covered by the resolve-arming above (pair with the manual code
-> there).
+> window — needs coordinated mobile work that isn't wired yet. A hidden daemon
+> (the user's service) is armed for the QR-**scan** path by whoever shows its
+> QR: `uxnan-bridge qr` and Uxnan Desktop's "Pair a phone" both ask the running
+> daemon over the local control channel (`bridge/generatePairingQr`, §5.8.15),
+> which arms that daemon's window; the service itself prints no QR or code and
+> never arms at startup.
 
 **Fase 2 — Handshake criptografico:**
 

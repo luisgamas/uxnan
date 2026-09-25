@@ -148,9 +148,11 @@ In the desktop: **Settings → Bridge & mobile** (see
   window — showing the QR, showing the code, or a phone successfully looking the
   code up. This is what stops any peer that can reach the always-listening LAN
   port from enrolling itself as trusted. Already-paired devices reconnect at any
-  time, unaffected. Against a console-less daemon (`install-service`), pair with
-  the **manual code**: `uxnan-bridge qr`/`code` run in a separate process, and a
-  scanned QR never contacts the daemon before the handshake.
+  time, unaffected. Against a console-less daemon (`install-service`),
+  `uxnan-bridge qr` asks the running bridge for its payload over the local
+  control channel (`bridge/generatePairingQr`), which opens THAT bridge's
+  window — the same thing Uxnan Desktop's "Pair a phone" does. The service
+  itself never prints a QR or a code: its output goes to a log file.
 
 - All modes are E2EE end-to-end; the relay only ever sees opaque envelopes.
 - `hosts` may include virtual-NIC addresses (Docker/WSL/Hyper-V) the phone can't
