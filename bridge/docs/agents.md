@@ -374,6 +374,30 @@ Compactions use the ordinary structured-content path and therefore persist in
 Never infer a compaction from prose, an overflow error or a token-count drop;
 that would put a false event into durable history.
 
+### What a turn's work looks like, for every agent
+
+Every agent names its tools its own way; the bridge turns each call into the
+same blocks, so a client draws one row for "read a file" whichever agent read
+it. Shell commands become `command_execution`, edits become `diff`, the to-do
+list becomes `plan`, a delegated task becomes `subagent`, and every other call
+becomes a `tool` block that `toolBlock` classifies (`describeTool` in
+`content-blocks.ts`) into a `kind` — `read`, `search`, `list`, `fetch`,
+`web_search`, `mcp` or `other` — with a `target` to show. The agent manager
+then shows every path from the project (`withProjectPaths`). Measured on a
+real turn of each agent (2026-09-25):
+
+| Agent | Tool names the bridge maps | Diffs | Plan | Subagent |
+|---|---|---|---|---|
+| Claude Code | `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `mcp__*` (`ToolSearch` is not shown) | from the edit's old/new strings | `TodoWrite` | `Agent` / `Task` |
+| Codex | app-server items: `commandExecution` (the login-shell wrapper removed), `mcpToolCall` (`server/tool`), `dynamicToolCall`, `webSearch`, `imageView` | the item's unified diff; an added file's content | `turn/plan/updated` | `collabAgentToolCall` (`spawnAgent`, `followupTask`) |
+| OpenCode | `read`, `grep`, `glob`, `list`, `webfetch`, … | from the edit's old/new strings | `todowrite` | `task` |
+| pi | `read`, `grep`, `find`, `ls` | from the edit's old/new texts | — | — |
+| Antigravity | `view_file`, `grep_search`, `find_by_name`, `list_dir`, `read_url_content`, `search_web` | `agy` 1.2.x reports only the file, once changed: the adapter diffs it against the text the agent last read or wrote this turn, else the committed file | — | `invoke_subagent`, `browser_subagent` |
+| Zero / Grok (ACP) | the ACP `kind`, and the tool's name from Grok's `rawInput.variant` or the first word of Zero's title | ACP `diff` content: real hunks when it is the whole file on disk, else the snippet | the ACP `plan` update (the call that wrote it is not shown twice) | a `task` / `agent` call |
+
+A call is shown once it finished: no adapter reports a step while it runs yet
+(see `FOR-DEV.md` → *Live tool rows*).
+
 ### Multiple assistant responses in one turn
 
 Codex app-server may complete several `agentMessage` items before the turn ends;

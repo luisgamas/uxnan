@@ -231,7 +231,8 @@ export class SessionHistoryReader {
           const blocks: unknown[] = [];
           for (const use of pendingToolUses) {
             const result = results.find((r) => r.toolUseId === use.id);
-            if (result) blocks.push(toolUseToBlock(use, result));
+            const block = result ? toolUseToBlock(use, result) : null;
+            if (block) blocks.push(block);
           }
           attachBlocksToLastAssistant(out, blocks);
           pendingToolUses = null;

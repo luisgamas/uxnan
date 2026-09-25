@@ -850,12 +850,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           const tool = pendingTools.get(result.toolUseId);
           if (!tool) continue;
           pendingTools.delete(result.toolUseId);
+          const content = toolUseToBlock(tool, result);
+          if (!content) continue;
           this.emit({
             type: 'block',
             threadId,
             turnId,
             data: {
-              content: toolUseToBlock(tool, result),
+              content,
               ...(openTextIndex !== undefined ? { beforeText: true } : {}),
             },
           });

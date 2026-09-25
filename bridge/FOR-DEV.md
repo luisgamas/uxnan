@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 800, shared 39, relay
+standalone). It builds clean and the suite is green (bridge 815, shared 39, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -394,21 +394,33 @@ push validation (FOR-HUMAN).
       so the loop auto-completes the call with "proceed with your best assumption" and
       never routes it to the client. The bridge therefore can't turn it into the
       interactive question card (the way OpenCode's `question` tool works); it only
-      renders the questions legibly (`zero-tools.ts` `formatAskUser`). Making it
+      renders the questions legibly (`acp-tools.ts` `formatAskUser`). Making it
       answerable needs Zero to route `ask_user` to the ACP client (an **upstream** change,
       e.g. a vendor `_zero/ask_user` request or reusing `session/request_permission`);
       once it does, wire it into the existing `requestQuestion` round-trip.
+- [ ] **Live tool rows** — every adapter emits a tool call's block once it
+      finished, so a client shows nothing while a long command or a subagent
+      runs, then the finished row. Most drive surfaces announce a step as it
+      starts (Claude's `tool_use`, Codex `item/started`, ACP `tool_call` with
+      `in_progress`, Antigravity's `ACTIVE` step, OpenCode's
+      `session.tool.called`, pi's `tool_execution_start`). Showing it needs a
+      contract for a block that is replaced when it settles: an id on the block
+      and a `stream/content/block` that updates the one with that id (store,
+      phone and desktop replicas), which does not exist yet. Where: `shared/`
+      (the block id), `thread-store.ts` (replace by id), each adapter's start
+      event, and the clients' timelines (the desktop already draws a running
+      step, `ChatActivity`).
 - [ ] **Grok live-turn verification (balance-blocked)** — the ACP envelope,
       handshake and model discovery were exercised against a live `grok 0.2.93`, but
       a real turn could **not** be run because the test account's Grok Build balance
       was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). A funded account has
-      since confirmed the hook vocabulary and **token usage** (both shipped); still
-      to re-verify on a real turn: the per-turn `session/update` `tool_call`/`plan` shapes and
-      arg names (`grok-tools.ts` assumes ACP-standard `kind`/`rawInput`/`content`),
-      the `session/request_permission` option `kind`s, and whether
+      since confirmed the hook vocabulary, **token usage** and — on a real turn
+      (2026-09-25) — the `tool_call` / `plan` shapes (`rawInput.variant` names the
+      tool, the title is for people; see `acp-tools.ts`); still to re-verify on a
+      real turn: the `session/request_permission` option `kind`s, and whether
       `session/set_mode { modeId: <effort> }` actually applies the
       reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
-      in `grok-adapter.ts` / `grok-tools.ts`.
+      in `grok-adapter.ts`.
 
 ### Adding the next agent (recipe — do these one by one)
 

@@ -16,6 +16,7 @@ import {
   extractPlanSteps,
   planBlock,
   type PlanStepBlock,
+  subagentBlock,
   toolBlock,
   writeDiffBlock,
 } from './content-blocks.js';
@@ -92,6 +93,14 @@ export function opencodeToolBlock(
       if (steps.length > 0) return planBlock(steps);
       return toolBlock(toolName, partId, input, output, isError);
     }
+    // A subagent: `{ description, prompt, subagent_type }`, its report as output.
+    case 'task':
+      return subagentBlock(
+        partId,
+        str(input['description']) || str(input['prompt']),
+        output,
+        isError,
+      );
     default:
       return toolBlock(toolName, partId, input, output, isError);
   }

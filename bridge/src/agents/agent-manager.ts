@@ -37,7 +37,12 @@ import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
-import { approvalBlock, errorBlock, questionBlock } from '../adapters/content-blocks.js';
+import {
+  approvalBlock,
+  errorBlock,
+  questionBlock,
+  withProjectPaths,
+} from '../adapters/content-blocks.js';
 import type { QuestionItem } from '@uxnan/shared';
 
 /** How long a tool approval waits for the user before defaulting to deny. */
@@ -207,6 +212,8 @@ export class AgentManager {
   readonly #meta = new Map<AgentId, AgentMeta>();
   readonly #started = new Set<AgentId>();
   readonly #assistantByTurn = new Map<string, string>();
+  /** The folder each thread's agent last ran in, to show block paths from it. */
+  readonly #cwdByThread = new Map<string, string>();
   /** threadId → agent driving it, so we can read its native session id on completion. */
   readonly #agentByThread = new Map<string, AgentId>();
   /** threadId → in-flight turn id, so an approval reply can name the turn it answers. */
@@ -642,6 +649,8 @@ export class AgentManager {
     const attachments = options.attachments ?? [];
     this.#assistantByTurn.set(turnId, assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
+    const cwd = options.cwd ?? adapter.defaultCwd?.();
+    if (cwd !== undefined) this.#cwdByThread.set(threadId, cwd);
     this.#activeTurnByThread.set(threadId, turnId);
 
     if (!this.#started.has(agentId)) {
@@ -1104,6 +1113,7 @@ export class AgentManager {
       }
     }
     this.#agentByThread.delete(threadId);
+    this.#cwdByThread.delete(threadId);
   }
 
   /**
@@ -1362,7 +1372,10 @@ export class AgentManager {
           break;
         }
         case 'block': {
-          const content = readContent(event.data);
+          const content = withProjectPaths(
+            readContent(event.data),
+            this.#cwdByThread.get(threadId),
+          );
           if (content !== undefined) {
             // A block flagged `beforeText` came from a parallel/background
             // activity while the main text was still streaming: the store slots

@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { GrokAdapter, mapGrokModels, grokToolBlock, type SpawnedAcp } from '../../src/index.js';
+import { GrokAdapter, mapGrokModels, type SpawnedAcp } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // A fake `grok agent stdio` process: an ndjson JSON-RPC peer over PassThrough
@@ -480,28 +480,4 @@ test('GrokAdapter surfaces the CLI error detail (not just "Internal error") on a
   // The useful detail is surfaced, not swallowed by the generic JSON-RPC message.
   assert.match(text, /usage balance exhausted/);
   assert.doesNotMatch(text, /Internal error/);
-});
-
-test('grokToolBlock renders an ask_user tool call as readable questions', () => {
-  const block = grokToolBlock({
-    toolCallId: 't1',
-    title: 'ask_user',
-    kind: 'other',
-    status: 'completed',
-    rawInput: {
-      questions: [
-        { question: 'Which language?', options: ['Python', 'JavaScript'], recommended: 'Python' },
-      ],
-    },
-    content: [
-      { type: 'content', content: { type: 'text', text: 'No interactive user is available.' } },
-    ],
-  });
-  assert.equal(block['type'], 'tool');
-  assert.equal(block['toolName'], 'ask_user');
-  assert.deepEqual(block['input'], {});
-  const output = block['output'] as string;
-  assert.match(output, /Which language\?/);
-  assert.match(output, /Python · JavaScript/);
-  assert.match(output, /suggested: Python/);
 });

@@ -111,14 +111,16 @@ import {
   type PendingCodexApproval,
 } from './codex-approval.js';
 import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
-import { codexReasoningText, type CodexFileChange } from './codex-tools.js';
+import { codexReasoningText, codexToolItemBlock, type CodexFileChange } from './codex-tools.js';
 import {
   assistantResponseBoundaryBlock,
   commandBlock,
   compactionBlock,
+  extractPlanSteps,
   fileChangeBlock,
-  toolBlock,
+  planBlock,
   unifiedDiffBlock,
+  unwrapShellCommand,
   writeDiffBlock,
 } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
@@ -334,6 +336,8 @@ interface ActiveRun {
   allAgentText: string;
   /** Model the turn ran on, for looking up its context window on completion. */
   model?: string;
+  /** The last plan emitted this turn, so an unchanged resend is not repeated. */
+  lastPlan?: string;
 }
 
 /** A normalized Codex event extracted from one app-server notification line. */
@@ -989,6 +993,24 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (turn) await this.#onTurnCompleted(turn);
         return;
       }
+      case 'turn/plan/updated': {
+        // The turn's to-do list, sent whole on every change. Clients show the
+        // latest plan of a turn, so an unchanged resend is not repeated.
+        const run = this.#activeRun();
+        const steps = extractPlanSteps(Array.isArray(p['plan']) ? p['plan'] : []);
+        if (!run || steps.length === 0) return;
+        const content = planBlock(steps, str(p['explanation']));
+        const key = JSON.stringify(content);
+        if (run.lastPlan === key) return;
+        run.lastPlan = key;
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content },
+        });
+        return;
+      }
       case 'turn/diff/updated':
         // The unified diff the app-server has accumulated so far. We could
         // surface this as a `turn/diff` block but it duplicates the
@@ -1073,7 +1095,9 @@ export class CodexAdapter extends BaseAgentAdapter {
             type: 'block',
             threadId: run.threadId,
             turnId: run.bridgeTurnId,
-            data: { content: commandBlock(command, output, isError) },
+            // Codex runs every command through the login shell
+            // (`/bin/zsh -lc '…'`); the row shows what ran.
+            data: { content: commandBlock(unwrapShellCommand(command), output, isError) },
           });
         }
         return;
@@ -1082,7 +1106,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         const changes = Array.isArray(item['changes'])
           ? (item['changes'] as Record<string, unknown>[]).map((c) => ({
               path: typeof c['path'] === 'string' ? (c['path'] as string) : '',
-              kind: typeof c['kind'] === 'string' ? (c['kind'] as string) : '',
+              // `{ type: 'add' | 'delete' | 'update' }` (a bare string on older builds).
+              kind: isRecord(c['kind']) ? str(c['kind']['type']) : str(c['kind']),
               diff: typeof c['diff'] === 'string' ? (c['diff'] as string) : '',
             }))
           : [];
@@ -1090,11 +1115,13 @@ export class CodexAdapter extends BaseAgentAdapter {
           const name = isAbsolutePath(change.path)
             ? relative(this.#defaultCwd, change.path) || change.path
             : change.path;
-          // The app-server already attaches the unified diff (unlike the
-          // `exec --json` path which only carried the path); use it directly
-          // when present, else fall back to reading the file.
+          // The app-server attaches the change: a unified diff for an update,
+          // the new file's content for an add. Without it, ask git, then read
+          // the file.
           let content: Record<string, unknown> | undefined;
-          if (change.kind !== 'delete' && change.diff && change.diff.length > 0) {
+          if (change.kind === 'add' && change.diff.length > 0) {
+            content = writeDiffBlock(name, change.diff);
+          } else if (change.kind !== 'delete' && change.diff && change.diff.length > 0) {
             content = unifiedDiffBlock(name, change.diff);
           } else if (change.kind !== 'delete') {
             try {
@@ -1116,7 +1143,7 @@ export class CodexAdapter extends BaseAgentAdapter {
               }
             }
           }
-          content ??= fileChangeBlock(change.path);
+          content ??= fileChangeBlock(name);
           this.emit({
             type: 'block',
             threadId: run.threadId,
@@ -1126,34 +1153,28 @@ export class CodexAdapter extends BaseAgentAdapter {
         }
         return;
       }
-      case 'mcpToolCall': {
-        const name = typeof item['tool'] === 'string' ? (item['tool'] as string) : 'tool';
-        const output = typeof item['result'] === 'string' ? (item['result'] as string) : '';
-        this.emit({
-          type: 'block',
-          threadId: run.threadId,
-          turnId: run.bridgeTurnId,
-          data: {
-            content: toolBlock(
-              name,
-              typeof item['id'] === 'string' ? (item['id'] as string) : '',
-              {},
-              output,
-              item['status'] === 'failed',
-            ),
-          },
-        });
+      case 'mcpToolCall':
+      case 'dynamicToolCall':
+      case 'webSearch':
+      case 'imageView':
+      case 'collabAgentToolCall': {
+        const content = codexToolItemBlock(item);
+        if (content) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content },
+          });
+        }
         return;
       }
-      case 'webSearch':
       case 'plan':
       case 'userMessage':
       case 'enteredReviewMode':
       case 'exitedReviewMode':
-        // Known item types we currently render as plain text on the phone;
-        // no structured block is needed. The full history-fallback path
-        // (session-history.ts) will still surface them via the on-disk
-        // rollout reader.
+        // The plan's steps arrive as `turn/plan/updated`; the rest is text
+        // the conversation already shows.
         return;
       case 'contextCompaction':
         this.emit({

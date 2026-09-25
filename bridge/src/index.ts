@@ -199,9 +199,8 @@ export {
   type SpawnedAcp,
   type ZeroProvider,
 } from './adapters/zero-adapter.js';
-export { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './adapters/zero-tools.js';
 export { GrokAdapter, mapGrokModels, type GrokAdapterOptions } from './adapters/grok-adapter.js';
-export { grokToolBlock, grokPlanSteps, type GrokToolCall } from './adapters/grok-tools.js';
+export { acpToolBlock, acpPlanSteps, type AcpToolCall } from './adapters/acp-tools.js';
 export {
   agentEnv,
   defaultSpawn,

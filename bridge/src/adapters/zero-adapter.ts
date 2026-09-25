@@ -61,7 +61,7 @@ import { agentEnv, defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
-import { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './zero-tools.js';
+import { acpPlanSteps, acpToolBlock, type AcpToolCall } from './acp-tools.js';
 
 const ZERO_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -126,7 +126,7 @@ interface ActiveRun {
   /** Accumulated assistant text, for `turn_completed`. */
   full: string;
   /** Tool calls in flight, keyed by ACP `toolCallId` (emit a block at terminal). */
-  tools: Map<string, ZeroToolCall>;
+  tools: Map<string, AcpToolCall>;
   /** Tool ids already emitted as a block. */
   emitted: Set<string>;
   /** How this run answers permission prompts (from the thread's access mode). */
@@ -591,7 +591,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
         this.#onToolUpdate(run, update);
         return;
       case 'plan': {
-        const steps = zeroPlanSteps(update['entries']);
+        const steps = acpPlanSteps(update['entries']);
         if (steps.length > 0) this.#emitPlan(run, steps);
         return;
       }
@@ -606,7 +606,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const id = str(update['toolCallId']);
     if (!id) return;
     const prev = run.tools.get(id) ?? { toolCallId: id, title: '', kind: '', status: '' };
-    const merged: ZeroToolCall = {
+    const merged: AcpToolCall = {
       toolCallId: id,
       title: str(update['title']) || prev.title,
       kind: str(update['kind']) || prev.kind,
@@ -617,12 +617,15 @@ export class ZeroAdapter extends BaseAgentAdapter {
     run.tools.set(id, merged);
     if ((merged.status === 'completed' || merged.status === 'failed') && !run.emitted.has(id)) {
       run.emitted.add(id);
-      this.emit({
-        type: 'block',
-        threadId: run.threadId,
-        turnId: run.bridgeTurnId,
-        data: { content: zeroToolBlock(merged) },
-      });
+      const content = acpToolBlock(merged);
+      if (content) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content },
+        });
+      }
     }
   }
 

@@ -66,7 +66,7 @@ import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
 import { reasoningOption, reasoningValue } from './run-options.js';
-import { grokToolBlock, grokPlanSteps, type GrokToolCall } from './grok-tools.js';
+import { acpPlanSteps, acpToolBlock, type AcpToolCall } from './acp-tools.js';
 
 const GROK_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -128,7 +128,7 @@ interface ActiveRun {
   /** Accumulated assistant text, for `turn_completed`. */
   full: string;
   /** Tool calls in flight, keyed by ACP `toolCallId` (emit a block at terminal). */
-  tools: Map<string, GrokToolCall>;
+  tools: Map<string, AcpToolCall>;
   /** Tool ids already emitted as a block. */
   emitted: Set<string>;
   /** How this run answers permission prompts (from the thread's access mode). */
@@ -533,7 +533,7 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#onToolUpdate(run, update);
         return;
       case 'plan': {
-        const steps = grokPlanSteps(update['entries']);
+        const steps = acpPlanSteps(update['entries']);
         if (steps.length > 0) this.#emitPlan(run, steps);
         return;
       }
@@ -576,7 +576,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     const id = str(update['toolCallId']);
     if (!id) return;
     const prev = run.tools.get(id) ?? { toolCallId: id, title: '', kind: '', status: '' };
-    const merged: GrokToolCall = {
+    const merged: AcpToolCall = {
       toolCallId: id,
       title: str(update['title']) || prev.title,
       kind: str(update['kind']) || prev.kind,
@@ -587,12 +587,15 @@ export class GrokAdapter extends BaseAgentAdapter {
     run.tools.set(id, merged);
     if ((merged.status === 'completed' || merged.status === 'failed') && !run.emitted.has(id)) {
       run.emitted.add(id);
-      this.emit({
-        type: 'block',
-        threadId: run.threadId,
-        turnId: run.bridgeTurnId,
-        data: { content: grokToolBlock(merged) },
-      });
+      const content = acpToolBlock(merged);
+      if (content) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content },
+        });
+      }
     }
   }
 

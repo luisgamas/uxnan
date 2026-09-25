@@ -75,6 +75,9 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type {
@@ -88,7 +91,14 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './content-blocks.js';
+import {
+  commandBlock,
+  editDiffBlock,
+  fileDiffBlock,
+  subagentBlock,
+  toolBlock,
+  writeDiffBlock,
+} from './content-blocks.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 import { proxyLaunchEnv } from './mcp-proxy.js';
@@ -302,19 +312,63 @@ export function contextTokens(usage: AntigravityUsage | undefined): number | und
   return total > 0 ? total : undefined;
 }
 
+/** The tools that change a file, whose `TargetFile` the adapter reads around the step. */
+export const ANTIGRAVITY_FILE_TOOLS = new Set([
+  'write_to_file',
+  'replace_file_content',
+  'multi_replace_file_content',
+]);
+
+/** The tools that hand work to a subagent. */
+const ANTIGRAVITY_SUBAGENT_TOOLS = new Set(['invoke_subagent', 'browser_subagent']);
+
+/** A file's text before and after a step (`null`: it did not exist). */
+export interface AntigravityFileChange {
+  before: string | null;
+  after: string | null;
+}
+
+/** The text of a file, or `null` when it cannot be read (absent, a folder…). */
+export function readTextOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/** A file's text at `HEAD`, or `null` when it is not committed (or not in a repository). */
+export function committedTextOrNull(path: string): string | null {
+  try {
+    return execFileSync('git', ['show', `HEAD:./${basename(path)}`], {
+      cwd: dirname(path),
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Map a finished `tool` step onto the bridge's structured content blocks.
  *
  * Parameter names are `agy`'s own (captured live): `run_command` carries
- * `CommandLine`, `write_to_file` carries `TargetFile` + `CodeContent`, and
- * `replace_file_content` carries `TargetFile` + `TargetContent` +
- * `ReplacementContent`. Any other tool becomes a generic tool block whose id is
+ * `CommandLine`; the file tools carry `TargetFile`. Older releases also sent
+ * the content (`CodeContent`, `TargetContent` + `ReplacementContent`); 1.2.x
+ * sends only the path, once the change is applied, so the adapter passes the
+ * text before it (as the agent last read or wrote it this turn, else as
+ * committed) and after it as `change` — the diff is then exact, with line
+ * numbers. Any other tool becomes a classified tool block whose id is
  * `<tool>_<step_index>` — the step index is unique within a conversation, and
  * `sequence` only stands in for a step that has none.
  */
 export function buildAntigravityToolBlock(
   update: AntigravityStepUpdate,
   sequence = 0,
+  change?: AntigravityFileChange,
 ): Record<string, unknown> {
   const toolName = update.tool_name ?? update.tool_info?.name ?? 'tool';
   const params = update.tool_info?.parameters ?? {};
@@ -323,29 +377,29 @@ export function buildAntigravityToolBlock(
       ? update.tool_info.output
       : (update.tool_info?.error?.message ?? '');
   const isError = update.state === 'ERROR' || Boolean(update.tool_info?.error);
+  const text = (key: string): string => (typeof params[key] === 'string' ? params[key] : '');
+  const toolId = `${toolName}_${update.step_index ?? sequence}`;
 
-  switch (toolName) {
-    case 'run_command': {
-      const cmd = typeof params['CommandLine'] === 'string' ? params['CommandLine'] : '';
-      return commandBlock(cmd, out, isError);
+  if (toolName === 'run_command') return commandBlock(text('CommandLine'), out, isError);
+  if (ANTIGRAVITY_FILE_TOOLS.has(toolName)) {
+    const target = text('TargetFile');
+    if (change && (change.before !== null || change.after !== null)) {
+      return fileDiffBlock(target, change.before ?? '', change.after ?? '');
     }
-    case 'write_to_file': {
-      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
-      const code = typeof params['CodeContent'] === 'string' ? params['CodeContent'] : '';
-      return writeDiffBlock(target, code);
+    if (toolName === 'write_to_file' && text('CodeContent')) {
+      return writeDiffBlock(target, text('CodeContent'));
     }
-    case 'replace_file_content': {
-      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
-      const oldText = typeof params['TargetContent'] === 'string' ? params['TargetContent'] : '';
-      const newText =
-        typeof params['ReplacementContent'] === 'string' ? params['ReplacementContent'] : '';
-      return editDiffBlock(target, oldText, newText);
+    if (toolName === 'replace_file_content' && text('TargetContent')) {
+      return editDiffBlock(target, text('TargetContent'), text('ReplacementContent'));
     }
-    default: {
-      const toolId = `${toolName}_${update.step_index ?? sequence}`;
-      return toolBlock(toolName, toolId, params, out, isError);
-    }
+    return writeDiffBlock(target, '');
   }
+  if (ANTIGRAVITY_SUBAGENT_TOOLS.has(toolName)) {
+    const task =
+      text('Task') || text('TaskDescription') || text('Prompt') || text('Description') || toolName;
+    return subagentBlock(toolId, task, out, isError);
+  }
+  return toolBlock(toolName, toolId, params, out, isError);
 }
 
 /**
@@ -519,6 +573,8 @@ interface ActiveSession {
   idleTimer?: NodeJS.Timeout;
   /** Fallback for a tool block id when a step has no `step_index`. */
   toolSequence: number;
+  /** Each file's text as the agent last read or wrote it, and in which turn. */
+  fileText: Map<string, { turnId: string; text: string | null }>;
   exited: boolean;
   activeTurn?: ActiveTurn;
 }
@@ -796,6 +852,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       desktopKey: desktop.key,
       child,
       toolSequence: 0,
+      fileText: new Map(),
       exited: false,
     };
 
@@ -825,8 +882,27 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       if (ev.kind === 'step_update') {
         adoptConversation(ev.update.conversation_id);
         const { update } = ev;
+        const toolName = update.tool_name ?? '';
+        const fileTool = update.step_type === 'tool' && ANTIGRAVITY_FILE_TOOLS.has(toolName);
+        const params = update.tool_info?.parameters ?? {};
+        const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
         if (update.step_type === 'tool' && (update.state === 'DONE' || update.state === 'ERROR')) {
-          const block = buildAntigravityToolBlock(update, session.toolSequence++);
+          // 1.2.x reports only which file a step changed, and announces the
+          // step once it is already applied. The text before it is what the
+          // agent last read or wrote this turn, else the committed file.
+          let change: AntigravityFileChange | undefined;
+          if (fileTool && target) {
+            const known = session.fileText.get(target);
+            const before =
+              known && known.turnId === active.turnId ? known.text : committedTextOrNull(target);
+            const after = readTextOrNull(target);
+            change = { before, after };
+            session.fileText.set(target, { turnId: active.turnId, text: after });
+          } else if (toolName === 'view_file' && typeof params['AbsolutePath'] === 'string') {
+            const path = params['AbsolutePath'];
+            session.fileText.set(path, { turnId: active.turnId, text: readTextOrNull(path) });
+          }
+          const block = buildAntigravityToolBlock(update, session.toolSequence++, change);
           this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: block } });
         }
         if (update.step_type === 'agent_response') {

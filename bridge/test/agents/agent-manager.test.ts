@@ -987,3 +987,44 @@ baseTest(
     await rmrf(baseDir);
   },
 );
+
+baseTest('block paths are shown from the folder the turn ran in', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-paths-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string; params?: Record<string, unknown> }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (m) => notifications.push(m as { method: string; params?: Record<string, unknown> }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new StreamingAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'go', { cwd: '/work/app' });
+  adapter.block(thread.id, turnId, { type: 'diff', filename: '/work/app/src/a.ts', diff: '' });
+  adapter.block(thread.id, turnId, {
+    type: 'tool',
+    toolName: 'Read',
+    target: '/work/app/README.md',
+  });
+  adapter.block(thread.id, turnId, { type: 'diff', filename: '/etc/hosts', diff: '' });
+  adapter.complete(thread.id, turnId, 'done');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  const shown = (assistant?.blocks ?? []) as Record<string, unknown>[];
+  assert.deepEqual(
+    shown.map((b) => b['filename'] ?? b['target']),
+    ['src/a.ts', 'README.md', '/etc/hosts'],
+  );
+  // The phone and the desktop are told the same thing the store keeps.
+  const told = notifications
+    .filter((n) => n.method === StreamNotification.ContentBlock)
+    .map((n) => n.params?.['content'] as Record<string, unknown>);
+  assert.deepEqual(told, shown);
+
+  await rmrf(baseDir);
+});

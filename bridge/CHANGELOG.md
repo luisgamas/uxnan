@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — every agent's work reads the same
+
+Measured on a real turn of each wired agent (Claude Code, Codex, OpenCode 2,
+pi, Antigravity, Zero, Grok):
+
+- **Tool calls say what they did.** `toolBlock` classifies every call —
+  `Read`, `read_file`, `view_file`, Grok's `ReadFile`… — into one `kind`
+  with a `target` to show (`describeTool`), and the agent manager shows every
+  path from the project (`withProjectPaths`) instead of the absolute paths
+  Claude, Zero, Grok and Antigravity report.
+- **Subagents are subagents**: Claude's `Agent`/`Task`, OpenCode's `task`,
+  Codex's `spawnAgent`/`followupTask` and Antigravity's subagents become a
+  `subagent` block with their report, not a generic tool row. Claude's
+  `ToolSearch` (the model looking up its own tools) is no longer shown.
+- **Diffs show what changed.** Edits are aligned line by line
+  (`diffLines`): a snippet keeps its unchanged lines as context, and a whole
+  file gets real hunks with line numbers (`fileDiffBlock`) — Zero no longer
+  shows every line removed and written again. Antigravity 1.2.x reports only
+  which file a step changed, once it is applied, so the adapter diffs it
+  against the text the agent last read or wrote in the turn, else the
+  committed file: its diffs were empty and are now exact.
+- **Codex**: commands show what ran, without the `/bin/zsh -lc '…'` wrapper
+  (`unwrapShellCommand`); a created file shows its content (the change kind
+  is an object, it was read as a string); MCP calls carry their server,
+  arguments and result; web searches, image views and subagents appear; and
+  the to-do list arrives from `turn/plan/updated`.
+- **Zero and Grok share one ACP mapper** (`acp-tools.ts`, replacing
+  `zero-tools.ts` and `grok-tools.ts`): the tool is named by Grok's
+  `rawInput.variant` or Zero's title, the ACP `kind` is kept, and the call
+  that wrote the plan is no longer shown next to the plan itself.
+
 ### Changed — agent commands come from the agents themselves
 
 - **Claude Code** lists its commands by asking the CLI (`initialize` control

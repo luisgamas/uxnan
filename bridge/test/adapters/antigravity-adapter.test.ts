@@ -679,6 +679,8 @@ test('buildAntigravityToolBlock formats command, diff, and tool blocks', () => {
     input: { Query: 'hello' },
     output: 'matched hello',
     isError: false,
+    kind: 'search',
+    target: 'hello',
   });
 
   const errorBlock = buildAntigravityToolBlock({
