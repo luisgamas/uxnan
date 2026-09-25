@@ -623,6 +623,28 @@ test('steerTurn sends a steer command into the running turn', async () => {
   assert.equal(proc.stdinEnded, true);
 });
 
+test("an extension's dialog is declined at once, so the turn can end", async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'deploy' });
+  const proc = last();
+  proc.feedOpen([
+    '{"type":"extension_ui_request","id":"d1","method":"confirm","title":"Deploy?"}',
+    // Fire-and-forget UI needs no answer.
+    '{"type":"extension_ui_request","id":"n1","method":"notify","message":"hi"}',
+  ]);
+  await flush();
+  assert.deepEqual(proc.sent.slice(2), [
+    { type: 'extension_ui_response', id: 'd1', cancelled: true },
+  ]);
+  proc.feedOpen([AGENT_END, AGENT_SETTLED]);
+  const events = await done;
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  await adapter.stop();
+});
+
 test('steerTurn declines once the turn ended, or for an unknown turn', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });

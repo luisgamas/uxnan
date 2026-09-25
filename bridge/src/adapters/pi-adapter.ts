@@ -186,9 +186,9 @@ export function parsePiCommands(line: string): PiReportedCommand[] | undefined {
  * What the bridge advertises of pi's commands. Prompt templates (`custom`) and
  * skills (`skill`, named `skill:<name>` — the form pi expects after the `/`)
  * run headless: pi expands them from the `prompt` command. Extension commands
- * are left out: one may open a dialog (`select`, `confirm`, `input`), which pi
- * turns into an `extension_ui_request` that blocks until a client answers — and
- * nothing on the bridge's surface does, so the turn would never end. pi's TUI
+ * are left out: they exist to drive pi's TUI, and one that opens a dialog
+ * (`select`, `confirm`, `input`) is declined at once on this surface (see the
+ * resident process's `dialog` handling), so it could not do its job. pi's TUI
  * built-ins are never in the list (rpc.md).
  */
 export function piAgentCommands(reported: PiReportedCommand[]): AgentCommand[] {
@@ -330,6 +330,8 @@ export interface PiEvent {
     | 'settled'
     /** An RPC command pi rejected (`{ type:'response', success:false }`). */
     | 'command_failed'
+    /** An extension asked the user something (`extension_ui_request`, a dialog). */
+    | 'dialog'
     | 'other';
   /** `session` / `state`: the session id (for `--session-id` continuity). */
   sessionId?: string;
@@ -337,6 +339,8 @@ export interface PiEvent {
   contextWindow?: number;
   /** Only set for `command_failed`: which RPC command was rejected. */
   commandName?: string;
+  /** Only set for `dialog`: the request id its answer must carry. */
+  dialogId?: string;
   /**
    * `delta`: the streamed text chunk. `thinking`: a reasoning chunk. `final`:
    * the assistant message's full text.
@@ -477,6 +481,18 @@ export function parsePiLine(line: string): PiEvent | null {
       return { kind: 'end', willRetry: parsed['willRetry'] === true };
     case 'agent_settled':
       return { kind: 'settled' };
+    // An extension's dialog (`select`, `confirm`, `input`, `editor`) blocks the
+    // turn until a client answers it (rpc.md → Extension UI). The other
+    // extension UI methods are fire-and-forget.
+    case 'extension_ui_request': {
+      const method = parsed['method'];
+      const id = parsed['id'];
+      const dialog =
+        method === 'select' || method === 'confirm' || method === 'input' || method === 'editor';
+      return dialog && typeof id === 'string'
+        ? { kind: 'dialog', dialogId: id }
+        : { kind: 'other' };
+    }
     // RPC-mode command acknowledgements. A success is noise, but a FAILED one
     // is the only signal that a command never took effect — a rejected `prompt`
     // would otherwise leave the turn waiting for events that never come.
@@ -741,6 +757,13 @@ export class PiAdapter extends BaseAgentAdapter {
         if (trimmed.length > 0 && session.activeTurn && !session.activeTurn.completed) {
           session.activeTurn.plainLines.push(trimmed);
         }
+        return;
+      }
+      // Nobody on the bridge's surface can answer an extension's dialog, and
+      // an unanswered one never lets the turn end: decline it at once — the
+      // answer pi takes for a dismissed dialog (`cancelled: true`).
+      if (event.kind === 'dialog' && event.dialogId) {
+        send({ type: 'extension_ui_response', id: event.dialogId, cancelled: true });
         return;
       }
       if (event.kind === 'state' || event.kind === 'session') {
