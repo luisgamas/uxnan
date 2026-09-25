@@ -87,10 +87,10 @@ below) without touching the others. Trust order:
 
 | Group | What it holds | Today |
 |---|---|---|
-| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
-| `ui` | `app/focus`, `terminal/reveal`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
+| `read` | `status`, `project/list|show`, `host/list|show`, `worktree/list|show`, `terminal/list|show`, `agent/list`, `chat/list`, `run/list|show`, `automation/list|show`, `browser/status|snapshot|screenshot|console|wait` | shipped |
+| `ui` | `app/focus`, `terminal/reveal`, `chat/open`, `file/open` (Uxnan's tab, or one of the person's external editors with `with`), `file/diff`, `automation/propose`, `browser/open|navigate|reload|back|forward`, `browser/click|type|press|scroll` | shipped |
 | `create` | `host/connect`, `worktree/create` (+ agent + first message), `terminal/create`, `run/start`, `automation/run` | shipped |
-| `converse` | `agent/send`, `agent/wait`, `terminal/read` | shipped |
+| `converse` | `agent/send`, `agent/wait`, `terminal/read`, `chat/send` (a bridge conversation: queued behind a running turn, seen by every client) | shipped |
 | `orchestrate` (v2) | `run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` | shipped |
 
 [`docs/control-api-reference.md`](./control-api-reference.md) is every entry
@@ -564,6 +564,9 @@ uxnan-cli terminal create --worktree <worktree> [--title <t>] [--agent <agent>] 
                           [--idempotency-key <key>]
 uxnan-cli agent ls
 uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]
+uxnan-cli chat ls [--worktree <worktree>] [--archived]
+uxnan-cli chat open <chat>
+uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]
 uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]
 uxnan-cli terminal read <terminal> [--lines <n>]
 uxnan-cli run ls | show <run-id> | start <run-id> [--idempotency-key <key>]

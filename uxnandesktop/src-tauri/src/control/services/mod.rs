@@ -11,6 +11,7 @@
 pub mod agent;
 pub mod automation;
 pub mod browser;
+pub mod chat;
 pub mod host;
 pub mod orchestration;
 pub mod project;

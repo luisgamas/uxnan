@@ -43,8 +43,7 @@
   /** Threads open in a chat tab anywhere (a listed one focuses that tab). */
   const openThreads = $derived(
     new Set(
-      terminals
-        .tabsWithWorkspace()
+      [...terminals.tabsWithWorkspace()]
         .map(({ tab }) => (tab.kind === "chat" ? tab.threadId : undefined))
         .filter((id): id is string => !!id),
     ),

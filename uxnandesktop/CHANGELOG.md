@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **Chats on the control surface.** Three catalog entries reach the bridge's
+  conversations through the app's bridge client, scoped like everything else
+  (a chat whose folder is outside the caller's scope is *scope denied*):
+  `chat/list` (read — id, title, agent, model, folder, working/idle; one
+  worktree's with `worktree`), `chat/open` (ui — its tab, or the one showing
+  it) and `chat/send` (converse — a whole message, queued behind a running turn,
+  receipted and audited). As MCP tools `chat_list` / `chat_open` / `chat_send`
+  and as `uxnan-cli chat ls|open|send`; *unavailable* when Uxnan is not
+  connected to the bridge. `docs/control-api-reference.md` regenerated.
 - **A chat's agent gets Uxnan's tools.** While connected, the desktop gives the
   bridge its MCP endpoint and a **bridge-agent token** of its own, minted every
   start (`desktop/attach`, over the local channel; `desktop/detach` when

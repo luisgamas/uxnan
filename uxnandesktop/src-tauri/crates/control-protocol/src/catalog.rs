@@ -666,6 +666,31 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({}),
         },
         Entry {
+            method: "chat/list",
+            tool: "chat_list",
+            group: Group::Read,
+            summary: "List the chats — conversations the Uxnan bridge drives, shown in chat tabs and on the phone alike — in your scope, newest first: id, title, agent, model, folder and whether a turn is running. `worktree` narrows it to one worktree's folder. Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.",
+            params: object(
+                json!({
+                    "worktree": worktree_selector(),
+                    "archived": { "type": "boolean", "description": "Include archived chats. Default false." }
+                }),
+                &[],
+            ),
+            mutates: false,
+            result: result(json!({ "chats": list_of(result(json!({
+                "id": field("string", "The chat's id — `chat/open` and `chat/send` take it as `id:<id>`."),
+                "title": field("string", "Its title, the same on every client."),
+                "agent": nullable("string", "The bridge agent that drives it (`claude-code`, `codex`, …); fixed for its life."),
+                "model": nullable("string", "The model it uses now, when one was chosen."),
+                "folder": nullable("string", "The folder it runs in."),
+                "state": field("string", "`working` while a turn runs, else `idle`."),
+                "archived": field("boolean", "Whether it is archived."),
+                "updatedAt": field("integer", "Epoch milliseconds of its last activity."),
+            })), "The chats in your scope.") })),
+            example: json!({ "worktree": "current" }),
+        },
+        Entry {
             method: "run/list",
             tool: "run_list",
             group: Group::Read,
@@ -842,6 +867,22 @@ pub fn catalog() -> Vec<Entry> {
             mutates: true,
             result: result(json!({ "revealed": field("string", "The terminal id now active.") })),
             example: json!({ "terminal": "id:5f0c…" }),
+        },
+        Entry {
+            method: "chat/open",
+            tool: "chat_open",
+            group: Group::Ui,
+            summary: "Show a chat to the person: open it in a chat tab next to its worktree's terminals, or focus the tab already showing it.",
+            params: object(
+                json!({ "chat": { "type": "string", "description": "The chat, as `id:<id>` from `chat/list`." } }),
+                &["chat"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "chat": field("string", "The chat shown."),
+                "tab": nullable("string", "The tab showing it."),
+            })),
+            example: json!({ "chat": "id:7be2af67…" }),
         },
         Entry {
             method: "file/open",
@@ -1248,6 +1289,27 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({ "terminal": "id:5f0c…", "for": "idle", "timeoutMs": 15000 }),
         },
         Entry {
+            method: "chat/send",
+            tool: "chat_send",
+            group: Group::Converse,
+            summary: "Send a whole message to a chat, exactly as if it were typed in the chat tab or on the phone. While its agent works the bridge queues the message behind the running turn (or hands it to the turn, on agents that take input mid-turn); every client of the chat sees it. Use `chat/list` to see whether the chat is working.",
+            params: object(
+                json!({
+                    "chat": { "type": "string", "description": "The chat, as `id:<id>` from `chat/list`." },
+                    "message": { "type": "string", "description": "The whole message. At most 64 KiB." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["chat", "message"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "chat": field("string", "The chat the message was sent to."),
+                "turnId": nullable("string", "The turn the message started or joined."),
+                "queued": field("boolean", "Whether it waits behind a running turn."),
+            })),
+            example: json!({ "chat": "id:7be2af67…", "message": "Now add tests for the parser." }),
+        },
+        Entry {
             method: "terminal/read",
             tool: "terminal_read",
             group: Group::Converse,
@@ -1594,7 +1656,9 @@ mod tests {
                     assert!(e.mutates, "{} does not mutate", e.method)
                 }
                 Group::Converse => {
-                    let sends = e.method == "agent/send";
+                    // A message sent (to a terminal agent or a chat) is the
+                    // one conversation move that changes anything.
+                    let sends = matches!(e.method, "agent/send" | "chat/send");
                     assert_eq!(e.mutates, sends, "{}", e.method);
                 }
             }

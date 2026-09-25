@@ -699,7 +699,11 @@ sobre el estado reportado por los hooks, dormido en el notificador
 `AppState.agent_changes` en vez de sondear, maximo 15 s por llamada;
 `terminal/read`: las ultimas lineas del buffer del terminal de la ventana con
 **redaccion** de secretos en el backend antes de salir, auditado, y desconectable
-por proyecto con `settings.control.terminalReadDisabledProjects`) y
+por proyecto con `settings.control.terminalReadDisabledProjects`; `chat/send`: un
+mensaje completo a una conversacion del bridge, que el bridge encola tras el turno
+en curso y todos sus clientes ven — con `chat/list` en `read` y `chat/open` en
+`ui`, por el cliente del bridge de la app y acotados como todo lo demas: una
+conversacion cuya carpeta queda fuera del alcance es *scope denied*) y
 `orchestrate` v2 (`run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` — una corrida conducida por un agente coordinador, §3.9). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
 para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
 (`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;

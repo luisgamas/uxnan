@@ -61,6 +61,11 @@ enum Command {
         #[command(subcommand)]
         cmd: AgentCmd,
     },
+    /// Chats: the conversations the Uxnan bridge drives (desktop and phone).
+    Chat {
+        #[command(subcommand)]
+        cmd: ChatCmd,
+    },
     /// Orchestration runs — and, for a coordinator, driving one.
     Run {
         #[command(subcommand)]
@@ -268,6 +273,36 @@ enum AgentCmd {
         /// Give up after this many seconds (default 600). Heartbeats go to stderr.
         #[arg(long, default_value_t = 600)]
         timeout: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChatCmd {
+    /// List the chats in your scope, newest first.
+    Ls {
+        /// Only this worktree's chats (`current`, `path:`, `branch:`, …).
+        #[arg(long)]
+        worktree: Option<String>,
+        /// Include archived chats.
+        #[arg(long)]
+        archived: bool,
+    },
+    /// Show a chat in its tab.
+    Open {
+        /// The chat (`id:<id>` from `chat ls`).
+        chat: String,
+    },
+    /// Send a whole message to a chat (queued behind a running turn).
+    Send {
+        /// The chat (`id:<id>` from `chat ls`).
+        #[arg(long)]
+        to: String,
+        /// A file whose contents are the message.
+        #[arg(long)]
+        message_file: std::path::PathBuf,
+        /// A caller-chosen key: repeating the call with it returns the first receipt.
+        #[arg(long)]
+        idempotency_key: Option<String>,
     },
 }
 
@@ -683,6 +718,30 @@ fn plan(command: Command) -> Result<Plan, String> {
                 }
                 launch.apply(&mut p)?;
                 with("terminal/create", p)
+            }
+        },
+        Command::Chat { cmd } => match cmd {
+            ChatCmd::Ls { worktree, archived } => {
+                let mut p = json!({});
+                if let Some(w) = sel(worktree) {
+                    p["worktree"] = json!(w);
+                }
+                if archived {
+                    p["archived"] = json!(true);
+                }
+                with("chat/list", p)
+            }
+            ChatCmd::Open { chat } => with("chat/open", json!({ "chat": chat })),
+            ChatCmd::Send {
+                to,
+                message_file,
+                idempotency_key,
+            } => {
+                let mut p = json!({ "chat": to, "message": read_prompt_file(&message_file)? });
+                if let Some(k) = sel(idempotency_key) {
+                    p["idempotencyKey"] = json!(k);
+                }
+                with("chat/send", p)
             }
         },
         Command::Agent { cmd } => match cmd {

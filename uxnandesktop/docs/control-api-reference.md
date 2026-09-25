@@ -61,6 +61,7 @@ Global: --json (stable machine output), --timeout <seconds>
 - `terminal/list` (MCP tool `terminal_list`) — List the terminal tabs open in Uxnan: id, title, working directory, the worktree it belongs to, and — when an agent runs in it — the agent, its model and its live state (working, waiting, blocked, done).
 - `terminal/show` (MCP tool `terminal_show`) — Describe one terminal tab, including the agent state Uxnan knows for it.
 - `agent/list` (MCP tool `agent_list`) — List the agents Uxnan is currently tracking: terminal id, agent kind, state (working, waiting, blocked, done), the prompt and tool last reported, and the worktree they run in.
+- `chat/list` (MCP tool `chat_list`) — List the chats — conversations the Uxnan bridge drives, shown in chat tabs and on the phone alike — in your scope, newest first: id, title, agent, model, folder and whether a turn is running.
 - `run/list` (MCP tool `run_list`) — List the orchestration runs (multi-step, multi-agent plans) with their status and step counts.
 - `run/show` (MCP tool `run_show`) — Describe one orchestration run: every step with its kind, target, dependencies, status and captured output.
 - `automation/list` (MCP tool `automation_list`) — List the saved automations (unattended, recurring agent runs): id, name, whether its schedule is active, the schedule itself, its working folder and its steps.
@@ -75,6 +76,7 @@ Global: --json (stable machine output), --timeout <seconds>
 
 - `app/focus` (MCP tool `app_focus`) — Bring the Uxnan window to the front.
 - `terminal/reveal` (MCP tool `terminal_reveal`) — Show a terminal tab: switch to its workspace and make it the active tab, so the person sees what that agent is doing.
+- `chat/open` (MCP tool `chat_open`) — Show a chat to the person: open it in a chat tab next to its worktree's terminals, or focus the tab already showing it.
 - `file/open` (MCP tool `file_open`) — Open a file in Uxnan's editor tab (or reveal it if already open).
 - `file/diff` (MCP tool `file_diff`) — Open a file's working-tree diff in Uxnan (the Changes view of its tab), so the person can review what changed.
 - `automation/propose` (MCP tool `automation_propose`) — Draft a saved automation **for the person to decide on**: Uxnan opens its automations editor with what you propose filled in, and nothing is created — they read it, change what they want and press Save, and it arrives paused so it cannot start on its own.
@@ -97,10 +99,11 @@ Global: --json (stable machine output), --timeout <seconds>
 - `run/start` (MCP tool `run_start`) — Start (or re-run) a saved orchestration run by id: every step is reset and the engine begins dispatching.
 - `automation/run` (MCP tool `automation_run`) — Run a saved automation now, as a manual run of the same headless runner its schedule uses.
 
-### `converse` (v1) — talk to a running agent
+### `converse` (v1) — talk to a running agent, or to a chat
 
 - `agent/send` (MCP tool `agent_send`) — Send a complete message to a running agent, as one paste-and-submit — never as keystrokes.
 - `agent/wait` (MCP tool `agent_wait`) — Wait until an agent reaches a state, as reported by its own hooks: `idle` (its turn finished — the state to wait for after sending a message), `waiting` (it stopped to ask the person something), or `exit` (its terminal is gone).
+- `chat/send` (MCP tool `chat_send`) — Send a whole message to a chat, exactly as if it were typed in the chat tab or on the phone.
 - `terminal/read` (MCP tool `terminal_read`) — Read the last lines of a terminal's screen as plain text (escapes removed, blank rows dropped), with secrets redacted — tokens, keys, `Authorization` headers, `password=`.
 
 ### `orchestrate` (v2) — drive a run as its coordinator: tasks, workers, an inbox, questions; a worker reports back
@@ -726,6 +729,51 @@ List the agents Uxnan is currently tracking: terminal id, agent kind, state (wor
 }
 ```
 
+### `chat/list`
+
+List the chats — conversations the Uxnan bridge drives, shown in chat tabs and on the phone alike — in your scope, newest first: id, title, agent, model, folder and whether a turn is running. `worktree` narrows it to one worktree's folder. Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.
+
+- **Group:** `read` · read-only
+- **MCP:** `chat_list`
+- **CLI:** `uxnan-cli chat ls [--worktree <worktree>] [--archived]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `worktree` | string | no | Which worktree: `current` (the one your terminal runs in), `path:<absolute folder>`, or `branch:<branch name>`. |
+| `archived` | boolean | no | Include archived chats. Default false. |
+
+**Result**
+
+- `chats` (array of object) — The chats in your scope.
+  - `id` (string) — The chat's id — `chat/open` and `chat/send` take it as `id:<id>`.
+  - `title` (string) — Its title, the same on every client.
+  - `agent` (string | null) — The bridge agent that drives it (`claude-code`, `codex`, …); fixed for its life.
+  - `model` (string | null) — The model it uses now, when one was chosen.
+  - `folder` (string | null) — The folder it runs in.
+  - `state` (string) — `working` while a turn runs, else `idle`.
+  - `archived` (boolean) — Whether it is archived.
+  - `updatedAt` (integer) — Epoch milliseconds of its last activity.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "chat/list",
+  "params": {
+    "worktree": "current"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — the selector named no project, worktree or terminal
+- `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
+
 ### `run/list`
 
 List the orchestration runs (multi-step, multi-agent plans) with their status and step counts.
@@ -1151,6 +1199,43 @@ Show a terminal tab: switch to its workspace and make it the active tab, so the 
 **Errors** (besides the ones every entry can answer — see *Error codes*)
 
 - `-32002` not found — the selector named no project, worktree or terminal
+
+### `chat/open`
+
+Show a chat to the person: open it in a chat tab next to its worktree's terminals, or focus the tab already showing it.
+
+- **Group:** `ui` · mutates (receipted, audited)
+- **MCP:** `chat_open`
+- **CLI:** `uxnan-cli chat open <chat>`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `chat` | string | yes | The chat, as `id:<id>` from `chat/list`. |
+
+**Result**
+
+- `chat` (string) — The chat shown.
+- `tab` (string | null) — The tab showing it.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "chat/open",
+  "params": {
+    "chat": "id:7be2af67…"
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no chat has that id (`chat ls` lists them)
+- `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
 
 ### `file/open`
 
@@ -2081,6 +2166,49 @@ Wait until an agent reaches a state, as reported by its own hooks: `idle` (its t
 
 - `-32002` not found — the selector named no project, worktree or terminal
 - `-32006` timeout — the state was not reached within `timeoutMs` (at most 15 000 per call); `data.current` says where the agent is — call again to keep waiting
+
+### `chat/send`
+
+Send a whole message to a chat, exactly as if it were typed in the chat tab or on the phone. While its agent works the bridge queues the message behind the running turn (or hands it to the turn, on agents that take input mid-turn); every client of the chat sees it. Use `chat/list` to see whether the chat is working.
+
+- **Group:** `converse` · mutates (receipted, audited)
+- **MCP:** `chat_send`
+- **CLI:** `uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]`
+
+**Params**
+
+| Name | Type | Required | Meaning |
+|---|---|---|---|
+| `chat` | string | yes | The chat, as `id:<id>` from `chat/list`. |
+| `message` | string | yes | The whole message. At most 64 KiB. |
+| `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
+
+**Result**
+
+- `requestId` (string) — A fresh id for this call — the audit line carries it too.
+- `idempotencyKey` (string, optional) — The key the caller sent, when it sent one.
+- `chat` (string) — The chat the message was sent to.
+- `turnId` (string | null) — The turn the message started or joined.
+- `queued` (boolean) — Whether it waits behind a running turn.
+
+**Request**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "chat/send",
+  "params": {
+    "chat": "id:7be2af67…",
+    "message": "Now add tests for the parser."
+  }
+}
+```
+
+**Errors** (besides the ones every entry can answer — see *Error codes*)
+
+- `-32002` not found — no chat has that id (`chat ls` lists them)
+- `-32004` unavailable — Uxnan is not connected to the bridge (Settings → Bridge & mobile)
 
 ### `terminal/read`
 

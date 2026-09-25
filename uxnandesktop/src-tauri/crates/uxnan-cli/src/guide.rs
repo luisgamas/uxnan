@@ -329,6 +329,18 @@ fn errors_of(e: &Entry) -> Vec<(ErrorCode, &'static str)> {
             "the selector named no project, worktree or terminal",
         ));
     }
+    if has("chat") {
+        out.push((
+            ErrorCode::NotFound,
+            "no chat has that id (`chat ls` lists them)",
+        ));
+    }
+    if e.method.starts_with("chat/") {
+        out.push((
+            ErrorCode::Unavailable,
+            "Uxnan is not connected to the bridge (Settings → Bridge & mobile)",
+        ));
+    }
     if has("run") || has("automation") {
         out.push((
             ErrorCode::NotFound,
@@ -441,6 +453,9 @@ fn cli_form(method: &str) -> Option<&'static str> {
         "agent/list" => "uxnan-cli agent ls",
         "agent/send" => "uxnan-cli agent send --to <terminal> --message-file <file> [--force] [--idempotency-key <key>]",
         "agent/wait" => "uxnan-cli agent wait --to <terminal> --for idle|waiting|exit [--timeout <seconds>]",
+        "chat/list" => "uxnan-cli chat ls [--worktree <worktree>] [--archived]",
+        "chat/open" => "uxnan-cli chat open <chat>",
+        "chat/send" => "uxnan-cli chat send --to <chat> --message-file <file> [--idempotency-key <key>]",
         "run/list" => "uxnan-cli run ls",
         "run/show" => "uxnan-cli run show <run-id>",
         "run/start" => "uxnan-cli run start <run-id> [--idempotency-key <key>]",
@@ -486,7 +501,7 @@ fn group_blurb(group: Group) -> &'static str {
         Group::Read => "reads with no effect",
         Group::Ui => "actions on the window that change nothing on disk or in a process",
         Group::Create => "create a worktree or a terminal, start a saved run or automation",
-        Group::Converse => "talk to a running agent",
+        Group::Converse => "talk to a running agent, or to a chat",
         Group::Orchestrate => "drive a run as its coordinator: tasks, workers, an inbox, questions; a worker reports back",
     }
 }
