@@ -60,6 +60,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **`bridge/generatePairingQr` answers with the running process's own payload,
+  window armed** — its LAN hosts and persisted pairing session, exactly what
+  `start` prints. It built a separate payload without hosts or session and
+  never armed the pairing window, so a QR a client asked for (Uxnan Desktop's
+  "Pair a phone") could not complete a LAN pairing.
 - **A CLI that is not installed can no longer take the bridge down.** The
   Grok, Zero, Codex `app-server` and line-protocol spawns had no `error`
   listener, so asking an uninstalled Grok for its models (`agent/models`)

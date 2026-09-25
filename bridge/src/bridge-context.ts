@@ -19,7 +19,7 @@ import type { Logger } from './logger.js';
 import type { SyncLedger } from './sync/sync-ledger.js';
 import type { BridgeSettingsStore } from './settings/bridge-settings.js';
 import type { PresenceRegistry } from './presence/presence-registry.js';
-import type { BridgeHost } from '@uxnan/shared';
+import type { BridgeHost, PairingPayload } from '@uxnan/shared';
 import type { AgentInstalls } from './agents/agent-installs.js';
 
 export interface BridgeContext {
@@ -68,6 +68,14 @@ export interface BridgeContext {
    * phone can show a "bridge update available" hint.
    */
   updateStatus(): UpdateStatus | undefined;
+  /**
+   * The pairing payload THIS process serves — its LAN hosts, relay and
+   * persisted session — with the pairing window armed, exactly what the QR
+   * `start` prints. What a client that asks for a QR must get (Uxnan Desktop's
+   * "Pair a phone"): a payload built elsewhere would lack the hosts and the
+   * session, and an unarmed window refuses the handshake.
+   */
+  pairingPayload(): PairingPayload;
   /** Injected clock (epoch ms) for testability. */
   now(): number;
 }

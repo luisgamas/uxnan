@@ -565,6 +565,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     relayConnected: () => relayState.connected,
     localControlActive: () => localControl !== undefined,
     updateStatus: () => updateState.status,
+    pairingPayload: () => {
+      pairingCodeService.arm();
+      return buildPairingPayload();
+    },
     now,
   };
 

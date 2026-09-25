@@ -34,6 +34,12 @@ test('startBridge generates a valid pairing payload via the router', async () =>
   assert.ok('result' in res);
   const validation = validatePairingPayload(res.result, NOW);
   assert.ok(validation.valid);
+  // It is the running process's own payload (its persisted session), with the
+  // pairing window armed so the handshake it starts is accepted.
+  assert.equal(
+    (res.result as { sessionId: string }).sessionId,
+    bridge.generatePairingQr().sessionId,
+  );
   await bridge.stop();
   await rmrf(baseDir);
 });

@@ -30,6 +30,9 @@ function fakeContext(): BridgeContext {
     relayConnected: () => false,
     localControlActive: () => false,
     updateStatus: () => undefined,
+    pairingPayload: () => {
+      throw new Error('not used');
+    },
     now: () => 1000,
   };
 }
