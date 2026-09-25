@@ -81,6 +81,13 @@ export interface Message {
 export interface Turn {
   id: string;
   threadId: string;
+  /**
+   * The turn's position in its thread (1-based, assigned by the bridge when the
+   * turn is stored, never reused). Clients order a conversation by it — never by
+   * the order notifications happened to arrive — so a turn a client missed and
+   * fetched later still lands in its place. Absent on an older bridge.
+   */
+  seq?: number;
   status: TurnStatus;
   messages: Message[];
   createdAt: number;
@@ -147,6 +154,17 @@ export interface Thread {
    * is what they are.
    */
   titleSource?: ThreadTitleSource;
+  /** Which client started the conversation, when known. */
+  origin?: ThreadOrigin;
+  /** Sync revision of the thread's last change (see `SyncChanges`). */
+  rev?: number;
+}
+
+/** Where a conversation was started. */
+export interface ThreadOrigin {
+  kind: 'phone' | 'desktop';
+  /** The device's or machine's name. */
+  name: string;
 }
 
 /** Where a thread's title came from. See {@link Thread.titleSource}. */

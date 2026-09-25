@@ -3,6 +3,7 @@
  *
  * Dart equivalents: `uxnanmobile/lib/domain/entities/{secure_session,trusted_device}.dart`.
  */
+import type { ClientPresence } from './sync.js';
 
 export type HandshakeMode = 'qr_bootstrap' | 'trusted_reconnect';
 
@@ -60,6 +61,23 @@ export interface BridgeStatus {
    * processes on one `--resume`; OpenCode retires the running turn outright).
    */
   features?: BridgeFeatures;
+  /** How this bridge was started and on which machine. Absent on an older bridge. */
+  host?: BridgeHost;
+  /** Who is connected right now. Absent on an older bridge. */
+  clients?: ClientPresence[];
+}
+
+/**
+ * What started the bridge: its own user service (`service` — the normal case,
+ * it outlives Uxnan Desktop), Uxnan Desktop directly (`desktop`), or a person
+ * in a terminal (`cli`).
+ */
+export type BridgeLaunchedBy = 'service' | 'desktop' | 'cli';
+
+export interface BridgeHost {
+  launchedBy: BridgeLaunchedBy;
+  /** The machine's name, as a phone shows it ("Linked with Uxnan Desktop on …"). */
+  machineName: string;
 }
 
 /** Optional, additive bridge capabilities advertised on {@link BridgeStatus}. */
@@ -105,4 +123,11 @@ export interface BridgeFeatures {
    * (`localControlEnabled: false`, or a short-lived CLI command).
    */
   localControl?: boolean;
+  /**
+   * The bridge serves replica sync (`sync/changes`), the persistent project
+   * registry (`project/add|remove|rename`, `stream/project/*`), shared settings
+   * (`settings/*`), presence (`stream/presence/updated`) and orders turns by
+   * `Turn.seq`. Absent/false → a client keeps its older `thread/list` flow.
+   */
+  sync?: boolean;
 }

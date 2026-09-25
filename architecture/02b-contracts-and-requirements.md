@@ -107,7 +107,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 72 metodos request/response** + 16 notificaciones de streaming
+> **Total: 79 metodos request/response** + 21 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -116,11 +116,11 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ```
 thread/list             -> lista de threads del PC, con filtro opcional. Cada Thread lleva, en vivo y sin persistir, `activeTurnId?` (el turno que corre ahora, igual que `TurnList.activeTurnId`): un cliente recien conectado sabe que conversaciones trabajan sin leer los turnos de cada una
 thread/read             -> datos completos de un thread (con el mismo `activeTurnId?` en vivo)
-thread/start            -> crear nuevo thread (agentId, model, cwd, opcional)
-thread/resume           -> reanudar thread existente (best-effort)
+thread/start            -> crear nuevo thread (agentId, model, cwd, opcional). La carpeta (`cwd`) decide el proyecto y lo registra (`02a` §5.8.17); `projectId` solo da la carpeta cuando falta `cwd`. Guarda `origin { kind: phone|desktop, name }`. Un `title` dado aqui es del usuario (`titleSource: user`)
+thread/resume           -> abrir un thread existente: valida que exista y **no cambia nada** (ni estado ni `updatedAt`; abrir un archivado no lo desarchiva)
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion
-thread/rename           -> renombrar thread (devuelve el Thread actualizado). El móvil también lo usa una sola vez para convertir el primer prompt en título cuando el bridge aún devuelve un placeholder; un título explícito/manual no se reemplaza.
+thread/rename           -> renombrar thread (devuelve el Thread actualizado; `titleSource: user`). El titulo provisional lo pone el bridge al guardar el primer turno y el generado tras un turno completado (`02a` §5.8.17); los clientes no renombran por su cuenta. Un `source: 'prompt'` nunca pisa un titulo `user` o `agent`.
 thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio).
 thread/archive          -> archivar thread (status -> archived, reversible). Antes de archivar, el bridge cancela el turno en vuelo, vacia la cola y libera el proceso residente que pi/Antigravity mantienen para el hilo (`AgentManager.closeThreadSession`); el id de sesion nativo se conserva, asi que desarchivar y enviar reanuda la misma sesion en un proceso nuevo
 thread/unarchive        -> restaurar thread archivado (status -> active)
@@ -227,17 +227,28 @@ workspace/applyPatch            -> aplicar lista de cambios de patch
 workspace/exists                -> probe rapido: existe cwd? es git repo? (para detectar threads huerfanos)
 ```
 
-**Proyectos (2):**
+**Proyectos (5)** — un registro persistente que todos los clientes reflejan (`02a` §5.8.17):
 ```
-project/list            -> lista de proyectos configurados (Project { id, name, cwd, agentId?, model? })
-project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no esta en workspaceRoots)
+project/list            -> proyectos registrados (Project { id, name, cwd, agentId?, model?, source?, addedAt?, updatedAt?, rev? })
+project/resolve         -> el proyecto al que pertenece una carpeta (un worktree -> su repositorio); uno no registrado vuelve sin `source`
+project/add             -> registrar la carpeta { cwd, name? } (idempotente). Un telefono solo dentro de las raices de exploracion; el desktop cualquiera (`source: desktop`)
+project/remove          -> quitar { projectId } del registro -> { removed }. Las conversaciones NO se tocan
+project/rename          -> { projectId, name } (vacio restaura el nombre de la carpeta)
 ```
 
-**Agentes (4):**
+**Sincronizacion y ajustes compartidos (3)** (`02a` §5.8.17):
+```
+sync/changes            -> { since?, storeId? } -> SyncChanges { storeId, rev, reset, settings, projects, removedProjectIds, threads, removedThreadIds, clients }. Lo posterior a la revision `since`, o una instantanea completa (`reset: true`) cuando `storeId` difiere o `since` es anterior al horizonte de lapidas. El cliente la llama al (re)conectar, al reanudar y ante un salto de `rev`
+settings/get            -> BridgeSettings { home }
+settings/set            -> { home? } -> BridgeSettings. `home`: carpeta absoluta existente de donde parte la exploracion (por defecto, la carpeta personal)
+```
+
+**Agentes (5):**
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
 agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`. Para cualquier agente `deprecated`, devuelve `[]`.
+agent/doctor            -> { agents: AgentDiagnosis[] } — por agente: `available`, el comando que se ejecuta y cada ubicacion revisada (tabla compartida `shared/agent-locations.json` + PATH del shell de login)
 agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
 
@@ -271,7 +282,9 @@ notifications/unregister        -> desregistrar el telefono
 bridge/status                    -> snapshot de estado del bridge (incluye relayConnected,
                                     version y, del chequeo npm de fondo, latestVersion/updateAvailable;
                                     activeTurns = hilos con un turno en curso, para que un cliente
-                                    espere un momento tranquilo antes de reiniciar el bridge)
+                                    espere un momento tranquilo antes de reiniciar el bridge;
+                                    host { launchedBy: service|desktop|cli, machineName } y
+                                    clients[] = quien esta conectado; features.sync)
 bridge/generatePairingQr         -> regenera y devuelve el PairingPayload vigente
 bridge/connectedPhones           -> lista de telefonos conectados
 bridge/disconnectPhone           -> desconectar un telefono
@@ -394,11 +407,23 @@ stream/turn/delivered       -> TurnDeliveredParams { threadId, turnId, intoTurnI
 stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
 stream/thread/updated       -> ThreadUpdatedParams { thread }                               (NUEVO 2026-09; reemplaza stream/thread/renamed)
-stream/thread/deleted       -> ThreadDeletedParams { threadId }                             (NUEVO 2026-09)
+stream/thread/deleted       -> ThreadDeletedParams { threadId, rev? }                       (NUEVO 2026-09)
 stream/turn/created         -> TurnCreatedParams   { threadId, turn, clientTurnId? }        (NUEVO 2026-09)
 stream/approval/resolved    -> ApprovalResolvedParams { threadId, approvalId, decision, timedOut? }  (NUEVO 2026-09)
 stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, skipped, answers, timedOut? }  (NUEVO 2026-09)
+stream/project/updated      -> ProjectUpdatedParams { project }                             (NUEVO 2026-09, §5.8.17)
+stream/project/removed      -> ProjectRemovedParams { projectId, rev }                      (NUEVO 2026-09)
+stream/settings/updated     -> SettingsUpdatedParams { settings, rev }                      (NUEVO 2026-09)
+stream/presence/updated     -> PresenceUpdatedParams { clients }                            (NUEVO 2026-09; en vivo, sin rev)
+stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
 ```
+
+**Revisiones (2026-09, `02a` §5.8.17).** `stream/thread/updated` (via
+`thread.rev`), `stream/thread/deleted`, `stream/project/*` y
+`stream/settings/updated` llevan la revision global del cambio. Un cliente que
+recibe una que no es la siguiente a la ultima aplicada perdio algo: llama
+`sync/changes { since }`. `Turn.seq` (1..n por hilo) es el orden canonico de la
+conversacion; los clientes no ordenan por llegada.
 
 **Varios clientes a la vez (2026-09, `02a` §5.8.16).** Cada notificacion se
 difunde a **todos** los clientes conectados — cada telefono emparejado y el

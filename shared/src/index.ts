@@ -21,6 +21,7 @@ export * from './e2ee/pairing-payload.js';
 export * from './agents/agent-capabilities.js';
 export * from './agents/agent-config.js';
 export * from './agents/agent-adapter.js';
+export * from './agents/agent-locations.js';
 
 // Local control channel (desktop ↔ bridge on the same machine)
 export * from './local-control/local-control.js';
@@ -36,6 +37,7 @@ export * from './models/thread.js';
 export * from './models/git.js';
 export * from './models/workspace.js';
 export * from './models/project.js';
+export * from './models/sync.js';
 export * from './models/session.js';
 export * from './models/approval.js';
 export * from './models/question.js';

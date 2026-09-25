@@ -44,7 +44,20 @@ import type {
   SearchFilesParams,
   WorkspaceSearchResult,
 } from '../models/workspace.js';
-import type { AuthStatus, Project } from '../models/project.js';
+import type {
+  AuthStatus,
+  Project,
+  ProjectAddParams,
+  ProjectRemoveParams,
+  ProjectRemoveResult,
+  ProjectRenameParams,
+} from '../models/project.js';
+import type {
+  BridgeSettings,
+  SettingsSetParams,
+  SyncChanges,
+  SyncChangesParams,
+} from '../models/sync.js';
 import type { ApprovalResponse } from '../models/approval.js';
 import type { QuestionResponse } from '../models/question.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
@@ -53,6 +66,7 @@ import type {
   AgentCommand,
   AgentCommandInvocation,
   AgentDescriptor,
+  AgentDiagnosis,
   AgentId,
   AgentModel,
 } from '../agents/agent-capabilities.js';
@@ -474,6 +488,14 @@ export interface JsonRpcMethodRegistry {
   // Projects
   'project/list': { params: void; result: Project[] };
   'project/resolve': { params: { cwd: string }; result: Project };
+  'project/add': { params: ProjectAddParams; result: Project };
+  'project/remove': { params: ProjectRemoveParams; result: ProjectRemoveResult };
+  'project/rename': { params: ProjectRenameParams; result: Project };
+
+  // Replica sync and shared settings (architecture/02a §5.8.17)
+  'sync/changes': { params: SyncChangesParams; result: SyncChanges };
+  'settings/get': { params: void; result: BridgeSettings };
+  'settings/set': { params: SettingsSetParams; result: BridgeSettings };
 
   // Agents
   'agent/list': { params: void; result: AgentListResult };
@@ -482,6 +504,8 @@ export interface JsonRpcMethodRegistry {
   'agent/commands': { params: AgentCommandsParams; result: AgentCommandsResult };
   // Usage statistics (per-provider quota / credit / local token tally)
   'agent/usageStats': { params: UsageStatsParams; result: UsageStatsResult };
+  // Where the bridge looked for each agent's CLI and what it found
+  'agent/doctor': { params: void; result: { agents: AgentDiagnosis[] } };
 
   // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
   'metrics/get': { params: void; result: MetricsSnapshot };

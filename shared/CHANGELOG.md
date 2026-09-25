@@ -4,6 +4,25 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — one layer: replica sync, a mirrored project registry, presence
+
+The bridge is the source of truth for everything clients share
+(architecture/02a §5.8.17, 02b §1.2/§1.4):
+
+- `sync/changes` (`SyncChangesParams`, `SyncChanges`), `settings/get|set`
+  (`BridgeSettings { home }`), `project/add|remove|rename`
+  (`ProjectAddParams`, `ProjectRemoveParams`, `ProjectRenameParams`,
+  `ProjectRemoveResult`), `agent/doctor` (`AgentDiagnosis`). **79 JSON-RPC
+  methods** (was 72).
+- `stream/project/updated|removed`, `stream/settings/updated`,
+  `stream/presence/updated` (`ClientPresence`), `stream/agents/updated`.
+  **21 streaming notifications** (was 16). `ThreadDeletedParams.rev`.
+- `Project.source|addedAt|updatedAt|rev`, `Thread.origin|rev`, `Turn.seq`,
+  `BridgeStatus.host|clients`, `BridgeFeatures.sync`.
+- `agent-locations.json` + `locateAgent` / `agentLocation` /
+  `agentLocationTable`: where every agent CLI installs, the one table the bridge
+  and Uxnan Desktop resolve from.
+
 ### Changed — streaming notifications for several clients at once
 
 Every notification reaches every connected client (phones and the desktop), so

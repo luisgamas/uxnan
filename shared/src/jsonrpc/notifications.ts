@@ -11,6 +11,9 @@
  */
 import type { ApprovalDecision } from '../models/approval.js';
 import type { QueuePausedReason, Thread, Turn } from '../models/thread.js';
+import type { Project } from '../models/project.js';
+import type { BridgeSettings, ClientPresence } from '../models/sync.js';
+import type { AgentDescriptor } from '../agents/agent-capabilities.js';
 
 export const StreamNotification = {
   TurnStarted: 'stream/turn/started',
@@ -51,6 +54,16 @@ export const StreamNotification = {
   ApprovalResolved: 'stream/approval/resolved',
   /** A pending question was answered (on any client), skipped or timed out. */
   QuestionResolved: 'stream/question/resolved',
+  /** A project was registered or its entry changed. */
+  ProjectUpdated: 'stream/project/updated',
+  /** A project was removed from the registry (its conversations stay). */
+  ProjectRemoved: 'stream/project/removed',
+  /** The shared settings changed (`settings/set`, or the bridge's CLI). */
+  SettingsUpdated: 'stream/settings/updated',
+  /** A client connected or disconnected. */
+  PresenceUpdated: 'stream/presence/updated',
+  /** An agent became available or unavailable (installed, removed). */
+  AgentsUpdated: 'stream/agents/updated',
 } as const;
 
 export type StreamNotification = (typeof StreamNotification)[keyof typeof StreamNotification];
@@ -204,6 +217,39 @@ export interface ThreadUpdatedParams {
 /** A thread was deleted on the bridge (by any client). */
 export interface ThreadDeletedParams {
   threadId: string;
+  /** Sync revision of the deletion (see `SyncChanges`). */
+  rev?: number;
+}
+
+/**
+ * A project was registered or changed. Like `stream/thread/updated`, the whole
+ * entry travels (idempotent upsert) and `project.rev` is its sync revision: a
+ * client that sees a revision that is not the one after its last runs
+ * `sync/changes`.
+ */
+export interface ProjectUpdatedParams {
+  project: Project;
+}
+
+/** A project left the registry. Its conversations are untouched. */
+export interface ProjectRemovedParams {
+  projectId: string;
+  rev: number;
+}
+
+export interface SettingsUpdatedParams {
+  settings: BridgeSettings;
+  rev: number;
+}
+
+/** The whole list of connected clients (idempotent; not revisioned). */
+export interface PresenceUpdatedParams {
+  clients: ClientPresence[];
+}
+
+/** The whole agent list, as `agent/list` would answer now. */
+export interface AgentsUpdatedParams {
+  agents: AgentDescriptor[];
 }
 
 /**
