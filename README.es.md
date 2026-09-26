@@ -119,7 +119,7 @@ Arrastra cualquier archivo o carpeta del árbol sobre una terminal y su ruta se 
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/drag-file.gif" alt="Arrastrando un archivo del árbol de archivos sobre una terminal para insertar su ruta" width="440" />
+<img src="assets/shorts/drag-file.gif" alt="Arrastrando AGENTS.md del árbol de archivos a una terminal, que escribe su ruta en un comando wc -l" width="440" />
 
 </td>
 </tr>
@@ -134,7 +134,7 @@ Haz push, elige `base ← head`, y crea el PR: uxnan lee las reglas de rama real
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-pr.gif" alt="Creando un pull request desde Uxnan Desktop" width="440" />
+<img src="assets/shorts/create-pr.gif" alt="Llenando el título, la descripción y el interruptor de borrador de un pull request desde el dock de GitHub" width="440" />
 
 </td>
 </tr>
@@ -149,7 +149,7 @@ Un carril de grafo de ramas corre junto al log de commits: haz clic en un commit
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/history-graph.gif" alt="Navegando el historial de commits con un grafo de ramas" width="440" />
+<img src="assets/shorts/history-graph.gif" alt="Expandiendo un commit en el historial con grafo de ramas y abriendo el diff de un archivo lado a lado" width="440" />
 
 </td>
 </tr>
@@ -164,7 +164,7 @@ Rama nueva, rama existente, o una ubicación personalizada: cada tarea obtiene s
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-worktree.gif" alt="Creando un nuevo git worktree para una tarea" width="440" />
+<img src="assets/shorts/create-worktree.gif" alt="Creando un worktree en una rama nueva desde el diálogo New worktree y encontrándolo en el sidebar" width="440" />
 
 </td>
 </tr>
@@ -179,7 +179,7 @@ Uso de sesión, semanal y mensual para Codex, Claude, Copilot y Grok, leído dir
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/provider-usage.gif" alt="Viendo las cuotas de uso de proveedores de IA en Ajustes" width="440" />
+<img src="assets/shorts/provider-usage.gif" alt="Abriendo el panel de uso de proveedores desde la barra de estado y luego los ajustes de Providers" width="440" />
 
 </td>
 </tr>
@@ -194,7 +194,7 @@ Abre los Pull Requests, Issues y Actions de un proyecto en una vista enfocada qu
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Revisando un pull request y sus checks de CI en la vista de GitHub a pantalla completa" width="440" />
+<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Abriendo un pull request desde el dock, luego sus checks de CI y sus archivos cambiados" width="440" />
 
 </td>
 </tr>
@@ -209,7 +209,7 @@ Un subagente de Claude Code, Codex, Grok u OpenCode aparece en vivo como una fil
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/agent-subagents.gif" alt="Un subagente apareciendo como una fila anidada bajo su agente padre" width="440" />
+<img src="assets/shorts/agent-subagents.gif" alt="Claude Code lanzando dos subagentes Explore que aparecen anidados bajo él en el sidebar" width="440" />
 
 </td>
 </tr>

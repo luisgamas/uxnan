@@ -119,7 +119,7 @@ Drag any file or folder from the tree onto a terminal and its path gets typed th
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/drag-file.gif" alt="Dragging a file from the file tree onto a terminal to insert its path" width="440" />
+<img src="assets/shorts/drag-file.gif" alt="Dragging AGENTS.md from the file tree onto a terminal, which types its path into a wc -l command" width="440" />
 
 </td>
 </tr>
@@ -134,7 +134,7 @@ Push, pick `base ← head`, and create the PR — uxnan reads the repository's a
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-pr.gif" alt="Creating a pull request from inside Uxnan Desktop" width="440" />
+<img src="assets/shorts/create-pr.gif" alt="Filling in a pull request's title, description and draft switch from the GitHub dock" width="440" />
 
 </td>
 </tr>
@@ -149,7 +149,7 @@ A branch-graph gutter runs next to the commit log — click a commit to expand i
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/history-graph.gif" alt="Browsing the commit history with a branch graph" width="440" />
+<img src="assets/shorts/history-graph.gif" alt="Expanding a commit in the branch-graph history and opening one file's diff side by side" width="440" />
 
 </td>
 </tr>
@@ -164,7 +164,7 @@ New branch, existing branch, or a custom location — every task gets its own wo
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-worktree.gif" alt="Creating a new git worktree for a task" width="440" />
+<img src="assets/shorts/create-worktree.gif" alt="Creating a worktree on a new branch from the New worktree dialog, then finding it in the sidebar" width="440" />
 
 </td>
 </tr>
@@ -179,7 +179,7 @@ Session, weekly and monthly usage for Codex, Claude, Copilot and Grok, read stra
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/provider-usage.gif" alt="Viewing AI provider usage quotas in Settings" width="440" />
+<img src="assets/shorts/provider-usage.gif" alt="Opening the provider usage popover from the status bar, then the Providers settings" width="440" />
 
 </td>
 </tr>
@@ -194,7 +194,7 @@ Open a project's Pull Requests, Issues and Actions in a focused view that replac
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Reviewing a pull request and CI checks in the full-screen GitHub view" width="440" />
+<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Opening a pull request from the dock, then its CI checks and its changed files" width="440" />
 
 </td>
 </tr>
@@ -209,7 +209,7 @@ A subagent from Claude Code, Codex, Grok or OpenCode shows up live as a nested r
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/agent-subagents.gif" alt="A subagent appearing as a nested row under its parent agent" width="440" />
+<img src="assets/shorts/agent-subagents.gif" alt="Claude Code launching two Explore subagents that appear nested under it in the sidebar" width="440" />
 
 </td>
 </tr>
