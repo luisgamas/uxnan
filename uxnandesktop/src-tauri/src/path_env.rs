@@ -82,28 +82,20 @@ fn merge_path(base: &OsStr, additions: &[PathBuf]) -> OsString {
 }
 
 /// Directories where user-installed CLIs commonly live but a macOS GUI launch
-/// omits from `PATH`. Both Homebrew prefixes are included (`/opt/homebrew` on
-/// Apple Silicon, `/usr/local` on Intel) so the same build works on either
-/// architecture. Only directories that actually exist are returned, so `PATH`
-/// isn't bloated with dead entries. Empty on every non-macOS platform.
+/// omits from `PATH` — the table shared with the bridge (`pathDirs` in
+/// `shared/agent-locations.json`), so the desktop and a bridge running as a
+/// service add the same ones. Both Homebrew prefixes are included
+/// (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel). Only directories
+/// that actually exist are returned, so `PATH` isn't bloated with dead
+/// entries. Empty on every non-macOS platform.
 fn well_known_dirs() -> Vec<PathBuf> {
     if !cfg!(target_os = "macos") {
         return Vec::new();
     }
-    let mut dirs = vec![
-        PathBuf::from("/opt/homebrew/bin"),
-        PathBuf::from("/opt/homebrew/sbin"),
-        PathBuf::from("/usr/local/bin"),
-        PathBuf::from("/usr/local/sbin"),
-    ];
-    if let Some(home) = home_dir() {
-        dirs.push(home.join(".local").join("bin"));
-        dirs.push(home.join(".npm-global").join("bin"));
-        dirs.push(home.join(".cargo").join("bin"));
-        dirs.push(home.join(".bun").join("bin"));
-        dirs.push(home.join(".deno").join("bin"));
-    }
-    dirs.into_iter().filter(|d| d.is_dir()).collect()
+    crate::agentcli::well_known_path_dirs()
+        .into_iter()
+        .filter(|d| d.is_dir())
+        .collect()
 }
 
 /// Probe the user's login **and** interactive shell for its real `PATH` — the one
@@ -170,13 +162,6 @@ fn extract_path(bytes: &[u8]) -> Option<String> {
     } else {
         Some(path.to_string())
     }
-}
-
-/// The user's home directory (`HOME`, or `USERPROFILE` as a fallback).
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
 }
 
 #[cfg(test)]

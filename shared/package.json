@@ -14,7 +14,8 @@
     }
   },
   "files": [
-    "dist/src"
+    "dist/src",
+    "agent-locations.json"
   ],
   "engines": {
     "node": ">=18"

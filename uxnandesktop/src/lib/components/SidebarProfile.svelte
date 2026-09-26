@@ -1,13 +1,15 @@
 <script lang="ts">
   // Left-sidebar footer: a configurable profile card (avatar + name + a line of
   // text), shadcn-sidebar-footer style. Clicking it opens a menu with
-  // Automations and Settings, plus an "Edit profile" entry. The avatar/name/description live in
+  // Automations and Settings; its identity header carries the "Edit profile"
+  // icon button beside the name. The avatar/name/description live in
   // `AppSettings.profile` and are edited via SidebarProfileDialog.
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import { Button } from "$lib/components/ui/button";
   import { app } from "$lib/state/app.svelte";
   import { cn } from "$lib/utils";
   import { deferModalOpen } from "$lib/utils/pointerLock";
-  import { icon, text, divider, row, focus } from "$lib/design";
+  import { icon, iconButton, text, divider, row, focus } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { resolveBinding } from "$lib/keyboard";
   import KeyChord from "./KeyChord.svelte";
@@ -22,8 +24,16 @@
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
   import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import { welcome } from "$lib/state/welcome.svelte";
 
   let editOpen = $state(false);
+  let menuOpen = $state(false);
+
+  function editProfile(): void {
+    menuOpen = false;
+    deferModalOpen(() => (editOpen = true));
+  }
 
   // Pet companion: the quick on/off lives here (the full options are in
   // Settings → Pets). Turning it on loads the library on demand, so a user who
@@ -62,7 +72,7 @@
 {/snippet}
 
 <div class={cn("shrink-0 p-2", divider.top)}>
-  <DropdownMenu.Root>
+  <DropdownMenu.Root bind:open={menuOpen}>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
         <button
@@ -103,7 +113,7 @@
         >
           <EntityIcon value={app.sidebarProfile.icon} class="size-5" fallback={avatarGlyph} />
         </span>
-        <span class="flex min-w-0 flex-col">
+        <span class="flex min-w-0 flex-1 flex-col">
           <span class={cn("truncate tracking-tight", text.bodyStrong)}>{displayName}</span>
           {#if displayDesc}
             <span class={cn("truncate leading-4 text-muted-foreground", text.indicator)}>
@@ -111,6 +121,16 @@
             </span>
           {/if}
         </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class={cn(iconButton.action, "shrink-0 text-muted-foreground")}
+          aria-label={i18n.t("sidebarProfile.edit")}
+          title={i18n.t("sidebarProfile.edit")}
+          onclick={editProfile}
+        >
+          <Icon icon={PencilIcon} class={icon.button} />
+        </Button>
       </div>
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => app.openAutomations()}>
@@ -156,9 +176,9 @@
         </DropdownMenu.Sub>
       {/if}
       <DropdownMenu.Separator />
-      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => deferModalOpen(() => (editOpen = true))}>
-        <Icon icon={PencilIcon} class={icon.button} />
-        <span class="flex-1">{i18n.t("sidebarProfile.edit")}</span>
+      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => deferModalOpen(() => welcome.show())}>
+        <Icon icon={SparklesIcon} class={icon.button} />
+        <span class="flex-1">{i18n.t("sidebarProfile.welcome")}</span>
       </DropdownMenu.Item>
     </DropdownMenu.Content>
   </DropdownMenu.Root>

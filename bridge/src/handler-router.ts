@@ -30,6 +30,10 @@ export interface RequestSession {
   sessionId: string;
   /** Trusted-device id of the phone. */
   deviceId: string;
+  /** Set for a request that arrived over the local control channel: the local
+   *  client's id (`desktop`). Methods only a local client may call
+   *  (`desktop/attach`) check it. */
+  local?: string;
 }
 
 export type RpcHandler = (

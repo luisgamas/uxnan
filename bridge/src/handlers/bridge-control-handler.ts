@@ -7,12 +7,10 @@
  *
  * See uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */
-import { hostname } from 'node:os';
 import { RpcError } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import { buildBridgeStatus } from '../bridge-status.js';
-import { generatePairingPayload } from '../qr.js';
 
 export function registerBridgeControlHandlers(router: HandlerRouter): void {
   router.register('bridge/status', (_params, ctx: BridgeContext) => {
@@ -24,19 +22,19 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
       activeSessions: ctx.sessions.count,
       startedAt: ctx.startedAt,
       now: ctx.now(),
+      localControl: ctx.localControlActive(),
+      activeTurns: ctx.agentManager.activeTurnCount(),
+      host: ctx.host,
+      clients: ctx.presence.list(),
       ...(update?.latestVersion !== undefined ? { latestVersion: update.latestVersion } : {}),
       ...(update?.updateAvailable ? { updateAvailable: true } : {}),
     });
   });
 
+  // The payload of the running process, window armed — the same one `start`
+  // prints — so a phone scanning a QR shown by Uxnan Desktop pairs over LAN.
   router.register('bridge/generatePairingQr', (_params, ctx: BridgeContext) =>
-    generatePairingPayload({
-      relayUrl: ctx.config.relayUrl,
-      macDeviceId: ctx.deviceState.identity.macDeviceId,
-      macIdentityPublicKey: ctx.deviceState.identity.macIdentityPublicKey,
-      displayName: hostname(),
-      now: ctx.now(),
-    }),
+    ctx.pairingPayload(),
   );
 
   router.register('bridge/connectedPhones', (_params, ctx: BridgeContext) => ctx.sessions.list());

@@ -1,0 +1,82 @@
+{
+  "$comment": "Where each coding-agent CLI Uxnan drives is installed — the ONE table the bridge (shared/src/agents/agent-locations.ts) and Uxnan Desktop (uxnandesktop/src-tauri/src/agentcli.rs, include_str!) both resolve from, so the phone, the desktop's chat and its terminals agree on what is installed. Tokens: '~' = the user's home, '%APPDATA%' / '%LOCALAPPDATA%' / '%PROGRAMFILES%' = those Windows folders, '$NODE_PREFIX' = the install prefix of the node running the resolver (covers nvm, fnm, volta, Homebrew and any custom npm prefix: global packages live under it). Resolution order per agent: native candidates, then the npm entry under each npm root (run as 'node <entry>'), then the command on PATH (POSIX; on Windows only a real executable counts). architecture/02a §5.8.17.",
+  "npmRoots": {
+    "posix": [
+      "$NODE_PREFIX/lib/node_modules",
+      "/usr/local/lib/node_modules",
+      "/opt/homebrew/lib/node_modules",
+      "~/.npm-global/lib/node_modules"
+    ],
+    "win32": ["$NODE_PREFIX/node_modules", "%APPDATA%/npm/node_modules"]
+  },
+  "pathDirs": {
+    "posix": [
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      "/usr/local/bin",
+      "/usr/local/sbin",
+      "~/.local/bin",
+      "~/.npm-global/bin",
+      "~/.cargo/bin",
+      "~/.bun/bin",
+      "~/.deno/bin",
+      "~/.grok/bin"
+    ],
+    "win32": []
+  },
+  "agents": [
+    {
+      "bridgeId": "claude-code",
+      "desktopId": "claude",
+      "command": "claude",
+      "native": { "posix": ["~/.local/bin/claude"], "win32": ["~/.local/bin/claude.exe"] },
+      "npmEntry": "@anthropic-ai/claude-code/cli.js"
+    },
+    {
+      "bridgeId": "codex",
+      "desktopId": "codex",
+      "command": "codex",
+      "npmEntry": "@openai/codex/bin/codex.js"
+    },
+    {
+      "bridgeId": "opencode",
+      "desktopId": "opencode",
+      "command": "opencode",
+      "native": {
+        "posix": [],
+        "win32": [
+          "%APPDATA%/npm/node_modules/opencode-ai/bin/opencode.exe",
+          "%PROGRAMFILES%/opencode/opencode.exe",
+          "%LOCALAPPDATA%/opencode/opencode.exe"
+        ]
+      }
+    },
+    {
+      "bridgeId": "pi-agent",
+      "desktopId": "pi",
+      "command": "pi",
+      "npmEntry": "@earendil-works/pi-coding-agent/dist/cli.js"
+    },
+    {
+      "bridgeId": "antigravity-cli",
+      "desktopId": "agy",
+      "command": "agy",
+      "native": {
+        "posix": ["~/.local/bin/agy", "~/agy/bin/agy", "/usr/local/bin/agy", "/opt/homebrew/bin/agy"],
+        "win32": ["%LOCALAPPDATA%/agy/bin/agy.exe"]
+      }
+    },
+    {
+      "bridgeId": "grok",
+      "desktopId": "grok",
+      "command": "grok",
+      "native": { "posix": ["~/.grok/bin/grok"], "win32": ["~/.grok/bin/grok.exe"] }
+    },
+    {
+      "bridgeId": "zero",
+      "desktopId": "zero",
+      "command": "zero",
+      "npmEntry": "@gitlawb/zero/bin/zero.js"
+    }
+  ]
+}

@@ -28,11 +28,13 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 971 Rust tests (894 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+always wins), **chat tabs that drive the Uxnan bridge's conversations next to
+the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
+`docs/chat.md`). 1,010 Rust tests (933 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,437 passing frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,587 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -42,8 +44,19 @@ windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet valid
 on real hardware**. **Every platform claim now lives in the platform support
 matrix** (`tests/platform-support.json` + `docs/platform-support.md`, checked by
 the suite and gating releases): Windows announces `smoke`, macOS (both arches)
-and Linux announce `builds`. **Phase 6 (embedded bridge / mobile pairing) is NOT
-started.**
+and Linux announce `builds`. **Phase 6 (bridge integration) is PARTIAL:** the
+desktop is a **client** of an installed bridge over its loopback local control
+channel (modes off / attach / managed — `managed` keeps the bridge running as
+the user's service, `docs/chat.md`); chat tabs show and drive the bridge's
+threads live alongside the phone, as a revisioned **replica** of the bridge's
+threads, projects, shared settings and presence; the desktop's projects and the
+phone's are **one mirrored registry**; a phone is **paired from Settings** with
+the running bridge's own QR; and agent detection follows the table shared with
+the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
+review** of the chat and Bridge & mobile UI; still left: packaging the bridge
+without Node (`02e` §3.1–§3.4, plan 007), trusted-device management from the
+desktop (revoke), and the mirror / hand-off of terminal-launched sessions
+(below, *Terminal-launched sessions*).
 
 **Built (DONE), in detail:**
 
@@ -336,7 +349,7 @@ started.**
   same path as a hand-made worktree, so it gets its agent like any other; optional
   **AI PR-body drafting** (the `aicommit` one-shot runner) configured in a full
   **AI-PR-authoring settings section** built like Settings → AI commit (enable switch,
-  agent picker with logos + install state, shared `AiModelPicker`, language,
+  agent picker with logos + install state, the shared `ModelPicker`, language,
   instructions).
   PR detail is split into **Conversation / Files-changed tabs** with the action bar
   available from both. Creating a PR **picks its `base ← head`** — **either side can be
@@ -875,6 +888,17 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
+- [ ] **Browser — a click whose navigation starts late reports `navigated: false`.**
+      `settle` (`control/services/browser.rs`) looks once, `SETTLE` (350 ms)
+      after the action, for a new document or a load in progress. A link that
+      first goes through a redirector on the internet starts loading later than
+      that, so the answer says nothing changed while the page does move — seen
+      2026-09-25 when an agent clicked the site's GitHub link (a short link that
+      redirects to github.com): the click reported no change and the next status
+      showed the repository. Waiting longer after every click would slow down
+      every click that does not navigate; decide the rule (e.g. keep watching up
+      to ~1.5 s only when the clicked element is a link, from the page script's
+      `effect`) and cover it with a test page that redirects slowly.
 - [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
       now captures on every desktop platform — WebView2 `CapturePreview` into a
       memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —
@@ -997,9 +1021,33 @@ the list says `driven · N in inbox` (`RunInbox.svelte`, 4 component tests).
 
 **Goal:** let the desktop act as the mobile bridge (single-install). The standalone
 bridge (`../bridge/`) is already implemented and is the contract reference
-(`architecture/02e-bridge-integration.md`); this phase embeds it. **Nothing exists
-yet on either side** — the bridge's `desktop/*` handler is also an empty stub
-(`bridge/FOR-DEV.md`).
+(`architecture/02e-bridge-integration.md`); this phase embeds it.
+
+**Done so far (see `## Status`):** the desktop is a
+**client** of an installed bridge over its loopback local control channel
+(`src-tauri/src/bridgeclient/`, modes off / attach / managed, `02e` §3.5), and
+**chat tabs** drive the bridge's conversations next to the phone
+(`docs/chat.md`). What remains is below.
+
+### Chat tabs — parity with the phone's conversation screen
+- [ ] **Pending the maintainer's visual review** (AGENTS.md → *UI changes*): the
+      chat tab, the new-chat setup and Settings → Bridge & mobile were built and
+      exercised against a real bridge in a browser harness, never on the
+      maintainer's screen. Iterate on sizes/spacing/copy from that review.
+- [ ] **Not yet validated in the packaged app with a real agent + a paired
+      phone.** The Rust client is tested against the real built bridge and the
+      UI against a real bridge (echo agent); the full loop — `npm run tauri dev`,
+      a real CLI (Claude Code is the recommended pilot) and
+      the phone on the same thread — still needs a supervised run.
+- [ ] Fork and "session info" (the agent's native session id, for resuming it
+      from its own CLI) in the chat header's menu — the phone offers both.
+
+### Terminal-launched sessions
+- [ ] Publish terminal sessions to the bridge's catalog, mirror them read-only
+      to the phone (`agentSession/watch`), and the hand-off both ways (desktop →
+      bridge after the TUI exits; bridge → desktop via `agentResume.ts`). Needs
+      the per-agent surface matrix first, measured (`bridge/docs/agents.md` →
+      *Drive surface*).
 
 
 ### Backend (Rust)
@@ -1030,8 +1078,9 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       mobile UI (`uxnanmobile/FOR-DEV.md`).
 
 ### Frontend (Svelte)
-- [ ] Settings → Mobile connection: QR pairing dialog, connected-phone indicator,
-      trusted-device management (reuses the bridge's `bridge/removeTrustedDevice`).
+- [ ] Settings → Bridge & mobile: trusted-device management (list and revoke,
+      reusing the bridge's `bridge/trustedDevices` / `bridge/removeTrustedDevice`).
+      The QR pairing dialog and the live connected-phone list are done.
 
 ## Remote hosts over SSH ☐
 
@@ -1702,7 +1751,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 971 Rust + 1,437 passing Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,010 Rust + 1,587 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -42,6 +42,9 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, relative } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -55,12 +58,21 @@ import type {
   TurnAttachment,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
+import { proxyLaunchEnv } from './mcp-proxy.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
+import { agentEnv, defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
-import { planBlock, type PlanStepBlock } from './content-blocks.js';
-import { zeroToolBlock, zeroPlanSteps, type ZeroToolCall } from './zero-tools.js';
+import { planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
+import { extractFrontMatter } from './command-scan.js';
+import {
+  acpPlanSteps,
+  acpToolBlock,
+  acpToolKind,
+  acpToolStartBlock,
+  type AcpToolCall,
+} from './acp-tools.js';
 
 const ZERO_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -76,9 +88,71 @@ const ZERO_CAPABILITIES: AgentCapabilities = {
   // Verified against a real ACP-driven run: no usage on the wire and none in
   // the session store either (that is an `exec`-only record). See the header.
   reportsContextUsage: false,
-  // ACP advertises slash commands via `available_commands_update` (captured below).
+  // Its skills (see listCommands): the ACP server sends no
+  // `available_commands_update` and its slash commands are its TUI's, but the
+  // model loads a named skill with its own skill tool when the prompt asks.
   commands: true,
 };
+
+/** How long a folder's skill list is reused before `zero skills list` runs again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/**
+ * Zero's skills as commands, from `zero skills list --json`
+ * (`{ skills: [{ name, description, path }] }`) — only the ones the driven
+ * surface can load. That list also shows the shared `~/.agents/skills`
+ * (read-only), but the skill tool of a Zero run over ACP looks only in Zero's
+ * own skills folder (verified on zero 0.9.x: asked for a shared skill, it
+ * answers "no skills are available (looked in ~/.local/share/zero/skills)").
+ * Zero keeps a folded YAML description as its indicator (`>`, `>-`), so that
+ * one is read from the skill's `SKILL.md`.
+ */
+export function parseZeroSkills(
+  raw: unknown,
+  sharedDir: string,
+  readFile: (path: string) => string | undefined = readTextFile,
+): AgentCommand[] {
+  const skills = isRecord(raw) && Array.isArray(raw['skills']) ? raw['skills'] : [];
+  const commands: AgentCommand[] = [];
+  for (const skill of skills) {
+    if (!isRecord(skill)) continue;
+    const name = str(skill['name']);
+    const path = str(skill['path']);
+    if (!name || !path || isInside(sharedDir, path)) continue;
+    let description = str(skill['description']).trim();
+    if (!description || /^[>|][+-]?$/.test(description)) {
+      const file = readFile(path);
+      description = file ? (extractFrontMatter(file).fields['description'] ?? '') : '';
+    }
+    commands.push({
+      name,
+      source: 'skill',
+      headlessSupported: true,
+      ...(description ? { description } : {}),
+    });
+  }
+  return commands;
+}
+
+/** Whether `path` lies inside `dir` (any separator, any platform). */
+function isInside(dir: string, path: string): boolean {
+  const rel = relative(dir, path);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/** The prompt that has Zero load a skill with its skill tool, then act on the arguments. */
+export function zeroSkillPrompt(name: string, args?: string): string {
+  const task = args?.trim();
+  return `Use the "${name}" skill: load it with your skill tool and follow its instructions.${task ? `\n\n${task}` : ''}`;
+}
+
+function readTextFile(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return undefined;
+  }
+}
 
 /** Zero's ACP session modes (from `session/new`'s `availableModes`). */
 type ZeroMode = 'ask' | 'auto';
@@ -87,7 +161,7 @@ type ZeroMode = 'ask' | 'auto';
 type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
 
 export interface ZeroAdapterOptions {
-  /** Resolved `zero` executable path (see resolve-zero.ts). */
+  /** Resolved `zero` executable path (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[zero.js]` when run via node). */
   prependArgs?: string[];
@@ -102,8 +176,8 @@ export interface ZeroAdapterOptions {
     threadId: string,
     info: { toolName: string; input: Record<string, unknown> },
   ) => Promise<ApprovalDecision>;
-  /** Injected `zero acp` spawner (tests). */
-  spawnAcp?: () => SpawnedAcp;
+  /** Injected `zero acp` spawner (tests); [env] is added to the process's. */
+  spawnAcp?: (env?: Record<string, string>) => SpawnedAcp;
 }
 
 /** Streams + lifecycle a `spawnAcp` implementation returns. */
@@ -121,7 +195,7 @@ interface ActiveRun {
   /** Accumulated assistant text, for `turn_completed`. */
   full: string;
   /** Tool calls in flight, keyed by ACP `toolCallId` (emit a block at terminal). */
-  tools: Map<string, ZeroToolCall>;
+  tools: Map<string, AcpToolCall>;
   /** Tool ids already emitted as a block. */
   emitted: Set<string>;
   /** How this run answers permission prompts (from the thread's access mode). */
@@ -129,16 +203,16 @@ interface ActiveRun {
   finished: boolean;
 }
 
-function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string): () => SpawnedAcp {
-  return () => {
-    const child = spawn(binaryPath, [...prependArgs, 'acp'], {
+function defaultSpawnAcp(
+  binaryPath: string,
+  prependArgs: string[],
+  cwd: string,
+): (env?: Record<string, string>) => SpawnedAcp {
+  return (env) => {
+    const child = spawnPiped(binaryPath, [...prependArgs, 'acp'], {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: false,
-      env: agentEnv(),
+      ...(env && Object.keys(env).length > 0 ? { env } : {}),
     });
-    if (!child.stdout || !child.stdin) throw new Error('zero acp: failed to acquire stdio');
     return {
       stdin: child.stdin,
       stdout: child.stdout,
@@ -156,7 +230,9 @@ export class ZeroAdapter extends BaseAgentAdapter {
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: ZeroAdapterOptions['onApprovalRequest'];
-  readonly #spawnAcp: () => SpawnedAcp;
+  readonly #spawnAcp: (env?: Record<string, string>) => SpawnedAcp;
+  /** Each folder's skill list, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
   /** threadId → ACP sessionId, for continuity + history fallback. */
@@ -166,15 +242,19 @@ export class ZeroAdapter extends BaseAgentAdapter {
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** sessionId → last mode we set (avoid redundant set_mode). */
-  /** Slash commands from the latest ACP `available_commands_update` (see listCommands). */
-  #commands: AgentCommand[] = [];
   readonly #modeBySession = new Map<string, ZeroMode>();
   /** sessionId → last model we set. */
   readonly #modelBySession = new Map<string, string>();
   /** Discovered model list, cached for the process lifetime (probing is costly). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
+  /** The ACP process advertised HTTP MCP servers (`initialize`) — Zero 0.9 does not (it ignores `mcpServers` and keeps its own config), so its sessions get the tools the day it does. */
+  #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
+  /** Which desktop attachment the running `zero acp` was started with (`proxyLaunchEnv`). */
+  #acpDesktopKey = '';
+  /** Ends the running `zero acp` process (closing the RPC alone leaves it alive). */
+  #killAcp: (() => void) | undefined;
   #defaultCwd = process.cwd();
 
   /**
@@ -274,13 +354,14 @@ export class ZeroAdapter extends BaseAgentAdapter {
     });
   }
 
-  /** Spawn `zero <args>` and parse its stdout as JSON (null on any failure). */
-  #json<T>(args: string[]): Promise<T | null> {
+  /** Spawn `zero <args>` (in [cwd]) and parse its stdout as JSON (null on any failure). */
+  #json<T>(args: string[], cwd?: string): Promise<T | null> {
     return new Promise((resolve) => {
       let out = '';
       let child;
       try {
         child = spawn(this.#binaryPath, [...this.#prependArgs, ...args], {
+          ...(cwd !== undefined ? { cwd } : {}),
           stdio: ['ignore', 'pipe', 'ignore'],
           windowsHide: true,
           shell: false,
@@ -308,6 +389,33 @@ export class ZeroAdapter extends BaseAgentAdapter {
     return this.#defaultModel;
   }
 
+  /**
+   * Zero's skills the driven surface can load ({@link parseZeroSkills}), from
+   * `zero skills list --json` in the thread's folder. Reused per folder for a
+   * minute; a failed listing yields none.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const raw = await this.#json<unknown>(['skills', 'list', '--json'], dir);
+    if (raw === null) return [];
+    const commands = parseZeroSkills(raw, join(homedir(), '.agents', 'skills'));
+    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
+  }
+
+  /**
+   * A picked skill, as the prompt that has Zero load it ({@link zeroSkillPrompt}):
+   * Zero has no command syntax on ACP, but its model loads a named skill with
+   * its skill tool.
+   */
+  async expandCommand(name: string, args?: string, cwd?: string): Promise<string> {
+    const known = (await this.listCommands(cwd)).some((c) => c.name === name);
+    if (!known) throw new Error(`unknown Zero skill: ${name}`);
+    return zeroSkillPrompt(name, args);
+  }
+
   start(config: AgentConfig): Promise<void> {
     if (config.cwd) this.#defaultCwd = config.cwd;
     return Promise.resolve();
@@ -322,6 +430,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
       this.#rpc = null;
       this.#init = null;
     }
+    this.#killAcp?.();
+    this.#killAcp = undefined;
   }
 
   async sendTurn(options: SendTurnOptions): Promise<void> {
@@ -329,9 +439,19 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
 
+    // Uxnan Desktop's tools reach Zero through its global `uxnan-browser` entry
+    // (`mcp-proxy.ts`), which reads the endpoint from this process's
+    // environment — so an idle process started with another attachment is
+    // restarted first. Its sessions reload (`session/load`); each one's proxy
+    // starts in that conversation's folder.
+    const desktop = proxyLaunchEnv(options.desktopTools);
+    if (this.#rpc && desktop.key !== this.#acpDesktopKey && this.#active.size === 0) {
+      await this.#restartAcp();
+    }
+
     let rpc: NdjsonRpc;
     try {
-      rpc = await this.#ensureAcp();
+      rpc = await this.#ensureAcp(desktop);
     } catch (err) {
       return this.#failTurn(threadId, turnId, `failed to start zero acp: ${errorMessage(err)}`);
     }
@@ -339,7 +459,12 @@ export class ZeroAdapter extends BaseAgentAdapter {
     // Resolve the ACP session for this thread (new, or load a persisted one).
     let sessionId: string;
     try {
-      sessionId = await this.#ensureSession(rpc, threadId, cwd);
+      sessionId = await this.#ensureSession(
+        rpc,
+        threadId,
+        cwd,
+        acpDesktopMcpServers(options.desktopTools, cwd, this.#mcpHttp),
+      );
     } catch (err) {
       return this.#failTurn(threadId, turnId, `zero session failed: ${errorMessage(err)}`);
     }
@@ -410,11 +535,27 @@ export class ZeroAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_aborted', threadId, turnId });
   }
 
+  /** Close the running `zero acp` so the next turn starts a fresh one. */
+  async #restartAcp(): Promise<void> {
+    const rpc = this.#rpc;
+    this.#rpc = null;
+    this.#init = null;
+    this.#modeBySession.clear();
+    this.#modelBySession.clear();
+    rpc?.close();
+    this.#killAcp?.();
+    this.#killAcp = undefined;
+  }
+
   /** Lazy ACP lifecycle: spawn `zero acp` → initialize → return the RPC client. */
-  #ensureAcp(): Promise<NdjsonRpc> {
+  #ensureAcp(
+    desktop: { env: Record<string, string>; key: string } = { env: {}, key: '' },
+  ): Promise<NdjsonRpc> {
     if (this.#init) return this.#init;
+    this.#acpDesktopKey = desktop.key;
     this.#init = (async () => {
-      const streams = this.#spawnAcp();
+      const streams = this.#spawnAcp(desktop.env);
+      this.#killAcp = () => streams.kill();
       const rpc = new NdjsonRpc(
         { stdin: streams.stdin, stdout: streams.stdout, onClose: () => this.#handleAcpClose() },
         {
@@ -424,7 +565,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
       );
       streams.onClose((code) => rpc.onProcessClose(code));
       try {
-        await rpc.request('initialize', {
+        const init = await rpc.request<unknown>('initialize', {
           protocolVersion: 1,
           clientCapabilities: {
             fs: { readTextFile: false, writeTextFile: false },
@@ -432,6 +573,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
           },
           clientInfo: { name: 'uxnan-bridge', version: '1.0.0' },
         });
+        this.#mcpHttp = acpSupportsHttpMcp(init);
       } catch (err) {
         rpc.close();
         streams.kill();
@@ -447,13 +589,18 @@ export class ZeroAdapter extends BaseAgentAdapter {
   }
 
   /** Get (or create/load) the ACP session id for a thread. */
-  async #ensureSession(rpc: NdjsonRpc, threadId: string, cwd: string): Promise<string> {
+  async #ensureSession(
+    rpc: NdjsonRpc,
+    threadId: string,
+    cwd: string,
+    mcpServers: AcpMcpServerHttp[] = [],
+  ): Promise<string> {
     const known = this.#sessionByThread.get(threadId);
     if (known) {
       // The same acp process still holds it (common case); a restarted process
       // needs session/load to re-attach. Try load; fall through to new on failure.
       try {
-        await rpc.request('session/load', { sessionId: known, cwd, mcpServers: [] });
+        await rpc.request('session/load', { sessionId: known, cwd, mcpServers });
         return known;
       } catch {
         this.#sessionByThread.delete(threadId);
@@ -461,7 +608,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
         this.#modelBySession.delete(known);
       }
     }
-    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers: [] });
+    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers });
     this.#sessionByThread.set(threadId, res.sessionId);
     return res.sessionId;
   }
@@ -511,12 +658,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
     if (method !== 'session/update') return;
     const p = isRecord(params) ? params : {};
     const update = isRecord(p['update']) ? p['update'] : {};
-    // Slash-command availability is session-scoped and can arrive before any
-    // turn — capture it regardless of an active run (see listCommands).
-    if (str(update['sessionUpdate']) === 'available_commands_update') {
-      this.#captureCommands(update['availableCommands'] ?? update['available_commands']);
-      return;
-    }
     const run = this.#runBySession.get(str(p['sessionId']));
     if (!run || run.finished) return;
     switch (str(update['sessionUpdate'])) {
@@ -549,7 +690,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
         this.#onToolUpdate(run, update);
         return;
       case 'plan': {
-        const steps = zeroPlanSteps(update['entries']);
+        const steps = acpPlanSteps(update['entries']);
         if (steps.length > 0) this.#emitPlan(run, steps);
         return;
       }
@@ -559,56 +700,46 @@ export class ZeroAdapter extends BaseAgentAdapter {
     }
   }
 
-  /** Record an ACP `available_commands_update` payload for `agent/commands`. */
-  #captureCommands(raw: unknown): void {
-    if (!Array.isArray(raw)) return;
-    const commands: AgentCommand[] = [];
-    for (const item of raw) {
-      if (!isRecord(item)) continue;
-      const name = str(item['name']);
-      if (!name) continue;
-      const description = str(item['description']);
-      commands.push({
-        name,
-        source: 'acp',
-        headlessSupported: true,
-        ...(description ? { description } : {}),
-      });
-    }
-    this.#commands = commands;
-  }
-
-  /**
-   * Slash commands Zero advertised over ACP (`available_commands_update`),
-   * invoked natively through `session/prompt`. Empty until a session is
-   * established and the agent has advertised its commands.
-   */
-  listCommands(): Promise<AgentCommand[]> {
-    return Promise.resolve(this.#commands.map((c) => ({ ...c })));
-  }
-
   /** Merge a tool_call / tool_call_update; emit a block once it terminates. */
   #onToolUpdate(run: ActiveRun, update: Record<string, unknown>): void {
     const id = str(update['toolCallId']);
     if (!id) return;
-    const prev = run.tools.get(id) ?? { toolCallId: id, title: '', kind: '', status: '' };
-    const merged: ZeroToolCall = {
+    const known = run.tools.get(id);
+    const prev = known ?? { toolCallId: id, title: '', kind: '', status: '' };
+    const merged: AcpToolCall = {
       toolCallId: id,
       title: str(update['title']) || prev.title,
-      kind: str(update['kind']) || prev.kind,
+      kind: acpToolKind(update) || prev.kind,
       status: str(update['status']) || prev.status,
       rawInput: isRecord(update['rawInput']) ? update['rawInput'] : prev.rawInput,
       content: Array.isArray(update['content']) ? (update['content'] as unknown[]) : prev.content,
     };
     run.tools.set(id, merged);
-    if ((merged.status === 'completed' || merged.status === 'failed') && !run.emitted.has(id)) {
+    const finished = merged.status === 'completed' || merged.status === 'failed';
+    // Shown as it starts (its first announcement); its end replaces it in place.
+    if (!known && !finished) {
+      const started = acpToolStartBlock(merged);
+      if (started) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content: started },
+        });
+      }
+    }
+    if (finished && !run.emitted.has(id)) {
       run.emitted.add(id);
-      this.emit({
-        type: 'block',
-        threadId: run.threadId,
-        turnId: run.bridgeTurnId,
-        data: { content: zeroToolBlock(merged) },
-      });
+      const settled = acpToolBlock(merged);
+      const content = settled ? withBlockId(settled, id) : null;
+      if (content) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content },
+        });
+      }
     }
   }
 
@@ -636,8 +767,10 @@ export class ZeroAdapter extends BaseAgentAdapter {
     const run = this.#runBySession.get(str(p['sessionId']));
     const options = Array.isArray(p['options']) ? (p['options'] as Record<string, unknown>[]) : [];
     const toolCall = isRecord(p['toolCall']) ? p['toolCall'] : {};
+    // A request for no turn of ours is refused: nothing the user set allows it.
+    if (!run) return cancelledOutcome();
     // Non-interactive postures auto-answer without troubling the phone.
-    if (!run || !this.#onApprovalRequest || run.posture === 'approveAll') {
+    if (run.posture === 'approveAll') {
       return selectOption(options, 'approve') ?? cancelledOutcome();
     }
     if (run.posture === 'approveSession') {
@@ -647,6 +780,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
         cancelledOutcome()
       );
     }
+    // Interactive, with no one to ask: refuse.
+    if (!this.#onApprovalRequest) return selectOption(options, 'reject') ?? cancelledOutcome();
     // Interactive: ask the phone.
     let decision: ApprovalDecision = 'reject';
     try {

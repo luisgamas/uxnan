@@ -4,6 +4,272 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **An agent can start another agent as a chat, and follow it.** `chat/start`
+  (create group) starts a conversation with a bridge agent in a worktree — in
+  a tab and on the phone, like one started in the chat tab — optionally with a
+  first message; `chat/read` returns its newest turns (the message, the answer,
+  the steps taken; redacted) and `chat/wait` waits for it to end its turn or
+  ask something. On `uxnan-cli chat start|read|wait` and as MCP tools.
+
+- **The chat shows a step while it runs.** A command, a tool call or a
+  subagent appears as it starts, with the running dot, and its result replaces
+  it where it stood (`LiveBlock`, replaced by `blockId` in the conversation
+  replica). A step of a turn that ended never spins.
+
+- **The chat says what every agent's tools did.** A tool row reads *Read*,
+  *Searched*, *Listed*, *Fetched* or *Searched the web* with its file, pattern
+  or URL — from the `kind` and `target` the bridge classifies for every agent —
+  and an MCP call reads `server · tool`. A subagent opens to its report and
+  shows when it failed, and a turn keeps only its latest plan instead of one
+  card per update (`ChatActivity`, `timeline.ts`).
+
+- **A welcome tour on first run.** Six steps — what Uxnan is, terminal and
+  chat, the phone (with *Connect a phone*), agents calling each other through
+  the CLI/MCP/API, the agents found on this machine, and the shortcuts to start
+  (with *Add your first project* when there is none). The visuals are
+  recreations of the app, not screenshots. It opens once per tour version
+  (`welcomeSeen` in the settings) and again from the profile menu →
+  **Welcome tour** (`WelcomeTour`, `welcome.svelte.ts`).
+
+- **The chat composer does what the phone's does.** `/` lists the agent's
+  commands in the folder — skills, your commands, the agent's and its
+  built-ins, as the bridge learns them from the agent — and a picked one is
+  sent as a command the bridge runs natively; `@` completes a project file;
+  images come from **+** or a paste (scaled to 2048 px, up to 8), for agents
+  that take them (`ChatSuggestions`, `composerTokens`, `imageAttachment`).
+
+- **One layer with the phone** (architecture/02a §5.8.17). The chat's data is a
+  **replica** of the bridge — threads, projects, shared settings and presence —
+  converging through `sync/changes` on every (re)connect and whenever a
+  revision skips one, so a conversation or a project started on the phone while
+  the desktop was away is there when it connects. Turns are ordered by the
+  bridge's `Turn.seq`, never by arrival.
+- **Projects are one list with the phone.** `projectMirror.svelte.ts` mirrors
+  the bridge's project registry both ways: a project added or removed here is
+  added or removed on the phone and vice versa (conversations are never
+  deleted); on connect the lists are united, never pruned by absence, and a
+  removal made while the bridge was away is sent on reconnect.
+- **The bridge runs as your service.** *Run it as a service* (`managed`)
+  installs and starts the bridge's user service through its own CLI and only
+  connects to it (`bridgeclient/service.rs`); it keeps serving the phone while
+  Uxnan is closed, and Uxnan never stops it. An update re-installs and restarts
+  the service.
+- **Pair a phone from Settings → Bridge & mobile**: a QR drawn from the running
+  bridge's own payload (`bridge_pairing_qr`, crate `qrcode`), with a countdown
+  and *New code*. **Phones** lists every paired phone with its model, OS and
+  app version and whether it is connected now; rename one in place (the phone
+  and every other client show the new name — the latest rename wins, even one
+  made on the phone offline) or unpair it. **Shared with your phones** holds
+  the **Computer name** every client shows for this PC and the **Start
+  folder** new projects are explored from, here and on the phone.
+  The profile menu's *Edit profile* is now an icon button beside the name.
+- **Connect a phone in one click.** A row under Search in the left sidebar
+  invites to connect a phone — or, once one is paired, shows it by name with
+  whether it is connected. It opens **Connect a phone**, one dialog for the
+  whole window (`connectPhone`), also used by Settings: the QR shows at once;
+  with the bridge off, one button runs it as your service first; and the
+  dialog notices the phone arrive — newly paired or a paired one connecting —
+  and names it, with *Pair another*.
+- **Agent detection follows one rule, shared with the bridge**
+  (`shared/agent-locations.json`, compiled into `agentcli.rs`): the headless
+  resolver, Settings → Agents' detection, the hooks' presence check and the
+  well-known `PATH` folders all read it, and it finds npm installs under the
+  running node's own prefix (nvm, Homebrew, fnm).
+
+- **A chat's lifecycle, the same on every device.** Closing a chat's tab only
+  closes the view — the conversation goes on, on the bridge and the phone. The
+  sidebar lists a chat only while it is open in a tab or needs attention
+  (working, waiting on you, failed, finished unseen), never the idle history,
+  so twenty old chats no longer appear under a worktree when the bridge starts.
+  **Archive** (restorable; an open tab turns read-only with *Restore*) and
+  **Delete** (confirmed, "for every device") are explicit, from one action list
+  (`chatActionsFor`) shared by the sidebar row's right-click menu, the chat's
+  header menu and the new-chat screen, whose history now has *Show all* and a
+  collapsed *Archived* section. They go through the bridge (`thread/archive`,
+  `thread/unarchive`, `thread/delete`), so the phone follows.
+- **Chats on the control surface.** Three catalog entries reach the bridge's
+  conversations through the app's bridge client, scoped like everything else
+  (a chat whose folder is outside the caller's scope is *scope denied*):
+  `chat/list` (read — id, title, agent, model, folder, working/idle; one
+  worktree's with `worktree`), `chat/open` (ui — its tab, or the one showing
+  it) and `chat/send` (converse — a whole message, queued behind a running turn,
+  receipted and audited). As MCP tools `chat_list` / `chat_open` / `chat_send`
+  and as `uxnan-cli chat ls|open|send`; *unavailable* when Uxnan is not
+  connected to the bridge. `docs/control-api-reference.md` regenerated.
+- **A chat's agent gets Uxnan's tools.** While connected, the desktop gives the
+  bridge its MCP endpoint and a **bridge-agent token** of its own, minted every
+  start (`desktop/attach`, over the local channel; `desktop/detach` when
+  Settings → Browser's `mcpEnabled` goes off). On the control server that token
+  is a new caller, `Caller::Bridge { cwd }`: scoped to the project of the
+  conversation's folder (`x-uxnan-cwd`, percent-encoded by the bridge and
+  decoded here, so a folder with spaces or non-ASCII characters is still a
+  valid header), `current` naming nothing, never a hook, audited as `bridge`;
+  its browser calls land in that folder's browser. The bridge registers it for
+  Claude Code, Codex, OpenCode, pi and Grok (Zero and Antigravity only read a
+  user-global config) — verified end to end with the branch's bridge and real
+  `claude`, `codex`, `opencode` and `pi` turns calling a tool with both headers.
+- **Chat drafts, recall and edit.** A chat's unsent text is kept as its tab's
+  draft (saved with the layout, `SavedTab.draft`), surviving tab switches and
+  restarts. On an empty composer ↑ / ↓ walk the thread's earlier messages. A
+  queued message can be **edited** — taken off the queue (`turn/cancel`) and
+  put back into the composer once the bridge confirms — and a message that
+  failed to send offers **Edit** next to *Dismiss*. Text put back is added
+  below whatever is being written, never over it.
+- **Chats in the sidebar, with the phone's conversations.** A worktree's agent
+  view lists its bridge conversations beside its terminal agents (`ChatRow`,
+  the same row tokens): the ones open in a tab or doing something, then the
+  most recent up to four (`sidebarChats`) — a conversation started on the phone
+  included. One state source for every chat surface (`ThreadActivity`, fed by
+  every bridge notification and by `thread/list`'s live `activeTurnId`) speaks
+  the terminal agents' vocabulary: working, **waiting** on an open approval or
+  question (it read as `blocked` before, against 02d), blocked on a failed
+  turn, done until seen. Chats count toward the worktree's leading state, the
+  needs-you count and the status sort. A chat tab's name is always its
+  thread's, and a name given before the first message becomes the thread's.
+- **Chat tabs: agent conversations shared with Uxnan Mobile** ("one owner, two
+  views"; architecture/02a §5.8.16). A new tab kind, `chat`, sits
+  next to terminals and shows a conversation the **bridge** drives — the same
+  threads the phone shows, live in both at once: a message typed on the phone
+  appears here before its answer streams, an approval answered here retires on
+  the phone, a rename or model switch on either shows on both. **Where to find
+  it:** the tab strip's "+" gains a *Chat* group (*New chat* plus the folder's
+  three newest conversations — ones started on the phone included), the worktree
+  row's *Launch agent* submenu opens with *New chat*, and the project launcher
+  dialog offers *Chat*. Local folders only: the bridge runs on this machine.
+  **A new chat** opens on one question over the composer, whose toolbar picks
+  the agent (fixed for the conversation's life — a different CLI cannot
+  continue a native session) and optionally a model; the folder's existing
+  conversations are listed below it. **A running chat** renders the agent's
+  answer from the bridge's ordered `segments` (prose via `MarkdownView`), with
+  consecutive steps — commands, edits, tool calls, subagents — grouped into one
+  work group of compact rows (a pulsing dot while a step runs, red when it
+  failed; each opens to its output or diff) and a live *Working for 12s* line.
+  **Once a turn settles** its work folds behind *Worked for 1m 3s* (*Stopped
+  after …* / *Failed after …*), each group closed to a summary (*Ran 3 commands
+  · 2 edits*, and how many failed), leaving the closing answer open and a card
+  of the files the turn changed (a click opens the file). Open approvals and
+  questions wait in a dock **pinned above the composer**, the timeline keeping a
+  one-line record of each; the dock also lists queued follow-ups (each
+  cancellable) and the paused-queue banner (resume, discard). Messages show
+  their time and a copy button on hover. The composer's toolbar holds what can
+  change mid-chat — the model (`thread/setModel`), its run options, the access
+  mode — as quiet pills, plus a ring showing how full the context window is.
+  Also: stops the running turn, streams thinking, pages older turns in on
+  scroll. The header names the conversation and its agent, and renames (the
+  thread itself, so every client shows the name) or archives it. The model is the
+  bridge's own: `Thread`/`Turn`/`Message` are imported **type-only** from
+  `shared/` through a new `$shared` alias, not copied. Stores:
+  `src/lib/bridge/{client,chat,conversation}.svelte.ts` and the pure layout in
+  `src/lib/bridge/timeline.ts`; components:
+  `src/lib/components/chat/`. A chat tab persists only its pointer (`cwd`,
+  `threadId`, preselected `agentId`); the conversation lives on the bridge.
+  Without a connected bridge the tab says why and offers *Connect*. **Pending
+  the maintainer's visual review.**
+- **Install and update the bridge without leaving Uxnan.** When `uxnan-bridge`
+  is missing, a chat tab says so and offers **Install** in place (plus the
+  command to copy); Settings → Bridge & mobile shows the installed version
+  against the newest published one with **Install** / **Update**. Both run
+  `npm install -g uxnan-bridge@latest` on the user's request
+  (`bridgeclient/install.rs`, commands `bridge_install_probe` / `bridge_install`),
+  stream npm's output to the window, and — when Uxnan runs the bridge
+  (`managed`) — restart it on the new version; a bridge the user runs is left
+  alone and flagged as needing a restart. npm refusing to write its global
+  folder is recognized and explained. New setting `bridge.autoUpdate` (off by
+  default): update on its own once a newer bridge is published, only while no
+  turn runs on any device (`bridge/status` → `activeTurns`), once per version.
+  **A bridge that cannot talk to the desktop is named, not hidden.** The client
+  reads the bridge's lock (`bridgeclient/lock.rs`, `~/.uxnan/bridge.lock`), so
+  a running bridge that publishes no local channel reads as **too old**
+  (`outdated`: released before the channel — *Update*) or **running without
+  the channel** (`channelOff`: an older process after an update, or
+  `localControlEnabled: false` — *Restart the bridge*, new command
+  `bridge_restart`), instead of "no bridge is running". `managed` no longer
+  starts a second bridge over one holding the lock, reports at once when the
+  bridge it started exits, and after an *Update* restarts a bridge that serves
+  no channel. Settings → Bridge & mobile gains *Check again*.
+- **Settings → Bridge & mobile**: the connection mode (off / use a running
+  bridge / start it when needed), the live status with the reason and the fix
+  when it is unreachable (the install or start command), and the phones
+  connected to the bridge right now.
+
+- **The desktop can talk to the Uxnan bridge** (architecture/02a
+  §5.8.15). A new backend module, `bridgeclient/`, connects to the bridge's
+  loopback-only local control channel as one more client next to the phone:
+  it reads `~/.uxnan/local-control.json` (the file is the credential — size
+  capped, strictly parsed, its token redacted from every `Debug` and never sent
+  to the webview), opens `ws://127.0.0.1:<port>/control?client=desktop` with
+  the bearer token, calls the bridge's JSON-RPC router with numbered requests,
+  timeouts and a pending map that a closed socket fails at once, and forwards
+  every `stream/*` notification to the window as `bridge:notification`. It
+  remembers the last `seq` it applied and resumes from it after a reconnect.
+  Three modes, the new setting `bridge.mode`: **`off`** (default — no socket,
+  no file read, no timer, no process), **`attach`** (use a bridge the user
+  already runs) and **`managed`** (also start `uxnan-bridge start` when none is
+  running, resolved on `PATH`, and stop it on exit through its own
+  `uxnan-bridge stop`, so it releases its lock cleanly). New commands:
+  `bridge_client_status`, `bridge_client_retry`, `bridge_call`; status changes
+  are emitted as `bridge:status`. New dependency: `tokio-tungstenite` 0.30
+  (MIT, no TLS features — the socket is loopback only); `futures-util` gains
+  its `sink` feature.
+
+### Changed
+
+- **One model picker for the whole app.** `ModelPicker` replaces both
+  `AiModelPicker` (Settings → AI commit, GitHub PR drafts, orchestration steps)
+  and the chat's own: models searchable and grouped by provider (OpenCode and pi
+  report hundreds of `provider/model` ids), "Default model" first, and — in a
+  chat — the model's run options (reasoning effort, …) as segmented controls
+  above the list, summarized on the trigger ("Opus 5 · High"). It comes as a
+  `field` (forms) or a `pill` (the chat composer). The chat store preloads
+  every agent's models the first time a chat opens, deduplicating concurrent
+  requests, so the menu opens on a full list. The chat's access mode moves to
+  the standard radio menu with an icon and one line per mode
+  (`ChatAccessMenu`).
+- **Chat replies stream at the phone's measured pace, and stay cheap as they
+  grow.** Streamed prose and thinking wait in a buffer for one render window —
+  16 ms for a short reply, growing with its length to 100 ms (the phone's
+  `_streamCoalesceWindow`) — and any other event lands the buffer first, so
+  text and blocks keep their order. The reply renders as settled Markdown
+  chunks (`src/lib/bridge/streamingMarkdown.ts`, the phone's conservative
+  split: never inside a fence, a list, a quote or a table), one `MarkdownView`
+  each, so an update re-parses and re-renders only the chunk still being
+  written; each new chunk fades in once while the turn streams. Measured in
+  the browser harness on a 6.9k-character reply at the bridge's 25 ms batch,
+  CPU throttled 6×: script time 4.3 s → 0.38 s, long tasks 7 (up to 346 ms) →
+  0, worst frame 350 ms → 33 ms.
+- **One copyable code block and one status dot for every settings pane.**
+  `CodeBlock` (a command, a script or output, with a copy button) replaces the
+  hooks panel's private snippet and now also shows the bridge's install command
+  and npm's output; `StatusDot` replaces the hand-drawn dots of Settings →
+  GitHub, SSH hosts and Bridge & mobile, so a tone means the same everywhere.
+  Settings → Bridge & mobile is rebuilt on them and on the settings' own
+  `Combobox` (the connection mode), laid out like Settings → Updates.
+
+### Fixed
+
+- **`@` (and every Option character) reaches an agent in a terminal on
+  macOS.** A TUI that turns on the Kitty/CSI-u keyboard protocol — Claude Code
+  among them — got ⌥Q (the `@` of a Latin American layout, ⌥2 on a Spanish
+  one) as an Alt shortcut, so the `@` never arrived. On macOS Option composes
+  characters, so a key it composed is now sent as its text; Option with ⌘ or
+  ⌃, and Option+Enter, keep their modifier (`terminal/keyboardProtocol.ts`,
+  now with its own tests).
+
+- **A chat's answer no longer folds away as work.** Claude Code, Codex and pi
+  close each response with a zero-text boundary; the timeline took it for a
+  block, so an answer that ended with one was hidden behind "Worked for …" on
+  the desktop (the phone showed it). The boundary is now skipped
+  (`timeline.ts`).
+- **The first message of a new chat no longer stays in the composer.** Its
+  debounced draft save was cancelled when the view gave way to the
+  conversation, which then read the stale draft back; the draft is now dropped
+  when the message goes out (and given back if the conversation could not
+  start).
+- **Titles are the bridge's.** The desktop no longer renames a new thread from
+  its first message (a late rename could overwrite the generated title); a name
+  given to the tab before the first message travels with `thread/start`.
 
 ## [0.0.57] - 20260925
 ### Fixed

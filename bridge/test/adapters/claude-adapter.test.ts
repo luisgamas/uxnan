@@ -9,6 +9,7 @@ import {
   parseClaudeLine,
   type SpawnedProcess,
 } from '../../src/index.js';
+import { parseInitializeCommands } from '../../src/adapters/claude-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // --- a fake `claude` process whose stdout we feed with stream-json lines ---
@@ -267,15 +268,25 @@ test('ClaudeCodeAdapter pairs tool_use with tool_result and emits structured blo
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  assert.equal(blocks.length, 2);
+  // The command shows as it starts (the edit only once done: its diff), and
+  // each result replaces its step by the tool_use id.
+  assert.equal(blocks.length, 3);
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'type a.txt',
+    status: 'running',
+    blockId: 'tu_1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'type a.txt',
     status: 'completed',
     output: 'hello',
+    blockId: 'tu_1',
   });
-  assert.equal(blocks[1]?.['type'], 'diff');
-  assert.equal(blocks[1]?.['filename'], 'a.dart');
+  assert.equal(blocks[2]?.['type'], 'diff');
+  assert.equal(blocks[2]?.['filename'], 'a.dart');
+  assert.equal(blocks[2]?.['blockId'], 'tu_2');
 });
 
 test('ClaudeCodeAdapter falls back to the assistant message when no token deltas stream', async () => {
@@ -802,10 +813,11 @@ test('ClaudeCodeAdapter flags a subagent block landing mid-text as beforeText', 
 
   const events = await done;
   const blocks = events.filter((e) => e.type === 'block');
-  const activityBlocks = blocks.filter(
-    (event) =>
-      (event.data as { content: { type?: string } }).content.type !== 'assistant_response_boundary',
-  );
+  // The finished steps (each also showed as running when it started).
+  const activityBlocks = blocks.filter((event) => {
+    const content = (event.data as { content: { type?: string; status?: string } }).content;
+    return content.type !== 'assistant_response_boundary' && content.status !== 'running';
+  });
   const boundaries = blocks.filter(
     (event) =>
       (event.data as { content: { type?: string } }).content.type === 'assistant_response_boundary',
@@ -1115,4 +1127,141 @@ test('a cancelled turn takes no further follow-ups', async () => {
 test('the adapter advertises steering', () => {
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
   assert.equal(adapter.capabilities.steering, true);
+});
+
+test('desktop tools add one MCP server for the run, with the token only in the env', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'hi',
+    cwd: '/work/repo',
+    desktopTools: { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'desktop-token-0123456789' },
+  });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+
+  const args = last().args;
+  const config = JSON.parse(args[args.indexOf('--mcp-config') + 1] ?? '{}') as {
+    mcpServers: Record<string, { type: string; url: string; headers: Record<string, string> }>;
+  };
+  assert.deepEqual(config.mcpServers['uxnan-browser'], {
+    type: 'http',
+    url: 'http://127.0.0.1:51234/mcp',
+    headers: { Authorization: 'Bearer ${UXNAN_MCP_TOKEN}', 'x-uxnan-cwd': '${UXNAN_THREAD_CWD}' },
+  });
+  // The credential is never in argv; the run's env carries it and the cwd.
+  assert.equal(args.join(' ').includes('desktop-token-0123456789'), false);
+  assert.equal(last().env?.UXNAN_MCP_TOKEN, 'desktop-token-0123456789');
+  assert.equal(last().env?.UXNAN_THREAD_CWD, encodeURIComponent('/work/repo'));
+});
+
+test('without desktop tools a run registers no MCP server', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"s"}']);
+  await done;
+  assert.equal(last().args.includes('--mcp-config'), false);
+  assert.equal(last().env, undefined);
+});
+
+// --- commands: the CLI's own list, from a stream-json `initialize` ---
+
+function commandsSpawner(response: unknown): {
+  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  calls: { args: string[]; cwd: string; written: string[] }[];
+} {
+  const calls: { args: string[]; cwd: string; written: string[] }[] = [];
+  const spawnFn = (_command: string, args: string[], cwd: string): SpawnedProcess => {
+    const stdout = new PassThrough();
+    const stdin = new PassThrough();
+    const emitter = new EventEmitter();
+    const call = { args, cwd, written: [] as string[] };
+    calls.push(call);
+    stdin.on('data', (chunk: Buffer) => {
+      call.written.push(chunk.toString('utf8'));
+      stdout.write(`${JSON.stringify({ type: 'control_response', response })}\n`);
+    });
+    return {
+      stdout,
+      stdin,
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
+  };
+  return { spawnFn, calls };
+}
+
+test('commands: the CLI lists them itself, minus what only its terminal or the bridge runs', async () => {
+  const { spawnFn, calls } = commandsSpawner({
+    subtype: 'success',
+    request_id: 'uxnan-commands',
+    response: {
+      commands: [
+        {
+          name: 'compact',
+          description: 'Free up context',
+          argumentHint: '<instructions>',
+          builtin: true,
+        },
+        { name: 'probecmd', description: 'Project command', argumentHint: '<word>' },
+        { name: 'hyperframes', description: 'A skill' },
+        { name: 'color', description: 'Prompt bar color', builtin: true },
+        { name: 'model', description: 'Set the model', builtin: true },
+        { name: '__remote-workflow', builtin: true },
+        { name: 'agents', description: '(removed) Ask Claude to…', builtin: true },
+      ],
+    },
+  });
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const commands = await adapter.listCommands('/repo');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.source, c.argumentHint ?? '']),
+    [
+      ['compact', 'builtin', '<instructions>'],
+      ['probecmd', 'custom', '<word>'],
+      ['hyperframes', 'custom', ''],
+    ],
+  );
+  // Asked in the thread's folder, with an `initialize` control request.
+  assert.equal(calls[0]!.cwd, '/repo');
+  assert.ok(calls[0]!.args.includes('stream-json'));
+  assert.match(calls[0]!.written.join(''), /"subtype":"initialize"/);
+  // Reused for the folder: no second process within the minute.
+  await adapter.listCommands('/repo');
+  assert.equal(calls.length, 1);
+});
+
+test('commands: a CLI that does not answer yields none, and is asked again', async () => {
+  const spawnFn = (): SpawnedProcess => {
+    const emitter = new EventEmitter();
+    const stdout = new PassThrough();
+    setImmediate(() => emitter.emit('close', 1));
+    return {
+      stdout,
+      stdin: new PassThrough(),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  assert.deepEqual(await adapter.listCommands('/repo'), []);
+});
+
+test('parseInitializeCommands reads only the initialize answer', () => {
+  assert.equal(parseInitializeCommands('{"type":"system","subtype":"init"}'), undefined);
+  assert.equal(parseInitializeCommands('not json'), undefined);
+  assert.deepEqual(
+    parseInitializeCommands(
+      JSON.stringify({
+        type: 'control_response',
+        response: { response: { commands: [{ name: 'x', builtin: true }, { nope: 1 }] } },
+      }),
+    ),
+    [{ name: 'x', builtin: true }],
+  );
 });

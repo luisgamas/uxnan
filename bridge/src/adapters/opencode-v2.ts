@@ -35,6 +35,8 @@ import {
   reconcileSuffix,
   str,
   type IOpenCodeServer,
+  type OpenCodeCommand,
+  type OpenCodeCommandRun,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
@@ -56,6 +58,13 @@ const GATED_ACTIONS = ['shell', 'edit', 'webfetch', 'external_directory'] as con
 /** How long `models()` waits for a freshly booted server to load its catalog. */
 const MODELS_WAIT_MS = 10_000;
 const MODELS_POLL_MS = 400;
+/**
+ * How long `commands()` waits for a freshly booted server's command catalog,
+ * which loads in stages: empty, then the built-ins, then the config and the
+ * command folders (measured on 2.0.16, about a second in all).
+ */
+const COMMANDS_WAIT_MS = 6_000;
+const COMMANDS_POLL_MS = 400;
 /** Upper bound on history pages read for one session. */
 const MAX_HISTORY_PAGES = 50;
 
@@ -108,9 +117,15 @@ export class OpenCodeV2Translator {
       case 'session.tool.input.started':
         this.#toolNames.set(str(d['id']), str(d['name']));
         return [];
-      case 'session.tool.called':
-        if (isRecord(d['input'])) this.#toolInputs.set(str(d['id']), d['input']);
-        return [];
+      case 'session.tool.called': {
+        const id = str(d['id']);
+        const input = isRecord(d['input']) ? d['input'] : {};
+        this.#toolInputs.set(id, input);
+        const name = this.#toolNames.get(id) ?? '';
+        return sessionId && id && name && !isPlanTool(name)
+          ? [{ kind: 'tool_started', sessionId, id, name, input }]
+          : [];
+      }
       case 'session.tool.success':
       case 'session.tool.failed':
         return this.#toolEnded(type === 'session.tool.failed', sessionId, d);
@@ -289,6 +304,33 @@ export function openCodeV2History(messages: unknown[]): OpenCodeHistoryMessage[]
   return out;
 }
 
+/**
+ * `GET /api/command` and `GET /api/skill` onto one list: the commands, then the
+ * skills (by id, which is what a prompt attaches), a skill never shadowing a
+ * command of the same name.
+ */
+export function openCodeV2Commands(commands: unknown, skills: unknown): OpenCodeCommand[] {
+  const out: OpenCodeCommand[] = [];
+  const seen = new Set<string>();
+  for (const c of Array.isArray(commands) ? commands : []) {
+    if (!isRecord(c)) continue;
+    const name = str(c['name']);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const description = str(c['description']);
+    out.push({ name, ...(description ? { description } : {}), skill: false });
+  }
+  for (const k of Array.isArray(skills) ? skills : []) {
+    if (!isRecord(k)) continue;
+    const name = str(k['id']);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const description = str(k['description']);
+    out.push({ name, ...(description ? { description } : {}), skill: true });
+  }
+  return out;
+}
+
 /** `GET /api/model` entries onto `provider/model` ids with their context window. */
 export function openCodeV2Models(data: unknown): OpenCodeModel[] {
   if (!Array.isArray(data)) return [];
@@ -328,6 +370,8 @@ export interface OpenCodeV2ServerOptions {
   cwd: string;
   /** Spawns `opencode serve` (injected in tests). */
   spawnFn?: SpawnFn;
+  /** Extra environment for `opencode serve` (Uxnan Desktop's tools). */
+  env?: Record<string, string>;
 }
 
 /** An OpenCode 2.x `opencode serve`, behind the neutral contract. */
@@ -348,6 +392,7 @@ export class OpenCodeV2Server implements IOpenCodeServer {
       eventPath: '/api/event',
       password: true,
       ...(opts.spawnFn ? { spawnFn: opts.spawnFn } : {}),
+      ...(opts.env ? { env: opts.env } : {}),
     });
     this.#serve.onData((data) => {
       const type = str(data['type']);
@@ -386,17 +431,64 @@ export class OpenCodeV2Server implements IOpenCodeServer {
   }
 
   async prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void> {
-    const id = encodeURIComponent(sessionId);
-    if (prompt.model) {
-      const key = modelKey(prompt.model, prompt.variant);
-      if (this.#sessionModel.get(sessionId) !== key) {
-        await this.#serve.request('POST', `/api/session/${id}/model`, {
-          model: modelRef(prompt.model, prompt.variant),
-        });
-        this.#sessionModel.set(sessionId, key);
+    await this.#useModel(sessionId, prompt.model, prompt.variant);
+    await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/prompt`, {
+      text: prompt.text,
+    });
+  }
+
+  /** The server's commands and skills for this directory, once it has loaded them. */
+  async commands(): Promise<OpenCodeCommand[]> {
+    await this.start();
+    const location = `location%5Bdirectory%5D=${encodeURIComponent(this.#cwd)}`;
+    const deadline = Date.now() + COMMANDS_WAIT_MS;
+    let previous = -1;
+    for (;;) {
+      const [commands, skills] = await Promise.all([
+        this.#serve.request<{ data?: unknown }>('GET', `/api/command?${location}`),
+        this.#serve.request<{ data?: unknown }>('GET', `/api/skill?${location}`),
+      ]);
+      const count = Array.isArray(commands.data) ? commands.data.length : 0;
+      // Settled once two reads in a row agree on a non-empty catalog.
+      if ((count > 0 && count === previous) || Date.now() >= deadline) {
+        return openCodeV2Commands(commands.data, skills.data);
       }
+      previous = count;
+      await new Promise((resolve) => setTimeout(resolve, COMMANDS_POLL_MS));
     }
-    await this.#serve.request('POST', `/api/session/${id}/prompt`, { text: prompt.text });
+  }
+
+  /**
+   * A command goes to `/command` (the server expands its template into the
+   * user message); a skill is attached to a prompt whose text is the
+   * arguments. Both answer at once and stream like any prompt (verified on
+   * 2.0.16).
+   */
+  async runCommand(sessionId: string, run: OpenCodeCommandRun): Promise<void> {
+    await this.#useModel(sessionId, run.model, run.variant);
+    const id = encodeURIComponent(sessionId);
+    if (run.skill) {
+      await this.#serve.request('POST', `/api/session/${id}/prompt`, {
+        text: run.args,
+        skills: [{ id: run.name }],
+      });
+    } else {
+      await this.#serve.request('POST', `/api/session/${id}/command`, {
+        name: run.name,
+        text: run.args,
+      });
+    }
+  }
+
+  /** Switch the session's model when a turn asks for another one. */
+  async #useModel(sessionId: string, model?: OpenCodeModelRef, variant?: string): Promise<void> {
+    if (!model) return;
+    const key = modelKey(model, variant);
+    if (this.#sessionModel.get(sessionId) === key) return;
+    await this.#serve.request('POST', `/api/session/${encodeURIComponent(sessionId)}/model`, {
+      model: modelRef(model, variant),
+    });
+    this.#sessionModel.set(sessionId, key);
   }
 
   async steer(sessionId: string, text: string): Promise<void> {

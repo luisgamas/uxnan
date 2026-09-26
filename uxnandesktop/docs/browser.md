@@ -314,9 +314,11 @@ The others are not, each for a concrete reason:
   per-launch flag or env verified.
 - **Cursor** expands `${env:VAR}` for stdio servers but **not in the headers of a
   remote one**; **GitHub Copilot** documents header values as literal strings;
-  **Antigravity**'s remote MCP transport is SSE with only a `serverUrl` and no header
-  field, while uxnan's endpoint speaks Streamable HTTP; **Goose** keeps extensions in
+  **Goose** keeps extensions in
   YAML and **Kilo Code** in JSONC.
+- **Antigravity** (`agy` 1.2.10) takes Streamable HTTP servers with literal headers,
+  but only in its user-global `~/.gemini/config/mcp_config.json` (`agy mcp add`) —
+  no per-launch flag or environment.
 
 All of them still get the `$BROWSER` shim and the `curl` route above, and any of them
 can be wired by hand from the copy-paste snippet in Settings — that config is the

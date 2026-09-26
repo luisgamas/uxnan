@@ -37,17 +37,14 @@
   } from "$lib/api";
   import type { HookAgentEntry, HookInstall, HookScripts } from "$lib/types";
   import { backendAgentLogo, backendAgentName } from "$lib/agentCatalog";
-  import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import CodeBlock from "$lib/components/CodeBlock.svelte";
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
-  import { clipboardWrite } from "$lib/clipboard";
-  import { focus, icon, iconButton, panel, text } from "$lib/design";
+  import { focus, icon, panel, text } from "$lib/design";
   import AgentSettingsRow from "./AgentSettingsRow.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import { Icon } from "$lib/components/ui/icon";
-  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
-  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 
   type Platform = "bash" | "powershell" | "cmd" | "fish";
@@ -77,7 +74,6 @@
   let configTexts = $state<Record<string, string>>({});
   let othersOpen = $state(false);
   let platform = $state<Platform>("bash");
-  let copied = $state<Record<string, boolean>>({});
 
   const degraded = $derived(install === null);
   /** The feature is "on" (the master switch) and usable — gates Install. */
@@ -167,21 +163,6 @@
     void app.refreshHooksStatus();
   }
 
-  async function copy(id: string, value: string) {
-    if (!value) return;
-    try {
-      await clipboardWrite(value);
-    } catch {
-      return;
-    }
-    copied = { ...copied, [id]: true };
-    setTimeout(() => {
-      const next = { ...copied };
-      delete next[id];
-      copied = next;
-    }, 1200);
-  }
-
   /** An agent whose CLI documents no usable hook can't be installed at all — its
    *  switch stays off and disabled, with the backend's reason under the name. */
   function blocked(entry: HookAgentEntry): boolean {
@@ -211,36 +192,6 @@
   });
   const wrapperUsage = $derived(i18n.t("hooks.wrapperUsage", { script: wrapperPath || "<path>" }));
 </script>
-
-<!-- A copyable script/config block: the shared shape for the per-agent config
-     and the generic wrapper. -->
-{#snippet codeBlock(key: string, value: string)}
-  <div class="relative">
-    <TooltipSimple title={i18n.t("hooks.copy")}>
-      {#snippet children(tp)}
-        <Button
-          {...tp}
-          variant="ghost"
-          size="icon-sm"
-          class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-          onclick={() => copy(key, value)}
-        >
-          {#if copied[key]}
-            <Icon icon={CheckIcon} class={icon.button} />
-          {:else}
-            <Icon icon={CopyIcon} class={icon.button} />
-          {/if}
-        </Button>
-      {/snippet}
-    </TooltipSimple>
-    <pre
-      class={cn(
-        "scrollbar-sleek max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
-        text.meta,
-        "whitespace-pre font-mono",
-      )}>{value || "…"}</pre>
-  </div>
-{/snippet}
 
 {#snippet groupHeader(title: string, description?: string)}
   <div class="px-1">
@@ -280,7 +231,7 @@
       />
     {/snippet}
     {#snippet details()}
-      {@render codeBlock(`${entry.id}-config`, configTexts[entry.id] ?? "")}
+      <CodeBlock value={configTexts[entry.id] ?? ""} copyLabel={i18n.t("hooks.copy")} />
     {/snippet}
   </AgentSettingsRow>
 {/snippet}
@@ -392,7 +343,7 @@
           {/each}
         </div>
         <p class={cn("font-mono", text.meta)}>{wrapperUsage}</p>
-        {@render codeBlock(`wrapper-${platform}`, wrapperScript)}
+        <CodeBlock value={wrapperScript} copyLabel={i18n.t("hooks.copy")} />
       </div>
     </div>
   </div>

@@ -100,14 +100,29 @@ void main() {
     expect(groups.single.threads.map((t) => t.id), ['t1']);
   });
 
-  test('a configured root with no conversations is not drawn', () {
-    // The screen lists work, not the bridge's configuration.
+  test('a project with no conversations yet is still listed', () {
+    // The registry is shared with Uxnan Desktop: a project added on either
+    // side shows on both before anything runs in it.
     final groups = groupThreadsByWorkspace(
       threads: [thread('t1', cwd: '/dev/app')],
       projects: [project('app', '/dev/app'), project('idle', '/dev/idle')],
     );
 
-    expect(groups, hasLength(1));
+    expect(groups, hasLength(2));
+    final idle = groups.singleWhere((g) => g.label == 'idle');
+    expect(idle.threads, isEmpty);
+    expect(idle.path, '/dev/idle');
+    expect(idle.projectId, 'idle');
+    expect(groups.singleWhere((g) => g.label == 'app').projectId, 'app');
+  });
+
+  test('a folder that is no project carries no project id', () {
+    final groups = groupThreadsByWorkspace(
+      threads: [thread('t1', cwd: '/dev/scratch')],
+      projects: const [],
+    );
+
+    expect(groups.single.projectId, isNull);
   });
 
   test("thread order inside a folder is the caller's", () {

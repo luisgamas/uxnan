@@ -28,7 +28,8 @@
   git worktree, without the memory cost of a full IDE. <b>Uxnan Mobile</b> pairs with a small<br />
   encrypted daemon on your PC so you can check on an agent, approve its next step, or send<br />
   a new instruction from your phone — across the room or across the world. They're<br />
-  independent apps: run Desktop on its own, run Mobile on its own, or run both.
+  independent apps: run Desktop on its own, run Mobile on its own, or run both — and then a<br />
+  chat started on either one carries on in the other.
 </p>
 
 <p align="center">
@@ -41,12 +42,57 @@
 </p>
 
 <p align="center">
-  <img src="assets/uxnan-project.png" alt="Uxnan Desktop running four agent worktrees on a widescreen monitor, next to Uxnan Mobile showing live conversations, profile stats and a repository's GitHub checks" width="960" />
+  <img src="assets/uxnan-ecosystem.png" alt="Uxnan Desktop with Claude Code in a terminal next to the integrated browser, beside Uxnan Mobile showing an OpenCode conversation with its work log and the agents it can start; a close-up shows a chat's steps as they run" width="960" />
 </p>
 
 ## What it feels like to use
 
 <table>
+<tr>
+<td width="46%" valign="top">
+
+### One conversation, on your desktop and your phone
+A chat runs on the Uxnan bridge, so the desktop and the phone show the same conversation, live: every step the agent takes, every answer as it streams. Send from either one — the other sees it at once, and neither needs the other to keep working.
+
+[Chat →](uxnandesktop/docs/chat.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/chat-desktop-mobile.gif" alt="A Claude Code chat answered live on Uxnan Desktop and Uxnan Mobile at once, then continued from the phone" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Agents that work together
+Any agent Uxnan runs can drive Uxnan itself through `uxnan-cli` or its MCP tools — nothing else to install. Here Claude Code hands a task to OpenCode as a chat, waits for it and reads the answer back.
+
+[Control surface: CLI & MCP →](uxnandesktop/docs/control-api.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/agents-together.gif" alt="Claude Code starting a chat with OpenCode through uxnan-cli, OpenCode searching the repository, and Claude Code summarizing its answer" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### A real browser your agents can use
+Each workspace has its own browser beside its terminals. An agent opens your app there, scrolls, clicks and reads it — the same page you see.
+
+[Browser →](uxnandesktop/docs/browser.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/real-browser.gif" alt="Claude Code opening a local site in Uxnan's browser, scrolling to a section and clicking through to GitHub" width="440" />
+
+</td>
+</tr>
 <tr>
 <td width="46%" valign="top">
 
@@ -58,7 +104,7 @@ Uxnan Desktop is terminal-centric, so it runs any CLI agent — pick one from th
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/launch-agent.gif" alt="Picking an agent from the catalog, then launching it into a worktree terminal" width="440" />
+<img src="assets/shorts/one-click-launch.gif" alt="Picking Claude Code from the new-tab menu and launching it into a terminal of the worktree" width="440" />
 
 </td>
 </tr>
@@ -73,7 +119,7 @@ Drag any file or folder from the tree onto a terminal and its path gets typed th
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/drag-file.gif" alt="Dragging a file from the file tree onto a terminal to insert its path" width="440" />
+<img src="assets/shorts/drag-file.gif" alt="Dragging AGENTS.md from the file tree onto a terminal, which types its path into a wc -l command" width="440" />
 
 </td>
 </tr>
@@ -88,7 +134,7 @@ Push, pick `base ← head`, and create the PR — uxnan reads the repository's a
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-pr.gif" alt="Creating a pull request from inside Uxnan Desktop" width="440" />
+<img src="assets/shorts/create-pr.gif" alt="Filling in a pull request's title, description and draft switch from the GitHub dock" width="440" />
 
 </td>
 </tr>
@@ -103,7 +149,7 @@ A branch-graph gutter runs next to the commit log — click a commit to expand i
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/history-graph.gif" alt="Browsing the commit history with a branch graph" width="440" />
+<img src="assets/shorts/history-graph.gif" alt="Expanding a commit in the branch-graph history and opening one file's diff side by side" width="440" />
 
 </td>
 </tr>
@@ -118,7 +164,7 @@ New branch, existing branch, or a custom location — every task gets its own wo
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-worktree.gif" alt="Creating a new git worktree for a task" width="440" />
+<img src="assets/shorts/create-worktree.gif" alt="Creating a worktree on a new branch from the New worktree dialog, then finding it in the sidebar" width="440" />
 
 </td>
 </tr>
@@ -133,7 +179,7 @@ Session, weekly and monthly usage for Codex, Claude, Copilot and Grok, read stra
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/provider-usage.gif" alt="Viewing AI provider usage quotas in Settings" width="440" />
+<img src="assets/shorts/provider-usage.gif" alt="Opening the provider usage popover from the status bar, then the Providers settings" width="440" />
 
 </td>
 </tr>
@@ -148,7 +194,7 @@ Open a project's Pull Requests, Issues and Actions in a focused view that replac
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Reviewing a pull request and CI checks in the full-screen GitHub view" width="440" />
+<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Opening a pull request from the dock, then its CI checks and its changed files" width="440" />
 
 </td>
 </tr>
@@ -163,7 +209,7 @@ A subagent from Claude Code, Codex, Grok or OpenCode shows up live as a nested r
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/agent-subagents.gif" alt="A subagent appearing as a nested row under its parent agent" width="440" />
+<img src="assets/shorts/agent-subagents.gif" alt="Claude Code launching two Explore subagents that appear nested under it in the sidebar" width="440" />
 
 </td>
 </tr>

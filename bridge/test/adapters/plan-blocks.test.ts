@@ -5,8 +5,7 @@ import { toolUseToBlock } from '../../src/adapters/claude-tools.js';
 import { opencodeToolBlock, mergePlanSteps } from '../../src/adapters/opencode-tools.js';
 import { piToolBlock } from '../../src/adapters/pi-tools.js';
 import { codexItemBlocks } from '../../src/adapters/codex-tools.js';
-import { zeroToolBlock, zeroPlanSteps } from '../../src/adapters/zero-tools.js';
-import { grokToolBlock, grokPlanSteps } from '../../src/adapters/grok-tools.js';
+import { acpToolBlock, acpPlanSteps } from '../../src/adapters/acp-tools.js';
 
 test('extractPlanSteps reads the Claude/OpenCode `todos` shape', () => {
   const steps = extractPlanSteps({
@@ -66,15 +65,15 @@ test('Claude TodoWrite maps to a plan block; other tools stay generic', () => {
     { id: 't1', name: 'TodoWrite', input: { todos: [{ content: 'Step 1', status: 'pending' }] } },
     { toolUseId: 't1', text: '', isError: false },
   );
-  assert.equal(block['type'], 'plan');
-  assert.deepEqual(block['state'], { steps: [{ description: 'Step 1', status: 'pending' }] });
+  assert.equal(block?.['type'], 'plan');
+  assert.deepEqual(block?.['state'], { steps: [{ description: 'Step 1', status: 'pending' }] });
 
   // A TodoWrite with no parseable steps falls back to a generic tool block.
   const empty = toolUseToBlock(
     { id: 't2', name: 'TodoWrite', input: {} },
     { toolUseId: 't2', text: 'ok', isError: false },
   );
-  assert.equal(empty['type'], 'tool');
+  assert.equal(empty?.['type'], 'tool');
 });
 
 test('OpenCode todowrite maps to a plan block', () => {
@@ -172,7 +171,7 @@ test('Codex update_plan item maps to a plan block', () => {
 // canonical `plan` shape as the CLI agents above, so the phone renders one
 // PlanCard widget regardless of which agent (or tool name) produced it.
 test('Zero plan entries map to the same plan block', () => {
-  const steps = zeroPlanSteps([
+  const steps = acpPlanSteps([
     { content: 'One', priority: 'high', status: 'completed' },
     { content: 'Two', priority: 'medium', status: 'in_progress' },
   ]);
@@ -188,7 +187,7 @@ test('Zero plan entries map to the same plan block', () => {
 });
 
 test('Grok plan entries map to the same plan block', () => {
-  const steps = grokPlanSteps([
+  const steps = acpPlanSteps([
     { content: 'One', priority: 'high', status: 'completed' },
     { content: 'Two', priority: 'medium', status: 'in_progress' },
   ]);
@@ -212,7 +211,7 @@ test('execute/bash tools normalize to a command_execution block across agents', 
     { toolUseId: 'c1', text: 'a.txt', isError: false },
   );
   const opencode = opencodeToolBlock('bash', 'o1', { command: 'ls' }, 'a.txt', false);
-  const zero = zeroToolBlock({
+  const zero = acpToolBlock({
     toolCallId: 'z1',
     title: 'shell',
     kind: 'execute',
@@ -220,7 +219,7 @@ test('execute/bash tools normalize to a command_execution block across agents', 
     rawInput: { cmd: 'ls' },
     content: [{ type: 'content', content: { type: 'text', text: 'a.txt' } }],
   });
-  const grok = grokToolBlock({
+  const grok = acpToolBlock({
     toolCallId: 'g1',
     title: 'shell',
     kind: 'execute',

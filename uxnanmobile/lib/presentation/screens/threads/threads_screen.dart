@@ -60,8 +60,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   @override
   void initState() {
     super.initState();
-    // Pull this PC's threads on open so they get tagged with the device and the
-    // list reflects the connected bridge.
+    // Catch this PC's copy up on open (the replica also syncs on every
+    // connect and app resume) so the list reflects the connected bridge.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
       // Remembered for the permanent drawer, which on a cold start or a deep
@@ -88,8 +88,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     if (!_connectedHere) return;
     try {
       await ref
-          .read(threadManagerProvider)
-          .loadThreads(deviceId: widget.deviceId)
+          .read(bridgeReplicaProvider)
+          .sync()
           .timeout(const Duration(seconds: 15));
     } on Object {
       // Best effort: surface nothing if the refresh fails or times out.
@@ -121,11 +121,23 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   Future<void> _newConversation({String? cwd}) async {
     final threadId = await NewConversationScreen.show(context, initialCwd: cwd);
     if (threadId == null || !mounted) return;
-    await ref
-        .read(threadManagerProvider)
-        .loadThreads(deviceId: widget.deviceId);
+    await ref.read(bridgeReplicaProvider).sync();
     if (mounted) {
       context.openInPane(AppRoutes.conversation(threadId));
+    }
+  }
+
+  /// Takes a project off the PC's registry (`project/remove`) — the list here
+  /// and in Uxnan Desktop. Its folder and conversations are kept.
+  Future<void> _removeProject(String projectId) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(bridgeReplicaProvider).removeProject(projectId);
+    } on Object {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.spacesRemoveProjectFailed)));
     }
   }
 
@@ -234,7 +246,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             connecting: connectingHere,
             onConnect: _connectHere,
           ),
-        ),
+        )
+      else
+        // Presence of this PC's bridge: whether Uxnan Desktop is open on it,
+        // so what the phone shows is known to be what the PC shows.
+        const SliverToBoxAdapter(child: _DesktopLinkedNote()),
       if (rows.isEmpty)
         const SliverFillRemaining(
           hasScrollBody: false,
@@ -496,6 +512,10 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               fullPath: group.path,
               onOpenThread: (id) =>
                   context.openInPane(AppRoutes.conversation(id)),
+              onRemoveProject: switch (group.projectId) {
+                final String id when _connectedHere => () => _removeProject(id),
+                _ => null,
+              },
             ),
             onNewConversation: () => _newConversation(cwd: group.path),
           ),
@@ -599,6 +619,45 @@ class _OfflineBanner extends StatelessWidget {
 /// *Download*/*Update* → progress → *Install now*. *Not now* hides it for this
 /// version (only at the available stage). Renders nothing when no undismissed
 /// update is in play.
+/// One quiet line under the app bar while Uxnan Desktop is connected to the
+/// same bridge (`stream/presence/updated`): every project, conversation and
+/// setting here is the same one the desktop shows. Nothing when the phone is
+/// the bridge's only client — that is the normal, fully working case.
+class _DesktopLinkedNote extends ConsumerWidget {
+  const _DesktopLinkedNote();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final desktop = ref.watch(desktopLinkedProvider);
+    if (desktop == null) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Row(
+        children: [
+          UxIcon(UxIcons.laptopMac, size: 16, color: colors.primary),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(
+              AppLocalizations.of(context).threadsDesktopLinked(desktop.name),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _UpdateBanner extends ConsumerWidget {
   const _UpdateBanner();
 

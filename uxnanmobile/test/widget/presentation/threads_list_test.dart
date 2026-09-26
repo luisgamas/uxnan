@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,9 +8,12 @@ import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
+import 'package:uxnan/domain/value_objects/client_presence.dart';
+import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -28,6 +33,7 @@ Thread _thread(
   String agentId, {
   String? cwd,
   String? projectId,
+  ThreadOrigin? origin,
 }) =>
     Thread(
       id: id,
@@ -38,6 +44,7 @@ Thread _thread(
       lastActivity: DateTime(2026, 6, 6, 10, 30),
       cwd: cwd,
       projectId: projectId,
+      origin: origin,
     );
 
 Widget _wrap({
@@ -46,6 +53,8 @@ Widget _wrap({
   List<Project> projects = const [],
   Map<String, WorkspaceRepo> repos = const {},
   String? openThread,
+  bool connected = false,
+  List<ClientPresence> presence = const [],
 }) {
   final router = GoRouter(
     routes: [
@@ -64,9 +73,9 @@ Widget _wrap({
       // database, and pulling the real one in leaves drift timers pending.
       threadPreviewProvider.overrideWith((ref, key) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
-      // The list is grouped by project now, so the screen reads the bridge's
-      // roots. Feeding them keeps the real request (and its transport) out.
-      projectsProvider.overrideWith((ref) async => projects),
+      // The list is grouped by project: the PC's registry, as the replica
+      // keeps it. Feeding it keeps the real database out.
+      projectsProvider.overrideWith((ref) => Stream.value(projects)),
       // The screen now asks the bridge which folders are worktrees of which
       // repository. Left real, that reaches a live ThreadManager and opens the
       // database. An empty table is also exactly what an older bridge yields,
@@ -92,7 +101,21 @@ Widget _wrap({
       authStatusProvider.overrideWith((ref, agentId) => null),
       trustedDevicesProvider
           .overrideWith((ref) => Stream.value(const <TrustedDevice>[])),
-      connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      connectedDeviceProvider.overrideWith(
+        (ref) => Stream.value(
+          connected
+              ? TrustedDevice(
+                  macDeviceId: 'mac-1',
+                  displayName: 'PC',
+                  macIdentityPublicKey: Uint8List(32),
+                  relayUrl: 'wss://relay.test',
+                  sessionId: 'session-1',
+                  pairedAt: DateTime(2026),
+                )
+              : null,
+        ),
+      ),
+      bridgePresenceProvider.overrideWith((ref) => Stream.value(presence)),
       connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
     ],
     child: MaterialApp.router(
@@ -104,6 +127,73 @@ Widget _wrap({
 }
 
 void main() {
+  testWidgets('a conversation started in Uxnan Desktop is marked', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        threads: [
+          _thread(
+            'a',
+            'From the desk',
+            'codex',
+            origin: const ThreadOrigin(kind: ClientKind.desktop, name: 'mac'),
+          ),
+          _thread(
+            'b',
+            'From the phone',
+            'codex',
+            origin: const ThreadOrigin(kind: ClientKind.phone, name: 'Pixel'),
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byTooltip('Started in Uxnan Desktop'), findsOneWidget);
+  });
+
+  testWidgets('says when Uxnan Desktop is linked to the same bridge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        threads: [_thread('a', 'One', 'codex')],
+        connected: true,
+        presence: [
+          ClientPresence(
+            id: 'local:desktop',
+            kind: ClientKind.desktop,
+            name: 'studio',
+            since: DateTime(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Linked with Uxnan Desktop on studio'), findsOneWidget);
+    // Connected, the screen schedules timed work; unmount and let it run out.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 1));
+  });
+
+  testWidgets('the phone alone with the bridge shows no link note', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(threads: [_thread('a', 'One', 'codex')], connected: true),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Linked with Uxnan Desktop'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 1));
+  });
+
   testWidgets('renders a tile per conversation, with no filter chips',
       (tester) async {
     await tester.pumpWidget(

@@ -5,7 +5,56 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **A "Desktop and phone, one workspace" section.** Uxnan Desktop now opens
+  chats with the agents the bridge drives, and they are the same conversations
+  the phone shows, so the page says so: the seven chat agents (`CHAT_AGENTS`),
+  the steps that stream live on both screens, a chat started on the phone
+  getting Uxnan's tools while the desktop runs, and agents working together
+  through `uxnan-cli` — open a worktree, start a chat with another agent, wait
+  for it, read its answer, check the result in the workspace's browser. The
+  commands are the CLI's own usage lines (`CONTROL_CLI`).
+
 ### Changed
+
+- **The desktop mockup draws today's window.** The hero window shows a chat tab
+  instead of a Claude Code terminal: the conversation header with its phone
+  mark, the prompt, the agent's steps grouped the way the app groups them (a
+  summary line, then Read / Searched / Edited rows and the running command
+  animating) and the composer with its model and access pickers. The sidebar
+  follows the app too — the paired phone under Search, the project expanded to
+  its worktrees, the open worktree's agent view listing chats and terminal
+  agents in one list, the workspace profile at the bottom — and the window gets
+  its status bar.
+
+- **The phones match the linked app.** The hero phone shows the same
+  conversation as the desktop, live, with its work log collapsed to a count and
+  the step running now; the conversation list carries the "Linked with Uxnan
+  Desktop" line and marks the chat that began on the desktop; the agent chip
+  names the agent, as the app does; and the agent picker offers only the
+  agents the bridge drives. The profile screen left the mobile section to make
+  room for the conversation list.
+
+- **The pairing tile's phone is the app's home now.** The app replaced its
+  bare "Devices" list with a home screen — the mark in the bar with pairing,
+  settings and your avatar; "Welcome back" over your name with the online and
+  member-since badges; a "This phone" card; and one card per paired PC with its
+  status dot, the address blurred until tapped, the last connection, the
+  network or "Disconnected" badge, what is working there, a Connect button when
+  offline and how many conversations it holds — so the mockup draws that.
+
+### Fixed
+
+- **No sideways scroll at 320 px.** The worktree section's grid sized its one
+  column to the widest line in its tile (`git worktree add …`), so a narrow
+  phone could scroll the page sideways; its column is `minmax(0, 1fr)` now,
+  like the new section's.
+
+- **The phone's "New conversation" mockup picks a project.** The app replaced
+  its single "Working directory" card with the PC's project registry — the
+  same list Uxnan Desktop shows — as one card group with the chosen project
+  filled and an "Add a project" row last, so the mockup draws that.
 
 - **The desktop mockup's right side is the dock now.** The app replaced its
   Files / Changes / History / GitHub tab row (and the separate browser panel)

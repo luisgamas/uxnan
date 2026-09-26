@@ -125,16 +125,36 @@ function parseMarkdownCommand(raw: string): ParsedCommand {
   };
 }
 
-/** Split leading `---\n…\n---` front-matter into `key: value` fields + the body. */
-function extractFrontMatter(raw: string): { fields: Record<string, string>; body: string } {
+/**
+ * Split leading `---\n…\n---` front-matter into `key: value` fields + the body.
+ * A folded or literal block (`description: >-` then indented lines, as most
+ * skills write a long description) is read as its text, joined with spaces for
+ * `>` and with newlines for `|`.
+ */
+export function extractFrontMatter(raw: string): { fields: Record<string, string>; body: string } {
   const fields: Record<string, string> = {};
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(raw);
   if (!match) return { fields, body: raw };
-  for (const line of match[1]!.split(/\r?\n/)) {
+  const lines = match[1]!.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    if (/^\s/.test(line)) continue;
     const idx = line.indexOf(':');
     if (idx <= 0) continue;
     const key = line.slice(0, idx).trim();
-    if (key) fields[key] = stripQuotes(line.slice(idx + 1).trim());
+    if (!key) continue;
+    const value = line.slice(idx + 1).trim();
+    const block = /^([>|])[+-]?$/.exec(value);
+    if (!block) {
+      fields[key] = stripQuotes(value);
+      continue;
+    }
+    const parts: string[] = [];
+    while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]!) || lines[i + 1]!.trim() === '')) {
+      i += 1;
+      parts.push(lines[i]!.trim());
+    }
+    fields[key] = (block[1] === '>' ? parts.filter(Boolean).join(' ') : parts.join('\n')).trim();
   }
   return { fields, body: raw.slice(match[0].length) };
 }

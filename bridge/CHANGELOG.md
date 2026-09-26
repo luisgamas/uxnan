@@ -5,6 +5,309 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a step shows while it runs, for every agent
+
+- Every adapter emits a call's row as it starts (`status: 'running'`, with a
+  `blockId`) and its result replaces it in place: Claude (`tool_use`), Codex
+  (`item/started`), OpenCode (`session.tool.called` / a `running` part), pi
+  (`tool_execution_start`), Zero and Grok (the first ACP `tool_call`),
+  Antigravity (the `ACTIVE` step). Verified on a real turn of each but Codex
+  (its login on the verifying machine had expired; covered by tests on the
+  app-server's own item shapes).
+- The store replaces a block by its `blockId`, and a turn that ends settles
+  any step its agent left running.
+
+### Fixed
+
+- **Paths read the same on Windows.** A step's file, as shown from the project,
+  now uses `/` on every platform (as git does), so the phone and the desktop
+  show `src/app.ts` whichever system the bridge runs on. Grok's permission
+  notice names its settings file as `~/.claude/settings.json` on Windows too
+  (it printed the full path), and a Zero skill in `~/.agents/skills` is told
+  apart by folder rather than by a separator.
+
+- **Codex turns no longer end when its stream drops and it reconnects.** The
+  app-server reports a retry as an `error` with `willRetry: true`
+  ("Reconnecting... 2/5"); the adapter ended and interrupted the turn on it.
+  An error it will not retry now shows its real message (`error.message`),
+  not "codex app-server error".
+
+### Fixed — Grok's effort and approvals, verified on a real Grok
+
+- **The reasoning effort you pick now reaches Grok.** Grok offers it as a
+  session config option (`reasoning_effort`, category `thought_level`), set
+  with `session/set_config_option`; the adapter used `session/set_mode`, which
+  Grok accepts for any value and ignores.
+- **A permission request for no turn of the bridge's is refused** (Grok and
+  Zero approved it).
+- **A thread that asks first is told when Grok will not.** Grok decides by
+  itself whether to ask — its `[ui] permission_mode`, or the `defaultMode` of
+  the Claude settings it also reads — and under `auto` it ran `rm -rf` on a
+  thread set to request approval. ACP offers no per-session way to turn that
+  off, so the turn carries a warning, once per session, naming the mode and
+  the file that sets it. With Grok asking, the approval reaches the phone and
+  a rejection blocks the command (verified).
+
+### Changed — every agent's work reads the same
+
+Measured on a real turn of each wired agent (Claude Code, Codex, OpenCode 2,
+pi, Antigravity, Zero, Grok):
+
+- **Tool calls say what they did.** `toolBlock` classifies every call —
+  `Read`, `read_file`, `view_file`, Grok's `ReadFile`… — into one `kind`
+  with a `target` to show (`describeTool`), and the agent manager shows every
+  path from the project (`withProjectPaths`) instead of the absolute paths
+  Claude, Zero, Grok and Antigravity report.
+- **Subagents are subagents**: Claude's `Agent`/`Task`, OpenCode's `task`,
+  Codex's `spawnAgent`/`followupTask` and Antigravity's subagents become a
+  `subagent` block with their report, not a generic tool row. Claude's
+  `ToolSearch` (the model looking up its own tools) is no longer shown.
+- **Diffs show what changed.** Edits are aligned line by line
+  (`diffLines`): a snippet keeps its unchanged lines as context, and a whole
+  file gets real hunks with line numbers (`fileDiffBlock`) — Zero no longer
+  shows every line removed and written again. Antigravity 1.2.x reports only
+  which file a step changed, once it is applied, so the adapter diffs it
+  against the text the agent last read or wrote in the turn, else the
+  committed file: its diffs were empty and are now exact.
+- **Codex**: commands show what ran, without the `/bin/zsh -lc '…'` wrapper
+  (`unwrapShellCommand`); a created file shows its content (the change kind
+  is an object, it was read as a string); MCP calls carry their server,
+  arguments and result; web searches, image views and subagents appear; and
+  the to-do list arrives from `turn/plan/updated`.
+- **Zero and Grok share one ACP mapper** (`acp-tools.ts`, replacing
+  `zero-tools.ts` and `grok-tools.ts`): the tool is named by Grok's
+  `rawInput.variant` or Zero's title, the ACP `kind` is kept, and the call
+  that wrote the plan is no longer shown next to the plan itself.
+
+### Changed — agent commands come from the agents themselves
+
+- **Grok** lists its commands before the first turn: a folder no thread has
+  opened gets a short ACP session of its own (no prompt, no tokens) whose
+  `available_commands_update` — its built-ins with their argument hints and
+  the skills it finds — is kept per folder; `always-approve` (the thread's
+  access mode is the bridge's), `statusline` and `memory` are left out. Verified
+  on a real Grok, including a native `/session-info`.
+- **Zero** lists the skills its runs can load (`zero skills list --json`, its
+  own skills folder — a Zero run over ACP never loads the shared
+  `~/.agents/skills`), and a picked one becomes a prompt asking it to load the
+  skill with its skill tool; verified end to end with a scratch skill.
+- A skill's folded or literal `description: >-` is read as its text
+  (`extractFrontMatter`), where it was read as `>-`.
+- **Claude Code** lists its commands by asking the CLI (`initialize` control
+  request over stream-json: no turn, no tokens) in the thread's folder —
+  every built-in, custom command, skill and plugin it has there, with
+  descriptions and argument hints — instead of a hand-kept list, a folder
+  scan and the names the last turn happened to report. What only its terminal
+  runs (its own `terminal_slash_commands`) and what the bridge owns (`clear`,
+  `rename`, `model`, `effort`, `config`, `status`, …) are left out.
+- **Codex** lists the skills its app-server has in the folder (`skills/list`)
+  and runs one as a native skill input item; `compact` runs as
+  `thread/compact/start`; custom prompts are still expanded by the bridge.
+- **OpenCode** asks its server (v1 `GET /command`, v2 `GET /api/command` +
+  `/api/skill`) and runs commands and skills natively on it — config-defined
+  commands and the built-in `init`/`review` included; the bridge's own folder
+  scan and template expansion for OpenCode are gone.
+- **pi** lists its prompts and skills with `get_commands` (a short-lived RPC
+  process with the turn's posture, so project ones appear exactly when pi
+  trusts the project) and expands them natively; extension commands are left
+  out.
+- **Antigravity** lists its skills (`agy -p /skills --add-dir <cwd>`) and
+  expands them natively.
+- **Zero** no longer advertises commands: its ACP server never sends
+  `available_commands_update` and invokes skills only in its TUI.
+- `AgentCommand.source` gains `skill`.
+
+### Fixed
+
+- **A pi extension that asks the user something no longer hangs the turn.**
+  Its dialog (`select`, `confirm`, `input`, `editor` → `extension_ui_request`)
+  waited for an answer nobody on the bridge's surface gives, so the turn never
+  ended; the adapter now declines it at once (`extension_ui_response
+  { cancelled: true }`, pi's answer for a dismissed dialog). Checked against
+  pi's documented RPC protocol, not yet with a real dialog-opening extension.
+
+### Added — phones and the PC have names every client shares
+
+- **Phones stop showing as their id.** A phone describes itself after
+  connecting (`device/describe`: name, model, platform, OS and app version);
+  its own name applies until a person names it with `device/rename`, from any
+  client. The latest decision wins, on whichever side, so a rename made on the
+  phone offline and one made on the desktop settle the same everywhere.
+  `trusted-phones.json` keeps what only the bridge needs (the phone's own name,
+  when a name was decided) beside the public record; re-pairing keeps the name.
+- **The PC's name is a shared setting** (`settings.name`, default the machine's
+  name): the one the pairing QR carries, the desktop's presence and the origin
+  of its conversations. `settings/set` takes `name` and `ageMs`, and each
+  setting's last decision is kept in `settings-decided.json`.
+  `uxnan-bridge config get|set name`.
+- `sync/changes` carries `devices`; `stream/devices/updated` announces every
+  pairing, description, rename and removal, and a connected phone's presence
+  follows its new name at once.
+
+### Added — actions taken offline: the latest one wins
+
+- `thread/rename`, `thread/archive`, `thread/unarchive` and `thread/delete`
+  accept `ageMs`: a client sending an action it took while offline says how
+  long ago it was decided, and the bridge dates it `now - ageMs`. Each thread
+  privately remembers when its title (a hand rename — a generated title does
+  not count) and its status were last decided; an action decided earlier than
+  that is superseded and changes nothing. A delete decided before the thread's
+  last activity (a turn, a rename, an archive) keeps the conversation — nobody
+  deletes work they had not seen — and leaves its agent session alone. A
+  replayed action dates the thread's `updatedAt` when it was decided, not when
+  it arrived.
+
+### Changed — one layer: the bridge is the source of truth (architecture/02a §5.8.17)
+
+- **Projects are a persistent registry every client mirrors.** `projects.json`
+  replaces the list derived from `workspaceRoots` or the directory `start` ran
+  in (which showed a desktop-launched bridge's phone only `/`). New
+  `project/add`, `project/remove` (conversations are never deleted),
+  `project/rename`; `stream/project/updated|removed`. A worktree belongs to its
+  repository's project; folders are canonicalized. The first run seeds the
+  registry with every existing conversation's folder, and every start relinks
+  conversations to their project. `thread/start` files a conversation by its
+  folder and registers the project.
+- **Replica sync by revision.** One persisted revision counter (`sync.json`)
+  numbers every change to a thread's summary, a project or the shared
+  settings; the thread store and the project registry are the only sources of
+  those announcements, written to disk before they are sent, each carrying its
+  `rev`. `sync/changes { since, storeId }` returns what changed, or a snapshot
+  (`reset`) — how a phone that was away, or that connected after a bridge
+  restart, catches up without trusting the replay window.
+- **`Turn.seq`**: a turn's position in its conversation, handed out once;
+  clients order by it. An imported native turn takes the next position.
+- **The start folder is a shared setting** (`home`, default the home
+  directory): `settings/get|set`, `stream/settings/updated`,
+  `uxnan-bridge config get|set home <folder>`. Browsing starts there whatever
+  directory `start` ran in.
+- **Presence and origin**: `bridge/status.host { launchedBy, machineName }` and
+  `clients`, `stream/presence/updated`; `Thread.origin`.
+- **Titles are the bridge's alone.** The provisional name is set when the first
+  turn is stored; a generated one is asked for after any completed turn while
+  the name is provisional, at most twice (a failed or stopped first turn, or a
+  message queued behind it, no longer leaves it provisional for good); a
+  provisional rename never overwrites a generated or hand-picked name.
+- **`thread/resume` changes nothing** — it used to mark the thread active and
+  bump `updatedAt` without telling anyone, un-archiving what a phone opened.
+- **Agent detection is one rule, live.** The seven `resolve-*.ts` resolvers are
+  replaced by `locateAgent` over the table shared with Uxnan Desktop
+  (`@uxnan/shared/agent-locations.json`), which also looks under the running
+  node's own npm prefix and Homebrew's; `start` adds the user's login-shell
+  `PATH`; `agent/list` re-checks (≤ every 10 s) and an agent installed later
+  gets its adapter built where it was found (`agents/agent-installs.ts`,
+  `stream/agents/updated`); `agent/doctor` shows where each was looked for.
+- **A proper user service.** `install-service` registers `start --service` with
+  absolute paths, the home directory as working directory, and restarts only a
+  crashed bridge (a deliberate stop stays stopped; a service start finding a
+  bridge already running exits cleanly instead of looping); new
+  `service-status` and `service-start`. A service prints no pairing QR or code
+  (its output is a log file, and both are credentials while the window is
+  open) and does not open the pairing window when it starts.
+- **`uxnan-bridge qr` pairs with the bridge that is running.** It asks the
+  daemon for its own payload over the local control channel
+  (`bridge/generatePairingQr`), which opens that daemon's pairing window — so
+  scanning pairs with the service. Before, it printed a separate process's
+  payload whose window the daemon never saw, and the only way to pair a
+  console-less daemon was the manual code.
+- **Uxnan Desktop's tools for Antigravity** through one secret-free
+  `uxnan-browser` entry in its global MCP config, kept by the running daemon
+  (`agents/global-mcp-entry.ts`) and served by `uxnan-bridge mcp-proxy`
+  (`adapters/mcp-proxy.ts`, sharing its MCP client with the pi extension) —
+  verified with a real `agy` turn; removed by `uninstall-service`. Zero stays
+  unreachable (its sandbox denies its MCP servers the network; `FOR-DEV.md`).
+  79 JSON-RPC methods, 21 streaming notifications.
+
+### Fixed
+
+- **`bridge/generatePairingQr` answers with the running process's own payload,
+  window armed** — its LAN hosts and persisted pairing session, exactly what
+  `start` prints. It built a separate payload without hosts or session and
+  never armed the pairing window, so a QR a client asked for (Uxnan Desktop's
+  "Pair a phone") could not complete a LAN pairing.
+- **A CLI that is not installed can no longer take the bridge down.** The
+  Grok, Zero, Codex `app-server` and line-protocol spawns had no `error`
+  listener, so asking an uninstalled Grok for its models (`agent/models`)
+  crashed the process with `spawn grok ENOENT`. Every long-lived agent process
+  now starts through `spawnPiped` and every one-shot through `defaultSpawn`,
+  both guarded (`guardChild`: the process and its stdin), and `NdjsonRpc`
+  rejects what is pending when its process closes instead of waiting forever.
+- **Availability is true.** The resolvers used to fall back to the bare
+  launcher name and report it available ("PATH lookup at spawn"), so the phone
+  and the desktop offered agents that could not run. They now scan `PATH`
+  (`adapters/path-scan.ts`, one helper for all seven) and report a missing CLI
+  unavailable.
+
+### Added
+
+- **Uxnan Desktop's tools for the agents the bridge runs.** `desktop/attach
+  { mcpUrl, token }` / `desktop/detach` (`handlers/desktop-handler.ts`), accepted
+  only from a local-control client — the local dispatch now marks its requests
+  with `RequestSession.local`, and a phone gets `-32001` — and only for a
+  loopback `/mcp` endpoint. Turns started afterwards carry
+  `SendTurnOptions.desktopTools`; the bridge forgets them when that client
+  disconnects. Each adapter registers the server under `uxnan-browser` for its
+  own conversation, the token never in argv or a file, and the conversation's
+  folder percent-encoded in `x-uxnan-cwd`: **Claude Code** with
+  `--mcp-config '<json>'` (claude 2.1.282); **Codex** with a per-thread `config`
+  on `thread/start` / `thread/resume` (codex-cli 0.156.1); **OpenCode** with
+  `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve`, restarted when idle
+  if the attachment changed (opencode 2.0.16); **pi** through a bridge-shipped
+  extension (`adapters/pi-desktop-extension.ts`, loaded with `-e`: a Streamable
+  HTTP MCP client registering one pi tool per MCP tool; not in the read-only
+  posture), the resident process recycling on a change of attachment (pi
+  0.85.1, run through the bridge); **Grok** with ACP `mcpServers` on
+  `session/new` / `session/load`, only when `initialize` advertises
+  `mcpCapabilities.http` (unit-tested; the binary was not available to run).
+  **Zero** (`zero acp` 0.9.0 ignores `mcpServers`) and **Antigravity** (no
+  per-run mechanism) are not wired (`FOR-DEV.md`). `OPENCODE_CONFIG_CONTENT` is
+  now also scrubbed from an inherited environment. 72 JSON-RPC methods.
+- **`thread/list` and `thread/read` carry each thread's live `activeTurnId`**
+  (never persisted), so a client that just connected — the desktop's sidebar,
+  the phone's list — shows which conversations are working without reading
+  each one's turns.
+- **Local control channel for Uxnan Desktop** (architecture/02a §5.8.15).
+  `uxnan-bridge start` now also opens a WebSocket listener bound to
+  **`127.0.0.1` only**, on a free port, and publishes its address plus a fresh
+  256-bit token in `~/.uxnan/local-control.json` (owner-only `0600`, written
+  atomically, removed on stop). A client on the same machine connects to
+  `/control?client=<id>` with `Authorization: Bearer <token>`; a request with an
+  `Origin` header (any browser) or from a non-loopback peer is refused before
+  the upgrade. The client is served by the **same router** the phones use and
+  is registered in the session registry as `local:<id>`, so it receives every
+  `stream/*` broadcast with its own `seq` and a reconnect replays what it
+  missed — or says it cannot (`hello.gap`, e.g. after a bridge restart), so it
+  resyncs instead. Requests naming one thread run in arrival order; others run
+  concurrently. A connected local client counts as "someone is there" for the
+  approval countdown, like a phone. New config key `localControlEnabled`
+  (default `true`); `bridge/status` reports `features.localControl` while the
+  listener is up. Short-lived commands (`qr`, `code`, `status`) never open it.
+
+- **Every client converges on the same conversations** (architecture/02a
+  §5.8.16). The thread handlers broadcast `stream/thread/updated` with the whole
+  thread after `thread/start`, `fork`, `rename`, `setModel`, `setAccessMode`,
+  `archive` and `unarchive`, and `stream/thread/deleted` after `thread/delete`,
+  so a thread started on the desktop appears on the phone (and the reverse)
+  without a refresh. `AgentManager` announces each stored user turn with
+  `stream/turn/created` — the user's message, before `stream/turn/started`,
+  echoing the sender's `clientTurnId` (≤ 128 chars, never persisted) — and
+  every settled approval or question with `stream/approval/resolved` /
+  `stream/question/resolved`, including a timeout, so a card answered on one
+  client stops being actionable on the others.
+
+- **`uxnan-bridge version`** (also `--version`, `-v`) prints the installed
+  version and nothing else, without starting a daemon — how Uxnan Desktop tells
+  which bridge is installed.
+
+- **`bridge/status` reports `activeTurns`**: threads with a turn in flight right
+  now, whichever client started it. Uxnan Desktop waits for `0` before an
+  automatic bridge update restarts it, so nobody's running turn is cut.
+
+### Changed
+
+- The generated thread title is announced as `stream/thread/updated` (the whole
+  thread) instead of the retired `stream/thread/renamed`.
+
 ## [0.0.27-alpha.20260924] - 20260924
 ### Added
 

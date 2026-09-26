@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/push_registrar.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/providers/question_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
@@ -127,6 +130,7 @@ class _PushHost extends ConsumerStatefulWidget {
 class _PushHostState extends ConsumerState<_PushHost>
     with WidgetsBindingObserver {
   StreamSubscription<String>? _tapSub;
+  StreamSubscription<ElicitationResolution>? _resolutionSub;
 
   @override
   void initState() {
@@ -136,10 +140,21 @@ class _PushHostState extends ConsumerState<_PushHost>
     // hydrated from disk well before any PC connection — the registrar then
     // sends the user's choices (not the defaults) on the first
     // `notifications/register`.
-    ref.read(notificationPreferencesProvider);
+    ref
+      ..read(notificationPreferencesProvider)
+      // The replica of the connected PC lives for the whole app: it catches up
+      // on every connection, so it must be listening before the first one.
+      ..read(bridgeReplicaProvider);
     final registrar = ref.read(pushRegistrarProvider);
     // Taps while the app is alive or resumed from the background.
     _tapSub = registrar.onNotificationTap.listen(_openThread);
+    // An approval or question answered on ANOTHER client (the desktop, a
+    // second phone) or timed out settles its card here too, for as long as the
+    // app lives — not only while that conversation happens to be open.
+    _resolutionSub = ref
+        .read(threadManagerProvider)
+        .resolutionsStream
+        .listen(_settleElicitation);
     // Cold start: if a tapped notification launched the app, deep-link once the
     // first frame is laid out (so the router is mounted).
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -166,6 +181,9 @@ class _PushHostState extends ConsumerState<_PushHost>
     // landed while away appear without leaving + re-entering it.
     unawaited(ref.read(sessionCoordinatorProvider).resume());
     unawaited(ref.read(threadManagerProvider).resyncActive());
+    // Catch the PC's copy up too: conversations and projects another client
+    // added (or removed) while the phone slept.
+    unawaited(ref.read(bridgeReplicaProvider).sync());
     // A store release may have shipped while we were backgrounded; re-check
     // (throttled, so frequent resumes don't spam the store).
     unawaited(ref.read(appUpdateControllerProvider.notifier).maybeCheck());
@@ -199,6 +217,19 @@ class _PushHostState extends ConsumerState<_PushHost>
   /// Recency key for picking the last-used device.
   DateTime _recency(TrustedDevice device) => device.lastSeen ?? device.pairedAt;
 
+  void _settleElicitation(ElicitationResolution resolution) {
+    switch (resolution) {
+      case ApprovalResolution():
+        ref
+            .read(approvalResponsesProvider.notifier)
+            .adoptResolution(resolution);
+      case QuestionResolution():
+        ref
+            .read(questionResponsesProvider.notifier)
+            .adoptResolution(resolution);
+    }
+  }
+
   void _openThread(String threadId) {
     if (threadId.isEmpty) return;
     unawaited(
@@ -210,6 +241,7 @@ class _PushHostState extends ConsumerState<_PushHost>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _tapSub?.cancel();
+    _resolutionSub?.cancel();
     super.dispose();
   }
 

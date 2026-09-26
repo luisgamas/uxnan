@@ -202,8 +202,12 @@ A PC's conversations are grouped by the **folder** they run in, by
 pure function over `threadsProvider` + `projectsProvider`, so the whole
 inference is testable and the `git/worktrees` contract can replace it without
 touching the UI. Paths are matched after normalising separators and case; the
-path shown and copied is the one that was reported. Configured roots contribute
-their name only.
+path shown and copied is the one that was reported. `projectsProvider` is the
+PC's **project registry** as the replica keeps it — the list Uxnan Desktop
+shows — so a folder that is a project takes its name, a project with no
+conversation yet still gets its (empty) row, and the long-press sheet of a
+project folder offers removing it from the registry (`project/remove`: the
+folder and its conversations stay).
 
 A **repository level** sits above the folders when the bridge can prove one:
 `git/worktrees` (`workspaceRepoTableProvider`) says which folders are worktrees
@@ -308,6 +312,11 @@ and composed in `application_providers.dart`. The important ones:
   `connectionRecoveryProvider`, `activeMacProvider`, `trustedDevicesProvider`.
 - `threadManagerProvider` → `ThreadManager`; UI watches `threadsProvider`
   (all threads) and `activeTimelineProvider` (the open conversation).
+- `bridgeReplicaProvider` → `BridgeReplica` (created eagerly in `app.dart`, so
+  it syncs from the first connection); `projectsProvider` (the connected PC's
+  registry), `bridgeHomeProvider` (its start folder), `bridgePresenceProvider`
+  / `desktopLinkedProvider` (who else is on that bridge) and
+  `agentsChangedProvider` (`stream/agents/updated`, re-reads `agent/list`).
 - `agentsProvider` (`agent/list`), `agentModelsProvider(agentId)`
   (`agent/models`), and `agentCapabilitiesProvider(agentId)` (capabilities with
   a permissive default when unknown).
@@ -321,7 +330,30 @@ and composed in `application_providers.dart`. The important ones:
    exposed as the `incomingMessages` stream.
 2. `IncomingMessageProcessor` classifies inbound notifications into typed
    `DomainEvent`s (turn started/delta/completed/error/aborted, git progress).
-3. `ThreadManager` applies streaming events to a `TurnTimelineSnapshot` (via a
+3. `BridgeReplica` keeps what the bridge owns — conversations, projects, the
+   start folder, presence — as a **replica** (architecture/02a §5.8.17). Per
+   PC it stores a cursor `{ storeId, rev, home }` (`replica_cursors`) and calls
+   `sync/changes` on connect, on app resume and whenever a notification's
+   `rev` skips one; the answer is either what came after the cursor or a full
+   snapshot (`reset`), which replaces that PC's threads and projects. A
+   notification is applied only when it is newer than what was applied, so a
+   late one never undoes a newer state. Threads are written through
+   `ThreadManager.applyReplicaThreads` — the **only** path by which a thread
+   the bridge reports reaches the store — so no second writer can disagree
+   with it. Messages sort by the bridge's `Turn.seq`
+   (`orderIndex = seq * 1000`, the prompt before its reply).
+   What the user does while a PC is out of reach — renaming, archiving,
+   unarchiving or deleting a conversation, renaming the PC — shows at once and
+   waits in `ActionOutbox` (`pending_actions`). The replica sends it
+   **first** when that PC is back, each action with `ageMs` (how long ago it
+   was decided, so the two clocks never have to agree), and reads nothing if
+   it could not: the bridge applies an action only if nothing decided the same
+   thing later elsewhere — the latest one wins.
+   Names are shared too: the PC's (`settings.name`, adopted into the paired
+   PC's record here) and each phone's. On connecting, `PhoneNameManager`
+   describes this phone (`device/describe`) with its name and how long ago it
+   was chosen, and adopts a name given to it on another client later.
+4. `ThreadManager` applies streaming events to a `TurnTimelineSnapshot` (via a
    reducer), persists finalized messages to drift, and exposes the timeline as a
    `BehaviorSubject` stream. A completion re-reads the authoritative turn and
    reconciles terminal text additively, so a final payload cannot overwrite
@@ -354,10 +386,10 @@ and composed in `application_providers.dart`. The important ones:
    that IS left is a display buffer decoupled from arrival — see `FOR-DEV.md`,
    and note it is perception rather than throughput. How to re-measure any of
    this is in [`testing.md`](testing.md).
-4. `assistant_response_boundary` metadata keeps those native messages ordered;
+5. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.
-5. While the channel is connected, `ThreadManager` polls `turn/list` for the
+6. While the channel is connected, `ThreadManager` polls `turn/list` for the
    active idle conversation every three seconds. The bridge reconciles the
    agent-owned native transcript first, so completed turns written from another
    supported client arrive as ordinary user + assistant messages. Concurrent
@@ -371,25 +403,23 @@ and composed in `application_providers.dart`. The important ones:
    streaming turn, a queued one, or an echo that has no turn id yet; and never a
    message written after the read began, so a send that lands while the page is
    in flight survives.
-6. The UI watches the derived stream providers and rebuilds reactively. Partial
+7. The UI watches the derived stream providers and rebuilds reactively. Partial
    assistant prose and settled prose both pass through the shared
    `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch
    from visible source syntax when a turn completes. During streaming every
    assistant response stays visible; after completion, earlier progress
    responses fold under the localized **N previous messages** disclosure.
-7. Assistant prose sends explicit Markdown links, detected bare local paths and
+8. Assistant prose sends explicit Markdown links, detected bare local paths and
    inline-code paths through one callback. `FileBrowserManager` asks the bridge
    to resolve the citation on the PC, then opens `FileViewerScreen` with the
    returned `cwd + path`. A relative citation stays rooted at the conversation;
    an absolute or parent-relative citation may switch the viewer to a sibling
    worktree's Git root. Mobile never tries to reinterpret PC paths locally.
 
-For a new thread, `ThreadManager` preserves the bridge-provided title. When the
-first textual user message is sent and that title is still empty, the thread id,
-or the bridge's `New` / `New thread` placeholder, the manager normalizes and
-truncates that prompt into the conversation title and syncs it with
-`thread/rename`. It checks for an existing user message first, so subsequent
-prompts cannot overwrite either the automatic title or a manual rename.
+Conversation titles come from the bridge only: a provisional one from the first
+prompt, then a generated one, the same for the phone and the desktop. The app
+never renames on its own; a manual rename (`thread/rename`) is the user's and
+the bridge never overwrites it.
 
 ## Patterns worth knowing
 

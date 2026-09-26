@@ -52,6 +52,7 @@ pub async fn status<R: tauri::Runtime>(
     let caller_kind = match caller {
         Caller::Launch { agent_id } => json!({ "kind": "launch", "terminalId": agent_id }),
         Caller::Control => json!({ "kind": "control" }),
+        Caller::Bridge { cwd } => json!({ "kind": "bridge", "cwd": cwd }),
     };
     Ok(json!({
         "app": "uxnan-desktop",

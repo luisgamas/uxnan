@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/discovered_bridge.dart';
+import 'package:uxnan/domain/repositories/i_bridge_replica_repository.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_metrics_repository.dart';
+import 'package:uxnan/domain/repositories/i_phone_profile_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
@@ -15,12 +17,14 @@ import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
+import 'package:uxnan/infrastructure/repositories/drift_bridge_replica_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_connection_session_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_metrics_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
+import 'package:uxnan/infrastructure/repositories/phone_profile_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/infrastructure/storage/appearance_preferences_store.dart';
@@ -60,6 +64,12 @@ final threadRepositoryProvider = Provider<IThreadRepository>(
 /// Composer-draft repository, backed by drift.
 final composerDraftRepositoryProvider = Provider<IComposerDraftRepository>(
   (ref) => DriftComposerDraftRepository(ref.watch(databaseProvider)),
+);
+
+/// Each paired PC's project registry and sync cursor (architecture/02a
+/// §5.8.17), backed by drift.
+final bridgeReplicaRepositoryProvider = Provider<IBridgeReplicaRepository>(
+  (ref) => DriftBridgeReplicaRepository(ref.watch(databaseProvider)),
 );
 
 /// Message repository, backed by drift.
@@ -244,4 +254,10 @@ final trustedDeviceRepositoryProvider = Provider<ITrustedDeviceRepository>(
     ref.watch(databaseProvider),
     ref.watch(secureStoreProvider),
   ),
+);
+
+/// This phone's own profile: what it is and the name its owner chose
+/// (architecture/02a §5.8.17).
+final phoneProfileRepositoryProvider = Provider<IPhoneProfileRepository>(
+  (ref) => PhoneProfileRepository(),
 );

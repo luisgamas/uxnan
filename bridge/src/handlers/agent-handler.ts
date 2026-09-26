@@ -15,10 +15,16 @@ import type { HandlerRouter } from '../handler-router.js';
 import { optionalString, requireString } from './params.js';
 
 export function registerAgentHandlers(router: HandlerRouter): void {
-  router.register(
-    'agent/list',
-    (_p, ctx: BridgeContext): AgentListResult => ({ agents: ctx.agentManager.listAgents() }),
-  );
+  // Re-checks what is installed (at most every few seconds) before answering,
+  // so an agent installed while the bridge runs shows up (agents/agent-installs.ts).
+  router.register('agent/list', (_p, ctx: BridgeContext): AgentListResult => {
+    ctx.agentInstalls.refresh();
+    return { agents: ctx.agentManager.listAgents() };
+  });
+  router.register('agent/doctor', (_p, ctx: BridgeContext) => {
+    ctx.agentInstalls.refresh(true);
+    return { agents: ctx.agentInstalls.diagnose() };
+  });
   router.register(
     'agent/models',
     async (p, ctx: BridgeContext): Promise<AgentModelsResult> => ({

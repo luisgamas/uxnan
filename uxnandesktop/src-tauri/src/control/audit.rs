@@ -43,6 +43,7 @@ pub fn line(
     let caller = match caller {
         Caller::Launch { agent_id } => json!({ "kind": "launch", "terminalId": agent_id }),
         Caller::Control => json!({ "kind": "control" }),
+        Caller::Bridge { cwd } => json!({ "kind": "bridge", "cwd": cwd }),
     };
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -74,6 +74,17 @@ describe("the control bridge", () => {
     expect(tabs.find((t) => t.id === shell)?.agentName).toBeUndefined();
   });
 
+  it("opens a chat in its folder, and focuses the tab already showing it", async () => {
+    const first = await answer({ id: "c1", method: "chat/open", params: { threadId: "th-1", cwd: WT } });
+    const tab = (first.result as { tab: string | null }).tab;
+    expect(typeof tab).toBe("string");
+    expect(terminals.activeChatThreadId()).toBe("th-1");
+    const again = await answer({ id: "c2", method: "chat/open", params: { threadId: "th-1", cwd: WT } });
+    expect((again.result as { tab: string | null }).tab).toBe(tab);
+    const chats = [...terminals.tabsWithWorkspace()].filter(({ tab: t }) => t.kind === "chat");
+    expect(chats).toHaveLength(1);
+  });
+
   it("reveals a terminal and opens a file or a diff where the backend says", async () => {
     terminals.setWorkspace(WT);
     const shell = terminals.create({ cwd: WT });

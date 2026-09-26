@@ -261,6 +261,55 @@ bridge's own approval hook is unaffected: it uses three of those names
 (`UXNAN_HOOK_URL` / `_TOKEN` / `_THREAD_ID`) for its own server, but it **sets**
 them per turn and a value it sets survives. Only an inherited one is dropped.
 
+### Which agents are installed (one rule, shared with Uxnan Desktop)
+
+Every agent CLI is found with `locateAgent` (`@uxnan/shared`) over the table in
+`shared/agent-locations.json` — the same file Uxnan Desktop compiles into its
+Rust resolver, so the phone, the desktop's chat and its terminals agree on what
+is installed. Per agent, in order: native install paths, then the npm entry
+under each npm root (including the running node's own prefix — nvm, fnm,
+Homebrew, a custom npm prefix), then the command on `PATH` (on Windows only a
+real `.exe`/`.com`). A path configured in `agents.<id>.binaryPath` always wins.
+
+`uxnan-bridge start` first adds the user's login-shell `PATH` to its own
+(`login-path.ts`), because a service or a GUI launch starts with a minimal one.
+Detection is live: `agent/list` re-checks at most every 10 s, an agent
+installed while the bridge runs gets its adapter built where it was found, and
+every client hears it (`stream/agents/updated`). `agent/doctor` lists, per
+agent, the command it runs and every location it checked.
+
+### Uxnan Desktop's tools (`desktop/attach`)
+
+When Uxnan Desktop is connected over the local control channel it attaches its
+own MCP server — the one it hands the agents it launches in its terminals
+(browser, terminals, other agents, the control catalog) — with
+`desktop/attach { mcpUrl, token }` (accepted only from a local client, and only
+for a loopback `/mcp` endpoint). Turns started from then on carry
+`SendTurnOptions.desktopTools`; the bridge forgets them when that client
+disconnects. An adapter registers the server **for its own conversation only**,
+under the same name the desktop's launches use (`uxnan-browser`), with the token
+never in argv or a file (only in the environment or in a message on the agent's
+stdin) and the conversation's folder in the `x-uxnan-cwd` header,
+percent-encoded (`encodeCwdHeader`) so any path is a valid header value — the
+desktop decodes it and scopes the agent to that project. A change of attachment
+(attached, detached, a new token after a desktop restart) reaches the next turn:
+
+| Agent | Mechanism | Verified |
+|---|---|---|
+| **Claude Code** | `--mcp-config '<json>'` per run; `${UXNAN_MCP_TOKEN}` / `${UXNAN_THREAD_CWD}` in its headers expanded from the env at load | claude 2.1.282: connects, lists and calls, both headers expanded |
+| **Codex** | per-thread `config` on `thread/start` / `thread/resume` (`mcp_servers.uxnan-browser` with `http_headers`) — one app-server serves every thread, so the override is per thread, not per process | codex-cli 0.156.1: connects for that thread only; the token reaches neither the rollout, the state DB nor the logs |
+| **OpenCode** | `OPENCODE_CONFIG_CONTENT` on the folder's `opencode serve` (merged over the user's config), token by reference (`{env:UXNAN_MCP_TOKEN}`); an idle server restarts when the attachment changes | opencode 2.0.16: connects once the folder loads, sends both headers, calls |
+| **pi** | no MCP client of its own, so the bridge ships one: `-e dist/src/adapters/pi-desktop-extension.js` (Streamable HTTP over `fetch`, one pi tool per MCP tool), fed `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` through the env; the resident process recycles on a change of attachment. **Not in the read-only posture** (`--tools` is a strict allowlist, and the tools act) | pi 0.85.1, through the bridge: the model is offered the tools, a call with arguments reaches the server and its answer ends the turn; the token reaches no session file |
+| **Grok** | ACP `mcpServers` (http variant) on `session/new` / `session/load`, sent only when `initialize` advertises `agentCapabilities.mcpCapabilities.http` | unit-tested against the ACP schema; **not run** against the binary (not installed on the verifying machine) |
+| **Antigravity** | `agy` reads MCP servers only from its user-global `~/.gemini/config/mcp_config.json`, so the running bridge keeps ONE secret-free entry there (`agy mcp add uxnan-browser -- <node> <cli.js> mcp-proxy`, `agents/global-mcp-entry.ts`): a stdio proxy (`adapters/mcp-proxy.ts`) that reads `UXNAN_MCP_URL` / `UXNAN_MCP_TOKEN` / `UXNAN_THREAD_CWD` from the environment the bridge gives `agy` while the desktop is attached, and outside a bridge run answers as a server with no tools. The resident process recycles on a change of attachment. Removed by `uninstall-service` | agy 1.2.10, real turn: the tools are discovered through the proxy and a call answers, token and folder on every request |
+| **Zero** | **not reachable.** `zero acp` ignores ACP `mcpServers` (the bridge still sends them the moment it advertises HTTP MCP — same code path as Grok), and its stdio MCP servers run inside its macOS sandbox with the network denied, so a proxy cannot reach the desktop either | zero 0.9.0: `initialize` advertises no `mcpCapabilities`; a stdio server's loopback HTTP and Unix-socket connections fail with `EPERM` (`ZERO_SANDBOXED=1`) |
+
+The proxy entry is only ever written by the long-running daemon (`uxnan-bridge
+start`), never by a test or a short-lived command, and is left alone once it
+already points at this bridge. Launched from one of Uxnan Desktop's own
+terminals, the same proxy forwards that terminal's `UXNAN_AGENT_ID`, so the
+desktop scopes it like any agent it launched.
+
 **Model lists follow the same read-the-source rule.** Every agent's list is
 **discovered live** from the CLI — `opencode models` (`GET /api/model` on
 OpenCode 2), `model/list`,
@@ -299,7 +348,7 @@ so a format change there is a **two-app** fix.
 | **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | **Antigravity** | `agy [--conversation <id>] --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) --input-format stream-json --output-format stream-json --print-timeout 2h` — one resident process per thread; the turn is a `user` message on stdin | `--conversation <id>`, the id `agy` announced on the first process's `init`, passed on every later spawn for the thread (never client-minted: 1.2.x refuses an unknown id and starts a new conversation) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
-| **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model) |
+| **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess; a request for no turn of the bridge's is refused. **Grok decides by itself whether to ask**, from its `[ui] permission_mode` and the `defaultMode` of the Claude settings it also reads; under `auto` its classifier runs tools without asking (measured: `rm -rf` ran on a thread set to request approval), and ACP offers no per-session way to turn that off, so such a thread gets a warning once per session naming the mode and the file (`grokPermissionSource`). Verified: with Grok asking, the round-trip reaches the phone and `reject-once` blocks the command | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model); the chosen effort is set with `session/set_config_option` on the session's `thought_level` option (`reasoning_effort`) — `session/set_mode` accepts anything and changes nothing |
 
 Seven agents are active. No further agent is planned right now (the recipe for
 wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md)).
@@ -324,6 +373,40 @@ Compactions use the ordinary structured-content path and therefore persist in
 
 Never infer a compaction from prose, an overflow error or a token-count drop;
 that would put a false event into durable history.
+
+### What a turn's work looks like, for every agent
+
+Every agent names its tools its own way; the bridge turns each call into the
+same blocks, so a client draws one row for "read a file" whichever agent read
+it. Shell commands become `command_execution`, edits become `diff`, the to-do
+list becomes `plan`, a delegated task becomes `subagent`, and every other call
+becomes a `tool` block that `toolBlock` classifies (`describeTool` in
+`content-blocks.ts`) into a `kind` — `read`, `search`, `list`, `fetch`,
+`web_search`, `mcp` or `other` — with a `target` to show. The agent manager
+then shows every path from the project (`withProjectPaths`). Measured on a
+real turn of each agent (2026-09-25):
+
+| Agent | Tool names the bridge maps | Diffs | Plan | Subagent |
+|---|---|---|---|---|
+| Claude Code | `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `mcp__*` (`ToolSearch` is not shown) | from the edit's old/new strings | `TodoWrite` | `Agent` / `Task` |
+| Codex | app-server items: `commandExecution` (the login-shell wrapper removed), `mcpToolCall` (`server/tool`), `dynamicToolCall`, `webSearch`, `imageView` | the item's unified diff; an added file's content | `turn/plan/updated` | `collabAgentToolCall` (`spawnAgent`, `followupTask`) |
+| OpenCode | `read`, `grep`, `glob`, `list`, `webfetch`, … | from the edit's old/new strings | `todowrite` | `task` |
+| pi | `read`, `grep`, `find`, `ls` | from the edit's old/new texts | — | — |
+| Antigravity | `view_file`, `grep_search`, `find_by_name`, `list_dir`, `read_url_content`, `search_web` | `agy` 1.2.x reports only the file, once changed: the adapter diffs it against the text the agent last read or wrote this turn, else the committed file | — | `invoke_subagent`, `browser_subagent` |
+| Zero / Grok (ACP) | the ACP `kind`, and the tool's name from Grok's `rawInput.variant` or the first word of Zero's title | ACP `diff` content: real hunks when it is the whole file on disk, else the snippet | the ACP `plan` update (the call that wrote it is not shown twice) | a `task` / `agent` call |
+
+**A step shows while it runs.** Every adapter emits a call's row as it starts —
+`status: 'running'` (a subagent's `state.status`), carrying a `blockId` — and
+its result replaces that row in place (same `blockId`; `runningBlock` /
+`withBlockId` in `content-blocks.ts`, `LiveBlock` in `shared/`). The start
+events, measured on each: Claude's `tool_use` (the id), Codex's `item/started`
+(the item id), OpenCode's `session.tool.called` on 2.x and a `running` tool
+part on 1.x (the call/part id), pi's `tool_execution_start` (`toolCallId`), an
+ACP `tool_call` not yet finished (`toolCallId`; Grok puts the kind in
+`_meta["x.ai/tool"]`), Antigravity's `ACTIVE` step (`<tool>_<step_index>`).
+An edit shows only its diff, and the to-do list only as the plan. The store
+replaces by `blockId`, and a turn that ends settles any step still running, so
+nothing spins after the agent stopped.
 
 ### Multiple assistant responses in one turn
 
@@ -589,18 +672,23 @@ The bridge discovers each agent's special ("slash") commands (`agent/commands` �
 
 | Agent | How commands are discovered | How they run |
 |---|---|---|
-| **Claude Code** | `slash_commands` from the `system/init` line (cached per turn) ∪ curated headless-safe built-ins (`compact`, `context`, `status`, `cost`, `usage`) ∪ `.claude/commands/*.md` scan | native — sent as `/name args`, resolved against the thread's `--resume` session |
-| **Zero**, **Grok** (ACP) | the ACP `available_commands_update` notification (captured, previously dropped) | native — via `session/prompt` |
-| **Codex** | scan `~/.codex/prompts/*.md` | bridge expands the template (`expandCommand`) — the app-server has no slash/compaction RPC |
-| **OpenCode** | scan `.opencode/command(s)/*.md` (+ `~/.config/opencode/command`) | bridge expands |
-| **pi**, **Antigravity** | — (no documented command surface) | — |
+| **Claude Code** | **asked of the CLI itself**: a stream-json `initialize` control request (no turn, no tokens; ~0.5 s, reused per folder for a minute) lists every command it has in the thread's folder — built-ins, custom commands (project and user `.claude/commands`), skills and plugins — with descriptions and argument hints. Hidden: what its own `system/init` `terminal_slash_commands` says only its TUI runs (`doctor`, `color`, `focus`, `reload-plugins`), and what the bridge owns or must not touch (`clear`, `rename`, `model`, `effort`, `fast`, `config`, `status` — which fails headless —, account and internal ones) | native — sent as `/name args`, resolved against the thread's `--resume` session |
+| **Codex** | a native `compact` + the **skills the app-server lists** in the thread's folder (`skills/list { cwds: [cwd] }`: repository, user and system skills, enabled only, short description; reused per folder for a minute) + the user's custom prompts (`~/.codex/prompts/*.md`; a prompt keeps its name over a skill) | natively: a skill as a `{ type: 'skill', name, path }` input item beside the arguments' text; `compact` as `thread/compact/start` (its own turn, rendered as a compaction block); a custom prompt is expanded by the bridge (`expandCommand`) and sent as text |
+| **OpenCode** | **asked of its server** in the thread's folder — v1 `GET /command` (commands and skills, told apart by `source`), v2 `GET /api/command` + `GET /api/skill`, waiting for a freshly booted catalog to settle (it loads in stages over ~1 s); includes its own `init`/`review`, the config's `command` key, `.opencode/command(s)` (project and user) and skills; reused per folder for a minute | **native** — v2 `POST /api/session/:id/command {name, text}`, a skill as a prompt with the skill attached; v1 `POST /session/:id/command {command, arguments, model}`, not awaited (it answers only when the turn ends). The server expands the template; the turn streams like a prompt |
+| **pi** | **asked of pi itself**: `get_commands` on a short-lived `pi --mode rpc --no-session` in the thread's folder, started with the turn's posture flags, so a project's own prompts and skills are listed exactly when pi trusts the project for the turn (`--approve`, or its saved `trust.json` decision); prompt templates as `custom`, skills as `skill` (`skill:<name>`); extension commands left out, because their dialogs would block with nobody to answer; reused per folder for a minute | native — sent as `/name args` on the `prompt` command, which pi expands |
+| **Antigravity** | its **skills**, from `agy -p /skills --add-dir <cwd>` in the thread's folder (a command the CLI answers itself; the workspace's skills come from `--add-dir`; ~4 s cold); built-ins are never listed because they fail on stream-json; reused per folder for a minute | native — sent as `/name args` in the user message, which `agy` expands |
+| **Zero** | its **own skills**, from `zero skills list --json` in the thread's folder — only those in Zero's skills folder (`~/.local/share/zero/skills`): the list also shows the shared `~/.agents/skills`, but the skill tool of a Zero run over ACP never looks there (asked for one, it answers "no skills are available"), so those are left out; its ACP server sends no `available_commands_update` and its slash commands are its TUI's; reused per folder for a minute | expanded by the bridge (`expandCommand`) into a prompt asking Zero to load the skill with its skill tool, then the arguments — verified: the run calls `skill` and follows it |
+| **Grok** (ACP) | the ACP `available_commands_update` a session announces in the thread's folder: its built-ins (`compact`, `review`, `goal`, `deep-research`, …, with their argument hints) and the skills it finds (labelled `skill` when a `SKILL.md` of that name is in `~/.agents/skills`, `~/.grok/skills` or the folder's own). A folder no thread has opened gets a short session of its own — `session/new`, no prompt, no tokens, the list ~2.5 s later — closed afterwards; reused per folder for a minute, refreshed by a thread's session. Left out: `always-approve` (the thread's access mode is the bridge's), `statusline` and `memory` (screens of its terminal UI) | native — sent as `/name args` through `session/prompt` (verified: `/session-info` answers with the session's context, no model call) |
 
-Custom prompt-template scanning + expansion is shared in
-`src/adapters/command-scan.ts` (dependency-free markdown-front-matter + minimal
-TOML parsers; argument substitution only — `@file`/`` !`shell` `` placeholders
-are passed through literally). The five command-capable adapters set
-`capabilities.commands = true`; `cwd` on `agent/commands`/`listCommands` scopes
-discovery to a project's own custom commands.
+The rule behind every row: **ask the agent**, on the surface the bridge drives,
+what commands it has in the thread's folder, and let it run them natively; the
+bridge expands a template itself only where the agent offers no way to (Codex's
+custom prompts, through `src/adapters/command-scan.ts` — its only user now).
+Sources: `builtin` (the CLI's own), `custom` (the user's commands and prompt
+templates), `skill` (an agent skill invoked by name), `acp` (advertised over
+ACP). Every row was verified by running the CLI through its adapter (Claude
+2.1.282, Codex 0.156.1, OpenCode 1.18.32 and 2.0.16, pi 0.85.1, agy 1.2.11,
+Zero 0.9.x, Grok 2026-09-25).
 
 ## Image attachments (`turn/send { attachments }`)
 

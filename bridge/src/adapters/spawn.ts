@@ -7,7 +7,7 @@
  * {@link SpawnExtra.stdin} — see the Claude adapter, which needs the pipe to
  * hand the agent a follow-up mid-turn.
  */
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
 /**
  * Environment keys the **desktop ADE** injects into one terminal of one launch:
@@ -37,6 +37,10 @@ export const DESKTOP_TERMINAL_ENV_KEYS = [
   'UXNAN_BROWSER_TOKEN',
   'UXNAN_MCP_URL',
   'UXNAN_MCP_TOKEN',
+  // The desktop points an OpenCode it launches at its MCP server through this;
+  // inherited, it would hand every `opencode serve` a server whose token and
+  // terminal id the scrub above just removed.
+  'OPENCODE_CONFIG_CONTENT',
 ] as const;
 
 /**
@@ -91,6 +95,44 @@ export type SpawnFn = (
   extra?: SpawnExtra,
 ) => SpawnedProcess;
 
+/**
+ * Keeps a child process from ever taking the bridge down. A missing binary
+ * (`ENOENT`) or a pipe written after the process died (`EPIPE`) arrives as an
+ * `error` event, and an `error` event nobody listens to is a crash — which is
+ * what a bridge asked for an uninstalled Grok's models used to do. The owner
+ * still learns the process is gone: `close` always follows (`error` then
+ * `close` with the negative errno for a spawn that never started).
+ */
+export function guardChild(child: ChildProcess): void {
+  child.on('error', () => {
+    /* the owner's `close` handler runs next */
+  });
+  child.stdin?.on('error', () => {
+    /* written after the process died */
+  });
+}
+
+/**
+ * A long-lived CLI speaking a protocol on all three pipes (Codex `app-server`,
+ * the ACP agents, a line-protocol agent) — spawned with the agent environment
+ * and {@link guardChild}, the one way every such process starts.
+ */
+export function spawnPiped(
+  command: string,
+  args: string[],
+  options: { cwd?: string; env?: Record<string, string> } = {},
+): ChildProcessWithoutNullStreams {
+  const child = spawn(command, args, {
+    ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+    shell: false,
+    env: agentEnv(options.env),
+  });
+  guardChild(child);
+  return child;
+}
+
 export const defaultSpawn: SpawnFn = (command, args, cwd, extra) => {
   const child = spawn(command, args, {
     cwd,
@@ -103,6 +145,7 @@ export const defaultSpawn: SpawnFn = (command, args, cwd, extra) => {
     // what keeps a terminal's identity from reaching the agent (`agentEnv`).
     env: agentEnv(extra?.env),
   });
+  guardChild(child);
   // `stdio` is computed, so TypeScript widens the streams to `| null` even
   // though 'pipe' guarantees stdout/stderr. The cast is the narrowing the
   // literal tuple used to give for free; `stdin` stays optional on

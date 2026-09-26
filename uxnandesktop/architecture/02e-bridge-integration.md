@@ -1,8 +1,30 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.0.0
-> **Fecha:** 2026-06-05
-> **Estado:** Definicion inicial
+> **Version:** 1.2.0
+> **Fecha:** 2026-09-25
+> **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+
+> **Resumen ejecutivo (1.2.0):** una sola capa (`02a` §5.8.17). El bridge corre
+> como **servicio del usuario**: el modo `managed` lo instala y lo arranca con
+> su propia CLI (`service-status` / `install-service` / `service-start`) y solo
+> se conecta — el bridge sigue sirviendo al telefono con la app cerrada. La
+> ventana es una **replica** (`sync/changes` por revision) de hilos, proyectos,
+> ajustes compartidos y presencia; los proyectos del desktop y del telefono son
+> **un solo registro** en espejo en ambos sentidos; los turnos se ordenan por
+> `Turn.seq`; el emparejamiento de un telefono se hace desde Ajustes con el QR
+> del propio bridge en ejecucion; y la deteccion de agentes usa la tabla
+> compartida con el bridge (`shared/agent-locations.json`).
+
+> **Resumen ejecutivo (1.1.0):** el desktop ya es **cliente** del bridge sin
+> empaquetarlo (§3.5): se conecta a un bridge instalado por el usuario por
+> un **canal de control local** — WebSocket solo en `127.0.0.1`, token de un
+> fichero `0600` — que sirve el mismo router JSON-RPC que los telefonos y lo
+> registra como un receptor mas de `stream/*` (§3.5, `02a` §5.8.15). Sobre el,
+> las **pestañas de chat** muestran y conducen las conversaciones del bridge
+> junto a las terminales, las mismas que ve el telefono (`02a` §5.8.16, "un dueño,
+> dos vistas"). Modos `off` (por defecto, coste cero) / `attach` / `managed`
+> (lanza `uxnan-bridge` si no corre). El modo embebido como sidecar (§3.1–3.4)
+> sigue pendiente y ya no bloquea nada: añadira un modo mas al mismo cliente.
 > **Plataformas objetivo:** Windows (principal), macOS, Linux
 > **Stack:** Rust, Tauri 2, Svelte 5, Node.js (bridge)
 
@@ -346,6 +368,80 @@ type DesktopToBridgeCommand =
 ```
 
 ---
+
+### 3.5 Cliente del canal de control local (implementado)
+
+La opcion B de §3.4, con dos diferencias deliberadas: el desktop **no** usa el
+WebSocket LAN del telefono (exige el handshake E2EE), sino un listener propio
+del bridge **solo en loopback**; y no hace falta empaquetar el bridge — basta
+con que el usuario lo tenga instalado.
+
+```
+Settings → Bridge y movil (off | attach | managed)
+   │
+   ▼
+src-tauri/src/bridgeclient/            ~/.uxnan/local-control.json (0600)
+  discovery.rs  ── lee ─────────────►  { port, token, pid, bridgeVersion, instanceId }
+  lock.rs       ── lee ─────────────►  ~/.uxnan/bridge.lock { pid, startedAt }
+  connection.rs ── ws://127.0.0.1:<port>/control?client=desktop&resume=<seq>&instance=<id>
+                   Authorization: Bearer <token>
+  mod.rs        ── supervisor: reconexion con backoff; managed: asegura el servicio
+  service.rs    ── `uxnan-bridge service-status | install-service | service-start | stop`
+  commands.rs   ── bridge_client_status · bridge_client_retry · bridge_call
+                   bridge_install_probe · bridge_install · bridge_restart · bridge_pairing_qr
+   │ eventos: bridge:status · bridge:notification
+   ▼
+src/lib/bridge/  client · chat (replica) · projectMirror · conversation  →  components/chat/
+```
+
+- **El token no sale de Rust.** La ventana solo recibe estado, resultados y
+  notificaciones; la CSP del webview tampoco permitiria `ws://`.
+- **Reanudacion:** el cliente guarda el ultimo `seq` aplicado y el `instanceId`;
+  el bridge reenvia lo que falto o responde `gap` y la ventana re-sincroniza.
+- **`managed`** resuelve `uxnan-bridge` en el `PATH` (como cualquier CLI de
+  agente) y, si no hay descubrimiento, se asegura de que corra como **servicio
+  del usuario**: `service-status`, `install-service` si falta (o tras una
+  actualizacion, para apuntar al node y la entrada nuevos) y `service-start` si
+  no corre. La app **nunca** lo detiene: el servicio sigue sirviendo al
+  telefono con el desktop cerrado. El lock de instancia unica del bridge sigue
+  siendo la autoridad: el desktop nunca comprueba-y-escribe estado del bridge.
+- **Replica y espejo (`02a` §5.8.17).** La ventana converge con `sync/changes`
+  al (re)conectar y ante un salto de `rev`; los proyectos locales del desktop y
+  el registro del bridge se unen al conectar (nunca se poda por ausencia) y las
+  altas y bajas viajan como eventos en ambos sentidos
+  (`src/lib/bridge/projectMirror.svelte.ts`); una baja hecha sin conexion se
+  envia al reconectar. **Emparejar un telefono** (Ajustes → Bridge y movil):
+  `bridge_pairing_qr` pide `bridge/generatePairingQr` al bridge en ejecucion
+  (su payload, ventana de emparejamiento armada) y lo dibuja como SVG
+  (crate `qrcode`).
+- **Sin descubrimiento no siempre es "no hay bridge".** El desktop **lee** (nunca
+  escribe) `~/.uxnan/bridge.lock`: si un proceso vivo lo tiene y no publica el
+  canal, el estado es `outdated` (el binario instalado no responde a
+  `uxnan-bridge version`: es anterior al canal) o `channelOff` (lo conoce, pero
+  corre un proceso anterior a la actualizacion o con `localControlEnabled:
+  false`). `managed` no arranca un segundo bridge sobre un lock ocupado. *Update*
+  en `managed` reinstala y reinicia el servicio; `bridge_restart` (a peticion
+  del usuario) detiene el que corre con `uxnan-bridge stop` y vuelve a levantar
+  el servicio.
+- **Herramientas del desktop para los agentes del bridge.** Al conectar, el
+  cliente llama `desktop/attach { mcpUrl, token }` (`02a` §5.8.15) con el
+  endpoint `/mcp` de su servidor de control y un **token de agente del bridge**
+  propio, generado en cada arranque, mientras el ajuste `browser.mcpEnabled`
+  este activo (`desktop/detach` al apagarlo). En el servidor de control ese
+  token es `Caller::Bridge { cwd }`: su alcance es el proyecto de la carpeta de
+  la conversacion (cabecera `x-uxnan-cwd`, codificada en porcentaje y
+  decodificada por el servidor), `current` no nombra nada y nunca
+  reporta un hook (`docs/control-api.md` → *Callers*).
+- **`off` cuesta cero**: el supervisor espera el cambio de modo sin socket,
+  lectura de fichero, temporizador ni proceso.
+
+**Pestaña `chat`.** Un tipo de pestaña nuevo junto a `terminal`/`file`/`commit`:
+guarda solo el puntero (`cwd`, `threadId`, `agentId` preseleccionado); la
+conversacion vive en el bridge. El agente se fija al crear el hilo; el modelo
+se cambia con `thread/setModel`. Se ofrece desde el "+" de la barra de pestañas,
+el submenu *Launch agent* de la fila de worktree y el dialogo lanzador, solo para
+carpetas locales. El modelo de datos es el de `shared/` importado solo como
+tipos (alias `$shared`). Uso: `docs/chat.md`.
 
 ## 4. Contratos compartidos (shared/)
 

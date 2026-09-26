@@ -2,16 +2,16 @@ import { Reveal } from "@/components/reveal";
 import {
   Phone,
   PhoneConversation,
+  PhoneConversations,
   PhoneDevices,
   PhoneNewConversation,
-  PhoneProfile,
 } from "@/components/mockups/phone";
 import { BRIDGE_INSTALL, BRIDGE_START, CRYPTO } from "@/lib/site";
 
 const CAPABILITIES = [
   {
     title: "It streams, live",
-    body: "Watch the answer arrive token by token, leave the app, come back — it is still there, still going.",
+    body: "Watch the answer arrive token by token and every step as the agent takes it. Leave the app, come back — it is still there, still going.",
   },
   {
     title: "Queue a follow-up",
@@ -55,7 +55,7 @@ export function Mobile() {
         <div className="mt-16 flex items-end justify-center gap-4 sm:gap-8">
           <Reveal delay={60} className="hidden sm:block">
             <Phone width={186} className="mb-10 rotate-[-3deg]">
-              <PhoneNewConversation />
+              <PhoneConversations />
             </Phone>
           </Reveal>
 
@@ -67,7 +67,7 @@ export function Mobile() {
 
           <Reveal delay={120} className="hidden sm:block">
             <Phone width={186} className="mb-10 rotate-[3deg]">
-              <PhoneProfile />
+              <PhoneNewConversation />
             </Phone>
           </Reveal>
         </div>

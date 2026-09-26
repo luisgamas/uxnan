@@ -338,6 +338,48 @@ class ImageContent extends MessageContent with EquatableMixin {
   List<Object?> get props => [path, base64Data, mimeType, width, height];
 }
 
+/// What a tool call did, as the bridge classifies every agent's tools
+/// (`shared/src/models/tool.ts`).
+enum ToolKind {
+  /// Read a file or an image.
+  read,
+
+  /// Searched file contents or names.
+  search,
+
+  /// Listed a folder.
+  list,
+
+  /// Fetched a URL.
+  fetch,
+
+  /// Searched the web.
+  webSearch,
+
+  /// A tool of an MCP server.
+  mcp,
+
+  /// Anything else: shown by the tool's name.
+  other;
+
+  /// Decodes the wire value; an unknown or missing one is [other].
+  static ToolKind fromWire(Object? value) => switch (value) {
+        'read' => read,
+        'search' => search,
+        'list' => list,
+        'fetch' => fetch,
+        'web_search' => webSearch,
+        'mcp' => mcp,
+        _ => other,
+      };
+
+  /// The wire value.
+  String get wire => switch (this) {
+        webSearch => 'web_search',
+        _ => name,
+      };
+}
+
 /// An agent tool invocation and its result.
 class ToolUseContent extends MessageContent with EquatableMixin {
   /// Creates a [ToolUseContent].
@@ -347,6 +389,9 @@ class ToolUseContent extends MessageContent with EquatableMixin {
     required this.input,
     this.output,
     this.isError = false,
+    this.kind = ToolKind.other,
+    this.target,
+    this.running = false,
   });
 
   /// Decodes a [ToolUseContent].
@@ -356,9 +401,12 @@ class ToolUseContent extends MessageContent with EquatableMixin {
         input: (json['input'] as Map?)?.cast<String, dynamic>() ?? const {},
         output: json['output'],
         isError: json['isError'] as bool? ?? false,
+        kind: ToolKind.fromWire(json['kind']),
+        target: json['target'] as String?,
+        running: json['status'] == 'running',
       );
 
-  /// Tool name.
+  /// Tool name, as the agent calls it.
   final String toolName;
 
   /// Tool invocation id.
@@ -372,6 +420,15 @@ class ToolUseContent extends MessageContent with EquatableMixin {
 
   /// Whether the tool reported an error.
   final bool isError;
+
+  /// What the call did, classified by the bridge.
+  final ToolKind kind;
+
+  /// What it acted on, ready to show (a path, a pattern, a URL, a query).
+  final String? target;
+
+  /// Whether the call is still in flight (a later block replaces it).
+  final bool running;
 
   /// Wire type discriminator.
   static const String typeName = 'tool';
@@ -390,10 +447,14 @@ class ToolUseContent extends MessageContent with EquatableMixin {
         'input': input,
         if (output != null) 'output': output,
         'isError': isError,
+        'kind': kind.wire,
+        if (target != null) 'target': target,
+        if (running) 'status': 'running',
       };
 
   @override
-  List<Object?> get props => [toolName, toolId, input, output, isError];
+  List<Object?> get props =>
+      [toolName, toolId, input, output, isError, kind, target, running];
 }
 
 /// A unified diff for a single file.
@@ -841,6 +902,7 @@ class SubagentState extends Equatable {
     required this.name,
     this.status,
     this.actions = const [],
+    this.output,
   });
 
   /// Decodes a [SubagentState].
@@ -853,6 +915,7 @@ class SubagentState extends Equatable {
             if (raw is Map)
               SubagentAction.fromJson(raw.cast<String, dynamic>()),
         ],
+        output: json['output'] as String?,
       );
 
   /// Subagent id.
@@ -867,16 +930,20 @@ class SubagentState extends Equatable {
   /// The actions the subagent has taken.
   final List<SubagentAction> actions;
 
+  /// The subagent's final report, once it finished.
+  final String? output;
+
   /// Serializes this subagent.
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         if (status != null) 'status': status,
         'actions': [for (final action in actions) action.toJson()],
+        if (output != null) 'output': output,
       };
 
   @override
-  List<Object?> get props => [id, name, status, actions];
+  List<Object?> get props => [id, name, status, actions, output];
 }
 
 /// An approval the agent is requesting before acting.

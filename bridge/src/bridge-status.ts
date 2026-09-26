@@ -4,7 +4,7 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge-status).
  */
 import { platform } from 'node:os';
-import type { BridgeStatus } from '@uxnan/shared';
+import type { BridgeHost, BridgeStatus, ClientPresence } from '@uxnan/shared';
 
 export interface BridgeStatusInput {
   version: string;
@@ -19,6 +19,14 @@ export interface BridgeStatusInput {
   latestVersion?: string;
   /** Whether {@link latestVersion} is strictly newer than {@link version}. */
   updateAvailable?: boolean;
+  /** Whether the loopback local control channel is listening right now. */
+  localControl?: boolean;
+  /** Threads with a turn in flight (see `BridgeStatus.activeTurns`). */
+  activeTurns?: number;
+  /** What started the bridge and on which machine. */
+  host?: BridgeHost;
+  /** Who is connected right now. */
+  clients?: ClientPresence[];
 }
 
 /**
@@ -36,6 +44,9 @@ const BRIDGE_FEATURES = {
   // `git/createWorktree` resolves its own location when `path` is omitted, under
   // the same managed layout the desktop uses (`git/worktree-location.ts`).
   managedWorktrees: true,
+  // Replica sync, the persistent project registry, shared settings, presence
+  // and `Turn.seq` ordering (architecture/02a §5.8.17).
+  sync: true,
 } as const;
 
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
@@ -48,6 +59,9 @@ export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
     uptimeMs: Math.max(0, input.now - input.startedAt),
     ...(input.latestVersion !== undefined ? { latestVersion: input.latestVersion } : {}),
     ...(input.updateAvailable ? { updateAvailable: true } : {}),
-    features: { ...BRIDGE_FEATURES },
+    ...(input.activeTurns !== undefined ? { activeTurns: input.activeTurns } : {}),
+    ...(input.host !== undefined ? { host: input.host } : {}),
+    ...(input.clients !== undefined ? { clients: input.clients } : {}),
+    features: { ...BRIDGE_FEATURES, ...(input.localControl ? { localControl: true } : {}) },
   };
 }

@@ -12,10 +12,17 @@ import {
   type SpawnedProcess,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
+import {
+  PI_DESKTOP_EXTENSION,
+  parsePiCommands,
+  piDesktopLaunch,
+} from '../../src/adapters/pi-adapter.js';
 
 // --- a fake `pi` process whose stdout we feed with agent-session JSON lines ---
 interface FakeSpawn {
   args: string[];
+  /** The environment the spawn added (`extra.env`). */
+  env?: Record<string, string>;
   /** Whether the spawn asked for a writable stdin (`--mode rpc`). */
   pipedStdin: boolean;
   /** RPC commands written to stdin, in order — the prompt, then any steer. */
@@ -34,16 +41,17 @@ function fakeSpawner(): {
     command: string,
     args: string[],
     cwd: string,
-    extra?: { stdin?: 'pipe' | 'ignore' },
+    extra?: { stdin?: 'pipe' | 'ignore'; env?: Record<string, string> },
   ) => SpawnedProcess;
   last(): FakeSpawn;
+  count(): number;
 } {
   const spawns: FakeSpawn[] = [];
   const spawnFn = (
     _command: string,
     args: string[],
     _cwd?: string,
-    extra?: { stdin?: 'pipe' | 'ignore' },
+    extra?: { stdin?: 'pipe' | 'ignore'; env?: Record<string, string> },
   ): SpawnedProcess => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
@@ -51,6 +59,7 @@ function fakeSpawner(): {
     stdout.on('end', () => emitter.emit('close', 0));
     const record: FakeSpawn = {
       args,
+      ...(extra?.env ? { env: extra.env } : {}),
       pipedStdin: extra?.stdin === 'pipe',
       sent: [],
       stdinEnded: false,
@@ -92,7 +101,7 @@ function fakeSpawner(): {
     spawns.push(record);
     return proc;
   };
-  return { spawnFn, last: () => spawns[spawns.length - 1]! };
+  return { spawnFn, last: () => spawns[spawns.length - 1]!, count: () => spawns.length };
 }
 
 /** Let the fake stdin's 'data' listeners run before asserting on `sent`. */
@@ -223,14 +232,24 @@ test('PiAdapter emits thinking deltas and pairs tool_execution start/end into a 
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  const command = blocks.find((block) => block['type'] === 'command_execution');
+  const commands = blocks.filter((block) => block['type'] === 'command_execution');
   const boundary = blocks.find((block) => block['type'] === 'assistant_response_boundary');
-  assert.equal(blocks.length, 2);
-  assert.deepEqual(command, {
+  // The command shows as it starts, then its result replaces it (same id).
+  assert.equal(blocks.length, 3);
+  const id = commands[0]?.['blockId'];
+  assert.equal(typeof id, 'string');
+  assert.deepEqual(commands[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: id,
+  });
+  assert.deepEqual(commands[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt\nb.txt',
+    blockId: id,
   });
   assert.deepEqual(boundary, {
     type: 'assistant_response_boundary',
@@ -444,6 +463,60 @@ test('PiAdapter maps the permission posture to the right tool flags', async () =
   }
 });
 
+test('PiAdapter loads the desktop-tools extension while the desktop is attached', async () => {
+  const { spawnFn, last, count } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
+  const turn = async (turnId: string, tools?: typeof desktopTools): Promise<void> => {
+    const { done } = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId,
+      text: 'hi',
+      cwd: '/w/a b',
+      ...(tools ? { desktopTools: tools } : {}),
+    });
+    // Keep stdout open: the process stays resident, as the real one does.
+    last().feedOpen([STATE, assistantEnd('ok'), AGENT_END, AGENT_SETTLED]);
+    await done;
+  };
+
+  await turn('u1', desktopTools);
+  const args = last().args;
+  assert.equal(args[args.indexOf('-e') + 1], PI_DESKTOP_EXTENSION);
+  assert.deepEqual(last().env, {
+    UXNAN_MCP_URL: desktopTools.mcpUrl,
+    UXNAN_MCP_TOKEN: desktopTools.token,
+    UXNAN_THREAD_CWD: '%2Fw%2Fa%20b',
+  });
+  assert.ok(!args.some((a) => a.includes(desktopTools.token)), 'the token never reaches argv');
+
+  // Same attachment: the resident process is reused.
+  await turn('u2', desktopTools);
+  assert.equal(count(), 1);
+
+  // Detached: pi restarts (on the same session) without the extension.
+  await turn('u3');
+  assert.equal(count(), 2);
+  assert.equal(last().args.includes('-e'), false);
+  assert.equal(last().env, undefined);
+  await adapter.stop();
+});
+
+test('piDesktopLaunch offers nothing in the read-only posture or without the desktop', () => {
+  const desktop = { mcpUrl: 'http://127.0.0.1:1/mcp', token: 'k'.repeat(43) };
+  assert.deepEqual(piDesktopLaunch(desktop, '/w', 'default'), { args: [], env: {}, key: '' });
+  assert.deepEqual(piDesktopLaunch(undefined, '/w', 'acceptEdits'), { args: [], env: {}, key: '' });
+  const launch = piDesktopLaunch(desktop, '/w', 'bypassPermissions');
+  assert.deepEqual(launch.args, ['-e', PI_DESKTOP_EXTENSION]);
+  assert.ok(launch.key.startsWith(desktop.mcpUrl));
+  assert.ok(!launch.key.includes(desktop.token));
+  assert.notEqual(
+    piDesktopLaunch({ ...desktop, token: 'j'.repeat(43) }, '/w', 'acceptEdits').key,
+    launch.key,
+  );
+});
+
 test('PiAdapter surfaces an error stopReason as turn_error', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
@@ -558,6 +631,28 @@ test('steerTurn sends a steer command into the running turn', async () => {
   assert.equal(proc.stdinEnded, false);
   await adapter.stop();
   assert.equal(proc.stdinEnded, true);
+});
+
+test("an extension's dialog is declined at once, so the turn can end", async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'deploy' });
+  const proc = last();
+  proc.feedOpen([
+    '{"type":"extension_ui_request","id":"d1","method":"confirm","title":"Deploy?"}',
+    // Fire-and-forget UI needs no answer.
+    '{"type":"extension_ui_request","id":"n1","method":"notify","message":"hi"}',
+  ]);
+  await flush();
+  assert.deepEqual(proc.sent.slice(2), [
+    { type: 'extension_ui_response', id: 'd1', cancelled: true },
+  ]);
+  proc.feedOpen([AGENT_END, AGENT_SETTLED]);
+  const events = await done;
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  await adapter.stop();
 });
 
 test('steerTurn declines once the turn ended, or for an unknown turn', async () => {
@@ -835,4 +930,107 @@ test('PiAdapter ends the turn on agent_settled, not on an agent_end pi will retr
   const all = await done;
   const completed = all.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { text: string }).text, 'PING');
+});
+
+// --- commands: pi's own list (`get_commands`) ---
+
+function commandsSpawner(commands: unknown[]): {
+  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  calls: { args: string[]; cwd: string; written: string[] }[];
+} {
+  const calls: { args: string[]; cwd: string; written: string[] }[] = [];
+  const spawnFn = (_command: string, args: string[], cwd: string): SpawnedProcess => {
+    const stdout = new PassThrough();
+    const stdin = new PassThrough();
+    const emitter = new EventEmitter();
+    const call = { args, cwd, written: [] as string[] };
+    calls.push(call);
+    stdin.on('data', (chunk: Buffer) => {
+      call.written.push(chunk.toString('utf8'));
+      stdout.write(
+        `${JSON.stringify({ type: 'response', command: 'get_commands', success: true, data: { commands } })}\n`,
+      );
+    });
+    return {
+      stdout,
+      stdin,
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
+  };
+  return { spawnFn, calls };
+}
+
+test('listCommands: prompts and skills as pi lists them; extension commands left out', async () => {
+  const { spawnFn, calls } = commandsSpawner([
+    { name: 'llama', description: 'Manage models', source: 'extension' },
+    { name: 'fix-tests', description: 'Fix failing tests', source: 'prompt', location: 'project' },
+    { name: 'skill:brave-search', description: 'Web search', source: 'skill', location: 'user' },
+  ]);
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const commands = await adapter.listCommands('/repo');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.source, c.description]),
+    [
+      ['fix-tests', 'custom', 'Fix failing tests'],
+      ['skill:brave-search', 'skill', 'Web search'],
+    ],
+  );
+  // A throwaway process in the thread's folder that never makes a session.
+  assert.equal(calls[0]!.cwd, '/repo');
+  assert.deepEqual(calls[0]!.args, ['--mode', 'rpc', '--no-session']);
+  assert.match(calls[0]!.written.join(''), /"type":"get_commands"/);
+  // Reused for the folder within the minute.
+  await adapter.listCommands('/repo');
+  assert.equal(calls.length, 1);
+});
+
+test('listCommands asks with the posture a turn runs with, so it lists what runs', async () => {
+  for (const [permissionMode, flags] of [
+    ['default', ['--tools', 'read,grep,find,ls']],
+    ['bypassPermissions', ['--approve']],
+  ] as const) {
+    const { spawnFn, calls } = commandsSpawner([]);
+    const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn, permissionMode });
+    await adapter.listCommands('/repo');
+    assert.deepEqual(calls[0]!.args, ['--mode', 'rpc', '--no-session', ...flags]);
+  }
+});
+
+test('listCommands yields none when pi does not answer', async () => {
+  const spawnFn = (): SpawnedProcess => {
+    const emitter = new EventEmitter();
+    setImmediate(() => emitter.emit('close', 1));
+    return {
+      stdout: new PassThrough(),
+      stdin: new PassThrough(),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => undefined,
+    } as SpawnedProcess;
+  };
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  assert.deepEqual(await adapter.listCommands('/repo'), []);
+});
+
+test('parsePiCommands reads only the get_commands answer', () => {
+  assert.equal(
+    parsePiCommands('{"type":"response","command":"get_state","success":true}'),
+    undefined,
+  );
+  assert.equal(parsePiCommands('No API key found'), undefined);
+  assert.deepEqual(
+    parsePiCommands(
+      JSON.stringify({
+        type: 'response',
+        command: 'get_commands',
+        success: true,
+        data: { commands: [{ name: 'x', source: 'prompt' }, { nope: 1 }] },
+      }),
+    ),
+    [{ name: 'x', source: 'prompt' }],
+  );
+  assert.deepEqual(
+    parsePiCommands('{"type":"response","command":"get_commands","success":false}'),
+    [],
+  );
 });

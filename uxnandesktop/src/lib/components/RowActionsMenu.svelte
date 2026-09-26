@@ -39,6 +39,8 @@
   import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import PinIcon from "@hugeicons/core-free-icons/PinIcon";
   import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
+  import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+  import { LOCAL_TARGET } from "$lib/target";
 
   let {
     path,
@@ -81,6 +83,9 @@
   const profiles = $derived(app.terminalProfiles);
   // The agents on this row's machine — a worktree on a host runs its CLIs.
   const launchable = $derived(app.launchableAgentsOn(projects.targetForPath(path)));
+  // A chat runs on the local bridge, so it is offered for a folder on this
+  // machine only.
+  const chatLocal = $derived(projects.targetForPath(path) === LOCAL_TARGET);
   // The owning project, for the GitHub submenu: its main-worktree path is what
   // the inline view is scoped to (same value the project card passes). A non-git
   // folder has no GitHub to offer.
@@ -137,6 +142,17 @@
       {i18n.t("ctx.launchAgent")}
     </ContextMenu.SubTrigger>
     <ContextMenu.SubContent width="standard">
+      {#if chatLocal}
+        <ContextMenu.Item
+          class={text.menu}
+          title={i18n.t("launcher.newChatDesc")}
+          onclick={() => projects.openChatAt(path)}
+        >
+          <Icon icon={BubbleChatAddIcon} class="size-4 shrink-0" />
+          {i18n.t("launcher.newChat")}
+        </ContextMenu.Item>
+        <ContextMenu.Separator />
+      {/if}
       {#if launchable.length}
         {#each launchable as a (a.id)}
           <ContextMenu.Item class={text.menu} onclick={() => projects.launchAgentAt(path, a)}>

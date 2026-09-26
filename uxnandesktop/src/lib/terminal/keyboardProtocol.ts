@@ -23,6 +23,8 @@
 // and navigation keys fall through to xterm's legacy encoding, which apps still
 // understand.
 
+import { isMac } from "$lib/keyboard/chords";
+
 /** Disambiguate escape codes (e.g. distinguish Ctrl+I from Tab, Esc from a seq). */
 const FLAG_DISAMBIGUATE = 0b1;
 /** Report press / repeat / release as the event-type field. */
@@ -48,6 +50,12 @@ export type KeyEventType = "press" | "release";
 export class KeyboardProtocol {
   /** Flag stack; the top entry is the active set. Empty = protocol disabled. */
   private stack: number[] = [];
+
+  /** On macOS, Option composes characters rather than modifying keys: `@` is
+   *  ⌥Q on a Latin American layout and ⌥2 on a Spanish one, `ß` is ⌥S. Such a
+   *  key is text, so it is sent as its character — never as an Alt chord, which
+   *  a TUI reads as a shortcut and the `@` never arrives. */
+  constructor(private readonly mac: boolean = isMac) {}
 
   /** Whether any non-zero flag set is active (the encoder is live). */
   get active(): boolean {
@@ -118,7 +126,8 @@ export class KeyboardProtocol {
     if (code === null) return null; // functional / navigation key → legacy
 
     const ctrl = e.ctrlKey;
-    const alt = e.altKey;
+    const optionComposed = this.mac && e.altKey && !e.ctrlKey && !e.metaKey && !(e.key in SPECIAL_CODES);
+    const alt = e.altKey && !optionComposed;
     const shift = e.shiftKey;
     const meta = e.metaKey;
     const hasNonShiftMod = ctrl || alt || meta;

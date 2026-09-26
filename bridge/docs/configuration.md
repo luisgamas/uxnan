@@ -16,18 +16,35 @@ file is optional; create it to override. Defaults live in
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
 | `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. On multi-homed hosts, the bridge joins and emits on every eligible advertised IPv4 rather than trusting the OS multicast route. Best-effort — an unavailable UDP 5353 interface is logged and pairing still works by QR or by typing the host. Discovery never advertises the pairing code and never creates trust. |
+| `localControlEnabled` | `true` | Serve the **local control channel** Uxnan Desktop uses on this machine: a WebSocket bound to `127.0.0.1` only, on a free port, authorized by a token written with the port to `~/.uxnan/local-control.json` (owner-only, fresh every start, removed on stop). Only `uxnan-bridge start` opens it. Set `false` to refuse the desktop entirely. See [connectivity](connectivity.md#4-uxnan-desktop-on-the-same-machine-local-control-channel). |
 | `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
 | `maxConcurrentSessions` | `1` | Concurrent phone sessions. |
 | `sessionTimeoutMinutes` | `30` | Idle session timeout. |
 | `defaultAgent` | `opencode` | Agent used when a thread doesn't pick one. |
 | `checkpointMaxPerProject` | `25` | Keep at most N newest workspace checkpoints per project (`cwd`); older ones are pruned (ref + metadata) on the next capture. `0` = unlimited. |
 | `checkpointTtlDays` | `0` | Delete workspace checkpoints older than N days on capture. `0` = no TTL. |
-| `workspaceRoots` | `[]` | Absolute project dirs exposed via `project/list` (empty → the bridge cwd). |
-| `browseRoots` | `[]` | Absolute base dirs the phone may **browse** under (`workspace/browseDirs`). Empty → falls back to `workspaceRoots`, then the **bridge's launch directory** (`process.cwd()`). So with nothing configured, the phone browses from wherever you started the bridge — zero-config plug-and-play. |
+| `home` | *(your home directory)* | The **start folder** shared with every client: where exploring for a new project begins and the boundary a phone may register projects under — **whatever directory `start` ran in**. Change it with `uxnan-bridge config set home <folder>`, from the phone or from Uxnan Desktop; every client hears the change (`stream/settings/updated`). |
+| `name` | *(the machine's name)* | What **every client calls this PC**: the name the pairing QR carries, the desktop's presence and the origin of its conversations. Change it with `uxnan-bridge config set name <name>`, from the phone or from Uxnan Desktop; empty goes back to the machine's name. |
+| `workspaceRoots` | `[]` | Absolute project dirs registered as projects on start (`source: config`). The projects list itself is the persistent registry in `~/.uxnan/projects.json` (below). |
+| `browseRoots` | `[]` | Extra absolute base dirs the phone may **browse** under (`workspace/browseDirs`), after `home` and `workspaceRoots`. |
 | `worktrees` | `{ "location": "managed" }` | Where `git/createWorktree` puts a worktree when the client sends no `path` (see below). |
 | `agents.<id>` | `{}` | Per-agent overrides (see below). |
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
 | `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
+
+## Projects: one registry every client mirrors
+
+`~/.uxnan/projects.json` holds the projects the phone and Uxnan Desktop both
+show (architecture/02a §5.8.17). A project is a canonical folder; a git
+worktree belongs to its repository's project. It is registered by
+`project/add` (from the phone, only inside the browse roots; from the desktop,
+which publishes its own projects, anywhere), by starting a conversation in its
+folder, or from `workspaceRoots`; `project/remove` takes it out and never
+deletes a conversation. The first time the registry is created it is seeded
+with the folders of every conversation you already had, so nothing done on the
+phone alone is lost when the desktop connects. Every change carries a sync
+revision (`~/.uxnan/sync.json`) and reaches every client, including one that
+was away (`sync/changes`).
 
 > **`browseRoots` bounds browsing, not reading.** A paired phone already reads
 > any `cwd` it names (`workspace/readFile` confines the read to that `cwd`, not

@@ -699,7 +699,11 @@ sobre el estado reportado por los hooks, dormido en el notificador
 `AppState.agent_changes` en vez de sondear, maximo 15 s por llamada;
 `terminal/read`: las ultimas lineas del buffer del terminal de la ventana con
 **redaccion** de secretos en el backend antes de salir, auditado, y desconectable
-por proyecto con `settings.control.terminalReadDisabledProjects`) y
+por proyecto con `settings.control.terminalReadDisabledProjects`; `chat/send`: un
+mensaje completo a una conversacion del bridge, que el bridge encola tras el turno
+en curso y todos sus clientes ven; `chat/read`: los ultimos turnos de una conversacion (mensaje, respuesta y pasos, con redaccion); `chat/wait --for idle|waiting`, maximo 15 s por llamada — con `chat/start` en `create` (una conversacion nueva con un agente del bridge en un worktree, visible en una pestana y en el telefono), `chat/list` en `read` y `chat/open` en
+`ui`, por el cliente del bridge de la app y acotados como todo lo demas: una
+conversacion cuya carpeta queda fuera del alcance es *scope denied*) y
 `orchestrate` v2 (`run/create|finish`, `task/create|list|update`, `worker/start`, `inbox/check`, `question/ask|answer`, `orchestration/reportResult|reportProgress` — una corrida conducida por un agente coordinador, §3.9). La nomenclatura `dominio/verbo` es la del contrato del bridge (`shared/`),
 para que la union de ambos mundos (029/030) sea mecanica. Los **selectores**
 (`current`, `id:`, `path:`, `branch:`, `name:`) evitan copiar ids del sidebar;
@@ -714,8 +718,7 @@ ventana como evento `control:request` y esperan su unica respuesta por el comand
 que no responde en 5 s produce *unavailable*, distinto de "no".
 
 **Autenticacion y aislamiento:** toda ruta rechaza primero un llamador cuyo
-`Host`/`Origin` no sea loopback y exige despues un token. Hay **dos tokens**,
-ambos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
+`Host`/`Origin` no sea loopback y exige despues un token. Hay **tres tokens**, todos nuevos en cada arranque: el **token por lanzamiento** (`UXNAN_HOOK_TOKEN`,
 referenciado por la config MCP del agente como `UXNAN_MCP_TOKEN`; con
 `UXNAN_HOOK_URL` y `UXNAN_AGENT_ID`) identifica un proceso que el ADE arranco y
 ancla `current` en su terminal; el **token de control** vive solo en el archivo de
@@ -749,8 +752,7 @@ puede llamar a esta API — eso llega con el estado de agente en el host
 esta escrita para entonces. Para que eso funcione desde las tools MCP y no solo desde `uxnan-cli`,
 **cada config de lanzamiento envia el id de la terminal en cada llamada**,
 expandido de `UXNAN_AGENT_ID` como cada CLI expande variables (tabla abajo);
-`current` se resuelve asi tambien desde una tool. Ninguno de los dos tokens se
-escribe en la config de ningun CLI ni se registra en logs.
+`current` se resuelve asi tambien desde una tool. El tercero, el **token de agente del bridge**, se entrega al bridge Uxnan por su canal local (`desktop/attach`, `02e` §3.5) para los agentes de sus conversaciones: llega al agente como `UXNAN_MCP_TOKEN`, identifica a un `Caller::Bridge` cuyo alcance es el proyecto de la carpeta de la conversacion (cabecera `x-uxnan-cwd`), no ancla `current` y nunca reporta un hook. Ninguno de los tokens se escribe en la config de ningun CLI ni se registra en logs.
 
 **`uxnan-cli`:** resultados en stdout, errores en stderr, `--json` estable, codigos
 de salida por clase de error (uso 2, app ausente 3, protocolo 4, denegado 5,

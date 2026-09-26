@@ -15,6 +15,7 @@ import {
   StreamNotification,
   makeNotification,
   type AccessMode,
+  type DesktopTools,
   type AgentCommand,
   type AgentCommandInvocation,
   type AgentDescriptor,
@@ -27,14 +28,21 @@ import {
   type QueuePausedReason,
   type QueueStateResult,
   type TurnAttachment,
-  type ThreadRenamedParams,
+  type ApprovalResolvedParams,
+  type QuestionResolvedParams,
+  type TurnCreatedParams,
   type TurnDeliveredParams,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
-import { approvalBlock, errorBlock, questionBlock } from '../adapters/content-blocks.js';
+import {
+  approvalBlock,
+  errorBlock,
+  questionBlock,
+  withProjectPaths,
+} from '../adapters/content-blocks.js';
 import type { QuestionItem } from '@uxnan/shared';
 
 /** How long a tool approval waits for the user before defaulting to deny. */
@@ -134,6 +142,11 @@ export interface SendTurnOptions {
    * drive one turn per thread.
    */
   queue?: boolean;
+  /**
+   * The sender's optimistic-bubble id, echoed on `stream/turn/created` so it
+   * can match its own message. Opaque; never persisted.
+   */
+  clientTurnId?: string;
 }
 
 /** Outcome of {@link AgentManager.sendTurn} — mirrors `TurnSendResult`. */
@@ -199,6 +212,8 @@ export class AgentManager {
   readonly #meta = new Map<AgentId, AgentMeta>();
   readonly #started = new Set<AgentId>();
   readonly #assistantByTurn = new Map<string, string>();
+  /** The folder each thread's agent last ran in, to show block paths from it. */
+  readonly #cwdByThread = new Map<string, string>();
   /** threadId → agent driving it, so we can read its native session id on completion. */
   readonly #agentByThread = new Map<string, AgentId>();
   /** threadId → in-flight turn id, so an approval reply can name the turn it answers. */
@@ -229,6 +244,7 @@ export class AgentManager {
   readonly #pendingHookApprovals = new Map<
     string,
     {
+      threadId: string;
       resolve: (decision: ApprovalDecision) => void;
       timer: ReturnType<typeof setTimeout> | undefined;
     }
@@ -240,6 +256,7 @@ export class AgentManager {
   readonly #pendingQuestions = new Map<
     string,
     {
+      threadId: string;
       resolve: (answers: string[][]) => void;
       timer: ReturnType<typeof setTimeout> | undefined;
     }
@@ -272,6 +289,20 @@ export class AgentManager {
 
   hasAdapter(agentId: AgentId): boolean {
     return this.#adapters.has(agentId);
+  }
+
+  /** Record that an agent's CLI appeared or disappeared (`AgentInstalls`). */
+  setAvailable(agentId: AgentId, available: boolean): void {
+    const meta = this.#meta.get(agentId);
+    if (meta && meta.deprecated !== true) meta.available = available;
+  }
+
+  /** Whether a turn of [agentId] is running right now, on any thread. */
+  hasActiveWork(agentId: AgentId): boolean {
+    for (const threadId of this.#activeTurnByThread.keys()) {
+      if (this.#agentByThread.get(threadId) === agentId) return true;
+    }
+    return false;
   }
 
   /** Whether the agent's binary resolved (its CLI is installed/usable). */
@@ -418,6 +449,7 @@ export class AgentManager {
     }
 
     const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
+    await this.#announceTurn(threadId, started.turnId, options.clientTurnId);
     await this.#runTurn(threadId, agentId, adapter, {
       turnId: started.turnId,
       assistantMessageId: started.assistantMessageId,
@@ -425,6 +457,63 @@ export class AgentManager {
       options,
     });
     return { turnId: started.turnId };
+  }
+
+  /**
+   * Tell every client a user turn now exists — with the user's message — before
+   * anything about its answer is sent. This is what lets a client show a
+   * message another client typed, in its place, instead of discovering the
+   * prompt only after the reply (architecture/02a §5.8.16). Best-effort: a
+   * failure to read the turn back must not fail the send.
+   */
+  async #announceTurn(threadId: string, turnId: string, clientTurnId?: string): Promise<void> {
+    try {
+      const turn = await this.#options.store.getTurn(turnId);
+      this.#options.notify(
+        makeNotification(StreamNotification.TurnCreated, {
+          threadId,
+          turn,
+          ...(clientTurnId !== undefined ? { clientTurnId } : {}),
+        } satisfies TurnCreatedParams),
+      );
+    } catch (err) {
+      this.#options.logger.warn(`could not announce turn ${turnId}: ${String(err)}`);
+    }
+  }
+
+  /** Every client retires its card for [approvalId]. */
+  #announceApproval(
+    threadId: string,
+    approvalId: string,
+    decision: ApprovalDecision,
+    timedOut = false,
+  ): void {
+    this.#options.notify(
+      makeNotification(StreamNotification.ApprovalResolved, {
+        threadId,
+        approvalId,
+        decision,
+        ...(timedOut ? { timedOut: true } : {}),
+      } satisfies ApprovalResolvedParams),
+    );
+  }
+
+  /** Every client retires its card for [questionId]. */
+  #announceQuestion(
+    threadId: string,
+    questionId: string,
+    answers: string[][],
+    timedOut = false,
+  ): void {
+    this.#options.notify(
+      makeNotification(StreamNotification.QuestionResolved, {
+        threadId,
+        questionId,
+        skipped: answers.every((chosen) => chosen.length === 0),
+        answers,
+        ...(timedOut ? { timedOut: true } : {}),
+      } satisfies QuestionResolvedParams),
+    );
   }
 
   /** Persists a turn as `queued` and parks it behind the in-flight one. */
@@ -450,6 +539,7 @@ export class AgentManager {
       );
     }
     const queued = await this.#options.store.queueTurn(threadId, persistText, this.#options.now());
+    await this.#announceTurn(threadId, queued.turnId, options.clientTurnId);
     // The agent is recorded now so a `turn/cancel` for this queued turn — and any
     // later cancel on the thread — reaches the right adapter even if it is the
     // first thing this thread ever ran.
@@ -559,6 +649,8 @@ export class AgentManager {
     const attachments = options.attachments ?? [];
     this.#assistantByTurn.set(turnId, assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
+    const cwd = options.cwd ?? adapter.defaultCwd?.();
+    if (cwd !== undefined) this.#cwdByThread.set(threadId, cwd);
     this.#activeTurnByThread.set(threadId, turnId);
 
     if (!this.#started.has(agentId)) {
@@ -580,6 +672,10 @@ export class AgentManager {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
       ...(options.command !== undefined ? { command: options.command } : {}),
+      // FOR-DEV: every adapter registers these except Zero, whose sandbox
+      // blocks its MCP servers' network (bridge/FOR-DEV.md → "Uxnan Desktop's
+      // tools for Zero").
+      ...(this.#desktopTools ? { desktopTools: this.#desktopTools.tools } : {}),
     });
   }
 
@@ -648,27 +744,28 @@ export class AgentManager {
    * client (a thread uxnan creates comes back from Codex with `name: null`), so
    * uxnan names its own conversations, exactly as their desktop clients do.
    *
-   * Only ever runs **once per thread**, and only while the title is still the
-   * provisional one taken from the opening message: `applyGeneratedTitle`
-   * refuses to overwrite a name the user chose, so a rename made while the turn
-   * was running always wins.
+   * Runs after a completed turn while the title is still the provisional one
+   * the bridge took from the opening message, at most `MAX_TITLE_ATTEMPTS`
+   * times (`ThreadStore.claimTitleGeneration`) — so a first turn that failed,
+   * was stopped or had a follow-up queued behind it still gets a real name on a
+   * later turn. `applyGeneratedTitle` refuses to overwrite a name the user
+   * chose, so a rename made while the turn was running always wins; the store
+   * announces the new name itself.
    *
    * Entirely best-effort. A failure here must never touch the conversation, so
    * everything is swallowed and the thread simply keeps its provisional name.
    */
   async #nameThread(threadId: string, turnId: string, assistantText: string): Promise<void> {
     try {
-      const thread = await this.#options.store.getThread(threadId);
-      if (thread.titleSource !== undefined && thread.titleSource !== 'prompt') return;
-      // Second and later turns: the name was already decided (or declined).
-      if (thread.turnCount > 1) return;
-
       const agentId = this.#agentByThread.get(threadId) ?? this.#options.defaultAgent;
       const adapter = this.#adapters.get(agentId);
       if (!adapter?.generateTitle) return;
 
       const userText = await this.#userText(turnId);
       if (!userText) return;
+      // Counts the attempt; declines once the name is final or tries ran out.
+      if (!(await this.#options.store.claimTitleGeneration(threadId))) return;
+      const thread = await this.#options.store.getThread(threadId);
 
       const title = await adapter.generateTitle({
         userText,
@@ -683,15 +780,8 @@ export class AgentManager {
         this.#options.now(),
       );
       // `undefined` means the store declined — the user renamed it meanwhile,
-      // or the name was already this. Either way there is nothing to announce.
+      // or the name was already this. Either way there is nothing to mirror.
       if (!updated) return;
-      this.#options.notify(
-        makeNotification(StreamNotification.ThreadRenamed, {
-          threadId,
-          title: updated.title,
-          titleSource: 'agent',
-        } satisfies ThreadRenamedParams),
-      );
       // Then mirror the name onto the agent's own session when its CLI keeps
       // one, so the same conversation is recognizable in that agent's client
       // rather than untitled (Codex today). After the notification, never
@@ -758,7 +848,7 @@ export class AgentManager {
       makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
     );
     return new Promise<ApprovalDecision>((resolve) => {
-      this.#pendingHookApprovals.set(approvalId, { resolve, timer: undefined });
+      this.#pendingHookApprovals.set(approvalId, { threadId, resolve, timer: undefined });
       // Only start the auto-reject countdown while a phone is connected to see
       // and answer the card. While offline the approval WAITS (the card replays
       // from the outbound log on reconnect), so the agent never takes an
@@ -779,6 +869,7 @@ export class AgentManager {
     pending.timer = setTimeout(() => {
       this.#pendingHookApprovals.delete(approvalId);
       pending.resolve('reject');
+      this.#announceApproval(pending.threadId, approvalId, 'reject', true);
     }, this.#approvalTimeoutMs);
   }
 
@@ -838,6 +929,7 @@ export class AgentManager {
       clearTimeout(pending.timer);
       this.#pendingHookApprovals.delete(approvalId);
       pending.resolve(decision);
+      this.#announceApproval(threadId, approvalId, decision);
       return { turnId };
     }
     const agentId = this.#agentByThread.get(threadId);
@@ -855,6 +947,7 @@ export class AgentManager {
       );
     }
     await adapter.respondApproval(threadId, approvalId, decision);
+    this.#announceApproval(threadId, approvalId, decision);
     return { turnId };
   }
 
@@ -882,7 +975,7 @@ export class AgentManager {
       makeNotification(StreamNotification.ContentBlock, { threadId, turnId, messageId, content }),
     );
     return new Promise<string[][]>((resolve) => {
-      this.#pendingQuestions.set(questionId, { resolve, timer: undefined });
+      this.#pendingQuestions.set(questionId, { threadId, resolve, timer: undefined });
       // Same offline posture as approvals: only run the auto-skip countdown while
       // a phone is connected to see and answer the card (see onPhoneConnected).
       if (this.#isPhoneConnected()) this.#armQuestionTimeout(questionId);
@@ -897,6 +990,7 @@ export class AgentManager {
     pending.timer = setTimeout(() => {
       this.#pendingQuestions.delete(questionId);
       pending.resolve([]);
+      this.#announceQuestion(pending.threadId, questionId, [], true);
     }, this.#approvalTimeoutMs);
   }
 
@@ -915,6 +1009,7 @@ export class AgentManager {
       clearTimeout(pending.timer);
       this.#pendingQuestions.delete(questionId);
       pending.resolve(answers);
+      this.#announceQuestion(threadId, questionId, answers);
     }
     return Promise.resolve({ turnId: this.#activeTurnByThread.get(threadId) ?? '' });
   }
@@ -928,8 +1023,36 @@ export class AgentManager {
    * turn running now?"; the phone re-attaches its streaming view to it on
    * resync (surfaced via `turn/list` → `activeTurnId`).
    */
+  /** How many threads have a turn in flight right now, on any client's behalf.
+   *  Lets a client pick a quiet moment for disruptive work (restarting the
+   *  bridge to update it) instead of cutting a running turn. */
+  activeTurnCount(): number {
+    return this.#activeTurnByThread.size;
+  }
+
   activeTurnId(threadId: string): string | undefined {
     return this.#activeTurnByThread.get(threadId);
+  }
+
+  /** Uxnan Desktop's tools for the agents this bridge runs, and the local
+   *  client that attached them (`desktop/attach`). Turns started from now on
+   *  carry them; one already running keeps what it started with. */
+  #desktopTools: { tools: DesktopTools; clientId: string } | undefined;
+
+  setDesktopTools(tools: DesktopTools, clientId: string): void {
+    this.#desktopTools = { tools, clientId };
+  }
+
+  /** Forget the desktop's tools — asked by the desktop, or because the client
+   *  that attached them went away (its token is not good any more). Passing a
+   *  `clientId` forgets them only if that client attached them. */
+  clearDesktopTools(clientId?: string): void {
+    if (clientId !== undefined && this.#desktopTools?.clientId !== clientId) return;
+    this.#desktopTools = undefined;
+  }
+
+  get desktopToolsAttached(): boolean {
+    return this.#desktopTools !== undefined;
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
@@ -990,6 +1113,7 @@ export class AgentManager {
       }
     }
     this.#agentByThread.delete(threadId);
+    this.#cwdByThread.delete(threadId);
   }
 
   /**
@@ -1248,7 +1372,10 @@ export class AgentManager {
           break;
         }
         case 'block': {
-          const content = readContent(event.data);
+          const content = withProjectPaths(
+            readContent(event.data),
+            this.#cwdByThread.get(threadId),
+          );
           if (content !== undefined) {
             // A block flagged `beforeText` came from a parallel/background
             // activity while the main text was still streaming: the store slots

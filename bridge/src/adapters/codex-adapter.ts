@@ -75,7 +75,6 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md
  * (validating adapters).
  */
-import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -90,9 +89,11 @@ import type {
   AgentModel,
   AgentModelOption,
   ApprovalDecision,
+  DesktopTools,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import {
   expandCustomCommand,
   scanCustomCommands,
@@ -101,7 +102,7 @@ import {
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
+import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import {
   buildReplyResult,
   describeServerRequest,
@@ -110,14 +111,22 @@ import {
   type PendingCodexApproval,
 } from './codex-approval.js';
 import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
-import { codexReasoningText, type CodexFileChange } from './codex-tools.js';
+import {
+  codexItemStartBlock,
+  codexReasoningText,
+  codexToolItemBlock,
+  type CodexFileChange,
+} from './codex-tools.js';
 import {
   assistantResponseBoundaryBlock,
   commandBlock,
   compactionBlock,
+  extractPlanSteps,
   fileChangeBlock,
-  toolBlock,
+  planBlock,
   unifiedDiffBlock,
+  unwrapShellCommand,
+  withBlockId,
   writeDiffBlock,
 } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
@@ -211,6 +220,61 @@ function permissionToPolicies(mode: CodexPermissionMode): {
 /** Hard cap on the app-server handshake before falling back to config.toml. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
 
+/** How long a folder's skill list is reused before the app-server is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/**
+ * Codex's own compaction, run natively (`thread/compact/start`, verified on
+ * codex-cli 0.156.1: a turn of its own that carries a `contextCompaction`
+ * item).
+ */
+const CODEX_COMPACT_COMMAND: AgentCommand = {
+  name: 'compact',
+  description: 'Summarize the conversation to free up context',
+  source: 'builtin',
+  headlessSupported: true,
+};
+
+/** One enabled skill as `skills/list` reports it. */
+interface CodexSkill {
+  name: string;
+  description?: string;
+  /** Its `SKILL.md`, which a `skill` input item must name. */
+  path: string;
+}
+
+/** How a command turn runs natively (see `#nativeCommand`). */
+type NativeCommand = { kind: 'compact' } | { kind: 'skill'; skill: CodexSkill; text: string };
+
+/**
+ * The enabled skills in a `skills/list` answer (`{ data: [{ cwd, skills }] }`),
+ * or `undefined` for an answer of another shape. A skill's short description
+ * (its own, or its `interface`'s) is preferred to the full one, which is
+ * written for the model and runs long.
+ */
+export function parseCodexSkills(result: unknown): CodexSkill[] | undefined {
+  if (!isRecord(result) || !Array.isArray(result['data'])) return undefined;
+  const skills: CodexSkill[] = [];
+  const seen = new Set<string>();
+  for (const entry of result['data']) {
+    if (!isRecord(entry) || !Array.isArray(entry['skills'])) continue;
+    for (const skill of entry['skills']) {
+      if (!isRecord(skill) || skill['enabled'] === false) continue;
+      const name = str(skill['name']);
+      const path = str(skill['path']);
+      if (!name || !path || seen.has(name)) continue;
+      seen.add(name);
+      const face = isRecord(skill['interface']) ? skill['interface'] : undefined;
+      const description =
+        str(skill['shortDescription']) ||
+        (face ? str(face['shortDescription']) : '') ||
+        str(skill['description']);
+      skills.push({ name, path, ...(description ? { description } : {}) });
+    }
+  }
+  return skills;
+}
+
 /** Hard cap on the lifecycle of a single approval round-trip (matches Claude hook). */
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -225,7 +289,7 @@ const CODEX_FALLBACK_REASONING: AgentModelOption = reasoningOption(
 );
 
 export interface CodexAdapterOptions {
-  /** Resolved binary entry (see resolve-codex.ts). */
+  /** Resolved binary entry (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[codex.js]` when running via node). */
   prependArgs?: string[];
@@ -278,6 +342,8 @@ interface ActiveRun {
   allAgentText: string;
   /** Model the turn ran on, for looking up its context window on completion. */
   model?: string;
+  /** The last plan emitted this turn, so an unchanged resend is not repeated. */
+  lastPlan?: string;
 }
 
 /** A normalized Codex event extracted from one app-server notification line. */
@@ -322,17 +388,36 @@ export function codexUsageTokens(usage: unknown): number | undefined {
  * production; tests inject a `spawnAppServer` that wires a fake app-server
  * (NDJSON over a PassThrough) so the JSON-RPC client can be exercised.
  */
+/**
+ * Uxnan Desktop's tools for one Codex thread: a per-thread `config` override on
+ * `thread/start` / `thread/resume` registering the desktop's MCP server, with
+ * the thread's own folder in `x-uxnan-cwd`. Per thread because one app-server
+ * serves every thread (and cwd) with a turn in flight. The token rides in that
+ * JSON-RPC message on the app-server's stdin — never argv or a file. Verified
+ * against codex-cli 0.156.1: the server connects for that thread only, sends
+ * both headers, and neither reaches the rollout, the state DB or the logs.
+ */
+export function codexDesktopConfig(
+  desktop: DesktopTools | undefined,
+  cwd: string,
+): { config?: Record<string, unknown> } {
+  if (!desktop) return {};
+  return {
+    config: {
+      [`mcp_servers.${DESKTOP_MCP_SERVER_NAME}`]: {
+        url: desktop.mcpUrl,
+        http_headers: {
+          Authorization: `Bearer ${desktop.token}`,
+          [DESKTOP_CWD_HEADER]: encodeCwdHeader(cwd),
+        },
+      },
+    },
+  };
+}
+
 function defaultSpawnAppServer(binaryPath: string, prependArgs: string[]): () => SpawnedAppServer {
   return () => {
-    const child = spawn(binaryPath, [...prependArgs, 'app-server'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: false,
-      env: agentEnv(),
-    });
-    if (!child.stdout || !child.stdin) {
-      throw new Error('codex app-server: failed to acquire stdio streams');
-    }
+    const child = spawnPiped(binaryPath, [...prependArgs, 'app-server']);
     return {
       stdin: child.stdin,
       stdout: child.stdout,
@@ -387,6 +472,8 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
   /** Per-turn app-server connection. Spawned lazily, released when idle. */
   #rpc: CodexAppServerRpc | null = null;
+  /** The skills the app-server listed per folder, briefly reused. */
+  readonly #skillsByCwd = new Map<string, { at: number; skills: CodexSkill[] }>();
   #appServerInit: Promise<CodexAppServerRpc> | null = null;
   /** The live process handle, kept so the idle release can end it. */
   #appServerStreams: SpawnedAppServer | null = null;
@@ -543,6 +630,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           approvalPolicy,
           sandbox,
           ...(typeof model === 'string' ? { model } : {}),
+          ...codexDesktopConfig(options.desktopTools, cwd),
         });
         this.#loadedThreads.add(codexThreadId);
       } catch (err) {
@@ -584,6 +672,7 @@ export class CodexAdapter extends BaseAgentAdapter {
             // `thread_source` unset, which no first-party client does).
             threadSource: 'user',
             ...(typeof effort === 'string' ? { effort } : {}),
+            ...codexDesktopConfig(options.desktopTools, cwd),
           },
         );
         codexThreadId = started.thread.id;
@@ -617,9 +706,24 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     try {
+      // A plain turn goes out at once; only a command turn looks up how it runs.
+      const native = options.command ? await this.#nativeCommand(options, cwd, rpc) : undefined;
+      if (native?.kind === 'compact') {
+        // Its own turn on the app-server (`turn/started` → a
+        // `contextCompaction` item → `turn/completed`), picked up by the
+        // notification handlers like any other; its id comes on `turn/started`.
+        await rpc.request('thread/compact/start', { threadId: codexThreadId });
+        return;
+      }
       const response = await rpc.request<{ turn: { id: string } }>('turn/start', {
         threadId: codexThreadId,
-        input: [{ type: 'text', text }],
+        input:
+          native?.kind === 'skill'
+            ? [
+                { type: 'text', text: native.text },
+                { type: 'skill', name: native.skill.name, path: native.skill.path },
+              ]
+            : [{ type: 'text', text }],
         ...(typeof model === 'string' ? { model } : {}),
         ...(typeof effort === 'string' ? { effort } : {}),
       });
@@ -855,11 +959,16 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (window > 0) run.contextWindow = Math.round(window);
         return;
       }
-      case 'turn/started':
-        // The bridge already emits `turn_started` immediately when we
-        // receive the `turn/start` response; the app-server's notification
-        // is a duplicate we ignore.
+      case 'turn/started': {
+        // The bridge already emitted `turn_started` when the turn was sent;
+        // this only supplies the app-server's turn id where no `turn/start`
+        // response did — a compaction (`thread/compact/start`) answers `{}`.
+        const turn = isRecord(p['turn']) ? p['turn'] : undefined;
+        const id = turn ? str(turn['id']) : undefined;
+        const run = this.#activeRun();
+        if (run && run.codexTurnId === null && id) run.codexTurnId = id;
         return;
+      }
       case 'item/agentMessage/delta': {
         const delta = typeof p['delta'] === 'string' ? p['delta'] : '';
         if (delta) this.#emitDelta(p, delta);
@@ -876,10 +985,21 @@ export class CodexAdapter extends BaseAgentAdapter {
         // block we emit on `item/completed`; skip per-chunk updates to avoid
         // spamming the phone with intermediate state.
         return;
-      case 'item/started':
-        // Item begin — we don't need it (the relevant state arrives on
-        // `item/completed`); ignore for now.
+      case 'item/started': {
+        // A step is shown as it starts; `item/completed` replaces it in place.
+        const item = isRecord(p['item']) ? p['item'] : undefined;
+        const run = this.#activeRun();
+        const started = item ? codexItemStartBlock(item) : null;
+        if (run && started) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content: started },
+          });
+        }
         return;
+      }
       case 'item/completed': {
         const item = isRecord(p['item']) ? p['item'] : undefined;
         if (item) await this.#onItemCompleted(item);
@@ -890,6 +1010,24 @@ export class CodexAdapter extends BaseAgentAdapter {
         if (turn) await this.#onTurnCompleted(turn);
         return;
       }
+      case 'turn/plan/updated': {
+        // The turn's to-do list, sent whole on every change. Clients show the
+        // latest plan of a turn, so an unchanged resend is not repeated.
+        const run = this.#activeRun();
+        const steps = extractPlanSteps(Array.isArray(p['plan']) ? p['plan'] : []);
+        if (!run || steps.length === 0) return;
+        const content = planBlock(steps, str(p['explanation']));
+        const key = JSON.stringify(content);
+        if (run.lastPlan === key) return;
+        run.lastPlan = key;
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content },
+        });
+        return;
+      }
       case 'turn/diff/updated':
         // The unified diff the app-server has accumulated so far. We could
         // surface this as a `turn/diff` block but it duplicates the
@@ -897,10 +1035,16 @@ export class CodexAdapter extends BaseAgentAdapter {
         // those. Ignore.
         return;
       case 'error': {
-        // An error notification is rare but the app-server uses it for
-        // catastrophic failures (e.g. context overflow). Surface to the
-        // current in-flight turn.
-        const message = typeof p['message'] === 'string' ? p['message'] : 'codex app-server error';
+        // The app-server also reports a dropped stream it is about to retry
+        // (`willRetry: true`, "Reconnecting... 2/5") — the turn carries on, so
+        // ending it there cut working turns short (measured 2026-09-25). Only
+        // an error it will not retry ends the turn (e.g. context overflow).
+        if (p['willRetry'] === true) return;
+        const error = isRecord(p['error']) ? p['error'] : {};
+        const message =
+          str(error['message']) ||
+          (typeof p['message'] === 'string' ? p['message'] : '') ||
+          'codex app-server error';
         const run = this.#currentRun();
         this.#emitTurnErrorForActive(message);
         // The bridge ends the turn on this event, so the adapter must too:
@@ -974,7 +1118,14 @@ export class CodexAdapter extends BaseAgentAdapter {
             type: 'block',
             threadId: run.threadId,
             turnId: run.bridgeTurnId,
-            data: { content: commandBlock(command, output, isError) },
+            // Codex runs every command through the login shell
+            // (`/bin/zsh -lc '…'`); the row shows what ran.
+            data: {
+              content: withBlockId(
+                commandBlock(unwrapShellCommand(command), output, isError),
+                str(item['id']),
+              ),
+            },
           });
         }
         return;
@@ -983,7 +1134,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         const changes = Array.isArray(item['changes'])
           ? (item['changes'] as Record<string, unknown>[]).map((c) => ({
               path: typeof c['path'] === 'string' ? (c['path'] as string) : '',
-              kind: typeof c['kind'] === 'string' ? (c['kind'] as string) : '',
+              // `{ type: 'add' | 'delete' | 'update' }` (a bare string on older builds).
+              kind: isRecord(c['kind']) ? str(c['kind']['type']) : str(c['kind']),
               diff: typeof c['diff'] === 'string' ? (c['diff'] as string) : '',
             }))
           : [];
@@ -991,11 +1143,13 @@ export class CodexAdapter extends BaseAgentAdapter {
           const name = isAbsolutePath(change.path)
             ? relative(this.#defaultCwd, change.path) || change.path
             : change.path;
-          // The app-server already attaches the unified diff (unlike the
-          // `exec --json` path which only carried the path); use it directly
-          // when present, else fall back to reading the file.
+          // The app-server attaches the change: a unified diff for an update,
+          // the new file's content for an add. Without it, ask git, then read
+          // the file.
           let content: Record<string, unknown> | undefined;
-          if (change.kind !== 'delete' && change.diff && change.diff.length > 0) {
+          if (change.kind === 'add' && change.diff.length > 0) {
+            content = writeDiffBlock(name, change.diff);
+          } else if (change.kind !== 'delete' && change.diff && change.diff.length > 0) {
             content = unifiedDiffBlock(name, change.diff);
           } else if (change.kind !== 'delete') {
             try {
@@ -1017,7 +1171,7 @@ export class CodexAdapter extends BaseAgentAdapter {
               }
             }
           }
-          content ??= fileChangeBlock(change.path);
+          content ??= fileChangeBlock(name);
           this.emit({
             type: 'block',
             threadId: run.threadId,
@@ -1027,34 +1181,28 @@ export class CodexAdapter extends BaseAgentAdapter {
         }
         return;
       }
-      case 'mcpToolCall': {
-        const name = typeof item['tool'] === 'string' ? (item['tool'] as string) : 'tool';
-        const output = typeof item['result'] === 'string' ? (item['result'] as string) : '';
-        this.emit({
-          type: 'block',
-          threadId: run.threadId,
-          turnId: run.bridgeTurnId,
-          data: {
-            content: toolBlock(
-              name,
-              typeof item['id'] === 'string' ? (item['id'] as string) : '',
-              {},
-              output,
-              item['status'] === 'failed',
-            ),
-          },
-        });
+      case 'mcpToolCall':
+      case 'dynamicToolCall':
+      case 'webSearch':
+      case 'imageView':
+      case 'collabAgentToolCall': {
+        const settled = codexToolItemBlock(item);
+        if (settled) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content: withBlockId(settled, str(item['id'])) },
+          });
+        }
         return;
       }
-      case 'webSearch':
       case 'plan':
       case 'userMessage':
       case 'enteredReviewMode':
       case 'exitedReviewMode':
-        // Known item types we currently render as plain text on the phone;
-        // no structured block is needed. The full history-fallback path
-        // (session-history.ts) will still surface them via the on-disk
-        // rollout reader.
+        // The plan's steps arrive as `turn/plan/updated`; the rest is text
+        // the conversation already shows.
         return;
       case 'contextCompaction':
         this.emit({
@@ -1236,68 +1384,156 @@ export class CodexAdapter extends BaseAgentAdapter {
    * process).
    */
   listModels(): Promise<AgentModel[]> {
+    // parseCodexModelList already attaches each model's REAL per-model
+    // reasoning efforts; the config fallback gets a generic effort knob.
+    return this.#withShortLivedAppServer(
+      async (rpc) =>
+        parseCodexModelList((await rpc.request<{ data: unknown }>('model/list', {})).data),
+      [] as AgentModel[],
+    ).then((models) => (models.length > 0 ? models : this.#modelsFromConfig()));
+  }
+
+  /**
+   * Run [ask] against a short-lived app-server of its own — independent of the
+   * long-lived one turns use, so a discovery call never holds a thread's
+   * single writer and still works if a turn crashed that process. Resolves
+   * [fallback] if it cannot start, answer or finish within
+   * {@link MODEL_LIST_TIMEOUT_MS}.
+   */
+  #withShortLivedAppServer<T>(
+    ask: (rpc: CodexAppServerRpc) => Promise<T>,
+    fallback: T,
+  ): Promise<T> {
     return new Promise((resolve) => {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (models: AgentModel[]): void => {
+      let streams: SpawnedAppServer | undefined;
+      const finish = (value: T): void => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
         try {
-          streams.kill();
+          streams?.kill();
         } catch {
           /* already gone */
         }
-        // parseCodexModelList already attaches each model's REAL per-model
-        // reasoning efforts; the config fallback gets a generic effort knob.
-        resolve(models.length > 0 ? models : this.#modelsFromConfig());
+        resolve(value);
       };
-
-      let streams: SpawnedAppServer;
       try {
         streams = this.#spawnAppServer();
       } catch {
-        resolve(this.#modelsFromConfig());
+        resolve(fallback);
         return;
       }
-
       const rpc = new CodexAppServerRpc(
         { stdin: streams.stdin, stdout: streams.stdout },
         { onNotification: () => undefined, onServerRequest: () => null },
         { requestTimeoutMs: MODEL_LIST_TIMEOUT_MS },
       );
       streams.onClose(() => rpc.onProcessClose(0));
-
-      timer = setTimeout(() => finish([]), MODEL_LIST_TIMEOUT_MS);
+      timer = setTimeout(() => finish(fallback), MODEL_LIST_TIMEOUT_MS);
       rpc
         .request('initialize', {
           clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
         })
-        .then(() =>
-          rpc.request<{ data: unknown }>('model/list', {}).then((res) => {
-            finish(parseCodexModelList(res.data));
-          }),
-        )
-        .catch(() => finish([]));
+        .then(() => ask(rpc))
+        .then(finish, () => finish(fallback));
     });
   }
 
   /**
    * Codex's custom prompts live user-level under `~/.codex/prompts/*.md`
-   * (project scope is not supported by Codex). The app-server exposes no
-   * slash-command or compaction RPC headless, so only these prompt templates are
-   * advertised — expanded by {@link expandCommand} rather than run natively.
+   * (Codex supports no project scope). The app-server has no RPC for them, so
+   * the bridge expands them itself ({@link expandCommand}).
    */
   #commandSource(): CustomCommandSource {
     return { dirs: [join(homedir(), '.codex', 'prompts')], ext: '.md', format: 'markdown' };
   }
 
-  listCommands(): Promise<AgentCommand[]> {
-    return scanCustomCommands(this.#commandSource());
+  /**
+   * The commands Codex has in [cwd]: a native `compact`
+   * (`thread/compact/start`), its skills as the app-server lists them there
+   * (`skills/list` — repository, user and system skills, enabled only), and
+   * the user's custom prompts. A custom prompt keeps its name over a skill of
+   * the same name, here and when it runs. Verified on codex-cli 0.156.1.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const [skills, prompts] = await Promise.all([
+      this.#skills(dir),
+      scanCustomCommands(this.#commandSource()),
+    ]);
+    const taken = new Set<string>([CODEX_COMPACT_COMMAND.name, ...prompts.map((c) => c.name)]);
+    return [
+      CODEX_COMPACT_COMMAND,
+      ...skills
+        .filter((skill) => !taken.has(skill.name))
+        .map(
+          (skill): AgentCommand => ({
+            name: skill.name,
+            ...(skill.description ? { description: skill.description } : {}),
+            source: 'skill',
+            headlessSupported: true,
+          }),
+        ),
+      ...prompts.filter((c) => c.name !== CODEX_COMPACT_COMMAND.name),
+    ];
   }
 
-  expandCommand(name: string, args?: string): Promise<string> {
-    return expandCustomCommand(this.#commandSource(), name, args);
+  /**
+   * A custom prompt expands to its text. Anything else — `compact`, a skill —
+   * runs natively ({@link sendTurn} reads `options.command`), so it resolves
+   * to its own `/name args` form, which is what history shows.
+   */
+  async expandCommand(name: string, args?: string): Promise<string> {
+    const source = this.#commandSource();
+    if ((await scanCustomCommands(source)).some((c) => c.name === name)) {
+      return expandCustomCommand(source, name, args);
+    }
+    return args ? `/${name} ${args}` : `/${name}`;
+  }
+
+  /**
+   * How a turn carrying a command runs natively: a compaction, a skill (with
+   * the text that goes with it), or `undefined` for a plain text turn — a
+   * custom prompt, already expanded into the text, among them.
+   */
+  async #nativeCommand(
+    options: SendTurnOptions,
+    cwd: string,
+    rpc: CodexAppServerRpc,
+  ): Promise<NativeCommand | undefined> {
+    const command = options.command;
+    if (!command) return undefined;
+    if (command.name === CODEX_COMPACT_COMMAND.name) return { kind: 'compact' };
+    const prompts = await scanCustomCommands(this.#commandSource());
+    if (prompts.some((c) => c.name === command.name)) return undefined;
+    const skill = (await this.#skills(cwd, rpc)).find((s) => s.name === command.name);
+    if (!skill) return undefined;
+    // The text the manager composed starts with the command's own form; what
+    // follows it (an attachment note) travels with the skill, after the args.
+    const args = command.args?.trim() ?? '';
+    const display = args ? `/${command.name} ${args}` : `/${command.name}`;
+    const rest = options.text.startsWith(display) ? options.text.slice(display.length) : '';
+    return { kind: 'skill', skill, text: `${args}${rest}`.trim() };
+  }
+
+  /**
+   * The enabled skills the app-server sees in [cwd], reused for a minute.
+   * Asked on the turn's own app-server when one is given, otherwise on a
+   * short-lived one; an unanswered request yields none (and is not kept).
+   */
+  async #skills(cwd: string, rpc?: CodexAppServerRpc): Promise<CodexSkill[]> {
+    const cached = this.#skillsByCwd.get(cwd);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.skills;
+    const ask = async (client: CodexAppServerRpc): Promise<CodexSkill[] | undefined> =>
+      parseCodexSkills(await client.request<unknown>('skills/list', { cwds: [cwd] }));
+    const skills = rpc
+      ? await ask(rpc).catch(() => undefined)
+      : await this.#withShortLivedAppServer<CodexSkill[] | undefined>(ask, undefined);
+    if (skills === undefined) return [];
+    this.#skillsByCwd.set(cwd, { at: Date.now(), skills });
+    return skills;
   }
 
   /** Fallback model list read straight from `~/.codex/config.toml`. */

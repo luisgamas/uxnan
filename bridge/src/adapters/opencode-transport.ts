@@ -80,6 +80,8 @@ export interface ServeProcessOptions {
   password: boolean;
   /** Extra arguments after `serve --port <port> --hostname 127.0.0.1`. */
   extraArgs?: string[];
+  /** Extra environment for the server (Uxnan Desktop's tools, see the adapter). */
+  env?: Record<string, string>;
   /** Spawns the process (injected in tests; the default runs it `shell:false`). */
   spawnFn?: SpawnFn;
 }
@@ -188,7 +190,14 @@ export class ServeProcess {
             ...(this.#opts.extraArgs ?? []),
           ],
           this.#opts.cwd,
-          this.#password ? { env: { OPENCODE_SERVER_PASSWORD: this.#password } } : undefined,
+          this.#password || this.#opts.env
+            ? {
+                env: {
+                  ...(this.#opts.env ?? {}),
+                  ...(this.#password ? { OPENCODE_SERVER_PASSWORD: this.#password } : {}),
+                },
+              }
+            : undefined,
         );
       } catch (err) {
         reject(err instanceof Error ? err : new Error(String(err)));

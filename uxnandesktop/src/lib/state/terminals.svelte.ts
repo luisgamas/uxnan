@@ -26,6 +26,7 @@ import { disposeInstance, serializeInstance, setParkedExitHandler } from '$lib/t
 import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
 import { renewPendingSession } from '$lib/agentSessionId';
 import { conversationTitles } from '$lib/state/conversationTitles.svelte';
+import { chat } from '$lib/bridge/chat.svelte';
 import type { ProviderSession } from '$lib/types';
 import { isImagePath } from '$lib/diff';
 import { opensInPreview } from '$lib/filePreview';
@@ -152,7 +153,24 @@ export interface CommitTab extends BaseTab {
   file?: string;
 }
 
-export type GroupTab = TerminalTab | FileTab | CommitTab;
+/** A chat tab: a conversation the Uxnan **bridge** drives (architecture/02a
+ *  §5.8.16, "one owner, two views"). The tab is a view — the thread, its agent process, queue
+ *  and history live on the bridge, which the phone drives too — so this holds
+ *  only the pointer. Before its first message it shows the new-chat setup
+ *  (agent + model); the first message starts the thread and binds `threadId`. */
+export interface ChatTab extends BaseTab {
+  kind: 'chat';
+  /** Working directory (the worktree) the conversation runs in. */
+  cwd: string;
+  /** The bridge thread shown; absent until the first message starts one. */
+  threadId?: string;
+  /** Agent preselected for a chat not started yet (bridge `AgentId`). */
+  agentId?: string;
+  /** The composer's unsent text — a draft survives closing the app. */
+  draft?: string;
+}
+
+export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab;
 
 /** The label shown on a tab (strip + drag ghost).
  *
@@ -162,6 +180,12 @@ export type GroupTab = TerminalTab | FileTab | CommitTab;
  *  session is about, not just which agent runs it), then the agent's name, then
  *  its own title. Every other kind shows its derived title. */
 export function tabDisplayTitle(t: GroupTab): string {
+  // A chat bound to a thread is named by the bridge (a rename made here or on
+  // the phone, or a generated name) — never by a tab-local title.
+  if (t.kind === 'chat' && t.threadId) {
+    const title = chat.threads.get(t.threadId)?.title;
+    if (title) return title;
+  }
   if (t.customTitle) return t.customTitle;
   if (t.kind === 'terminal') {
     return conversationTitles.get(t.id) ?? t.agentName ?? t.title;
@@ -447,6 +471,17 @@ function pruneTransient(node: AreaNode): AreaNode | null {
 /** Serialize one tab to its persisted descriptor. Commit tabs are pruned before
  *  this runs (the terminal fallback arm is then an unreachable safety net). */
 function serializeTab(t: GroupTab): SavedTab {
+  if (t.kind === 'chat') {
+    return {
+      kind: 'chat',
+      title: t.title,
+      customTitle: t.customTitle,
+      cwd: t.cwd,
+      threadId: t.threadId,
+      agentId: t.agentId,
+      ...(t.draft ? { draft: t.draft } : {}),
+    };
+  }
   if (t.kind === 'file') {
     return {
       kind: 'file',
@@ -505,6 +540,18 @@ export function serializeArea(node: AreaNode): SavedTermNode {
  *  spawn a new PTY; file tabs reopen by path (a missing file surfaces an error
  *  in its editor pane). A descriptor with no `kind` is a legacy terminal. */
 function buildTab(t: SavedTab): GroupTab {
+  if (t.kind === 'chat') {
+    return {
+      kind: 'chat',
+      id: crypto.randomUUID(),
+      title: t.title,
+      customTitle: t.customTitle,
+      cwd: t.cwd,
+      threadId: t.threadId,
+      agentId: t.agentId,
+      ...(t.draft ? { draft: t.draft } : {}),
+    };
+  }
   if (t.kind === 'file') {
     return {
       kind: 'file',
@@ -1062,6 +1109,14 @@ class TerminalStore {
   /** PTY id of the active tab of the active region — only when that tab is a
    *  terminal (a file/diff active tab yields null, so file-drop and the agent
    *  "are you viewing it" check behave correctly). */
+  /** The thread of the chat tab shown in the active group, if it is one. */
+  activeChatThreadId(): string | null {
+    if (!this.root) return null;
+    const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
+    const tab = group?.tabs.find((t) => t.id === group.activeTabId);
+    return tab?.kind === 'chat' ? (tab.threadId ?? null) : null;
+  }
+
   activePtyId(): string | null {
     if (!this.root) return null;
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
@@ -1320,6 +1375,54 @@ class TerminalStore {
     );
     this.insertTab(tab, opts?.groupId);
     return id;
+  }
+
+  /** Open a chat tab (a conversation the bridge drives) in `cwd`. With a
+   *  `threadId` it shows that thread — focusing the tab already showing it, if
+   *  any; without one it opens the new-chat setup, with `agentId`
+   *  preselected. Returns the tab id. */
+  openChat(opts: {
+    cwd: string;
+    threadId?: string;
+    agentId?: string;
+    workspace?: string;
+    groupId?: string;
+  }): string {
+    if (opts.threadId) {
+      for (const { tab, workspace } of this.tabsWithWorkspace()) {
+        if (tab.kind === 'chat' && tab.threadId === opts.threadId) {
+          this.revealTab(workspace, tab.id);
+          return tab.id;
+        }
+      }
+    }
+    if (opts.workspace !== undefined) this.setWorkspace(opts.workspace);
+    const id = crypto.randomUUID();
+    const tab: ChatTab = {
+      kind: 'chat',
+      id,
+      title: i18n.t('chat.newChat'),
+      cwd: opts.cwd,
+      ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.agentId ? { agentId: opts.agentId } : {}),
+    };
+    this.insertTab(tab, opts.groupId);
+    return id;
+  }
+
+  /** Point a chat tab at a thread — the one its first message started, or one
+   *  picked to continue — so a restart reopens that conversation. `undefined`
+   *  sends it back to the new-chat setup (its thread was deleted elsewhere). */
+  bindChatThread(tabId: string, threadId: string | undefined): void {
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind === 'chat' && tab.id === tabId) {
+        // Reactive: the layout-persistence effect picks the change up. Once
+        // bound, the thread's own title names the tab (`tabDisplayTitle`).
+        tab.threadId = threadId;
+        if (threadId) delete tab.customTitle;
+        return;
+      }
+    }
   }
 
   /** The live editor state for a file tab (undefined for other kinds). */

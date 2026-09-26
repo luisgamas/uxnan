@@ -32,8 +32,6 @@
  *
  * See bridge/docs/agents.md (Drive surface) and bridge/docs/testing.md.
  */
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type {
   AgentCapabilities,
   AgentCommand,
@@ -42,24 +40,23 @@ import type {
   AgentModel,
   ApprovalDecision,
   QuestionItem,
+  DesktopTools,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
-import {
-  expandCustomCommand,
-  scanCustomCommands,
-  type CustomCommandSource,
-} from './command-scan.js';
+import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
+import { createHash } from 'node:crypto';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
-import { compactionBlock, planBlock, type PlanStepBlock } from './content-blocks.js';
+import { mergePlanSteps, opencodeToolBlock, opencodeToolStartBlock } from './opencode-tools.js';
+import { compactionBlock, planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
 import { reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn } from './spawn.js';
 import {
   permissionPolicyFor,
   splitOpenCodeModel,
   type IOpenCodeServer,
+  type OpenCodeCommand,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
@@ -102,7 +99,7 @@ export function decisionToPermissionReply(decision: ApprovalDecision): Permissio
 }
 
 export interface OpenCodeAdapterOptions {
-  /** Executable to spawn (resolved exe path; see resolve-opencode.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Default model (`provider/model`) when the thread/turn doesn't pick one. */
   defaultModel?: string;
@@ -128,6 +125,47 @@ export interface OpenCodeAdapterOptions {
    * The default reads the installed version and starts the matching server.
    */
   serverFactory?: (cwd: string) => IOpenCodeServer;
+}
+
+/** How long a folder's command list is reused before the server is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/** The environment variable OpenCode reads its extra, merged-over config from. */
+const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG_CONTENT';
+
+/**
+ * Uxnan Desktop's tools for the `opencode serve` of one folder: the desktop's
+ * MCP server merged over the user's config (`OPENCODE_CONFIG_CONTENT`), the
+ * token read by OpenCode from `UXNAN_MCP_TOKEN` (`{env:…}`) and the folder in
+ * `x-uxnan-cwd` — one server per folder, so the header is that folder's. The
+ * same mechanism the desktop uses for the OpenCode it launches in a terminal.
+ * Verified against opencode 2.0.16: the server connects once the folder loads
+ * and sends both headers. Empty without desktop tools.
+ */
+export function openCodeDesktopEnv(
+  desktop: DesktopTools | undefined,
+  cwd: string,
+): Record<string, string> {
+  if (!desktop) return {};
+  const config = {
+    mcp: {
+      [DESKTOP_MCP_SERVER_NAME]: {
+        type: 'remote',
+        url: desktop.mcpUrl,
+        headers: {
+          Authorization: `Bearer {env:UXNAN_MCP_TOKEN}`,
+          [DESKTOP_CWD_HEADER]: encodeCwdHeader(cwd),
+        },
+      },
+    },
+  };
+  return { [OPENCODE_CONFIG_ENV]: JSON.stringify(config), UXNAN_MCP_TOKEN: desktop.token };
+}
+
+/** What a folder's server was started with, to tell when it must restart. */
+function toolsFingerprint(desktop: DesktopTools | undefined): string {
+  if (!desktop) return '';
+  return `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`;
 }
 
 /** An in-flight turn's mutable state, keyed by the OpenCode session id. */
@@ -159,12 +197,18 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #serverFactory: OpenCodeAdapterOptions['serverFactory'];
   /** cwd → the server for that project directory (created, maybe not started yet). */
   readonly #serverByCwd = new Map<string, Promise<IOpenCodeServer>>();
+  /** cwd → the desktop tools the next turn there wants (see `sendTurn`). */
+  readonly #wantedTools = new Map<string, DesktopTools | undefined>();
+  /** cwd → fingerprint of the desktop tools its server was started with. */
+  readonly #toolsByCwd = new Map<string, string>();
   /** threadId → OpenCode session id, for continuity + the history fallback. */
   readonly #sessionByThread = new Map<string, string>();
   /** OpenCode session id → in-flight run, to route session-scoped events. */
   readonly #runBySession = new Map<string, ActiveRun>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  /** cwd → the server's commands there, briefly reused (see `listCommands`). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: OpenCodeCommand[] }>();
   /** model id → context-window tokens. */
   readonly #contextWindowByModel = new Map<string, number>();
   /** The context-window load in flight, or settled with at least one window. */
@@ -248,6 +292,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const variant = reasoningValue(options);
     void this.loadContextWindows();
 
+    // A folder's server carries the desktop's tools it was started with; when
+    // they changed (attached, detached, a new token) and nothing runs there,
+    // restart it — sessions are OpenCode's own, so the thread keeps its history.
+    await this.#refreshServerTools(cwd, options.desktopTools);
+
     let server: IOpenCodeServer;
     try {
       server = await this.#ensureServer(cwd);
@@ -309,12 +358,27 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     );
 
     try {
-      await server.prompt(sessionId, {
-        text,
-        ...(modelRef ? { model: modelRef } : {}),
-        ...(variant ? { variant } : {}),
-      });
-      this.#log(`turn ${turnId} prompt accepted`);
+      if (options.command) {
+        // The server runs its own commands and skills: it expands the template
+        // (or loads the skill) itself, and the turn streams like a prompt.
+        const { name } = options.command;
+        const known = (await this.#commandsFor(cwd).catch(() => [])).find((c) => c.name === name);
+        await server.runCommand(sessionId, {
+          name,
+          args: options.command.args?.trim() ?? '',
+          skill: known?.skill ?? false,
+          ...(modelRef ? { model: modelRef } : {}),
+          ...(variant ? { variant } : {}),
+        });
+        this.#log(`turn ${turnId} command /${name} accepted`);
+      } else {
+        await server.prompt(sessionId, {
+          text,
+          ...(modelRef ? { model: modelRef } : {}),
+          ...(variant ? { variant } : {}),
+        });
+        this.#log(`turn ${turnId} prompt accepted`);
+      }
     } catch (err) {
       this.#active.delete(turnId);
       this.#runBySession.delete(sessionId);
@@ -398,17 +462,36 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return protocolFor(await detectOpenCodeMajor(this.#spawn, this.#binaryPath, cwd));
   }
 
+  /** Closes a folder's idle server when the desktop's tools it holds are not
+   *  the ones wanted now, so the next start carries the right ones. */
+  async #refreshServerTools(cwd: string, desktop: DesktopTools | undefined): Promise<void> {
+    const wanted = toolsFingerprint(desktop);
+    this.#wantedTools.set(cwd, desktop);
+    if (!this.#serverByCwd.has(cwd)) return;
+    if ((this.#toolsByCwd.get(cwd) ?? '') === wanted) return;
+    const busy = [...this.#active.values()].some((run) => run.cwd === cwd && !run.finished);
+    if (busy) return;
+    const server = await this.#existingServer(cwd);
+    this.#serverByCwd.delete(cwd);
+    this.#toolsByCwd.delete(cwd);
+    await server?.close().catch(() => undefined);
+  }
+
   /** The server for a cwd, created (and subscribed to) on first use, not started. */
   #serverFor(cwd: string): Promise<IOpenCodeServer> {
     let pending = this.#serverByCwd.get(cwd);
     if (!pending) {
+      const desktop = this.#wantedTools.get(cwd);
+      this.#toolsByCwd.set(cwd, toolsFingerprint(desktop));
       pending = (async () => {
+        const env = openCodeDesktopEnv(desktop, cwd);
         const server = this.#serverFactory
           ? this.#serverFactory(cwd)
           : createOpenCodeServer(await this.#protocol(cwd), {
               binaryPath: this.#binaryPath,
               cwd,
               spawnFn: this.#spawn,
+              ...(Object.keys(env).length > 0 ? { env } : {}),
             });
         server.onEvent((event) => this.#onServerEvent(event, server));
         server.onClose(() => this.#handleServerClose(cwd, pending!));
@@ -504,18 +587,28 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           data: { text: event.delta },
         });
         return;
+      case 'tool_started': {
+        // Shown as it starts; its end (`tool`) replaces it in place.
+        const started = opencodeToolStartBlock(event.name, event.id, event.input);
+        if (started) {
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.turnId,
+            data: { content: started },
+          });
+        }
+        return;
+      }
       case 'tool':
         this.emit({
           type: 'block',
           threadId: run.threadId,
           turnId: run.turnId,
           data: {
-            content: opencodeToolBlock(
-              event.name,
+            content: withBlockId(
+              opencodeToolBlock(event.name, event.id, event.input, event.output, event.error),
               event.id,
-              event.input,
-              event.output,
-              event.error,
             ),
           },
         });
@@ -709,30 +802,39 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * OpenCode's custom commands are markdown files under `.opencode/command`
-   * (project) and `~/.config/opencode/command` (user), singular or plural. The
-   * server API doesn't run them, so the bridge scans and expands them itself.
+   * What OpenCode offers in [cwd], as its server lists it: its own commands
+   * (`init`, `review`), the ones from the config (`command` key) and the
+   * command folders (project and user, singular or plural) and its skills —
+   * V1 at `GET /command`, V2 at `GET /api/command` plus `GET /api/skill`.
+   * The server runs a picked one itself (see `sendTurn`), so there is no
+   * {@link expandCommand}. Starts the folder's server if none runs yet (the
+   * turn that follows reuses it); reused per folder for a minute; a server
+   * that cannot say yields no commands.
    */
-  #commandSource(cwd?: string): CustomCommandSource {
-    const dir = cwd ?? this.#defaultCwd;
-    return {
-      dirs: [
-        join(dir, '.opencode', 'command'),
-        join(dir, '.opencode', 'commands'),
-        join(homedir(), '.config', 'opencode', 'command'),
-        join(homedir(), '.config', 'opencode', 'commands'),
-      ],
-      ext: '.md',
-      format: 'markdown',
-    };
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    try {
+      const commands = await this.#commandsFor(cwd ?? this.#defaultCwd);
+      return commands.map(
+        (c): AgentCommand => ({
+          name: c.name,
+          ...(c.description ? { description: c.description } : {}),
+          source: c.skill ? 'skill' : 'custom',
+          headlessSupported: true,
+        }),
+      );
+    } catch {
+      return [];
+    }
   }
 
-  listCommands(cwd?: string): Promise<AgentCommand[]> {
-    return scanCustomCommands(this.#commandSource(cwd));
-  }
-
-  expandCommand(name: string, args?: string, cwd?: string): Promise<string> {
-    return expandCustomCommand(this.#commandSource(cwd), name, args);
+  /** A folder's commands, from the cache or its server. */
+  async #commandsFor(cwd: string): Promise<OpenCodeCommand[]> {
+    const cached = this.#commandsByCwd.get(cwd);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const server = await this.#ensureServer(cwd);
+    const commands = await server.commands();
+    if (commands.length > 0) this.#commandsByCwd.set(cwd, { at: Date.now(), commands });
+    return commands;
   }
 }
 

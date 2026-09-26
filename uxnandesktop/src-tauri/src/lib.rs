@@ -12,6 +12,7 @@ mod aicommit;
 // Public so the binary's headless runner mode (`main.rs`) can reach it without
 // starting Tauri — an automation must run with the app closed.
 pub mod automations;
+mod bridgeclient;
 mod browse;
 mod browser;
 pub mod budget;
@@ -175,9 +176,15 @@ pub fn run() {
             let hook_install_slot = state.hook_install.clone();
             let resources = state.resources.clone();
             let control_token = state.control_token.clone();
+            let bridge = state.bridge.clone();
             app.manage(state);
             app.manage(browser::BrowserHost::default());
             app.manage(browser::approval::Approvals::default());
+
+            // The bridge client (`bridgeclient`): parked on the mode until the
+            // user turns it on in Settings → Bridge; then it connects (and, in
+            // `managed` mode, starts the bridge) and keeps reconnecting.
+            crate::bridgeclient::spawn(app.handle().clone(), bridge);
 
             // Resource observability sampler (`resources.rs`). Fully parked —
             // no timer, no process-table walks — until a consumer subscribes
@@ -249,15 +256,36 @@ pub fn run() {
             let mcp_config_handle = hook_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let launch_token = uuid::Uuid::new_v4().to_string();
+                // The token the Uxnan bridge's agents present (`desktop/attach`):
+                // its own, so they are scoped as chat agents, never as a
+                // terminal or as the user's shell.
+                let bridge_token = format!(
+                    "{}{}",
+                    uuid::Uuid::new_v4().simple(),
+                    uuid::Uuid::new_v4().simple()
+                );
                 match crate::control::server::start(
-                    hook_handle,
+                    hook_handle.clone(),
                     launch_token,
                     control_token.clone(),
+                    bridge_token.clone(),
                     hooks_dir_for_server,
                 )
                 .await
                 {
                     Ok(started) => {
+                        {
+                            let state = hook_handle.state::<crate::state::AppState>();
+                            let enabled = state.data.read().await.settings.browser.mcp_enabled;
+                            state.bridge.set_tools_enabled(enabled).await;
+                            state
+                                .bridge
+                                .set_desktop_tools(crate::bridgeclient::DesktopTools {
+                                    mcp_url: crate::mcpinject::mcp_endpoint(&started.hook.url),
+                                    token: bridge_token,
+                                })
+                                .await;
+                        }
                         // Write Claude Code's per-launch MCP config for this
                         // window now that the endpoint is known, so it is on disk
                         // before the first agent is launched (`mcpinject.rs`).
@@ -503,6 +531,13 @@ pub fn run() {
             automations::commands::automations_run_now,
             automations::commands::automations_scheduler_status,
             automations::commands::automations_scheduler_supported,
+            bridgeclient::commands::bridge_client_status,
+            bridgeclient::commands::bridge_client_retry,
+            bridgeclient::commands::bridge_call,
+            bridgeclient::commands::bridge_install_probe,
+            bridgeclient::commands::bridge_install,
+            bridgeclient::commands::bridge_restart,
+            bridgeclient::commands::bridge_pairing_qr,
             commands::get_app_state,
             commands::update_settings,
             commands::quick_commands_set,
@@ -754,6 +789,8 @@ pub fn run() {
                     // Release any keep-awake helper (kills caffeinate /
                     // systemd-inhibit on macOS/Linux) so none is left running.
                     state.power.set(false);
+                    // The bridge is the user's service: it keeps serving the
+                    // phone after the desktop closes, so nothing stops it here.
                     // The control token dies with the server: remove the file
                     // that carries it (a client also checks pid + start time,
                     // so an unclean exit leaves nothing usable either).

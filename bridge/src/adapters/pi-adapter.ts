@@ -8,7 +8,10 @@
  *
  * Process shape (spawned on a thread's first turn, reused by the next ones):
  *   pi --mode rpc [--tools read,grep,find,ls | --approve] [--model <id>]
- *      [--thinking <level>] [--session-id <id>]
+ *      [--thinking <level>] [--session-id <id>] [-e <pi-desktop-extension.js>]
+ *
+ * `-e` loads Uxnan Desktop's tools while the desktop is attached (see
+ * {@link piDesktopLaunch}); pi has no MCP client, so the bridge ships one.
  *
  * Why `--mode rpc` and not `-p --mode json`: print mode reads ALL of stdin as the
  * initial prompt and has no input channel while it works; RPC mode leaves stdin
@@ -59,23 +62,28 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
+import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import type {
-  AgentCapabilities,
-  AgentConfig,
-  AgentId,
-  AgentModel,
-  AgentModelOption,
-  CompactionReason,
-  GenerateTitleOptions,
-  SendTurnOptions,
+import { fileURLToPath } from 'node:url';
+import {
+  encodeCwdHeader,
+  type AgentCapabilities,
+  type AgentCommand,
+  type AgentConfig,
+  type AgentId,
+  type AgentModel,
+  type AgentModelOption,
+  type CompactionReason,
+  type DesktopTools,
+  type GenerateTitleOptions,
+  type SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
+import { piResultText, piToolBlock, piToolStartBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
-import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
+import { assistantResponseBoundaryBlock, compactionBlock, withBlockId } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -86,8 +94,119 @@ import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
  */
 export const DEFAULT_PI_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
+/** The extension that gives pi Uxnan Desktop's tools (compiled next to this file). */
+export const PI_DESKTOP_EXTENSION = fileURLToPath(
+  new URL('./pi-desktop-extension.js', import.meta.url),
+);
+
+/**
+ * How a pi process is handed Uxnan Desktop's tools: the extension on `-e`, and
+ * the endpoint, token and folder in its environment — never argv or a file.
+ * Nothing in the read-only posture: its `--tools` allowlist is strict (it would
+ * hide the extension's tools anyway), and the desktop's tools act — they open
+ * terminals and message other agents. `key` tells a live process whether it was
+ * started with the same attachment (a recycle compares it).
+ */
+export function piDesktopLaunch(
+  desktop: DesktopTools | undefined,
+  cwd: string,
+  permissionMode: PiPermissionMode,
+): { args: string[]; env: Record<string, string>; key: string } {
+  if (!desktop || permissionMode === 'default') return { args: [], env: {}, key: '' };
+  return {
+    args: ['-e', PI_DESKTOP_EXTENSION],
+    env: {
+      UXNAN_MCP_URL: desktop.mcpUrl,
+      UXNAN_MCP_TOKEN: desktop.token,
+      UXNAN_THREAD_CWD: encodeCwdHeader(cwd),
+    },
+    key: `${desktop.mcpUrl}#${createHash('sha256').update(desktop.token).digest('hex').slice(0, 16)}`,
+  };
+}
+
 /** Hard cap on the `--list-models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
+
+/** How long a folder's command list is reused before pi is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/** How long a `get_commands` answer may take. */
+const COMMANDS_TIMEOUT_MS = 10_000;
+
+/**
+ * The tool posture as `pi` flags: read-only tools, pi's defaults, or pi's
+ * defaults plus `--approve` — which also decides whether pi trusts the
+ * project's own files (its `.pi` prompts, `.agents/skills`, settings and
+ * extensions; see `docs/security.md` → *Project Trust*). A turn and a command
+ * listing take the same flags, so what is listed is what a turn can run.
+ */
+export function piPostureArgs(permissionMode: PiPermissionMode): string[] {
+  if (permissionMode === 'default') return ['--tools', 'read,grep,find,ls'];
+  if (permissionMode === 'bypassPermissions') return ['--approve'];
+  return [];
+}
+
+/** One command as pi's `get_commands` reports it. */
+export interface PiReportedCommand {
+  name: string;
+  description?: string;
+  source: string;
+}
+
+/**
+ * The commands in a `get_commands` response line, or `undefined` for any other
+ * line (pi 0.85.1: `{ type: "response", command: "get_commands", success,
+ * data: { commands: [{ name, description?, source, location?, path? }] } }`).
+ */
+export function parsePiCommands(line: string): PiReportedCommand[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || parsed['type'] !== 'response' || parsed['command'] !== 'get_commands') {
+    return undefined;
+  }
+  const data = parsed['data'];
+  if (parsed['success'] !== true || !isRecord(data) || !Array.isArray(data['commands'])) return [];
+  const commands: PiReportedCommand[] = [];
+  for (const c of data['commands']) {
+    if (!isRecord(c) || typeof c['name'] !== 'string' || typeof c['source'] !== 'string') continue;
+    commands.push({
+      name: c['name'],
+      source: c['source'],
+      ...(typeof c['description'] === 'string' ? { description: c['description'] } : {}),
+    });
+  }
+  return commands;
+}
+
+/**
+ * What the bridge advertises of pi's commands. Prompt templates (`custom`) and
+ * skills (`skill`, named `skill:<name>` — the form pi expects after the `/`)
+ * run headless: pi expands them from the `prompt` command. Extension commands
+ * are left out: they exist to drive pi's TUI, and one that opens a dialog
+ * (`select`, `confirm`, `input`) is declined at once on this surface (see the
+ * resident process's `dialog` handling), so it could not do its job. pi's TUI
+ * built-ins are never in the list (rpc.md).
+ */
+export function piAgentCommands(reported: PiReportedCommand[]): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  const seen = new Set<string>();
+  for (const c of reported) {
+    if (c.source !== 'prompt' && c.source !== 'skill') continue;
+    if (!c.name || seen.has(c.name)) continue;
+    seen.add(c.name);
+    commands.push({
+      name: c.name,
+      ...(c.description ? { description: c.description } : {}),
+      source: c.source === 'skill' ? 'skill' : 'custom',
+      headlessSupported: true,
+    });
+  }
+  return commands;
+}
 
 const PI_CAPABILITIES: AgentCapabilities = {
   // Plan mode is a pi extension, not core, so it's not advertised here.
@@ -104,6 +223,8 @@ const PI_CAPABILITIES: AgentCapabilities = {
   images: true,
   reportsContextUsage: true,
   reportsCompaction: true,
+  // Prompt templates and skills, as pi lists them (`get_commands`).
+  commands: true,
   // pi's RPC protocol has a first-class `steer` command, drained by the agent
   // loop at its next boundary — so a follow-up joins the running turn instead
   // of waiting for it. This is why the adapter runs `--mode rpc` rather than
@@ -127,7 +248,7 @@ const PI_REASONING_OPTION: AgentModelOption = reasoningOption(effortValues(PI_TH
 export type PiPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
 export interface PiAdapterOptions {
-  /** Executable to spawn (resolved path; see resolve-pi.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[cli.js]` when running via node). */
   prependArgs?: string[];
@@ -182,6 +303,8 @@ interface ActiveSession {
   model?: string;
   effort?: string;
   permissionMode: PiPermissionMode;
+  /** Which desktop attachment the process was started with (`piDesktopLaunch`). */
+  desktopKey: string;
   idleTimer?: NodeJS.Timeout;
   activeTurn?: ActiveTurn;
   exited: boolean;
@@ -207,6 +330,8 @@ export interface PiEvent {
     | 'settled'
     /** An RPC command pi rejected (`{ type:'response', success:false }`). */
     | 'command_failed'
+    /** An extension asked the user something (`extension_ui_request`, a dialog). */
+    | 'dialog'
     | 'other';
   /** `session` / `state`: the session id (for `--session-id` continuity). */
   sessionId?: string;
@@ -214,6 +339,8 @@ export interface PiEvent {
   contextWindow?: number;
   /** Only set for `command_failed`: which RPC command was rejected. */
   commandName?: string;
+  /** Only set for `dialog`: the request id its answer must carry. */
+  dialogId?: string;
   /**
    * `delta`: the streamed text chunk. `thinking`: a reasoning chunk. `final`:
    * the assistant message's full text.
@@ -354,6 +481,18 @@ export function parsePiLine(line: string): PiEvent | null {
       return { kind: 'end', willRetry: parsed['willRetry'] === true };
     case 'agent_settled':
       return { kind: 'settled' };
+    // An extension's dialog (`select`, `confirm`, `input`, `editor`) blocks the
+    // turn until a client answers it (rpc.md → Extension UI). The other
+    // extension UI methods are fire-and-forget.
+    case 'extension_ui_request': {
+      const method = parsed['method'];
+      const id = parsed['id'];
+      const dialog =
+        method === 'select' || method === 'confirm' || method === 'input' || method === 'editor';
+      return dialog && typeof id === 'string'
+        ? { kind: 'dialog', dialogId: id }
+        : { kind: 'other' };
+    }
     // RPC-mode command acknowledgements. A success is noise, but a FAILED one
     // is the only signal that a command never took effect — a rejected `prompt`
     // would otherwise leave the turn waiting for events that never come.
@@ -436,6 +575,8 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #sessions = new Map<string, ActiveSession>();
   /** model id → context-window tokens, cached from `--list-models` for `usage`. */
   readonly #contextWindowByModel = new Map<string, number>();
+  /** The folder's command list, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   #defaultCwd = process.cwd();
 
   /**
@@ -536,9 +677,10 @@ export class PiAdapter extends BaseAgentAdapter {
 
   /**
    * The thread's resident process, spawning one when there is none or when the
-   * live one was started with a different cwd / model / effort / posture —
-   * those are process arguments, so honouring a change means a new process. The
-   * new one resumes the same session via `--session-id`.
+   * live one was started with a different cwd / model / effort / posture /
+   * desktop attachment — those are process arguments, so honouring a change
+   * means a new process. The new one resumes the same session via
+   * `--session-id`.
    */
   #getOrCreateSession(
     threadId: string,
@@ -546,7 +688,9 @@ export class PiAdapter extends BaseAgentAdapter {
     model: string | undefined,
     effort: string | undefined,
     permissionMode: PiPermissionMode,
+    desktopTools: DesktopTools | undefined,
   ): ActiveSession {
+    const desktop = piDesktopLaunch(desktopTools, cwd, permissionMode);
     const existing = this.#sessions.get(threadId);
     if (
       existing &&
@@ -554,7 +698,8 @@ export class PiAdapter extends BaseAgentAdapter {
       existing.cwd === cwd &&
       existing.model === model &&
       existing.effort === effort &&
-      existing.permissionMode === permissionMode
+      existing.permissionMode === permissionMode &&
+      existing.desktopKey === desktop.key
     ) {
       if (existing.idleTimer) {
         clearTimeout(existing.idleTimer);
@@ -568,16 +713,16 @@ export class PiAdapter extends BaseAgentAdapter {
     // Resume the session pi announced on this thread's first `get_state`; on the
     // very first spawn there is none yet and pi creates one.
     const sessionId = this.#sessionByThread.get(threadId);
-    const args = ['--mode', 'rpc'];
-    if (permissionMode === 'default') args.push('--tools', 'read,grep,find,ls');
-    else if (permissionMode === 'bypassPermissions') args.push('--approve');
+    const args = ['--mode', 'rpc', ...piPostureArgs(permissionMode)];
     if (model) args.push('--model', model);
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
     if (effort) args.push('--thinking', effort);
     if (sessionId) args.push('--session-id', sessionId);
+    args.push(...desktop.args);
 
     const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
       stdin: 'pipe',
+      ...(desktop.key ? { env: desktop.env } : {}),
     });
 
     const send = (command: Record<string, unknown>): boolean => {
@@ -599,6 +744,7 @@ export class PiAdapter extends BaseAgentAdapter {
       model,
       effort,
       permissionMode,
+      desktopKey: desktop.key,
       exited: false,
       send,
     };
@@ -611,6 +757,13 @@ export class PiAdapter extends BaseAgentAdapter {
         if (trimmed.length > 0 && session.activeTurn && !session.activeTurn.completed) {
           session.activeTurn.plainLines.push(trimmed);
         }
+        return;
+      }
+      // Nobody on the bridge's surface can answer an extension's dialog, and
+      // an unanswered one never lets the turn end: decline it at once — the
+      // answer pi takes for a dismissed dialog (`cancelled: true`).
+      if (event.kind === 'dialog' && event.dialogId) {
+        send({ type: 'extension_ui_response', id: event.dialogId, cancelled: true });
         return;
       }
       if (event.kind === 'state' || event.kind === 'session') {
@@ -649,6 +802,11 @@ export class PiAdapter extends BaseAgentAdapter {
         });
       } else if (event.kind === 'tool_start' && event.tool) {
         active.pendingTools.set(event.toolCallId ?? '', event.tool);
+        // Shown as it starts; its end replaces it in place.
+        const started = piToolStartBlock(event.tool);
+        if (started) {
+          this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: started } });
+        }
       } else if (event.kind === 'tool_end') {
         const tool = active.pendingTools.get(event.toolCallId ?? '');
         if (tool) {
@@ -658,7 +816,10 @@ export class PiAdapter extends BaseAgentAdapter {
             threadId,
             turnId: active.turnId,
             data: {
-              content: piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true),
+              content: withBlockId(
+                piToolBlock(tool, event.toolOutput ?? '', event.toolIsError === true),
+                tool.id,
+              ),
             },
           });
         }
@@ -757,7 +918,14 @@ export class PiAdapter extends BaseAgentAdapter {
 
     let session: ActiveSession;
     try {
-      session = this.#getOrCreateSession(threadId, cwd, model, effort, permissionMode);
+      session = this.#getOrCreateSession(
+        threadId,
+        cwd,
+        model,
+        effort,
+        permissionMode,
+        options.desktopTools,
+      );
     } catch (err) {
       this.emit({
         type: 'turn_error',
@@ -966,6 +1134,70 @@ export class PiAdapter extends BaseAgentAdapter {
         }
         finish(models);
       });
+    });
+  }
+
+  /**
+   * The commands pi has in [cwd], as pi itself lists them (`get_commands`,
+   * verified on pi 0.85.1): its prompt templates and skills, project and user,
+   * with descriptions — see {@link piAgentCommands} for what is left out. A
+   * picked one is sent as `/name args` on the `prompt` command, which pi
+   * expands itself, so there is no {@link expandCommand}.
+   *
+   * Asked of a short-lived `pi --mode rpc --no-session` started with the same
+   * posture flags as a turn ({@link piPostureArgs}): pi loads a project's own
+   * prompts and skills only when it trusts the project (`--approve`, or a
+   * saved decision in its `trust.json`), and a listing that trusted what the
+   * turn does not would advertise commands that do not run. A thread's
+   * resident process is not asked: the answer would interleave with its turn's
+   * stream. Reused per folder for a minute; an unanswered request yields none.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const reported = await this.#askCommands(dir);
+    if (reported === undefined) return [];
+    const commands = piAgentCommands(reported);
+    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
+  }
+
+  /** Ask pi in [cwd] for its commands; `undefined` if it will not say. */
+  #askCommands(cwd: string): Promise<PiReportedCommand[] | undefined> {
+    return new Promise((resolve) => {
+      const args = ['--mode', 'rpc', '--no-session', ...piPostureArgs(this.#permissionMode)];
+      let child: SpawnedProcess;
+      try {
+        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
+          stdin: 'pipe',
+        });
+      } catch {
+        resolve(undefined);
+        return;
+      }
+      let settled = false;
+      const finish = (commands: PiReportedCommand[] | undefined): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          child.stdin?.end();
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+        resolve(commands);
+      };
+      const timer = setTimeout(() => finish(undefined), COMMANDS_TIMEOUT_MS);
+      const reader = createInterface({ input: child.stdout as unknown as Readable });
+      reader.on('line', (line) => {
+        const commands = parsePiCommands(line);
+        if (commands) finish(commands);
+      });
+      child.on('close', () => finish(undefined));
+      child.on('error', () => finish(undefined));
+      child.stdin?.write(`${JSON.stringify({ type: 'get_commands' })}\n`);
     });
   }
 }

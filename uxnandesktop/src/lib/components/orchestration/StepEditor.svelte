@@ -29,7 +29,7 @@
   import { referencedStepIds, type Run, type RunStep, type StepKind, type StepTarget } from "$lib/orchestration/run";
   import AgentLogo from "../AgentLogo.svelte";
   import Combobox from "../Combobox.svelte";
-  import AiModelPicker from "../AiModelPicker.svelte";
+  import ModelPicker from "../ModelPicker.svelte";
   import StepContextPicker from "./StepContextPicker.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import TerminalIcon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
@@ -124,7 +124,7 @@
   }
 
   // Combobox option groups for the target pickers (searchable, tokenized, reusing
-  // the shared Combobox / AiModelPicker instead of a bare Select).
+  // the shared Combobox / ModelPicker instead of a bare Select).
   const interactiveAgentGroups = $derived([
     {
       items: liveAgents.map((a) => ({
@@ -309,7 +309,7 @@
       </div>
       <div class="flex flex-col gap-1">
         <span class={text.section}>{i18n.t("orchestration.stepModel")}</span>
-        <AiModelPicker
+        <ModelPicker
           models={headlessModels}
           value={hModel}
           loading={modelsLoading}

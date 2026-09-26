@@ -16,6 +16,8 @@ import {
   extractPlanSteps,
   planBlock,
   type PlanStepBlock,
+  runningBlock,
+  subagentBlock,
   toolBlock,
   writeDiffBlock,
 } from './content-blocks.js';
@@ -92,7 +94,45 @@ export function opencodeToolBlock(
       if (steps.length > 0) return planBlock(steps);
       return toolBlock(toolName, partId, input, output, isError);
     }
+    // A subagent: `{ description, prompt, subagent_type }`, its report as output.
+    case 'task':
+      return subagentBlock(
+        partId,
+        str(input['description']) || str(input['prompt']),
+        output,
+        isError,
+      );
     default:
       return toolBlock(toolName, partId, input, output, isError);
+  }
+}
+
+/**
+ * The row an OpenCode tool shows while it runs, from its input alone; its end
+ * replaces it (same `blockId`: the call id). `null` for what shows only once
+ * done: an edit or a write (their diff) and the to-do list.
+ */
+export function opencodeToolStartBlock(
+  toolName: string,
+  partId: string,
+  input: Record<string, unknown>,
+): Record<string, unknown> | null {
+  switch (toolName) {
+    case 'edit':
+    case 'write':
+    case 'todowrite':
+    case 'todoread':
+    case 'todo':
+      return null;
+    case 'bash':
+    case 'shell':
+      return runningBlock(commandBlock(str(input['command']), '', false), partId);
+    case 'task':
+      return runningBlock(
+        subagentBlock(partId, str(input['description']) || str(input['prompt']), '', false),
+        partId,
+      );
+    default:
+      return runningBlock(toolBlock(toolName, partId, input, '', false), partId);
   }
 }

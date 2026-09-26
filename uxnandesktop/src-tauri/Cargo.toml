@@ -76,6 +76,8 @@ serde_json = "1"
 # (git.rs `image_diff`) and the project/branch icon fetcher (commands.rs
 # `image_fetch_data_url`). Pure Rust, tiny, widely used.
 base64 = "0.22"
+# Pairing QR shown in Settings → Bridge & mobile (pure Rust, MIT/Apache-2.0).
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # HTTP client for downloading a project/branch icon from a URL or a git host
 # avatar into an inline data URL (commands.rs `image_fetch_data_url`). Doing the
 # GET in Rust sidesteps webview CORS/canvas-taint entirely. rustls (no OpenSSL);
@@ -94,6 +96,12 @@ sysinfo = "0.33"
 # git CLI (git.rs); git2 is the fast path with a CLI fallback. Vendored libgit2.
 git2 = { version = "0.20", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["json", "tokio", "http1"] }
+# WebSocket client for the bridge's loopback local control channel
+# (`bridgeclient/`, architecture/02a §5.8.15): the desktop drives the bridge's
+# conversations as one more client next to the phone. Plain `ws://127.0.0.1`
+# only — default features (`connect` + `handshake`), no TLS stack pulled in.
+# MIT, maintained with tungstenite, MSRV 1.85 (this crate's own).
+tokio-tungstenite = "0.30"
 # Format-preserving TOML editor, used to merge our MCP server entry into an
 # agent's `config.toml` (Codex) without clobbering the user's other settings or
 # comments. Pure Rust; `serde` handles the JSON-config agents (Claude/Antigravity/…).
@@ -156,7 +164,7 @@ sha1 = "0.10"
 # makes the badge affordable: 63 folders cost 44ms one after another and 3.3ms
 # together. Already compiled into this binary via axum/hyper/tokio-util/tauri,
 # so making it direct adds nothing to the build. Apache-2.0/MIT.
-futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await", "sink"] }
 # Wipes the raw bytes of a CLI's stored token once the usage reader has parsed
 # them (`credstore::Secret`, `usage.rs`) — a token is only ever in memory for the
 # duration of one API call and must not linger in a freed buffer. RustCrypto,

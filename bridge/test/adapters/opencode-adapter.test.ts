@@ -14,6 +14,8 @@ import {
   parseSseData,
   parseServeUrl,
   type IOpenCodeServer,
+  type OpenCodeCommand,
+  type OpenCodeCommandRun,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
   type OpenCodeModel,
@@ -43,6 +45,9 @@ class FakeServer implements IOpenCodeServer {
   readonly questionReplies: { id: string; answers: string[][] }[] = [];
   history: OpenCodeHistoryMessage[] = [];
   catalog: OpenCodeModel[] = [];
+  commandList: OpenCodeCommand[] = [];
+  commandLists = 0;
+  readonly commandRuns: { sessionId: string; run: OpenCodeCommandRun }[] = [];
   lastPermission: OpenCodePermissionPolicy | undefined;
   lastSessionModel: OpenCodeModelRef | undefined;
   nextSessionId = 'ses_1';
@@ -71,6 +76,14 @@ class FakeServer implements IOpenCodeServer {
   }
   steer(sessionId: string, text: string): Promise<void> {
     this.steered.push({ sessionId, text });
+    return Promise.resolve();
+  }
+  commands(): Promise<OpenCodeCommand[]> {
+    this.commandLists++;
+    return Promise.resolve(this.commandList);
+  }
+  runCommand(sessionId: string, run: OpenCodeCommandRun): Promise<void> {
+    this.commandRuns.push({ sessionId, run });
     return Promise.resolve();
   }
   interrupt(sessionId: string): Promise<void> {
@@ -408,6 +421,15 @@ test('OpenCodeAdapter emits thinking + tool blocks; skips the todo tool part', a
       sessionID: 'ses_1',
       type: 'tool',
       tool: 'bash',
+      state: { status: 'running', input: { command: 'ls' } },
+    },
+  });
+  server.emit('message.part.updated', {
+    part: {
+      id: 'b1',
+      sessionID: 'ses_1',
+      type: 'tool',
+      tool: 'bash',
       state: { status: 'completed', input: { command: 'ls' }, output: 'a.txt' },
     },
   });
@@ -421,12 +443,20 @@ test('OpenCodeAdapter emits thinking + tool blocks; skips the todo tool part', a
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  assert.equal(blocks.length, 1);
+  // Shown as it starts, then replaced by its result (same id: the part id).
+  assert.equal(blocks.length, 2);
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: 'b1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt',
+    blockId: 'b1',
   });
 });
 
@@ -800,4 +830,53 @@ test('context windows are retried until a load brings one', async () => {
     tokens: 15,
     contextWindow: 1000,
   });
+});
+
+test('a picked command runs on the server, as a skill when the server lists it as one', async () => {
+  const server = new FakeServer(2);
+  server.commandList = [
+    { name: 'review', description: 'review changes', skill: false },
+    { name: 'report', description: 'Report an issue', skill: true },
+  ];
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/big-pickle' });
+  assert.deepEqual(await adapter.listCommands('/repo'), [
+    { name: 'review', description: 'review changes', source: 'custom', headlessSupported: true },
+    { name: 'report', description: 'Report an issue', source: 'skill', headlessSupported: true },
+  ]);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: '/report the crash',
+    command: { name: 'report', args: 'the crash' },
+    cwd: '/repo',
+  });
+  server.nextSessionId = 'ses_2';
+  await adapter.sendTurn({
+    threadId: 't2',
+    turnId: 'u2',
+    text: '/review',
+    command: { name: 'review' },
+    cwd: '/repo',
+  });
+  assert.equal(server.prompts.length, 0, 'a command is not sent as prompt text');
+  assert.deepEqual(
+    server.commandRuns.map((c) => [c.run.name, c.run.args, c.run.skill, c.run.model?.modelID]),
+    [
+      ['report', 'the crash', true, 'big-pickle'],
+      ['review', '', false, 'big-pickle'],
+    ],
+  );
+  // Reused for the folder: the server was asked once.
+  assert.equal(server.commandLists, 1);
+});
+
+test('a server that cannot list its commands yields none', async () => {
+  const server = new FakeServer();
+  server.commands = () => Promise.reject(new Error('down'));
+  assert.deepEqual(await makeAdapter(server).listCommands('/repo'), []);
+});
+
+test('the adapter no longer expands command templates itself', () => {
+  const adapter = makeAdapter(new FakeServer());
+  assert.equal((adapter as { expandCommand?: unknown }).expandCommand, undefined);
 });

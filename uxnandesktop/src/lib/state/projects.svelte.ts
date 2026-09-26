@@ -60,6 +60,7 @@ import {
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
+import { chat } from "$lib/bridge/chat.svelte";
 import {
   resolveCommandCwd,
   substituteTokens,
@@ -111,9 +112,39 @@ export interface WorktreeRow extends WorktreeEntry {
   repoName: string;
 }
 
+/** Who asked for a project change: the user here, or the bridge's registry
+ *  mirroring another client's change (which must not be sent back). */
+export type ProjectChangeOrigin = "local" | "bridge";
+
+type RepoListener = (repo: RepoData, origin: ProjectChangeOrigin) => void;
+
 class ProjectsStore {
   /** Shared search query (filters projects and their worktrees). */
   query = $state("");
+  readonly #added = new Set<RepoListener>();
+  readonly #removed = new Set<RepoListener>();
+
+  /** A project was registered here (the bridge's project mirror listens). */
+  onRepoAdded(listener: RepoListener): () => void {
+    this.#added.add(listener);
+    return () => this.#added.delete(listener);
+  }
+
+  /** A project was removed here. */
+  onRepoRemoved(listener: RepoListener): () => void {
+    this.#removed.add(listener);
+    return () => this.#removed.delete(listener);
+  }
+
+  #emit(listeners: Set<RepoListener>, repo: RepoData, origin: ProjectChangeOrigin): void {
+    for (const listener of listeners) {
+      try {
+        listener(repo, origin);
+      } catch {
+        /* a listener's failure is its own */
+      }
+    }
+  }
 
   /** Worktrees per repo id, loaded on demand. */
   worktreesByRepo = $state<Record<string, WorktreeEntry[]>>({});
@@ -456,9 +487,10 @@ class ProjectsStore {
       const paths = main ? [main.path] : [];
       for (const w of this.visibleChildWorktrees(repo.id)) paths.push(w.path);
       for (const p of paths) {
-        const s = mostUrgentStatus(
-          terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
-        );
+        const s = mostUrgentStatus([
+          ...terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
+          ...chat.statusesAt(p).map((c) => c.status),
+        ]);
         if (s === "waiting" || s === "blocked") n += 1;
       }
     }
@@ -496,14 +528,17 @@ class ProjectsStore {
    *  comparators read, aggregated across the agents running in it. */
   private workspaceMeta(path: string, name: string): SortMeta {
     const tabs = terminals.agentTabs(path);
-    const status = mostUrgentStatus(
-      tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
-    );
+    const chats = chat.statusesAt(path);
+    const status = mostUrgentStatus([
+      ...tabs.map((t) => resolveAgentDisplay(t)?.status ?? null),
+      ...chats.map((c) => c.status),
+    ]);
     let activityAt = 0;
     for (const t of tabs) {
       const hook = agentStatus.get(t.id);
       if (hook?.lastUpdate) activityAt = Math.max(activityAt, hook.lastUpdate);
     }
+    for (const c of chats) activityAt = Math.max(activityAt, c.at);
     return {
       name,
       lastActive: app.settings.workspaceLastActive?.[path] ?? 0,
@@ -1117,12 +1152,14 @@ class ProjectsStore {
   /** Register a project folder by path (from the in-app directory picker). Any
    *  folder works — git or not; a non-git one simply has no worktrees. Returns
    *  false (with `error` set) when the path can't be registered. */
-  async addProjectPath(path: string): Promise<boolean> {
+  async addProjectPath(path: string, origin: ProjectChangeOrigin = "local"): Promise<boolean> {
     this.error = null;
     try {
       const repo = await repoAdd(path);
-      if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
+      const isNew = !app.repos.find((r) => r.id === repo.id);
+      if (isNew) app.repos.push(repo);
       await this.loadWorktrees(repo.id);
+      if (isNew) this.#emit(this.#added, repo, origin);
       return true;
     } catch (e) {
       this.error = msg(e);
@@ -1204,8 +1241,10 @@ class ProjectsStore {
     for (const path of paths) {
       try {
         const repo = await repoAdd(path);
-        if (!app.repos.find((r) => r.id === repo.id)) app.repos.push(repo);
+        const isNew = !app.repos.find((r) => r.id === repo.id);
+        if (isNew) app.repos.push(repo);
         await this.loadWorktrees(repo.id);
+        if (isNew) this.#emit(this.#added, repo, "local");
         added += 1;
       } catch (e) {
         failed += 1;
@@ -1224,7 +1263,7 @@ class ProjectsStore {
     return { added, failed };
   }
 
-  async removeProject(id: string): Promise<void> {
+  async removeProject(id: string, origin: ProjectChangeOrigin = "local"): Promise<void> {
     this.error = null;
     try {
       // Collect the repo's worktree paths (+ its root) before dropping them, so
@@ -1239,7 +1278,10 @@ class ProjectsStore {
       const { [id]: _removed, ...rest } = this.worktreesByRepo;
       this.worktreesByRepo = rest;
       app.pruneProjectCommands(id, worktreePaths);
-      toast.success(i18n.t("toast.projectRemoved"));
+      if (repo) this.#emit(this.#removed, repo, origin);
+      toast.success(
+        i18n.t(origin === "bridge" ? "toast.projectRemovedElsewhere" : "toast.projectRemoved"),
+      );
     } catch (e) {
       this.error = msg(e);
       toastError(e);
@@ -1487,6 +1529,19 @@ class ProjectsStore {
     const { path, target } = this.locate(pathOrKey);
     this.activeWorktreePath = path;
     app.launchAgent(agent, { cwd: path, workspace: this.workspaceFor(path, target), target });
+  }
+
+  /** Open a chat (a conversation the Uxnan bridge drives) in `path`'s
+   *  workspace, and switch to it. With `threadId` it shows that thread —
+   *  including one started on the phone; without, the new-chat setup with
+   *  `agentId` preselected. Local workspaces only: the bridge runs on this
+   *  machine, so a host's folder is not one it can work in. */
+  openChatAt(pathOrKey: string, opts: { threadId?: string; agentId?: string } = {}): void {
+    const { path, target } = this.locate(pathOrKey);
+    if (target !== LOCAL_TARGET) return;
+    this.activeWorktreePath = path;
+    this.stampActive(path);
+    terminals.openChat({ cwd: path, workspace: this.workspaceFor(path, target), ...opts });
   }
 
   // --- Quick commands ------------------------------------------------------

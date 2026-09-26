@@ -21,6 +21,14 @@ export interface FakeOpenCodeScript {
   page2?: unknown[];
   /** V1 `GET /session/:id/message`. */
   v1Messages?: unknown[];
+  /** V2 `GET /api/command` (served from the second call on: the catalog loads late). */
+  commands?: Record<string, unknown>[];
+  /** V2 `GET /api/skill`. */
+  skills?: Record<string, unknown>[];
+  /** V1 `GET /command` (commands and skills, `source` telling them apart). */
+  v1Commands?: Record<string, unknown>[];
+  /** A command request is refused with this status (an unknown command). */
+  commandStatus?: number;
 }
 
 /** One request the fake received. */
@@ -58,6 +66,7 @@ const password = process.env.OPENCODE_SERVER_PASSWORD;
 const expected = password ? 'Basic ' + Buffer.from('opencode:' + password).toString('base64') : null;
 const streams = new Set();
 let modelCalls = 0;
+let commandCalls = 0;
 const send = (event) => { for (const s of streams) s.write('data: ' + JSON.stringify(event) + '\n\n'); };
 http.createServer((req, res) => {
   let raw = '';
@@ -75,6 +84,19 @@ http.createServer((req, res) => {
       res.on('close', () => streams.delete(res));
       return;
     }
+    if (path.endsWith('/command') && req.method === 'POST') {
+      if (script.commandStatus) { res.writeHead(script.commandStatus); res.end(); return; }
+      const events = script.onPrompt || [];
+      if (version === '2') {
+        res.writeHead(204); res.end();
+        setTimeout(() => events.forEach(send), 30);
+        return;
+      }
+      // V1 answers only once the turn is over, its events streamed first.
+      setTimeout(() => events.forEach(send), 30);
+      setTimeout(() => json({ info: { role: 'assistant' }, parts: [] }), 150);
+      return;
+    }
     if (path.endsWith('/prompt') || path.endsWith('/prompt_async')) {
       json({});
       const events = script.onPrompt || [];
@@ -83,6 +105,8 @@ http.createServer((req, res) => {
     }
     if (version === '2') {
       if (path === '/api/model') { modelCalls++; return json({ data: modelCalls < 2 ? [] : script.models || [] }); }
+      if (path === '/api/command') { commandCalls++; return json({ data: commandCalls < 2 ? [] : script.commands || [] }); }
+      if (path === '/api/skill') return json({ data: script.skills || [] });
       if (path === '/api/session' && req.method === 'POST') return json({ data: { id: 'ses_1' } });
       if (path.endsWith('/message')) {
         return json(req.url.includes('cursor=c2')
@@ -92,6 +116,7 @@ http.createServer((req, res) => {
       return json({});
     }
     if (path === '/session' && req.method === 'POST') return json({ id: 'ses_1' });
+    if (path === '/command' && req.method === 'GET') return json(script.v1Commands || []);
     if (path.endsWith('/message')) return json(script.v1Messages || []);
     return json({});
   });

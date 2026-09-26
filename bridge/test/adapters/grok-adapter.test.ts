@@ -1,12 +1,18 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { GrokAdapter, mapGrokModels, grokToolBlock, type SpawnedAcp } from '../../src/index.js';
+import { GrokAdapter, mapGrokModels, type SpawnedAcp } from '../../src/index.js';
+import {
+  effortOptionId,
+  grokPermissionNotice,
+  grokPermissionSource,
+  parseGrokCommands,
+} from '../../src/adapters/grok-adapter.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
 // A fake `grok agent stdio` process: an ndjson JSON-RPC peer over PassThrough
 // streams. The handshake (initialize / session/new / session/set_model /
-// session/set_mode / session/load) is auto-answered; a per-test handler drives
+// session/set_config_option / session/load) is auto-answered; a per-test handler drives
 // the prompt turn. `initialize` returns Grok's `_meta.modelState` so the adapter
 // can discover models from the handshake.
 class FakeAcp {
@@ -16,6 +22,8 @@ class FakeAcp {
   private closeCbs: ((code: number | null) => void)[] = [];
   private handlers: Array<(m: any) => void> = [];
   sessionId = 'grok_sess_1';
+  /** `agentCapabilities` the handshake advertises (none by default). */
+  agentCapabilities: unknown = undefined;
 
   constructor() {
     let buf = '';
@@ -41,6 +49,7 @@ class FakeAcp {
         this.reply(m.id, {
           protocolVersion: 1,
           authMethods: [],
+          ...(this.agentCapabilities ? { agentCapabilities: this.agentCapabilities } : {}),
           _meta: {
             modelState: {
               currentModelId: 'grok-4.5',
@@ -67,9 +76,22 @@ class FakeAcp {
             },
           },
         });
-      } else if (m.method === 'session/new') this.reply(m.id, { sessionId: this.sessionId });
+      } else if (m.method === 'session/new')
+        this.reply(m.id, {
+          sessionId: this.sessionId,
+          // As Grok answers: effort is a `thought_level` config option.
+          configOptions: [
+            { id: 'model', category: 'model', type: 'select', currentValue: 'grok-4.5' },
+            {
+              id: 'reasoning_effort',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'high',
+            },
+          ],
+        });
       else if (m.method === 'session/load') this.reply(m.id, {});
-      else if (m.method === 'session/set_mode') this.reply(m.id, { meta: null });
+      else if (m.method === 'session/set_config_option') this.reply(m.id, { configOptions: [] });
       else if (m.method === 'session/set_model')
         this.reply(m.id, { _meta: { model: { Ok: m.params?.modelId } } });
     });
@@ -128,6 +150,7 @@ function setup(
       threadId: string,
       info: { toolName: string; input: Record<string, unknown> },
     ) => Promise<'approve' | 'reject' | 'approveSession'>;
+    permissionSource?: (cwd: string) => { mode: string; file: string } | undefined;
   } = {},
 ): { adapter: GrokAdapter; server: FakeAcp } {
   const server = new FakeAcp();
@@ -135,6 +158,8 @@ function setup(
   const adapter = new GrokAdapter({
     binaryPath: 'grok',
     spawnAcp: () => server.spawn(),
+    // Never the user's own settings: a test sees only what it sets.
+    permissionSource: opts.permissionSource ?? (() => undefined),
     ...(opts.onApprovalRequest ? { onApprovalRequest: opts.onApprovalRequest } : {}),
   });
   adapters.push(adapter);
@@ -215,6 +240,42 @@ test('GrokAdapter discovers models from the initialize handshake', async () => {
   assert.equal(models.find((m) => m.id === 'grok-4.5')?.contextWindow, 500000);
 });
 
+test('GrokAdapter hands a session the desktop tools only when Grok takes HTTP MCP servers', async () => {
+  const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
+  for (const http of [true, false]) {
+    const { adapter, server } = setup();
+    if (http) server.agentCapabilities = { mcpCapabilities: { http: true } };
+    server.handle((m) => {
+      if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+    });
+    const done = collect(adapter);
+    await adapter.sendTurn({
+      threadId: `mcp-${http}`,
+      turnId: 'u1',
+      text: 'hi',
+      cwd: '/w/a b',
+      desktopTools,
+    });
+    await done;
+    const created = server.sent.find((m) => m.method === 'session/new');
+    if (http) {
+      assert.deepEqual(created.params.mcpServers, [
+        {
+          type: 'http',
+          name: 'uxnan-browser',
+          url: desktopTools.mcpUrl,
+          headers: [
+            { name: 'Authorization', value: `Bearer ${desktopTools.token}` },
+            { name: 'x-uxnan-cwd', value: '%2Fw%2Fa%20b' },
+          ],
+        },
+      ]);
+    } else {
+      assert.deepEqual(created.params.mcpServers, []);
+    }
+  }
+});
+
 test('GrokAdapter streams thinking/text/blocks and completes on prompt result', async () => {
   const { adapter, server } = setup();
   const done = collect(adapter);
@@ -258,11 +319,19 @@ test('GrokAdapter streams thinking/text/blocks and completes on prompt result', 
   const deltas = events.filter((e) => e.type === 'delta').map((e) => (e.data as any).text);
   assert.deepEqual(deltas, ['Hello ', 'world']);
   const blocks = events.filter((e) => e.type === 'block').map((e) => (e.data as any).content);
+  // Shown as it starts, then replaced by its result (same id).
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: 't1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt',
+    blockId: 't1',
   });
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as any).text, 'Hello world');
@@ -272,7 +341,7 @@ test('GrokAdapter streams thinking/text/blocks and completes on prompt result', 
   );
 });
 
-test('GrokAdapter applies the chosen reasoning effort via session/set_mode', async () => {
+test('GrokAdapter applies the chosen reasoning effort through its thought_level config option', async () => {
   const { adapter, server } = setup();
   const done = collect(adapter);
   server.handle((m) => {
@@ -285,7 +354,19 @@ test('GrokAdapter applies the chosen reasoning effort via session/set_mode', asy
     options: { reasoning: 'low' },
   });
   await done;
-  assert.ok(server.sent.some((m) => m.method === 'session/set_mode' && m.params.modeId === 'low'));
+  assert.ok(
+    server.sent.some(
+      (m) =>
+        m.method === 'session/set_config_option' &&
+        m.params.configId === 'reasoning_effort' &&
+        m.params.value === 'low',
+    ),
+  );
+  // `session/set_mode` accepts anything and changes nothing: never used for effort.
+  assert.equal(
+    server.sent.some((m) => m.method === 'session/set_mode'),
+    false,
+  );
 });
 
 test('GrokAdapter routes session/request_permission → approval → reply optionId', async () => {
@@ -443,26 +524,147 @@ test('GrokAdapter surfaces the CLI error detail (not just "Internal error") on a
   assert.doesNotMatch(text, /Internal error/);
 });
 
-test('grokToolBlock renders an ask_user tool call as readable questions', () => {
-  const block = grokToolBlock({
-    toolCallId: 't1',
-    title: 'ask_user',
-    kind: 'other',
-    status: 'completed',
-    rawInput: {
-      questions: [
-        { question: 'Which language?', options: ['Python', 'JavaScript'], recommended: 'Python' },
-      ],
-    },
-    content: [
-      { type: 'content', content: { type: 'text', text: 'No interactive user is available.' } },
-    ],
+test('listCommands opens a short session for a new folder and reads what it announces', async () => {
+  const { adapter, server } = setup();
+  server.handle((m) => {
+    if (m.method === 'session/new') {
+      // Grok announces a session's commands right after creating it.
+      setTimeout(
+        () =>
+          server.update({
+            sessionUpdate: 'available_commands_update',
+            availableCommands: [
+              { name: 'compact', description: 'Compress history', input: { hint: 'what to keep' } },
+              { name: 'always-approve', description: 'Toggle', input: { hint: 'on|off' } },
+              { name: 'review', description: 'Review the branch', input: null },
+            ],
+          }),
+        5,
+      );
+    } else if (m.method === 'session/close') server.reply(m.id, {});
   });
-  assert.equal(block['type'], 'tool');
-  assert.equal(block['toolName'], 'ask_user');
-  assert.deepEqual(block['input'], {});
-  const output = block['output'] as string;
-  assert.match(output, /Which language\?/);
-  assert.match(output, /Python · JavaScript/);
-  assert.match(output, /suggested: Python/);
+  const commands = await adapter.listCommands('/work/app');
+  assert.deepEqual(
+    commands.map((c) => [c.name, c.argumentHint]),
+    [
+      ['compact', 'what to keep'],
+      ['review', undefined],
+    ],
+  );
+  // The listing's own session is closed, and the folder's list is reused.
+  await tick();
+  assert.ok(server.sent.some((m) => m.method === 'session/close'));
+  const opened = server.sent.filter((m) => m.method === 'session/new').length;
+  await adapter.listCommands('/work/app');
+  assert.equal(server.sent.filter((m) => m.method === 'session/new').length, opened);
+});
+
+test('parseGrokCommands labels skills and leaves out what the bridge owns', () => {
+  const commands = parseGrokCommands(
+    [
+      { name: 'figma', description: 'Import Figma', input: null },
+      { name: 'statusline', description: 'Configure', input: null },
+      { name: 'goal', description: 'Set a goal', input: { hint: '<objective>' } },
+      { description: 'no name' },
+    ],
+    '/work/app',
+    (name) => name === 'figma',
+  );
+  assert.deepEqual(commands, [
+    { name: 'figma', source: 'skill', headlessSupported: true, description: 'Import Figma' },
+    {
+      name: 'goal',
+      source: 'acp',
+      headlessSupported: true,
+      description: 'Set a goal',
+      argumentHint: '<objective>',
+    },
+  ]);
+});
+
+test('effortOptionId finds the thought_level option a session announces', () => {
+  assert.equal(
+    effortOptionId([
+      { id: 'model', category: 'model' },
+      { id: 'reasoning_effort', category: 'thought_level' },
+    ]),
+    'reasoning_effort',
+  );
+  assert.equal(effortOptionId([{ id: 'mode', category: 'mode' }]), undefined);
+  assert.equal(effortOptionId(undefined), undefined);
+});
+
+test('a permission request for no turn of ours is refused, never approved', async () => {
+  const { adapter, server } = setup({ onApprovalRequest: () => Promise.resolve('approve') });
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method !== 'session/prompt') return;
+    server.feed({
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 'someone-else',
+        toolCall: { toolCallId: 't', title: 'rm -rf build', kind: 'execute' },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      },
+    });
+    setTimeout(() => server.reply(m.id, { stopReason: 'end_turn' }), 10);
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'fullAccess' });
+  await done;
+  const reply = server.sent.find((m) => m.id === 42 && m.result?.outcome);
+  assert.deepEqual(reply.result.outcome, { outcome: 'cancelled' });
+});
+
+test('grokPermissionSource finds the setting that keeps Grok from asking', () => {
+  const files: Record<string, string> = {
+    '/home/u/.claude/settings.json': JSON.stringify({ permissions: { defaultMode: 'auto' } }),
+  };
+  // Keyed by POSIX paths; the lookup is joined with the platform separator.
+  const read = (path: string) => files[path.replaceAll('\\', '/')];
+  assert.deepEqual(grokPermissionSource('/home/u/work/app', '/home/u', read), {
+    mode: 'auto',
+    file: '~/.claude/settings.json',
+  });
+  // A folder's own setting wins over the user's, and one that asks means no notice.
+  files['/home/u/work/app/.claude/settings.local.json'] = JSON.stringify({
+    permissions: { defaultMode: 'default' },
+  });
+  assert.equal(grokPermissionSource('/home/u/work/app', '/home/u', read), undefined);
+  // Grok's own config counts when no Claude setting names a mode.
+  const grokOnly = (path: string) =>
+    path.replaceAll('\\', '/') === '/home/u/.grok/config.toml'
+      ? '[ui]\npermission_mode = "always-approve"\n'
+      : undefined;
+  assert.deepEqual(grokPermissionSource('/home/u/app', '/home/u', grokOnly), {
+    mode: 'always-approve',
+    file: '~/.grok/config.toml',
+  });
+  assert.match(grokPermissionNotice({ mode: 'auto', file: '~/.claude/settings.json' }), /"auto"/);
+});
+
+test('a thread that asks first is told, once, when the mode of Grok will not ask', async () => {
+  const { adapter, server } = setup({
+    onApprovalRequest: () => Promise.resolve('approve'),
+    permissionSource: () => ({ mode: 'auto', file: '~/.claude/settings.json' }),
+  });
+  server.handle((m) => {
+    if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  const warnings = async (turnId: string) => {
+    const done = collect(adapter);
+    await adapter.sendTurn({ threadId: 't1', turnId, text: 'go', accessMode: 'requestApproval' });
+    return (await done).filter(
+      (e) =>
+        e.type === 'block' && (e.data as { content: { kind?: string } }).content.kind === 'warning',
+    );
+  };
+  const first = await warnings('u1');
+  assert.equal(first.length, 1);
+  assert.match(
+    (first[0]!.data as { content: { text: string } }).content.text,
+    /"auto" \(from ~\/\.claude\/settings\.json\)/,
+  );
+  assert.equal((await warnings('u2')).length, 0);
 });

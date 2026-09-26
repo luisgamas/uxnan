@@ -76,7 +76,7 @@ export function detectOpenCodeMajor(
 /** The protocol client for `protocol`, serving `cwd`. */
 export function createOpenCodeServer(
   protocol: OpenCodeProtocolVersion,
-  opts: { binaryPath: string; cwd: string; spawnFn?: SpawnFn },
+  opts: { binaryPath: string; cwd: string; spawnFn?: SpawnFn; env?: Record<string, string> },
 ): IOpenCodeServer {
   return protocol === 2 ? new OpenCodeV2Server(opts) : new OpenCodeV1Server(opts);
 }

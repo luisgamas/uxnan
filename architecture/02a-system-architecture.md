@@ -1,10 +1,32 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.3
-> **Fecha:** 2026-08-02
+> **Version:** 1.4.0
+> **Fecha:** 2026-09-25
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.4.0):** one layer. The bridge is the single source of
+> truth for projects (a persistent, mirrored registry — add or remove on any
+> client, conversations are never deleted with a project), conversations,
+> shared settings (the `home` start folder), presence and installed agents;
+> phones and Uxnan Desktop are replicas that converge through revisioned
+> `sync/changes`, never by trusting that every notification arrived. Turns
+> carry a canonical `seq`, titles are named only by the bridge, opening a
+> conversation no longer un-archives it, agent detection follows one table
+> shared with the desktop plus the user's login-shell PATH, and the bridge runs
+> as the user's service (§5.8.17).
+
+> **Executive summary (1.3.0):** the bridge is the single owner of every
+> conversation and any number of clients drive it at once — paired phones over
+> E2EE and Uxnan Desktop over a new loopback-only, token-gated local control
+> channel (§5.8.15) that serves the same router and registers the desktop as one
+> more receiver with its own `seq` and replay. Everything that changes a thread
+> is broadcast (§5.8.16): `stream/thread/updated` (replacing
+> `stream/thread/renamed`), `stream/thread/deleted`, `stream/turn/created` (the
+> user's message, before the answer, with the sender's `clientTurnId` echo) and
+> `stream/approval|question/resolved`, so a thread started or answered on one
+> client appears on the other without a refresh.
 
 > **Executive summary (1.2.3):** native assistant messages inside one turn are
 > preserved losslessly through durable response-boundary metadata; terminal
@@ -615,7 +637,7 @@ class SessionCoordinator {
 
 #### 5.2.2 ThreadManager
 
-> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/managers/thread_manager.dart`. Construye el `TurnTimelineSnapshot` del thread activo desde el repositorio local y aplica eventos de streaming (start/delta/complete, persistiendo el mensaje final); `loadThreads` (`thread/list`) y `sendUserMessage` (`turn/send`) sobre un `RpcSend` inyectado; dedup vía `MessageDeduplicator`. Expone `threadsStream`/`timelineStream` a providers Riverpod. Probado con DB in-memory + stream de eventos controlable. Adaptación: el spec usa `ValueNotifier`; se usan streams (BehaviorSubject) para Riverpod 3.x. Pendiente (FUTURO): paginación remota (`loadMoreHistory`), `startNewThread`/`resumeThread`/`fork`.
+> ✅ **Implementado** (rama `uxnanmobile`): `lib/application/managers/thread_manager.dart`. Construye el `TurnTimelineSnapshot` del thread activo desde el repositorio local y aplica eventos de streaming (start/delta/complete, persistiendo el mensaje final); `sendUserMessage` (`turn/send`) sobre un `RpcSend` inyectado; la lista de hilos ya no se pide aqui: la escribe `BridgeReplica` (§5.8.17) con `applyReplicaThreads`, el unico camino por el que se guarda un hilo del bridge; dedup vía `MessageDeduplicator`. Expone `threadsStream`/`timelineStream` a providers Riverpod. Probado con DB in-memory + stream de eventos controlable. Adaptación: el spec usa `ValueNotifier`; se usan streams (BehaviorSubject) para Riverpod 3.x. Pendiente (FUTURO): paginación remota (`loadMoreHistory`), `startNewThread`/`resumeThread`/`fork`.
 
 ```dart
 // lib/application/managers/thread_manager.dart
@@ -625,8 +647,7 @@ class ThreadManager {
   final ValueNotifier<Thread?> activeThread;
   final ValueNotifier<Map<String, TurnTimelineSnapshot>> timelines;
 
-  // Acciones
-  Future<void> loadThreads({String? projectId});
+  // Acciones (la lista de hilos llega por BridgeReplica, §5.8.17)
   Future<void> selectThread(String threadId);
   Future<void> loadMoreHistory(String threadId);
   Future<Thread> startNewThread(StartThreadParams params);
@@ -2350,7 +2371,7 @@ carpeta). uxnan es el cliente, asi que uxnan los nombra.
 //     -> one-shot SIN session id  => no entra en el historial del hilo
 //     -> modelo MAS BARATO del agente (Claude: haiku), nunca el de la conversacion
 //   ThreadStore.applyGeneratedTitle() rechaza pisar un titulo `user`
-//     -> stream/thread/renamed { threadId, title, titleSource }
+//     -> stream/thread/updated { thread }   (titleSource: 'agent')
 ```
 
 Todo es **best-effort y acotado** (30 s): sin credito, sin CLI o con timeout el
@@ -2432,6 +2453,249 @@ Las reglas 3 y 4 son deliberadamente **agnosticas del adaptador**: viven en el
 store y en el manager porque la exposicion la comparte toda la primera fila de la
 tabla, hoy o tras cualquier cambio upstream.
 
+#### 5.8.15 Canal de control local (desktop ↔ bridge en la misma maquina)
+
+Uxnan Desktop habla con el bridge de la **misma maquina** sin el pairing E2EE
+de un telefono. `uxnan-bridge start` abre, ademas del listener LAN, un
+**WebSocket ligado solo a `127.0.0.1`** en un puerto libre, y publica como
+llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
+
+```json
+{ "protocol": 1, "port": 51234, "token": "<256 bits base64url>", "pid": 4242,
+  "bridgeVersion": "0.0.27-…", "instanceId": "<uuid por arranque>" }
+```
+
+- **El fichero es la credencial**: se escribe atomico y con permisos `0600`
+  (en Windows, el ACL del perfil del usuario). Token nuevo en cada arranque; se
+  borra al parar (solo si sigue siendo el nuestro). Los comandos efimeros
+  (`qr`, `code`, `status`) nunca abren el canal. Config: `localControlEnabled`
+  (por defecto `true`).
+- **Autorizacion antes del upgrade** (`transport/local-control-server.ts`):
+  par de loopback, **sin cabecera `Origin`** (un navegador siempre la manda;
+  un cliente nativo no — ninguna pagina web alcanza el socket) y
+  `Authorization: Bearer <token>` comparado en tiempo constante. URL:
+  `/control?client=<id>&resume=<seq>&instance=<id>`.
+- **Mismo router, mismo registro.** El cliente se registra en el
+  `SessionRegistry` como `local:<id>`: recibe cada `stream/*` con su propio
+  `seq` y su `OutboundLog`, exactamente como un telefono. Primer frame `hello`
+  (`replayed`, `gap`); luego `{type:'message', seq?, message}` — las
+  notificaciones llevan `seq`, las respuestas no. `gap: true` (ventana agotada,
+  o el bridge se reinicio: `instanceId` distinto) obliga a re-sincronizar con
+  `thread/list` / `turn/list`.
+- **Orden:** las peticiones que nombran un `threadId` corren en orden de
+  llegada por hilo; el resto en paralelo (un `agent/models` lento no bloquea un
+  `turn/list`).
+- Un cliente local conectado cuenta como "hay alguien" para la cuenta atras de
+  las aprobaciones, igual que un telefono. No entra en `bridge/connectedPhones`.
+- `bridge/status` → `features.localControl: true` mientras escucha.
+- **Herramientas del desktop para los agentes del bridge**
+  (`desktop/attach { mcpUrl, token }` / `desktop/detach`): el desktop le da al
+  bridge su servidor MCP — el mismo que entrega a los agentes que lanza en sus
+  terminales (navegador, terminales, otros agentes, el catalogo de control) —
+  para que los agentes de las conversaciones del bridge lo usen tambien. **Solo
+  lo acepta un cliente local** (el despacho local marca la peticion con
+  `RequestSession.local`; un telefono recibe `-32001`) y solo para un endpoint
+  loopback `http://127.0.0.1:<port>/mcp`; el token es uno propio del desktop
+  para agentes del bridge, rotado en cada arranque, y el bridge lo olvida al
+  desconectarse ese cliente. Cada adapter registra el servidor **solo para su
+  conversacion**, con el nombre `uxnan-browser`, el token **nunca en argv ni en
+  un archivo** (solo en el entorno o en un mensaje por el stdin del agente) y la
+  carpeta de la conversacion en la cabecera `x-uxnan-cwd`, **codificada en
+  porcentaje** (`encodeCwdHeader`, para que cualquier ruta sea un valor de
+  cabecera valido), que el desktop decodifica y usa para acotar al agente al
+  proyecto de esa carpeta. Un cambio de adjunto llega al siguiente turno.
+  Mecanismo por agente: **Claude Code** `--mcp-config` por ejecucion; **Codex**
+  `config` por hilo en `thread/start` / `thread/resume`; **OpenCode**
+  `OPENCODE_CONFIG_CONTENT` en el `opencode serve` de la carpeta (se reinicia
+  ocioso si cambia el adjunto); **pi** una extension que el bridge distribuye
+  (`-e`, cliente MCP Streamable HTTP; no en la postura de solo lectura);
+  **Grok** `mcpServers` de ACP en `session/new` / `session/load`, solo si
+  `initialize` anuncia `mcpCapabilities.http`. **Zero** (su `acp` ignora
+  `mcpServers`) y **Antigravity** (sin mecanismo por ejecucion) solo leen una
+  configuracion global del usuario: pendiente de decision
+  (`bridge/FOR-DEV.md`).
+
+**No es una variante criptografica**: es una ruta local con token, el mismo
+modelo de confianza que `POST /agent-hook/approval`. El E2EE no cambia.
+Contrato: `shared/src/local-control/local-control.ts`.
+
+#### 5.8.16 Convergencia entre clientes ("un dueño, dos vistas")
+
+El bridge es el **unico dueño** de cada hilo; telefonos y desktop son clientes
+que le envian turnos, y la cola por hilo (§5.8.13) los ordena — nunca hay dos
+procesos conduciendo una sesion. Para que dos clientes activos a la vez
+converjan, todo lo que cambia el estado se difunde (`02b` §1.4):
+
+| Cambio | Notificacion |
+|---|---|
+| hilo creado / metadatos (titulo, modelo, acceso, archivo) | `stream/thread/updated { thread }` |
+| hilo borrado | `stream/thread/deleted` |
+| turno de usuario guardado (arrancado o encolado) | `stream/turn/created { turn, clientTurnId? }` — **antes** de `stream/turn/started` |
+| aprobacion / pregunta resuelta (o vencida) | `stream/approval/resolved`, `stream/question/resolved` |
+
+El emisor manda `clientTurnId` (el id de su burbuja optimista) en `turn/send`;
+el bridge lo devuelve en `stream/turn/created` y el emisor confirma esa burbuja
+en vez de dibujar el mensaje dos veces. Los demas clientes lo insertan en su
+sitio, por encima de la respuesta que esta por llegar.
+
+**Reconexion:** el `seq` por cliente del `OutboundLog` + replay es la
+re-sincronizacion fina de lo que llega en vivo, pero **no alcanza**: el log
+vive en memoria (un reinicio del bridge lo pierde), un telefono solo tiene log
+desde que se conecto en ese proceso, y la ventana (500 mensajes / 10 MB) la
+consumen los deltas de cualquier hilo. La convergencia la garantiza la
+**sincronizacion por revision** de §5.8.17 (`sync/changes`) y el orden de cada
+conversacion lo fija `Turn.seq`, nunca el orden de llegada.
+
+**Ciclo de vida de una conversacion (igual en todos los clientes).** Cerrar la
+vista de una conversacion (la pestaña del desktop, salir de la pantalla en el
+telefono) no la toca: sigue en el bridge y un turno en curso sigue corriendo.
+**Archivar** (`thread/archive`, reversible con `thread/unarchive`) la saca de
+las listas de todos los clientes via `stream/thread/updated`; **eliminar**
+(`thread/delete`, siempre confirmado y advirtiendo que es para todos los
+dispositivos) la borra via `stream/thread/deleted`. Las listas de uso diario
+muestran lo abierto o lo que necesita atencion (trabajando, esperando al
+usuario, fallido, terminado sin ver — `activeTurnId` y los eventos de turno), no
+todo el historial.
+
+
+**Agente fijo, modelo variable.** El agente de un hilo se fija en
+`thread/start` y no cambia (cambiar de CLI rompe la sesion nativa); el modelo
+si (`thread/setModel`, y lo ven todos los clientes via `stream/thread/updated`).
+
+#### 5.8.17 Una sola capa: el bridge como fuente de verdad (2026-09)
+
+Mobile y desktop son **replicas** del estado que el bridge posee: proyectos,
+conversaciones, ajustes compartidos, presencia y agentes disponibles. El
+telefono funciona sin desktop; lo que se hizo sin desktop aparece en el desktop
+al conectarse, y viceversa. Contratos: `shared/src/models/{project,sync}.ts`,
+`02b` §1.2/§1.4.
+
+**Registro de proyectos persistente** (`~/.uxnan/projects.json`,
+`bridge/src/projects/project-registry.ts`). Un proyecto es una carpeta
+canonica (symlinks resueltos); un worktree pertenece al proyecto de su
+repositorio (`git rev-parse --git-common-dir`). Entra por `project/add`
+(`source: user`, o `desktop` desde el canal local — el desktop publica los
+suyos), al iniciar una conversacion en su carpeta (`thread`) o por
+`workspaceRoots` (`config`); sale solo por `project/remove`, que **no toca las
+conversaciones**. `project/rename` cambia el nombre (vacio lo restaura).
+Espejo total: agregar o quitar en cualquier cliente se refleja en todos
+(`stream/project/updated|removed`). Al crearse por primera vez, el registro se
+siembra con las carpetas de todas las conversaciones existentes, y en cada
+arranque cada conversacion se re-enlaza al proyecto de su carpeta. Un telefono
+solo registra carpetas dentro de las raices de exploracion; el desktop
+cualquiera. `thread/start` decide el proyecto por la carpeta (`cwd`), nunca al
+reves, y lo registra.
+
+**Carpeta de inicio compartida** (`settings/get|set`, `home` en
+`daemon-config.json`, `stream/settings/updated`): de donde parte la exploracion
+para agregar proyectos, sin importar desde que carpeta se ejecuto `start`. Por
+defecto, la carpeta personal. Se cambia desde el telefono, el desktop o
+`uxnan-bridge config set home <carpeta>` (que usa el canal local si hay un
+bridge corriendo). Raices de exploracion = `home` + `browseRoots` +
+`workspaceRoots`.
+
+**Sincronizacion por revision** (`bridge/src/sync/sync-ledger.ts`,
+`~/.uxnan/sync.json`). Un contador global persistido numera cada cambio de
+resumen de un hilo (titulo, estado, modelo, acceso, origen, turnos creados o
+terminados — nunca los deltas), de un proyecto o de los ajustes; el cambio se
+escribe en disco **antes** de difundirse, y cada notificacion lleva su `rev`.
+Las eliminaciones quedan como lapidas acotadas (2 000). `sync/changes { since,
+storeId }` devuelve lo posterior a `since`, o una instantanea completa
+(`reset: true`) si `storeId` difiere o `since` es anterior al horizonte. El
+cliente la llama al (re)conectar, al volver la app y cuando una notificacion
+trae un `rev` que no es el siguiente al ultimo aplicado. El almacen de hilos y
+el registro de proyectos son la **unica** fuente de esas notificaciones
+(`onChange`), de modo que ningun handler puede cambiar algo y olvidar avisar.
+
+**Orden canonico:** `Turn.seq` (1..n por hilo, asignado al guardar el turno y
+nunca reutilizado; los turnos anteriores se numeran en su orden guardado). Un
+turno importado de la historia nativa toma la siguiente posicion. Los clientes
+ordenan por `seq`.
+
+**Abrir no cambia nada:** `thread/resume` ya no pone `status: active` ni toca
+`updatedAt` (desarchivaba en silencio lo abierto en el telefono). Solo
+`thread/unarchive` desarchiva.
+
+**Titulos solo en el bridge:** el provisional se pone al guardar el primer
+turno si el titulo es el marcador (`titleSource: prompt`); el generado tras un
+turno completado mientras la fuente sea `prompt`/ausente, con hasta 2 intentos
+(no depende de `turnCount`: un primer turno fallido, detenido o con mensaje en
+cola ya no deja el nombre provisional para siempre). Un `thread/rename
+{ source: 'prompt' }` no pisa un titulo `user`/`agent`. Los clientes no
+renombran por su cuenta.
+
+**Presencia y origen:** `bridge/status` lleva `host { launchedBy: service |
+desktop | cli, machineName }` y `clients[]`; `stream/presence/updated` cada vez
+que un telefono o el desktop se conecta o se va. `Thread.origin { kind, name }`
+dice donde nacio una conversacion.
+
+**Nombres compartidos.** El PC y cada telefono tienen un nombre que ven todos
+los clientes. El del PC es el ajuste `name` (`settings/set`; por defecto el
+nombre de la maquina; `uxnan-bridge config set name`): es el que viaja en el QR,
+el de la presencia del desktop y el origen de sus conversaciones. Un telefono,
+al conectarse, se describe (`device/describe`: nombre, modelo, plataforma,
+version del SO y de la app — un metodo JSON-RPC despues del handshake; el
+protocolo E2EE no cambia); su nombre por defecto (el modelo) aplica mientras
+nadie lo haya nombrado. Cualquier cliente lo renombra (`device/rename`), y el
+telefono tambien a si mismo. En los tres casos gana la decision mas reciente
+(el bridge guarda en privado cuando se decidio cada nombre; un cambio hecho sin
+conexion viaja con su edad), y la respuesta de `device/describe` trae el nombre
+vigente con su edad para que el telefono adopte uno puesto en otro cliente y lo
+lleve a sus demas PCs. La lista completa viaja en `sync/changes.devices` y en
+`stream/devices/updated`; un telefono conectado aparece con su nombre nuevo en
+la presencia al instante. Se pueden emparejar varios telefonos a un mismo PC.
+
+**Agentes: una sola regla de deteccion.** `shared/agent-locations.json` dice
+donde se instala cada CLI; el bridge (`locateAgent`) y el desktop (Rust,
+`include_str!`) resuelven con la misma tabla. El bridge toma al arrancar el
+PATH del shell de login del usuario (`$SHELL -ilc`, `bridge/src/login-path.ts`)
+— un servicio o una app grafica solo tienen `/usr/bin:/bin` — y re-detecta en
+vivo (`agent/list`, a lo sumo cada 10 s): un agente instalado despues aparece
+sin reiniciar y se avisa con `stream/agents/updated`; `agent/doctor` explica
+donde busco y que encontro.
+
+**Replicas en los clientes.** En el telefono, `BridgeReplica`
+(`uxnanmobile/lib/application/managers/bridge_replica.dart`) es la unica capa
+que escribe lo que el bridge posee: guarda por PC un cursor `{ storeId, rev,
+home }` (tabla `replica_cursors`), llama `sync/changes` al conectar, al volver
+la app y al detectar un salto de `rev`, y aplica cada notificacion solo si es
+posterior a lo aplicado (una tardia nunca deshace un estado nuevo). Los hilos
+entran por `ThreadManager.applyReplicaThreads`; los proyectos, por PC, en la
+tabla `projects`. La lista agrupa por carpeta y muestra tambien los proyectos
+sin conversaciones; "Nueva conversacion" elige entre los proyectos del registro
+o agrega uno (`project/add`) explorando desde la carpeta de inicio; la hoja de
+detalles de una carpeta ofrece quitarla del registro. La pantalla del PC
+muestra y cambia la carpeta de inicio. Con el desktop conectado al mismo
+bridge, la lista dice "Enlazado con Uxnan Desktop en <maquina>"; una
+conversacion nacida en el desktop lleva su marca. En el desktop, `ChatStore`
+(`uxnandesktop/src/lib/bridge/chat.svelte.ts`) aplica la misma regla y
+`projectMirror` une los proyectos del desktop con el registro
+(`uxnandesktop/architecture/02e-bridge-integration.md`).
+
+**Acciones sin conexion: gana la mas reciente.** Ningun cliente depende de
+otro: el desktop chatea con el bridge sin telefono y el telefono sin desktop, y
+el que llega despues lo recibe todo en una sincronizacion. Lo que el telefono
+hace mientras su PC no esta al alcance (renombrar, archivar, desarchivar o
+borrar una conversacion; renombrar el PC) se ve al instante en el telefono y
+espera en una bandeja persistente (`ActionOutbox`, tabla `pending_actions`; una
+accion nueva reemplaza las que deja sin efecto sobre lo mismo). Al volver el PC, la bandeja se
+envia **antes** de leer `sync/changes`, y si falla a medias no se lee nada: un
+estado del bridge nunca pisa una accion que aun no recibio. Cada accion viaja
+con `ageMs` (hace cuanto se decidio, por el reloj del telefono: una edad, no
+una hora, para que los relojes no tengan que coincidir). El bridge la fecha
+`now - ageMs` y la aplica solo si nadie decidio lo mismo despues: guarda en
+privado cuando se decidio por ultima vez el titulo (renombrado a mano; un
+titulo generado no cuenta) y el estado; un borrado anterior a la ultima
+actividad del hilo (un turno, un renombrado, un archivado) se descarta, porque
+nadie borra trabajo que no vio. Una accion que el bridge rechaza se descarta.
+
+**Servicio de usuario.** `uxnan-bridge install-service` registra
+`<node> <cli.js> start --service` (rutas absolutas, `WorkingDirectory` = home)
+en launchd / systemd --user / Programador de tareas; se reinicia si se cae, no
+si se detiene a proposito. `service-status` / `service-start` permiten al
+desktop administrarlo; el bridge sigue sirviendo al telefono con el desktop
+cerrado.
+
 ### 5.9 Transporte seguro y mensajeria E2EE
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
@@ -2491,12 +2755,14 @@ CONSTANTES:
 > window (an already-trusted phone reconnects at any time), and the relay path
 > is NOT gated by it either (it already scopes a bootstrap to one
 > `expectedSessionId` per connection). **Deferred hardening (see
-> `bridge/FOR-DEV.md`):** (1) binding enrollment to a phone-computed proof that
+> `bridge/FOR-DEV.md`):** binding enrollment to a phone-computed proof that
 > it holds the pairing code — i.e. to *this* phone rather than to *some* open
-> window — needs coordinated mobile work that isn't wired yet; (2) arming a
-> hidden daemon for the QR-**scan** path, which never calls `/pair/resolve` and
-> so is not covered by the resolve-arming above (pair with the manual code
-> there).
+> window — needs coordinated mobile work that isn't wired yet. A hidden daemon
+> (the user's service) is armed for the QR-**scan** path by whoever shows its
+> QR: `uxnan-bridge qr` and Uxnan Desktop's "Pair a phone" both ask the running
+> daemon over the local control channel (`bridge/generatePairingQr`, §5.8.15),
+> which arms that daemon's window; the service itself prints no QR or code and
+> never arms at startup.
 
 **Fase 2 — Handshake criptografico:**
 
@@ -2994,11 +3260,14 @@ class ImageContent extends MessageContent {
 }
 
 class ToolUseContent extends MessageContent {
-  final String toolName;
+  final String toolName;        // the agent's own name for the tool
   final String toolId;
   final Map<String, dynamic> input;
   final dynamic output;
   final bool isError;
+  final ToolKind kind;          // read | search | list | fetch | webSearch | mcp | other,
+                                // classified by the bridge for every agent
+  final String? target;         // what it acted on, ready to show
 }
 
 class DiffContent extends MessageContent {
@@ -3052,7 +3321,7 @@ class PlanContent extends MessageContent {
 }
 
 class SubagentContent extends MessageContent {
-  final SubagentState state;
+  final SubagentState state;    // id, name (its task), status, actions, output (its report)
 }
 ```
 

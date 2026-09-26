@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 
@@ -72,6 +73,29 @@ class QuestionResponses extends Notifier<Map<String, QuestionResponseState>> {
   Map<String, QuestionResponseState> build() {
     unawaited(_hydrate());
     return const {};
+  }
+
+  /// Settles the card for a question the bridge says is no longer pending —
+  /// answered on any client (showing what was chosen), skipped or timed out.
+  /// A card this phone already resolved keeps its own record. Fed from
+  /// `ThreadManager.resolutionsStream` by the app root.
+  void adoptResolution(QuestionResolution resolution) {
+    final existing = state[resolution.questionId];
+    if (existing?.phase == QuestionResponsePhase.resolved) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _set(
+      resolution.questionId,
+      QuestionResponsePhase.resolved,
+      resolution.answers,
+      now,
+    );
+    unawaited(
+      ref.read(questionResponseStoreProvider).record(
+            questionId: resolution.questionId,
+            answers: resolution.answers,
+            answeredAtMs: now,
+          ),
+    );
   }
 
   /// Loads the persisted answers and merges them into the in-memory map.

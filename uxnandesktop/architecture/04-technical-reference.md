@@ -153,7 +153,7 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       diálogo de ajustes: nombre de rama, agente a lanzar, previsualización de carpeta),
       **redacción de PR con IA** configurada en una sección propia calcada de
       Settings → AI commit (interruptor, agente con logos + estado de instalación,
-      `AiModelPicker`, idioma, instrucciones),
+      `ModelPicker`, idioma, instrucciones),
       badges y lectura pasiva dentro del popover del backend en la barra de estado
       (sin leer + rate limit, punto en el icono del backend y fila hacia
       Settings → GitHub); `src-tauri/src/github.rs`, `docs/github.md`).

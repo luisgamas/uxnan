@@ -357,3 +357,53 @@ export const tab = {
   activeLine: "border-foreground text-foreground",
   inactiveLine: "text-muted-foreground hover:text-foreground",
 } as const;
+
+/** A center-area pane that is not a terminal — a file, a commit, a chat: its
+ *  root and its 36px header band (icon, title, actions over one hairline). */
+export const pane = {
+  root: "flex h-full min-h-0 flex-col bg-background",
+  header: "flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2",
+} as const;
+
+/** Chat tab roles (a conversation the Uxnan bridge drives). */
+export const chat = {
+  /** The reading column every chat surface centers on. */
+  column: "mx-auto w-full max-w-3xl px-5",
+  /** A new chat's question, centered over its composer. */
+  hero: "font-title text-xl font-medium tracking-tight text-foreground",
+  /** The agent's prose: its settled Markdown chunks stacked at paragraph rhythm,
+   *  a shade softer than the chrome's foreground so a long reply reads calm. */
+  prose: "flex min-w-0 flex-col gap-[0.5em] px-0.5 leading-6 text-foreground/90",
+  /** A settled turn's fold ("Worked for 1m 3s ›"): quiet text, no fill — the
+   *  hairline after it (`foldRule`) separates the work from the answer. */
+  fold: "inline-flex shrink-0 items-center gap-1 rounded-sm py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground",
+  foldRule: "h-px flex-1 bg-border/50",
+  /** The user's message: a quiet muted bubble, right-aligned by its row. */
+  userBubble:
+    "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-muted px-3.5 py-2 text-[13px] leading-5",
+  /** A queued follow-up: the same bubble, outlined instead of filled. */
+  queuedBubble:
+    "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-dashed border-border px-3.5 py-2 text-[13px] leading-5 text-muted-foreground",
+  /** One activity line of the agent's work log (a command, a diff, a tool):
+   *  icon, verb, detail and state on one compact row. */
+  activity:
+    "flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground disabled:hover:bg-transparent disabled:hover:text-muted-foreground",
+  /** The rows of an open work group, hung off a quiet rule under its header. */
+  activityList: "ml-3 flex flex-col border-l border-border/60 pl-1.5",
+  /** A step still running: a small pulsing dot where the state goes. */
+  runningDot: "size-1.5 shrink-0 animate-pulse rounded-full bg-sky-500",
+  /** An interactive card inside a turn (an approval, a question, a plan). */
+  card: "rounded-lg border border-border/60 bg-card p-3 shadow-xs",
+  /** Captured output under an expanded activity line. */
+  output:
+    "uxnan-scroll max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-2 font-mono text-[11px] leading-4",
+  /** A quiet control in the composer's toolbar (model, effort, access): ghost
+   *  until hovered, so the toolbar reads as part of the input. */
+  pill: "h-7 gap-1 rounded-full border-transparent bg-transparent px-2.5 text-xs font-normal text-muted-foreground shadow-none hover:bg-foreground/[0.05] hover:text-foreground dark:bg-transparent dark:hover:bg-foreground/[0.06]",
+  /** What waits above the composer — open approvals and questions, the queue. */
+  dock: "mb-2 flex max-h-[45vh] flex-col gap-2 overflow-y-auto uxnan-scroll",
+  /** A message's hover actions (copy) and time, revealed with its row. */
+  messageMeta:
+    "flex h-5 items-center gap-1 text-[11px] text-muted-foreground/70 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100",
+} as const;
+

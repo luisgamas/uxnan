@@ -97,6 +97,15 @@ export interface DaemonConfig {
    * QR or typed-host pairing.
    */
   mdnsEnabled: boolean;
+  /**
+   * Serve the local control channel (architecture/02a §5.8.15): a WebSocket
+   * listener bound to `127.0.0.1` only, on a free port, whose address and
+   * token the bridge writes to `~/.uxnan/local-control.json` (owner-only). It
+   * is how Uxnan Desktop on the same machine drives the bridge's conversations
+   * next to the phone. **Default `true`**; loopback-only and token-gated, and
+   * it costs one idle socket. Only `uxnan-bridge start` opens it.
+   */
+  localControlEnabled: boolean;
   pushEnabled: boolean;
   pushOnAgentDone: boolean;
   pushOnAgentError: boolean;
@@ -126,6 +135,20 @@ export interface DaemonConfig {
    * `Documents` folder.
    */
   browseRoots: string[];
+  /**
+   * The bridge's start folder (shared setting `home`, architecture/02a
+   * §5.8.17): where exploring for a new project begins and the boundary a phone
+   * may register projects under — whatever directory `start` ran in. Absent →
+   * the user's home directory. Edited with `uxnan-bridge config set home
+   * <path>` or from any client (`settings/set`), which keep it here.
+   */
+  home?: string;
+  /**
+   * What every client calls this PC (shared setting `name`, architecture/02a
+   * §5.8.17). Absent → the machine's own name. Edited with `uxnan-bridge
+   * config set name <name>` or from any client (`settings/set`).
+   */
+  name?: string;
   /**
    * Where `git/createWorktree` puts a worktree when the client does not name a
    * path. Mirrors the desktop's Settings → Git so one repository's checkouts
@@ -157,6 +180,7 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   lanEnabled: true,
   lanPort: DEFAULT_LAN_PORT,
   mdnsEnabled: true,
+  localControlEnabled: true,
   pushEnabled: true,
   pushOnAgentDone: true,
   pushOnAgentError: true,

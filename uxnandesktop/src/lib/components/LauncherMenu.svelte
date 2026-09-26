@@ -22,6 +22,10 @@
   import GitBranchPlusIcon from "@hugeicons/core-free-icons/GitBranchPlusIcon";
   import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
+  import BubbleChatIcon from "@hugeicons/core-free-icons/BubbleChatIcon";
+  import { LOCAL_TARGET } from "$lib/target";
+  import { chat } from "$lib/bridge/chat.svelte";
 
   let {
     repo,
@@ -50,6 +54,15 @@
   const agents = $derived(app.launchableAgentsOn(keyTarget(target?.path ?? repo.path)));
   const profiles = $derived(app.terminalProfiles);
   const browserEnabled = $derived(app.settings.browser?.enabled ?? true);
+  // A chat is a conversation the local bridge drives, so it is offered for a
+  // folder on this machine only. The newest ones in this folder are listed too
+  // — a conversation started on the phone included.
+  const chatLocal = $derived(!!target && keyTarget(target.path) === LOCAL_TARGET);
+  const recentChats = $derived(
+    target && chatLocal
+      ? chat.threadsFor(target.path).filter((t) => t.status !== "archived").slice(0, 3)
+      : [],
+  );
 
   // Targets to launch into: the project's worktrees (primary first). A non-git
   // folder has none, so it's its own single target.
@@ -113,6 +126,32 @@
             <DropdownMenu.Item class={text.menu} onclick={() => projects.launchAgentAt(t.path, agent)}>
               <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
               {agent.name.trim() || agent.command}
+            </DropdownMenu.Item>
+          {/each}
+        </DropdownMenu.Group>
+      {/if}
+
+      {#if chatLocal}
+        <DropdownMenu.Separator />
+        <DropdownMenu.Group>
+          <DropdownMenu.GroupHeading class={text.menuLabel}>
+            {i18n.t("launcher.sectionChat")}
+          </DropdownMenu.GroupHeading>
+          <DropdownMenu.Item
+            class={text.menu}
+            title={i18n.t("launcher.newChatDesc")}
+            onclick={() => projects.openChatAt(t.path)}
+          >
+            <Icon icon={BubbleChatAddIcon} class={icon.button} />
+            {i18n.t("launcher.newChat")}
+          </DropdownMenu.Item>
+          {#each recentChats as thread (thread.id)}
+            <DropdownMenu.Item
+              class={text.menu}
+              onclick={() => projects.openChatAt(t.path, { threadId: thread.id })}
+            >
+              <Icon icon={BubbleChatIcon} class={cn(icon.button, "text-muted-foreground")} />
+              <span class="min-w-0 flex-1 truncate">{thread.title}</span>
             </DropdownMenu.Item>
           {/each}
         </DropdownMenu.Group>

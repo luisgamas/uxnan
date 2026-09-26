@@ -43,7 +43,14 @@ pub async fn update_settings(
     // Keep the resource monitor's cadence in step (no-op unless the resource
     // settings actually changed — this command fires for every settings write).
     state.resources.apply_settings(&data.settings.resources);
-    Ok(data.clone())
+    // Same for the bridge connection: a no-op unless the mode changed.
+    state.bridge.set_mode(data.settings.bridge.mode);
+    let tools_enabled = data.settings.browser.mcp_enabled;
+    let snapshot = data.clone();
+    // Never hold the settings lock across a call to the bridge.
+    drop(data);
+    state.bridge.set_tools_enabled(tools_enabled).await;
+    Ok(snapshot)
 }
 
 /// Merge a settings payload from the UI over what is already stored, keeping the
@@ -898,14 +905,16 @@ pub async fn pty_paste_submit(
     Ok(())
 }
 
-/// Return the subset of `commands` that resolve to an installed executable
-/// (PATH + PATHEXT). Used by the Settings agent catalog to enable only the
-/// agents actually present on the machine.
+/// Return the subset of `commands` that are installed. Used by the Settings
+/// agent catalog to enable only the agents actually present on the machine. A
+/// known agent CLI is found with the rule shared with the bridge
+/// (`agentcli::command_installed` — npm installs `PATH` does not show
+/// included); any other command by `PATH` (+ `PATHEXT`).
 #[tauri::command]
 pub async fn agents_detect(commands: Vec<String>) -> Result<Vec<String>, CommandError> {
     Ok(commands
         .into_iter()
-        .filter(|c| crate::which::is_command_available(c))
+        .filter(|c| crate::agentcli::command_installed(c))
         .collect())
 }
 

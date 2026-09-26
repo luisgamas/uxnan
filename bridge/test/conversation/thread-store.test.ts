@@ -604,6 +604,51 @@ test('rename/archive/unarchive update the thread; delete removes it', async () =
   await rmrf(baseDir);
 });
 
+test('an offline rename loses to a later one made elsewhere, and wins over an earlier one', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', title: 'Orig' }, 1);
+  // The desktop renames at 50; the phone renamed offline at 30 and sends it at 100.
+  await store.renameThread(thread.id, 'Desktop', 50);
+  const stale = await store.renameThread(thread.id, 'Phone', 100, 'user', 30);
+  assert.equal(stale.title, 'Desktop');
+  // A phone rename decided at 70, after the desktop's, wins — dated when it was
+  // decided, so the list does not treat it as activity at 100.
+  const later = await store.renameThread(thread.id, 'Phone later', 100, 'user', 70);
+  assert.equal(later.title, 'Phone later');
+  assert.equal(later.updatedAt, 70);
+  // A generated title never dates a decision: a user rename queued before it
+  // still lands afterwards.
+  const other = await store.startThread({ projectId: 'p', title: 'New thread' }, 1);
+  await store.renameThread(other.id, 'Draft', 5, 'prompt');
+  await store.applyGeneratedTitle(other.id, 'Generated', 40);
+  const hand = await store.renameThread(other.id, 'Mine', 100, 'user', 20);
+  assert.equal(hand.title, 'Mine');
+  await rmrf(baseDir);
+});
+
+test('the latest archive or unarchive wins, whichever client sent it last', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await store.archiveThread(thread.id, 40);
+  // Unarchived offline at 20, sent at 90: the archive at 40 is newer.
+  assert.equal((await store.unarchiveThread(thread.id, 90, 20)).status, 'archived');
+  // Unarchived offline at 60: newer than the archive.
+  assert.equal((await store.unarchiveThread(thread.id, 90, 60)).status, 'active');
+  await rmrf(baseDir);
+});
+
+test('an offline delete never removes work done after it was decided', async () => {
+  const { store, baseDir } = newStore();
+  const kept = await store.startThread({ projectId: 'p' }, 1);
+  await store.startTurn(kept.id, 'more work on the desktop', 50);
+  assert.equal(await store.deleteThread(kept.id, 30), false);
+  assert.equal((await store.listThreads('p')).threads.length, 1);
+  // Decided after the last activity: it goes.
+  assert.equal(await store.deleteThread(kept.id, 60), true);
+  assert.equal((await store.listThreads('p')).threads.length, 0);
+  await rmrf(baseDir);
+});
+
 test('rename/archive/unarchive/delete reject unknown ids', async () => {
   const { store, baseDir } = newStore();
   await assert.rejects(store.renameThread('nope', 'x', 1), RpcError);
@@ -827,5 +872,54 @@ test('an aborted turn does not accept late output either', async () => {
   assert.equal(turn.status, 'aborted');
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'partial');
+  await rmrf(baseDir);
+});
+
+test('a settled step replaces the running one in place, in blocks and segments', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  const running = { type: 'command_execution', command: 'ls', status: 'running', blockId: 'c1' };
+  await store.appendBlock(thread.id, turnId, running, 3);
+  await store.appendDelta(thread.id, turnId, 'Listing done.', 4);
+  const done = { ...running, status: 'completed', output: 'a.txt' };
+  await store.appendBlock(thread.id, turnId, done, 5);
+  await store.completeTurn(thread.id, turnId, undefined, 6);
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.blocks, [done]);
+  assert.deepEqual(assistant?.segments, [done, { type: 'text', text: 'Listing done.' }]);
+  await rmrf(baseDir);
+});
+
+test('a turn that ends settles the steps its agent left running', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const completed = await store.startTurn(thread.id, 'one', 2);
+  await store.appendBlock(
+    thread.id,
+    completed.turnId,
+    { type: 'tool', toolName: 'Read', status: 'running', blockId: 't1', isError: false },
+    3,
+  );
+  await store.completeTurn(thread.id, completed.turnId, undefined, 4);
+  const stopped = await store.startTurn(thread.id, 'two', 5);
+  await store.appendBlock(
+    thread.id,
+    stopped.turnId,
+    { type: 'subagent', blockId: 's1', state: { id: 's1', name: 'Audit', status: 'running' } },
+    6,
+  );
+  await store.abortTurn(thread.id, stopped.turnId, 7);
+
+  const blocksOf = async (turnId: string) =>
+    (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant')?.blocks;
+  assert.deepEqual(await blocksOf(completed.turnId), [
+    { type: 'tool', toolName: 'Read', blockId: 't1', isError: false },
+  ]);
+  assert.deepEqual(await blocksOf(stopped.turnId), [
+    { type: 'subagent', blockId: 's1', state: { id: 's1', name: 'Audit', status: 'error' } },
+  ]);
   await rmrf(baseDir);
 });

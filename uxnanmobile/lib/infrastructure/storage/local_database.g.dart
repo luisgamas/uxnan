@@ -76,6 +76,18 @@ class $ThreadsTableTable extends ThreadsTable
   late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
       'created_at_ms', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _originKindMeta =
+      const VerificationMeta('originKind');
+  @override
+  late final GeneratedColumn<String> originKind = GeneratedColumn<String>(
+      'origin_kind', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _originNameMeta =
+      const VerificationMeta('originName');
+  @override
+  late final GeneratedColumn<String> originName = GeneratedColumn<String>(
+      'origin_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -89,7 +101,9 @@ class $ThreadsTableTable extends ThreadsTable
         syncState,
         status,
         lastActivityMs,
-        createdAtMs
+        createdAtMs,
+        originKind,
+        originName
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -166,6 +180,18 @@ class $ThreadsTableTable extends ThreadsTable
     } else if (isInserting) {
       context.missing(_createdAtMsMeta);
     }
+    if (data.containsKey('origin_kind')) {
+      context.handle(
+          _originKindMeta,
+          originKind.isAcceptableOrUnknown(
+              data['origin_kind']!, _originKindMeta));
+    }
+    if (data.containsKey('origin_name')) {
+      context.handle(
+          _originNameMeta,
+          originName.isAcceptableOrUnknown(
+              data['origin_name']!, _originNameMeta));
+    }
     return context;
   }
 
@@ -199,6 +225,10 @@ class $ThreadsTableTable extends ThreadsTable
           .read(DriftSqlType.int, data['${effectivePrefix}last_activity_ms']),
       createdAtMs: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}created_at_ms'])!,
+      originKind: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}origin_kind']),
+      originName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}origin_name']),
     );
   }
 
@@ -245,6 +275,12 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
 
   /// Row creation timestamp in epoch milliseconds.
   final int createdAtMs;
+
+  /// Where the conversation was started (`phone` / `desktop`), if known.
+  final String? originKind;
+
+  /// The name of the device that started it, if known.
+  final String? originName;
   const ThreadRow(
       {required this.id,
       required this.title,
@@ -257,7 +293,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       required this.syncState,
       required this.status,
       this.lastActivityMs,
-      required this.createdAtMs});
+      required this.createdAtMs,
+      this.originKind,
+      this.originName});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -285,6 +323,12 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       map['last_activity_ms'] = Variable<int>(lastActivityMs);
     }
     map['created_at_ms'] = Variable<int>(createdAtMs);
+    if (!nullToAbsent || originKind != null) {
+      map['origin_kind'] = Variable<String>(originKind);
+    }
+    if (!nullToAbsent || originName != null) {
+      map['origin_name'] = Variable<String>(originName);
+    }
     return map;
   }
 
@@ -311,6 +355,12 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ? const Value.absent()
           : Value(lastActivityMs),
       createdAtMs: Value(createdAtMs),
+      originKind: originKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originKind),
+      originName: originName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originName),
     );
   }
 
@@ -330,6 +380,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       status: serializer.fromJson<String>(json['status']),
       lastActivityMs: serializer.fromJson<int?>(json['lastActivityMs']),
       createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+      originKind: serializer.fromJson<String?>(json['originKind']),
+      originName: serializer.fromJson<String?>(json['originName']),
     );
   }
   @override
@@ -348,6 +400,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       'status': serializer.toJson<String>(status),
       'lastActivityMs': serializer.toJson<int?>(lastActivityMs),
       'createdAtMs': serializer.toJson<int>(createdAtMs),
+      'originKind': serializer.toJson<String?>(originKind),
+      'originName': serializer.toJson<String?>(originName),
     };
   }
 
@@ -363,7 +417,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           String? syncState,
           String? status,
           Value<int?> lastActivityMs = const Value.absent(),
-          int? createdAtMs}) =>
+          int? createdAtMs,
+          Value<String?> originKind = const Value.absent(),
+          Value<String?> originName = const Value.absent()}) =>
       ThreadRow(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -379,6 +435,8 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
         lastActivityMs:
             lastActivityMs.present ? lastActivityMs.value : this.lastActivityMs,
         createdAtMs: createdAtMs ?? this.createdAtMs,
+        originKind: originKind.present ? originKind.value : this.originKind,
+        originName: originName.present ? originName.value : this.originName,
       );
   ThreadRow copyWithCompanion(ThreadsTableCompanion data) {
     return ThreadRow(
@@ -399,6 +457,10 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           : this.lastActivityMs,
       createdAtMs:
           data.createdAtMs.present ? data.createdAtMs.value : this.createdAtMs,
+      originKind:
+          data.originKind.present ? data.originKind.value : this.originKind,
+      originName:
+          data.originName.present ? data.originName.value : this.originName,
     );
   }
 
@@ -416,7 +478,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           ..write('syncState: $syncState, ')
           ..write('status: $status, ')
           ..write('lastActivityMs: $lastActivityMs, ')
-          ..write('createdAtMs: $createdAtMs')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('originKind: $originKind, ')
+          ..write('originName: $originName')
           ..write(')'))
         .toString();
   }
@@ -434,7 +498,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
       syncState,
       status,
       lastActivityMs,
-      createdAtMs);
+      createdAtMs,
+      originKind,
+      originName);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -450,7 +516,9 @@ class ThreadRow extends DataClass implements Insertable<ThreadRow> {
           other.syncState == this.syncState &&
           other.status == this.status &&
           other.lastActivityMs == this.lastActivityMs &&
-          other.createdAtMs == this.createdAtMs);
+          other.createdAtMs == this.createdAtMs &&
+          other.originKind == this.originKind &&
+          other.originName == this.originName);
 }
 
 class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
@@ -466,6 +534,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
   final Value<String> status;
   final Value<int?> lastActivityMs;
   final Value<int> createdAtMs;
+  final Value<String?> originKind;
+  final Value<String?> originName;
   final Value<int> rowid;
   const ThreadsTableCompanion({
     this.id = const Value.absent(),
@@ -480,6 +550,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     this.status = const Value.absent(),
     this.lastActivityMs = const Value.absent(),
     this.createdAtMs = const Value.absent(),
+    this.originKind = const Value.absent(),
+    this.originName = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ThreadsTableCompanion.insert({
@@ -495,6 +567,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     required String status,
     this.lastActivityMs = const Value.absent(),
     required int createdAtMs,
+    this.originKind = const Value.absent(),
+    this.originName = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         title = Value(title),
@@ -515,6 +589,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     Expression<String>? status,
     Expression<int>? lastActivityMs,
     Expression<int>? createdAtMs,
+    Expression<String>? originKind,
+    Expression<String>? originName,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -530,6 +606,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       if (status != null) 'status': status,
       if (lastActivityMs != null) 'last_activity_ms': lastActivityMs,
       if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (originKind != null) 'origin_kind': originKind,
+      if (originName != null) 'origin_name': originName,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -547,6 +625,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       Value<String>? status,
       Value<int?>? lastActivityMs,
       Value<int>? createdAtMs,
+      Value<String?>? originKind,
+      Value<String?>? originName,
       Value<int>? rowid}) {
     return ThreadsTableCompanion(
       id: id ?? this.id,
@@ -561,6 +641,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
       status: status ?? this.status,
       lastActivityMs: lastActivityMs ?? this.lastActivityMs,
       createdAtMs: createdAtMs ?? this.createdAtMs,
+      originKind: originKind ?? this.originKind,
+      originName: originName ?? this.originName,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -604,6 +686,12 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
     if (createdAtMs.present) {
       map['created_at_ms'] = Variable<int>(createdAtMs.value);
     }
+    if (originKind.present) {
+      map['origin_kind'] = Variable<String>(originKind.value);
+    }
+    if (originName.present) {
+      map['origin_name'] = Variable<String>(originName.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -625,6 +713,8 @@ class ThreadsTableCompanion extends UpdateCompanion<ThreadRow> {
           ..write('status: $status, ')
           ..write('lastActivityMs: $lastActivityMs, ')
           ..write('createdAtMs: $createdAtMs, ')
+          ..write('originKind: $originKind, ')
+          ..write('originName: $originName, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1610,16 +1700,21 @@ class $ProjectsTableTable extends ProjectsTable
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
   $ProjectsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deviceIdMeta =
+      const VerificationMeta('deviceId');
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+      'device_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
       'id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _displayNameMeta =
-      const VerificationMeta('displayName');
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
-  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
-      'display_name', aliasedName, false,
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _cwdMeta = const VerificationMeta('cwd');
   @override
@@ -1630,23 +1725,16 @@ class $ProjectsTableTable extends ProjectsTable
       const VerificationMeta('agentId');
   @override
   late final GeneratedColumn<String> agentId = GeneratedColumn<String>(
-      'agent_id', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _agentConfigJsonMeta =
-      const VerificationMeta('agentConfigJson');
+      'agent_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
   @override
-  late final GeneratedColumn<String> agentConfigJson = GeneratedColumn<String>(
-      'agent_config_json', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _lastActiveMsMeta =
-      const VerificationMeta('lastActiveMs');
-  @override
-  late final GeneratedColumn<int> lastActiveMs = GeneratedColumn<int>(
-      'last_active_ms', aliasedName, true,
-      type: DriftSqlType.int, requiredDuringInsert: false);
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+      'source', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, displayName, cwd, agentId, agentConfigJson, lastActiveMs];
+      [deviceId, id, name, cwd, agentId, source];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1657,18 +1745,22 @@ class $ProjectsTableTable extends ProjectsTable
       {bool isInserting = false}) {
     final context = VerificationContext();
     final data = instance.toColumns(true);
+    if (data.containsKey('device_id')) {
+      context.handle(_deviceIdMeta,
+          deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta));
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
     }
-    if (data.containsKey('display_name')) {
+    if (data.containsKey('name')) {
       context.handle(
-          _displayNameMeta,
-          displayName.isAcceptableOrUnknown(
-              data['display_name']!, _displayNameMeta));
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
     } else if (isInserting) {
-      context.missing(_displayNameMeta);
+      context.missing(_nameMeta);
     }
     if (data.containsKey('cwd')) {
       context.handle(
@@ -1679,44 +1771,32 @@ class $ProjectsTableTable extends ProjectsTable
     if (data.containsKey('agent_id')) {
       context.handle(_agentIdMeta,
           agentId.isAcceptableOrUnknown(data['agent_id']!, _agentIdMeta));
-    } else if (isInserting) {
-      context.missing(_agentIdMeta);
     }
-    if (data.containsKey('agent_config_json')) {
-      context.handle(
-          _agentConfigJsonMeta,
-          agentConfigJson.isAcceptableOrUnknown(
-              data['agent_config_json']!, _agentConfigJsonMeta));
-    } else if (isInserting) {
-      context.missing(_agentConfigJsonMeta);
-    }
-    if (data.containsKey('last_active_ms')) {
-      context.handle(
-          _lastActiveMsMeta,
-          lastActiveMs.isAcceptableOrUnknown(
-              data['last_active_ms']!, _lastActiveMsMeta));
+    if (data.containsKey('source')) {
+      context.handle(_sourceMeta,
+          source.isAcceptableOrUnknown(data['source']!, _sourceMeta));
     }
     return context;
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {id};
+  Set<GeneratedColumn> get $primaryKey => {deviceId, id};
   @override
   ProjectRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return ProjectRow(
+      deviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
-      displayName: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}display_name'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       cwd: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}cwd'])!,
       agentId: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}agent_id'])!,
-      agentConfigJson: attachedDatabase.typeMapping.read(
-          DriftSqlType.string, data['${effectivePrefix}agent_config_json'])!,
-      lastActiveMs: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}last_active_ms']),
+          .read(DriftSqlType.string, data['${effectivePrefix}agent_id']),
+      source: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}source']),
     );
   }
 
@@ -1727,54 +1807,57 @@ class $ProjectsTableTable extends ProjectsTable
 }
 
 class ProjectRow extends DataClass implements Insertable<ProjectRow> {
-  /// Unique project id (primary key).
+  /// `macDeviceId` of the PC whose registry this entry belongs to.
+  final String deviceId;
+
+  /// The bridge's project id.
   final String id;
 
-  /// Human readable project name.
-  final String displayName;
+  /// Display name.
+  final String name;
 
-  /// Project working directory on the PC.
+  /// Folder on the PC.
   final String cwd;
 
-  /// Wire identifier of the configured agent.
-  final String agentId;
+  /// Pinned agent wire id, if any.
+  final String? agentId;
 
-  /// `AgentConfig` serialized as JSON.
-  final String agentConfigJson;
-
-  /// Last active timestamp in epoch milliseconds, if any.
-  final int? lastActiveMs;
+  /// How it entered the registry (`user`, `desktop`, `thread`, `config`).
+  final String? source;
   const ProjectRow(
-      {required this.id,
-      required this.displayName,
+      {required this.deviceId,
+      required this.id,
+      required this.name,
       required this.cwd,
-      required this.agentId,
-      required this.agentConfigJson,
-      this.lastActiveMs});
+      this.agentId,
+      this.source});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    map['device_id'] = Variable<String>(deviceId);
     map['id'] = Variable<String>(id);
-    map['display_name'] = Variable<String>(displayName);
+    map['name'] = Variable<String>(name);
     map['cwd'] = Variable<String>(cwd);
-    map['agent_id'] = Variable<String>(agentId);
-    map['agent_config_json'] = Variable<String>(agentConfigJson);
-    if (!nullToAbsent || lastActiveMs != null) {
-      map['last_active_ms'] = Variable<int>(lastActiveMs);
+    if (!nullToAbsent || agentId != null) {
+      map['agent_id'] = Variable<String>(agentId);
+    }
+    if (!nullToAbsent || source != null) {
+      map['source'] = Variable<String>(source);
     }
     return map;
   }
 
   ProjectsTableCompanion toCompanion(bool nullToAbsent) {
     return ProjectsTableCompanion(
+      deviceId: Value(deviceId),
       id: Value(id),
-      displayName: Value(displayName),
+      name: Value(name),
       cwd: Value(cwd),
-      agentId: Value(agentId),
-      agentConfigJson: Value(agentConfigJson),
-      lastActiveMs: lastActiveMs == null && nullToAbsent
+      agentId: agentId == null && nullToAbsent
           ? const Value.absent()
-          : Value(lastActiveMs),
+          : Value(agentId),
+      source:
+          source == null && nullToAbsent ? const Value.absent() : Value(source),
     );
   }
 
@@ -1782,152 +1865,144 @@ class ProjectRow extends DataClass implements Insertable<ProjectRow> {
       {ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ProjectRow(
+      deviceId: serializer.fromJson<String>(json['deviceId']),
       id: serializer.fromJson<String>(json['id']),
-      displayName: serializer.fromJson<String>(json['displayName']),
+      name: serializer.fromJson<String>(json['name']),
       cwd: serializer.fromJson<String>(json['cwd']),
-      agentId: serializer.fromJson<String>(json['agentId']),
-      agentConfigJson: serializer.fromJson<String>(json['agentConfigJson']),
-      lastActiveMs: serializer.fromJson<int?>(json['lastActiveMs']),
+      agentId: serializer.fromJson<String?>(json['agentId']),
+      source: serializer.fromJson<String?>(json['source']),
     );
   }
   @override
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
+      'deviceId': serializer.toJson<String>(deviceId),
       'id': serializer.toJson<String>(id),
-      'displayName': serializer.toJson<String>(displayName),
+      'name': serializer.toJson<String>(name),
       'cwd': serializer.toJson<String>(cwd),
-      'agentId': serializer.toJson<String>(agentId),
-      'agentConfigJson': serializer.toJson<String>(agentConfigJson),
-      'lastActiveMs': serializer.toJson<int?>(lastActiveMs),
+      'agentId': serializer.toJson<String?>(agentId),
+      'source': serializer.toJson<String?>(source),
     };
   }
 
   ProjectRow copyWith(
-          {String? id,
-          String? displayName,
+          {String? deviceId,
+          String? id,
+          String? name,
           String? cwd,
-          String? agentId,
-          String? agentConfigJson,
-          Value<int?> lastActiveMs = const Value.absent()}) =>
+          Value<String?> agentId = const Value.absent(),
+          Value<String?> source = const Value.absent()}) =>
       ProjectRow(
+        deviceId: deviceId ?? this.deviceId,
         id: id ?? this.id,
-        displayName: displayName ?? this.displayName,
+        name: name ?? this.name,
         cwd: cwd ?? this.cwd,
-        agentId: agentId ?? this.agentId,
-        agentConfigJson: agentConfigJson ?? this.agentConfigJson,
-        lastActiveMs:
-            lastActiveMs.present ? lastActiveMs.value : this.lastActiveMs,
+        agentId: agentId.present ? agentId.value : this.agentId,
+        source: source.present ? source.value : this.source,
       );
   ProjectRow copyWithCompanion(ProjectsTableCompanion data) {
     return ProjectRow(
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       id: data.id.present ? data.id.value : this.id,
-      displayName:
-          data.displayName.present ? data.displayName.value : this.displayName,
+      name: data.name.present ? data.name.value : this.name,
       cwd: data.cwd.present ? data.cwd.value : this.cwd,
       agentId: data.agentId.present ? data.agentId.value : this.agentId,
-      agentConfigJson: data.agentConfigJson.present
-          ? data.agentConfigJson.value
-          : this.agentConfigJson,
-      lastActiveMs: data.lastActiveMs.present
-          ? data.lastActiveMs.value
-          : this.lastActiveMs,
+      source: data.source.present ? data.source.value : this.source,
     );
   }
 
   @override
   String toString() {
     return (StringBuffer('ProjectRow(')
+          ..write('deviceId: $deviceId, ')
           ..write('id: $id, ')
-          ..write('displayName: $displayName, ')
+          ..write('name: $name, ')
           ..write('cwd: $cwd, ')
           ..write('agentId: $agentId, ')
-          ..write('agentConfigJson: $agentConfigJson, ')
-          ..write('lastActiveMs: $lastActiveMs')
+          ..write('source: $source')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, displayName, cwd, agentId, agentConfigJson, lastActiveMs);
+  int get hashCode => Object.hash(deviceId, id, name, cwd, agentId, source);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ProjectRow &&
+          other.deviceId == this.deviceId &&
           other.id == this.id &&
-          other.displayName == this.displayName &&
+          other.name == this.name &&
           other.cwd == this.cwd &&
           other.agentId == this.agentId &&
-          other.agentConfigJson == this.agentConfigJson &&
-          other.lastActiveMs == this.lastActiveMs);
+          other.source == this.source);
 }
 
 class ProjectsTableCompanion extends UpdateCompanion<ProjectRow> {
+  final Value<String> deviceId;
   final Value<String> id;
-  final Value<String> displayName;
+  final Value<String> name;
   final Value<String> cwd;
-  final Value<String> agentId;
-  final Value<String> agentConfigJson;
-  final Value<int?> lastActiveMs;
+  final Value<String?> agentId;
+  final Value<String?> source;
   final Value<int> rowid;
   const ProjectsTableCompanion({
+    this.deviceId = const Value.absent(),
     this.id = const Value.absent(),
-    this.displayName = const Value.absent(),
+    this.name = const Value.absent(),
     this.cwd = const Value.absent(),
     this.agentId = const Value.absent(),
-    this.agentConfigJson = const Value.absent(),
-    this.lastActiveMs = const Value.absent(),
+    this.source = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProjectsTableCompanion.insert({
+    required String deviceId,
     required String id,
-    required String displayName,
+    required String name,
     required String cwd,
-    required String agentId,
-    required String agentConfigJson,
-    this.lastActiveMs = const Value.absent(),
+    this.agentId = const Value.absent(),
+    this.source = const Value.absent(),
     this.rowid = const Value.absent(),
-  })  : id = Value(id),
-        displayName = Value(displayName),
-        cwd = Value(cwd),
-        agentId = Value(agentId),
-        agentConfigJson = Value(agentConfigJson);
+  })  : deviceId = Value(deviceId),
+        id = Value(id),
+        name = Value(name),
+        cwd = Value(cwd);
   static Insertable<ProjectRow> custom({
+    Expression<String>? deviceId,
     Expression<String>? id,
-    Expression<String>? displayName,
+    Expression<String>? name,
     Expression<String>? cwd,
     Expression<String>? agentId,
-    Expression<String>? agentConfigJson,
-    Expression<int>? lastActiveMs,
+    Expression<String>? source,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
+      if (deviceId != null) 'device_id': deviceId,
       if (id != null) 'id': id,
-      if (displayName != null) 'display_name': displayName,
+      if (name != null) 'name': name,
       if (cwd != null) 'cwd': cwd,
       if (agentId != null) 'agent_id': agentId,
-      if (agentConfigJson != null) 'agent_config_json': agentConfigJson,
-      if (lastActiveMs != null) 'last_active_ms': lastActiveMs,
+      if (source != null) 'source': source,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   ProjectsTableCompanion copyWith(
-      {Value<String>? id,
-      Value<String>? displayName,
+      {Value<String>? deviceId,
+      Value<String>? id,
+      Value<String>? name,
       Value<String>? cwd,
-      Value<String>? agentId,
-      Value<String>? agentConfigJson,
-      Value<int?>? lastActiveMs,
+      Value<String?>? agentId,
+      Value<String?>? source,
       Value<int>? rowid}) {
     return ProjectsTableCompanion(
+      deviceId: deviceId ?? this.deviceId,
       id: id ?? this.id,
-      displayName: displayName ?? this.displayName,
+      name: name ?? this.name,
       cwd: cwd ?? this.cwd,
       agentId: agentId ?? this.agentId,
-      agentConfigJson: agentConfigJson ?? this.agentConfigJson,
-      lastActiveMs: lastActiveMs ?? this.lastActiveMs,
+      source: source ?? this.source,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1935,11 +2010,14 @@ class ProjectsTableCompanion extends UpdateCompanion<ProjectRow> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
-    if (displayName.present) {
-      map['display_name'] = Variable<String>(displayName.value);
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
     }
     if (cwd.present) {
       map['cwd'] = Variable<String>(cwd.value);
@@ -1947,11 +2025,8 @@ class ProjectsTableCompanion extends UpdateCompanion<ProjectRow> {
     if (agentId.present) {
       map['agent_id'] = Variable<String>(agentId.value);
     }
-    if (agentConfigJson.present) {
-      map['agent_config_json'] = Variable<String>(agentConfigJson.value);
-    }
-    if (lastActiveMs.present) {
-      map['last_active_ms'] = Variable<int>(lastActiveMs.value);
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -1962,12 +2037,12 @@ class ProjectsTableCompanion extends UpdateCompanion<ProjectRow> {
   @override
   String toString() {
     return (StringBuffer('ProjectsTableCompanion(')
+          ..write('deviceId: $deviceId, ')
           ..write('id: $id, ')
-          ..write('displayName: $displayName, ')
+          ..write('name: $name, ')
           ..write('cwd: $cwd, ')
           ..write('agentId: $agentId, ')
-          ..write('agentConfigJson: $agentConfigJson, ')
-          ..write('lastActiveMs: $lastActiveMs, ')
+          ..write('source: $source, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3620,6 +3695,631 @@ class ConnectionSessionsTableCompanion
   }
 }
 
+class $ReplicaCursorsTableTable extends ReplicaCursorsTable
+    with TableInfo<$ReplicaCursorsTableTable, ReplicaCursorRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReplicaCursorsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deviceIdMeta =
+      const VerificationMeta('deviceId');
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+      'device_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _storeIdMeta =
+      const VerificationMeta('storeId');
+  @override
+  late final GeneratedColumn<String> storeId = GeneratedColumn<String>(
+      'store_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _revMeta = const VerificationMeta('rev');
+  @override
+  late final GeneratedColumn<int> rev = GeneratedColumn<int>(
+      'rev', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _homeMeta = const VerificationMeta('home');
+  @override
+  late final GeneratedColumn<String> home = GeneratedColumn<String>(
+      'home', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [deviceId, storeId, rev, home];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'replica_cursors_table';
+  @override
+  VerificationContext validateIntegrity(Insertable<ReplicaCursorRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('device_id')) {
+      context.handle(_deviceIdMeta,
+          deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta));
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    if (data.containsKey('store_id')) {
+      context.handle(_storeIdMeta,
+          storeId.isAcceptableOrUnknown(data['store_id']!, _storeIdMeta));
+    } else if (isInserting) {
+      context.missing(_storeIdMeta);
+    }
+    if (data.containsKey('rev')) {
+      context.handle(
+          _revMeta, rev.isAcceptableOrUnknown(data['rev']!, _revMeta));
+    } else if (isInserting) {
+      context.missing(_revMeta);
+    }
+    if (data.containsKey('home')) {
+      context.handle(
+          _homeMeta, home.isAcceptableOrUnknown(data['home']!, _homeMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deviceId};
+  @override
+  ReplicaCursorRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReplicaCursorRow(
+      deviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
+      storeId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}store_id'])!,
+      rev: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}rev'])!,
+      home: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}home']),
+    );
+  }
+
+  @override
+  $ReplicaCursorsTableTable createAlias(String alias) {
+    return $ReplicaCursorsTableTable(attachedDatabase, alias);
+  }
+}
+
+class ReplicaCursorRow extends DataClass
+    implements Insertable<ReplicaCursorRow> {
+  /// `macDeviceId` of the PC.
+  final String deviceId;
+
+  /// The bridge's state-directory identity the revision belongs to.
+  final String storeId;
+
+  /// The last sync revision applied.
+  final int rev;
+
+  /// The PC's shared start folder, when known.
+  final String? home;
+  const ReplicaCursorRow(
+      {required this.deviceId,
+      required this.storeId,
+      required this.rev,
+      this.home});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['device_id'] = Variable<String>(deviceId);
+    map['store_id'] = Variable<String>(storeId);
+    map['rev'] = Variable<int>(rev);
+    if (!nullToAbsent || home != null) {
+      map['home'] = Variable<String>(home);
+    }
+    return map;
+  }
+
+  ReplicaCursorsTableCompanion toCompanion(bool nullToAbsent) {
+    return ReplicaCursorsTableCompanion(
+      deviceId: Value(deviceId),
+      storeId: Value(storeId),
+      rev: Value(rev),
+      home: home == null && nullToAbsent ? const Value.absent() : Value(home),
+    );
+  }
+
+  factory ReplicaCursorRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReplicaCursorRow(
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+      storeId: serializer.fromJson<String>(json['storeId']),
+      rev: serializer.fromJson<int>(json['rev']),
+      home: serializer.fromJson<String?>(json['home']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deviceId': serializer.toJson<String>(deviceId),
+      'storeId': serializer.toJson<String>(storeId),
+      'rev': serializer.toJson<int>(rev),
+      'home': serializer.toJson<String?>(home),
+    };
+  }
+
+  ReplicaCursorRow copyWith(
+          {String? deviceId,
+          String? storeId,
+          int? rev,
+          Value<String?> home = const Value.absent()}) =>
+      ReplicaCursorRow(
+        deviceId: deviceId ?? this.deviceId,
+        storeId: storeId ?? this.storeId,
+        rev: rev ?? this.rev,
+        home: home.present ? home.value : this.home,
+      );
+  ReplicaCursorRow copyWithCompanion(ReplicaCursorsTableCompanion data) {
+    return ReplicaCursorRow(
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      storeId: data.storeId.present ? data.storeId.value : this.storeId,
+      rev: data.rev.present ? data.rev.value : this.rev,
+      home: data.home.present ? data.home.value : this.home,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReplicaCursorRow(')
+          ..write('deviceId: $deviceId, ')
+          ..write('storeId: $storeId, ')
+          ..write('rev: $rev, ')
+          ..write('home: $home')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(deviceId, storeId, rev, home);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReplicaCursorRow &&
+          other.deviceId == this.deviceId &&
+          other.storeId == this.storeId &&
+          other.rev == this.rev &&
+          other.home == this.home);
+}
+
+class ReplicaCursorsTableCompanion extends UpdateCompanion<ReplicaCursorRow> {
+  final Value<String> deviceId;
+  final Value<String> storeId;
+  final Value<int> rev;
+  final Value<String?> home;
+  final Value<int> rowid;
+  const ReplicaCursorsTableCompanion({
+    this.deviceId = const Value.absent(),
+    this.storeId = const Value.absent(),
+    this.rev = const Value.absent(),
+    this.home = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ReplicaCursorsTableCompanion.insert({
+    required String deviceId,
+    required String storeId,
+    required int rev,
+    this.home = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : deviceId = Value(deviceId),
+        storeId = Value(storeId),
+        rev = Value(rev);
+  static Insertable<ReplicaCursorRow> custom({
+    Expression<String>? deviceId,
+    Expression<String>? storeId,
+    Expression<int>? rev,
+    Expression<String>? home,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deviceId != null) 'device_id': deviceId,
+      if (storeId != null) 'store_id': storeId,
+      if (rev != null) 'rev': rev,
+      if (home != null) 'home': home,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ReplicaCursorsTableCompanion copyWith(
+      {Value<String>? deviceId,
+      Value<String>? storeId,
+      Value<int>? rev,
+      Value<String?>? home,
+      Value<int>? rowid}) {
+    return ReplicaCursorsTableCompanion(
+      deviceId: deviceId ?? this.deviceId,
+      storeId: storeId ?? this.storeId,
+      rev: rev ?? this.rev,
+      home: home ?? this.home,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (storeId.present) {
+      map['store_id'] = Variable<String>(storeId.value);
+    }
+    if (rev.present) {
+      map['rev'] = Variable<int>(rev.value);
+    }
+    if (home.present) {
+      map['home'] = Variable<String>(home.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReplicaCursorsTableCompanion(')
+          ..write('deviceId: $deviceId, ')
+          ..write('storeId: $storeId, ')
+          ..write('rev: $rev, ')
+          ..write('home: $home, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PendingActionsTableTable extends PendingActionsTable
+    with TableInfo<$PendingActionsTableTable, PendingActionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingActionsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _deviceIdMeta =
+      const VerificationMeta('deviceId');
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+      'device_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+      'kind', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _targetIdMeta =
+      const VerificationMeta('targetId');
+  @override
+  late final GeneratedColumn<String> targetId = GeneratedColumn<String>(
+      'target_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+      'value', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _decidedAtMeta =
+      const VerificationMeta('decidedAt');
+  @override
+  late final GeneratedColumn<DateTime> decidedAt = GeneratedColumn<DateTime>(
+      'decided_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, deviceId, kind, targetId, value, decidedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_actions_table';
+  @override
+  VerificationContext validateIntegrity(Insertable<PendingActionRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(_deviceIdMeta,
+          deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta));
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+          _kindMeta, kind.isAcceptableOrUnknown(data['kind']!, _kindMeta));
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('target_id')) {
+      context.handle(_targetIdMeta,
+          targetId.isAcceptableOrUnknown(data['target_id']!, _targetIdMeta));
+    } else if (isInserting) {
+      context.missing(_targetIdMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+          _valueMeta, value.isAcceptableOrUnknown(data['value']!, _valueMeta));
+    }
+    if (data.containsKey('decided_at')) {
+      context.handle(_decidedAtMeta,
+          decidedAt.isAcceptableOrUnknown(data['decided_at']!, _decidedAtMeta));
+    } else if (isInserting) {
+      context.missing(_decidedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PendingActionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingActionRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      deviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
+      kind: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}kind'])!,
+      targetId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}target_id'])!,
+      value: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}value']),
+      decidedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}decided_at'])!,
+    );
+  }
+
+  @override
+  $PendingActionsTableTable createAlias(String alias) {
+    return $PendingActionsTableTable(attachedDatabase, alias);
+  }
+}
+
+class PendingActionRow extends DataClass
+    implements Insertable<PendingActionRow> {
+  /// Insertion order.
+  final int id;
+
+  /// `macDeviceId` of the PC.
+  final String deviceId;
+
+  /// `PendingActionKind.name`.
+  final String kind;
+
+  /// What it was done to: a conversation id, or the PC's own id.
+  final String targetId;
+
+  /// The new name, for a rename.
+  final String? value;
+
+  /// When the user decided it (this phone's clock).
+  final DateTime decidedAt;
+  const PendingActionRow(
+      {required this.id,
+      required this.deviceId,
+      required this.kind,
+      required this.targetId,
+      this.value,
+      required this.decidedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['device_id'] = Variable<String>(deviceId);
+    map['kind'] = Variable<String>(kind);
+    map['target_id'] = Variable<String>(targetId);
+    if (!nullToAbsent || value != null) {
+      map['value'] = Variable<String>(value);
+    }
+    map['decided_at'] = Variable<DateTime>(decidedAt);
+    return map;
+  }
+
+  PendingActionsTableCompanion toCompanion(bool nullToAbsent) {
+    return PendingActionsTableCompanion(
+      id: Value(id),
+      deviceId: Value(deviceId),
+      kind: Value(kind),
+      targetId: Value(targetId),
+      value:
+          value == null && nullToAbsent ? const Value.absent() : Value(value),
+      decidedAt: Value(decidedAt),
+    );
+  }
+
+  factory PendingActionRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingActionRow(
+      id: serializer.fromJson<int>(json['id']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      targetId: serializer.fromJson<String>(json['targetId']),
+      value: serializer.fromJson<String?>(json['value']),
+      decidedAt: serializer.fromJson<DateTime>(json['decidedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'deviceId': serializer.toJson<String>(deviceId),
+      'kind': serializer.toJson<String>(kind),
+      'targetId': serializer.toJson<String>(targetId),
+      'value': serializer.toJson<String?>(value),
+      'decidedAt': serializer.toJson<DateTime>(decidedAt),
+    };
+  }
+
+  PendingActionRow copyWith(
+          {int? id,
+          String? deviceId,
+          String? kind,
+          String? targetId,
+          Value<String?> value = const Value.absent(),
+          DateTime? decidedAt}) =>
+      PendingActionRow(
+        id: id ?? this.id,
+        deviceId: deviceId ?? this.deviceId,
+        kind: kind ?? this.kind,
+        targetId: targetId ?? this.targetId,
+        value: value.present ? value.value : this.value,
+        decidedAt: decidedAt ?? this.decidedAt,
+      );
+  PendingActionRow copyWithCompanion(PendingActionsTableCompanion data) {
+    return PendingActionRow(
+      id: data.id.present ? data.id.value : this.id,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      targetId: data.targetId.present ? data.targetId.value : this.targetId,
+      value: data.value.present ? data.value.value : this.value,
+      decidedAt: data.decidedAt.present ? data.decidedAt.value : this.decidedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingActionRow(')
+          ..write('id: $id, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('kind: $kind, ')
+          ..write('targetId: $targetId, ')
+          ..write('value: $value, ')
+          ..write('decidedAt: $decidedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, deviceId, kind, targetId, value, decidedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingActionRow &&
+          other.id == this.id &&
+          other.deviceId == this.deviceId &&
+          other.kind == this.kind &&
+          other.targetId == this.targetId &&
+          other.value == this.value &&
+          other.decidedAt == this.decidedAt);
+}
+
+class PendingActionsTableCompanion extends UpdateCompanion<PendingActionRow> {
+  final Value<int> id;
+  final Value<String> deviceId;
+  final Value<String> kind;
+  final Value<String> targetId;
+  final Value<String?> value;
+  final Value<DateTime> decidedAt;
+  const PendingActionsTableCompanion({
+    this.id = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.targetId = const Value.absent(),
+    this.value = const Value.absent(),
+    this.decidedAt = const Value.absent(),
+  });
+  PendingActionsTableCompanion.insert({
+    this.id = const Value.absent(),
+    required String deviceId,
+    required String kind,
+    required String targetId,
+    this.value = const Value.absent(),
+    required DateTime decidedAt,
+  })  : deviceId = Value(deviceId),
+        kind = Value(kind),
+        targetId = Value(targetId),
+        decidedAt = Value(decidedAt);
+  static Insertable<PendingActionRow> custom({
+    Expression<int>? id,
+    Expression<String>? deviceId,
+    Expression<String>? kind,
+    Expression<String>? targetId,
+    Expression<String>? value,
+    Expression<DateTime>? decidedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (deviceId != null) 'device_id': deviceId,
+      if (kind != null) 'kind': kind,
+      if (targetId != null) 'target_id': targetId,
+      if (value != null) 'value': value,
+      if (decidedAt != null) 'decided_at': decidedAt,
+    });
+  }
+
+  PendingActionsTableCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? deviceId,
+      Value<String>? kind,
+      Value<String>? targetId,
+      Value<String?>? value,
+      Value<DateTime>? decidedAt}) {
+    return PendingActionsTableCompanion(
+      id: id ?? this.id,
+      deviceId: deviceId ?? this.deviceId,
+      kind: kind ?? this.kind,
+      targetId: targetId ?? this.targetId,
+      value: value ?? this.value,
+      decidedAt: decidedAt ?? this.decidedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (targetId.present) {
+      map['target_id'] = Variable<String>(targetId.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (decidedAt.present) {
+      map['decided_at'] = Variable<DateTime>(decidedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingActionsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('kind: $kind, ')
+          ..write('targetId: $targetId, ')
+          ..write('value: $value, ')
+          ..write('decidedAt: $decidedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$UxnanDatabase extends GeneratedDatabase {
   _$UxnanDatabase(QueryExecutor e) : super(e);
   $UxnanDatabaseManager get managers => $UxnanDatabaseManager(this);
@@ -3635,6 +4335,10 @@ abstract class _$UxnanDatabase extends GeneratedDatabase {
       $GitActionLogTableTable(this);
   late final $ConnectionSessionsTableTable connectionSessionsTable =
       $ConnectionSessionsTableTable(this);
+  late final $ReplicaCursorsTableTable replicaCursorsTable =
+      $ReplicaCursorsTableTable(this);
+  late final $PendingActionsTableTable pendingActionsTable =
+      $PendingActionsTableTable(this);
   late final Index idxMessagesThreadId = Index('idx_messages_thread_id',
       'CREATE INDEX idx_messages_thread_id ON messages_table (thread_id, order_index)');
   late final Index idxTurnsThreadId = Index('idx_turns_thread_id',
@@ -3652,6 +4356,8 @@ abstract class _$UxnanDatabase extends GeneratedDatabase {
         composerDraftsTable,
         gitActionLogTable,
         connectionSessionsTable,
+        replicaCursorsTable,
+        pendingActionsTable,
         idxMessagesThreadId,
         idxTurnsThreadId
       ];
@@ -3671,6 +4377,8 @@ typedef $$ThreadsTableTableCreateCompanionBuilder = ThreadsTableCompanion
   required String status,
   Value<int?> lastActivityMs,
   required int createdAtMs,
+  Value<String?> originKind,
+  Value<String?> originName,
   Value<int> rowid,
 });
 typedef $$ThreadsTableTableUpdateCompanionBuilder = ThreadsTableCompanion
@@ -3687,6 +4395,8 @@ typedef $$ThreadsTableTableUpdateCompanionBuilder = ThreadsTableCompanion
   Value<String> status,
   Value<int?> lastActivityMs,
   Value<int> createdAtMs,
+  Value<String?> originKind,
+  Value<String?> originName,
   Value<int> rowid,
 });
 
@@ -3735,6 +4445,12 @@ class $$ThreadsTableTableFilterComposer
 
   ColumnFilters<int> get createdAtMs => $composableBuilder(
       column: $table.createdAtMs, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get originKind => $composableBuilder(
+      column: $table.originKind, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get originName => $composableBuilder(
+      column: $table.originName, builder: (column) => ColumnFilters(column));
 }
 
 class $$ThreadsTableTableOrderingComposer
@@ -3783,6 +4499,12 @@ class $$ThreadsTableTableOrderingComposer
 
   ColumnOrderings<int> get createdAtMs => $composableBuilder(
       column: $table.createdAtMs, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get originKind => $composableBuilder(
+      column: $table.originKind, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get originName => $composableBuilder(
+      column: $table.originName, builder: (column) => ColumnOrderings(column));
 }
 
 class $$ThreadsTableTableAnnotationComposer
@@ -3829,6 +4551,12 @@ class $$ThreadsTableTableAnnotationComposer
 
   GeneratedColumn<int> get createdAtMs => $composableBuilder(
       column: $table.createdAtMs, builder: (column) => column);
+
+  GeneratedColumn<String> get originKind => $composableBuilder(
+      column: $table.originKind, builder: (column) => column);
+
+  GeneratedColumn<String> get originName => $composableBuilder(
+      column: $table.originName, builder: (column) => column);
 }
 
 class $$ThreadsTableTableTableManager extends RootTableManager<
@@ -3866,6 +4594,8 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             Value<String> status = const Value.absent(),
             Value<int?> lastActivityMs = const Value.absent(),
             Value<int> createdAtMs = const Value.absent(),
+            Value<String?> originKind = const Value.absent(),
+            Value<String?> originName = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ThreadsTableCompanion(
@@ -3881,6 +4611,8 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             status: status,
             lastActivityMs: lastActivityMs,
             createdAtMs: createdAtMs,
+            originKind: originKind,
+            originName: originName,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -3896,6 +4628,8 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             required String status,
             Value<int?> lastActivityMs = const Value.absent(),
             required int createdAtMs,
+            Value<String?> originKind = const Value.absent(),
+            Value<String?> originName = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ThreadsTableCompanion.insert(
@@ -3911,6 +4645,8 @@ class $$ThreadsTableTableTableManager extends RootTableManager<
             status: status,
             lastActivityMs: lastActivityMs,
             createdAtMs: createdAtMs,
+            originKind: originKind,
+            originName: originName,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -4386,22 +5122,22 @@ typedef $$TurnsTableTableProcessedTableManager = ProcessedTableManager<
     PrefetchHooks Function()>;
 typedef $$ProjectsTableTableCreateCompanionBuilder = ProjectsTableCompanion
     Function({
+  required String deviceId,
   required String id,
-  required String displayName,
+  required String name,
   required String cwd,
-  required String agentId,
-  required String agentConfigJson,
-  Value<int?> lastActiveMs,
+  Value<String?> agentId,
+  Value<String?> source,
   Value<int> rowid,
 });
 typedef $$ProjectsTableTableUpdateCompanionBuilder = ProjectsTableCompanion
     Function({
+  Value<String> deviceId,
   Value<String> id,
-  Value<String> displayName,
+  Value<String> name,
   Value<String> cwd,
-  Value<String> agentId,
-  Value<String> agentConfigJson,
-  Value<int?> lastActiveMs,
+  Value<String?> agentId,
+  Value<String?> source,
   Value<int> rowid,
 });
 
@@ -4414,11 +5150,14 @@ class $$ProjectsTableTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnFilters<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get displayName => $composableBuilder(
-      column: $table.displayName, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get cwd => $composableBuilder(
       column: $table.cwd, builder: (column) => ColumnFilters(column));
@@ -4426,12 +5165,8 @@ class $$ProjectsTableTableFilterComposer
   ColumnFilters<String> get agentId => $composableBuilder(
       column: $table.agentId, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get agentConfigJson => $composableBuilder(
-      column: $table.agentConfigJson,
-      builder: (column) => ColumnFilters(column));
-
-  ColumnFilters<int> get lastActiveMs => $composableBuilder(
-      column: $table.lastActiveMs, builder: (column) => ColumnFilters(column));
+  ColumnFilters<String> get source => $composableBuilder(
+      column: $table.source, builder: (column) => ColumnFilters(column));
 }
 
 class $$ProjectsTableTableOrderingComposer
@@ -4443,11 +5178,14 @@ class $$ProjectsTableTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get displayName => $composableBuilder(
-      column: $table.displayName, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get cwd => $composableBuilder(
       column: $table.cwd, builder: (column) => ColumnOrderings(column));
@@ -4455,13 +5193,8 @@ class $$ProjectsTableTableOrderingComposer
   ColumnOrderings<String> get agentId => $composableBuilder(
       column: $table.agentId, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get agentConfigJson => $composableBuilder(
-      column: $table.agentConfigJson,
-      builder: (column) => ColumnOrderings(column));
-
-  ColumnOrderings<int> get lastActiveMs => $composableBuilder(
-      column: $table.lastActiveMs,
-      builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get source => $composableBuilder(
+      column: $table.source, builder: (column) => ColumnOrderings(column));
 }
 
 class $$ProjectsTableTableAnnotationComposer
@@ -4473,11 +5206,14 @@ class $$ProjectsTableTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get displayName => $composableBuilder(
-      column: $table.displayName, builder: (column) => column);
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
 
   GeneratedColumn<String> get cwd =>
       $composableBuilder(column: $table.cwd, builder: (column) => column);
@@ -4485,11 +5221,8 @@ class $$ProjectsTableTableAnnotationComposer
   GeneratedColumn<String> get agentId =>
       $composableBuilder(column: $table.agentId, builder: (column) => column);
 
-  GeneratedColumn<String> get agentConfigJson => $composableBuilder(
-      column: $table.agentConfigJson, builder: (column) => column);
-
-  GeneratedColumn<int> get lastActiveMs => $composableBuilder(
-      column: $table.lastActiveMs, builder: (column) => column);
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
 }
 
 class $$ProjectsTableTableTableManager extends RootTableManager<
@@ -4519,39 +5252,39 @@ class $$ProjectsTableTableTableManager extends RootTableManager<
           createComputedFieldComposer: () =>
               $$ProjectsTableTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
+            Value<String> deviceId = const Value.absent(),
             Value<String> id = const Value.absent(),
-            Value<String> displayName = const Value.absent(),
+            Value<String> name = const Value.absent(),
             Value<String> cwd = const Value.absent(),
-            Value<String> agentId = const Value.absent(),
-            Value<String> agentConfigJson = const Value.absent(),
-            Value<int?> lastActiveMs = const Value.absent(),
+            Value<String?> agentId = const Value.absent(),
+            Value<String?> source = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ProjectsTableCompanion(
+            deviceId: deviceId,
             id: id,
-            displayName: displayName,
+            name: name,
             cwd: cwd,
             agentId: agentId,
-            agentConfigJson: agentConfigJson,
-            lastActiveMs: lastActiveMs,
+            source: source,
             rowid: rowid,
           ),
           createCompanionCallback: ({
+            required String deviceId,
             required String id,
-            required String displayName,
+            required String name,
             required String cwd,
-            required String agentId,
-            required String agentConfigJson,
-            Value<int?> lastActiveMs = const Value.absent(),
+            Value<String?> agentId = const Value.absent(),
+            Value<String?> source = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ProjectsTableCompanion.insert(
+            deviceId: deviceId,
             id: id,
-            displayName: displayName,
+            name: name,
             cwd: cwd,
             agentId: agentId,
-            agentConfigJson: agentConfigJson,
-            lastActiveMs: lastActiveMs,
+            source: source,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -5398,6 +6131,356 @@ typedef $$ConnectionSessionsTableTableProcessedTableManager
         ),
         ConnectionSessionRow,
         PrefetchHooks Function()>;
+typedef $$ReplicaCursorsTableTableCreateCompanionBuilder
+    = ReplicaCursorsTableCompanion Function({
+  required String deviceId,
+  required String storeId,
+  required int rev,
+  Value<String?> home,
+  Value<int> rowid,
+});
+typedef $$ReplicaCursorsTableTableUpdateCompanionBuilder
+    = ReplicaCursorsTableCompanion Function({
+  Value<String> deviceId,
+  Value<String> storeId,
+  Value<int> rev,
+  Value<String?> home,
+  Value<int> rowid,
+});
+
+class $$ReplicaCursorsTableTableFilterComposer
+    extends Composer<_$UxnanDatabase, $ReplicaCursorsTableTable> {
+  $$ReplicaCursorsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get storeId => $composableBuilder(
+      column: $table.storeId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get rev => $composableBuilder(
+      column: $table.rev, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get home => $composableBuilder(
+      column: $table.home, builder: (column) => ColumnFilters(column));
+}
+
+class $$ReplicaCursorsTableTableOrderingComposer
+    extends Composer<_$UxnanDatabase, $ReplicaCursorsTableTable> {
+  $$ReplicaCursorsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get storeId => $composableBuilder(
+      column: $table.storeId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get rev => $composableBuilder(
+      column: $table.rev, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get home => $composableBuilder(
+      column: $table.home, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ReplicaCursorsTableTableAnnotationComposer
+    extends Composer<_$UxnanDatabase, $ReplicaCursorsTableTable> {
+  $$ReplicaCursorsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<String> get storeId =>
+      $composableBuilder(column: $table.storeId, builder: (column) => column);
+
+  GeneratedColumn<int> get rev =>
+      $composableBuilder(column: $table.rev, builder: (column) => column);
+
+  GeneratedColumn<String> get home =>
+      $composableBuilder(column: $table.home, builder: (column) => column);
+}
+
+class $$ReplicaCursorsTableTableTableManager extends RootTableManager<
+    _$UxnanDatabase,
+    $ReplicaCursorsTableTable,
+    ReplicaCursorRow,
+    $$ReplicaCursorsTableTableFilterComposer,
+    $$ReplicaCursorsTableTableOrderingComposer,
+    $$ReplicaCursorsTableTableAnnotationComposer,
+    $$ReplicaCursorsTableTableCreateCompanionBuilder,
+    $$ReplicaCursorsTableTableUpdateCompanionBuilder,
+    (
+      ReplicaCursorRow,
+      BaseReferences<_$UxnanDatabase, $ReplicaCursorsTableTable,
+          ReplicaCursorRow>
+    ),
+    ReplicaCursorRow,
+    PrefetchHooks Function()> {
+  $$ReplicaCursorsTableTableTableManager(
+      _$UxnanDatabase db, $ReplicaCursorsTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReplicaCursorsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ReplicaCursorsTableTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ReplicaCursorsTableTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> deviceId = const Value.absent(),
+            Value<String> storeId = const Value.absent(),
+            Value<int> rev = const Value.absent(),
+            Value<String?> home = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ReplicaCursorsTableCompanion(
+            deviceId: deviceId,
+            storeId: storeId,
+            rev: rev,
+            home: home,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String deviceId,
+            required String storeId,
+            required int rev,
+            Value<String?> home = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ReplicaCursorsTableCompanion.insert(
+            deviceId: deviceId,
+            storeId: storeId,
+            rev: rev,
+            home: home,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ReplicaCursorsTableTableProcessedTableManager = ProcessedTableManager<
+    _$UxnanDatabase,
+    $ReplicaCursorsTableTable,
+    ReplicaCursorRow,
+    $$ReplicaCursorsTableTableFilterComposer,
+    $$ReplicaCursorsTableTableOrderingComposer,
+    $$ReplicaCursorsTableTableAnnotationComposer,
+    $$ReplicaCursorsTableTableCreateCompanionBuilder,
+    $$ReplicaCursorsTableTableUpdateCompanionBuilder,
+    (
+      ReplicaCursorRow,
+      BaseReferences<_$UxnanDatabase, $ReplicaCursorsTableTable,
+          ReplicaCursorRow>
+    ),
+    ReplicaCursorRow,
+    PrefetchHooks Function()>;
+typedef $$PendingActionsTableTableCreateCompanionBuilder
+    = PendingActionsTableCompanion Function({
+  Value<int> id,
+  required String deviceId,
+  required String kind,
+  required String targetId,
+  Value<String?> value,
+  required DateTime decidedAt,
+});
+typedef $$PendingActionsTableTableUpdateCompanionBuilder
+    = PendingActionsTableCompanion Function({
+  Value<int> id,
+  Value<String> deviceId,
+  Value<String> kind,
+  Value<String> targetId,
+  Value<String?> value,
+  Value<DateTime> decidedAt,
+});
+
+class $$PendingActionsTableTableFilterComposer
+    extends Composer<_$UxnanDatabase, $PendingActionsTableTable> {
+  $$PendingActionsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get kind => $composableBuilder(
+      column: $table.kind, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get targetId => $composableBuilder(
+      column: $table.targetId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get decidedAt => $composableBuilder(
+      column: $table.decidedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$PendingActionsTableTableOrderingComposer
+    extends Composer<_$UxnanDatabase, $PendingActionsTableTable> {
+  $$PendingActionsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+      column: $table.kind, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get targetId => $composableBuilder(
+      column: $table.targetId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get decidedAt => $composableBuilder(
+      column: $table.decidedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$PendingActionsTableTableAnnotationComposer
+    extends Composer<_$UxnanDatabase, $PendingActionsTableTable> {
+  $$PendingActionsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get targetId =>
+      $composableBuilder(column: $table.targetId, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get decidedAt =>
+      $composableBuilder(column: $table.decidedAt, builder: (column) => column);
+}
+
+class $$PendingActionsTableTableTableManager extends RootTableManager<
+    _$UxnanDatabase,
+    $PendingActionsTableTable,
+    PendingActionRow,
+    $$PendingActionsTableTableFilterComposer,
+    $$PendingActionsTableTableOrderingComposer,
+    $$PendingActionsTableTableAnnotationComposer,
+    $$PendingActionsTableTableCreateCompanionBuilder,
+    $$PendingActionsTableTableUpdateCompanionBuilder,
+    (
+      PendingActionRow,
+      BaseReferences<_$UxnanDatabase, $PendingActionsTableTable,
+          PendingActionRow>
+    ),
+    PendingActionRow,
+    PrefetchHooks Function()> {
+  $$PendingActionsTableTableTableManager(
+      _$UxnanDatabase db, $PendingActionsTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingActionsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingActionsTableTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingActionsTableTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> deviceId = const Value.absent(),
+            Value<String> kind = const Value.absent(),
+            Value<String> targetId = const Value.absent(),
+            Value<String?> value = const Value.absent(),
+            Value<DateTime> decidedAt = const Value.absent(),
+          }) =>
+              PendingActionsTableCompanion(
+            id: id,
+            deviceId: deviceId,
+            kind: kind,
+            targetId: targetId,
+            value: value,
+            decidedAt: decidedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String deviceId,
+            required String kind,
+            required String targetId,
+            Value<String?> value = const Value.absent(),
+            required DateTime decidedAt,
+          }) =>
+              PendingActionsTableCompanion.insert(
+            id: id,
+            deviceId: deviceId,
+            kind: kind,
+            targetId: targetId,
+            value: value,
+            decidedAt: decidedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$PendingActionsTableTableProcessedTableManager = ProcessedTableManager<
+    _$UxnanDatabase,
+    $PendingActionsTableTable,
+    PendingActionRow,
+    $$PendingActionsTableTableFilterComposer,
+    $$PendingActionsTableTableOrderingComposer,
+    $$PendingActionsTableTableAnnotationComposer,
+    $$PendingActionsTableTableCreateCompanionBuilder,
+    $$PendingActionsTableTableUpdateCompanionBuilder,
+    (
+      PendingActionRow,
+      BaseReferences<_$UxnanDatabase, $PendingActionsTableTable,
+          PendingActionRow>
+    ),
+    PendingActionRow,
+    PrefetchHooks Function()>;
 
 class $UxnanDatabaseManager {
   final _$UxnanDatabase _db;
@@ -5419,4 +6502,8 @@ class $UxnanDatabaseManager {
   $$ConnectionSessionsTableTableTableManager get connectionSessionsTable =>
       $$ConnectionSessionsTableTableTableManager(
           _db, _db.connectionSessionsTable);
+  $$ReplicaCursorsTableTableTableManager get replicaCursorsTable =>
+      $$ReplicaCursorsTableTableTableManager(_db, _db.replicaCursorsTable);
+  $$PendingActionsTableTableTableManager get pendingActionsTable =>
+      $$PendingActionsTableTableTableManager(_db, _db.pendingActionsTable);
 }

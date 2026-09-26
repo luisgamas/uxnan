@@ -17,6 +17,34 @@ connected to live bridge data, validated on-device against a real bridge.
 
 **Built (DONE):**
 
+- **One layer: a replica of the PC's bridge** (architecture/02a §5.8.17).
+  `BridgeReplica` is the only writer of what the bridge owns: per-PC cursor
+  (`replica_cursors`), `sync/changes` on connect / resume / a skipped `rev`,
+  snapshot or incremental apply, and every notification checked against the
+  applied revision (`stream/thread/*`, `stream/project/*`,
+  `stream/settings/updated`, `stream/presence/updated`,
+  `stream/agents/updated`). Threads reach the store only through
+  `ThreadManager.applyReplicaThreads`; messages sort by `Turn.seq`; titles are
+  the bridge's. The list shows the PC's project registry (empty projects
+  included, remove from the long-press sheet); "New conversation" picks a
+  project or adds one (`project/add`); the PC screen shows and changes the
+  shared start folder; a "Linked with Uxnan Desktop on <machine>" line and a
+  desktop-origin mark tell the two setups apart. Another client's prompt is
+  placed above its answer (`stream/turn/created` + `clientTurnId`), and a card
+  answered elsewhere settles here (`stream/approval|question/resolved`).
+  A rename, archive, unarchive or delete — or a PC rename — made while the PC
+  is out of reach waits in `ActionOutbox` and is sent, dated (`ageMs`), before
+  the next sync; the latest action wins, whichever device took it. The phone
+  describes itself on connecting (`device/describe`) and keeps one name on
+  every PC (`PhoneNameManager`, "This phone" card in My devices).
+  Covered by `bridge_replica_test`, `bridge_replica_names_test`,
+  `thread_manager_test`, `action_outbox_test`, `thread_manager_outbox_test`,
+  `phone_name_manager_test`,
+  `incoming_message_processor_test`, `workspace_grouping_test`,
+  `threads_list_test` and `new_conversation_card_test`, and by the bridge's
+  own end-to-end tests. **Not yet device-verified against a running desktop** —
+  see *Pending* below.
+
 - **Large screens: one route table, two layouts.** Past 840 dp the app stops
   being a stack of screens — a **permanent navigation drawer** (the PC, its
   work, and you) with the routed screen as the content pane beside it. The
@@ -161,8 +189,10 @@ connected to live bridge data, validated on-device against a real bridge.
   response**, **Last edits** strip above the composer; **Thinking** remains
   settings-gated. Long user text defaults to a ten-line expandable preview and
   still copies in full.
-- **New conversation flow** — `project/list` + `agent/list` + `agent/models` +
-  **folder browser** (`workspace/browseDirs`) to root a thread anywhere. The
+- **New conversation flow** — the PC's project registry (or **add a project**
+  through the folder browser, `workspace/browseDirs` → `project/add`) +
+  `agent/list` + `agent/models`. The thread starts in the chosen folder; the
+  bridge decides its project. The
   full-screen Neural Expressive dialog compares agents in one dynamic-corner
   card group; selecting an agent expands only its capability chips and
   collapses the previous selection. Starting one in a fresh worktree sends
@@ -373,6 +403,19 @@ shipping.
       questions the list is actually asked.
 
 ## App+bridge seams (need a live bridge to finish/verify)
+
+- [ ] **Replica mirror — on-device verification with Uxnan Desktop.** The
+      replica, project registry, start folder, presence line and origin mark are
+      implemented and unit/widget tested (see `## Status`). Remaining: on a
+      device against a bridge running as the user's service with the desktop
+      open — add and remove a project on each side, archive and start
+      conversations with the phone away and confirm they appear on reconnect,
+      rename / archive / delete on the phone with the PC out of reach (and the
+      same conversation changed on the desktop meanwhile) and confirm the
+      latest action wins on both after reconnecting,
+      change the start folder on each side, open a conversation from a push, and
+      confirm the "Linked with Uxnan Desktop" line follows the desktop opening
+      and closing. The screens are also pending the maintainer's visual review.
 
 - [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**
       now enforce the per-turn access mode (see `bridge/CHANGELOG.md`

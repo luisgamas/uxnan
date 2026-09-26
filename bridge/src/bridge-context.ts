@@ -16,6 +16,11 @@ import type { BrowseService } from './workspace/browse-service.js';
 import type { PushService } from './push/push-service.js';
 import type { UpdateStatus } from './update-check.js';
 import type { Logger } from './logger.js';
+import type { SyncLedger } from './sync/sync-ledger.js';
+import type { BridgeSettingsStore } from './settings/bridge-settings.js';
+import type { PresenceRegistry } from './presence/presence-registry.js';
+import type { BridgeHost, PairingPayload } from '@uxnan/shared';
+import type { AgentInstalls } from './agents/agent-installs.js';
 
 export interface BridgeContext {
   readonly version: string;
@@ -36,8 +41,18 @@ export interface BridgeContext {
   readonly sessionHistory: SessionHistoryReader;
   /** Agent turn orchestration. */
   readonly agentManager: AgentManager;
-  /** The project directories the phone may open. */
+  /** Which agent CLIs are installed, kept true while the bridge runs. */
+  readonly agentInstalls: AgentInstalls;
+  /** The registry of projects every client mirrors (§5.8.17). */
   readonly projects: ProjectRegistry;
+  /** The global sync revision counter behind `sync/changes`. */
+  readonly ledger: SyncLedger;
+  /** Settings shared with every client (the start folder). */
+  readonly settings: BridgeSettingsStore;
+  /** Who is connected right now. */
+  readonly presence: PresenceRegistry;
+  /** What started this bridge and on which machine. */
+  readonly host: BridgeHost;
   /** Root-confined directory browsing for plug-and-play project selection. */
   readonly browse: BrowseService;
   /** Push-notification coordination (token registration + turn-end delivery). */
@@ -45,12 +60,22 @@ export interface BridgeContext {
   readonly logger: Logger;
   /** Whether at least one relay connection is currently serving a phone. */
   relayConnected(): boolean;
+  /** Whether the loopback local control channel (§5.8.15) is listening. */
+  localControlActive(): boolean;
   /**
    * Latest known self-update status from the background npm check, or
    * `undefined` before the first check completes. Read by `bridge/status` so the
    * phone can show a "bridge update available" hint.
    */
   updateStatus(): UpdateStatus | undefined;
+  /**
+   * The pairing payload THIS process serves — its LAN hosts, relay and
+   * persisted session — with the pairing window armed, exactly what the QR
+   * `start` prints. What a client that asks for a QR must get (Uxnan Desktop's
+   * "Pair a phone"): a payload built elsewhere would lack the hosts and the
+   * session, and an unarmed window refuses the handshake.
+   */
+  pairingPayload(): PairingPayload;
   /** Injected clock (epoch ms) for testability. */
   now(): number;
 }

@@ -61,11 +61,21 @@ export const METHOD_NAMES = [
   // Projects
   'project/list',
   'project/resolve',
+  'project/add',
+  'project/remove',
+  'project/rename',
+  // Replica sync and shared settings
+  'sync/changes',
+  'settings/get',
+  'settings/set',
+  'device/describe',
+  'device/rename',
   // Agents
   'agent/list',
   'agent/models',
   'agent/commands',
   'agent/usageStats',
+  'agent/doctor',
   // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
   'metrics/get',
   'metrics/export',
@@ -85,6 +95,9 @@ export const METHOD_NAMES = [
   'bridge/disconnectPhone',
   'bridge/trustedDevices',
   'bridge/removeTrustedDevice',
+  // Desktop tools for bridge-run agents (local control channel only)
+  'desktop/attach',
+  'desktop/detach',
 ] as const;
 
 /**

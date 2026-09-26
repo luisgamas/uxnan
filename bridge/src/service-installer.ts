@@ -7,15 +7,21 @@
  *   - macOS:   a per-user LaunchAgent (`RunAtLoad` + `KeepAlive`).
  *   - Linux:   a systemd `--user` unit (pair with `loginctl enable-linger`).
  *
- * The bridge is launched as `<node> <cli.js> start`, which works both for a global
- * npm install and a dev checkout. {@link buildServicePlan} is pure (no side
+ * The bridge is launched as `<node> <cli.js> start --service` — absolute paths, so
+ * it never depends on the minimal PATH a login service gets — which works both
+ * for a global npm install and a dev checkout. `--service` tells the bridge it
+ * runs as the user's service (`BridgeStatus.host.launchedBy`), the normal way it
+ * lives: Uxnan Desktop installs it once and only connects to it afterwards, and
+ * it keeps serving the phone when the desktop is closed. It is restarted only
+ * when it crashes: a deliberate `uxnan-bridge stop` stays stopped until
+ * `service-start` (or the next login). {@link buildServicePlan} is pure (no side
  * effects) so it can be unit-tested; {@link installService}/{@link uninstallService}
  * execute the plan with `execFile` (no shell).
  *
  * This supersedes the manual `scripts/install-service-*` files (kept as reference).
  */
 import { execFile } from 'node:child_process';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { access, mkdir, writeFile, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
@@ -70,7 +76,7 @@ export function buildServicePlan(env: ServiceEnv): ServicePlan {
 
   if (platform === 'win32') {
     // schtasks `/TR` takes the whole command as ONE string; quote each path.
-    const tr = `"${execPath}" "${cliPath}" start`;
+    const tr = `"${execPath}" "${cliPath}" start --service`;
     return {
       platform,
       label: TASK_NAME,
@@ -105,7 +111,10 @@ export function buildServicePlan(env: ServiceEnv): ServicePlan {
       platform,
       label: LAUNCH_LABEL,
       dirs: [dirname(plistPath), logDir],
-      file: { path: plistPath, content: plistContent([execPath, cliPath, 'start'], logDir) },
+      file: {
+        path: plistPath,
+        content: plistContent([execPath, cliPath, 'start', '--service'], logDir, home),
+      },
       install: [
         { argv: ['launchctl', 'unload', plistPath], ignoreFailure: true },
         { argv: ['launchctl', 'load', plistPath] },
@@ -124,7 +133,13 @@ export function buildServicePlan(env: ServiceEnv): ServicePlan {
     platform,
     label: UNIT_NAME,
     dirs: [unitDir],
-    file: { path: unitPath, content: systemdUnit(`${execPath} ${cliPath} start`) },
+    file: {
+      path: unitPath,
+      content: systemdUnit(
+        `${systemdQuote(execPath)} ${systemdQuote(cliPath)} start --service`,
+        home,
+      ),
+    },
     install: [
       { argv: ['systemctl', '--user', 'daemon-reload'] },
       { argv: ['systemctl', '--user', 'enable', '--now', UNIT_NAME] },
@@ -174,6 +189,52 @@ export function currentServiceEnv(cliPath: string): ServiceEnv {
   const appData = process.env['APPDATA'];
   if (appData) env.appData = appData;
   return env;
+}
+
+/** Whether the autostart entry exists (the service is installed). */
+export async function isServiceInstalled(env: ServiceEnv): Promise<boolean> {
+  if (env.platform === 'win32') {
+    try {
+      await run('schtasks', ['/Query', '/TN', TASK_NAME], { windowsHide: true });
+      return true;
+    } catch {
+      const startup = buildWindowsStartupPlan(env).removeFile;
+      return startup !== undefined && (await exists(startup));
+    }
+  }
+  const file = buildServicePlan(env).file;
+  return file !== undefined && (await exists(file.path));
+}
+
+/**
+ * Start the installed service now (it is not running: stopped by hand, or it
+ * exited cleanly). A no-op for a running one.
+ */
+export async function startService(env: ServiceEnv): Promise<void> {
+  if (env.platform === 'darwin') {
+    const uid = process.getuid?.() ?? 0;
+    await run('launchctl', ['kickstart', `gui/${uid}/${LAUNCH_LABEL}`], { windowsHide: true });
+  } else if (env.platform === 'linux') {
+    await run('systemctl', ['--user', 'start', UNIT_NAME], { windowsHide: true });
+  } else {
+    try {
+      await run('schtasks', ['/Run', '/TN', TASK_NAME], { windowsHide: true });
+    } catch {
+      // Installed through the Startup-folder fallback: run its launcher.
+      const vbs = buildWindowsStartupPlan(env).removeFile;
+      if (!vbs) throw new Error('the bridge service is not installed');
+      await run('wscript.exe', [vbs], { windowsHide: true });
+    }
+  }
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** True for platforms with a supported autostart mechanism. */
@@ -243,7 +304,7 @@ function requireHome(): string {
   return home;
 }
 
-function plistContent(programArgs: string[], logDir: string): string {
+function plistContent(programArgs: string[], logDir: string, home: string): string {
   const args = programArgs.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -254,8 +315,12 @@ function plistContent(programArgs: string[], logDir: string): string {
   <array>
 ${args}
   </array>
+  <key>WorkingDirectory</key><string>${xmlEscape(home)}</string>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+  </dict>
   <key>StandardOutPath</key><string>${xmlEscape(join(logDir, 'launchd.out.log'))}</string>
   <key>StandardErrorPath</key><string>${xmlEscape(join(logDir, 'launchd.err.log'))}</string>
 </dict>
@@ -263,7 +328,7 @@ ${args}
 `;
 }
 
-function systemdUnit(execStart: string): string {
+function systemdUnit(execStart: string, home: string): string {
   return `[Unit]
 Description=Uxnan Bridge daemon
 After=network-online.target
@@ -271,6 +336,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=${execStart}
+WorkingDirectory=${home}
 Restart=on-failure
 RestartSec=5
 
@@ -281,11 +347,16 @@ WantedBy=default.target
 
 /** A `.vbs` that launches the bridge with NO console window (`WScript.Shell.Run`). */
 function vbsLauncher(execPath: string, cliPath: string): string {
-  const runtimeCmd = `"${execPath}" "${cliPath}" start`;
+  const runtimeCmd = `"${execPath}" "${cliPath}" start --service`;
   // VBScript string literal: each `"` is doubled.
   const literal = `"${runtimeCmd.replace(/"/g, '""')}"`;
   // window style 0 = hidden, waitOnReturn = False (don't block).
   return `Set sh = CreateObject("WScript.Shell")\r\nsh.Run ${literal}, 0, False\r\n`;
+}
+
+/** Quote an ExecStart argument for systemd (paths with spaces). */
+function systemdQuote(value: string): string {
+  return /[\s"\\]/.test(value) ? `"${value.replace(/(["\\])/g, '\\$1')}"` : value;
 }
 
 function xmlEscape(value: string): string {

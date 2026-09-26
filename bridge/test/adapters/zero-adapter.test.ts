@@ -5,7 +5,6 @@ import {
   ZeroAdapter,
   parseZeroModels,
   mergeZeroProviderModels,
-  zeroToolBlock,
   type SpawnedAcp,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -129,32 +128,6 @@ function collect(adapter: ZeroAdapter): Promise<AgentStreamEvent[]> {
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 5));
 
-test('zeroToolBlock renders an ask_user tool call as readable questions', () => {
-  const block = zeroToolBlock({
-    toolCallId: 't1',
-    title: 'ask_user',
-    kind: 'other',
-    status: 'completed',
-    rawInput: {
-      questions: [
-        { question: 'Which language?', options: ['Python', 'JavaScript'], recommended: 'Python' },
-      ],
-    },
-    content: [
-      { type: 'content', content: { type: 'text', text: 'No interactive user is available.' } },
-    ],
-  });
-  assert.equal(block['type'], 'tool');
-  assert.equal(block['toolName'], 'ask_user');
-  // The raw args are replaced by a formatted prompt in `output`, not dumped.
-  assert.deepEqual(block['input'], {});
-  const output = block['output'] as string;
-  assert.match(output, /Which language\?/);
-  assert.match(output, /Python · JavaScript/);
-  assert.match(output, /suggested: Python/);
-  assert.match(output, /No interactive user is available\./);
-});
-
 test('parseZeroModels parses id/provider/ctx/name lines', () => {
   const out = [
     'Models',
@@ -233,11 +206,19 @@ test('ZeroAdapter streams thinking/text/blocks and completes on prompt result', 
   const deltas = events.filter((e) => e.type === 'delta').map((e) => (e.data as any).text);
   assert.deepEqual(deltas, ['Hello ', 'world']);
   const blocks = events.filter((e) => e.type === 'block').map((e) => (e.data as any).content);
+  // Shown as it starts, then replaced by its result (same id).
   assert.deepEqual(blocks[0], {
+    type: 'command_execution',
+    command: 'ls',
+    status: 'running',
+    blockId: 't1',
+  });
+  assert.deepEqual(blocks[1], {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt',
+    blockId: 't1',
   });
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as any).text, 'Hello world');
@@ -418,4 +399,37 @@ test('ZeroAdapter keeps a text block for an image-only turn', async () => {
   const prompt = server.sent.find((m) => m.method === 'session/prompt');
   // The image rides alone — no empty text block padding the prompt.
   assert.deepEqual(prompt.params.prompt, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
+});
+
+test('Zero advertises its own skills as commands, expanded to a prompt that loads them', () => {
+  // zero 0.9.x sends no `available_commands_update`, but its model loads a
+  // named skill with its skill tool (verified live over ACP), so its skills
+  // are listed (`parseZeroSkills`) and a picked one becomes that prompt.
+  const adapter = new ZeroAdapter({ binaryPath: 'zero' });
+  assert.equal(adapter.capabilities.commands, true);
+  assert.equal(typeof adapter.listCommands, 'function');
+  assert.equal(typeof adapter.expandCommand, 'function');
+});
+
+test('a permission request for no turn of ours is refused, never approved', async () => {
+  const { adapter, server } = setup({ onApprovalRequest: () => Promise.resolve('approve') });
+  const done = collect(adapter);
+  server.handle((m) => {
+    if (m.method !== 'session/prompt') return;
+    server.feed({
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 'someone-else',
+        toolCall: { toolCallId: 't', title: 'rm -rf build', kind: 'execute' },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      },
+    });
+    setTimeout(() => server.reply(m.id, { stopReason: 'end_turn' }), 10);
+  });
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go', accessMode: 'fullAccess' });
+  await done;
+  const reply = server.sent.find((m) => m.id === 42 && m.result?.outcome);
+  assert.deepEqual(reply.result.outcome, { outcome: 'cancelled' });
 });

@@ -43,17 +43,23 @@ same software a visitor is about to download.
 
 1. **Copy the shipped UI, not an idealized one.** The title bar says
    `Uxnan Desktop` with the `ALPHA` chip because that is what the app shows;
-   worktree tabs, the `Ctrl P` search hint, the `Files / Changes / History /
-   GitHub` panel order, the `auto mode on (shift+tab to cycle)` footer and the
-   `▶▶` marker are all lifted from the real window. The phone screens follow the
+   the tabs (one per chat or agent terminal), the `Ctrl P` search hint, the
+   paired phone under Search, the worktree's agent view listing chats and
+   terminal agents together, the chat's step rows (`Read`, `Searched`,
+   `Edited`, `Running`), the composer's model and `Full access` pickers and the
+   dock's surface selector are all lifted from the real window. The phone screens follow the
    Material 3 "Neural Expressive" language documented in
    `uxnanmobile/docs/neural-expressive-design.md`: light surfaces, 16–20px
    rounded cards, tinted icon squares, mint containers for live state, a
    floating pill composer with the `+` turn-tools button.
-2. **Only show states the product can actually be in.** Four agents, one of them
-   idle; a subagent nested under its parent; a queued message that "delivers
-   mid-turn" — each of those is a real feature. Never invent a control.
-3. **Never show an agent that is not offered.** They come from `AGENTS_PRECISE`
+2. **Only show states the product can actually be in.** A chat working, one
+   waiting on you and a finished terminal agent; one step still running while
+   the others settled; the same turn on the phone with its work log collapsed;
+   a queued message that "delivers mid-turn" — each of those is a real feature.
+   Never invent a control.
+3. **Never show an agent that is not offered.** A phone's agent picker and
+   anything about chats draw `CHAT_AGENTS` (the agents the bridge drives); the
+   rest come from `AGENTS_PRECISE`
    and `AGENTS_BASIC` in `src/lib/site.ts`; the deprecated Gemini CLI must not
    appear.
 4. **Keep the content plausible and boring.** Branch names, repo names and
@@ -100,10 +106,11 @@ same software a visitor is about to download.
    `package.json` files, for the same reason: a caret would let the drawn art
    drift away from the app's on an unrelated install.
 
-   The phone screens are a knowing approximation: Uxnan Mobile is Flutter and
-   draws **Material** icons, which are not on this site at all. Hugeicons is the
-   closest single family the site can hold without shipping a second icon set,
-   and it is what the previous `lucide-react` was doing too.
+   The phone screens use the same set: Uxnan Mobile draws Hugeicons too,
+   through its own `UxIcon` primitive and the `UxIcons` catalogue
+   (`uxnanmobile/lib/presentation/theme/icons.dart`), so a phone mockup takes
+   the glyph that catalogue maps — `laptopMac` is `LaptopIcon`, `smartToy` is
+   `Robot01Icon`, `wifiTethering` is `WifiConnected01Icon`.
 
 ## Phone mockups scale, they do not resize
 

@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 692, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 834, shared 39, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,32 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **One layer: the bridge is the source of truth** (architecture/02a §5.8.17) —
+  a persistent, mirrored **project registry** (`projects/project-registry.ts`,
+  `~/.uxnan/projects.json`: `project/add|remove|rename`, worktrees map to their
+  repository, seeded from existing conversations, removal never deletes a
+  conversation); **revisioned replica sync** (`sync/sync-ledger.ts`,
+  `~/.uxnan/sync.json`, `sync/changes`) with the thread store and the registry
+  as the only sources of change announcements; canonical **`Turn.seq`**; the
+  shared **start folder** (`settings/get|set`, `config get|set home`);
+  **presence** (`bridge/status.host|clients`, `stream/presence/updated`) and
+  `Thread.origin`; **titles only in the bridge** (provisional on the first turn,
+  generated with retries, a provisional rename never overwrites a final one);
+  `thread/resume` changes nothing; **agent detection** from the table shared
+  with the desktop (`shared/agent-locations.json`) plus the login-shell `PATH`,
+  live (`stream/agents/updated`, `agent/doctor`); the bridge as the user's
+  **service** (`start --service`, `service-status`, `service-start`).
+- **Several clients at once** (architecture/02a §5.8.15–§5.8.16) —
+  a loopback-only **local control channel** for Uxnan Desktop
+  (`transport/local-control-server.ts`, discovery file
+  `~/.uxnan/local-control.json`, config `localControlEnabled`) that serves the
+  same router and registers the desktop as one more receiver with its own `seq`
+  and replay; and every change a second client needs is broadcast —
+  `stream/thread/updated|deleted`, `stream/turn/created` (with the sender's
+  `clientTurnId` echo), `stream/approval|question/resolved`. Covered end to end
+  by `test/transport/local-control.test.ts`, `test/agents/multi-client-sync.test.ts`
+  and, from the other side, the desktop's `bridgeclient` contract test against
+  this built bridge.
 - **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
   handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
   background reconnect loop; stable pairing session; mDNS discovery
@@ -58,8 +84,11 @@ push validation (FOR-HUMAN).
   has an answer, as a **one-shot with no session id** (nothing enters the
   thread's history) on the agent's **cheapest** model. Wired for all seven
   agents, **six verified live**; a generated title never overwrites one the user
-  chose (`Thread.titleSource`), and `stream/thread/renamed` converges every
-  client. Best-effort throughout: a failure keeps the provisional name.
+  chose (`Thread.titleSource`), and `stream/thread/updated` converges every
+  client. The bridge sets the provisional name itself when the first turn is
+  stored, and asks for a generated one after any completed turn while the name
+  is provisional (at most twice). Best-effort throughout: a failure keeps the
+  provisional name.
 - **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
   queued (status `queued`) instead of clobbering it, and drains automatically on
   completion; run options are frozen at queue time; the queue holds after a stop
@@ -110,13 +139,14 @@ push validation (FOR-HUMAN).
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
-- **Agent commands** — `agent/commands` discovery + `turn/send` `command`
-  invocation. Custom prompt-template commands (Codex/OpenCode) are scanned
-  and expanded by the bridge (`command-scan.ts`); native control commands run via
-  the CLI's own mechanism — Claude Code (`slash_commands` from `system/init` ∪
-  curated built-ins ∪ `.claude/commands`, sent as `/name args` with `--resume`)
-  and the ACP agents Zero/Grok (`available_commands_update` → `session/prompt`).
-  `capabilities.commands` flags the five command-capable adapters; `pi` has none.
+- **Agent commands** — `agent/commands` + `turn/send` `command`, for every
+  wired agent, each asked on the surface the bridge drives: Claude
+  (`initialize`), Codex (`skills/list` + `compact` + `~/.codex/prompts`),
+  OpenCode (its server, v1 and v2), pi (`get_commands`), Antigravity
+  (`agy -p /skills`), Grok (a session's `available_commands_update`, with a
+  short session of its own for a new folder) and Zero (the skills its runs
+  can load). Run natively, except Codex's custom prompts and Zero's skills,
+  which the bridge expands into a prompt (`docs/agents.md` → *Agent commands*).
 - **Full thread lifecycle** — `thread/rename|archive|unarchive|delete`.
 - **Plug-and-play folder browsing** — `workspace/browseDirs` with a
   `browseRoots` config.
@@ -205,23 +235,6 @@ push validation (FOR-HUMAN).
       change to embed an equivalent secret in the QR payload too (so QR-scan
       pairing isn't left out), which is its own independently-reviewable change.
       See the `FOR-DEV:` marker in `server-handshake.ts` (`qr_bootstrap` branch).
-- [ ] **Cross-process arming for the QR-reprint path on a headless daemon.** The
-      armed window is in-memory and per-`PairingCodeService`-instance by design (a
-      restart re-requires arming). Two of the three flows are covered: `uxnan-bridge
-      start` arms and serves LAN connections from the SAME process, and the
-      **manual-code** flow works against a separate, console-less daemon because a
-      successful `GET /pair/resolve` arms the daemon that serves it (proving the
-      code was read off the PC is the operator action — see `resolve()` in
-      `pairing-code-service.ts`). Still open: `uxnan-bridge qr` run as a
-      **separate**, short-lived process to reprint the QR for an already-running
-      autostarted daemon (see the comment on `cmdQr` in `cli.ts`) only arms THAT
-      process. A phone that **scans** that QR goes straight to the handshake without
-      ever calling `/pair/resolve`, so the daemon is never armed and the bootstrap is
-      rejected as "pairing is not open". Fix by adding an explicit `bridge pair
-      --arm` (or similar) command that signals the running daemon directly (e.g.
-      over its existing local HTTP surface, or a small shared-state file next to
-      `pairing-code.json` that `isArmed()` also consults) rather than silently
-      defaulting the window open. Workaround today: pair with the manual code.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger. (Seq-based
       catch-up on reconnect is done end-to-end; only key rotation remains.)
 - [ ] **Per-direction HKDF session keys** (would retire the AAD direction byte).
@@ -289,10 +302,21 @@ push validation (FOR-HUMAN).
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
       instead of the heuristic (slower, per-CLI).
-- [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` is an empty
-      stub; no `desktop/*` contracts exist in `shared/`. This is the bridge half of
-      the desktop's **Phase 6** (embedded sidecar + mobile pairing); see
-      `uxnandesktop/architecture/02e-bridge-integration.md`. Unbuilt on both sides.
+- [ ] **Uxnan Desktop's tools for Zero** — Claude Code, Codex, OpenCode, pi and
+      Antigravity are wired and verified, Grok behind its ACP capability
+      (`docs/agents.md` → *Uxnan Desktop's tools*). Zero cannot be reached:
+      `zero acp` (0.9.0) ignores ACP `mcpServers`, and its stdio MCP servers run
+      in its macOS sandbox with the network denied (`EPERM` on loopback HTTP and
+      Unix sockets). Unblocked by Zero honoring ACP `mcpServers` (the bridge
+      already sends them when it advertises HTTP MCP) or offering a sandbox
+      allowance for one MCP server. Also owed: run Grok's path against the real
+      binary with an account that has access.
+- [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` serves
+      only `desktop/attach` / `desktop/detach` (the desktop's tools for bridge-run
+      agents, local channel only); nothing for an embedded sidecar exists. This is
+      the bridge half of the desktop's **Phase 6** (embedded sidecar + mobile
+      pairing); see `uxnandesktop/architecture/02e-bridge-integration.md`. Unbuilt
+      on both sides.
 - [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
       transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
       transport so the phone is dropped immediately.
@@ -340,6 +364,17 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
+- [ ] **Verify Codex's live step rows against a real turn.** The Codex half of
+      live steps (`codex-tools.ts` → `codexItemStartBlock` on `item/started`,
+      the final block replacing it by `blockId`) and the `error` with
+      `willRetry: true` no longer ending the turn are implemented and
+      unit-tested against the app-server v2 schema, but were never run against
+      a real Codex turn: on 2026-09-25 the account returned 401 even after a
+      fresh `codex login` (a direct `codex exec` failed the same way). Every
+      other wired agent was verified live. Run a Codex chat turn that reads,
+      searches and runs a command; confirm each row appears while it runs,
+      settles in place (no duplicate row), and that a stream reconnect keeps
+      the turn going.
 - [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
       mid-turn delivery is implemented and unit-tested against the published
       protocol schema (`codex app-server generate-json-schema`, codex-cli
@@ -371,21 +406,10 @@ push validation (FOR-HUMAN).
       so the loop auto-completes the call with "proceed with your best assumption" and
       never routes it to the client. The bridge therefore can't turn it into the
       interactive question card (the way OpenCode's `question` tool works); it only
-      renders the questions legibly (`zero-tools.ts` `formatAskUser`). Making it
+      renders the questions legibly (`acp-tools.ts` `formatAskUser`). Making it
       answerable needs Zero to route `ask_user` to the ACP client (an **upstream** change,
       e.g. a vendor `_zero/ask_user` request or reusing `session/request_permission`);
       once it does, wire it into the existing `requestQuestion` round-trip.
-- [ ] **Grok live-turn verification (balance-blocked)** — the ACP envelope,
-      handshake and model discovery were exercised against a live `grok 0.2.93`, but
-      a real turn could **not** be run because the test account's Grok Build balance
-      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). A funded account has
-      since confirmed the hook vocabulary and **token usage** (both shipped); still
-      to re-verify on a real turn: the per-turn `session/update` `tool_call`/`plan` shapes and
-      arg names (`grok-tools.ts` assumes ACP-standard `kind`/`rawInput`/`content`),
-      the `session/request_permission` option `kind`s, and whether
-      `session/set_mode { modeId: <effort> }` actually applies the
-      reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
-      in `grok-adapter.ts` / `grok-tools.ts`.
 
 ### Adding the next agent (recipe — do these one by one)
 

@@ -12,6 +12,14 @@ const config = {
     adapter: adapter({
       fallback: "index.html",
     }),
+    alias: {
+      // The bridge contract, straight from its source of truth. Imported for
+      // TYPES only (`import type`), so it is erased at build time and adds no
+      // runtime dependency: the chat panel draws the very Thread / Turn /
+      // Message model the bridge and the phone use, instead of a copy that
+      // would drift (architecture/02a §5.8.16: one model, no private one).
+      $shared: "../shared/src",
+    },
   },
 };
 

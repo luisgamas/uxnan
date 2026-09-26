@@ -666,6 +666,31 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({}),
         },
         Entry {
+            method: "chat/list",
+            tool: "chat_list",
+            group: Group::Read,
+            summary: "List the chats — conversations the Uxnan bridge drives, shown in chat tabs and on the phone alike — in your scope, newest first: id, title, agent, model, folder and whether a turn is running. `worktree` narrows it to one worktree's folder. Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.",
+            params: object(
+                json!({
+                    "worktree": worktree_selector(),
+                    "archived": { "type": "boolean", "description": "Include archived chats. Default false." }
+                }),
+                &[],
+            ),
+            mutates: false,
+            result: result(json!({ "chats": list_of(result(json!({
+                "id": field("string", "The chat's id — `chat/open` and `chat/send` take it as `id:<id>`."),
+                "title": field("string", "Its title, the same on every client."),
+                "agent": nullable("string", "The bridge agent that drives it (`claude-code`, `codex`, …); fixed for its life."),
+                "model": nullable("string", "The model it uses now, when one was chosen."),
+                "folder": nullable("string", "The folder it runs in."),
+                "state": field("string", "`working` while a turn runs, else `idle`."),
+                "archived": field("boolean", "Whether it is archived."),
+                "updatedAt": field("integer", "Epoch milliseconds of its last activity."),
+            })), "The chats in your scope.") })),
+            example: json!({ "worktree": "current" }),
+        },
+        Entry {
             method: "run/list",
             tool: "run_list",
             group: Group::Read,
@@ -842,6 +867,22 @@ pub fn catalog() -> Vec<Entry> {
             mutates: true,
             result: result(json!({ "revealed": field("string", "The terminal id now active.") })),
             example: json!({ "terminal": "id:5f0c…" }),
+        },
+        Entry {
+            method: "chat/open",
+            tool: "chat_open",
+            group: Group::Ui,
+            summary: "Show a chat to the person: open it in a chat tab next to its worktree's terminals, or focus the tab already showing it.",
+            params: object(
+                json!({ "chat": { "type": "string", "description": "The chat, as `id:<id>` from `chat/list`." } }),
+                &["chat"],
+            ),
+            mutates: true,
+            result: result(json!({
+                "chat": field("string", "The chat shown."),
+                "tab": nullable("string", "The tab showing it."),
+            })),
+            example: json!({ "chat": "id:7be2af67…" }),
         },
         Entry {
             method: "file/open",
@@ -1152,6 +1193,33 @@ pub fn catalog() -> Vec<Entry> {
             example: json!({ "worktree": "branch:feat/subtask", "title": "build", "idempotencyKey": "9c2e…" }),
         },
         Entry {
+            method: "chat/start",
+            tool: "chat_start",
+            group: Group::Create,
+            summary: "Start a chat with an agent in a worktree — a conversation the Uxnan bridge drives, the same as one started in a chat tab: shown in a tab next to the worktree's terminals, on the phone and on every other client. Unlike a terminal it needs no screen to read: `chat/read` returns what it answered and the steps it took, `chat/wait` waits for its turn to end. The agent is fixed for the chat's life, and it acts without asking, as a chat started in the tab does. Needs Uxnan connected to the bridge (Settings → Bridge & mobile); otherwise *unavailable*.",
+            params: object(
+                json!({
+                    "worktree": worktree_selector(),
+                    "agent": { "type": "string", "description": "The bridge agent: `claude-code` (or `claude`), `codex`, `opencode`, `pi-agent` (or `pi`), `antigravity-cli` (or `agy`), `zero` or `grok`." },
+                    "model": { "type": "string", "description": "A model for it, as the agent names it. Default: the agent's own." },
+                    "title": { "type": "string", "description": "A title. Default: the bridge names it from the first message." },
+                    "message": { "type": "string", "description": "A first message, sent at once. At most 64 KiB." },
+                    "open": { "type": "boolean", "description": "Show it in a chat tab, brought to the front as `chat/open` does. Default true; false leaves it to be found in the chat list, on the phone and in `chat/list`." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["worktree", "agent"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "chat": field("string", "The new chat's id — `chat/read`, `chat/wait` and `chat/send` take it as `id:<id>`."),
+                "agent": field("string", "The bridge agent that drives it."),
+                "folder": field("string", "The worktree folder it runs in."),
+                "turnId": nullable("string", "The turn the first message started, when one was sent."),
+                "opened": field("boolean", "Whether a chat tab was asked to show it."),
+            })),
+            example: json!({ "worktree": "branch:feat/parser", "agent": "codex", "message": "Write tests for src/parser.ts.", "idempotencyKey": "4a7c…" }),
+        },
+        Entry {
             method: "terminal/close",
             tool: "terminal_close",
             group: Group::Create,
@@ -1246,6 +1314,74 @@ pub fn catalog() -> Vec<Entry> {
                 "waitedMs": field("integer", "How long this call waited."),
             })),
             example: json!({ "terminal": "id:5f0c…", "for": "idle", "timeoutMs": 15000 }),
+        },
+        Entry {
+            method: "chat/send",
+            tool: "chat_send",
+            group: Group::Converse,
+            summary: "Send a whole message to a chat, exactly as if it were typed in the chat tab or on the phone. While its agent works the bridge queues the message behind the running turn (or hands it to the turn, on agents that take input mid-turn); every client of the chat sees it. Use `chat/list` to see whether the chat is working.",
+            params: object(
+                json!({
+                    "chat": { "type": "string", "description": "The chat, as `id:<id>` from `chat/list`." },
+                    "message": { "type": "string", "description": "The whole message. At most 64 KiB." },
+                    "idempotencyKey": idempotency_key()
+                }),
+                &["chat", "message"],
+            ),
+            mutates: true,
+            result: receipt(json!({
+                "chat": field("string", "The chat the message was sent to."),
+                "turnId": nullable("string", "The turn the message started or joined."),
+                "queued": field("boolean", "Whether it waits behind a running turn."),
+            })),
+            example: json!({ "chat": "id:7be2af67…", "message": "Now add tests for the parser." }),
+        },
+        Entry {
+            method: "chat/read",
+            tool: "chat_read",
+            group: Group::Converse,
+            summary: "Read what a chat has said: its newest turns (1 by default, at most 20), each with the message it was given, the agent's answer and the steps it took (commands run, files edited, what it read or searched), and where the chat is now — `working`, `waiting` (its running turn stopped on an approval or a question) or `idle`. Secrets are redacted as in `terminal/read`; a long answer keeps its end.",
+            params: object(
+                json!({
+                    "chat": { "type": "string", "description": "The chat, as `id:<id>` from `chat/list` or `chat/start`." },
+                    "turns": { "type": "integer", "description": "How many of its newest turns. Default 1, at most 20." }
+                }),
+                &["chat"],
+            ),
+            mutates: false,
+            result: result(json!({
+                "chat": field("string", "The chat read."),
+                "state": field("string", "`working`, `waiting` or `idle`."),
+                "turns": list_of(result(json!({
+                    "id": field("string", "The turn's id."),
+                    "status": field("string", "The bridge's status for it (`streaming`, `completed`, `error`, `aborted`, `queued`, …)."),
+                    "prompt": field("string", "The message it was given."),
+                    "answer": field("string", "The agent's answer so far (its end, when longer than 16 KiB)."),
+                    "steps": list_of(field("string", "One step: `ran …`, `edited … +a −d`, `read …`, `subagent: … (…)`, `(running)` while in flight."), "The steps it took, in order."),
+                })), "Oldest first."),
+            })),
+            example: json!({ "chat": "id:7be2af67…", "turns": 2 }),
+        },
+        Entry {
+            method: "chat/wait",
+            tool: "chat_wait",
+            group: Group::Converse,
+            summary: "Wait until a chat is `idle` (its turn finished — the state to wait for after `chat/start` with a message or `chat/send`) or `waiting` (its running turn stopped on an approval or a question, which the person answers in the chat or on the phone). Returns the state reached and how long it took, or a timeout. One call waits at most 15 seconds; call again to keep waiting (uxnan-cli does this for you). Then `chat/read` returns the answer.",
+            params: object(
+                json!({
+                    "chat": { "type": "string", "description": "The chat, as `id:<id>`." },
+                    "for": { "type": "string", "description": "`idle` (default) or `waiting` — waiting for `waiting` also ends when the turn is over." },
+                    "timeoutMs": { "type": "integer", "description": "How long this call may wait, in milliseconds. Capped at 15000. Default 15000." }
+                }),
+                &["chat"],
+            ),
+            mutates: false,
+            result: result(json!({
+                "chat": field("string", "The chat waited on."),
+                "reached": field("string", "`idle` or `waiting` — the state reached."),
+                "waitedMs": field("integer", "How long this call waited."),
+            })),
+            example: json!({ "chat": "id:7be2af67…", "for": "idle", "timeoutMs": 15000 }),
         },
         Entry {
             method: "terminal/read",
@@ -1594,7 +1730,9 @@ mod tests {
                     assert!(e.mutates, "{} does not mutate", e.method)
                 }
                 Group::Converse => {
-                    let sends = e.method == "agent/send";
+                    // A message sent (to a terminal agent or a chat) is the
+                    // one conversation move that changes anything.
+                    let sends = matches!(e.method, "agent/send" | "chat/send");
                     assert_eq!(e.mutates, sends, "{}", e.method);
                 }
             }

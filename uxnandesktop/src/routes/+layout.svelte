@@ -1,6 +1,11 @@
 <script lang="ts">
+  import { welcome } from "$lib/state/welcome.svelte";
   import "../app.css";
   import { onMount, untrack } from "svelte";
+  import { bridge } from "$lib/bridge/client.svelte";
+  import { chat } from "$lib/bridge/chat.svelte";
+  import { projectMirror } from "$lib/bridge/projectMirror.svelte";
+  import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { applyTheme } from "$lib/theme";
@@ -59,6 +64,8 @@
       if (app.backend === "ready") {
         await projects.init();
         await projects.reconcileRestoredWorkspaces();
+        // First start (or a newer tour): welcome the user once.
+        welcome.showIfNew();
       }
     })();
     // Listen for agents detected (or stopped) in any terminal.
@@ -74,6 +81,12 @@
     // dev server prints its address once, and a listener that only exists while
     // a popover is open would miss every announcement worth having.
     void ports.start();
+    // The bridge connection (idle while Settings → Bridge is off) and the chat
+    // store that mirrors its conversations for the chat tabs.
+    void bridge.start();
+    chat.start();
+    projectMirror.start();
+    void bridgeInstall.start(() => app.settings.bridge?.autoUpdate === true);
     // Answer the control surface's questions about what this window holds
     // (terminal tabs, open files, runs) — for `uxnan-cli` and the agents' tools.
     void startControlBridge();

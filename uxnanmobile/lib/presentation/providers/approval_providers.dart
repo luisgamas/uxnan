@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
+import 'package:uxnan/domain/value_objects/elicitation_resolution.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 
@@ -73,6 +74,26 @@ class ApprovalResponses extends Notifier<Map<String, ApprovalResponseState>> {
   Map<String, ApprovalResponseState> build() {
     unawaited(_hydrate());
     return const {};
+  }
+
+  /// Settles the card for an approval the bridge says is no longer pending —
+  /// answered on this phone, another phone, the desktop, or timed out — so a
+  /// card never stays actionable after someone else answered it. A card this
+  /// phone already resolved keeps its own record. Fed from
+  /// `ThreadManager.resolutionsStream` by the app root.
+  void adoptResolution(ApprovalResolution resolution) {
+    final existing = state[resolution.approvalId];
+    if (existing?.phase == ApprovalResponsePhase.resolved) return;
+    final decision = resolution.decision ?? ApprovalDecision.reject;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _set(resolution.approvalId, ApprovalResponsePhase.resolved, decision, now);
+    unawaited(
+      ref.read(approvalResponseStoreProvider).record(
+            approvalId: resolution.approvalId,
+            decision: _decisionToWire(decision),
+            decidedAtMs: now,
+          ),
+    );
   }
 
   /// Loads the persisted decisions and merges them into the in-memory map.

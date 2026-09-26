@@ -1328,7 +1328,10 @@ class _SubagentCardState extends State<_SubagentCard> {
     final textTheme = Theme.of(context).textTheme;
     final state = widget.content.state;
     final actions = state.actions;
+    final report = state.output;
+    final hasReport = report != null && report.isNotEmpty;
     final hasActions = actions.isNotEmpty;
+    final expandable = hasActions || hasReport;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1394,7 +1397,7 @@ class _SubagentCardState extends State<_SubagentCard> {
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
-            child: hasActions && _expanded
+            child: expandable && _expanded
                 ? Padding(
                     padding: const EdgeInsets.fromLTRB(
                       UxnanSpacing.md,
@@ -1408,6 +1411,13 @@ class _SubagentCardState extends State<_SubagentCard> {
                       children: [
                         for (final action in actions)
                           _SubagentActionRow(action: action),
+                        if (hasReport)
+                          Text(
+                            report,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
                       ],
                     ),
                   )
@@ -1825,8 +1835,13 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     // Boundaries are zero-text metadata: during streaming every group remains
     // visible; once settled, all but the last response move into one disclosure
     // without changing the persisted content or the copy projection.
+    // An agent resends its whole to-do list on every change: each earlier
+    // plan is a past state of the latest one, which alone is shown.
+    final lastPlan = message.contents.whereType<PlanContent>().lastOrNull;
     for (final content in message.contents) {
       switch (content) {
+        case final PlanContent plan when !identical(plan, lastPlan):
+          continue;
         case final ThinkingContent reasoning:
           thinking.write(reasoning.text);
         case final DiffContent diff:
@@ -2424,7 +2439,7 @@ class _WorkLogSection extends StatelessWidget {
       icon: UxIcons.terminal,
       title: l10n.conversationWorkLog,
       count: items.length,
-      collapsedSummary: _workLogSummary(items.last),
+      collapsedSummary: _workLogSummary(l10n, items.last),
       expanded: expanded,
       onToggle: onToggle,
       child: Column(
@@ -2440,12 +2455,31 @@ class _WorkLogSection extends StatelessWidget {
   }
 }
 
-String _workLogSummary(MessageContent item) => switch (item) {
+String _workLogSummary(AppLocalizations l10n, MessageContent item) =>
+    switch (item) {
       final CommandExecutionContent command => '\$ ${command.command}',
-      final ToolUseContent tool =>
-        tool.toolName.isEmpty ? 'tool' : tool.toolName,
+      final ToolUseContent tool => _toolLabel(l10n, tool),
       _ => '',
     };
+
+/// What a tool call did, the same way for every agent: "Read notes.txt",
+/// "Searched alpha"; an unclassified tool by its own name.
+String _toolLabel(AppLocalizations l10n, ToolUseContent tool) {
+  final verb = switch (tool.kind) {
+    ToolKind.read => l10n.conversationToolRead,
+    ToolKind.search => l10n.conversationToolSearched,
+    ToolKind.list => l10n.conversationToolListed,
+    ToolKind.fetch => l10n.conversationToolFetched,
+    ToolKind.webSearch => l10n.conversationToolSearchedWeb,
+    ToolKind.mcp || ToolKind.other => tool.toolName.isEmpty
+        ? 'tool'
+        : tool.toolName
+            .replaceFirst(RegExp('^mcp__'), '')
+            .replaceAll('__', ' · '),
+  };
+  final target = tool.target;
+  return target == null || target.isEmpty ? verb : '$verb $target';
+}
 
 /// Shared low-emphasis Neural Expressive disclosure for secondary agent
 /// process information. It morphs from a compact pill into a rounded tonal
@@ -2626,16 +2660,23 @@ class _WorkLogRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: UxIcon(
-                tool.isError ? UxIcons.error : UxIcons.build,
+                tool.running
+                    ? UxIcons.autorenew
+                    : tool.isError
+                        ? UxIcons.error
+                        : UxIcons.build,
                 size: 14,
-                color:
-                    tool.isError ? UxnanColors.error : colors.onSurfaceVariant,
+                color: tool.running
+                    ? UxnanColors.connecting
+                    : tool.isError
+                        ? UxnanColors.error
+                        : colors.onSurfaceVariant,
               ),
             ),
             const SizedBox(width: UxnanSpacing.sm),
             Expanded(
               child: Text(
-                tool.toolName.isEmpty ? 'tool' : tool.toolName,
+                _toolLabel(AppLocalizations.of(context), tool),
                 style: UxnanTypography.codeSmall,
                 overflow: TextOverflow.ellipsis,
               ),

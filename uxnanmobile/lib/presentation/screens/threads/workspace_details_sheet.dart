@@ -20,14 +20,15 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// `uxnandesktop` shows the same on hover; a phone has no hover, so the press
 /// carries it.
 ///
-/// Git state (branch, uncommitted changes, ahead/behind) joins this sheet when
-/// the per-workspace git provider lands — the row reserves nothing for it, so
-/// nothing here reads as missing until then.
+/// When the folder is one of the PC's registered projects and the PC is
+/// connected, [onRemoveProject] offers taking it off the list — here and in
+/// Uxnan Desktop alike; the folder and its conversations stay.
 Future<void> showWorkspaceDetails(
   BuildContext context,
   WorkspaceGroup group, {
   required String? fullPath,
   required void Function(String threadId) onOpenThread,
+  Future<void> Function()? onRemoveProject,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -37,6 +38,7 @@ Future<void> showWorkspaceDetails(
       group: group,
       fullPath: fullPath,
       onOpenThread: onOpenThread,
+      onRemoveProject: onRemoveProject,
     ),
   );
 }
@@ -46,11 +48,38 @@ class _WorkspaceDetails extends ConsumerWidget {
     required this.group,
     required this.fullPath,
     required this.onOpenThread,
+    this.onRemoveProject,
   });
 
   final WorkspaceGroup group;
   final String? fullPath;
   final void Function(String threadId) onOpenThread;
+  final Future<void> Function()? onRemoveProject;
+
+  Future<void> _confirmRemove(BuildContext context, String name) async {
+    final l10n = AppLocalizations.of(context);
+    final navigator = Navigator.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.spacesRemoveProjectTitle(name)),
+        content: Text(l10n.spacesRemoveProjectBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.spacesRemoveProject),
+          ),
+        ],
+      ),
+    );
+    if (!(ok ?? false)) return;
+    navigator.pop();
+    await onRemoveProject?.call();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -105,6 +134,23 @@ class _WorkspaceDetails extends ConsumerWidget {
               if (path != null && path.isNotEmpty) ...[
                 const SizedBox(height: UxnanSpacing.md),
                 _GitDetail(cwd: path),
+              ],
+              if (onRemoveProject != null) ...[
+                const SizedBox(height: UxnanSpacing.sm),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _confirmRemove(
+                      context,
+                      group.label.isEmpty ? l10n.spacesNoFolder : group.label,
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: colors.error,
+                    ),
+                    icon: const UxIcon(UxIcons.folderDelete, size: 18),
+                    label: Text(l10n.spacesRemoveProject),
+                  ),
+                ),
               ],
               const SizedBox(height: UxnanSpacing.md),
               Text(l10n.spacesConversations, style: textTheme.bodySmall),

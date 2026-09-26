@@ -36,7 +36,7 @@ test('V2 translator: text and reasoning stream as deltas, the ended text adds on
   assert.deepEqual(t.translate('session.reasoning.ended', { ...base, text: 'think' }), []);
 });
 
-test('V2 translator: a tool reports its name, input and output once it ends', () => {
+test('V2 translator: a tool is announced when called, and reports its output once it ends', () => {
   const t = new OpenCodeV2Translator();
   const id = 'call_1';
   assert.deepEqual(
@@ -45,7 +45,7 @@ test('V2 translator: a tool reports its name, input and output once it ends', ()
   );
   assert.deepEqual(
     t.translate('session.tool.called', { sessionID: S, id, input: { command: 'echo probe' } }),
-    [],
+    [{ kind: 'tool_started', sessionId: S, id, name: 'shell', input: { command: 'echo probe' } }],
   );
   assert.deepEqual(
     t.translate('session.tool.success', {
@@ -408,6 +408,142 @@ test('the adapter still speaks OpenCode 1 to a 1.x binary', async () => {
     await adapter.generateTitle({ userText: 'hi', assistantText: 'hello' });
     assert.deepEqual(fake.runs()[0]?.slice(0, 1), ['run']);
     assert.notEqual(fake.runs()[0]?.[1], '--standalone');
+  } finally {
+    await adapter.stop();
+  }
+});
+
+// --- commands: the server lists and runs its own ----------------------------------
+
+test('OpenCode 2: commands and skills come from the server, and it runs them itself', async () => {
+  const fake = fakeOpenCode(2, {
+    onPrompt: TURN,
+    commands: [
+      { name: 'init', description: 'guided AGENTS.md setup' },
+      { name: 'probecmd', description: 'Probe command' },
+    ],
+    skills: [
+      { id: 'report', name: 'Report', description: 'Report an issue', path: '/x', content: '' },
+      { id: 'probecmd', name: 'Shadowed', path: '/y', content: '' },
+    ],
+  });
+  const adapter = new OpenCodeAdapter({ binaryPath: 'opencode', spawnFn: fake.spawnFn });
+  try {
+    // The catalog is empty on the first read: the adapter waits for it.
+    assert.deepEqual(
+      (await adapter.listCommands(process.cwd())).map((c) => [c.name, c.source]),
+      [
+        ['init', 'custom'],
+        ['probecmd', 'custom'],
+        ['report', 'skill'],
+      ],
+    );
+
+    let run = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text: '/probecmd hello',
+      command: { name: 'probecmd', args: ' hello ' },
+      cwd: process.cwd(),
+    });
+    await run.done;
+    const command = fake.requests().find((r) => r.url === `/api/session/${S}/command`);
+    assert.deepEqual(command?.body, { name: 'probecmd', text: 'hello' });
+    assert.ok(run.events.some((e) => e.type === 'turn_completed'));
+
+    run = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u2',
+      text: '/report',
+      command: { name: 'report' },
+      cwd: process.cwd(),
+    });
+    await run.done;
+    const prompts = fake.requests().filter((r) => r.url === `/api/session/${S}/prompt`);
+    assert.deepEqual(prompts.at(-1)?.body, { text: '', skills: [{ id: 'report' }] });
+    // The catalog was read for the folder while it loaded, then reused per turn.
+    assert.equal(fake.requests().filter((r) => r.url.startsWith('/api/command')).length, 3);
+  } finally {
+    await adapter.stop();
+  }
+});
+
+test('OpenCode 1: one list for commands and skills, run through /command without waiting', async () => {
+  const S1 = 'ses_1';
+  const v1Turn = [
+    {
+      type: 'message.updated',
+      properties: { info: { id: 'm', role: 'assistant', sessionID: S1 } },
+    },
+    {
+      type: 'message.part.updated',
+      properties: {
+        part: { id: 'p', type: 'text', messageID: 'm', sessionID: S1, text: 'PROBE-hello' },
+      },
+    },
+    { type: 'session.idle', properties: { sessionID: S1 } },
+  ];
+  const fake = fakeOpenCode(1, {
+    onPrompt: v1Turn,
+    v1Commands: [
+      { name: 'review', description: 'review changes', source: 'command', template: 'x' },
+      { name: 'probecmd', description: 'Probe command', source: 'command', template: 'y' },
+      { name: 'slideshow', description: 'A skill', source: 'skill', template: 'z' },
+    ],
+  });
+  const adapter = new OpenCodeAdapter({
+    binaryPath: 'opencode',
+    defaultModel: 'opencode/big-pickle',
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.deepEqual(
+      (await adapter.listCommands(process.cwd())).map((c) => [c.name, c.source]),
+      [
+        ['review', 'custom'],
+        ['probecmd', 'custom'],
+        ['slideshow', 'skill'],
+      ],
+    );
+    const { events, done } = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text: '/probecmd hello',
+      command: { name: 'probecmd', args: 'hello' },
+      cwd: process.cwd(),
+    });
+    await done;
+    const command = fake.requests().find((r) => r.url === `/session/${S1}/command`);
+    assert.deepEqual(command?.body, {
+      command: 'probecmd',
+      arguments: 'hello',
+      model: 'opencode/big-pickle',
+    });
+    const completed = events.find((e) => e.type === 'turn_completed');
+    assert.equal((completed?.data as { text?: string } | undefined)?.text, 'PROBE-hello');
+  } finally {
+    await adapter.stop();
+  }
+});
+
+test('OpenCode 1: a command the server refuses ends the turn with its error', async () => {
+  const fake = fakeOpenCode(1, { commandStatus: 404 });
+  const adapter = new OpenCodeAdapter({ binaryPath: 'opencode', spawnFn: fake.spawnFn });
+  try {
+    const { events, done } = collect(adapter);
+    await adapter.sendTurn({
+      threadId: 't1',
+      turnId: 'u1',
+      text: '/missing',
+      command: { name: 'missing' },
+      cwd: process.cwd(),
+    });
+    await done;
+    const error = events.find((e) => e.type === 'turn_error');
+    assert.match((error?.data as { text?: string } | undefined)?.text ?? '', /\/missing failed/);
   } finally {
     await adapter.stop();
   }

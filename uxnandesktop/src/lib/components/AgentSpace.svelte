@@ -1,9 +1,12 @@
 <script lang="ts">
   // The agents running in a workspace (a project's main worktree, or a worktree) —
   // uxnan's "agent view". Each agent is a two-line row (conversation title + preview
-  // + status) that jumps to its terminal on click. Collapsible: when collapsed the
-  // header shows a compact strip of each agent's logo ringed by its status color.
-  // Only renders when there's at least one agent terminal.
+  // + status) that jumps to its terminal on click. Bridge conversations for the
+  // folder are listed in the same view (`ChatRow`) — the ones open in a tab or
+  // doing something, then the most recent (`sidebarChats`), a chat started on
+  // the phone included — and open in a chat tab on click. Collapsible: when
+  // collapsed the header shows a compact strip of each one's logo ringed by its
+  // status color. Only renders when there's at least one.
   import { projects } from "$lib/state/projects.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
@@ -13,6 +16,12 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentRow from "./AgentRow.svelte";
+  import ChatRow from "./ChatRow.svelte";
+  import { chat } from "$lib/bridge/chat.svelte";
+  import { sidebarChats } from "$lib/bridge/chatList";
+  import { bridgeAgentLogo } from "$lib/bridge/agents";
+  import { keyTarget } from "$lib/pathid";
+  import { isLocalTarget } from "$lib/target";
   import AgentAvatar from "./AgentAvatar.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
@@ -31,6 +40,27 @@
   let visibleCount = $state(0);
 
   const tabs = $derived(terminals.agentTabs(wsKey));
+  /** Threads open in a chat tab anywhere (a listed one focuses that tab). */
+  const openThreads = $derived(
+    new Set(
+      [...terminals.tabsWithWorkspace()]
+        .map(({ tab }) => (tab.kind === "chat" ? tab.threadId : undefined))
+        .filter((id): id is string => !!id),
+    ),
+  );
+  // Chats run on the local bridge: listed for folders on this machine only.
+  const chats = $derived(
+    isLocalTarget(keyTarget(wsKey))
+      ? sidebarChats(chat.threadsFor(path), {
+          open: openThreads,
+          activityOf: (id) => chat.activity.of(id),
+        })
+      : [],
+  );
+  const total = $derived(tabs.length + chats.length);
+  const shownChatId = $derived(
+    terminals.activeWorkspace === path ? terminals.activeChatThreadId() : null,
+  );
   // The terminal currently shown in the center (to highlight its row).
   const revealedId = $derived(
     terminals.activeWorkspace === path ? terminals.activePtyId() : null,
@@ -43,10 +73,10 @@
   const hasZero = $derived(tabs.some(isZeroAgent));
   $effect(() => {
     const strip = avatarStrip;
-    tabs.length;
+    const count = total;
     if (!strip) return;
     const measure = () => {
-      visibleCount = visibleAgentCount(tabs.length, strip.clientWidth, MAX_AVATARS);
+      visibleCount = visibleAgentCount(count, strip.clientWidth, MAX_AVATARS);
     };
     const observer = new ResizeObserver(measure);
     observer.observe(strip);
@@ -61,9 +91,13 @@
     projects.setActiveWorktree(path);
     terminals.revealTab(wsKey, tabId);
   }
+
+  function openChat(threadId: string) {
+    projects.openChatAt(path, { threadId });
+  }
 </script>
 
-{#if tabs.length > 0}
+{#if total > 0}
   <div class="flex w-full min-w-0 flex-col">
     <!-- Header: a quiet "Agents · n" toggle. Collapsed, a status-ringed logo strip
          to its right summarizes who's here and how they're doing. -->
@@ -81,7 +115,7 @@
               class={cn(icon.status, "shrink-0 transition-transform", expanded && "rotate-90")}
             />
             <span class="text-[10px] font-medium uppercase tracking-[0.05em]">{i18n.t("agents.spaceLabel")}</span>
-            <span class="text-[10px] tabular-nums text-muted-foreground/50">{tabs.length}</span>
+            <span class="text-[10px] tabular-nums text-muted-foreground/50">{total}</span>
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -113,9 +147,25 @@
               {/snippet}
             </TooltipSimple>
           {/each}
-          {#if tabs.length > visibleCount}
+          {#each chats.slice(0, Math.max(0, visibleCount - tabs.length)) as t (t.id)}
+            <TooltipSimple title={`${t.title} · ${i18n.t(`monitor.${chat.activity.of(t.id)}`)}`}>
+              {#snippet children(tp)}
+                <Button
+                  {...tp}
+                  variant="ghost"
+                  size="icon-xs"
+                  class="transition-transform hover:scale-110"
+                  aria-label={t.title}
+                  onclick={() => openChat(t.id)}
+                >
+                  <AgentAvatar logo={bridgeAgentLogo(t.agentId)} status={chat.activity.of(t.id)} stale={false} />
+                </Button>
+              {/snippet}
+            </TooltipSimple>
+          {/each}
+          {#if total > visibleCount}
             <span class={row.agentOverflow}>
-              +{tabs.length - visibleCount}
+              +{total - visibleCount}
             </span>
           {/if}
         </div>
@@ -133,6 +183,9 @@
             active={revealedId === t.id}
             onreveal={() => reveal(t.id)}
           />
+        {/each}
+        {#each chats as t (t.id)}
+          <ChatRow thread={t} active={shownChatId === t.id} onopen={() => openChat(t.id)} />
         {/each}
       </div>
     {/if}

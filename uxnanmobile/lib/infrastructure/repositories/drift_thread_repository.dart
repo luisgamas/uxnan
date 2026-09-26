@@ -4,6 +4,7 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
+import 'package:uxnan/domain/value_objects/thread_origin.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 
 /// drift-backed implementation of [IThreadRepository] (spec 02c section 10.3).
@@ -52,6 +53,8 @@ class DriftThreadRepository implements IThreadRepository {
               thread.createdAt?.millisecondsSinceEpoch ??
                   DateTime.now().millisecondsSinceEpoch,
             ),
+            originKind: Value(thread.origin?.kind.name),
+            originName: Value(thread.origin?.name),
           ),
         );
   }
@@ -135,5 +138,9 @@ class DriftThreadRepository implements IThreadRepository {
             ? DateTime.fromMillisecondsSinceEpoch(row.lastActivityMs!)
             : null,
         createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAtMs),
+        origin: ThreadOrigin.fromJson({
+          'kind': row.originKind,
+          'name': row.originName,
+        }),
       );
 }

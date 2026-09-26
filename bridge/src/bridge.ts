@@ -7,10 +7,27 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */
+import { existsSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { makeNotification, type BridgeStatus, type PairingPayload } from '@uxnan/shared';
+import {
+  LOCAL_CONTROL_FILE,
+  StreamNotification,
+  localReceiverId,
+  makeNotification,
+  type AgentsUpdatedParams,
+  type LocatedAgent,
+  type BridgeStatus,
+  type PairingPayload,
+  type DevicesUpdatedParams,
+  type PresenceUpdatedParams,
+  type ProjectRemovedParams,
+  type ProjectUpdatedParams,
+  type SettingsUpdatedParams,
+  type ThreadDeletedParams,
+  type ThreadUpdatedParams,
+} from '@uxnan/shared';
 import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
@@ -29,6 +46,16 @@ import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
 import { startLanServer, type LanServerHandle } from './transport/lan-server.js';
+import {
+  startLocalControlServer,
+  type LocalControlServerHandle,
+} from './transport/local-control-server.js';
+import {
+  buildDiscovery,
+  mintLocalControlToken,
+  removeDiscoveryFile,
+  writeDiscoveryFile,
+} from './local-control-discovery.js';
 import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
@@ -40,20 +67,22 @@ import { AgentManager } from './agents/agent-manager.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
-import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
 import { ClaudeCodeAdapter } from './adapters/claude-adapter.js';
-import { resolveClaudeBinary } from './adapters/resolve-claude.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
-import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { PiAdapter } from './adapters/pi-adapter.js';
-import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { AntigravityAdapter, antigravityPermissionMode } from './adapters/antigravity-adapter.js';
-import { resolveAntigravityBinary } from './adapters/resolve-antigravity.js';
 import { ZeroAdapter } from './adapters/zero-adapter.js';
-import { resolveZeroBinary } from './adapters/resolve-zero.js';
 import { GrokAdapter } from './adapters/grok-adapter.js';
-import { resolveGrokBinary } from './adapters/resolve-grok.js';
 import { ProjectRegistry } from './projects/project-registry.js';
+import { AgentInstalls } from './agents/agent-installs.js';
+import { ensureGlobalEntry, type GlobalEntryAgent } from './agents/global-mcp-entry.js';
+import { SyncLedger } from './sync/sync-ledger.js';
+import { BridgeSettingsStore } from './settings/bridge-settings.js';
+import { PresenceRegistry } from './presence/presence-registry.js';
+import { bridgeHost } from './presence/host-info.js';
+
+/** The local client id Uxnan Desktop connects as. */
+const DESKTOP_LOCAL_CLIENT = 'desktop';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 import { createBridgePushSender } from './push/push-sender.js';
@@ -67,6 +96,13 @@ export interface StartBridgeOptions {
   logLevel?: LogLevel;
   /** Inject a clock (epoch ms) for testability. */
   now?: () => number;
+  /**
+   * Keep the `uxnan-browser` entry in Zero's and Antigravity's global MCP
+   * config (agents/global-mcp-entry.ts). Only the long-running daemon
+   * (`uxnan-bridge start`) sets it — never a short-lived command or a test,
+   * which must not touch the user's agent configs.
+   */
+  manageGlobalEntries?: boolean;
 }
 
 export interface Bridge {
@@ -78,12 +114,24 @@ export interface Bridge {
    * before the first check resolves. */
   updateStatus(): UpdateStatus | undefined;
   generatePairingQr(): PairingPayload;
+  /**
+   * The same payload WITHOUT opening the pairing window — its addresses and
+   * relay session, for a bridge that starts as a service and pairs only when
+   * asked (`uxnan-bridge qr`, Uxnan Desktop).
+   */
+  pairingInfo(): PairingPayload;
   /** The current manual-pairing code to show on the PC (rotates on expiry). */
   currentPairingCode(): string;
   /** Connect to the relay as `mac` and serve a phone for the given session. */
   connectRelay(sessionId: string): Promise<void>;
   /** Start the direct-LAN WebSocket server; resolves with the bound port. */
   startLan(): Promise<{ port: number }>;
+  /**
+   * Start the loopback-only local control channel (architecture/02a §5.8.15)
+   * and publish its address + a fresh token in `~/.uxnan/local-control.json`.
+   * Resolves with the bound port. Idempotent.
+   */
+  startLocalControl(): Promise<{ port: number }>;
   /**
    * Push a JSON-RPC notification to a connected phone. Returns `true` if it was
    * sent live, `false` if the device is offline and it was buffered.
@@ -136,11 +184,15 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const deviceState = new SecureDeviceState(secretStore);
   await deviceState.loadOrCreate();
 
-  const sessions = new SessionState();
+  // One revision counter for every change clients mirror (§5.8.17).
+  const ledger = await SyncLedger.load(state);
+  const presence = new PresenceRegistry();
+  const host = bridgeHost();
+  const sessions = new SessionState(presence);
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const metricsStore = new MetricsStore(state);
-  const threadStore = new ThreadStore(state, metricsStore);
+  const threadStore = new ThreadStore(state, metricsStore, ledger);
   // Bridge-owned profile metrics: every conversation, turn, token report,
   // session and Git action is retained in a durable ledger and sealed into the
   // tamper-proof backup file. The phone reads these over `metrics/*`.
@@ -176,7 +228,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(config.lanEnabled ? { hosts: localHostPorts(config.lanPort) } : {}),
       macDeviceId: deviceState.identity.macDeviceId,
       macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-      displayName: hostname(),
+      // The phone files the PC under the name every client uses for it.
+      displayName: settings.get().name,
       now: now(),
       sessionId: pairingSessionId,
     });
@@ -187,13 +240,28 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     // separate `qr` command — or an autostarted, console-less daemon — agree on it.
     statePath: state.pathFor(DAEMON_FILES.pairingCode),
   });
-  const projects = new ProjectRegistry(config.workspaceRoots, process.cwd(), config.projectAgents);
-  // Browse roots fall back to the project roots, then the bridge's launch
-  // directory (`process.cwd()`) — so an unconfigured install browses from
-  // wherever the bridge was started, no `browseRoots`/`workspaceRoots` needed.
-  const browse = new BrowseService(
-    config.browseRoots.length > 0 ? config.browseRoots : config.workspaceRoots,
+  const settings = new BridgeSettingsStore({ state, ledger, config });
+  await settings.load();
+  const projects = new ProjectRegistry({
+    state,
+    ledger,
+    configRoots: config.workspaceRoots,
+    projectAgents: config.projectAgents,
+    now,
+  });
+  const firstRegistry = await projects.load();
+  await seedProjects(projects, threadStore, firstRegistry).catch((err: unknown) =>
+    logger.warn(`failed to link conversations to projects: ${String(err)}`),
   );
+  // Browsing starts at the shared start folder (`home`) — never at whatever
+  // directory `start` happened to run in — plus any configured roots.
+  const browseRootsFor = (home: string): string[] => [
+    home,
+    ...config.browseRoots,
+    ...config.workspaceRoots,
+  ];
+  const browse = new BrowseService(browseRootsFor(settings.get().home));
+  settings.onChange(({ settings: next }) => browse.setRoots(browseRootsFor(next.home)));
   // Direct FCM is the PRIMARY push path: when a Firebase service account is present
   // the bridge delivers straight to FCM on any transport (LAN/Tailscale/relay). With
   // no credential this is null and the bridge uses the relay fallback (FOR-DEV).
@@ -219,33 +287,92 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     // reconnect) instead of defaulting to reject on a card the user never saw.
     isPhoneConnected: () => sessionRegistry.anyActive(),
   });
+  // Every change clients mirror is announced from the store that made it, with
+  // its sync revision — the one place these notifications come from (§5.8.17).
+  const broadcast = (method: string, params: unknown): void =>
+    sessionRegistry.broadcast(makeNotification(method, params));
+  threadStore.onChange((change) => {
+    if (change.type === 'deleted') {
+      broadcast(StreamNotification.ThreadDeleted, {
+        threadId: change.threadId,
+        rev: change.rev,
+      } satisfies ThreadDeletedParams);
+      return;
+    }
+    const activeTurnId = agentManager.activeTurnId(change.thread.id);
+    broadcast(StreamNotification.ThreadUpdated, {
+      thread: activeTurnId !== undefined ? { ...change.thread, activeTurnId } : change.thread,
+    } satisfies ThreadUpdatedParams);
+  });
+  projects.onChange((change) => {
+    if (change.type === 'removed') {
+      broadcast(StreamNotification.ProjectRemoved, {
+        projectId: change.projectId,
+        rev: change.rev,
+      } satisfies ProjectRemovedParams);
+    } else {
+      broadcast(StreamNotification.ProjectUpdated, {
+        project: change.project,
+      } satisfies ProjectUpdatedParams);
+    }
+  });
+  settings.onChange((change) =>
+    broadcast(StreamNotification.SettingsUpdated, change satisfies SettingsUpdatedParams),
+  );
+  // A phone named anywhere is named everywhere: every client hears the list,
+  // and a connected phone shows under its new name at once.
+  trustStore.onChange((devices) => {
+    broadcast(StreamNotification.DevicesUpdated, { devices } satisfies DevicesUpdatedParams);
+    for (const device of devices) sessions.rename(device.deviceId, device.displayName);
+  });
+  // The desktop goes by the PC's shared name.
+  settings.onChange(({ settings: next }) => presence.rename('desktop', next.name));
+  presence.onChange((clients) =>
+    broadcast(StreamNotification.PresenceUpdated, { clients } satisfies PresenceUpdatedParams),
+  );
+  // A client that just connected is about to ask what it can run: re-check
+  // what is installed first (bounded by the refresh TTL).
+  presence.onChange(() => agentInstalls.refresh());
   // Echo: built-in reference agent (no external CLI), useful for development.
   agentManager.register(new EchoAgentAdapter(), { displayName: 'Echo (dev)' });
   // OpenCode: real agent driven over a local `opencode serve` (HTTP + SSE),
   // OpenCode 1 or 2 — the adapter reads the installed version and speaks its
   // protocol (`opencode-v1.ts` / `opencode-v2.ts`); approvals and questions go
   // through the bridge's shared round-trips below.
+  // Every CLI agent is found with the rule shared with Uxnan Desktop and
+  // re-checked while the bridge runs (`AgentInstalls`), so one installed later
+  // appears without a restart.
+  const agentInstalls = new AgentInstalls(agentManager, { now });
+  agentInstalls.onChange(() =>
+    broadcast(StreamNotification.AgentsUpdated, {
+      agents: agentManager.listAgents(),
+    } satisfies AgentsUpdatedParams),
+  );
   const openCodeSettings = config.agents.opencode ?? {};
-  const openCode = resolveOpenCodeBinary(openCodeSettings.binaryPath);
-  const openCodeAdapter = new OpenCodeAdapter({
-    binaryPath: openCode.binaryPath,
-    // Route OpenCode's permission requests to the bridge's shared approval
-    // round-trip (the same one the Claude PreToolUse hook, Codex app-server, and
-    // Echo demo use).
-    onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
-    // Route OpenCode's questions (the agent's multiple-choice tool; a form on
-    // OpenCode 2) to the phone's question card and back.
-    onQuestionRequest: (threadId, questions) => agentManager.requestQuestion(threadId, questions),
-    ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
-  });
-  agentManager.register(openCodeAdapter, {
+  // Swapped when OpenCode is installed while the bridge runs; the history
+  // reader below always asks the current one.
+  let openCodeAdapter: OpenCodeAdapter | undefined;
+  agentInstalls.register({
+    agentId: 'opencode',
     displayName: 'OpenCode',
-    available: openCode.available,
+    ...(openCodeSettings.binaryPath ? { configuredPath: openCodeSettings.binaryPath } : {}),
     ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+    create: (located) =>
+      (openCodeAdapter = new OpenCodeAdapter({
+        binaryPath: located.binaryPath,
+        // Route OpenCode's permission requests to the bridge's shared approval
+        // round-trip (the same one the Claude PreToolUse hook, Codex app-server, and
+        // Echo demo use).
+        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        // Route OpenCode's questions (the agent's multiple-choice tool; a form on
+        // OpenCode 2) to the phone's question card and back.
+        onQuestionRequest: (threadId, questions) =>
+          agentManager.requestQuestion(threadId, questions),
+        ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+      })),
   });
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
-  const claude = resolveClaudeBinary(claudeSettings.binaryPath);
   // Interactive approvals (opt-in): the Claude adapter injects a PreToolUse hook
   // that round-trips each tool to this bridge's local HTTP endpoint. The hook
   // URL is lazy (the LAN port is known only after `startLan`); the token guards
@@ -265,142 +392,151 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const claudePinnedModels = (claudeSettings.models ?? []).map((m) =>
     typeof m === 'string' ? { id: m } : m,
   );
-  agentManager.register(
-    new ClaudeCodeAdapter({
-      binaryPath: claude.binaryPath,
-      prependArgs: claude.prependArgs,
-      permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
-      ...(claudeInteractiveApprovals
-        ? {
-            interactiveApprovals: true,
-            approvalHook: {
-              token: hookState.token,
-              scriptPath: claudeHookScriptPath,
-              url: () =>
-                hookState.port !== undefined
-                  ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
-                  : undefined,
-            },
-          }
-        : {}),
-      ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
-      ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
-    }),
-    {
-      displayName: 'Claude Code',
-      available: claude.available,
-      ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
-    },
-  );
+  agentInstalls.register({
+    agentId: 'claude-code',
+    displayName: 'Claude Code',
+    ...(claudeSettings.binaryPath ? { configuredPath: claudeSettings.binaryPath } : {}),
+    ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+    create: (located) =>
+      new ClaudeCodeAdapter({
+        binaryPath: located.binaryPath,
+        prependArgs: located.prependArgs,
+        permissionMode: claudeSettings.permissionMode ?? 'acceptEdits',
+        ...(claudeInteractiveApprovals
+          ? {
+              interactiveApprovals: true,
+              approvalHook: {
+                token: hookState.token,
+                scriptPath: claudeHookScriptPath,
+                url: () =>
+                  hookState.port !== undefined
+                    ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
+                    : undefined,
+              },
+            }
+          : {}),
+        ...(claudeSettings.model !== undefined ? { defaultModel: claudeSettings.model } : {}),
+        ...(claudePinnedModels.length > 0 ? { pinnedModels: claudePinnedModels } : {}),
+      }),
+  });
   // Codex: real agent driven via the `codex app-server` turn protocol
   // (the bridge speaks JSON-RPC over the child's stdio; approvals go through
   // the bridge's `requestApproval` flow — see `codex-approval.ts`).
   const codexSettings = config.agents['codex'] ?? {};
-  const codex = resolveCodexBinary(codexSettings.binaryPath);
-  agentManager.register(
-    new CodexAdapter({
-      binaryPath: codex.binaryPath,
-      prependArgs: codex.prependArgs,
-      // The app-server has its own approval channel; default to `interactive`
-      // so every tool gating is surfaced to the phone (the previous
-      // `acceptEdits` default silently auto-approved everything via
-      // `codex exec -s workspace-write`). `acceptEdits` is still accepted
-      // for back-compat and maps to the same no-prompt behavior.
-      permissionMode: codexSettings.permissionMode ?? 'interactive',
-      // Route app-server approval elicitations to the bridge's shared
-      // approval round-trip (the same one the Claude PreToolUse hook and
-      // the Echo demo use).
-      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
-      ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
-    }),
-    {
-      displayName: 'Codex',
-      available: codex.available,
-      ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
-    },
-  );
+  agentInstalls.register({
+    agentId: 'codex',
+    displayName: 'Codex',
+    ...(codexSettings.binaryPath ? { configuredPath: codexSettings.binaryPath } : {}),
+    ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
+    create: (located) =>
+      new CodexAdapter({
+        binaryPath: located.binaryPath,
+        prependArgs: located.prependArgs,
+        // The app-server has its own approval channel; default to `interactive`
+        // so every tool gating is surfaced to the phone (the previous
+        // `acceptEdits` default silently auto-approved everything via
+        // `codex exec -s workspace-write`). `acceptEdits` is still accepted
+        // for back-compat and maps to the same no-prompt behavior.
+        permissionMode: codexSettings.permissionMode ?? 'interactive',
+        // Route app-server approval elicitations to the bridge's shared
+        // approval round-trip (the same one the Claude PreToolUse hook and
+        // the Echo demo use).
+        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        ...(codexSettings.model !== undefined ? { defaultModel: codexSettings.model } : {}),
+      }),
+  });
   // pi: real agent driven via persistent `pi --mode rpc` sessions (see FOR-DEV.md).
   const piSettings = config.agents['pi-agent'] ?? {};
-  const pi = resolvePiBinary(piSettings.binaryPath);
-  agentManager.register(
-    new PiAdapter({
-      binaryPath: pi.binaryPath,
-      prependArgs: pi.prependArgs,
-      permissionMode: piSettings.permissionMode ?? 'acceptEdits',
-      ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
-    }),
-    {
-      displayName: 'pi',
-      available: pi.available,
-      ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
-    },
-  );
+  agentInstalls.register({
+    agentId: 'pi-agent',
+    displayName: 'pi',
+    ...(piSettings.binaryPath ? { configuredPath: piSettings.binaryPath } : {}),
+    ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
+    create: (located) =>
+      new PiAdapter({
+        binaryPath: located.binaryPath,
+        prependArgs: located.prependArgs,
+        permissionMode: piSettings.permissionMode ?? 'acceptEdits',
+        ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
+      }),
+  });
   // Antigravity: real Google agent driven via `agy … -p`; models are discovered
   // from the CLI and may belong to the Gemini family. See FOR-DEV.md.
   const antigravitySettings = config.agents['antigravity-cli'] ?? {};
-  const antigravity = resolveAntigravityBinary(antigravitySettings.binaryPath);
-  agentManager.register(
-    new AntigravityAdapter({
-      binaryPath: antigravity.binaryPath,
-      prependArgs: antigravity.prependArgs,
-      permissionMode: antigravityPermissionMode(antigravitySettings.permissionMode),
-      ...(antigravitySettings.model !== undefined
-        ? { defaultModel: antigravitySettings.model }
-        : {}),
-    }),
-    {
-      displayName: 'Antigravity',
-      available: antigravity.available,
-      ...(antigravitySettings.model !== undefined
-        ? { defaultModel: antigravitySettings.model }
-        : {}),
-    },
-  );
+  // Antigravity only reads MCP servers from its global config: keep the
+  // secret-free `uxnan-browser` entry there (agents/global-mcp-entry.ts).
+  const keepGlobalEntry = (agent: GlobalEntryAgent) => (located: LocatedAgent) => {
+    if (options.manageGlobalEntries !== true) return;
+    void ensureGlobalEntry(agent, located).then((outcome) => {
+      if (outcome === 'added') logger.info(`registered uxnan-browser for ${agent}`);
+      if (outcome === 'failed') logger.warn(`could not register uxnan-browser for ${agent}`);
+    });
+  };
+  agentInstalls.register({
+    agentId: 'antigravity-cli',
+    displayName: 'Antigravity',
+    whenAvailable: keepGlobalEntry('antigravity-cli'),
+    ...(antigravitySettings.binaryPath ? { configuredPath: antigravitySettings.binaryPath } : {}),
+    ...(antigravitySettings.model !== undefined ? { defaultModel: antigravitySettings.model } : {}),
+    create: (located) =>
+      new AntigravityAdapter({
+        binaryPath: located.binaryPath,
+        prependArgs: located.prependArgs,
+        permissionMode: antigravityPermissionMode(antigravitySettings.permissionMode),
+        ...(antigravitySettings.model !== undefined
+          ? { defaultModel: antigravitySettings.model }
+          : {}),
+      }),
+  });
   // Zero: open-source Go agent driven over the Agent Client Protocol (`zero acp`
   // — two-way JSON-RPC over stdio; approvals go through the bridge's
   // `requestApproval` flow, mapped onto ACP `session/request_permission`).
   const zeroSettings = config.agents.zero ?? {};
-  const zero = resolveZeroBinary(zeroSettings.binaryPath);
-  agentManager.register(
-    new ZeroAdapter({
-      binaryPath: zero.binaryPath,
-      prependArgs: zero.prependArgs,
-      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
-      ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
-    }),
-    {
-      displayName: 'Zero',
-      available: zero.available,
-      ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
-    },
-  );
+  agentInstalls.register({
+    agentId: 'zero',
+    displayName: 'Zero',
+    ...(zeroSettings.binaryPath ? { configuredPath: zeroSettings.binaryPath } : {}),
+    ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
+    create: (located) =>
+      new ZeroAdapter({
+        binaryPath: located.binaryPath,
+        prependArgs: located.prependArgs,
+        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        ...(zeroSettings.model !== undefined ? { defaultModel: zeroSettings.model } : {}),
+      }),
+  });
   // Grok: xAI's coding CLI driven over the Agent Client Protocol (`grok agent
   // stdio` — two-way JSON-RPC over stdio; approvals go through the bridge's
   // `requestApproval` flow, mapped onto ACP `session/request_permission`).
   const grokSettings = config.agents.grok ?? {};
-  const grok = resolveGrokBinary(grokSettings.binaryPath);
-  agentManager.register(
-    new GrokAdapter({
-      binaryPath: grok.binaryPath,
-      prependArgs: grok.prependArgs,
-      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
-      ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
-    }),
-    {
-      displayName: 'Grok',
-      available: grok.available,
-      ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
-    },
-  );
+  agentInstalls.register({
+    agentId: 'grok',
+    displayName: 'Grok',
+    ...(grokSettings.binaryPath ? { configuredPath: grokSettings.binaryPath } : {}),
+    ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
+    create: (located) =>
+      new GrokAdapter({
+        binaryPath: located.binaryPath,
+        prependArgs: located.prependArgs,
+        onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+        ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
+      }),
+  });
   // Agent-owned history is consulted on every idle `turn/list` so work written
   // from another client attached to the same native session converges back into
   // Uxnan. OpenCode is read through its own server's history API, normalized for
   // the installed version (current releases use SQLite); the other supported
   // agents use their documented local logs.
   const sessionHistory = new SessionHistoryReader({
-    openCodeMessages: (sessionId, cwd) => openCodeAdapter.readSessionMessages(sessionId, cwd),
+    openCodeMessages: (sessionId, cwd) =>
+      openCodeAdapter?.readSessionMessages(sessionId, cwd) ?? Promise.resolve([]),
   });
   const startedAt = now();
+  // Identifies this run, so a local client reconnecting after a restart knows
+  // the replay window it remembers is gone (see local-control-server.ts).
+  const instanceId = randomUUID();
+  let localControl: LocalControlServerHandle | undefined;
+  let localControlToken: string | undefined;
 
   // Live relay-connection state, mutated by the relay serve loop below and read
   // by both the CLI `status()` and the `bridge/status` handler (via the context).
@@ -434,12 +570,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     metrics,
     sessionHistory,
     agentManager,
+    agentInstalls,
     projects,
+    ledger,
+    settings,
+    presence,
+    host,
     browse,
     pushService,
     logger,
     relayConnected: () => relayState.connected,
+    localControlActive: () => localControl !== undefined,
     updateStatus: () => updateState.status,
+    pairingPayload: () => {
+      pairingCodeService.arm();
+      return buildPairingPayload();
+    },
     now,
   };
 
@@ -483,6 +629,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         activeSessions: sessions.count,
         startedAt,
         now: now(),
+        localControl: localControl !== undefined,
+        activeTurns: agentManager.activeTurnCount(),
+        host,
+        clients: presence.list(),
         ...(updateState.status?.latestVersion !== undefined
           ? { latestVersion: updateState.status.latestVersion }
           : {}),
@@ -497,6 +647,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       pairingCodeService.arm();
       return buildPairingPayload();
     },
+    pairingInfo: buildPairingPayload,
     currentPairingCode: () => {
       pairingCodeService.arm();
       return pairingCodeService.currentCode();
@@ -508,7 +659,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           sessionId,
           macDeviceId: deviceState.identity.macDeviceId,
           macIdentityPublicKey: deviceState.identity.macIdentityPublicKey,
-          machineName: hostname(),
+          machineName: settings.get().name,
         });
 
       // Serve exactly one phone session over `connection`; resolves when the
@@ -523,7 +674,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             router,
             deviceState,
             trustStore,
-            displayName: hostname(),
+            displayName: settings.get().name,
             transport: 'relay',
             expectedSessionId: sessionId,
           });
@@ -602,7 +753,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             router,
             deviceState,
             trustStore,
-            displayName: hostname(),
+            displayName: settings.get().name,
             transport: 'direct',
             // Consent gate for first-time enrollment (architecture/02a §5.9.1):
             // a qr_bootstrap is only accepted while the operator recently showed
@@ -669,6 +820,68 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       }
       return { port: lanHandle.port };
     },
+    startLocalControl: async () => {
+      if (localControl) return { port: localControl.port };
+      const token = mintLocalControlToken();
+      const handle = await startLocalControlServer({
+        port: 0,
+        token,
+        bridgeVersion: BRIDGE_VERSION,
+        instanceId,
+        registry: sessionRegistry,
+        // Marked local, so methods only the desktop may call (`desktop/attach`)
+        // can tell it from a phone.
+        dispatch: (raw, clientId) =>
+          router.dispatchRaw(raw, {
+            sessionId: localReceiverId(clientId),
+            deviceId: localReceiverId(clientId),
+            local: clientId,
+          }),
+        // A local client can see and answer approvals exactly like a phone, so
+        // it counts as "someone is there" for the approval countdown.
+        onClientConnected: (clientId) => {
+          agentManager.onPhoneConnected();
+          // Only Uxnan Desktop is a presence; a CLI command's short call is not.
+          if (clientId === DESKTOP_LOCAL_CLIENT) {
+            presence.connected({
+              id: localReceiverId(clientId),
+              kind: 'desktop',
+              name: settings.get().name,
+              since: now(),
+            });
+          }
+          logger.info(`local client connected: ${clientId}`);
+        },
+        onClientDisconnected: (clientId) => {
+          agentManager.onPhoneDisconnected();
+          presence.disconnected(localReceiverId(clientId));
+          // Its tools' token dies with it (the desktop mints a new one).
+          agentManager.clearDesktopTools(clientId);
+          logger.info(`local client disconnected: ${clientId}`);
+        },
+      });
+      try {
+        await writeDiscoveryFile(
+          state.pathFor(LOCAL_CONTROL_FILE),
+          buildDiscovery({
+            port: handle.port,
+            token,
+            pid: process.pid,
+            bridgeVersion: BRIDGE_VERSION,
+            instanceId,
+          }),
+        );
+      } catch (err) {
+        // Without the file no client can find the listener: close it rather
+        // than keep a socket nobody can use.
+        await handle.close();
+        throw err;
+      }
+      localControl = handle;
+      localControlToken = token;
+      logger.info(`local control channel listening on 127.0.0.1:${handle.port}`);
+      return { port: handle.port };
+    },
     notify: (deviceId, method, params) =>
       sessionRegistry.notify(deviceId, makeNotification(method, params)),
     stop: async () => {
@@ -689,6 +902,45 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         await lanHandle.close();
         lanHandle = undefined;
       }
+      if (localControl) {
+        await localControl.close();
+        localControl = undefined;
+      }
+      if (localControlToken !== undefined) {
+        await removeDiscoveryFile(state.pathFor(LOCAL_CONTROL_FILE), localControlToken);
+        localControlToken = undefined;
+      }
     },
   };
+}
+
+/**
+ * Link every conversation to the project its folder belongs to, and — the first
+ * time the registry is created — register those folders, so everything a user
+ * already did (on the phone alone, before this registry existed) shows up as
+ * projects on every client from the start. Later runs never re-add a project
+ * the user removed; they only relink conversations. Git is asked once per
+ * distinct folder.
+ */
+async function seedProjects(
+  projects: ProjectRegistry,
+  threadStore: ThreadStore,
+  firstRegistry: boolean,
+): Promise<void> {
+  if (firstRegistry) {
+    for (const folder of await threadStore.threadFolders()) {
+      // A folder that no longer exists is history, not a project to offer.
+      if (!existsSync(folder)) continue;
+      await projects.add(folder, { source: 'thread' }).catch(() => undefined);
+    }
+  }
+  const idByFolder = new Map<string, Promise<string>>();
+  await threadStore.relinkProjects((cwd) => {
+    let id = idByFolder.get(cwd);
+    if (!id) {
+      id = projects.resolve(cwd).then((project) => project.id);
+      idByFolder.set(cwd, id);
+    }
+    return id;
+  });
 }

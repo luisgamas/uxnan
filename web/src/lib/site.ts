@@ -156,3 +156,35 @@ export const PLATFORM_LINE =
 
 /** source: LICENSE */
 export const LICENSE = "MPL-2.0";
+
+/**
+ * The agents the bridge drives as conversations — the phone's chats and the
+ * desktop's chat tabs are the same list.
+ * source: shared/src/agents/agent-capabilities.ts → AgentId (minus the `echo`
+ * development agent); uxnandesktop/docs/chat.md
+ */
+export const CHAT_AGENTS = [
+  { id: "claudecode", name: "Claude Code" },
+  { id: "codex", name: "Codex" },
+  { id: "opencode", name: "OpenCode" },
+  { id: "pi", name: "pi" },
+  { id: "antigravity", name: "Antigravity" },
+  { id: "zero", name: "Zero" },
+  { id: "grok", name: "Grok" },
+].map((a) => ({ ...a, icon: mark(a.id) }));
+
+/**
+ * What an agent inside Uxnan can run to work with other agents — no install:
+ * the CLI ships with the desktop app and the same entries reach the agent as
+ * MCP tools.
+ * source: uxnandesktop/docs/control-api.md; the usage lines in
+ * uxnandesktop/src-tauri/crates/uxnan-cli/src/guide.rs
+ */
+export const CONTROL_CLI = {
+  name: "uxnan-cli",
+  worktree: "uxnan-cli worktree create --project uxnan --branch fix/flake",
+  chatStart: "uxnan-cli chat start --agent codex --message-file review.md",
+  chatWait: "uxnan-cli chat wait <chat> --for idle",
+  chatRead: "uxnan-cli chat read <chat> --turns 1",
+  browser: "uxnan-cli browser open http://localhost:3100",
+} as const;

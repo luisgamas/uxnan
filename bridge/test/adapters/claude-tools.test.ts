@@ -6,6 +6,13 @@ import {
   toolUseToBlock,
 } from '../../src/adapters/claude-tools.js';
 
+/** A mapped block of a tool that is shown (never the hidden ones). */
+function mapTool(...args: Parameters<typeof toolUseToBlock>): Record<string, unknown> {
+  const block = toolUseToBlock(...args);
+  assert.ok(block, 'expected a block');
+  return block;
+}
+
 test('extractToolUses pulls tool_use blocks from assistant content', () => {
   const uses = extractToolUses([
     { type: 'text', text: 'running it' },
@@ -31,7 +38,7 @@ test('extractToolResults reads string and array tool_result content', () => {
 });
 
 test('toolUseToBlock maps Bash to a command_execution block', () => {
-  const block = toolUseToBlock(
+  const block = mapTool(
     { id: 'tu_1', name: 'Bash', input: { command: 'type file.txt' } },
     { toolUseId: 'tu_1', text: 'hello', isError: false },
   );
@@ -44,7 +51,7 @@ test('toolUseToBlock maps Bash to a command_execution block', () => {
 });
 
 test('toolUseToBlock maps a failed Bash to error status', () => {
-  const block = toolUseToBlock(
+  const block = mapTool(
     { id: 'tu_1', name: 'Bash', input: { command: 'bad' } },
     { toolUseId: 'tu_1', text: 'not found', isError: true },
   );
@@ -52,7 +59,7 @@ test('toolUseToBlock maps a failed Bash to error status', () => {
 });
 
 test('toolUseToBlock maps Edit to a diff block with +/- counts', () => {
-  const block = toolUseToBlock(
+  const block = mapTool(
     {
       id: 'tu_1',
       name: 'Edit',
@@ -68,7 +75,7 @@ test('toolUseToBlock maps Edit to a diff block with +/- counts', () => {
 });
 
 test('toolUseToBlock maps Write to an all-additions diff', () => {
-  const block = toolUseToBlock(
+  const block = mapTool(
     { id: 'tu_1', name: 'Write', input: { file_path: 'a.txt', content: 'l1\nl2' } },
     { toolUseId: 'tu_1', text: '', isError: false },
   );
@@ -78,8 +85,8 @@ test('toolUseToBlock maps Write to an all-additions diff', () => {
   assert.equal(block['diff'], '+l1\n+l2');
 });
 
-test('toolUseToBlock maps other tools to a generic tool block', () => {
-  const block = toolUseToBlock(
+test('toolUseToBlock maps other tools to a classified tool block', () => {
+  const block = mapTool(
     { id: 'tu_1', name: 'Read', input: { file_path: 'a.txt' } },
     { toolUseId: 'tu_1', text: 'contents', isError: false },
   );
@@ -90,5 +97,7 @@ test('toolUseToBlock maps other tools to a generic tool block', () => {
     input: { file_path: 'a.txt' },
     output: 'contents',
     isError: false,
+    kind: 'read',
+    target: 'a.txt',
   });
 });

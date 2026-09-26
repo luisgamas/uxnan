@@ -205,10 +205,20 @@ class PushRegistrar {
             ContentBlockEvent() ||
             TurnAbortedEvent() ||
             TurnCancelledEvent() ||
-            ThreadRenamedEvent() ||
+            ThreadUpdatedEvent() ||
+            ThreadDeletedEvent() ||
+            TurnCreatedEvent() ||
+            ApprovalResolvedEvent() ||
+            QuestionResolvedEvent() ||
             TurnDeliveredEvent() ||
             QueueUpdatedEvent() ||
             ModelResolvedEvent() ||
+            ProjectUpdatedEvent() ||
+            ProjectRemovedEvent() ||
+            SettingsUpdatedEvent() ||
+            PresenceUpdatedEvent() ||
+            DevicesUpdatedEvent() ||
+            AgentsUpdatedEvent() ||
             GitProgressEvent() ||
             UnknownDomainEvent():
         break;

@@ -44,15 +44,36 @@ import type {
   SearchFilesParams,
   WorkspaceSearchResult,
 } from '../models/workspace.js';
-import type { AuthStatus, Project } from '../models/project.js';
+import type {
+  AuthStatus,
+  Project,
+  ProjectAddParams,
+  ProjectRemoveParams,
+  ProjectRemoveResult,
+  ProjectRenameParams,
+} from '../models/project.js';
+import type {
+  BridgeSettings,
+  SettingsSetParams,
+  SyncChanges,
+  SyncChangesParams,
+} from '../models/sync.js';
 import type { ApprovalResponse } from '../models/approval.js';
 import type { QuestionResponse } from '../models/question.js';
-import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
+import type {
+  BridgeStatus,
+  ConnectedPhone,
+  DeviceDescribeParams,
+  DeviceDescription,
+  DeviceRenameParams,
+  TrustedDevice,
+} from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
 import type {
   AgentCommand,
   AgentCommandInvocation,
   AgentDescriptor,
+  AgentDiagnosis,
   AgentId,
   AgentModel,
 } from '../agents/agent-capabilities.js';
@@ -65,6 +86,7 @@ import type {
   MetricsSnapshot,
 } from '../models/metrics.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
+import type { DesktopAttachParams, DesktopAttachResult } from '../local-control/local-control.js';
 
 // --- Param shapes -----------------------------------------------------------
 
@@ -156,13 +178,42 @@ export interface TurnSendParams {
    * Ignored when no turn is in flight — the turn simply starts.
    */
   queue?: boolean;
+  /**
+   * An id the sending client chose for its optimistic bubble. The bridge
+   * echoes it on the `stream/turn/created` it broadcasts for this turn, so the
+   * sender recognizes its own message — which can arrive before this call's
+   * reply — and every other client draws it as a new one. Opaque to the
+   * bridge, never persisted; at most 128 characters.
+   */
+  clientTurnId?: string;
 }
 export interface ThreadSetModelParams {
   threadId: string;
   model: string;
 }
+/**
+ * How long ago, in milliseconds by the client's own clock, the user took an
+ * action the client could not send at the time (it was offline) and sends now
+ * (architecture/02a §5.8.17). Absent for an action sent as it happens.
+ *
+ * The bridge dates the action `now - ageMs` and applies it only if nothing
+ * decided the same thing later — on another client, while this one was away:
+ * the latest decision wins, whoever made it. An age rather than a timestamp,
+ * so the phone's clock never has to agree with the PC's. At most a year.
+ */
+export type ActionAgeMs = number;
+
+/** `thread/archive`, `thread/unarchive`, `thread/delete`. */
+export interface ThreadActionParams {
+  threadId: string;
+  /** See {@link ActionAgeMs}. A superseded delete keeps the conversation. */
+  ageMs?: ActionAgeMs;
+}
+
 export interface ThreadRenameParams {
   threadId: string;
+  /** See {@link ActionAgeMs}. */
+  ageMs?: ActionAgeMs;
   /** New, non-empty title for the thread. */
   title: string;
   /**
@@ -408,9 +459,9 @@ export interface JsonRpcMethodRegistry {
   'thread/setModel': { params: ThreadSetModelParams; result: void };
   'thread/rename': { params: ThreadRenameParams; result: Thread };
   'thread/setAccessMode': { params: ThreadSetAccessModeParams; result: Thread };
-  'thread/archive': { params: { threadId: string }; result: Thread };
-  'thread/unarchive': { params: { threadId: string }; result: Thread };
-  'thread/delete': { params: { threadId: string }; result: void };
+  'thread/archive': { params: ThreadActionParams; result: Thread };
+  'thread/unarchive': { params: ThreadActionParams; result: Thread };
+  'thread/delete': { params: ThreadActionParams; result: void };
   'turn/list': { params: TurnListParams; result: TurnList };
   'turn/read': { params: { turnId: string }; result: Turn };
   'turn/send': { params: TurnSendParams; result: TurnSendResult };
@@ -465,6 +516,17 @@ export interface JsonRpcMethodRegistry {
   // Projects
   'project/list': { params: void; result: Project[] };
   'project/resolve': { params: { cwd: string }; result: Project };
+  'project/add': { params: ProjectAddParams; result: Project };
+  'project/remove': { params: ProjectRemoveParams; result: ProjectRemoveResult };
+  'project/rename': { params: ProjectRenameParams; result: Project };
+
+  // Replica sync and shared settings (architecture/02a §5.8.17)
+  'sync/changes': { params: SyncChangesParams; result: SyncChanges };
+  'settings/get': { params: void; result: BridgeSettings };
+  'settings/set': { params: SettingsSetParams; result: BridgeSettings };
+  // Paired phones' names (architecture/02a §5.8.17)
+  'device/describe': { params: DeviceDescribeParams; result: DeviceDescription };
+  'device/rename': { params: DeviceRenameParams; result: TrustedDevice };
 
   // Agents
   'agent/list': { params: void; result: AgentListResult };
@@ -473,6 +535,8 @@ export interface JsonRpcMethodRegistry {
   'agent/commands': { params: AgentCommandsParams; result: AgentCommandsResult };
   // Usage statistics (per-provider quota / credit / local token tally)
   'agent/usageStats': { params: UsageStatsParams; result: UsageStatsResult };
+  // Where the bridge looked for each agent's CLI and what it found
+  'agent/doctor': { params: void; result: { agents: AgentDiagnosis[] } };
 
   // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
   'metrics/get': { params: void; result: MetricsSnapshot };
@@ -499,6 +563,10 @@ export interface JsonRpcMethodRegistry {
   'bridge/disconnectPhone': { params: { deviceId: string }; result: void };
   'bridge/trustedDevices': { params: void; result: TrustedDevice[] };
   'bridge/removeTrustedDevice': { params: { deviceId: string }; result: void };
+
+  // Desktop tools for bridge-run agents (local control channel only)
+  'desktop/attach': { params: DesktopAttachParams; result: DesktopAttachResult };
+  'desktop/detach': { params: void; result: DesktopAttachResult };
 }
 
 export type JsonRpcMethodName = keyof JsonRpcMethodRegistry;

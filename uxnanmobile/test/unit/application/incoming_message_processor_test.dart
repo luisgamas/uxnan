@@ -99,6 +99,22 @@ void main() {
       expect(plain.beforeText, isFalse);
     });
 
+    test('stream/content/block carries the step id a later block replaces', () {
+      final event = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'content': {
+            'type': 'tool',
+            'toolName': 'Read',
+            'status': 'running',
+            'blockId': 'tu_1',
+          },
+        }),
+      ) as ContentBlockEvent;
+      expect(event.blockId, 'tu_1');
+      expect((event.content as ToolUseContent).running, isTrue);
+    });
+
     test('stream/turn/completed', () {
       final event = processor.classify(
         note('stream/turn/completed', {'turnId': 't1'}),
@@ -242,6 +258,155 @@ void main() {
         note('stream/git/progress', {'phase': 'x', 'status': 'weird'}),
       ) as GitProgressEvent;
       expect(event.status, GitActionPhaseStatus.running);
+    });
+
+    test('stream/thread/updated carries the whole wire thread', () {
+      final event = processor.classify(
+        note('stream/thread/updated', {
+          'thread': {'id': 'th9', 'title': 'From the desktop'},
+        }),
+      );
+      expect(event, isA<ThreadUpdatedEvent>());
+      final updated = event as ThreadUpdatedEvent;
+      expect(updated.threadId, 'th9');
+      expect(updated.thread['title'], 'From the desktop');
+    });
+
+    test('stream/thread/updated without a thread id is dropped', () {
+      final event = processor.classify(
+        note('stream/thread/updated', {
+          'thread': {'title': 'no id'},
+        }),
+      );
+      expect(event, isA<UnknownDomainEvent>());
+    });
+
+    test('stream/thread/deleted', () {
+      final event = processor.classify(
+        note('stream/thread/deleted', {'threadId': 'th9'}),
+      );
+      expect(event, isA<ThreadDeletedEvent>());
+      expect((event as ThreadDeletedEvent).threadId, 'th9');
+    });
+
+    test('stream/thread/deleted carries its revision', () {
+      final event = processor.classify(
+        note('stream/thread/deleted', {'threadId': 'th9', 'rev': 14}),
+      );
+      expect((event as ThreadDeletedEvent).rev, 14);
+    });
+
+    test('stream/project/updated and stream/project/removed', () {
+      final updated = processor.classify(
+        note('stream/project/updated', {
+          'project': {'id': 'proj_a', 'name': 'app', 'cwd': '/w/app', 'rev': 3},
+        }),
+      );
+      expect((updated as ProjectUpdatedEvent).project['cwd'], '/w/app');
+      final removed = processor.classify(
+        note('stream/project/removed', {'projectId': 'proj_a', 'rev': 4}),
+      );
+      expect((removed as ProjectRemovedEvent).projectId, 'proj_a');
+      expect(removed.rev, 4);
+      expect(
+        processor.classify(note('stream/project/updated', {})),
+        isA<UnknownDomainEvent>(),
+      );
+      expect(
+        processor.classify(note('stream/project/removed', {})),
+        isA<UnknownDomainEvent>(),
+      );
+    });
+
+    test('stream/settings, stream/presence and stream/agents', () {
+      final settings = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {'home': '/work'},
+          'rev': 9,
+        }),
+      );
+      expect((settings as SettingsUpdatedEvent).home, '/work');
+      expect(settings.rev, 9);
+      final named = processor.classify(
+        note('stream/settings/updated', {
+          'settings': {'home': '/work', 'name': 'Studio'},
+          'rev': 10,
+        }),
+      );
+      expect((named as SettingsUpdatedEvent).name, 'Studio');
+      final devices = processor.classify(
+        note('stream/devices/updated', {
+          'devices': [
+            {'deviceId': 'p1', 'displayName': 'Pixel'},
+          ],
+        }),
+      );
+      expect((devices as DevicesUpdatedEvent).devices, hasLength(1));
+      final presence = processor.classify(
+        note('stream/presence/updated', {
+          'clients': [
+            {'id': 'local:desktop', 'kind': 'desktop', 'name': 'studio'},
+          ],
+        }),
+      );
+      expect((presence as PresenceUpdatedEvent).clients, hasLength(1));
+      expect(
+        processor
+            .classify(note('stream/agents/updated', {'agents': <Object>[]})),
+        isA<AgentsUpdatedEvent>(),
+      );
+    });
+
+    test('stream/turn/created keeps the turn and the sender echo id', () {
+      final event = processor.classify(
+        note('stream/turn/created', {
+          'threadId': 'th1',
+          'clientTurnId': 'bubble-1',
+          'turn': {'id': 't7', 'status': 'pending', 'messages': <Object>[]},
+        }),
+      );
+      expect(event, isA<TurnCreatedEvent>());
+      final created = event as TurnCreatedEvent;
+      expect(created.threadId, 'th1');
+      expect(created.clientTurnId, 'bubble-1');
+      expect(created.turn['id'], 't7');
+    });
+
+    test('stream/approval/resolved', () {
+      final event = processor.classify(
+        note('stream/approval/resolved', {
+          'threadId': 'th1',
+          'approvalId': 'appr-1',
+          'decision': 'approveSession',
+        }),
+      );
+      expect(event, isA<ApprovalResolvedEvent>());
+      final resolved = event as ApprovalResolvedEvent;
+      expect(resolved.approvalId, 'appr-1');
+      expect(resolved.decision, 'approveSession');
+      expect(resolved.timedOut, isFalse);
+    });
+
+    test('stream/question/resolved decodes the chosen answers', () {
+      final event = processor.classify(
+        note('stream/question/resolved', {
+          'threadId': 'th1',
+          'questionId': 'q-1',
+          'answers': [
+            ['B'],
+            <String>[],
+          ],
+          'skipped': false,
+          'timedOut': true,
+        }),
+      );
+      expect(event, isA<QuestionResolvedEvent>());
+      final resolved = event as QuestionResolvedEvent;
+      expect(resolved.answers, [
+        ['B'],
+        <String>[],
+      ]);
+      expect(resolved.timedOut, isTrue);
     });
 
     test('unhandled stream methods become UnknownDomainEvent', () {

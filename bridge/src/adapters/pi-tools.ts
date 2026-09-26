@@ -13,6 +13,7 @@ import {
   extractPlanSteps,
   multiEditDiffBlock,
   planBlock,
+  runningBlock,
   toolBlock,
   writeDiffBlock,
 } from './content-blocks.js';
@@ -93,5 +94,29 @@ export function piToolBlock(
     }
     default:
       return toolBlock(tool.name, tool.id, tool.input, output, isError);
+  }
+}
+
+/**
+ * The row a pi tool shows while it runs, from its arguments alone; its end
+ * replaces it (same `blockId`: the call id). `null` for what shows only once
+ * done: an edit or a write (their diff) and the to-do list.
+ */
+export function piToolStartBlock(tool: PiToolUse): Record<string, unknown> | null {
+  if (!tool.id) return null;
+  switch (tool.name) {
+    case 'edit':
+    case 'str_replace':
+    case 'write':
+    case 'create':
+    case 'todo':
+    case 'todowrite':
+    case 'update_plan':
+    case 'plan':
+      return null;
+    case 'bash':
+      return runningBlock(commandBlock(str(tool.input['command']), '', false), tool.id);
+    default:
+      return runningBlock(toolBlock(tool.name, tool.id, tool.input, '', false), tool.id);
   }
 }

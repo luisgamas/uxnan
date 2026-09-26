@@ -51,7 +51,8 @@ describe("phase-five dialog density contracts", () => {
 
   it("centralizes the draggable tab label width", () => {
     const terminal = source("TerminalArea.svelte");
-    expect(terminal.match(/tab\.terminalLabel/g)?.length).toBe(3);
+    // One label per tab kind that has a text title: terminal, file, chat, commit.
+    expect(terminal.match(/tab\.terminalLabel/g)?.length).toBe(4);
     expect(terminal).not.toContain('class="max-w-[120px]');
   });
 });

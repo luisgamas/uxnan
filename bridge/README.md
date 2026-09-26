@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-70_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-72_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -28,12 +28,13 @@ receiving them whether it reached the bridge directly or through a relay.
 The bridge is small on purpose, but it is where the design decisions that make
 Uxnan distinct actually live:
 
-- **One bridge, many projects.** You start the bridge **once**, from a single
-  location of your choosing, and it gives the phone access to **all** the projects
-  underneath it — Git repositories or plain folders alike. There is no need to
-  launch a separate process per project: the phone browses the configured roots
-  (`workspace/browseDirs`, constrained by the `browseRoots` setting) and roots a
-  new conversation anywhere it is allowed to look.
+- **One bridge, one list of projects, every client a mirror.** The bridge keeps
+  the only registry of projects and the only record of every conversation;
+  the phone and Uxnan Desktop converge on it by revision (`sync/changes`), so a
+  project or a conversation started on one appears on the other — including
+  everything done on the phone before the desktop ever connected. New projects
+  are explored from one start folder (`home`) you set once, whatever
+  directory the bridge was started in.
 - **New worktrees land where the desktop puts them.** `git/createWorktree` takes
   no path from the phone any more: the bridge places the worktree itself, under
   `~/uxnan/worktrees/<project>/<branch>` by default — the same layout
@@ -147,11 +148,15 @@ npm install -g uxnan-bridge
 ```bash
 uxnan-bridge start            # start the daemon: LAN server + (optional) relay pairing session
 uxnan-bridge status           # print current status as JSON
-uxnan-bridge qr               # print the pairing QR in the terminal (with the manual code)
+uxnan-bridge qr               # print the pairing QR — the running bridge's (the service's) when one runs
 uxnan-bridge code             # print just the current pairing code
 uxnan-bridge stop             # stop the running daemon (via the lock file)
-uxnan-bridge install-service  # autostart at logon (Task Scheduler / LaunchAgent / systemd --user)
+uxnan-bridge install-service  # run as your user's service (Task Scheduler / LaunchAgent / systemd --user)
 uxnan-bridge uninstall-service
+uxnan-bridge service-status   # installed / running, as JSON (Uxnan Desktop reads it)
+uxnan-bridge service-start    # start the installed service
+uxnan-bridge config get       # shared settings; `config set home <folder>` / `config set name <name>`
+uxnan-bridge version          # print the installed version (starts nothing)
 ```
 
 **Pairing is time-boxed.** A first-time enrollment is only accepted while a
@@ -195,8 +200,8 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **70 JSON-RPC methods +
-  12 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  E2EE types and runtime validators. The bridge exposes **81 JSON-RPC methods +
+  22 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,

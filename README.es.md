@@ -29,7 +29,7 @@
   Mobile</b> se empareja con un pequeño daemon cifrado en tu PC para que puedas revisar un<br />
   agente, aprobar su siguiente paso o enviarle una nueva instrucción desde tu teléfono,<br />
   sea desde el otro lado del cuarto o desde el otro lado del mundo. Son apps independientes: usa<br />
-  Desktop sola, Mobile sola, o ambas.
+  Desktop sola, Mobile sola, o ambas — y entonces un chat iniciado en una continúa en la otra.
 </p>
 
 <p align="center">
@@ -42,12 +42,57 @@
 </p>
 
 <p align="center">
-  <img src="assets/uxnan-project.png" alt="Uxnan Desktop corriendo cuatro worktrees de agentes en un monitor panorámico, junto a Uxnan Mobile mostrando conversaciones en vivo, estadísticas de perfil y los checks de GitHub de un repositorio" width="960" />
+  <img src="assets/uxnan-ecosystem.png" alt="Uxnan Desktop con Claude Code en una terminal junto al navegador integrado, al lado de Uxnan Mobile mostrando una conversación de OpenCode con su registro de trabajo y los agentes que puede iniciar; un acercamiento muestra los pasos de un chat mientras se ejecutan" width="960" />
 </p>
 
 ## Cómo se siente usarlo
 
 <table>
+<tr>
+<td width="46%" valign="top">
+
+### Una conversación, en tu desktop y en tu teléfono
+Un chat corre en el bridge de Uxnan, así que el desktop y el teléfono muestran la misma conversación, en vivo: cada paso que da el agente y cada respuesta mientras se escribe. Envía desde cualquiera de los dos: el otro lo ve al instante, y ninguno necesita al otro para seguir funcionando.
+
+[Chat →](uxnandesktop/docs/chat.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/chat-desktop-mobile.gif" alt="Un chat de Claude Code respondido en vivo en Uxnan Desktop y Uxnan Mobile a la vez, y continuado desde el teléfono" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Agentes que trabajan juntos
+Cualquier agente que Uxnan ejecuta puede manejar Uxnan mismo con `uxnan-cli` o sus herramientas MCP, sin instalar nada más. Aquí Claude Code le pasa una tarea a OpenCode como chat, espera y lee su respuesta.
+
+[Superficie de control: CLI y MCP →](uxnandesktop/docs/control-api.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/agents-together.gif" alt="Claude Code abriendo un chat con OpenCode mediante uxnan-cli, OpenCode buscando en el repositorio y Claude Code resumiendo su respuesta" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Un navegador real que tus agentes pueden usar
+Cada espacio de trabajo tiene su propio navegador junto a sus terminales. Un agente abre ahí tu app, hace scroll, pulsa y la lee: la misma página que ves tú.
+
+[Navegador →](uxnandesktop/docs/browser.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/real-browser.gif" alt="Claude Code abriendo un sitio local en el navegador de Uxnan, bajando a una sección y pulsando hasta GitHub" width="440" />
+
+</td>
+</tr>
 <tr>
 <td width="46%" valign="top">
 
@@ -59,7 +104,7 @@ Uxnan Desktop es terminal-céntrico, así que corre cualquier agente CLI: elige 
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/launch-agent.gif" alt="Eligiendo un agente del catálogo y lanzándolo en una terminal de worktree" width="440" />
+<img src="assets/shorts/one-click-launch.gif" alt="Eligiendo Claude Code en el menú de nueva pestaña y lanzándolo en una terminal del worktree" width="440" />
 
 </td>
 </tr>
@@ -74,7 +119,7 @@ Arrastra cualquier archivo o carpeta del árbol sobre una terminal y su ruta se 
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/drag-file.gif" alt="Arrastrando un archivo del árbol de archivos sobre una terminal para insertar su ruta" width="440" />
+<img src="assets/shorts/drag-file.gif" alt="Arrastrando AGENTS.md del árbol de archivos a una terminal, que escribe su ruta en un comando wc -l" width="440" />
 
 </td>
 </tr>
@@ -89,7 +134,7 @@ Haz push, elige `base ← head`, y crea el PR: uxnan lee las reglas de rama real
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-pr.gif" alt="Creando un pull request desde Uxnan Desktop" width="440" />
+<img src="assets/shorts/create-pr.gif" alt="Llenando el título, la descripción y el interruptor de borrador de un pull request desde el dock de GitHub" width="440" />
 
 </td>
 </tr>
@@ -104,7 +149,7 @@ Un carril de grafo de ramas corre junto al log de commits: haz clic en un commit
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/history-graph.gif" alt="Navegando el historial de commits con un grafo de ramas" width="440" />
+<img src="assets/shorts/history-graph.gif" alt="Expandiendo un commit en el historial con grafo de ramas y abriendo el diff de un archivo lado a lado" width="440" />
 
 </td>
 </tr>
@@ -119,7 +164,7 @@ Rama nueva, rama existente, o una ubicación personalizada: cada tarea obtiene s
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/create-worktree.gif" alt="Creando un nuevo git worktree para una tarea" width="440" />
+<img src="assets/shorts/create-worktree.gif" alt="Creando un worktree en una rama nueva desde el diálogo New worktree y encontrándolo en el sidebar" width="440" />
 
 </td>
 </tr>
@@ -134,7 +179,7 @@ Uso de sesión, semanal y mensual para Codex, Claude, Copilot y Grok, leído dir
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/provider-usage.gif" alt="Viendo las cuotas de uso de proveedores de IA en Ajustes" width="440" />
+<img src="assets/shorts/provider-usage.gif" alt="Abriendo el panel de uso de proveedores desde la barra de estado y luego los ajustes de Providers" width="440" />
 
 </td>
 </tr>
@@ -149,7 +194,7 @@ Abre los Pull Requests, Issues y Actions de un proyecto en una vista enfocada qu
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Revisando un pull request y sus checks de CI en la vista de GitHub a pantalla completa" width="440" />
+<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Abriendo un pull request desde el dock, luego sus checks de CI y sus archivos cambiados" width="440" />
 
 </td>
 </tr>
@@ -164,7 +209,7 @@ Un subagente de Claude Code, Codex, Grok u OpenCode aparece en vivo como una fil
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/agent-subagents.gif" alt="Un subagente apareciendo como una fila anidada bajo su agente padre" width="440" />
+<img src="assets/shorts/agent-subagents.gif" alt="Claude Code lanzando dos subagentes Explore que aparecen anidados bajo él en el sidebar" width="440" />
 
 </td>
 </tr>

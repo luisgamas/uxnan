@@ -91,6 +91,19 @@ export interface AgentDescriptor {
   defaultModel?: string;
 }
 
+/**
+ * How the bridge found — or failed to find — one agent's CLI, so a client can
+ * say *why* an installed agent shows as unavailable instead of guessing.
+ */
+export interface AgentDiagnosis {
+  agentId: AgentId;
+  available: boolean;
+  /** The command the bridge runs for it (the executable, then any fixed args). */
+  command?: string[];
+  /** Every location checked, in order (files, and `PATH:<dir>` for PATH entries). */
+  checked: string[];
+}
+
 /** One selectable value of an {@link AgentModelOption} of kind `enum`. */
 export interface AgentModelOptionValue {
   /** Value sent back in `turn/send` `options` when chosen. */
@@ -196,10 +209,12 @@ export interface AgentCommand {
   argumentHint?: string;
   /**
    * Where the command comes from: `acp` (advertised by an ACP agent),
-   * `builtin` (a CLI control command reachable headless), or `custom` (a
-   * user-defined prompt-template file the bridge expands).
+   * `builtin` (one of the CLI's own commands, reachable headless), `custom` (a
+   * user-defined command or prompt template), or `skill` (an agent skill the
+   * CLI invokes by name). A client may group by it; an unknown value is to be
+   * shown as `custom`.
    */
-  source: 'acp' | 'builtin' | 'custom';
+  source: 'acp' | 'builtin' | 'custom' | 'skill';
   /**
    * Whether the command actually runs in the agent's headless/programmatic mode.
    * Absent/true means yes; `false` marks a command that only works in the CLI's

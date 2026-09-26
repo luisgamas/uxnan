@@ -19,6 +19,7 @@ use crate::target::TargetId;
 
 const LAUNCH: &str = "launch-token";
 const CONTROL: &str = "control-token";
+const BRIDGE: &str = "bridge-agent-token";
 
 struct Server {
     origin: String,
@@ -44,6 +45,7 @@ async fn server(data: AppData) -> Server {
         app.handle().clone(),
         LAUNCH.to_string(),
         control_token,
+        BRIDGE.to_string(),
         dir.path().join("hooks"),
     )
     .await
@@ -1445,4 +1447,89 @@ async fn a_proposed_automation_is_checked_scoped_and_handed_to_the_window() {
     .await;
     assert_eq!(body["result"]["proposed"], true, "{body}");
     assert!(body["result"]["asked"]["from"].is_null(), "{body}");
+}
+
+/// An agent of a bridge conversation (the bridge-agent token) reaches only the
+/// project its conversation's folder belongs to — listings narrowed, another
+/// project scope denied, `current` naming nothing — and a request that did not
+/// say which folder reaches no project. It can never report a hook.
+#[tokio::test]
+async fn a_bridge_agent_reaches_only_its_conversations_project() {
+    let dir_a = tempfile::tempdir().unwrap();
+    let dir_b = tempfile::tempdir().unwrap();
+    let (path_a, repo_a) = repo_in(dir_a.path()).await;
+    let (_path_b, mut repo_b) = repo_in(dir_b.path()).await;
+    repo_b.id = "repo-2".into();
+    repo_b.name = "other".into();
+    let mut data = AppData::default();
+    data.repos.push(repo_a);
+    data.repos.push(repo_b);
+    let s = server(data).await;
+
+    let chat: [(&str, &str); 2] = [
+        ("authorization", "Bearer bridge-agent-token"),
+        ("x-uxnan-cwd", &path_a),
+    ];
+    let nowhere: [(&str, &str); 1] = [("authorization", "Bearer bridge-agent-token")];
+    let call = |headers: &[(&str, &str)], method: &str, params: Value| {
+        let origin = s.origin.clone();
+        let headers: Vec<(String, String)> = headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let method = method.to_string();
+        async move {
+            let borrowed: Vec<(&str, &str)> = headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            post(&origin, RPC_PATH, &borrowed, rpc(&method, params))
+                .await
+                .1
+        }
+    };
+
+    let body = call(&chat, "project/list", json!({})).await;
+    let names: Vec<&str> = body["result"]["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["repo"], "{body}");
+    let body = call(&chat, "project/show", json!({ "project": "name:other" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::ScopeDenied.code(),
+        "{body}"
+    );
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("conversation's folder"));
+    let body = call(&chat, "terminal/show", json!({ "terminal": "current" })).await;
+    assert_eq!(
+        body["error"]["code"],
+        ErrorCode::InvalidParams.code(),
+        "{body}"
+    );
+    let body = call(&chat, "status", json!({})).await;
+    assert_eq!(body["result"]["caller"]["kind"], "bridge", "{body}");
+
+    let body = call(&nowhere, "project/list", json!({})).await;
+    assert_eq!(
+        body["result"]["projects"].as_array().unwrap().len(),
+        0,
+        "{body}"
+    );
+
+    // A hook report needs the launch token: this one is refused.
+    let (status, _) = post(
+        &s.origin,
+        "/hook",
+        &[("x-uxnan-token", BRIDGE), ("x-uxnan-agent-id", "x")],
+        json!({ "event": "Stop" }),
+    )
+    .await;
+    assert_eq!(status, 401);
 }

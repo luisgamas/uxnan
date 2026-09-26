@@ -31,8 +31,8 @@ test('windows plan registers a logon Task Scheduler task at LIMITED run level', 
   assert.ok(argv.includes('/Create'));
   assert.equal(argv[argv.indexOf('/SC') + 1], 'ONLOGON');
   assert.equal(argv[argv.indexOf('/RL') + 1], 'LIMITED');
-  // /TR is one quoted command string: "<node>" "<cli>" start
-  assert.equal(argv[argv.indexOf('/TR') + 1], `"${NODE}" "${CLI}" start`);
+  // /TR is one quoted command string: "<node>" "<cli>" start --service
+  assert.equal(argv[argv.indexOf('/TR') + 1], `"${NODE}" "${CLI}" start --service`);
   // uninstall deletes the same task
   assert.deepEqual(plan.uninstall[0]!.argv, ['schtasks', '/Delete', '/TN', plan.label, '/F']);
 });
@@ -44,8 +44,11 @@ test('macOS plan writes a LaunchAgent plist and loads it', () => {
   assert.equal(plan.removeFile, plist);
   assert.ok(plan.file!.content.includes(`<string>${NODE}</string>`));
   assert.ok(plan.file!.content.includes(`<string>${CLI}</string>`));
+  assert.ok(plan.file!.content.includes('<string>--service</string>'));
   assert.ok(plan.file!.content.includes('<key>RunAtLoad</key><true/>'));
-  assert.ok(plan.file!.content.includes('<key>KeepAlive</key><true/>'));
+  // Restarted after a crash, not after a deliberate stop.
+  assert.ok(plan.file!.content.includes('<key>SuccessfulExit</key><false/>'));
+  assert.ok(plan.file!.content.includes(`<key>WorkingDirectory</key><string>${HOME}</string>`));
   // unload-before-load is best-effort; load is required
   assert.equal(plan.install[0]!.ignoreFailure, true);
   assert.deepEqual(plan.install[1]!.argv, ['launchctl', 'load', plist]);
@@ -57,7 +60,9 @@ test('linux plan writes a systemd --user unit and enables it', () => {
   const plan = buildServicePlan(envFor('linux'));
   const unit = join(HOME, '.config', 'systemd', 'user', 'uxnan-bridge.service');
   assert.equal(plan.file?.path, unit);
-  assert.ok(plan.file!.content.includes(`ExecStart=${NODE} ${CLI} start`));
+  assert.ok(plan.file!.content.includes(`ExecStart=${NODE} ${CLI} start --service`));
+  assert.ok(plan.file!.content.includes(`WorkingDirectory=${HOME}`));
+  assert.ok(plan.file!.content.includes('Restart=on-failure'));
   assert.ok(plan.file!.content.includes('WantedBy=default.target'));
   assert.deepEqual(plan.install[0]!.argv, ['systemctl', '--user', 'daemon-reload']);
   assert.deepEqual(plan.install[1]!.argv, ['systemctl', '--user', 'enable', '--now', plan.label]);
@@ -84,6 +89,11 @@ test('windows Startup fallback writes a hidden .vbs launcher with quoted paths',
   assert.equal(plan.removeFile, vbs);
   // hidden launch (window style 0, no wait) with the doubled-quote VBScript escaping
   assert.ok(plan.file!.content.includes('CreateObject("WScript.Shell")'));
-  const literal = `"${`"${NODE}" "${CLI}" start`.replace(/"/g, '""')}"`;
+  const literal = `"${`"${NODE}" "${CLI}" start --service`.replace(/"/g, '""')}"`;
   assert.ok(plan.file!.content.includes(`sh.Run ${literal}, 0, False`));
+});
+
+test('linux plan quotes paths with spaces in ExecStart', () => {
+  const plan = buildServicePlan(envFor('linux', { execPath: '/opt/my node/node' }));
+  assert.ok(plan.file!.content.includes(`ExecStart="/opt/my node/node" ${CLI} start --service`));
 });

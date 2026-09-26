@@ -242,6 +242,10 @@ available today are:
   from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).
+- **A welcome tour on first run.** Six short steps — terminal and chat, the
+  phone, agents working together, the CLIs Uxnan found on this machine — drawn
+  from the app's own interface. It shows once per version of the tour and
+  reopens from the profile menu → **Welcome tour**.
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated
@@ -305,9 +309,12 @@ The full state is recorded honestly, per platform and per feature, in the
   you can also [build it yourself](docs/build.md), and issues/PRs that improve the
   macOS installers (or help non-technical users) are very welcome.
 
-The only remaining roadmap phase is **Phase 6 (bridge integration / mobile
-pairing)**, which is *optional for standalone use* — required only if you want the
-ADE to double as the mobile bridge (otherwise install `uxnan-bridge` separately).
+The remaining roadmap phase is **Phase 6 (bridge integration / mobile pairing)**,
+which is *optional for standalone use*. Its first half is in: with `uxnan-bridge`
+installed, **chat tabs** run agent conversations on the bridge next to your
+terminals — the same conversations Uxnan Mobile shows, live in both
+([docs/chat.md](docs/chat.md)). Packaging the bridge inside the ADE and pairing
+phones from it are still to come.
 The detailed implementation status (phases, test counts, pre-release gaps) lives
 in [`FOR-DEV.md`](FOR-DEV.md).
 
@@ -328,6 +335,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[chat tabs & the bridge connection](./docs/chat.md) ·
 [remote hosts over SSH](./docs/remote-hosts.md) ·
 [worktree locations](./docs/worktrees.md) ·
 [file tree & search](./docs/file-tree.md) ·

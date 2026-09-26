@@ -39,7 +39,7 @@ uxnan-bridge start
 
 ```bash
 uxnan-bridge start     # boot the daemon: LAN server + relay + print the pairing QR
-uxnan-bridge qr        # just print the pairing QR
+uxnan-bridge qr        # print the pairing QR (the running bridge's, when one runs)
 uxnan-bridge status    # print status as JSON
 uxnan-bridge stop      # signal the running daemon to stop
 ```
@@ -54,10 +54,12 @@ reconnects to the trusted device without re-scanning.
 > lapsed, just run `uxnan-bridge qr` (or `code`) again.
 >
 > **Running as a service?** `install-service` starts the daemon with no console,
-> and `uxnan-bridge qr`/`code` then run in a *separate* process — so **pair with
-> the manual code**, not the QR. Looking the code up reaches the daemon that
-> serves the handshake; a scanned QR does not. Re-pairing an already-trusted
-> phone is never gated.
+> and it prints no QR or code (its output is a log file). Run `uxnan-bridge qr`:
+> it asks the running bridge for its own payload over the local control
+> channel and opens that bridge's pairing window, so the scan pairs with the
+> service. Uxnan Desktop's **Pair a phone** does the same. The manual code
+> (`uxnan-bridge code`) keeps working too. Re-pairing an already-trusted phone
+> is never gated.
 
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
   no hosting. (Primary plug-and-play path.)
@@ -88,22 +90,43 @@ commands keep using the cache so they stay fast. The paired phone learns the
 same thing via `bridge/status`
 (`latestVersion`/`updateAvailable`) and shows an informational hint — see the
 mobile app. Update with `npm install -g uxnan-bridge@latest` (or `git pull` +
-`npm install` for a source checkout).
+`npm install` for a source checkout). `uxnan-bridge version` prints the installed
+version without starting anything.
 
-## Autostart (run at logon, no open terminal)
+**From Uxnan Desktop.** Settings → *Bridge & mobile* (and a chat tab, when the
+bridge is missing) offers **Install** / **Update**: it runs that same npm command
+on your request, shows its output, and — when Uxnan is the one running the bridge
+— restarts it on the new version. If npm cannot write its global folder, it says
+so and offers the command to copy. *Update automatically* does the same on its
+own when a newer version is published, but only while no conversation is
+running on any device (`bridge/status` → `activeTurns`).
+
+## Run it as your user's service (the normal way)
 
 ```bash
-uxnan-bridge install-service     # start the bridge automatically at logon
-uxnan-bridge uninstall-service   # remove the autostart entry
+uxnan-bridge install-service     # run as your service: at logon, and now
+uxnan-bridge service-status      # {"supported","installed","running","pid"} as JSON
+uxnan-bridge service-start       # start the installed service after a deliberate stop
+uxnan-bridge uninstall-service   # remove the service (and the Antigravity entry, below)
 ```
 
-It registers autostart **as the logged-in user, never elevated**:
+This is how the bridge is meant to live: **Uxnan Desktop installs it for you
+(Settings → Bridge & mobile, mode *Managed*) and from then on only connects to
+it**, and it keeps serving the phone while the desktop is closed. It registers
+`<node> <cli.js> start --service` with absolute paths, **as the logged-in user,
+never elevated**, with your home as its working directory, and it is restarted
+when it crashes — not when you stop it on purpose:
 
 | OS | Mechanism |
 |---|---|
 | Windows | Task Scheduler logon task (`/SC ONLOGON /RL LIMITED`); **falls back to a hidden Startup-folder `.vbs`** if Task Scheduler is denied (restricted account/policy) — no admin, no console window. |
-| macOS | per-user LaunchAgent in `~/Library/LaunchAgents` (`RunAtLoad` + `KeepAlive`). |
-| Linux | systemd `--user` unit; run `loginctl enable-linger $USER` so it survives logout. |
+| macOS | per-user LaunchAgent in `~/Library/LaunchAgents` (`RunAtLoad`, `KeepAlive` on a failed exit, `WorkingDirectory` = home). |
+| Linux | systemd `--user` unit (`Restart=on-failure`); run `loginctl enable-linger $USER` so it survives logout. |
+
+A service gets the service manager's minimal `PATH` (`/usr/bin:/bin` on macOS),
+where Homebrew, npm's global bin and every agent CLI are missing. At start the
+bridge therefore asks your login shell for its `PATH` (`$SHELL -ilc`) and adds
+what is missing, so it finds the same agents your terminal does.
 
 The legacy `scripts/install-service-*` files remain as a manual reference; the CLI
 commands above supersede them.
@@ -111,6 +134,33 @@ commands above supersede them.
 ## Where things live
 
 `~/.uxnan/` holds the daemon config, pairing session, trusted-phones list, thread
-store, checkpoints metadata, the update-check cache (`update-check.json`), the
-single-instance lock, and daily-rotated logs.
+store, the project registry (`projects.json`), the sync revision ledger
+(`sync.json`), checkpoints metadata, the update-check cache
+(`update-check.json`), the single-instance lock, and daily-rotated logs.
+
+## The start folder
+
+```bash
+uxnan-bridge config get          # the shared settings as JSON
+uxnan-bridge config set home ~/Projects
+```
+
+`home` is where exploring for a new project begins, on the phone and in Uxnan
+Desktop alike, whatever directory the bridge was started from. With a bridge
+running, the command changes it live (through the local control channel) and
+every connected client is told; otherwise it is written to the config for the
+next start.
+
+## Names
+
+```bash
+uxnan-bridge config set name "Studio"   # what every client calls this PC
+```
+
+The PC's name is the one the pairing QR carries and the one the phone and the
+desktop show; empty goes back to the machine's name. Each paired phone has a
+name too: it reports its model when it connects, and anyone can rename it —
+on the phone, or from Uxnan Desktop — with the latest rename winning
+everywhere. Several phones can be paired to one PC.
+
 Configuration reference: [`configuration.md`](./configuration.md).

@@ -47,6 +47,69 @@ void main() {
       expect(roundTrip(c), c);
     });
 
+    test('tool use keeps what the bridge classified', () {
+      const c = ToolUseContent(
+        toolName: 'view_file',
+        toolId: 't2',
+        input: {'AbsolutePath': '/p/a.txt'},
+        kind: ToolKind.webSearch,
+        target: 'uxnan',
+      );
+      expect(roundTrip(c), c);
+      expect(c.toJson()['kind'], 'web_search');
+      final decoded = MessageContent.fromJson({
+        'type': 'tool',
+        'toolName': 'Read',
+        'kind': 'read',
+        'target': 'notes.txt',
+      }) as ToolUseContent;
+      expect(decoded.kind, ToolKind.read);
+      expect(decoded.target, 'notes.txt');
+      // An older bridge sent no kind; a newer one may send one this build
+      // lacks.
+      expect(
+        (MessageContent.fromJson({'type': 'tool', 'toolName': 'x'})
+                as ToolUseContent)
+            .kind,
+        ToolKind.other,
+      );
+      expect(
+        (MessageContent.fromJson({'type': 'tool', 'kind': 'teleport'})
+                as ToolUseContent)
+            .kind,
+        ToolKind.other,
+      );
+    });
+
+    test('a running tool call says so, and a settled one does not', () {
+      const running = ToolUseContent(
+        toolName: 'Read',
+        toolId: 't',
+        input: {},
+        running: true,
+      );
+      expect(roundTrip(running), running);
+      expect(running.toJson()['status'], 'running');
+      expect(
+        (MessageContent.fromJson({'type': 'tool', 'toolName': 'Read'})
+                as ToolUseContent)
+            .running,
+        isFalse,
+      );
+    });
+
+    test('a finished subagent carries its report', () {
+      const c = SubagentContent(
+        SubagentState(
+          id: 's1',
+          name: 'Count lines',
+          status: 'completed',
+          output: 'Three.',
+        ),
+      );
+      expect(roundTrip(c), c);
+    });
+
     test('diff', () {
       const c = DiffContent(
         filename: 'a.dart',

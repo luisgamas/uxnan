@@ -23,9 +23,10 @@
  *    I/O and never asks the client for `fs/*`.
  *  - `session/set_model { sessionId, modelId }` — standard ACP model select
  *    (returns `{_meta:{model:{Ok}}}` + a `model_changed` update).
- *  - `session/set_mode { sessionId, modeId }` — Grok exposes reasoning effort as
- *    its ACP "modes" (`high`/`medium`/`low`, `category:'mode'` in its session
- *    config), so we route the chosen reasoning effort here.
+ *  - `session/set_config_option { sessionId, configId, value }` — Grok offers
+ *    reasoning effort as a session config option (`reasoning_effort`, category
+ *    `thought_level`: `xhigh`/`high`/`medium`/`low`), so the chosen effort goes
+ *    there (`session/set_mode` accepts anything and changes nothing).
  *  - `session/prompt { prompt:[{type:'text',text}] }` — a REQUEST that resolves
  *    with `{ stopReason }` when the turn ends (our `turn_completed` signal).
  *  - `session/update` notifications: `agent_message_chunk`→delta,
@@ -37,16 +38,16 @@
  *  - `session/cancel` (notification) ← cancelTurn.
  *
  * ## Verification note
- * The ACP envelope + handshake + model discovery were exercised live. The per-turn
- * streaming shapes (`tool_call`/`plan`/`session/request_permission`) follow the ACP
- * spec but could NOT be exercised end-to-end because the test account's Grok Build
- * balance was exhausted (HTTP 402). Whether Grok reports per-turn token usage and
- * whether `session/set_mode` actually applies the reasoning effort are likewise
- * unverified — see bridge/FOR-DEV.md.
+ * The handshake, model discovery, the per-turn stream (`tool_call` / `plan`,
+ * mapped in `acp-tools.ts`), token usage and the command list were exercised
+ * live, and so were the effort (`session/set_config_option`) and the
+ * `session/request_permission` round-trip — see bridge/docs/agents.md.
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
-import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -60,13 +61,20 @@ import type {
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { agentEnv, defaultSpawn, type SpawnFn } from './spawn.js';
+import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
-import { planBlock, type PlanStepBlock } from './content-blocks.js';
+import { planBlock, warningBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
 import { reasoningOption, reasoningValue } from './run-options.js';
-import { grokToolBlock, grokPlanSteps, type GrokToolCall } from './grok-tools.js';
+import {
+  acpPlanSteps,
+  acpToolBlock,
+  acpToolKind,
+  acpToolStartBlock,
+  type AcpToolCall,
+} from './acp-tools.js';
 
 const GROK_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -94,7 +102,7 @@ const GROK_CAPABILITIES: AgentCapabilities = {
 type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
 
 export interface GrokAdapterOptions {
-  /** Resolved `grok` executable path (see resolve-grok.ts). */
+  /** Resolved `grok` executable path (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[grok.js]` when run via node). */
   prependArgs?: string[];
@@ -111,6 +119,8 @@ export interface GrokAdapterOptions {
   ) => Promise<ApprovalDecision>;
   /** Injected `grok agent stdio` spawner (tests). */
   spawnAcp?: () => SpawnedAcp;
+  /** Where Grok's own non-asking permission mode comes from (tests; default reads the user's files). */
+  permissionSource?: (cwd: string) => GrokPermissionSource | undefined;
 }
 
 /** Streams + lifecycle a `spawnAcp` implementation returns. */
@@ -128,7 +138,7 @@ interface ActiveRun {
   /** Accumulated assistant text, for `turn_completed`. */
   full: string;
   /** Tool calls in flight, keyed by ACP `toolCallId` (emit a block at terminal). */
-  tools: Map<string, GrokToolCall>;
+  tools: Map<string, AcpToolCall>;
   /** Tool ids already emitted as a block. */
   emitted: Set<string>;
   /** How this run answers permission prompts (from the thread's access mode). */
@@ -174,14 +184,7 @@ interface GrokModelState {
 
 function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string): () => SpawnedAcp {
   return () => {
-    const child = spawn(binaryPath, [...prependArgs, 'agent', 'stdio'], {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: false,
-      env: agentEnv(),
-    });
-    if (!child.stdout || !child.stdin) throw new Error('grok agent stdio: failed to acquire stdio');
+    const child = spawnPiped(binaryPath, [...prependArgs, 'agent', 'stdio'], { cwd });
     return {
       stdin: child.stdin,
       stdout: child.stdout,
@@ -189,6 +192,160 @@ function defaultSpawnAcp(binaryPath: string, prependArgs: string[], cwd: string)
       kill: () => child.kill(),
     };
   };
+}
+
+/** Permission modes under which Grok runs tools without asking first. */
+const GROK_NON_ASKING_MODES = new Set([
+  'auto',
+  'acceptEdits',
+  'bypassPermissions',
+  'always-approve',
+  'yolo',
+]);
+
+/** Where Grok's own permission mode comes from, when it is one that does not ask. */
+export interface GrokPermissionSource {
+  mode: string;
+  /** The file that sets it, as the user would find it (`~/.claude/settings.json`). */
+  file: string;
+}
+
+/**
+ * The permission mode Grok applies in [cwd] when it would not ask before a
+ * tool, and the file that sets it — or `undefined` when it asks.
+ *
+ * Grok decides by itself whether to ask: its `[ui] permission_mode` in
+ * `~/.grok/config.toml`, and the `defaultMode` of the Claude settings it also
+ * reads (the folder's `.claude/settings.local.json` and `settings.json` up to
+ * the repository root, then the user's). With `auto` there, its classifier
+ * ran `rm -rf` while the thread was set to request approval — measured
+ * 2026-09-25 — and nothing on ACP turns that off for one session
+ * (`_meta.yoloMode` / `autoMode` only turn modes on). So the bridge cannot
+ * enforce the thread's choice; it says so instead (see sendTurn).
+ */
+export function grokPermissionSource(
+  cwd: string,
+  home: string = homedir(),
+  readFile: (path: string) => string | undefined = readTextFile,
+): GrokPermissionSource | undefined {
+  const claudeFiles: string[] = [];
+  let dir = cwd;
+  for (;;) {
+    claudeFiles.push(
+      join(dir, '.claude', 'settings.local.json'),
+      join(dir, '.claude', 'settings.json'),
+    );
+    if (existsSync(join(dir, '.git')) || dirname(dir) === dir || dir === home) break;
+    dir = dirname(dir);
+  }
+  claudeFiles.push(
+    join(home, '.claude', 'settings.local.json'),
+    join(home, '.claude', 'settings.json'),
+  );
+  for (const file of claudeFiles) {
+    const raw = readFile(file);
+    if (raw === undefined) continue;
+    let mode = '';
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (isRecord(parsed)) {
+        const permissions = isRecord(parsed['permissions']) ? parsed['permissions'] : {};
+        mode = str(permissions['defaultMode']) || str(parsed['defaultMode']);
+      }
+    } catch {
+      continue;
+    }
+    if (!mode) continue;
+    return GROK_NON_ASKING_MODES.has(mode) ? { mode, file: tildePath(file, home) } : undefined;
+  }
+  const config = readFile(join(home, '.grok', 'config.toml'));
+  const mode = config ? /^\s*permission_mode\s*=\s*"([^"]+)"/m.exec(config)?.[1] : undefined;
+  return mode && GROK_NON_ASKING_MODES.has(mode)
+    ? { mode, file: tildePath(join(home, '.grok', 'config.toml'), home) }
+    : undefined;
+}
+
+/** The notice a turn carries when Grok will not ask although the thread should. */
+export function grokPermissionNotice(source: GrokPermissionSource): string {
+  return (
+    `Grok decides by itself when to ask, and its permission mode here is "${source.mode}" ` +
+    `(from ${source.file}), so it may run commands and edit files without asking, even ` +
+    `though this chat is set to ask first. Set that mode to "default" to be asked.`
+  );
+}
+
+/** `path` from the home folder as `~/…`, with `/` on every platform. */
+function tildePath(path: string, home: string): string {
+  const rel = relative(home, path);
+  return rel && !rel.startsWith('..') && !isAbsolute(rel) ? `~/${rel.split(sep).join('/')}` : path;
+}
+
+function readTextFile(path: string): string | undefined {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return undefined;
+  }
+}
+
+/** The id Grok gives its reasoning-effort config option (2026-09). */
+const GROK_EFFORT_OPTION = 'reasoning_effort';
+
+/** The id of the `thought_level` option among a session's `configOptions`, if any. */
+export function effortOptionId(configOptions: unknown): string | undefined {
+  if (!Array.isArray(configOptions)) return undefined;
+  const option = configOptions.find((o) => isRecord(o) && o['category'] === 'thought_level');
+  return isRecord(option) && str(option['id']) ? str(option['id']) : undefined;
+}
+
+/** How long a folder's command list is reused. */
+const COMMANDS_TTL_MS = 60_000;
+/** How long a listing waits for a fresh session to announce its commands (≈2.5 s measured). */
+const COMMANDS_WAIT_MS = 8_000;
+const COMMANDS_POLL_MS = 100;
+
+/**
+ * Commands Grok announces that the bridge does not offer: the access mode is
+ * the thread's own (`always-approve` would override it behind its back), and
+ * the status line and memory browser are screens of Grok's terminal UI.
+ */
+const GROK_BRIDGE_OWNED_COMMANDS = new Set(['always-approve', 'statusline', 'memory']);
+
+/**
+ * Grok's `availableCommands` (`[{ name, description, input: { hint } | null }]`)
+ * as commands. A command that is one of the skills Grok reads (a `SKILL.md`
+ * in `~/.agents/skills`, `~/.grok/skills` or the same folders of [cwd]) is
+ * labelled a skill; the rest are Grok's own. Both run natively as `/name args`.
+ */
+export function parseGrokCommands(
+  raw: unknown[],
+  cwd?: string,
+  isSkill: (name: string) => boolean = (name) => grokSkillExists(name, cwd),
+): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const name = str(item['name']);
+    if (!name || GROK_BRIDGE_OWNED_COMMANDS.has(name)) continue;
+    const description = str(item['description']);
+    const hint = isRecord(item['input']) ? str(item['input']['hint']) : '';
+    commands.push({
+      name,
+      source: isSkill(name) ? 'skill' : 'acp',
+      headlessSupported: true,
+      ...(description ? { description } : {}),
+      ...(hint ? { argumentHint: hint } : {}),
+    });
+  }
+  return commands;
+}
+
+function grokSkillExists(name: string, cwd?: string): boolean {
+  if (!/^[\w.-]+$/.test(name)) return false;
+  const roots = [homedir(), ...(cwd ? [cwd] : [])];
+  return roots.some((root) =>
+    ['.agents', '.grok'].some((dir) => existsSync(join(root, dir, 'skills', name, 'SKILL.md'))),
+  );
 }
 
 export class GrokAdapter extends BaseAgentAdapter {
@@ -212,11 +369,22 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #modelBySession = new Map<string, string>();
   /** sessionId → last reasoning effort we set. */
   readonly #effortBySession = new Map<string, string>();
-  /** Slash commands from the latest ACP `available_commands_update` (see listCommands). */
-  #commands: AgentCommand[] = [];
+  readonly #permissionSource: (cwd: string) => GrokPermissionSource | undefined;
+  /** Sessions already told that Grok's own mode will not ask (see sendTurn). */
+  readonly #warnedSessions = new Set<string>();
+  /** sessionId → the id of its `thought_level` config option (see #applyEffort). */
+  readonly #effortOptionBySession = new Map<string, string>();
+  /** Each folder's commands, from its sessions' `available_commands_update` (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
+  /** sessionId → the folder it runs in, so a command update is filed under it. */
+  readonly #cwdBySession = new Map<string, string>();
+  /** sessionId → the commands its latest update announced (it can beat `session/new`'s answer). */
+  readonly #commandsBySession = new Map<string, AgentCommand[]>();
   /** Model list, captured from the `initialize` handshake (cached for the process). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
+  /** The ACP process advertised HTTP MCP servers (`initialize`) — Uxnan Desktop's tools are offered only then. */
+  #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
   #defaultCwd = process.cwd();
 
@@ -242,6 +410,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     this.#onApprovalRequest = options.onApprovalRequest;
     this.#spawnAcp =
       options.spawnAcp ?? defaultSpawnAcp(this.#binaryPath, this.#prependArgs, this.#defaultCwd);
+    this.#permissionSource = options.permissionSource ?? ((cwd) => grokPermissionSource(cwd));
   }
 
   /**
@@ -295,7 +464,12 @@ export class GrokAdapter extends BaseAgentAdapter {
     // Resolve the ACP session for this thread (new, or load a persisted one).
     let sessionId: string;
     try {
-      sessionId = await this.#ensureSession(rpc, threadId, cwd);
+      sessionId = await this.#ensureSession(
+        rpc,
+        threadId,
+        cwd,
+        acpDesktopMcpServers(options.desktopTools, cwd, this.#mcpHttp),
+      );
     } catch (err) {
       return this.#failTurn(threadId, turnId, `grok session failed: ${errorMessage(err)}`);
     }
@@ -317,6 +491,20 @@ export class GrokAdapter extends BaseAgentAdapter {
     this.#active.set(turnId, run);
     this.#runBySession.set(sessionId, run);
     this.emit({ type: 'turn_started', threadId, turnId });
+    // The thread asks first, but Grok's own mode will not: say so, once per
+    // session (the bridge cannot turn Grok's mode off, see grokPermissionSource).
+    if (run.posture === 'interactive' && !this.#warnedSessions.has(sessionId)) {
+      const source = this.#permissionSource(cwd);
+      if (source) {
+        this.#warnedSessions.add(sessionId);
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: { content: warningBlock(grokPermissionNotice(source)) },
+        });
+      }
+    }
 
     // `session/prompt` is a REQUEST that only resolves when the whole turn ends,
     // so we DON'T await it here (that would block sendTurn until completion) —
@@ -386,6 +574,7 @@ export class GrokAdapter extends BaseAgentAdapter {
           },
           clientInfo: { name: 'uxnan-bridge', version: '1.0.0' },
         });
+        this.#mcpHttp = acpSupportsHttpMcp(init);
         // Grok reports its models in the handshake — cache them for `agent/models`.
         const models = mapGrokModels(init?._meta?.modelState, this.#defaultModel);
         if (models.length > 0) this.#modelsCache = models;
@@ -404,13 +593,19 @@ export class GrokAdapter extends BaseAgentAdapter {
   }
 
   /** Get (or create/load) the ACP session id for a thread. */
-  async #ensureSession(rpc: NdjsonRpc, threadId: string, cwd: string): Promise<string> {
+  async #ensureSession(
+    rpc: NdjsonRpc,
+    threadId: string,
+    cwd: string,
+    mcpServers: AcpMcpServerHttp[] = [],
+  ): Promise<string> {
     const known = this.#sessionByThread.get(threadId);
     if (known) {
       // The same process still holds it (common case); a restarted process needs
       // session/load to re-attach. Try load; fall through to new on failure.
       try {
-        await rpc.request('session/load', { sessionId: known, cwd, mcpServers: [] });
+        await rpc.request('session/load', { sessionId: known, cwd, mcpServers });
+        this.#cwdBySession.set(known, cwd);
         return known;
       } catch {
         this.#sessionByThread.delete(threadId);
@@ -418,8 +613,14 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#effortBySession.delete(known);
       }
     }
-    const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers: [] });
+    const res = await rpc.request<{ sessionId: string; configOptions?: unknown }>('session/new', {
+      cwd,
+      mcpServers,
+    });
     this.#sessionByThread.set(threadId, res.sessionId);
+    this.#cwdBySession.set(res.sessionId, cwd);
+    const effortOption = effortOptionId(res.configOptions);
+    if (effortOption) this.#effortOptionBySession.set(res.sessionId, effortOption);
     return res.sessionId;
   }
 
@@ -435,14 +636,19 @@ export class GrokAdapter extends BaseAgentAdapter {
   }
 
   /**
-   * Set the session's reasoning effort (best-effort). Grok surfaces effort as its
-   * ACP "modes" (`high`/`medium`/`low`), so we route it through `session/set_mode`.
-   * FOR-DEV: confirm the effort actually takes effect on a real turn (balance-blocked).
+   * Set the session's reasoning effort (best-effort). Grok offers it as a
+   * session config option of category `thought_level` (`reasoning_effort`:
+   * `xhigh`/`high`/`medium`/`low`), set with `session/set_config_option` —
+   * verified live: the answer carries the option's new value, a
+   * `config_option_update` follows, and an unknown value is refused.
+   * (`session/set_mode` answers `{}` to anything, `bogus` included, and changes
+   * nothing — the adapter used it until 2026-09-25.)
    */
   async #applyEffort(rpc: NdjsonRpc, sessionId: string, effort: string): Promise<void> {
     if (this.#effortBySession.get(sessionId) === effort) return;
+    const configId = this.#effortOptionBySession.get(sessionId) ?? GROK_EFFORT_OPTION;
     try {
-      await rpc.request('session/set_mode', { sessionId, modeId: effort });
+      await rpc.request('session/set_config_option', { sessionId, configId, value: effort });
       this.#effortBySession.set(sessionId, effort);
     } catch {
       /* effort unknown to Grok → keep its active effort */
@@ -487,7 +693,10 @@ export class GrokAdapter extends BaseAgentAdapter {
     // Slash-command availability is session-scoped and can arrive before any
     // turn — capture it regardless of an active run (see listCommands).
     if (str(update['sessionUpdate']) === 'available_commands_update') {
-      this.#captureCommands(update['availableCommands'] ?? update['available_commands']);
+      this.#captureCommands(
+        str(p['sessionId']),
+        update['availableCommands'] ?? update['available_commands'],
+      );
       return;
     }
     const run = this.#runBySession.get(str(p['sessionId']));
@@ -527,7 +736,7 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#onToolUpdate(run, update);
         return;
       case 'plan': {
-        const steps = grokPlanSteps(update['entries']);
+        const steps = acpPlanSteps(update['entries']);
         if (steps.length > 0) this.#emitPlan(run, steps);
         return;
       }
@@ -538,55 +747,99 @@ export class GrokAdapter extends BaseAgentAdapter {
   }
 
   /** Record an ACP `available_commands_update` payload for `agent/commands`. */
-  #captureCommands(raw: unknown): void {
+  #captureCommands(sessionId: string, raw: unknown): void {
     if (!Array.isArray(raw)) return;
-    const commands: AgentCommand[] = [];
-    for (const item of raw) {
-      if (!isRecord(item)) continue;
-      const name = str(item['name']);
-      if (!name) continue;
-      const description = str(item['description']);
-      commands.push({
-        name,
-        source: 'acp',
-        headlessSupported: true,
-        ...(description ? { description } : {}),
-      });
-    }
-    this.#commands = commands;
+    const cwd = this.#cwdBySession.get(sessionId);
+    const commands = parseGrokCommands(raw, cwd);
+    this.#commandsBySession.set(sessionId, commands);
+    if (cwd !== undefined) this.#commandsByCwd.set(cwd, { at: Date.now(), commands });
   }
 
   /**
-   * Slash commands Grok advertised over ACP (`available_commands_update`),
-   * invoked natively through `session/prompt`. Empty until a session is
-   * established and the agent has advertised its commands.
+   * The commands Grok announces for a folder (`available_commands_update`,
+   * {@link parseGrokCommands}): its built-ins and the skills it finds there,
+   * invoked natively as `/name args` through `session/prompt`. Grok announces
+   * them only for a session, so a folder no thread has opened yet gets a
+   * short session of its own — `session/new`, no prompt, no tokens: the list
+   * arrives about 2.5 s later — which is then closed. Reused per folder for a
+   * minute; a thread's own session refreshes it.
    */
-  listCommands(): Promise<AgentCommand[]> {
-    return Promise.resolve(this.#commands.map((c) => ({ ...c })));
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    let rpc: NdjsonRpc;
+    try {
+      rpc = await this.#ensureAcp();
+    } catch {
+      return cached?.commands ?? [];
+    }
+    let sessionId = '';
+    try {
+      const res = await rpc.request<{ sessionId: string }>('session/new', {
+        cwd: dir,
+        mcpServers: [],
+      });
+      sessionId = res.sessionId;
+      this.#cwdBySession.set(sessionId, dir);
+      const deadline = Date.now() + COMMANDS_WAIT_MS;
+      while (!this.#commandsBySession.has(sessionId) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, COMMANDS_POLL_MS));
+      }
+      const commands = this.#commandsBySession.get(sessionId);
+      if (commands) this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+      return commands ?? cached?.commands ?? [];
+    } catch {
+      return cached?.commands ?? [];
+    } finally {
+      if (sessionId) {
+        this.#cwdBySession.delete(sessionId);
+        this.#commandsBySession.delete(sessionId);
+        rpc.request('session/close', { sessionId }).catch(() => undefined);
+      }
+    }
   }
 
   /** Merge a tool_call / tool_call_update; emit a block once it terminates. */
   #onToolUpdate(run: ActiveRun, update: Record<string, unknown>): void {
     const id = str(update['toolCallId']);
     if (!id) return;
-    const prev = run.tools.get(id) ?? { toolCallId: id, title: '', kind: '', status: '' };
-    const merged: GrokToolCall = {
+    const known = run.tools.get(id);
+    const prev = known ?? { toolCallId: id, title: '', kind: '', status: '' };
+    const merged: AcpToolCall = {
       toolCallId: id,
       title: str(update['title']) || prev.title,
-      kind: str(update['kind']) || prev.kind,
+      kind: acpToolKind(update) || prev.kind,
       status: str(update['status']) || prev.status,
       rawInput: isRecord(update['rawInput']) ? update['rawInput'] : prev.rawInput,
       content: Array.isArray(update['content']) ? (update['content'] as unknown[]) : prev.content,
     };
     run.tools.set(id, merged);
-    if ((merged.status === 'completed' || merged.status === 'failed') && !run.emitted.has(id)) {
+    const finished = merged.status === 'completed' || merged.status === 'failed';
+    // Shown as it starts (its first announcement); its end replaces it in place.
+    if (!known && !finished) {
+      const started = acpToolStartBlock(merged);
+      if (started) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content: started },
+        });
+      }
+    }
+    if (finished && !run.emitted.has(id)) {
       run.emitted.add(id);
-      this.emit({
-        type: 'block',
-        threadId: run.threadId,
-        turnId: run.bridgeTurnId,
-        data: { content: grokToolBlock(merged) },
-      });
+      const settled = acpToolBlock(merged);
+      const content = settled ? withBlockId(settled, id) : null;
+      if (content) {
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content },
+        });
+      }
     }
   }
 
@@ -614,8 +867,10 @@ export class GrokAdapter extends BaseAgentAdapter {
     const run = this.#runBySession.get(str(p['sessionId']));
     const options = Array.isArray(p['options']) ? (p['options'] as Record<string, unknown>[]) : [];
     const toolCall = isRecord(p['toolCall']) ? p['toolCall'] : {};
+    // A request for no turn of ours is refused: nothing the user set allows it.
+    if (!run) return cancelledOutcome();
     // Non-interactive postures auto-answer without troubling the phone.
-    if (!run || !this.#onApprovalRequest || run.posture === 'approveAll') {
+    if (run.posture === 'approveAll') {
       return selectOption(options, 'approve') ?? cancelledOutcome();
     }
     if (run.posture === 'approveSession') {
@@ -625,6 +880,8 @@ export class GrokAdapter extends BaseAgentAdapter {
         cancelledOutcome()
       );
     }
+    // Interactive, with no one to ask: refuse.
+    if (!this.#onApprovalRequest) return selectOption(options, 'reject') ?? cancelledOutcome();
     // Interactive: ask the phone.
     let decision: ApprovalDecision = 'reject';
     try {

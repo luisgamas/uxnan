@@ -75,20 +75,35 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
+  DesktopTools,
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
-import { commandBlock, editDiffBlock, toolBlock, writeDiffBlock } from './content-blocks.js';
+import {
+  commandBlock,
+  editDiffBlock,
+  fileDiffBlock,
+  runningBlock,
+  subagentBlock,
+  toolBlock,
+  withBlockId,
+  writeDiffBlock,
+} from './content-blocks.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
+import { proxyLaunchEnv } from './mcp-proxy.js';
 
 /**
  * How long a thread's resident `agy` process may sit without a turn before it is
@@ -107,6 +122,40 @@ const TURN_TIMEOUT = '2h';
 
 /** Hard cap on the `agy models` spawn before giving up. */
 const MODEL_LIST_TIMEOUT_MS = 8000;
+
+/** How long a folder's skill list is reused before `agy` is asked again. */
+const COMMANDS_TTL_MS = 60_000;
+
+/** Hard cap on the `agy -p /skills` spawn (it answers in ~4-5 s, a cold start). */
+const COMMANDS_TIMEOUT_MS = 20_000;
+
+/** What a skill name looks like in `/skills` output: no spaces, no punctuation soup. */
+const SKILL_NAME = /^[A-Za-z0-9][\w.:-]*$/;
+
+/**
+ * The skills in `agy -p /skills` output: one `name<TAB>description` line each
+ * (`agy` 1.2.11), the workspace's own and the user's. Anything else — a blank
+ * line, a warning — is skipped.
+ */
+export function parseAntigravitySkills(output: string): AgentCommand[] {
+  const commands: AgentCommand[] = [];
+  const seen = new Set<string>();
+  for (const raw of output.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const tab = line.indexOf('\t');
+    const name = (tab >= 0 ? line.slice(0, tab) : line).trim();
+    if (!SKILL_NAME.test(name) || seen.has(name)) continue;
+    seen.add(name);
+    const description = tab >= 0 ? line.slice(tab + 1).trim() : '';
+    commands.push({
+      name,
+      ...(description ? { description } : {}),
+      source: 'skill',
+      headlessSupported: true,
+    });
+  }
+  return commands;
+}
 
 /**
  * Model used to name a conversation: the cheapest tier `agy models` reports,
@@ -146,6 +195,8 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   // model call's `usage`; the last one of a turn is the context the conversation
   // occupies (see `contextTokens`). Captured from real runs on `agy` 1.2.7.
   reportsContextUsage: true,
+  // Its skills, as `agy -p /skills` lists them; each runs as `/name args`.
+  commands: true,
 };
 
 /**
@@ -263,19 +314,63 @@ export function contextTokens(usage: AntigravityUsage | undefined): number | und
   return total > 0 ? total : undefined;
 }
 
+/** The tools that change a file, whose `TargetFile` the adapter reads around the step. */
+export const ANTIGRAVITY_FILE_TOOLS = new Set([
+  'write_to_file',
+  'replace_file_content',
+  'multi_replace_file_content',
+]);
+
+/** The tools that hand work to a subagent. */
+const ANTIGRAVITY_SUBAGENT_TOOLS = new Set(['invoke_subagent', 'browser_subagent']);
+
+/** A file's text before and after a step (`null`: it did not exist). */
+export interface AntigravityFileChange {
+  before: string | null;
+  after: string | null;
+}
+
+/** The text of a file, or `null` when it cannot be read (absent, a folder…). */
+export function readTextOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/** A file's text at `HEAD`, or `null` when it is not committed (or not in a repository). */
+export function committedTextOrNull(path: string): string | null {
+  try {
+    return execFileSync('git', ['show', `HEAD:./${basename(path)}`], {
+      cwd: dirname(path),
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Map a finished `tool` step onto the bridge's structured content blocks.
  *
  * Parameter names are `agy`'s own (captured live): `run_command` carries
- * `CommandLine`, `write_to_file` carries `TargetFile` + `CodeContent`, and
- * `replace_file_content` carries `TargetFile` + `TargetContent` +
- * `ReplacementContent`. Any other tool becomes a generic tool block whose id is
+ * `CommandLine`; the file tools carry `TargetFile`. Older releases also sent
+ * the content (`CodeContent`, `TargetContent` + `ReplacementContent`); 1.2.x
+ * sends only the path, once the change is applied, so the adapter passes the
+ * text before it (as the agent last read or wrote it this turn, else as
+ * committed) and after it as `change` — the diff is then exact, with line
+ * numbers. Any other tool becomes a classified tool block whose id is
  * `<tool>_<step_index>` — the step index is unique within a conversation, and
  * `sequence` only stands in for a step that has none.
  */
 export function buildAntigravityToolBlock(
   update: AntigravityStepUpdate,
   sequence = 0,
+  change?: AntigravityFileChange,
 ): Record<string, unknown> {
   const toolName = update.tool_name ?? update.tool_info?.name ?? 'tool';
   const params = update.tool_info?.parameters ?? {};
@@ -284,29 +379,29 @@ export function buildAntigravityToolBlock(
       ? update.tool_info.output
       : (update.tool_info?.error?.message ?? '');
   const isError = update.state === 'ERROR' || Boolean(update.tool_info?.error);
+  const text = (key: string): string => (typeof params[key] === 'string' ? params[key] : '');
+  const toolId = `${toolName}_${update.step_index ?? sequence}`;
 
-  switch (toolName) {
-    case 'run_command': {
-      const cmd = typeof params['CommandLine'] === 'string' ? params['CommandLine'] : '';
-      return commandBlock(cmd, out, isError);
+  if (toolName === 'run_command') return commandBlock(text('CommandLine'), out, isError);
+  if (ANTIGRAVITY_FILE_TOOLS.has(toolName)) {
+    const target = text('TargetFile');
+    if (change && (change.before !== null || change.after !== null)) {
+      return fileDiffBlock(target, change.before ?? '', change.after ?? '');
     }
-    case 'write_to_file': {
-      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
-      const code = typeof params['CodeContent'] === 'string' ? params['CodeContent'] : '';
-      return writeDiffBlock(target, code);
+    if (toolName === 'write_to_file' && text('CodeContent')) {
+      return writeDiffBlock(target, text('CodeContent'));
     }
-    case 'replace_file_content': {
-      const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
-      const oldText = typeof params['TargetContent'] === 'string' ? params['TargetContent'] : '';
-      const newText =
-        typeof params['ReplacementContent'] === 'string' ? params['ReplacementContent'] : '';
-      return editDiffBlock(target, oldText, newText);
+    if (toolName === 'replace_file_content' && text('TargetContent')) {
+      return editDiffBlock(target, text('TargetContent'), text('ReplacementContent'));
     }
-    default: {
-      const toolId = `${toolName}_${update.step_index ?? sequence}`;
-      return toolBlock(toolName, toolId, params, out, isError);
-    }
+    return writeDiffBlock(target, '');
   }
+  if (ANTIGRAVITY_SUBAGENT_TOOLS.has(toolName)) {
+    const task =
+      text('Task') || text('TaskDescription') || text('Prompt') || text('Description') || toolName;
+    return subagentBlock(toolId, task, out, isError);
+  }
+  return toolBlock(toolName, toolId, params, out, isError);
 }
 
 /**
@@ -436,7 +531,7 @@ function asNumber(value: unknown): number | undefined {
 }
 
 export interface AntigravityAdapterOptions {
-  /** Executable to spawn (resolved path; see resolve-antigravity.ts). */
+  /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (unused for the native `agy` exe). */
   prependArgs?: string[];
@@ -474,10 +569,16 @@ interface ActiveSession {
   cwd: string;
   model: string | undefined;
   mode: AntigravityPermissionMode;
+  /** Which desktop attachment the process was started with (`proxyLaunchEnv`). */
+  desktopKey: string;
   child: SpawnedProcess;
   idleTimer?: NodeJS.Timeout;
   /** Fallback for a tool block id when a step has no `step_index`. */
   toolSequence: number;
+  /** Steps shown as running, not yet ended (see the step handler). */
+  startedSteps: Set<string>;
+  /** Each file's text as the agent last read or wrote it, and in which turn. */
+  fileText: Map<string, { turnId: string; text: string | null }>;
   exited: boolean;
   activeTurn?: ActiveTurn;
 }
@@ -569,6 +670,8 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   readonly #conversationByThread = new Map<string, string>();
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
+  /** The folder's skill list, briefly reused (see listCommands). */
+  readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
 
   #defaultCwd = process.cwd();
 
@@ -699,14 +802,20 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     cwd: string,
     model: string | undefined,
     mode: AntigravityPermissionMode,
+    desktopTools?: DesktopTools,
   ): ActiveSession {
+    // Uxnan Desktop's tools reach `agy` through its global `uxnan-browser`
+    // entry (`mcp-proxy.ts`), which reads the endpoint from this process's
+    // environment — so a change of attachment restarts the process too.
+    const desktop = proxyLaunchEnv(desktopTools, cwd);
     const existing = this.#sessions.get(threadId);
     if (
       existing &&
       !existing.exited &&
       existing.cwd === cwd &&
       existing.model === model &&
-      existing.mode === mode
+      existing.mode === mode &&
+      existing.desktopKey === desktop.key
     ) {
       if (existing.idleTimer) {
         clearTimeout(existing.idleTimer);
@@ -735,6 +844,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     const child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
       stdin: 'pipe',
+      ...(desktop.key ? { env: desktop.env } : {}),
     });
 
     const session: ActiveSession = {
@@ -743,8 +853,11 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       cwd,
       model,
       mode,
+      desktopKey: desktop.key,
       child,
       toolSequence: 0,
+      fileText: new Map(),
+      startedSteps: new Set(),
       exited: false,
     };
 
@@ -774,8 +887,51 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       if (ev.kind === 'step_update') {
         adoptConversation(ev.update.conversation_id);
         const { update } = ev;
+        const toolName = update.tool_name ?? '';
+        const fileTool = update.step_type === 'tool' && ANTIGRAVITY_FILE_TOOLS.has(toolName);
+        const params = update.tool_info?.parameters ?? {};
+        const target = typeof params['TargetFile'] === 'string' ? params['TargetFile'] : '';
+        // A step is shown as it starts; its end replaces it in place (same
+        // `blockId`: the tool and its step index). A file step shows only its diff.
+        const stepId =
+          update.step_index !== undefined ? `${toolName}_${update.step_index}` : undefined;
+        if (
+          update.step_type === 'tool' &&
+          update.state === 'ACTIVE' &&
+          stepId !== undefined &&
+          !fileTool &&
+          !session.startedSteps.has(stepId)
+        ) {
+          session.startedSteps.add(stepId);
+          const started = buildAntigravityToolBlock(update);
+          if (started['type'] !== 'diff') {
+            this.emit({
+              type: 'block',
+              threadId,
+              turnId: active.turnId,
+              data: { content: runningBlock(started, stepId) },
+            });
+          }
+        }
         if (update.step_type === 'tool' && (update.state === 'DONE' || update.state === 'ERROR')) {
-          const block = buildAntigravityToolBlock(update, session.toolSequence++);
+          // 1.2.x reports only which file a step changed, and announces the
+          // step once it is already applied. The text before it is what the
+          // agent last read or wrote this turn, else the committed file.
+          let change: AntigravityFileChange | undefined;
+          if (fileTool && target) {
+            const known = session.fileText.get(target);
+            const before =
+              known && known.turnId === active.turnId ? known.text : committedTextOrNull(target);
+            const after = readTextOrNull(target);
+            change = { before, after };
+            session.fileText.set(target, { turnId: active.turnId, text: after });
+          } else if (toolName === 'view_file' && typeof params['AbsolutePath'] === 'string') {
+            const path = params['AbsolutePath'];
+            session.fileText.set(path, { turnId: active.turnId, text: readTextOrNull(path) });
+          }
+          const settled = buildAntigravityToolBlock(update, session.toolSequence++, change);
+          const block = stepId !== undefined ? withBlockId(settled, stepId) : settled;
+          if (stepId !== undefined) session.startedSteps.delete(stepId);
           this.emit({ type: 'block', threadId, turnId: active.turnId, data: { content: block } });
         }
         if (update.step_type === 'agent_response') {
@@ -838,7 +994,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     let session: ActiveSession;
     try {
-      session = this.#getOrCreateSession(threadId, cwd, model, mode);
+      session = this.#getOrCreateSession(threadId, cwd, model, mode, options.desktopTools);
     } catch (err) {
       this.emit({
         type: 'turn_error',
@@ -1004,6 +1160,70 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       child.stderr?.on('data', collect);
       child.on('error', () => finish([]));
       child.on('close', () => finish(parseAntigravityModelList(output, this.#defaultModel)));
+    });
+  }
+
+  /**
+   * The commands Antigravity runs from the conversation: its **skills** — the
+   * workspace's own and the user's — as `agy -p /skills` lists them, a command
+   * the CLI answers itself (like `/help`), in the thread's folder with the
+   * same `--add-dir` a turn gets (the workspace's skills come from it; verified
+   * on `agy` 1.2.11: without it the project's skill is not listed). A picked
+   * skill is sent as `/name args` on the user message, which `agy` expands
+   * natively — no {@link expandCommand}.
+   *
+   * Nothing else is advertised. The commands `agy` answers itself (`/help`,
+   * `/skills`, …) fail on the stream-json surface the bridge drives ("is
+   * answered by the CLI itself and is unavailable with --input-format
+   * stream-json"), `/compact` is not a command there (it reaches the model as
+   * plain text), and legacy `.agents/workflows` are not expanded — skills
+   * replace them. The stream's `init` event carries no command list. Reused
+   * per folder for a minute; an unanswered request yields none.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const dir = cwd ?? this.#defaultCwd;
+    const cached = this.#commandsByCwd.get(dir);
+    if (cached && Date.now() - cached.at < COMMANDS_TTL_MS) return cached.commands;
+    const output = await this.#askSkills(dir);
+    if (output === undefined) return [];
+    const commands = parseAntigravitySkills(output);
+    this.#commandsByCwd.set(dir, { at: Date.now(), commands });
+    return commands;
+  }
+
+  /** `agy -p /skills` in [cwd]; its stdout, or `undefined` if it failed. */
+  #askSkills(cwd: string): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let output = '';
+      let child: SpawnedProcess;
+      const finish = (result: string | undefined): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+        resolve(result);
+      };
+      try {
+        child = this.#spawn(
+          this.#binaryPath,
+          [...this.#prependArgs, '-p', '/skills', '--add-dir', cwd],
+          cwd,
+        );
+      } catch {
+        resolve(undefined);
+        return;
+      }
+      const timer = setTimeout(() => finish(undefined), COMMANDS_TIMEOUT_MS);
+      child.stdout.on('data', (chunk: unknown) => {
+        output += String(chunk);
+      });
+      child.on('error', () => finish(undefined));
+      child.on('close', (code) => finish(code === 0 ? output : undefined));
     });
   }
 }

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/agent_run_state.dart';
+import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
@@ -273,6 +274,10 @@ class _FullContent extends ConsumerWidget {
               const SizedBox(width: UxnanSpacing.sm),
               const _UnreadDot(),
             ],
+            if (thread.origin?.kind == ClientKind.desktop) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              const _DesktopOriginMark(),
+            ],
             if (thread.lastActivity != null) ...[
               const SizedBox(width: UxnanSpacing.sm),
               Text(
@@ -339,6 +344,28 @@ class _CompactContent extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Marks a conversation started in Uxnan Desktop, so the list tells apart
+/// what began on the PC from what began on a phone (`Thread.origin`).
+class _DesktopOriginMark extends StatelessWidget {
+  const _DesktopOriginMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).threadOriginDesktop;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        child: UxIcon(
+          UxIcons.laptopMac,
+          size: 14,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }

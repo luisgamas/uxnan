@@ -150,6 +150,18 @@ export const handlers: Record<string, (params: Record<string, unknown>) => unkno
     terminals.revealTab(workspace, terminal);
     return { revealed: terminal };
   },
+  // A chat by its bridge thread: its tab if one shows it, else a new one in
+  // its folder's workspace (the backend already checked the caller's scope).
+  "chat/open": (p) => {
+    const threadId = String(p.threadId ?? "");
+    const cwd = String(p.cwd ?? "");
+    if (!threadId || !cwd) return { error: "the chat has no folder to open in" };
+    projects.openChatAt(cwd, { threadId });
+    const shown = [...terminals.tabsWithWorkspace()].find(
+      ({ tab }) => tab.kind === "chat" && tab.threadId === threadId,
+    );
+    return { tab: shown?.tab.id ?? null };
+  },
   "file/open": (p) => {
     const path = String(p.path ?? "");
     const worktree = String(p.worktree ?? "");

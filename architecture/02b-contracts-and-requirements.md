@@ -100,31 +100,32 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 70 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 81 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 70 metodos request/response** + 12 notificaciones de streaming
+> **Total: 81 metodos request/response** + 22 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
 
 **Threads y turns (17):**
 ```
-thread/list             -> lista de threads del PC, con filtro opcional
-thread/read             -> datos completos de un thread
-thread/start            -> crear nuevo thread (agentId, model, cwd, opcional)
-thread/resume           -> reanudar thread existente (best-effort)
+thread/list             -> lista de threads del PC, con filtro opcional. Cada Thread lleva, en vivo y sin persistir, `activeTurnId?` (el turno que corre ahora, igual que `TurnList.activeTurnId`): un cliente recien conectado sabe que conversaciones trabajan sin leer los turnos de cada una
+thread/read             -> datos completos de un thread (con el mismo `activeTurnId?` en vivo)
+thread/start            -> crear nuevo thread (agentId, model, cwd, opcional). La carpeta (`cwd`) decide el proyecto y lo registra (`02a` §5.8.17); `projectId` solo da la carpeta cuando falta `cwd`. Guarda `origin { kind: phone|desktop, name }`. Un `title` dado aqui es del usuario (`titleSource: user`)
+thread/resume           -> abrir un thread existente: valida que exista y **no cambia nada** (ni estado ni `updatedAt`; abrir un archivado no lo desarchiva)
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion
-thread/rename           -> renombrar thread (devuelve el Thread actualizado). El móvil también lo usa una sola vez para convertir el primer prompt en título cuando el bridge aún devuelve un placeholder; un título explícito/manual no se reemplaza.
+thread/rename           -> renombrar thread (devuelve el Thread actualizado; `titleSource: user`). El titulo provisional lo pone el bridge al guardar el primer turno y el generado tras un turno completado (`02a` §5.8.17); los clientes no renombran por su cuenta. Un `source: 'prompt'` nunca pisa un titulo `user` o `agent`. `ageMs?` (ms, 0..1 año): una accion hecha sin conexion y enviada ahora; se aplica solo si nadie renombro a mano despues (`02a` §5.8.17)
 thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio).
 thread/archive          -> archivar thread (status -> archived, reversible). Antes de archivar, el bridge cancela el turno en vuelo, vacia la cola y libera el proceso residente que pi/Antigravity mantienen para el hilo (`AgentManager.closeThreadSession`); el id de sesion nativo se conserva, asi que desarchivar y enviar reanuda la misma sesion en un proceso nuevo
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns (misma liberacion previa que `thread/archive`)
+                           Los tres aceptan `ageMs?` (`ThreadActionParams`): archivar/desarchivar se aplica solo si nadie cambio el estado despues; un borrado anterior a la ultima actividad del hilo se descarta (el hilo queda, y su sesion no se libera)
 turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07):** al re-attachear, el telefono **re-siembra SIEMPRE** su buffer en vivo desde los `segments`/`content` acumulados que este `turn/list` reporta para el turno en vuelo — incluso si ya rastreaba ese `turnId` (los primeros deltas post-reconexion recrean el buffer solo con la cola nueva; el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el telefono ademas **reconcilia** el mensaje persistido contra el registro autoritativo del bridge con un `turn/read` (best-effort), de modo que la conversacion guardada converge siempre al intercalado exacto del bridge aunque la vista en vivo haya sido imperfecta. **Native-session convergence:** on every idle read, the bridge merges durable completed turns written by another client into its stored history before applying this pagination. Bridge-owned rows keep their ids and richer metadata; external user/assistant pairs receive deterministic ids and are never inferred from a partial native turn. The wire result is unchanged.
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
@@ -227,17 +228,30 @@ workspace/applyPatch            -> aplicar lista de cambios de patch
 workspace/exists                -> probe rapido: existe cwd? es git repo? (para detectar threads huerfanos)
 ```
 
-**Proyectos (2):**
+**Proyectos (5)** — un registro persistente que todos los clientes reflejan (`02a` §5.8.17):
 ```
-project/list            -> lista de proyectos configurados (Project { id, name, cwd, agentId?, model? })
-project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no esta en workspaceRoots)
+project/list            -> proyectos registrados (Project { id, name, cwd, agentId?, model?, source?, addedAt?, updatedAt?, rev? })
+project/resolve         -> el proyecto al que pertenece una carpeta (un worktree -> su repositorio); uno no registrado vuelve sin `source`
+project/add             -> registrar la carpeta { cwd, name? } (idempotente). Un telefono solo dentro de las raices de exploracion; el desktop cualquiera (`source: desktop`)
+project/remove          -> quitar { projectId } del registro -> { removed }. Las conversaciones NO se tocan
+project/rename          -> { projectId, name } (vacio restaura el nombre de la carpeta)
 ```
 
-**Agentes (4):**
+**Sincronizacion, ajustes y dispositivos compartidos (5)** (`02a` §5.8.17):
+```
+sync/changes            -> { since?, storeId? } -> SyncChanges { storeId, rev, reset, settings, projects, removedProjectIds, threads, removedThreadIds, clients, devices }. `devices`: todos los telefonos emparejados, siempre completos. Lo posterior a la revision `since`, o una instantanea completa (`reset: true`) cuando `storeId` difiere o `since` es anterior al horizonte de lapidas. El cliente la llama al (re)conectar, al reanudar y ante un salto de `rev`
+settings/get            -> BridgeSettings { home, name }
+settings/set            -> { home?, name?, ageMs? } -> BridgeSettings. `home`: carpeta absoluta existente de donde parte la exploracion (por defecto, la carpeta personal). `name`: como llaman todos los clientes a este PC (por defecto, el nombre de la maquina; vacio lo restaura; 80 caracteres). `ageMs`: un cambio hecho sin conexion; cada ajuste se aplica solo si nadie lo decidio despues
+device/describe         -> DeviceDescribeParams { name, nameAgeMs?, model?, platform?, osVersion?, appVersion? } -> DeviceDescription { device, nameAgeMs? }. Solo un telefono, sobre si mismo, al conectarse: su nombre por defecto (el modelo) aplica mientras nadie lo haya nombrado; uno elegido por su dueño (`nameAgeMs`) gana si es la decision mas reciente. La respuesta trae el nombre vigente y hace cuanto se decidio, para que el telefono adopte uno puesto en otro cliente
+device/rename           -> { deviceId, name, ageMs? } -> TrustedDevice. Cualquier cliente nombra un telefono; vacio vuelve al nombre del telefono. Gana la decision mas reciente
+```
+
+**Agentes (5):**
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
-agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`. Para cualquier agente `deprecated`, devuelve `[]`.
+agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom'|'skill', headlessSupported?). Params { agentId, cwd? } (cwd: la carpeta del hilo). El bridge se los **pregunta al agente** en esa carpeta, por la superficie que maneja: Claude (`initialize` por stream-json), Codex (`skills/list` del app-server + `compact` nativo + prompts de `~/.codex/prompts`), OpenCode (su servidor, v1 y v2), pi (`get_commands`), Antigravity (sus skills, `agy -p /skills`), Grok (ACP `available_commands_update`; para una carpeta sin sesión, una sesión corta sin prompt), Zero (sus propias skills, `zero skills list --json`, solo las que su herramienta de skills puede cargar). Invocacion via `turn/send` `command`, nativa salvo los prompts de Codex y las skills de Zero (el bridge los expande a un prompt). Para cualquier agente `deprecated`, devuelve `[]`. Detalle: `bridge/docs/agents.md` → *Agent commands*.
+agent/doctor            -> { agents: AgentDiagnosis[] } — por agente: `available`, el comando que se ejecuta y cada ubicacion revisada (tabla compartida `shared/agent-locations.json` + PATH del shell de login)
 agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
 
@@ -269,12 +283,25 @@ notifications/unregister        -> desregistrar el telefono
 **Control del bridge (6):**
 ```
 bridge/status                    -> snapshot de estado del bridge (incluye relayConnected,
-                                    version y, del chequeo npm de fondo, latestVersion/updateAvailable)
+                                    version y, del chequeo npm de fondo, latestVersion/updateAvailable;
+                                    activeTurns = hilos con un turno en curso, para que un cliente
+                                    espere un momento tranquilo antes de reiniciar el bridge;
+                                    host { launchedBy: service|desktop|cli, machineName } y
+                                    clients[] = quien esta conectado; features.sync)
 bridge/generatePairingQr         -> regenera y devuelve el PairingPayload vigente
 bridge/connectedPhones           -> lista de telefonos conectados
 bridge/disconnectPhone           -> desconectar un telefono
 bridge/trustedDevices            -> lista de dispositivos de confianza
 bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push registration
+```
+
+**Herramientas del desktop para agentes del bridge (2)** — solo por el canal de
+control local (`02a` §5.8.15); un telefono recibe `-32001`:
+```
+desktop/attach   { mcpUrl, token } -> { attached }  el MCP del desktop (loopback /mcp) + su token
+                                                     para agentes del bridge; lo usan los turnos
+                                                     siguientes, se olvida al desconectarse
+desktop/detach                     -> { attached }  quitar las herramientas
 ```
 
 **Metodos eliminados del draft v0.1.0 (no se llegaron a implementar):**
@@ -328,7 +355,8 @@ bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push
   primer turno si no existe; el contrato es uniforme).
 - `desktop/refresh` / `desktop/open` / `desktop/focus`: el bridge no
   expone endpoints de control de la app de escritorio; el desktop
-  consume el bridge, no al reves. Ver
+  consume el bridge, no al reves (`desktop/attach` no controla la app: le da
+  al bridge el MCP del desktop para sus agentes). Ver
   `../../uxnandesktop/architecture/02e-bridge-integration.md` para el
   sentido de la integracion.
 
@@ -381,8 +409,48 @@ stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }         
 stream/turn/delivered       -> TurnDeliveredParams { threadId, turnId, intoTurnId }         (NUEVO 2026-08)
 stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
-stream/thread/renamed       -> ThreadRenamedParams { threadId, title, titleSource }         (NUEVO 2026-08)
+stream/thread/updated       -> ThreadUpdatedParams { thread }                               (NUEVO 2026-09; reemplaza stream/thread/renamed)
+stream/thread/deleted       -> ThreadDeletedParams { threadId, rev? }                       (NUEVO 2026-09)
+stream/turn/created         -> TurnCreatedParams   { threadId, turn, clientTurnId? }        (NUEVO 2026-09)
+stream/approval/resolved    -> ApprovalResolvedParams { threadId, approvalId, decision, timedOut? }  (NUEVO 2026-09)
+stream/question/resolved    -> QuestionResolvedParams { threadId, questionId, skipped, answers, timedOut? }  (NUEVO 2026-09)
+stream/project/updated      -> ProjectUpdatedParams { project }                             (NUEVO 2026-09, §5.8.17)
+stream/project/removed      -> ProjectRemovedParams { projectId, rev }                      (NUEVO 2026-09)
+stream/settings/updated     -> SettingsUpdatedParams { settings, rev }                      (NUEVO 2026-09)
+stream/presence/updated     -> PresenceUpdatedParams { clients }                            (NUEVO 2026-09; en vivo, sin rev)
+stream/devices/updated      -> DevicesUpdatedParams { devices }                             (NUEVO 2026-09; lista completa al emparejar, describir, renombrar o quitar un telefono)
+stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
 ```
+
+**Revisiones (2026-09, `02a` §5.8.17).** `stream/thread/updated` (via
+`thread.rev`), `stream/thread/deleted`, `stream/project/*` y
+`stream/settings/updated` llevan la revision global del cambio. Un cliente que
+recibe una que no es la siguiente a la ultima aplicada perdio algo: llama
+`sync/changes { since }`. `Turn.seq` (1..n por hilo) es el orden canonico de la
+conversacion; los clientes no ordenan por llegada.
+
+**Varios clientes a la vez (2026-09, `02a` §5.8.16).** Cada notificacion se
+difunde a **todos** los clientes conectados — cada telefono emparejado y el
+desktop por el canal de control local (`02a` §5.8.15) — asi que cualquiera
+puede conducir un hilo y todos convergen al mismo estado. Las cinco
+notificaciones de 2026-09 cierran lo que faltaba para eso:
+
+- `stream/thread/updated` lleva el `Thread` **completo** (upsert idempotente) y
+  lo emiten `thread/start`, `thread/fork`, `thread/rename`, `thread/setModel`,
+  `thread/setAccessMode`, `thread/archive`, `thread/unarchive` y el titulo
+  generado. Un hilo que otro cliente acaba de crear aparece en la lista sin
+  recargar. **Reemplaza a `stream/thread/renamed`**, que solo cubria el titulo.
+- `stream/thread/deleted` retira el hilo en los demas clientes.
+- `stream/turn/created` anuncia un turno de usuario ya guardado (arrancado o
+  encolado) **con el mensaje del usuario**, antes de que empiece la respuesta:
+  sin esto, un prompt escrito en otro cliente solo se descubria despues de su
+  respuesta. `clientTurnId` hace eco de `TurnSendParams.clientTurnId` (el id
+  de la burbuja optimista del emisor, opaco, nunca persistido, ≤ 128
+  caracteres) para que el emisor reconozca su propio mensaje — puede llegar
+  **antes** que la respuesta de `turn/send`.
+- `stream/approval/resolved` y `stream/question/resolved` retiran la tarjeta en
+  todos los clientes cuando alguno responde (o vence el plazo: `timedOut`).
+  `answers` viaja para que un cliente que no respondio muestre lo elegido.
 
 **Nombre de la conversacion (2026-08).** Ningun CLI de agente nos da un titulo:
 todos dejan esa tarea a su propio cliente (un hilo creado por uxnan vuelve de
@@ -397,7 +465,7 @@ contenido). uxnan es el cliente, asi que uxnan los nombra, en dos etapas:
 
 `Thread.titleSource` (`prompt` | `agent` | `user`) es lo que ordena el conflicto:
 un titulo generado sustituye a uno provisional y **nunca** a uno que eligio el
-usuario. `stream/thread/renamed` hace converger a todos los clientes sin recarga.
+usuario. `stream/thread/updated` hace converger a todos los clientes sin recarga.
 `ThreadRenameParams.source` existe por el mismo motivo: ausente significa "lo
 renombro el usuario", asi que un cliente que autogenera su titulo provisional
 **debe** mandar `'prompt'` o su marcador de posicion quedaria registrado como
@@ -431,11 +499,21 @@ decision del usuario.
   default off).
 - `stream/content/block`: el `content` es un `MessageContent` polimorfico
   serializado (`command_execution` para Bash, `diff` para Edit/Write, un
-  bloque `tool` generico para el resto y `compaction` para un límite de
+  bloque `tool` clasificado (`kind` + `target`) para el resto, `subagent`
+  para un subagente y `compaction` para un límite de
   contexto realmente reportado por el agente). El telefono lo decodifica con
   el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
   **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
   del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
+  - `blockId?` on the content (2026-09, additive): the step a block stands for.
+    A later block of the **same turn** with the same `blockId` replaces it in
+    place — in the bridge's store and in every client's live view — so a step
+    shows as it starts (`status: 'running'`, `state.status: 'running'` for a
+    subagent) and settles into its result where it stood. When a turn ends the
+    bridge settles any step left running (as finished on a completed turn, as
+    failed on one that failed or was stopped), and a client treats a running
+    step of a turn that is no longer live as settled (`LiveBlock`,
+    `shared/src/models/tool.ts`).
   - `beforeText?` (2026-07, aditivo): `true` cuando el bloque proviene de una
     actividad **paralela/en background** (p.ej. la herramienta de un subagente
     Task de Claude Code) que llego mientras el texto principal del asistente
@@ -691,14 +769,24 @@ interface ApprovalRequestBlock {
 - `text` (markdown + code blocks)
 - `command_execution` (Bash; output truncado a 4 KB)
 - `diff` (Edit/Write/MultiEdit/NotebookEdit; +/- counts; unified hunks)
-- `tool` (cualquier otra herramienta; output truncado)
+- `tool` (cualquier otra herramienta; output truncado). Since 2026-09 it also
+  carries `kind` — `read | search | list | fetch | web_search | mcp | other`,
+  what the call did, classified by the bridge for every agent — and `target`,
+  what it acted on, ready to show (a path relative to the project, a pattern, a
+  URL, a query). Clients render from these and never from an agent's own tool
+  names (`shared/src/models/tool.ts` → `ToolContentBlock`)
 - `thinking` (razonamiento del agente; colapsable, default off)
 - `assistant_response_boundary` (metadata separating native assistant messages;
   zero text, durable, excluded from copy/previews)
 - `image` (inline, base64)
 - `approval` (bloque interactivo: Approve / Reject / "always allow this session")
-- `plan` (checklist; solo informacional, no bloquea)
-- `subagent` (status updates; solo informacional)
+- `plan` (checklist; solo informacional, no bloquea). An agent resends its
+  whole list on every change, so a turn may carry several: clients show only
+  the latest of a turn
+- `subagent` (`{ state: { id, name, status: 'running' | 'completed' | 'error', output? } }`:
+  a subagent the agent delegated to — Claude's `Agent`, OpenCode's `task`,
+  Codex's collaboration tools, Antigravity's subagents — once it finished, with
+  its report; `SubagentContentBlock`)
 - `usage` (token usage)
 
 ---

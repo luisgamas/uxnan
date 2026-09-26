@@ -81,6 +81,11 @@ Settings and editors follow the same rule. `SettingsSection` owns the header and
 canonical `panel.settingsBody` band, `SettingsRow` consumes `row.settings`, and
 editor/list callers compose the named `row.*`, `field.*`, `tab.*`, and `control.*`
 roles. A pixel-equivalent local class is not a substitute for the shared role.
+Choices use the settings' `Combobox` (`searchable={false}` for a short fixed
+list); a connection's state is a `StatusDot` (`ok` / `warn` / `error` / `busy` /
+`off`) beside its label; a command, a script or captured output is a
+`CodeBlock` (copy button in its corner, `copyable={false}` for output that is
+only read).
 
 A settings row that stands for an *entity* rather than a preference — an agent in
 **Hooks** or in **Browser → Agents** — is still a `SettingsRow` underneath, via
@@ -279,6 +284,34 @@ therefore tied to two tokens: change `appBar`'s height and `y` must follow;
 change `x` and it has to stay inside `macTrafficLightsInset` (80px), which the
 14px buttons at 23px apart currently reach 72px into. The chrome contract test
 asserts both.
+
+### Panes (`pane`) and chat (`chat`)
+
+| Token | Use |
+|---|---|
+| `pane.root` / `pane.header` | Any center-area pane that is not a terminal — file, commit, chat: `bg-background` root and the 36px header band (`h-9`, hairline below). |
+| `chat.column` | The centered reading column (`max-w-3xl`) the chat timeline and composer share. |
+| `chat.hero` | A new chat's question, centered over its composer. |
+| `chat.userBubble` / `chat.queuedBubble` | The user's message (muted fill) and a queued follow-up (same shape, dashed outline). |
+| `chat.prose` | The agent's reply: its settled Markdown chunks at paragraph rhythm, a shade softer than the chrome (`foreground/90`). |
+| `chat.fold` / `chat.foldRule` | A settled turn's "Worked for 1m 3s ›": quiet text with no fill, then a hairline to the column's edge. |
+| `chat.activity` | One compact row of the agent's work — a command, an edit, a tool call — and the header of a work group or a folded turn. |
+| `chat.activityList` | An open work group's rows, hung off a quiet rule. |
+| `chat.runningDot` | A step (or a turn) still running: a small pulsing dot. |
+| `chat.card` | A card inside the chat: an approval or a question (in the dock), a plan, the files a turn changed, the queue. |
+| `chat.output` | Captured output under an expanded activity line. |
+| `chat.pill` | A quiet control in the composer's toolbar (agent, model, run options, access mode): ghost until hovered. |
+| `chat.dock` | What waits above the composer — open approvals and questions, the queue — capped in height, scrolling. |
+| `chat.messageMeta` | A message's time and copy button, revealed while its row (`group/message`) is hovered or focused. |
+
+The chat composes these with the shared primitives rather than drawing its own:
+`InputGroup` + `Textarea` for the composer, the app's one `ModelPicker` (its
+`pill` variant, run options as `Segmented` inside) for the model, `Combobox`
+(its `ghost` trigger) for the agent, the standard `DropdownMenu` radio group
+(`ChatAccessMenu`) for the access mode, `Collapsible` for work groups and
+folded turns, `DiffView` for changed files, `Badge` for small states,
+`TooltipSimple` for the context ring, and `AgentStatusIndicator` on its tab
+chip.
 
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes

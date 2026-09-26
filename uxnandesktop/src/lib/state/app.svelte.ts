@@ -88,6 +88,7 @@ export type SettingsSection =
   | "git"
   | "github"
   | "hosts"
+  | "bridge"
   | "resources"
   | "diagnostics"
   | "updates";

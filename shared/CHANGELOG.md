@@ -4,6 +4,115 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — a step shows while it runs
+
+- `LiveBlock`: any structured block may carry a `blockId`; a later block of
+  the same turn with the same id replaces it in place, so a step shows as it
+  starts (`status: 'running'`) and settles where it stood.
+  `ToolContentBlock.status?: 'running'`; `SubagentContentBlock` state status
+  `running`.
+
+### Added — what a tool call did, for every agent
+
+- `ToolKind` (`read | search | list | fetch | web_search | mcp | other`,
+  `TOOL_KINDS`) and `ToolContentBlock`: a `tool` block now carries `kind` and
+  a ready-to-show `target`, classified by the bridge, so a client never
+  learns an agent's own tool names. `SubagentContentBlock`: a finished
+  subagent with its task, how it ended and its report.
+
+### Added — names every client shares
+
+- `device/describe` (`DeviceDescribeParams`, `DeviceDescription`): a phone,
+  after connecting, says what it is called and what it is (model, platform,
+  OS and app version). `device/rename` (`DeviceRenameParams`): any client
+  names a paired phone. `TrustedDevice` gains `nameSource`, `model`,
+  `platform`, `osVersion` and `appVersion`.
+- `BridgeSettings.name` (what every client calls the PC) and
+  `SettingsSetParams { name?, ageMs? }`.
+- `SyncChanges.devices` and `stream/devices/updated` (`DevicesUpdatedParams`):
+  every paired phone, whole. 81 methods, 22 notifications.
+
+### Added — actions taken offline, the latest one winning
+
+- `ageMs?` (`ActionAgeMs`) on `ThreadRenameParams`, and `ThreadActionParams
+  { threadId, ageMs? }` for `thread/archive`, `thread/unarchive` and
+  `thread/delete`: how long ago, by the client's clock, the user took an action
+  it could only send now. The bridge applies it only if nothing decided the same
+  thing later elsewhere (architecture/02a §5.8.17, 02b §1.2).
+
+### Added — one layer: replica sync, a mirrored project registry, presence
+
+The bridge is the source of truth for everything clients share
+(architecture/02a §5.8.17, 02b §1.2/§1.4):
+
+- `sync/changes` (`SyncChangesParams`, `SyncChanges`), `settings/get|set`
+  (`BridgeSettings { home }`), `project/add|remove|rename`
+  (`ProjectAddParams`, `ProjectRemoveParams`, `ProjectRenameParams`,
+  `ProjectRemoveResult`), `agent/doctor` (`AgentDiagnosis`). **79 JSON-RPC
+  methods** (was 72).
+- `stream/project/updated|removed`, `stream/settings/updated`,
+  `stream/presence/updated` (`ClientPresence`), `stream/agents/updated`.
+  **21 streaming notifications** (was 16). `ThreadDeletedParams.rev`.
+- `Project.source|addedAt|updatedAt|rev`, `Thread.origin|rev`, `Turn.seq`,
+  `BridgeStatus.host|clients`, `BridgeFeatures.sync`.
+- `agent-locations.json` + `locateAgent` / `agentLocation` /
+  `agentLocationTable`: where every agent CLI installs, the one table the bridge
+  and Uxnan Desktop resolve from.
+
+### Changed — streaming notifications for several clients at once
+
+Every notification reaches every connected client (phones and the desktop), so
+the contract now carries everything a second client needs to converge
+(architecture/02a §5.8.16, 02b §1.4). **16 streaming notifications** (was 12):
+
+- `stream/thread/renamed` is **replaced** by `stream/thread/updated`
+  (`ThreadUpdatedParams { thread }`): the whole thread, on creation and on every
+  metadata change — title, model, access mode, archive state — not just a
+  rename. `ThreadRenamedParams` is gone.
+- New `stream/thread/deleted` (`ThreadDeletedParams { threadId }`).
+- New `stream/turn/created` (`TurnCreatedParams { threadId, turn, clientTurnId? }`):
+  a stored user turn with the user's message, before its answer streams.
+- New `stream/approval/resolved` (`ApprovalResolvedParams`) and
+  `stream/question/resolved` (`QuestionResolvedParams`, with the chosen
+  `answers`): a card answered on one client, or timed out, retires everywhere.
+- `TurnSendParams.clientTurnId`: the sender's optimistic-bubble id, echoed on
+  `stream/turn/created` so it recognizes its own message.
+
+### Added — `desktop/attach` / `desktop/detach`
+
+Uxnan Desktop's tools for the agents the bridge runs (architecture/02a
+§5.8.15, 02b §1.2): `DesktopAttachParams { mcpUrl, token }`,
+`DesktopAttachResult`, `SendTurnOptions.desktopTools` (`DesktopTools`), the
+`DESKTOP_CWD_HEADER` (`x-uxnan-cwd`) and `DESKTOP_MCP_SERVER_NAME`
+(`uxnan-browser`) constants, `encodeCwdHeader` (the folder travels
+percent-encoded, so any path is a valid header value), and the
+`isLoopbackMcpUrl` / `isDesktopToken` validators. **72 JSON-RPC methods** (was 70).
+
+### Added — `Thread.activeTurnId`
+
+Live, never persisted: the turn running on the thread right now, which the
+bridge sets on `thread/list` and `thread/read` responses (the same value as
+`TurnList.activeTurnId`), so a client that just connected shows which
+conversations are working without reading each one's turns (architecture/02b
+§1.2).
+
+### Added — `BridgeStatus.activeTurns`
+
+Threads with a turn in flight, whichever client started it (optional; absent
+on an older bridge). A client waits for a quiet moment with it before anything
+that restarts the bridge.
+
+### Added — local control channel contract
+
+`local-control/local-control.ts` defines how a client on the same machine as
+the bridge (Uxnan Desktop) reaches it without E2EE pairing (architecture/02a
+§5.8.15): `LOCAL_CONTROL_FILE` (`local-control.json`, the discovery record
+`LocalControlDiscovery` — port, token, pid, version, `instanceId`),
+`LOCAL_CONTROL_PATH` (`/control`), the frame union `LocalControlFrame`
+(`hello` with `replayed`/`gap`, then `message` frames whose notifications carry
+`seq`), `LOCAL_CONTROL_MAX_FRAME_BYTES`, and the `isValidLocalClientId` /
+`localReceiverId` helpers. `BridgeFeatures.localControl` says the listener is up
+right now. No JSON-RPC method is added: the channel serves the existing ones.
 
 ## [0.0.16-alpha.20260919] - 20260919
 ### Added — `UsageStatus.accessRequired`

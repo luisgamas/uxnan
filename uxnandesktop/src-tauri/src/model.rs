@@ -485,6 +485,20 @@ pub struct DockSettings {
     pub workspaces: std::collections::BTreeMap<String, DockWorkspace>,
 }
 
+/// Settings → Bridge (`bridgeclient`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeSettings {
+    /// `off` | `attach` | `managed` — see [`crate::bridgeclient::Mode`].
+    #[serde(default)]
+    pub mode: crate::bridgeclient::Mode,
+    /// Update the bridge on its own when a newer version is published, at a
+    /// quiet moment (no turn running on any client). Off by default: updating
+    /// runs npm and restarts the bridge, which the user should choose.
+    #[serde(default)]
+    pub auto_update: bool,
+}
+
 /// User-facing application settings (UI layout, theme, terminal profiles).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -684,6 +698,16 @@ pub struct AppSettings {
     /// unchanged (the additive-field migration path every settings struct uses).
     #[serde(default)]
     pub resources: ResourceSettings,
+    /// How the desktop connects to the Uxnan bridge (Settings → Bridge,
+    /// `bridgeclient`). Defaults to `off`, so older state loads unchanged and
+    /// the app stays exactly the standalone ADE until the user opts in.
+    #[serde(default)]
+    pub bridge: BridgeSettings,
+    /// The welcome tour's version the user has been through (finished or
+    /// skipped). `None` shows it on the next start; a newer tour version than
+    /// this shows it again. Frontend-owned (`src/lib/state/welcome.svelte.ts`).
+    #[serde(default)]
+    pub welcome_seen: Option<u32>,
     /// Resource mode (Settings → Resources → Resource mode): the explicit
     /// efficiency/degradation profile plus per-capability overrides. All fields
     /// default (profile `balanced` = the pre-mode behavior), so older state
@@ -1431,6 +1455,8 @@ impl Default for AppSettings {
             open_with: OpenWithSettings::default(),
             profile: None,
             resources: ResourceSettings::default(),
+            bridge: BridgeSettings::default(),
+            welcome_seen: None,
             resource_mode: ResourceModeSettings::default(),
             worktrees: WorktreeSettings::default(),
             control: ControlSettings::default(),

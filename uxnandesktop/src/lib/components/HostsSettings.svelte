@@ -17,6 +17,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
+  import StatusDot from "$lib/components/StatusDot.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import RemoteFolderPicker from "$lib/components/RemoteFolderPicker.svelte";
   import * as Popover from "$lib/components/ui/popover";
@@ -145,13 +146,10 @@
         {@const busy = hosts.isBusy(host.id)}
         {@const inventory = hosts.inventories[host.id]}
         <li class="flex min-h-12 items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-          <span
-            class={cn(
-              "size-1.5 shrink-0 rounded-full",
-              connected ? "bg-emerald-500" : "bg-muted-foreground/30",
-            )}
-            title={connected ? i18n.t("hosts.connected") : i18n.t("hosts.disconnected")}
-          ></span>
+          <StatusDot
+            tone={connected ? "ok" : "off"}
+            label={connected ? i18n.t("hosts.connected") : i18n.t("hosts.disconnected")}
+          />
           <div class="min-w-0 flex-1">
             <p class={cn(text.bodyStrong, "truncate")}>{host.label}</p>
             <p class={cn(text.meta, "truncate")}>

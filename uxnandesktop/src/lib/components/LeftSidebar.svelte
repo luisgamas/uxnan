@@ -1,4 +1,7 @@
 <script lang="ts">
+  import SidebarPhoneRow from "./SidebarPhoneRow.svelte";
+  import BridgePairDialog from "./BridgePairDialog.svelte";
+  import { connectPhone } from "$lib/bridge/connectPhone.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
@@ -183,8 +186,8 @@
     </TooltipSimple>
   </div>
 
-  <!-- Region: Quick actions — just Search now; GitHub & Settings moved to the
-       profile footer at the bottom. -->
+  <!-- Region: Quick actions — Search, and the phone (connect one, or the one
+       connected); GitHub & Settings live in the profile footer at the bottom. -->
   <div class="flex shrink-0 flex-col gap-px px-2 pb-1 pt-2">
     <TooltipSimple title={i18n.t("sidebar.search")}>
       {#snippet children(props)}
@@ -201,6 +204,7 @@
         </button>
       {/snippet}
     </TooltipSimple>
+    <SidebarPhoneRow />
   </div>
 
   <!-- Region: Projects — header (label + actions) and the project tree. -->
@@ -469,6 +473,8 @@
 </div>
 
 <BatchCloseDialog bind:open={batchOpen} rows={batchRows} />
+<!-- "Connect a phone": one dialog for the window (see connectPhone). -->
+<BridgePairDialog bind:open={connectPhone.open} />
 
 <!-- Floating label that follows the pointer while dragging a project card. -->
 {#if cardDrag.active && draggedRepo}

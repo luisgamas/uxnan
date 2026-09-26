@@ -18,12 +18,21 @@ function fakeContext(): BridgeContext {
     metrics: {} as BridgeContext['metrics'],
     sessionHistory: {} as BridgeContext['sessionHistory'],
     agentManager: {} as BridgeContext['agentManager'],
+    agentInstalls: {} as BridgeContext['agentInstalls'],
     projects: {} as BridgeContext['projects'],
+    ledger: {} as BridgeContext['ledger'],
+    settings: {} as BridgeContext['settings'],
+    presence: {} as BridgeContext['presence'],
+    host: { launchedBy: 'cli', machineName: 'test' },
     browse: {} as BridgeContext['browse'],
     pushService: {} as BridgeContext['pushService'],
     logger: createLogger('test', 'error'),
     relayConnected: () => false,
+    localControlActive: () => false,
     updateStatus: () => undefined,
+    pairingPayload: () => {
+      throw new Error('not used');
+    },
     now: () => 1000,
   };
 }
