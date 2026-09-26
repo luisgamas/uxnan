@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.31-alpha.20260926] - 20260926
 ### Fixed — a bridge that stops, stops
 
 - **A CLI process the bridge started kept it from exiting.** Stopping only
