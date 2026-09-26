@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.28-alpha.20260926] - 20260926
 ### Added — a step shows while it runs, for every agent
 
 - Every adapter emits a call's row as it starts (`status: 'running'`, with a

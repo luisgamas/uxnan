@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.17-alpha.20260926] - 20260926
 ### Added — a step shows while it runs
 
 - `LiveBlock`: any structured block may carry a `blockId`; a later block of
