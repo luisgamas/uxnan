@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — every desktop profile is its own local client
+
+- `DESKTOP_LOCAL_CLIENT` and `isDesktopClientId(id)`: Uxnan Desktop connects to
+  the local control channel as `desktop-<profile>`, one id per profile, and the
+  bridge recognizes `desktop` / `desktop-*` as a desktop (architecture/02a
+  §5.8.15).
+
 ## [0.0.17-alpha.20260926] - 20260926
 ### Added — a step shows while it runs
 

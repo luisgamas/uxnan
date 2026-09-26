@@ -95,7 +95,8 @@ export type LocalControlFrame = LocalControlHelloFrame | LocalControlMessageFram
 
 /** Query parameters of the upgrade URL: `/control?client=<id>&resume=<seq>&instance=<id>`. */
 export interface LocalControlConnectParams {
-  /** Stable name of the client (e.g. `desktop`); one live connection per name. */
+  /** Stable name of the client (e.g. `desktop-3f9a1c2b7d4e`, `cli`); one live
+   *  connection per name. */
   client: string;
   /** Last notification `seq` the client applied (0 or absent on a fresh start). */
   resume?: number;
@@ -108,6 +109,24 @@ const CLIENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 /** Whether `id` is an acceptable local client name (lowercase, short, no separators). */
 export function isValidLocalClientId(id: string): boolean {
   return CLIENT_ID_PATTERN.test(id);
+}
+
+/**
+ * The name Uxnan Desktop's client ids start with. Each desktop **profile** — the
+ * installed app, a development build, a disposable `UXNAN_DATA_DIR` — connects
+ * under its own `desktop-<profile>` id, because the channel keeps one live
+ * connection per name: two desktops sharing one would supersede each other in
+ * an endless reconnect loop and trade the same outbound log, presence and
+ * tools back and forth (architecture/02a §5.8.15).
+ */
+export const DESKTOP_LOCAL_CLIENT = 'desktop';
+
+/** Whether a local client id is Uxnan Desktop's (`desktop` or `desktop-<profile>`). */
+export function isDesktopClientId(id: string): boolean {
+  return (
+    isValidLocalClientId(id) &&
+    (id === DESKTOP_LOCAL_CLIENT || id.startsWith(`${DESKTOP_LOCAL_CLIENT}-`))
+  );
 }
 
 /**
