@@ -14,7 +14,7 @@ import type { AgentManager } from './agents/agent-manager.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
 import type { BrowseService } from './workspace/browse-service.js';
 import type { PushService } from './push/push-service.js';
-import type { UpdateStatus } from './update-check.js';
+import type { BridgeUpdater } from './self-update.js';
 import type { Logger } from './logger.js';
 import type { SyncLedger } from './sync/sync-ledger.js';
 import type { BridgeSettingsStore } from './settings/bridge-settings.js';
@@ -63,11 +63,10 @@ export interface BridgeContext {
   /** Whether the loopback local control channel (§5.8.15) is listening. */
   localControlActive(): boolean;
   /**
-   * Latest known self-update status from the background npm check, or
-   * `undefined` before the first check completes. Read by `bridge/status` so the
-   * phone can show a "bridge update available" hint.
+   * The bridge's own update (`self-update.ts`): what `bridge/status` reports as
+   * `update`, and what `bridge/update` runs.
    */
-  updateStatus(): UpdateStatus | undefined;
+  readonly updater: BridgeUpdater;
   /**
    * The pairing payload THIS process serves — its LAN hosts, relay and
    * persisted session — with the pairing window armed, exactly what the QR

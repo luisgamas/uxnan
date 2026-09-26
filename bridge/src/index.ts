@@ -18,6 +18,19 @@ export {
   type UpdateStatus,
   type UpdateCheckOptions,
 } from './update-check.js';
+export {
+  BridgeUpdater,
+  DAEMON_UPDATE_CHECK_MS,
+  installFailure,
+  isPermissionFailure,
+  manualUpdateCommand,
+  resolveUpdateLayout,
+  runSelfUpdateHelper,
+  type BridgeUpdaterOptions,
+  type SelfUpdateHelperInput,
+  type UpdateLayout,
+  type UpdateResult,
+} from './self-update.js';
 
 export { HandlerRouter, type RpcHandler } from './handler-router.js';
 export type { BridgeContext } from './bridge-context.js';

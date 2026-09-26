@@ -13,14 +13,23 @@
  * prints the pairing QR + manual code; `stop`, `status`, `code`, `qr` and
  * `install-service`/`uninstall-service` manage the running daemon;
  * `service-status`/`service-start` let Uxnan Desktop run it as the user's
- * service; `config` reads and changes the settings shared with every client.
+ * service; `config` reads and changes the settings shared with every client;
+ * `update` asks the running bridge to update itself and `self-update` is the
+ * helper it hands that over to (`self-update.ts`).
  */
 import { fileURLToPath } from 'node:url';
-import { agentLocation, encodePairingQr, locateAgent, type BridgeSettings } from '@uxnan/shared';
+import {
+  agentLocation,
+  encodePairingQr,
+  locateAgent,
+  type BridgeSettings,
+  type BridgeUpdate,
+} from '@uxnan/shared';
 import { startBridge } from './bridge.js';
 import { renderPairingQr } from './qr.js';
 import { BRIDGE_VERSION } from './version.js';
 import { ensureUpdateStatus, updateNoticeMessage } from './update-check.js';
+import { manualUpdateCommand, runSelfUpdateHelper } from './self-update.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile, isProcessAlive } from './lock-file.js';
 import {
@@ -58,9 +67,11 @@ Commands:
   service-status     Print whether the service is installed and running (JSON)
   service-start      Start the installed service now
   mcp-proxy          (internal) Uxnan Desktop's tools for Antigravity
+  self-update        (internal) Install a new version once the running bridge stops
   config get [key]           Print the shared settings (or one of them)
   config set home <folder>   Set the start folder new projects are explored from
   config set name <name>     Set what every client calls this PC
+  update             Ask the running bridge to update itself to the published version
   version            Print the installed version (no daemon is started)
   help               Show this help
 `;
@@ -282,6 +293,72 @@ async function cmdServiceStatus(): Promise<void> {
   );
 }
 
+/**
+ * `uxnan-bridge update`: ask the RUNNING bridge to update itself
+ * (`bridge/update`) — the same request Uxnan Desktop and the phone make, so a
+ * terminal is one more client of the one owner, never a second installer.
+ */
+async function cmdUpdate(): Promise<void> {
+  const state = new DaemonState();
+  let live: { result: unknown } | undefined;
+  try {
+    live = await callRunningBridge(state, 'bridge/update', undefined);
+  } catch (err) {
+    process.stderr.write(`The bridge did not update: ${errText(err)}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!live) {
+    process.stderr.write(
+      `No bridge is running. Update the installed one with: ${manualUpdateCommand()}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const update = live.result as BridgeUpdate;
+  if (update.phase === 'updating') {
+    process.stdout.write(
+      `Updating the bridge to ${update.targetVersion ?? update.latestVersion ?? 'the latest version'}; it restarts in a moment.\n`,
+    );
+  } else {
+    process.stdout.write(`The bridge is up to date (${update.version}).\n`);
+  }
+}
+
+/**
+ * The helper a running bridge starts for `bridge/update`: `--pid` is the bridge
+ * it replaces, `--to` the version to install. It installs once that bridge has
+ * exited, leaves the outcome for the next one and starts the service again.
+ */
+async function cmdSelfUpdate(args: string[]): Promise<void> {
+  const flag = (name: string): string | undefined => {
+    const at = args.indexOf(name);
+    return at >= 0 ? args[at + 1] : undefined;
+  };
+  const pid = Number(flag('--pid'));
+  const to = flag('--to');
+  if (!Number.isInteger(pid) || pid <= 0 || !to) {
+    process.stderr.write('usage: uxnan-bridge self-update --pid <pid> --to <version>\n');
+    process.exitCode = 1;
+    return;
+  }
+  const state = new DaemonState();
+  await state.ensureDir();
+  const cliPath = bridgeCliPath();
+  const env = currentServiceEnv(cliPath);
+  const result = await runSelfUpdateHelper({
+    pid,
+    to,
+    from: BRIDGE_VERSION,
+    cliPath,
+    resultPath: state.pathFor(DAEMON_FILES.updateResult),
+    platform: process.platform,
+    startService: () => startService(env),
+    writeResult: (_path, value) => state.writeJson(DAEMON_FILES.updateResult, value),
+  });
+  process.exitCode = result.ok ? 0 : 1;
+}
+
 async function cmdServiceStart(): Promise<void> {
   if (!isServicePlatformSupported(process.platform)) {
     process.stderr.write(`Services are not supported on '${process.platform}'.\n`);
@@ -381,6 +458,12 @@ async function main(): Promise<number> {
     case 'config':
       await cmdConfig(process.argv.slice(3));
       return 0;
+    case 'update':
+      await cmdUpdate();
+      return 0;
+    case 'self-update':
+      await cmdSelfUpdate(process.argv.slice(3));
+      return 0;
     case 'mcp-proxy':
       // Started by Zero / Antigravity as their `uxnan-browser` MCP server.
       // stdout is the protocol: nothing else may be written to it.
@@ -406,7 +489,8 @@ async function main(): Promise<number> {
 
 main().then(
   (code) => {
-    process.exitCode = code;
+    // A command that failed has already set its own exit code; keep it.
+    if (!process.exitCode) process.exitCode = code;
   },
   (err: unknown) => {
     process.stderr.write(

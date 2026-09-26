@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — the bridge updates itself
+
+- **`bridge/update`.** Run as the user's service from a global npm install, the
+  bridge installs the published version and restarts on it when any client asks
+  — Uxnan Desktop or a phone — and never while a turn runs on any client. It
+  hands over to a helper (`uxnan-bridge self-update`, internal) and stops; the
+  helper installs with the npm that sits beside the bridge (a service's PATH has
+  none), into the same prefix, checks the version left on disk, records the
+  outcome in `~/.uxnan/update-result.json` and starts the service again. The
+  bridge that comes back reports a failure with npm's last lines and the command
+  to run by hand. Installing after the bridge stopped is what works on Windows,
+  where a running process keeps its native modules locked (`self-update.ts`).
+- **`uxnan-bridge update`** asks the running bridge to update itself — a
+  terminal is one more client of the same owner, never a second installer.
+- **`stream/bridge/updated`** tells every client when a newer version is found
+  or an update starts or fails; `bridge/status` carries the same `update`.
+
+### Fixed
+
+- **A running bridge learned of a new version up to a day late.** Its periodic
+  check obeyed the 24 h cache meant for short CLI commands, so a release
+  published after it started went unseen — and neither app offered the update.
+  The daemon now asks the registry every hour.
+- **A failed CLI command exited 0.** `main()` overwrote the exit code a command
+  had set, so a failure (`service-start` with no service installed, `stop`
+  that could not signal) looked like success to Uxnan Desktop, which reads it.
+  A command's own exit code is kept now.
+
 ## [0.0.29-alpha.20260926] - 20260926
 ### Fixed — an answer no longer shows above the message it answers
 

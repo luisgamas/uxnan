@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 834, shared 39, relay
+standalone). It builds clean and the suite is green (bridge 852, shared 40, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,16 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **The bridge updates itself** (architecture/02a §5.8.18, `self-update.ts`):
+  it checks the registry hourly while it runs, tells every client
+  (`stream/bridge/updated`, `bridge/status` → `update`), and on `bridge/update`
+  hands over to the `self-update` helper, which installs the published version
+  with the npm beside it once the bridge has stopped and starts the service
+  again; the bridge that comes back reports a failure. Covered by
+  `self-update.test.ts`, and run for real against npm in an isolated prefix
+  (install of a published version, and a failed one) on macOS. **Not yet run
+  end to end as a live service** on any platform (the helper against launchd /
+  systemd / Task Scheduler) — see *Pending*.
 - **One layer: the bridge is the source of truth** (architecture/02a §5.8.17) —
   a persistent, mirrored **project registry** (`projects/project-registry.ts`,
   `~/.uxnan/projects.json`: `project/add|remove|rename`, worktrees map to their
@@ -465,6 +475,16 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 - [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
       secret redaction; add size-based rotation + pruning of old log files.
 - [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).
+- [ ] **Run the self-update as a live service on each platform.** `bridge/update`
+      and the `self-update` helper (`self-update.ts` → `runSelfUpdateHelper`)
+      are unit-tested and were run for real against npm in an isolated prefix
+      on macOS, but never as the user's live service: the clean stop, the
+      helper outliving it, and `startService` bringing the new version up under
+      launchd, systemd `--user` and Task Scheduler (and the Startup-folder
+      fallback) are unverified. The first bridge that can do it is the one
+      that ships this change, so the first live run is updating *from* it:
+      verify then on macOS, Linux and Windows, including a refused update
+      (a turn running) and a failed one (e.g. a read-only prefix).
 
 ## Packaging — npm publish readiness
 

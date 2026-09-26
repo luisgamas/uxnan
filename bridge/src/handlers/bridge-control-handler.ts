@@ -1,7 +1,7 @@
 /**
  * Bridge-control JSON-RPC handlers (desktop → bridge, and CLI introspection):
  * bridge/status, generatePairingQr, connectedPhones, trustedDevices,
- * removeTrustedDevice, disconnectPhone. They run against the live transport and
+ * removeTrustedDevice, disconnectPhone, update. They run against the live transport and
  * trust store. (disconnectPhone removes the session but does not yet force-close
  * the live transport — see FOR-DEV.md.)
  *
@@ -13,9 +13,8 @@ import type { HandlerRouter } from '../handler-router.js';
 import { buildBridgeStatus } from '../bridge-status.js';
 
 export function registerBridgeControlHandlers(router: HandlerRouter): void {
-  router.register('bridge/status', (_params, ctx: BridgeContext) => {
-    const update = ctx.updateStatus();
-    return buildBridgeStatus({
+  router.register('bridge/status', (_params, ctx: BridgeContext) =>
+    buildBridgeStatus({
       version: ctx.version,
       relayConnected: ctx.relayConnected(),
       lanEnabled: ctx.config.lanEnabled,
@@ -26,10 +25,13 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
       activeTurns: ctx.agentManager.activeTurnCount(),
       host: ctx.host,
       clients: ctx.presence.list(),
-      ...(update?.latestVersion !== undefined ? { latestVersion: update.latestVersion } : {}),
-      ...(update?.updateAvailable ? { updateAvailable: true } : {}),
-    });
-  });
+      update: ctx.updater.snapshot(),
+    }),
+  );
+
+  // Install the published version and restart on it (`self-update.ts`): answers
+  // with the state entered, then the bridge stops and its service comes back.
+  router.register('bridge/update', (_params, ctx: BridgeContext) => ctx.updater.apply());
 
   // The payload of the running process, window armed — the same one `start`
   // prints — so a phone scanning a QR shown by Uxnan Desktop pairs over LAN.

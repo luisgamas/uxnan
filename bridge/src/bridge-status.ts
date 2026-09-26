@@ -4,7 +4,7 @@
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge-status).
  */
 import { platform } from 'node:os';
-import type { BridgeHost, BridgeStatus, ClientPresence } from '@uxnan/shared';
+import type { BridgeHost, BridgeStatus, BridgeUpdate, ClientPresence } from '@uxnan/shared';
 
 export interface BridgeStatusInput {
   version: string;
@@ -15,10 +15,8 @@ export interface BridgeStatusInput {
   startedAt: number;
   /** Current time in epoch ms (injected for testability). */
   now: number;
-  /** Latest published bridge version, from the background npm update check. */
-  latestVersion?: string;
-  /** Whether {@link latestVersion} is strictly newer than {@link version}. */
-  updateAvailable?: boolean;
+  /** The bridge's own update (`self-update.ts`). */
+  update?: BridgeUpdate;
   /** Whether the loopback local control channel is listening right now. */
   localControl?: boolean;
   /** Threads with a turn in flight (see `BridgeStatus.activeTurns`). */
@@ -57,8 +55,7 @@ export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
     activeSessions: input.activeSessions,
     platform: platform(),
     uptimeMs: Math.max(0, input.now - input.startedAt),
-    ...(input.latestVersion !== undefined ? { latestVersion: input.latestVersion } : {}),
-    ...(input.updateAvailable ? { updateAvailable: true } : {}),
+    ...(input.update !== undefined ? { update: input.update } : {}),
     ...(input.activeTurns !== undefined ? { activeTurns: input.activeTurns } : {}),
     ...(input.host !== undefined ? { host: input.host } : {}),
     ...(input.clients !== undefined ? { clients: input.clients } : {}),

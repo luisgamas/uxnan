@@ -29,7 +29,7 @@ function fakeContext(): BridgeContext {
     logger: createLogger('test', 'error'),
     relayConnected: () => false,
     localControlActive: () => false,
-    updateStatus: () => undefined,
+    updater: {} as BridgeContext['updater'],
     pairingPayload: () => {
       throw new Error('not used');
     },
