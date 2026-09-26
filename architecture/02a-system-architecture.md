@@ -6,7 +6,11 @@
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
-> **Executive summary (1.4.1):** every Uxnan Desktop profile is its own client
+> **Executive summary (1.4.1):** a message the agent takes into its running
+> turn (steering, §5.8.13) now ends that turn there and carries the rest of the
+> agent's run as its own turn, so the answer shows under the message it
+> answers on every client (the `delivered` status and `stream/turn/delivered`
+> are gone). And every Uxnan Desktop profile is its own client
 > on the local control channel (`desktop-<profile>`, §5.8.15): the installed app
 > and a development build running at once no longer share one name, so neither
 > supersedes the other, and each keeps its own replay log, presence and the
@@ -2332,16 +2336,31 @@ bridge hace lo mismo donde la CLI del agente realmente lo permite.
 //             + turno en vuelo
 //             + cola VACIA        (algo esperando ya se envio antes -> FIFO)
 //             + cola NO pausada   (el usuario paro al agente, o se rompio)
-//   exito -> ThreadStore.deliverQueuedTurn(threadId, turnId, intoTurnId)
-//            + stream/turn/delivered ; turn/send responde { delivered: true }
+//   exito -> #handOff: el turno en curso termina ahi (completed, con lo dicho
+//            hasta ese momento) y el nuevo pasa a streaming y lleva el RESTO
+//            de la misma ejecucion del agente (ThreadStore.handOffTurn)
+//            + stream/turn/completed (el anterior) y stream/turn/started (el
+//            nuevo), en ese orden ; turn/send responde { turnId }
 //   fallo  -> el turno se queda `queued` y corre normal despues
 ```
 
-El estado `delivered` es **terminal y exitoso**, deliberadamente distinto de
-`cancelled`: el mensaje SI llego al agente, la respuesta pertenece al turno al
-que se unio (`Turn.deliveredIntoTurnId`), y por eso `queue/clear` no lo toca ni
-`#drainQueue` lo reproduce. Cualquier negativa del adaptador cae a la cola de
-siempre, asi que un mensaje nunca se pierde: como mucho espera.
+**El mensaje queda donde el agente lo tomo.** Lo que el agente dice despues de
+recibirlo contesta a ese mensaje, asi que se muestra debajo de el: para cada
+cliente es exactamente una cola que avanzo antes de tiempo (el turno anterior
+termina, el nuevo empieza), sin logica propia de "entregado" en telefono,
+desktop ni CLI. El adaptador sigue nombrando la ejecucion por el id con el que
+empezo; el `AgentManager` mapea ese id de ejecucion al turno que muestra su
+salida (`#turnOfRun` / `#runOfTurn`), y lo usa tambien para `cancelTurn` y para
+la siguiente entrega. Un paso que empezo antes del relevo y termina despues se
+escribe en su fila original (`ThreadStore.settleStep`), sin repetirlo bajo el
+mensaje nuevo; el texto final que reporta el adaptador cubre toda la ejecucion,
+asi que tras un relevo se conserva el texto transmitido. Un turno ya relevado
+no esta en la cola, por eso `queue/clear` no lo toca ni `#drainQueue` lo
+reproduce. Cualquier negativa del adaptador cae a la cola de siempre, asi que
+un mensaje nunca se pierde: como mucho espera. (Hasta 2026-09 el mensaje
+quedaba `delivered`, sin respuesta propia, y la respuesta seguia en el turno
+anterior — por encima del mensaje que contestaba; los turnos guardados asi se
+leen como `completed`.)
 
 Que agentes pueden, y por que (verificado contra las CLI reales):
 
