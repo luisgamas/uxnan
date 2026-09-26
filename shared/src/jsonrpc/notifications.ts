@@ -13,7 +13,7 @@ import type { ApprovalDecision } from '../models/approval.js';
 import type { QueuePausedReason, Thread, Turn } from '../models/thread.js';
 import type { Project } from '../models/project.js';
 import type { BridgeSettings, ClientPresence } from '../models/sync.js';
-import type { TrustedDevice } from '../models/session.js';
+import type { BridgeUpdate, TrustedDevice } from '../models/session.js';
 import type { AgentDescriptor } from '../agents/agent-capabilities.js';
 
 export const StreamNotification = {
@@ -62,6 +62,12 @@ export const StreamNotification = {
   DevicesUpdated: 'stream/devices/updated',
   /** An agent became available or unavailable (installed, removed). */
   AgentsUpdated: 'stream/agents/updated',
+  /**
+   * The bridge's own update changed: a newer version was published, or an
+   * update started or failed. The whole state, as `bridge/status` → `update`
+   * would answer now (idempotent).
+   */
+  BridgeUpdated: 'stream/bridge/updated',
 } as const;
 
 export type StreamNotification = (typeof StreamNotification)[keyof typeof StreamNotification];
@@ -236,6 +242,11 @@ export interface DevicesUpdatedParams {
 /** The whole agent list, as `agent/list` would answer now. */
 export interface AgentsUpdatedParams {
   agents: AgentDescriptor[];
+}
+
+/** The bridge's update, as `bridge/status` → `update` would answer now. */
+export interface BridgeUpdatedParams {
+  update: BridgeUpdate;
 }
 
 /**

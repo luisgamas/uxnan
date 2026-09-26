@@ -62,6 +62,7 @@ import type { ApprovalResponse } from '../models/approval.js';
 import type { QuestionResponse } from '../models/question.js';
 import type {
   BridgeStatus,
+  BridgeUpdate,
   ConnectedPhone,
   DeviceDescribeParams,
   DeviceDescription,
@@ -552,6 +553,9 @@ export interface JsonRpcMethodRegistry {
   'bridge/disconnectPhone': { params: { deviceId: string }; result: void };
   'bridge/trustedDevices': { params: void; result: TrustedDevice[] };
   'bridge/removeTrustedDevice': { params: { deviceId: string }; result: void };
+  // Update the bridge to the published version: it answers with the state it
+  // entered (`updating`), then stops, installs and restarts on the new version.
+  'bridge/update': { params: void; result: BridgeUpdate };
 
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach': { params: DesktopAttachParams; result: DesktopAttachResult };

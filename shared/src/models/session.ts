@@ -82,17 +82,17 @@ export interface BridgeStatus {
   platform: NodeJS.Platform | string;
   uptimeMs: number;
   /**
-   * Latest bridge version published to npm (dist-tag `alpha`), as discovered by
-   * the bridge's own background update check. Absent when the check hasn't run
-   * yet or couldn't reach the registry (offline) — never blocks status.
+   * The bridge's own update: the newest published version it knows of, whether
+   * it can install that version and restart itself, and how an update under way
+   * is going ({@link BridgeUpdate}). Every client reads it here and follows
+   * `stream/bridge/updated`; none of them asks npm itself.
+   *
+   * **Absent means the bridge predates updating itself**, and is therefore older
+   * than the client reading this: a client offers the update it can do on its
+   * own (Uxnan Desktop installs the published bridge) or says to update the
+   * bridge on the PC (the phone).
    */
-  latestVersion?: string;
-  /**
-   * True when {@link latestVersion} is strictly newer than {@link version}
-   * (SemVer precedence). Lets the phone show a "bridge update available" hint
-   * without querying npm itself. Absent/false when unknown or up to date.
-   */
-  updateAvailable?: boolean;
+  update?: BridgeUpdate;
   /**
    * Threads with a turn in flight right now, whichever client started it.
    * Absent on an older bridge. A client uses it to wait for a quiet moment
@@ -116,6 +116,62 @@ export interface BridgeStatus {
   host?: BridgeHost;
   /** Who is connected right now. Absent on an older bridge. */
   clients?: ClientPresence[];
+}
+
+/**
+ * Where an update of the bridge stands. `updating` spans the whole handover —
+ * the bridge stops, installs the published version and its service starts the
+ * new one — so a client sees the connection drop and come back on the new
+ * {@link BridgeUpdate.version}; the outcome of a failed install is reported by
+ * the bridge that comes back.
+ */
+export type BridgeUpdatePhase = 'idle' | 'updating' | 'failed';
+
+/**
+ * Why an update did not happen:
+ * - `busy`: a turn is running on some client — the bridge never restarts
+ *   under one; try again when it ends.
+ * - `unsupported`: this bridge cannot replace itself (see
+ *   {@link BridgeUpdate.canApply}).
+ * - `permission`: npm could not write its global folder; {@link
+ *   BridgeUpdateFailure.command} is the command to run by hand.
+ * - `install`: npm failed for another reason (offline, registry, disk).
+ */
+export type BridgeUpdateFailureReason = 'busy' | 'unsupported' | 'permission' | 'install';
+
+export interface BridgeUpdateFailure {
+  reason: BridgeUpdateFailureReason;
+  /** What went wrong, for a person (npm's last lines for `install`). */
+  message: string;
+  /** The command that does the update by hand, when that is the way out. */
+  command?: string;
+}
+
+/**
+ * The bridge's own update, owned by the bridge: it checks the npm registry
+ * itself (hourly while it runs), installs the published version and restarts on
+ * it (`bridge/update`), and tells every client with `stream/bridge/updated`.
+ */
+export interface BridgeUpdate {
+  /** The version running now. */
+  version: string;
+  /** The newest version published under npm's `latest` dist-tag, once known. */
+  latestVersion?: string;
+  /** {@link latestVersion} is strictly newer than {@link version}. */
+  available: boolean;
+  /**
+   * This bridge can install the published version and restart on it by
+   * itself: it runs as the user's service from a global npm install, with npm
+   * beside it. False for a bridge started in a terminal or run from a source
+   * checkout — {@link unsupportedReason} says which.
+   */
+  canApply: boolean;
+  unsupportedReason?: string;
+  phase: BridgeUpdatePhase;
+  /** The version being installed while {@link phase} is `updating`. */
+  targetVersion?: string;
+  /** Why the last attempt failed, while {@link phase} is `failed`. */
+  failure?: BridgeUpdateFailure;
 }
 
 /**
