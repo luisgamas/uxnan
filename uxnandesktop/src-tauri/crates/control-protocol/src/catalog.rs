@@ -1204,7 +1204,7 @@ pub fn catalog() -> Vec<Entry> {
                     "model": { "type": "string", "description": "A model for it, as the agent names it. Default: the agent's own." },
                     "title": { "type": "string", "description": "A title. Default: the bridge names it from the first message." },
                     "message": { "type": "string", "description": "A first message, sent at once. At most 64 KiB." },
-                    "open": { "type": "boolean", "description": "Show it in a chat tab. Default true; the tab opens without moving the person's focus to it." },
+                    "open": { "type": "boolean", "description": "Show it in a chat tab, brought to the front as `chat/open` does. Default true; false leaves it to be found in the chat list, on the phone and in `chat/list`." },
                     "idempotencyKey": idempotency_key()
                 }),
                 &["worktree", "agent"],

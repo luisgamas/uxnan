@@ -1982,7 +1982,7 @@ Start a chat with an agent in a worktree — a conversation the Uxnan bridge dri
 | `model` | string | no | A model for it, as the agent names it. Default: the agent's own. |
 | `title` | string | no | A title. Default: the bridge names it from the first message. |
 | `message` | string | no | A first message, sent at once. At most 64 KiB. |
-| `open` | boolean | no | Show it in a chat tab. Default true; the tab opens without moving the person's focus to it. |
+| `open` | boolean | no | Show it in a chat tab, brought to the front as `chat/open` does. Default true; false leaves it to be found in the chat list, on the phone and in `chat/list`. |
 | `idempotencyKey` | string | no | Optional caller-chosen key (e.g. a UUID). Repeating a call with the same key returns the receipt of the first call instead of creating a second worktree/terminal/run. Held for the app's lifetime. |
 
 **Result**
