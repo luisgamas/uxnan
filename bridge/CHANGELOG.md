@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.29-alpha.20260926] - 20260926
 ### Fixed — an answer no longer shows above the message it answers
 
 - A message the agent took into its running turn (Claude Code, Codex,

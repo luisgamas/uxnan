@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.18-alpha.20260926] - 20260926
 ### Changed — a message taken mid-turn is shown where the agent took it
 
 - **Removed** the `delivered` `TurnStatus`, `Turn.deliveredIntoTurnId`,

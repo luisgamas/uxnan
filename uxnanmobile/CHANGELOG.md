@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.25-alpha.20260926+20260927] - 20260926
 ### Fixed — chat order when the agent takes a message mid-turn
 
 - The answer to a message the agent took while it worked now streams under
