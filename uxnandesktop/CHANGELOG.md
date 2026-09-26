@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A click on a link that navigates late reports it.** A link through a
+  redirector starts loading after the 350 ms an action was watched for, so the
+  agent was told nothing changed while the page moved. A click that follows a
+  link now keeps watching for up to 1.5 s; any other click answers as quickly as
+  before.
+
 ### Added
 
 - **Update the bridge in one click, from the sidebar.** While a newer bridge is

@@ -888,17 +888,12 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
-- [ ] **Browser — a click whose navigation starts late reports `navigated: false`.**
-      `settle` (`control/services/browser.rs`) looks once, `SETTLE` (350 ms)
-      after the action, for a new document or a load in progress. A link that
-      first goes through a redirector on the internet starts loading later than
-      that, so the answer says nothing changed while the page does move — seen
-      2026-09-25 when an agent clicked the site's GitHub link (a short link that
-      redirects to github.com): the click reported no change and the next status
-      showed the repository. Waiting longer after every click would slow down
-      every click that does not navigate; decide the rule (e.g. keep watching up
-      to ~1.5 s only when the clicked element is a link, from the page script's
-      `effect`) and cover it with a test page that redirects slowly.
+- [ ] **Browser — confirm a late link navigation on a real redirector.** A
+      click that follows a link now keeps watching for its navigation up to
+      1.5 s (`LINK_SETTLE`, `control/services/browser.rs`; the page script
+      reports `link: true`), where every other click still answers after 350 ms.
+      Unit-tested; run it once against a slow short link (e.g. the site's GitHub
+      link) and confirm `navigated: true`.
 - [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
       now captures on every desktop platform — WebView2 `CapturePreview` into a
       memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —

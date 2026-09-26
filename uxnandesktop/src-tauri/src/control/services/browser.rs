@@ -276,6 +276,12 @@ pub async fn forward<R: tauri::Runtime>(
 /// How long an action is given to start a navigation, and a started one to
 /// finish loading, before the call answers.
 const SETTLE: Duration = Duration::from_millis(350);
+/// How long a click on a link keeps watching for the navigation it starts: one
+/// through a redirector on the internet begins loading well after `SETTLE`.
+/// Only links wait this long, so a click that navigates nowhere stays quick.
+const LINK_SETTLE: Duration = Duration::from_millis(1500);
+/// How often a link's late navigation is looked for.
+const SETTLE_POLL: Duration = Duration::from_millis(100);
 const ACTION_LOAD_WAIT: Duration = Duration::from_secs(10);
 /// The longest `browser/wait` may wait.
 const MAX_WAIT: Duration = Duration::from_secs(30);
@@ -671,17 +677,33 @@ fn ref_of(params: &Value) -> Result<String, RpcError> {
         })
 }
 
+/// How long an action's effect is watched for a navigation it started: the
+/// page script says when the click followed a link (`link: true`).
+fn watch_window(done: &Value) -> Duration {
+    if done.get("link").and_then(|v| v.as_bool()) == Some(true) {
+        LINK_SETTLE
+    } else {
+        SETTLE
+    }
+}
+
 /// Let an action's effect land: a navigation it started is waited for, and
 /// the page read back. Returns the page and whether a new document loaded.
 async fn settle<R: tauri::Runtime>(
     app: &AppHandle<R>,
     workspace: &str,
     generation: u64,
+    window: Duration,
 ) -> (Option<SessionState>, bool) {
-    // FOR-DEV: a navigation that starts after SETTLE (a link through a slow
-    // redirector) is reported as `navigated: false` — see FOR-DEV.md → Browser.
+    let started = tokio::time::Instant::now();
+    let moved_now =
+        || state_of(app, workspace).is_some_and(|s| s.generation != generation || s.loading);
     tokio::time::sleep(SETTLE).await;
-    let moved = state_of(app, workspace).is_some_and(|s| s.generation != generation || s.loading);
+    let mut moved = moved_now();
+    while !moved && started.elapsed() < window {
+        tokio::time::sleep(SETTLE_POLL).await;
+        moved = moved_now();
+    }
     if moved {
         let _ = wait_for(app, workspace, ACTION_LOAD_WAIT, |s| {
             s.generation != generation && !s.loading
@@ -716,7 +738,7 @@ async fn run_action<R: tauri::Runtime>(
     let done = page::call(app, workspace, request)
         .await
         .map_err(page_rpc)?;
-    let (page, navigated) = settle(app, workspace, generation).await;
+    let (page, navigated) = settle(app, workspace, generation, watch_window(&done)).await;
     let mut out = json!({
         "done": kind,
         "navigated": navigated,
@@ -942,4 +964,24 @@ pub async fn scroll<R: tauri::Runtime>(
         wants_snapshot(params),
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_followed_link_waits_longer_for_its_navigation() {
+        assert_eq!(
+            watch_window(&json!({ "ok": true, "link": true })),
+            LINK_SETTLE
+        );
+        assert_eq!(
+            watch_window(&json!({ "ok": true, "effect": "opened here", "link": true })),
+            LINK_SETTLE
+        );
+        assert_eq!(watch_window(&json!({ "ok": true })), SETTLE);
+        assert_eq!(watch_window(&json!({ "ok": true, "link": false })), SETTLE);
+        assert!(LINK_SETTLE > SETTLE);
+    }
 }
