@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a development build of the desktop no longer fights the installed one
+
+- **Each desktop profile is its own local client.** The channel keeps one live
+  connection per client id, and every desktop connected as `desktop`, so the
+  installed app and a development build superseded each other in an endless
+  reconnect loop: both windows flickered, chats froze, and the replay log and
+  presence flipped between the two. The bridge now recognizes every
+  `desktop-<profile>` id (`isDesktopClientId`) as a desktop presence of its own.
+- **Each desktop keeps its own tools for the bridge's agents.** They were one
+  slot the last `desktop/attach` overwrote, so the second app took the first
+  one's, and its leaving left the first with none. Now each connected desktop
+  keeps its own, a turn runs with the tools of the desktop that sent it (a
+  phone's turn, with the longest-attached one's), and one leaving never takes
+  another's.
+
 ## [0.0.28-alpha.20260926] - 20260926
 ### Added — a step shows while it runs, for every agent
 

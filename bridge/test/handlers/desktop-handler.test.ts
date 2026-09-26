@@ -47,3 +47,34 @@ test('only a local client attaches desktop tools, and only a loopback endpoint',
     await rm(baseDir, { recursive: true, force: true });
   }
 });
+
+test("two desktop profiles keep their own tools; one leaving does not take the other's", async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), 'uxnan-desktop-'));
+  const bridge = await startBridge({
+    baseDir,
+    secretStore: new InMemorySecretStore(),
+    logLevel: 'error',
+  });
+  try {
+    const installed = LOCAL;
+    const dev = {
+      sessionId: 'local:desktop-dev',
+      deviceId: 'local:desktop-dev',
+      local: 'desktop-dev',
+    };
+    const attach = (session: typeof LOCAL, token: string) =>
+      bridge.router.dispatch(makeRequest('a', 'desktop/attach', { ...TOOLS, token }), session);
+    await attach(installed, 'installed-token-0123456789');
+    await attach(dev, 'dev-token-0123456789abcdef');
+    const detached = (await bridge.router.dispatch(makeRequest('d', 'desktop/detach'), dev)) as {
+      result?: { attached: boolean };
+    };
+    // The development build went away; the installed app's agents keep theirs.
+    assert.deepEqual(detached.result, { attached: true });
+    bridge.context.agentManager.clearDesktopTools(installed.local);
+    assert.equal(bridge.context.agentManager.desktopToolsAttached, false);
+  } finally {
+    await bridge.stop();
+    await rm(baseDir, { recursive: true, force: true });
+  }
+});

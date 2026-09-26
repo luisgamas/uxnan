@@ -147,6 +147,13 @@ export interface SendTurnOptions {
    * can match its own message. Opaque; never persisted.
    */
   clientTurnId?: string;
+  /**
+   * The Uxnan Desktop that sent the turn (its local client id), when one did:
+   * the turn runs with that desktop's tools, so a chat in one desktop window
+   * drives its own browser and terminals even while another desktop profile is
+   * attached. A turn from anywhere else gets the longest-attached desktop's.
+   */
+  desktopClient?: string;
 }
 
 /** Outcome of {@link AgentManager.sendTurn} — mirrors `TurnSendResult`. */
@@ -675,7 +682,7 @@ export class AgentManager {
       // FOR-DEV: every adapter registers these except Zero, whose sandbox
       // blocks its MCP servers' network (bridge/FOR-DEV.md → "Uxnan Desktop's
       // tools for Zero").
-      ...(this.#desktopTools ? { desktopTools: this.#desktopTools.tools } : {}),
+      ...this.#desktopToolsFor(options.desktopClient),
     });
   }
 
@@ -1034,25 +1041,34 @@ export class AgentManager {
     return this.#activeTurnByThread.get(threadId);
   }
 
-  /** Uxnan Desktop's tools for the agents this bridge runs, and the local
-   *  client that attached them (`desktop/attach`). Turns started from now on
-   *  carry them; one already running keeps what it started with. */
-  #desktopTools: { tools: DesktopTools; clientId: string } | undefined;
+  /** Uxnan Desktop's tools for the agents this bridge runs, per local client
+   *  that attached them (`desktop/attach`), in the order they attached. More
+   *  than one desktop profile may be connected at once (the installed app and a
+   *  development build); each keeps its own, and none takes another's. Turns
+   *  started from now on carry them; one already running keeps what it started
+   *  with. */
+  readonly #desktopTools = new Map<string, DesktopTools>();
 
   setDesktopTools(tools: DesktopTools, clientId: string): void {
-    this.#desktopTools = { tools, clientId };
+    this.#desktopTools.set(clientId, tools);
   }
 
-  /** Forget the desktop's tools — asked by the desktop, or because the client
-   *  that attached them went away (its token is not good any more). Passing a
-   *  `clientId` forgets them only if that client attached them. */
-  clearDesktopTools(clientId?: string): void {
-    if (clientId !== undefined && this.#desktopTools?.clientId !== clientId) return;
-    this.#desktopTools = undefined;
+  /** Forget a desktop's tools — asked by that desktop, or because it went away
+   *  (its token is not good any more). Other desktops' tools stay. */
+  clearDesktopTools(clientId: string): void {
+    this.#desktopTools.delete(clientId);
   }
 
   get desktopToolsAttached(): boolean {
-    return this.#desktopTools !== undefined;
+    return this.#desktopTools.size > 0;
+  }
+
+  /** The tools a turn runs with: the sending desktop's, else the one attached
+   *  longest (a phone's turn, or a desktop that attached none). */
+  #desktopToolsFor(clientId: string | undefined): { desktopTools?: DesktopTools } {
+    const own = clientId !== undefined ? this.#desktopTools.get(clientId) : undefined;
+    const tools = own ?? this.#desktopTools.values().next().value;
+    return tools ? { desktopTools: tools } : {};
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {

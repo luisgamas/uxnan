@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import {
   LOCAL_CONTROL_FILE,
   StreamNotification,
+  isDesktopClientId,
   localReceiverId,
   makeNotification,
   type AgentsUpdatedParams,
@@ -81,8 +82,6 @@ import { BridgeSettingsStore } from './settings/bridge-settings.js';
 import { PresenceRegistry } from './presence/presence-registry.js';
 import { bridgeHost } from './presence/host-info.js';
 
-/** The local client id Uxnan Desktop connects as. */
-const DESKTOP_LOCAL_CLIENT = 'desktop';
 import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 import { createBridgePushSender } from './push/push-sender.js';
@@ -842,7 +841,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         onClientConnected: (clientId) => {
           agentManager.onPhoneConnected();
           // Only Uxnan Desktop is a presence; a CLI command's short call is not.
-          if (clientId === DESKTOP_LOCAL_CLIENT) {
+          // Each desktop profile is its own client, so the installed app and a
+          // development build show (and come and go) separately.
+          if (isDesktopClientId(clientId)) {
             presence.connected({
               id: localReceiverId(clientId),
               kind: 'desktop',
