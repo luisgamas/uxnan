@@ -249,6 +249,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **`@` (and every Option character) reaches an agent in a terminal on
+  macOS.** A TUI that turns on the Kitty/CSI-u keyboard protocol — Claude Code
+  among them — got ⌥Q (the `@` of a Latin American layout, ⌥2 on a Spanish
+  one) as an Alt shortcut, so the `@` never arrived. On macOS Option composes
+  characters, so a key it composed is now sent as its text; Option with ⌘ or
+  ⌃, and Option+Enter, keep their modifier (`terminal/keyboardProtocol.ts`,
+  now with its own tests).
+
 - **A chat's answer no longer folds away as work.** Claude Code, Codex and pi
   close each response with a zero-text boundary; the timeline took it for a
   block, so an answer that ended with one was hidden behind "Worked for …" on
