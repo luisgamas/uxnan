@@ -374,26 +374,13 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
-- [ ] **Verify Codex's live step rows against a real turn.** The Codex half of
-      live steps (`codex-tools.ts` → `codexItemStartBlock` on `item/started`,
-      the final block replacing it by `blockId`) and the `error` with
-      `willRetry: true` no longer ending the turn are implemented and
-      unit-tested against the app-server v2 schema, but were never run against
-      a real Codex turn: on 2026-09-25 the account returned 401 even after a
-      fresh `codex login` (a direct `codex exec` failed the same way). Every
-      other wired agent was verified live. Run a Codex chat turn that reads,
-      searches and runs a command; confirm each row appears while it runs,
-      settles in place (no duplicate row), and that a stream reconnect keeps
-      the turn going.
-- [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
-      mid-turn delivery is implemented and unit-tested against the published
-      protocol schema (`codex app-server generate-json-schema`, codex-cli
-      0.146.0), but has never run against a real turn: the account was at 100%
-      of its weekly limit with `credits.balance: "0"` when it landed (resets
-      2026-08-07). Steer a real Codex turn, confirm the follow-up lands inside
-      it (one `turn/completed`), and record it in `docs/testing.md`. Claude Code
-      and OpenCode were both verified live this way and are done.
-      See the `FOR-DEV:` marker in `codex-adapter.ts`.
+- [ ] **Codex's `error` with `willRetry: true` against a real reconnect.** The
+      rest of Codex's live steps was verified on a real turn (2026-09-26: read,
+      search and a command each appear `running` and settle in place by
+      `blockId`, one row per step), and `turn/steer` was verified live the same
+      day. The retry path — an `error` that must not end the turn while Codex
+      reconnects its model stream — is unit-tested against the app-server v2
+      schema but cannot be forced on demand; watch for it on a flaky network.
 - [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
       are DONE (reasoning effort wired per agent + the per-model option schema in
       `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-

@@ -22,6 +22,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **`stream/bridge/updated`** tells every client when a newer version is found
   or an update starts or fails; `bridge/status` carries the same `update`.
 
+### Verified
+
+- Codex against a live turn: `turn/steer` hands a follow-up into the running
+  turn, and each live step (read, search, command) appears running and settles
+  in its own row. The retry path (`error` with `willRetry`) stays unit-tested
+  only.
+
 ### Fixed
 
 - **A running bridge learned of a new version up to a day late.** Its periodic

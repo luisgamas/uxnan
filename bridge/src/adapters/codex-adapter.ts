@@ -164,12 +164,8 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   // The app-server exposes `turn/steer` (see `ClientRequest` in
   // `codex app-server generate-json-schema`, codex-cli 0.146.0): a follow-up
   // with an `expectedTurnId` precondition, folded into the running turn. This
-  // is the protocol's own version of the Codex TUI's Enter-to-steer.
-  //
-  // FOR-DEV: implemented and unit-tested against the published protocol schema,
-  // but NOT yet exercised against a live Codex turn — the account's weekly
-  // limit was exhausted (0 credits) when this landed. Run the steer probe once
-  // credits return and record the result in bridge/docs/testing.md.
+  // is the protocol's own version of the Codex TUI's Enter-to-steer. Verified
+  // against a live Codex turn (bridge/docs/testing.md → *Mid-turn delivery*).
   steering: true,
 };
 
