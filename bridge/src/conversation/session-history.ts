@@ -126,12 +126,9 @@ interface RawMessage {
    * Only set on assistant messages.
    */
   blocks?: unknown[];
-  // FOR-DEV: this fallback emits `text` + `blocks` separately, so a turn
-  // recovered after a bridge restart (an empty conversation store) renders blocks-first
-  // — the phone falls back to its blocks-first layout. The live/stored path
-  // (`thread-store.ts`) already emits the ordered `Message.segments` interleave;
-  // reconstruct the same here from each CLI log's real text↔tool order and emit
-  // it via `pushMessage`. See bridge/FOR-DEV.md → "On-disk history fallback".
+  // A transcript writes prose and steps as separate lines, so the line order is
+  // the text↔step order: `canonicalTurn` folds the lines into one assistant
+  // message whose `segments` follow it (within one line, its text first).
   createdAt: number;
 }
 
@@ -609,9 +606,73 @@ export class SessionHistoryReader {
 // --- Turn assembly -----------------------------------------------------------
 
 /**
+ * Whether a "user" line of a transcript is really the agent waking itself up —
+ * Claude Code writes the end of a background task (`<task-notification>…`) as
+ * a user message and answers it in the same run. It is not a prompt anyone
+ * typed: it opens no turn, and what the agent says after it continues the turn
+ * it belongs to.
+ */
+export function isAgentWake(text: string): boolean {
+  return /^\s*<task-notification>/.test(text);
+}
+
+/**
+ * A turn in the one shape every client renders: at most one user message and
+ * ONE assistant message, whose `segments` hold its prose and steps in order —
+ * the shape the bridge stores for the turns it runs. A transcript splits one
+ * reply into a message per text run or tool step; handed to a client as is,
+ * the desktop showed only the first (often empty) of them and the phone kept
+ * replacing one with the next.
+ */
+export function canonicalTurn(turn: Turn): Turn {
+  const users = turn.messages.filter((m) => m.role === 'user');
+  const replies = turn.messages.filter((m) => m.role === 'assistant');
+  if (replies.length <= 1 && users.length <= 1) return turn;
+  const segments: unknown[] = [];
+  const blocks: unknown[] = [];
+  const texts: string[] = [];
+  const thinking: string[] = [];
+  let usage: Message['usage'];
+  for (const reply of replies) {
+    const text = typeof reply.content === 'string' ? reply.content : '';
+    if (reply.segments && reply.segments.length > 0) {
+      segments.push(...reply.segments);
+    } else {
+      if (text.trim().length > 0) {
+        // Separate replies stay separate runs, as the live stream keeps them.
+        if (texts.length > 0) segments.push({ type: 'assistant_response_boundary' });
+        segments.push({ type: 'text', text });
+      }
+      if (reply.blocks) segments.push(...reply.blocks);
+    }
+    if (text.length > 0) texts.push(text);
+    if (reply.blocks) blocks.push(...reply.blocks);
+    if (reply.thinking) thinking.push(reply.thinking);
+    if (reply.usage) usage = reply.usage;
+  }
+  const first = replies[0];
+  const merged: Message | undefined = first && {
+    id: first.id,
+    turnId: turn.id,
+    role: 'assistant',
+    content: texts.join(''),
+    ...(thinking.length > 0 ? { thinking: thinking.join('\n\n') } : {}),
+    ...(blocks.length > 0 ? { blocks } : {}),
+    ...(segments.length > 0 ? { segments } : {}),
+    ...(usage ? { usage } : {}),
+    createdAt: first.createdAt,
+  };
+  const user = users[0];
+  return { ...turn, messages: [...(user ? [user] : []), ...(merged ? [merged] : [])] };
+}
+
+/**
  * Fold an ordered message list into turns: a real user message opens a turn; the
  * assistant reply (and any further messages) attach to it until the next user
- * message. Ids are synthetic but deterministic so they're stable across reads.
+ * message. An agent's own wake-up ({@link isAgentWake}) is not a user message:
+ * it is left out and the reply that follows continues the turn. Each turn comes
+ * out in the canonical shape ({@link canonicalTurn}). Ids are synthetic but
+ * deterministic so they're stable across reads.
  */
 function groupIntoTurns(messages: RawMessage[], threadId: string, sessionId: string): Turn[] {
   const turns: Turn[] = [];
@@ -631,6 +692,7 @@ function groupIntoTurns(messages: RawMessage[], threadId: string, sessionId: str
     turn.messages.push(message);
   };
   for (const raw of messages) {
+    if (raw.role === 'user' && isAgentWake(raw.text)) continue;
     if (raw.role === 'user' || current === null) {
       current = {
         id: `${sessionId}#t${turnIndex++}`,
@@ -645,7 +707,7 @@ function groupIntoTurns(messages: RawMessage[], threadId: string, sessionId: str
     pushMessage(current, raw);
     current.completedAt = raw.createdAt;
   }
-  return turns;
+  return turns.map(canonicalTurn);
 }
 
 // --- Content extraction (per-agent message shapes) ---------------------------

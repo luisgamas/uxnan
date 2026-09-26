@@ -236,6 +236,84 @@ test('multi-turn grouping: each user message opens a new turn', async () => {
   }
 });
 
+test('a turn comes out with one assistant message, its runs and steps in order', async () => {
+  // A transcript splits one reply into a line per text run and tool step; a
+  // client renders one assistant message per turn (the desktop showed only the
+  // first, often empty, line; the phone kept swapping one for the next).
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-claude-shape';
+    await writeLines(join(home, '.claude', 'projects', 'p', `${sid}.jsonl`), [
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'fix it' }] } },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Looking.' }] },
+      },
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' } }],
+        },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'a.ts' }],
+        },
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th');
+    assert.equal(turns!.length, 1);
+    const roles = turns![0]!.messages.map((m) => m.role);
+    assert.deepEqual(roles, ['user', 'assistant']);
+    const reply = turns![0]!.messages[1]!;
+    assert.equal(reply.content, 'Looking.Done.');
+    const types = (reply.segments ?? []).map((s) => block(s)['type']);
+    assert.deepEqual(types, ['text', 'command_execution', 'assistant_response_boundary', 'text']);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("Claude's wake-up after a background task opens no turn of its own", async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-claude-wake';
+    await writeLines(join(home, '.claude', 'projects', 'p', `${sid}.jsonl`), [
+      { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'research' }] } },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Started.' }] },
+      },
+      {
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '<task-notification>\n<task-id>a1</task-id>' }],
+        },
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Both finished.' }] },
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th');
+    assert.equal(turns!.length, 1, 'no turn for the wake-up');
+    assert.equal(turns![0]!.messages[0]!.content, 'research');
+    assert.equal(turns![0]!.messages[1]!.content, 'Started.Both finished.');
+  } finally {
+    await cleanup();
+  }
+});
+
 test('returns null for unknown agent, missing session id, or absent file', async () => {
   const { home, cleanup } = await fakeHome();
   try {
@@ -353,19 +431,20 @@ test('claude: pairs tool_use + tool_result into structured blocks on the assista
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th-CB');
     assert.equal(turns!.length, 1);
-    const assistant = turns![0]!.messages.find(
-      (m) => m.role === 'assistant' && m.content === 'running ls',
+    // One assistant message: its prose and the paired step, in order.
+    const assistants = turns![0]!.messages.filter((m) => m.role === 'assistant');
+    assert.equal(assistants.length, 1);
+    const assistant = assistants[0]!;
+    assert.equal(assistant.content, 'running lsdone');
+    assert.equal(assistant.blocks?.length, 1);
+    assert.equal(block(assistant.blocks![0]).type, 'command_execution');
+    assert.equal(block(assistant.blocks![0]).command, 'ls');
+    assert.equal(block(assistant.blocks![0]).status, 'completed');
+    assert.equal(block(assistant.blocks![0]).output, 'a.txt\nb.txt');
+    assert.deepEqual(
+      (assistant.segments ?? []).map((s) => block(s).type),
+      ['text', 'command_execution', 'assistant_response_boundary', 'text'],
     );
-    assert.ok(assistant, 'expected the first assistant message to be present');
-    assert.equal(assistant!.blocks?.length, 1);
-    assert.equal(block(assistant!.blocks![0]).type, 'command_execution');
-    assert.equal(block(assistant!.blocks![0]).command, 'ls');
-    assert.equal(block(assistant!.blocks![0]).status, 'completed');
-    assert.equal(block(assistant!.blocks![0]).output, 'a.txt\nb.txt');
-    const secondAssistant = turns![0]!.messages.find(
-      (m) => m.role === 'assistant' && m.content === 'done',
-    );
-    assert.deepEqual(secondAssistant!.blocks ?? [], []);
   } finally {
     await cleanup();
   }
@@ -747,16 +826,18 @@ test('opencode: tool parts in a message become structured blocks (bash + edit)',
     const turns = await reader.readTurns({ agentId: 'opencode', agentSessionId: sid }, 'th-OC');
     assert.equal(turns!.length, 1);
     const messages = turns![0]!.messages;
-    assert.equal(messages.length, 3);
-    const msg2 = messages.find((m) => m.content === 'running ls');
-    assert.equal(msg2?.blocks?.length, 1);
-    assert.equal(block(msg2!.blocks![0]).type, 'command_execution');
-    assert.equal(block(msg2!.blocks![0]).command, 'ls');
-    const msg3 = messages.find((m) => m.content === 'edited');
-    assert.equal(msg3?.blocks?.length, 1);
-    assert.equal(block(msg3!.blocks![0]).type, 'diff');
-    assert.equal(block(msg3!.blocks![0]).filename, 'a.txt');
-    assert.match(block(msg3!.blocks![0]).diff as string, /-foo.*\+bar/s);
+    assert.deepEqual(
+      messages.map((m) => m.role),
+      ['user', 'assistant'],
+    );
+    const reply = messages[1]!;
+    assert.equal(reply.content, 'running lsedited');
+    assert.equal(reply.blocks?.length, 2);
+    assert.equal(block(reply.blocks![0]).type, 'command_execution');
+    assert.equal(block(reply.blocks![0]).command, 'ls');
+    assert.equal(block(reply.blocks![1]).type, 'diff');
+    assert.equal(block(reply.blocks![1]).filename, 'a.txt');
+    assert.match(block(reply.blocks![1]).diff as string, /-foo.*\+bar/s);
   } finally {
     await cleanup();
   }
@@ -851,18 +932,14 @@ test('pi: toolCall content block in assistant + toolResult message become a pair
     ]);
     const reader = new SessionHistoryReader({ homeDir: home });
     const turns = await reader.readTurns({ agentId: 'pi-agent', agentSessionId: sid }, 'th-PT');
-    const firstAssistant = turns![0]!.messages.find(
-      (m) => m.role === 'assistant' && m.content === '',
-    );
-    assert.ok(firstAssistant, 'expected the tool-call assistant message to be present');
-    assert.equal(firstAssistant!.blocks?.length, 1);
-    assert.equal(block(firstAssistant!.blocks![0]).type, 'command_execution');
-    assert.equal(block(firstAssistant!.blocks![0]).command, 'pwd');
-    assert.equal(block(firstAssistant!.blocks![0]).output, 'C:/proj');
-    const secondAssistant = turns![0]!.messages.find(
-      (m) => m.role === 'assistant' && m.content === 'you are in C:/proj',
-    );
-    assert.deepEqual(secondAssistant?.blocks ?? [], []);
+    const assistants = turns![0]!.messages.filter((m) => m.role === 'assistant');
+    assert.equal(assistants.length, 1, 'one assistant message per turn');
+    const reply = assistants[0]!;
+    assert.equal(reply.content, 'you are in C:/proj');
+    assert.equal(reply.blocks?.length, 1);
+    assert.equal(block(reply.blocks![0]).type, 'command_execution');
+    assert.equal(block(reply.blocks![0]).command, 'pwd');
+    assert.equal(block(reply.blocks![0]).output, 'C:/proj');
   } finally {
     await cleanup();
   }

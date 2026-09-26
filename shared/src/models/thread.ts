@@ -76,6 +76,12 @@ export interface Message {
   createdAt: number;
 }
 
+/**
+ * One exchange: at most one user message (absent when the agent spoke on its
+ * own) and ONE assistant message, whose `segments` carry its prose and steps
+ * in order. Every turn the bridge serves has this shape, including turns read
+ * from an agent's own transcript.
+ */
 export interface Turn {
   id: string;
   threadId: string;

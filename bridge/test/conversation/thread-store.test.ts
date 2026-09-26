@@ -971,3 +971,116 @@ test('a turn that ends settles the steps its agent left running', async () => {
   ]);
   await rmrf(baseDir);
 });
+
+test('imported rows load in the one shape; a wake-up row goes', async () => {
+  const { store, baseDir } = newStore();
+  await mkdir(join(baseDir, 'threads'), { recursive: true });
+  const msg = (id: string, role: 'user' | 'assistant', text: string, extra = {}) => ({
+    id,
+    turnId: 'x',
+    role,
+    text,
+    createdAt: 1,
+    ...extra,
+  });
+  await writeFile(
+    join(baseDir, 'threads', 'th.json'),
+    JSON.stringify({
+      id: 'th',
+      projectId: 'p',
+      title: 'T',
+      status: 'active',
+      createdAt: 1,
+      updatedAt: 1,
+      turns: [
+        {
+          id: 's#t0',
+          threadId: 'th',
+          seq: 1,
+          status: 'completed',
+          createdAt: 1,
+          nativeHistoryTurnId: 's#t0',
+          messages: [
+            msg('m0', 'user', 'go'),
+            msg('m1', 'assistant', ''),
+            msg('m2', 'assistant', 'Looking.'),
+            msg('m3', 'assistant', '', { blocks: [{ type: 'command_execution', command: 'ls' }] }),
+            msg('m4', 'assistant', 'Done.'),
+          ],
+        },
+        {
+          id: 's#t1',
+          threadId: 'th',
+          seq: 2,
+          status: 'completed',
+          createdAt: 2,
+          nativeHistoryTurnId: 's#t1',
+          messages: [
+            msg('m5', 'user', '<task-notification>\n<task-id>a</task-id>'),
+            msg('m6', 'assistant', 'Both finished.'),
+          ],
+        },
+      ],
+    }),
+    'utf-8',
+  );
+  const { turns } = await store.listTurns('th');
+  assert.equal(turns.length, 1, 'the wake-up row is gone');
+  assert.deepEqual(
+    turns[0]!.messages.map((m) => m.role),
+    ['user', 'assistant'],
+  );
+  const reply = turns[0]!.messages[1]!;
+  assert.equal(reply.content, 'Looking.Done.');
+  assert.deepEqual(
+    (reply.segments ?? []).map((s) => (s as { type: string }).type),
+    ['text', 'command_execution', 'assistant_response_boundary', 'text'],
+  );
+  await rmrf(baseDir);
+});
+
+test('a message an older bridge took mid-turn gets its reply back', async () => {
+  // Stored the old way: the message as a turn with no reply, the reply in the
+  // turn before it. The transcript says where the message came in.
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const first = await store.startTurn(thread.id, 'build it', 10);
+  await store.appendDelta(thread.id, first.turnId, 'Built. ', 11);
+  await store.appendBlock(
+    thread.id,
+    first.turnId,
+    { type: 'command_execution', command: 'make' },
+    12,
+  );
+  await store.appendDelta(thread.id, first.turnId, 'Now the colors.', 13);
+  const second = await store.queueTurn(thread.id, 'use blue', 14);
+  await store.completeTurn(thread.id, first.turnId, undefined, 15);
+  await store.beginQueuedTurn(thread.id, second.turnId, 16);
+  await store.completeTurn(thread.id, second.turnId, undefined, 17);
+  const native = (id: string, user: string, reply: string, at: number): Turn => ({
+    id,
+    threadId: thread.id,
+    status: 'completed',
+    createdAt: at,
+    completedAt: at + 1,
+    messages: [
+      { id: `${id}u`, turnId: id, role: 'user', content: user, createdAt: at },
+      { id: `${id}a`, turnId: id, role: 'assistant', content: reply, createdAt: at + 1 },
+    ],
+  });
+  await store.reconcileNativeHistory(
+    thread.id,
+    [native('s#t0', 'build it', 'Built.', 10), native('s#t1', 'use blue', 'Now the colors.', 14)],
+    20,
+  );
+  const { turns } = await store.listTurns(thread.id);
+  assert.equal(turns.length, 2, 'nothing imported twice');
+  const reply = (i: number) => turns[i]!.messages.find((m) => m.role === 'assistant')!;
+  assert.equal(reply(0).content, 'Built. ');
+  assert.equal(reply(1).content, 'Now the colors.');
+  assert.deepEqual(
+    (reply(0).segments ?? []).map((s) => (s as { type: string }).type),
+    ['text', 'command_execution'],
+  );
+  await rmrf(baseDir);
+});

@@ -34,6 +34,7 @@ import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { provisionalTitle } from '../agents/thread-title.js';
 import { SyncLedger } from '../sync/sync-ledger.js';
 import { blockIdOf, isRunning, settleBlock } from '../adapters/content-blocks.js';
+import { canonicalTurn, isAgentWake } from './session-history.js';
 import { utcDayKey } from '../metrics/day.js';
 import type { ConversationMetricEvent, TurnMetricEvent } from '../metrics/metrics-store.js';
 
@@ -395,6 +396,7 @@ export class ThreadStore {
             stored.nativeHistoryTurnId = native.id;
             linked = true;
           }
+          if (takeBackSteeredReply(thread.turns, stored, native)) refreshed = true;
           // Only native-imported rows are refreshed from native history. A
           // bridge-created row may contain richer ordered segments and usage.
           if (stored.id === native.id) {
@@ -1115,6 +1117,7 @@ export class ThreadStore {
     for (const thread of threads) {
       numberTurns(thread);
       retireDeliveredTurns(thread);
+      reshapeImportedTurns(thread);
       this.#ledger.observe(thread.rev);
     }
     return threads;
@@ -1292,6 +1295,103 @@ function retireDeliveredTurns(thread: StoredThread): void {
     if ((stored.status as string) === 'delivered') stored.status = 'completed';
     delete stored.deliveredIntoTurnId;
   }
+}
+
+/**
+ * Turns imported from an agent's transcript before they were read in the
+ * canonical shape ({@link canonicalTurn}): one row per transcript line, and a
+ * Claude Code wake-up (`<task-notification>`) stored as a prompt of its own. A
+ * row that is only a wake-up goes — its reply belongs to the turn before it,
+ * which the next read of the transcript restores — and every other imported
+ * row gets one assistant message.
+ */
+function reshapeImportedTurns(thread: StoredThread): void {
+  thread.turns = thread.turns.filter((turn) => {
+    if (turn.nativeHistoryTurnId !== turn.id) return true;
+    const prompt = turn.messages.find((m) => m.role === 'user')?.text ?? '';
+    return !isAgentWake(prompt);
+  });
+  thread.turns = thread.turns.map((turn) => {
+    if (turn.messages.filter((m) => m.role === 'assistant').length <= 1) return turn;
+    const reshaped = storedTurnFromNative(canonicalTurn(toTurn(turn)));
+    if (turn.seq !== undefined) reshaped.seq = turn.seq;
+    if (turn.nativeHistoryTurnId !== undefined) {
+      reshaped.nativeHistoryTurnId = turn.nativeHistoryTurnId;
+    }
+    return reshaped;
+  });
+}
+
+/** A segment's text, when it is a text run. */
+function segmentText(segment: unknown): string | undefined {
+  if (!segment || typeof segment !== 'object') return undefined;
+  const s = segment as { type?: unknown; text?: unknown };
+  return s.type === 'text' && typeof s.text === 'string' ? s.text : undefined;
+}
+
+/**
+ * Put back where it belongs the reply to a message a bridge from before the
+ * hand-off took mid-turn: it was stored as a turn with no reply while the
+ * reply went on in the turn before it, so the message showed below its own
+ * answer. The agent's transcript ([native]) says what that reply is; the part
+ * of the previous turn from where it begins moves into [stored]. Changes
+ * nothing unless [stored] is empty and the previous turn ends with exactly
+ * that reply. Returns whether it moved anything.
+ */
+function takeBackSteeredReply(turns: StoredTurn[], stored: StoredTurn, native: Turn): boolean {
+  const identity = storedTurnIdentity(stored);
+  const wanted = nativeTurnIdentity(native).assistant;
+  if (identity.assistant.length > 0 || wanted.length === 0) return false;
+  const before = turns[turns.indexOf(stored) - 1];
+  const from = before?.messages.find((m) => m.role === 'assistant');
+  const segments = from?.segments;
+  if (!before || !from || !segments) return false;
+  // The earliest text run from which the rest of the previous reply is the
+  // start of the transcript's reply to this message.
+  let cut = -1;
+  for (let k = 0; k < segments.length; k++) {
+    if (segmentText(segments[k]) === undefined) continue;
+    const tail = withoutWhitespace(
+      segments
+        .slice(k)
+        .map((s) => segmentText(s) ?? '')
+        .join(''),
+    );
+    if (tail.length > 0 && wanted.startsWith(tail)) {
+      cut = k;
+      break;
+    }
+  }
+  if (cut <= 0) return false;
+  const moved = segments.slice(cut);
+  const kept = segments.slice(0, cut);
+  const textOf = (list: unknown[]) => list.map((s) => segmentText(s) ?? '').join('');
+  const blocksOf = (list: unknown[]) =>
+    list.filter((s) => segmentText(s) === undefined && !isResponseBoundary(s));
+  from.segments = kept;
+  from.text = textOf(kept);
+  from.blocks = blocksOf(kept);
+  const reply = stored.messages.find((m) => m.role === 'assistant');
+  const target: StoredMessage = reply ?? {
+    id: `${stored.id}-reply`,
+    turnId: stored.id,
+    role: 'assistant',
+    text: '',
+    createdAt: stored.createdAt,
+  };
+  target.segments = moved;
+  target.text = textOf(moved);
+  target.blocks = blocksOf(moved);
+  if (!reply) stored.messages.push(target);
+  return true;
+}
+
+function isResponseBoundary(segment: unknown): boolean {
+  return (
+    !!segment &&
+    typeof segment === 'object' &&
+    (segment as { type?: unknown }).type === 'assistant_response_boundary'
+  );
 }
 
 /** The next free turn position in [thread] (see `Turn.seq`). */
@@ -1496,7 +1596,7 @@ function findNativeTwin(
   // the other, AND the native turn starting inside the bridge turn's own run
   // window: only all three together identify the same turn. A turn genuinely
   // written elsewhere fails the window, so it still imports.
-  return eligible.find((turn) => {
+  const fuzzy = eligible.find((turn) => {
     const identity = storedRunIdentity(turns, turn);
     if (identity.user !== wanted.user) return false;
     if (identity.assistant.length === 0 || wanted.assistant.length === 0) return false;
@@ -1509,6 +1609,21 @@ function findNativeTwin(
     return (
       native.createdAt >= turn.createdAt - NATIVE_TWIN_CLOCK_SLACK_MS &&
       native.createdAt <= (turn.completedAt ?? turn.createdAt) + NATIVE_TWIN_CLOCK_SLACK_MS
+    );
+  });
+  if (fuzzy) return fuzzy;
+  // A message taken mid-turn by a bridge from before the hand-off was stored
+  // as a turn with no reply of its own — the reply went on in the turn before
+  // it. The transcript holds that message with the reply: it is the same
+  // exchange when the prompt matches, the stored turn is empty and the turn
+  // before it already holds the whole reply.
+  return eligible.find((turn) => {
+    const identity = storedTurnIdentity(turn);
+    if (identity.user !== wanted.user || identity.assistant.length > 0) return false;
+    if (wanted.assistant.length === 0) return false;
+    const before = turns[turns.indexOf(turn) - 1];
+    return (
+      before !== undefined && storedRunIdentity(turns, before).assistant.includes(wanted.assistant)
     );
   });
 }
