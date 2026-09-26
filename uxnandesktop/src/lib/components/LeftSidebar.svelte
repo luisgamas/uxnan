@@ -1,5 +1,6 @@
 <script lang="ts">
   import SidebarPhoneRow from "./SidebarPhoneRow.svelte";
+  import SidebarBridgeUpdateRow from "./SidebarBridgeUpdateRow.svelte";
   import BridgePairDialog from "./BridgePairDialog.svelte";
   import { connectPhone } from "$lib/bridge/connectPhone.svelte";
   import { app } from "$lib/state/app.svelte";
@@ -205,6 +206,7 @@
       {/snippet}
     </TooltipSimple>
     <SidebarPhoneRow />
+    <SidebarBridgeUpdateRow />
   </div>
 
   <!-- Region: Projects — header (label + actions) and the project tree. -->

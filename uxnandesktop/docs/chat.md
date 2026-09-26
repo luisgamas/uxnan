@@ -28,14 +28,25 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 `PATH`, a chat tab says so and offers **Install** right there, with the command
 underneath for whoever prefers a terminal; Settings → Bridge & mobile has the
 same **Install** / **Update** next to the installed and newest versions, plus
-**Check again** (re-reads what is installed and retries the connection). Both
-run `npm install -g uxnan-bridge@latest` — only when you press the button — and
-show npm's output. In `managed` mode Uxnan re-installs the service on the new
-version (so it points at the new node and entry) and restarts it; a bridge you
-run yourself keeps running and the status row offers **Restart the bridge**. Node.js 18+ (and its `npm`) must be installed; without
-it the row says so. **Update automatically** (off by default) updates the bridge
-Uxnan runs as soon as a newer one is published, waiting until no conversation is
-running on any device.
+**Check again** (re-reads what is installed and retries the connection).
+
+**The bridge updates itself** (architecture/02a §5.8.18). It checks for a newer
+version every hour and says so; the sidebar then shows **Update the bridge to
+…** under the phone row (only while there is one), and Settings → Bridge &
+mobile shows the newest version with **Update**. Either asks the bridge
+(`bridge/update`): it stops, installs the published version and its service
+brings it back — the connection drops for a moment and the app says when it is
+on the new version, or what failed and the command to run by hand. It never
+happens under a running turn on any client. **Update automatically** (off by
+default) asks the same way as soon as a newer version is published.
+
+Uxnan's own npm path (`npm install -g uxnan-bridge@latest`, only when you press
+the button, with npm's output) is for what the bridge cannot do for itself:
+installing it, and updating a bridge older than updating itself or one that
+does not run as your service. In `managed` mode Uxnan then re-installs the
+service and restarts it; a bridge you run yourself keeps running and the status
+row offers **Restart the bridge**. Node.js 18+ (and its `npm`) must be
+installed; without it the row says so.
 
 The status row names the state and, when the bridge is unreachable, why and what
 fixes it:

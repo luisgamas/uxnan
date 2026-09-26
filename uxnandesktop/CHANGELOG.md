@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Update the bridge in one click, from the sidebar.** While a newer bridge is
+  published, a row under the phone says **Update the bridge to …**; it asks the
+  bridge to update itself (`bridge/update`) — it stops, installs and its service
+  brings it back — and the app says when it is back on the new version, or what
+  failed. Settings → Bridge & mobile's **Update** and *Update automatically* ask
+  the same way. Never under a running turn on any client.
+
+### Changed
+
+- **The bridge's update has one owner.** The window mirrors `update` from
+  `bridge/status` and `stream/bridge/updated` in one place
+  (`BridgeInstallStore`). Uxnan's own npm path is left for what the bridge
+  cannot do for itself: installing it, and updating one older than updating
+  itself or not run as your service — which is how a bridge from before this
+  release gets updated.
+
 ## [0.0.59] - 20260926
 ### Fixed — chat order when the agent takes a message mid-turn
 

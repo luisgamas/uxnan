@@ -192,8 +192,12 @@
 
   /** The running bridge predates the desktop channel: only an update helps. */
   const outdated = $derived(status.state === "unavailable" && status.reason === "outdated");
-  /** A newer bridge is published than the one running. */
-  const updateTo = $derived(running?.updateAvailable ? (running.latestVersion ?? null) : null);
+  /** The update on offer for the running bridge (the bridge's own, or the
+   *  app's installer for a bridge that cannot update itself). */
+  const offer = $derived(bridgeInstall.offer);
+  const updateTo = $derived(offer?.version ?? null);
+  /** Why the bridge's last update failed, as the bridge that came back says. */
+  const updateFailure = $derived(running?.update?.phase === "failed" ? (running.update.failure ?? null) : null);
   /** The running bridge is not the version installed now: a restart picks it up. */
   const restartNeeded = $derived(
     (status.state === "unavailable" && status.reason === "channelOff") ||
@@ -203,8 +207,8 @@
         !!info?.version &&
         status.bridgeVersion !== info.version),
   );
-  /** Install / Update is on offer: missing, behind, or too old to talk to. */
-  const offerInstall = $derived(!!info && (!info.installed || !!updateTo || outdated));
+  /** The app's installer is on offer: no bridge, or one too old to talk to. */
+  const offerInstall = $derived(!!info && (!info.installed || outdated));
 
   const versionLine = $derived.by(() => {
     if (!info) return i18n.t("bridge.checking");
@@ -212,7 +216,14 @@
     const installed = info.version
       ? i18n.t("bridge.versionInstalled", { version: info.version })
       : i18n.t("bridge.versionUnknown");
-    return updateTo ? `${installed} · ${i18n.t("bridge.updateAvailable", { version: updateTo })}` : installed;
+    if (bridgeInstall.updating) {
+      const target = bridgeInstall.pendingVersion ?? running?.update?.targetVersion ?? "";
+      return `${installed} · ${i18n.t("bridge.updatingTo", { version: target })}`;
+    }
+    if (!offer) return installed;
+    return `${installed} · ${
+      updateTo ? i18n.t("bridge.updateAvailable", { version: updateTo }) : i18n.t("bridge.olderThanApp")
+    }`;
   });
 
   async function install() {
@@ -222,6 +233,14 @@
     // Installed with the connection off: connect now, the reason the user
     // pressed Install.
     if (mode === "off") setBridge({ mode: "managed" });
+  }
+
+  async function update() {
+    try {
+      await bridgeInstall.update();
+    } catch (err) {
+      toastError(err);
+    }
   }
 
   async function restart() {
@@ -290,6 +309,10 @@
             <p class={cn(text.meta, "text-destructive")}>
               {result.permissionDenied ? i18n.t("bridge.permissionDenied") : i18n.t("bridge.installFailed")}
             </p>
+          {:else if updateFailure}
+            <p class={cn(text.meta, "text-destructive")}>
+              {updateFailure.reason === "permission" ? i18n.t("bridge.permissionDenied") : i18n.t("bridge.updateFailed")}
+            </p>
           {/if}
         {/snippet}
         {#snippet control()}
@@ -309,6 +332,17 @@
               {/if}
               {i18n.t("bridge.checkAgain")}
             </Button>
+            {#if !offerInstall && offer}
+              <Button size="sm" disabled={bridgeInstall.installing || bridgeInstall.updating} onclick={() => void update()}>
+                {#if bridgeInstall.installing || bridgeInstall.updating}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                  {i18n.t("bridge.updating")}
+                {:else}
+                  <Icon icon={DownloadIcon} data-icon="inline-start" />
+                  {i18n.t("bridge.updateAction")}
+                {/if}
+              </Button>
+            {/if}
             {#if offerInstall && info}
               <Button size="sm" disabled={bridgeInstall.installing || !info.npm} onclick={() => void install()}>
                 {#if bridgeInstall.installing}
@@ -326,6 +360,14 @@
           <div class="space-y-1.5">
             <p class={text.meta}>{i18n.t("bridge.orRunIt")}</p>
             <CodeBlock value={info.command} />
+          </div>
+        {:else if updateFailure}
+          <div class="space-y-1.5">
+            <p class={cn(text.meta, "break-words")}>{updateFailure.message}</p>
+            {#if updateFailure.command}
+              <p class={text.meta}>{i18n.t("bridge.orRunIt")}</p>
+              <CodeBlock value={updateFailure.command} />
+            {/if}
           </div>
         {/if}
         {#if bridgeInstall.log.length > 0}
