@@ -84,7 +84,8 @@ test('remove leaves a tombstone; rename changes and restores the name', async ()
 
 test('a worktree resolves to the project of its repository', async () => {
   const registry = new ProjectRegistry({
-    repositoryRoot: async (dir) => (dir.startsWith('/wt/') ? '/repos/app' : dir),
+    // The registry resolves the folder first, so on Windows it arrives as `D:\wt\…`.
+    repositoryRoot: async (dir) => (/[\\/]wt[\\/]/.test(dir) ? '/repos/app' : dir),
   });
   await registry.add('/repos/app', { source: 'desktop' });
   const project = await registry.resolve('/wt/app-feature');

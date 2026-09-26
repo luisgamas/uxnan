@@ -621,7 +621,8 @@ test('grokPermissionSource finds the setting that keeps Grok from asking', () =>
   const files: Record<string, string> = {
     '/home/u/.claude/settings.json': JSON.stringify({ permissions: { defaultMode: 'auto' } }),
   };
-  const read = (path: string) => files[path];
+  // Keyed by POSIX paths; the lookup is joined with the platform separator.
+  const read = (path: string) => files[path.replaceAll('\\', '/')];
   assert.deepEqual(grokPermissionSource('/home/u/work/app', '/home/u', read), {
     mode: 'auto',
     file: '~/.claude/settings.json',
@@ -633,7 +634,9 @@ test('grokPermissionSource finds the setting that keeps Grok from asking', () =>
   assert.equal(grokPermissionSource('/home/u/work/app', '/home/u', read), undefined);
   // Grok's own config counts when no Claude setting names a mode.
   const grokOnly = (path: string) =>
-    path === '/home/u/.grok/config.toml' ? '[ui]\npermission_mode = "always-approve"\n' : undefined;
+    path.replaceAll('\\', '/') === '/home/u/.grok/config.toml'
+      ? '[ui]\npermission_mode = "always-approve"\n'
+      : undefined;
   assert.deepEqual(grokPermissionSource('/home/u/app', '/home/u', grokOnly), {
     mode: 'always-approve',
     file: '~/.grok/config.toml',

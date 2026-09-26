@@ -44,7 +44,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, sep } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -113,13 +113,12 @@ export function parseZeroSkills(
   readFile: (path: string) => string | undefined = readTextFile,
 ): AgentCommand[] {
   const skills = isRecord(raw) && Array.isArray(raw['skills']) ? raw['skills'] : [];
-  const shared = sharedDir.endsWith(sep) ? sharedDir : `${sharedDir}${sep}`;
   const commands: AgentCommand[] = [];
   for (const skill of skills) {
     if (!isRecord(skill)) continue;
     const name = str(skill['name']);
     const path = str(skill['path']);
-    if (!name || !path || path.startsWith(shared)) continue;
+    if (!name || !path || isInside(sharedDir, path)) continue;
     let description = str(skill['description']).trim();
     if (!description || /^[>|][+-]?$/.test(description)) {
       const file = readFile(path);
@@ -133,6 +132,12 @@ export function parseZeroSkills(
     });
   }
   return commands;
+}
+
+/** Whether `path` lies inside `dir` (any separator, any platform). */
+function isInside(dir: string, path: string): boolean {
+  const rel = relative(dir, path);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
 /** The prompt that has Zero load a skill with its skill tool, then act on the arguments. */

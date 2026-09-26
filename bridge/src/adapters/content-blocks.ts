@@ -21,7 +21,7 @@ import type {
   ToolContentBlock,
   ToolKind,
 } from '@uxnan/shared';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /** Marks the end of one native assistant response item within a turn. */
 export function assistantResponseBoundaryBlock(
@@ -661,7 +661,9 @@ export function projectRelative(path: string, cwd: string): string {
   if (!isAbsolute(path)) return path;
   const rel = relative(withoutPrivate(resolve(cwd)), withoutPrivate(path));
   if (rel === '') return '.';
-  return rel.startsWith('..') || isAbsolute(rel) ? path : rel;
+  // Shown with `/` on every platform, as git does, so a path reads the same
+  // on the phone and the desktop whichever system the bridge runs on.
+  return rel.startsWith('..') || isAbsolute(rel) ? path : rel.split(sep).join('/');
 }
 
 /**

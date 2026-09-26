@@ -19,6 +19,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Paths read the same on Windows.** A step's file, as shown from the project,
+  now uses `/` on every platform (as git does), so the phone and the desktop
+  show `src/app.ts` whichever system the bridge runs on. Grok's permission
+  notice names its settings file as `~/.claude/settings.json` on Windows too
+  (it printed the full path), and a Zero skill in `~/.agents/skills` is told
+  apart by folder rather than by a separator.
+
 - **Codex turns no longer end when its stream drops and it reconnects.** The
   app-server reports a retry as an `error` with `willRetry: true`
   ("Reconnecting... 2/5"); the adapter ended and interrupted the turn on it.

@@ -1512,13 +1512,17 @@ async function withHome<T>(files: Record<string, string>, fn: () => Promise<T>):
     await mkdir(dirname(join(home, rel)), { recursive: true });
     await writeFile(join(home, rel), body, 'utf8');
   }
-  const previous = process.env['HOME'];
-  process.env['HOME'] = home;
+  // `os.homedir()` reads HOME on POSIX and USERPROFILE on Windows.
+  const keys = ['HOME', 'USERPROFILE'] as const;
+  const previous = keys.map((k) => process.env[k]);
+  for (const k of keys) process.env[k] = home;
   try {
     return await fn();
   } finally {
-    if (previous === undefined) delete process.env['HOME'];
-    else process.env['HOME'] = previous;
+    keys.forEach((k, i) => {
+      if (previous[i] === undefined) delete process.env[k];
+      else process.env[k] = previous[i];
+    });
     await rm(home, { recursive: true, force: true });
   }
 }

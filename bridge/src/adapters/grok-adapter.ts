@@ -47,7 +47,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -274,8 +274,10 @@ export function grokPermissionNotice(source: GrokPermissionSource): string {
   );
 }
 
+/** `path` from the home folder as `~/…`, with `/` on every platform. */
 function tildePath(path: string, home: string): string {
-  return path.startsWith(`${home}/`) ? `~/${path.slice(home.length + 1)}` : path;
+  const rel = relative(home, path);
+  return rel && !rel.startsWith('..') && !isAbsolute(rel) ? `~/${rel.split(sep).join('/')}` : path;
 }
 
 function readTextFile(path: string): string | undefined {
