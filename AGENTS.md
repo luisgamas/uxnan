@@ -426,6 +426,19 @@ Three audiences, three homes — keep them separate so none of them rots:
   row in that repo's `README.md`. The full list and the one-command check are in
   [`uxnandesktop/docs/control-api.md`](uxnandesktop/docs/control-api.md) →
   *For the agent*.
+
+  **How the skill gets updated — in the same cycle, not "later":**
+  1. Get the skills repository: use a local clone when the maintainer has one
+     (ask where; on the maintainer's machine it is `~/Documents/Projects/skills`),
+     otherwise clone `https://github.com/luisgamas/skills`. Pull its `main` first.
+  2. Work on a branch of it named after the change here (e.g.
+     `uxnan-control-<topic>`), and keep committing there as the Uxnan change
+     evolves — the skill always describes the surface the branch has.
+  3. When the Uxnan change is complete and ready to ship, open a pull request
+     on `luisgamas/skills` from that branch (with the maintainer's OK to push,
+     as for any push), and link it from this change's pull request. Merge it
+     when the Uxnan change is released: a skill that documents entries no
+     released app has is as wrong as one that misses them.
 - **Never reference a git-ignored / local-only file from a tracked file.**
   Anything in `.git/info/exclude` (local `*_MVP.md` snapshots, scratch notes) is
   the maintainer's own context and won't exist on a fresh clone.
