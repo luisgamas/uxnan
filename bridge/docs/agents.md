@@ -76,9 +76,13 @@ Waiting for the whole turn is not what the CLIs do. They take what you type at
 the next tool boundary, *inside* the running turn — which is what lets you
 correct an agent's course without stopping it. The bridge does the same
 wherever the agent's CLI actually allows it: the follow-up is handed straight
-over, its turn is marked `delivered` (terminal and successful — the message was
-received; the reply belongs to the turn it joined) and `turn/send` answers
-`{ delivered: true }`.
+over. The turn that was answering ends there, with what the agent had said,
+and the follow-up's turn starts at once and carries the rest of the same agent
+run — so what the agent says after taking the message shows under it, on every
+client, exactly like a queue that drained early (`turn/completed`, then
+`turn/started`). `turn/send` answers `{ turnId }`. The adapter keeps naming the
+run by the id it started with; the manager maps it to the turn now showing its
+output.
 
 It is deliberately narrow, so a thread's order can never be rearranged. The
 hand-off is only attempted when the adapter advertises `steering`, a turn is

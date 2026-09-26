@@ -313,6 +313,32 @@ test('socket: a newer connection for the same client supersedes the older one', 
   });
 });
 
+test('socket: two desktop profiles stay connected side by side, each with its own log', async () => {
+  // The installed app and a development build on one bridge: each is its own
+  // client, so neither supersedes the other and both hear every notification.
+  await withServer(async (handle, registry) => {
+    const installed = await connect(handle.port, 'client=desktop-aaaaaaaaaaaa');
+    await installed.next();
+    let superseded = false;
+    installed.ws.once('close', () => (superseded = true));
+    const dev = await connect(handle.port, 'client=desktop-bbbbbbbbbbbb');
+    await dev.next();
+    assert.deepEqual(handle.connectedClients().sort(), [
+      'desktop-aaaaaaaaaaaa',
+      'desktop-bbbbbbbbbbbb',
+    ]);
+    registry.broadcast(
+      makeNotification(StreamNotification.TurnStarted, { threadId: 't', turnId: 'u' }),
+    );
+    const [a, b] = await Promise.all([installed.next(), dev.next()]);
+    assert.equal(a.type === 'message' && a.seq, 1);
+    assert.equal(b.type === 'message' && b.seq, 1);
+    assert.equal(superseded, false);
+    installed.ws.close();
+    dev.ws.close();
+  });
+});
+
 test('socket: refuses a wrong token, a browser origin and a bad client id', async () => {
   await withServer(async (handle) => {
     await assert.rejects(

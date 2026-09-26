@@ -44,8 +44,24 @@ use tokio::sync::{mpsc, watch, Mutex, Notify, RwLock};
 use connection::{CallError, ConnectError, Connection, Event, Resume};
 use discovery::DiscoveryError;
 
-/// The name this app registers under on the bridge (`local:desktop`).
-pub const CLIENT_ID: &str = "desktop";
+/// What every desktop client id starts with (`DESKTOP_LOCAL_CLIENT` in
+/// `shared/src/local-control/local-control.ts`).
+const CLIENT_ID_PREFIX: &str = "desktop";
+
+/// The name this app registers under on the bridge: `desktop-<profile>`, one
+/// per profile directory. The channel keeps one live connection per name, so
+/// the installed app and a development build (or a disposable
+/// `UXNAN_DATA_DIR`) running at once must never share one — sharing it, each
+/// superseded the other in an endless reconnect loop, the windows flickered,
+/// and the outbound log, the presence and the tools the bridge's agents get
+/// flipped between the two apps (architecture/02a §5.8.15). Derived from the
+/// directory, so a profile keeps its name across restarts and resumes its own
+/// log; hashed, so it fits the channel's `[a-z0-9-]{1,32}` whatever the path.
+pub fn client_id_for(data_dir: &std::path::Path) -> String {
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(data_dir.to_string_lossy().as_bytes());
+    format!("{CLIENT_ID_PREFIX}-{}", &hex::encode(digest)[..12])
+}
 
 /// Frontend event carrying a bridge JSON-RPC notification verbatim.
 pub const NOTIFICATION_EVENT: &str = "bridge:notification";
@@ -148,6 +164,8 @@ impl std::fmt::Display for BridgeCallError {
 
 /// The long-lived client, held in `AppState`.
 pub struct BridgeClient {
+    /// This profile's name on the bridge ([`client_id_for`]).
+    client_id: String,
     mode: watch::Sender<Mode>,
     status: RwLock<Status>,
     connection: RwLock<Option<Arc<Connection>>>,
@@ -184,9 +202,10 @@ impl std::fmt::Debug for DesktopTools {
 }
 
 impl BridgeClient {
-    pub fn new(mode: Mode) -> Arc<Self> {
+    pub fn new(mode: Mode, client_id: String) -> Arc<Self> {
         let (tx, _rx) = watch::channel(mode);
         Arc::new(Self {
+            client_id,
             mode: tx,
             status: RwLock::new(Status::Off),
             connection: RwLock::new(None),
@@ -576,7 +595,7 @@ async fn connect_once(
         Err(DiscoveryError::Invalid(why)) => return Err((Unavailable::Failed, why)),
     };
     let (tx, rx) = mpsc::unbounded_channel();
-    match Connection::open(&record, CLIENT_ID, resume, tx).await {
+    match Connection::open(&record, &client.client_id, resume, tx).await {
         Ok(connection) => Ok((connection, rx)),
         Err(ConnectError::Rejected(status)) => Err((
             Unavailable::Rejected,
@@ -665,7 +684,7 @@ mod tests {
 
     #[tokio::test]
     async fn calls_without_a_connection_fail_cleanly() {
-        let client = BridgeClient::new(Mode::Off);
+        let client = BridgeClient::new(Mode::Off, "desktop-test".to_string());
         assert_eq!(
             client
                 .call("thread/list", Value::Null, Duration::from_secs(1))
@@ -681,8 +700,36 @@ mod tests {
     }
 
     #[test]
+    fn each_profile_has_its_own_stable_client_id() {
+        let installed = client_id_for(std::path::Path::new(
+            "/Users/u/Library/Application Support/dev.luisgamas.uxnandesktop",
+        ));
+        let dev = client_id_for(std::path::Path::new(
+            "/Users/u/Library/Application Support/dev.luisgamas.uxnandesktop-dev",
+        ));
+        // Two profiles on one bridge never share a name…
+        assert_ne!(installed, dev);
+        // …a profile keeps its own across restarts…
+        assert_eq!(
+            installed,
+            client_id_for(std::path::Path::new(
+                "/Users/u/Library/Application Support/dev.luisgamas.uxnandesktop"
+            ))
+        );
+        // …and it is a name the channel accepts (`[a-z0-9][a-z0-9-]{0,31}`)
+        // that the bridge recognizes as a desktop (`desktop-…`).
+        for id in [&installed, &dev] {
+            assert!(id.starts_with("desktop-"));
+            assert!(id.len() <= 32);
+            assert!(id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'));
+        }
+    }
+
+    #[test]
     fn set_mode_is_observable_and_idempotent() {
-        let client = BridgeClient::new(Mode::Off);
+        let client = BridgeClient::new(Mode::Off, "desktop-test".to_string());
         let rx = client.mode.subscribe();
         client.set_mode(Mode::Off);
         assert!(!rx.has_changed().unwrap());

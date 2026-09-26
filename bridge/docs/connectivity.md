@@ -128,7 +128,13 @@ WebSocket on a free port and writes how to reach it to
   written atomically, a **fresh token every start**, removed on stop.
 - A connection must come from loopback, carry **no `Origin` header** (every
   browser sends one — no web page can reach the socket), and present
-  `Authorization: Bearer <token>`. URL: `/control?client=desktop`.
+  `Authorization: Bearer <token>`. URL: `/control?client=<id>`.
+- **One live connection per client id** — a newer one supersedes the older.
+  Each Uxnan Desktop profile connects as its own `desktop-<profile>`, so the
+  installed app and a development build share one bridge without knocking each
+  other off; each gets its own replay log and presence, and keeps the tools it
+  attached for the bridge's agents (a turn runs with the tools of the desktop
+  that sent it). CLI commands connect as `cli`.
 - The desktop is served by the **same** JSON-RPC router as the phones and gets
   every `stream/*` notification with its own `seq` (replayed after a reconnect),
   so a conversation started on either shows up on both

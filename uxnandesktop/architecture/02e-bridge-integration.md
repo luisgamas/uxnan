@@ -1,8 +1,13 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.2.0
-> **Fecha:** 2026-09-25
+> **Version:** 1.2.1
+> **Fecha:** 2026-09-26
 > **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+
+> **Resumen ejecutivo (1.2.1):** cada perfil del desktop se conecta con su
+> propio nombre de cliente, `desktop-<perfil>` (`02a` §5.8.15): la app instalada
+> y un build de desarrollo comparten el bridge sin desplazarse ni quitarse las
+> herramientas de sus agentes.
 
 > **Resumen ejecutivo (1.2.0):** una sola capa (`02a` §5.8.17). El bridge corre
 > como **servicio del usuario**: el modo `managed` lo instala y lo arranca con
@@ -383,7 +388,7 @@ Settings → Bridge y movil (off | attach | managed)
 src-tauri/src/bridgeclient/            ~/.uxnan/local-control.json (0600)
   discovery.rs  ── lee ─────────────►  { port, token, pid, bridgeVersion, instanceId }
   lock.rs       ── lee ─────────────►  ~/.uxnan/bridge.lock { pid, startedAt }
-  connection.rs ── ws://127.0.0.1:<port>/control?client=desktop&resume=<seq>&instance=<id>
+  connection.rs ── ws://127.0.0.1:<port>/control?client=desktop-<perfil>&resume=<seq>&instance=<id>
                    Authorization: Bearer <token>
   mod.rs        ── supervisor: reconexion con backoff; managed: asegura el servicio
   service.rs    ── `uxnan-bridge service-status | install-service | service-start | stop`
@@ -396,6 +401,10 @@ src/lib/bridge/  client · chat (replica) · projectMirror · conversation  → 
 
 - **El token no sale de Rust.** La ventana solo recibe estado, resultados y
   notificaciones; la CSP del webview tampoco permitiria `ws://`.
+- **Un nombre por perfil** (`bridgeclient::client_id_for`): `desktop-` + 12 hex
+  del SHA-256 del directorio del perfil. El canal mantiene una conexion viva
+  por nombre, asi que la app instalada y un build de desarrollo nunca comparten
+  uno — si no, se desplazan en bucle (`02a` §5.8.15).
 - **Reanudacion:** el cliente guarda el ultimo `seq` aplicado y el `instanceId`;
   el bridge reenvia lo que falto o responde `gap` y la ventana re-sincroniza.
 - **`managed`** resuelve `uxnan-bridge` en el `PATH` (como cualquier CLI de

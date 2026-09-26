@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeCwdHeader, isDesktopToken, isLoopbackMcpUrl } from '../src/index.js';
+import {
+  encodeCwdHeader,
+  isDesktopClientId,
+  isDesktopToken,
+  isLoopbackMcpUrl,
+} from '../src/index.js';
 
 test('desktop tools are only accepted at a loopback MCP endpoint', () => {
   assert.equal(isLoopbackMcpUrl('http://127.0.0.1:51234/mcp'), true);
@@ -27,4 +32,13 @@ test('a folder travels in the cwd header percent-encoded, so any path is a valid
     '%2FUsers%2Fana%2FProyectos%2Fa%C3%B1o%201',
   );
   assert.equal(decodeURIComponent(encodeCwdHeader('C:\\src\\ñ')), 'C:\\src\\ñ');
+});
+
+test('every desktop profile is a desktop client under its own name', () => {
+  assert.equal(isDesktopClientId('desktop'), true);
+  assert.equal(isDesktopClientId('desktop-3f9a1c2b7d4e'), true);
+  assert.equal(isDesktopClientId('cli'), false);
+  assert.equal(isDesktopClientId('desktopx'), false);
+  assert.equal(isDesktopClientId('desktop-Dev'), false);
+  assert.equal(isDesktopClientId(`desktop-${'a'.repeat(40)}`), false);
 });

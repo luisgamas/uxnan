@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — an answer no longer shows above the message it answers
+
+- A message the agent took into its running turn (Claude Code, Codex,
+  OpenCode, pi) was stored as a turn of its own with no reply, while the
+  agent's answer kept growing in the turn before it — so on the phone and the
+  desktop the message showed **below** the answer to it, and moved around
+  between the live view and a re-read. The running turn now ends where the
+  agent took the message (with what it had said), and the message's turn
+  carries the rest of the same run: its prose, its steps, its end, its usage.
+  The adapter keeps naming its run by the id it started with; the manager maps
+  it to the turn now showing its output, for events, `turn/cancel` and the next
+  hand-off. A step that started before the hand-off and settles after it is
+  written back to its own row, and the run's final text is not copied into the
+  new turn. Turns stored the old way (`delivered`) read as `completed`.
+
+### Fixed — a development build of the desktop no longer fights the installed one
+
+- **Each desktop profile is its own local client.** The channel keeps one live
+  connection per client id, and every desktop connected as `desktop`, so the
+  installed app and a development build superseded each other in an endless
+  reconnect loop: both windows flickered, chats froze, and the replay log and
+  presence flipped between the two. The bridge now recognizes every
+  `desktop-<profile>` id (`isDesktopClientId`) as a desktop presence of its own.
+- **Each desktop keeps its own tools for the bridge's agents.** They were one
+  slot the last `desktop/attach` overwrote, so the second app took the first
+  one's, and its leaving left the first with none. Now each connected desktop
+  keeps its own, a turn runs with the tools of the desktop that sent it (a
+  phone's turn, with the longest-attached one's), and one leaving never takes
+  another's.
+
 ## [0.0.28-alpha.20260926] - 20260926
 ### Added — a step shows while it runs, for every agent
 

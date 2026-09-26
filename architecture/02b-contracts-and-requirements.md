@@ -148,15 +148,12 @@ mientras trabajan.
 - `TurnSendParams.queue`: `true` encola explicitamente, `false` rechaza con
   `AgentBusy` (`-32009`), **ausente encola igual** (el default seguro; protege
   a un cliente antiguo que no conoce la cola).
-- `TurnSendResult`: `{ turnId, queued?, queuePosition?, delivered? }` — el
-  `turnId` es real en todos los casos, solo que con status `queued` hasta que
-  corre (o `delivered`, ver abajo).
-- `TurnStatus` gana `queued`, `cancelled` y `delivered`. Los tres finales se
-  distinguen a proposito por **que le paso al mensaje**: `aborted` es un turno
-  que **estaba corriendo** y se detuvo; `cancelled` uno que **estaba encolado**
-  y se retiro antes de empezar (nunca llego al agente); `delivered` uno que
-  **llego al agente dentro del turno en curso** y por eso no correra por su
-  cuenta (`Turn.deliveredIntoTurnId` apunta al turno que lleva la respuesta).
+- `TurnSendResult`: `{ turnId, queued?, queuePosition? }` — el `turnId` es real
+  en todos los casos, solo que con status `queued` hasta que corre.
+- `TurnStatus` gana `queued` y `cancelled`. Los finales se distinguen a
+  proposito por **que le paso al mensaje**: `aborted` es un turno que **estaba
+  corriendo** y se detuvo; `cancelled` uno que **estaba encolado** y se retiro
+  antes de empezar (nunca llego al agente).
 - `TurnList` gana `queuedTurnIds?`, `queuePaused?` y `queuePausedReason?` —
   estado vivo del `AgentManager`, igual que `activeTurnId`, para que el telefono
   re-attachee sus burbujas en espera al reconectar.
@@ -181,7 +178,9 @@ mientras trabajan.
   funcionalidad.
 - **Entrega en pleno turno (2026-08).** Donde la CLI del agente tiene un canal
   de entrada mientras trabaja, el follow-up **no espera**: se entrega dentro del
-  turno en curso y el turno queda `delivered` (`stream/turn/delivered`). Se
+  turno en curso: ese turno termina ahi y el nuevo empieza y lleva el resto de
+  la ejecucion del agente (`stream/turn/completed` y luego
+  `stream/turn/started`, como una cola que avanzo antes). Se
   anuncia en dos niveles, y el cliente necesita los dos: `features.midTurnDelivery`
   (lo sabe hacer este bridge) y `AgentCapabilities.steering` (lo permite este
   agente). Ausente cualquiera de los dos = el follow-up espera, que es el
@@ -392,7 +391,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 ### 1.4 Notificaciones de streaming (bridge -> phone)
 
 > **Lista canonica:** `../../shared/src/jsonrpc/notifications.ts`
-> (`StreamNotification`, 10 entradas). Son JSON-RPC notifications (sin `id`,
+> (`StreamNotification`, 21 entradas). Son JSON-RPC notifications (sin `id`,
 > unidireccionales). El telefono las decodifica via
 > `IncomingMessageProcessor` y las proyecta en la timeline via un reducer
 > sobre `TurnTimelineSnapshot`. Los parametros exactos viven en `shared/`.
@@ -406,7 +405,6 @@ stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId
 stream/turn/error           -> TurnErrorParams     { threadId, turnId, error: { code, message } }
 stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
 stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }                     (NUEVO 2026-07)
-stream/turn/delivered       -> TurnDeliveredParams { threadId, turnId, intoTurnId }         (NUEVO 2026-08)
 stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
 stream/thread/updated       -> ThreadUpdatedParams { thread }                               (NUEVO 2026-09; reemplaza stream/thread/renamed)
@@ -475,17 +473,17 @@ decision del usuario.
 - `stream/turn/cancelled`: un turno **encolado** se retiro antes de correr. No
   hay salida parcial que finalizar (a diferencia de `stream/turn/aborted`): solo
   cambia la burbuja del usuario, que se conserva marcada como cancelada.
-- `stream/turn/delivered` (2026-08): un turno encolado llego al agente **sin
-  esperar** — se entrego dentro del turno ya en curso (`intoTurnId`), como hace
-  una CLI con lo que escribes mientras trabaja. Su status pasa a `delivered`:
-  terminal y **exitoso**, deliberadamente distinto de `cancelled`, porque el
-  mensaje SI se recibio. Nunca correra como turno propio (la respuesta es la de
-  `intoTurnId`), asi que el cliente deja la burbuja donde esta y retira las
-  acciones de editar y cancelar. `turn/send` responde `{ delivered: true }` en
-  lugar de `{ queued: true }`. Solo ocurre en agentes que anuncian
+- Entrega en pleno turno (2026-08, rehecha 2026-09): un turno encolado que el
+  agente toma **sin esperar** no tiene notificacion propia. El turno en curso
+  termina (`stream/turn/completed`, con lo dicho hasta ese momento) y el nuevo
+  empieza (`stream/turn/started`) y lleva el resto de la ejecucion, asi que la
+  respuesta aparece debajo del mensaje que contesta. `turn/send` responde
+  `{ turnId }`, como un turno que arranca. Solo ocurre en agentes que anuncian
   `AgentCapabilities.steering` y en un bridge con `features.midTurnDelivery`;
-  en el resto, un follow-up sigue esperando al final del turno. Detalle de
-  cuando se intenta y cuando cae de vuelta a la cola: `02a` §5.8.13.
+  en el resto, un follow-up sigue esperando al final del turno. Detalle: `02a`
+  §5.8.13. (`stream/turn/delivered`, el status `delivered` y
+  `Turn.deliveredIntoTurnId` se retiraron: dejaban la respuesta por encima del
+  mensaje.)
 - `stream/queue/updated`: lleva el **estado completo** de la cola, no un delta,
   de modo que un cliente que se perdio una (en background, a mitad de
   reconexion) converge con la siguiente en vez de derivar. Un cliente que ve un

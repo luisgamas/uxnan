@@ -99,9 +99,9 @@ push validation (FOR-HUMAN).
   thread — the bridge previously started a second turn on top of the first.
 - **Mid-turn delivery** — where the agent's CLI has an input channel while it
   works, a follow-up does not wait for the turn: it is handed straight to the
-  running one (`IAgentAdapter.steerTurn`), the turn goes `delivered` (terminal
-  and *successful*, distinct from `cancelled`) and `stream/turn/delivered`
-  fires. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
+  running one (`IAgentAdapter.steerTurn`); the running turn ends there and the
+  new one carries the rest of the agent's run (`#handOff`), so the answer shows
+  under the message it answers. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
   and follow-ups on an open stdin), **OpenCode** (1.x: `prompt_async` on the
   busy session; 2.x: `delivery: "steer"`) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
   (`turn/steer`) but not yet run against a

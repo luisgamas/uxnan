@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — chat order when the agent takes a message mid-turn
+
+- The answer to a message the agent took while it worked now shows under that
+  message, not above it: the bridge ends the running turn there and starts the
+  message's own turn, which the chat already renders as a queue that moved on.
+  The `delivered` turn handling is gone.
+
+### Fixed
+
+- **Running a development build no longer disturbs the installed app.** Both
+  connected to the bridge under the same name (`desktop`), and the bridge keeps
+  one connection per name, so they knocked each other off in a loop — the dev
+  window flickered and the chats and agents in both froze. Each profile now
+  connects under its own id, `desktop-<profile>`, derived from its profile
+  directory (stable across restarts), so the installed app, a dev build and a
+  disposable `UXNAN_DATA_DIR` share one bridge side by side.
+- A development build wrote the Claude Code launch config for its terminals
+  (`mcp/claude-<port>.json`) — and pruned stale ones — inside the installed
+  app's profile; it now uses its own.
+
 ## [0.0.58] - 20260926
 ### Added
 

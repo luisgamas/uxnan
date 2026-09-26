@@ -62,7 +62,8 @@ export interface AgentCapabilities {
    * making it wait for the next one — what a CLI does when you type while it
    * works and it picks the message up at the next tool boundary. The bridge
    * hands such a turn straight to the adapter (`IAgentAdapter.steerTurn`)
-   * rather than holding it, and marks it `delivered` (see `TurnStatus`).
+   * rather than holding it; the turn that was answering ends there and the new
+   * one carries the rest of the agent's run (architecture/02a §5.8.13).
    *
    * Optional; absent/false means the agent has no input channel mid-turn (a
    * one-shot CLI, or a protocol that serializes prompts per session), and its

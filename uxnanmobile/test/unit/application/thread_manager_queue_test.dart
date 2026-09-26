@@ -417,6 +417,81 @@ void main() {
     );
   });
 
+  test('a message taken mid-turn sits between the two replies', () async {
+    Map<String, dynamic> wireTurn(
+      String id,
+      int seq,
+      String text,
+      String status,
+    ) {
+      return {
+        'id': id,
+        'threadId': 'th1',
+        'seq': seq,
+        'status': status,
+        'createdAt': 5000 + seq,
+        'messages': [
+          {'id': 'm-$id', 'role': 'user', 'content': text, 'createdAt': 5000},
+          {'id': 'a-$id', 'role': 'assistant', 'content': ''},
+        ],
+      };
+    }
+
+    await manager.selectThread('th1');
+    events.add(
+      TurnCreatedEvent(
+        threadId: 'th1',
+        turn: wireTurn('turn-1', 1, 'first', 'streaming'),
+      ),
+    );
+    await _settle();
+    events
+      ..add(const TurnStartedEvent(turnId: 'turn-1', threadId: 'th1'))
+      ..add(const MessageDeltaEvent(turnId: 'turn-1', delta: 'before'));
+    await _settle();
+
+    // A steering agent takes the follow-up at once: the bridge ends the
+    // running turn there and starts this one — a queue that drained early,
+    // with no queue notification in between.
+    events.add(
+      TurnCreatedEvent(
+        threadId: 'th1',
+        turn: wireTurn('turn-2', 2, 'steer', 'queued'),
+      ),
+    );
+    await _settle();
+    events
+      ..add(
+        const TurnCompletedEvent(
+          turnId: 'turn-1',
+          threadId: 'th1',
+          text: 'before',
+        ),
+      )
+      ..add(const TurnStartedEvent(turnId: 'turn-2', threadId: 'th1'))
+      ..add(const MessageDeltaEvent(turnId: 'turn-2', delta: 'after'));
+    await _settle();
+
+    expect(
+      manager.timeline.messages.map((m) => m.plainText).toList(),
+      ['first', 'before', 'steer', 'after'],
+    );
+  });
+
+  test('a started turn leaves the mirrored queue', () async {
+    events.add(
+      const QueueUpdatedEvent(
+        threadId: 'th1',
+        queuedTurnIds: ['turn-2'],
+        paused: false,
+      ),
+    );
+    await _settle();
+    events.add(const TurnStartedEvent(turnId: 'turn-2', threadId: 'th1'));
+    await _settle();
+    expect(manager.queueOf('th1').turnIds, isEmpty);
+  });
+
   test('several queued messages keep the bridge order at the bottom', () async {
     await manager.selectThread('th1');
     turnSendResult = {'turnId': 'turn-1'};

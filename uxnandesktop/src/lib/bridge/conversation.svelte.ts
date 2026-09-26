@@ -21,7 +21,6 @@ import type {
   ThinkingDeltaParams,
   TurnCompletedParams,
   TurnCreatedParams,
-  TurnDeliveredParams,
   TurnUsage,
 } from '$shared/jsonrpc/notifications';
 import type { BridgeNotification } from './client.svelte';
@@ -71,7 +70,6 @@ const TIMELINE_METHODS = new Set([
   'stream/turn/error',
   'stream/turn/aborted',
   'stream/turn/cancelled',
-  'stream/turn/delivered',
   'stream/queue/updated',
   'stream/model/resolved',
   'stream/approval/resolved',
@@ -313,15 +311,6 @@ export class Conversation {
       case 'stream/turn/cancelled': {
         const turn = this.#find(str(p.turnId));
         if (turn) turn.status = 'cancelled';
-        return;
-      }
-      case 'stream/turn/delivered': {
-        const params = p as unknown as TurnDeliveredParams;
-        const turn = this.#find(params.turnId);
-        if (turn) {
-          turn.status = 'delivered';
-          turn.deliveredIntoTurnId = params.intoTurnId;
-        }
         return;
       }
       case 'stream/queue/updated': {

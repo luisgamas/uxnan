@@ -196,7 +196,10 @@ impl AppState {
             mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             resources,
             control_bridge: crate::control::bridge::Bridge::default(),
-            bridge: crate::bridgeclient::BridgeClient::new(bridge_mode),
+            bridge: crate::bridgeclient::BridgeClient::new(
+                bridge_mode,
+                crate::bridgeclient::client_id_for(&data_dir),
+            ),
             control_receipts: crate::control::receipts::Receipts::default(),
             agent_changes: Arc::new(tokio::sync::Notify::new()),
             control_token: Arc::new(RwLock::new(uuid::Uuid::new_v4().to_string())),

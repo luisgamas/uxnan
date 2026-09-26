@@ -5,7 +5,7 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError, isDesktopClientId } from '@uxnan/shared';
 import type {
   AccessMode,
   ThreadOrigin,
@@ -206,7 +206,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('turn/read', (p, ctx: BridgeContext) =>
     ctx.threadStore.getTurn(requireString(p, 'turnId')),
   );
-  router.register('turn/send', async (p, ctx: BridgeContext) => {
+  router.register('turn/send', async (p, ctx: BridgeContext, session) => {
     const threadId = requireString(p, 'threadId');
     // A `turn/send` may instead be a control-only reply to a pending approval or
     // question: no new turn is created — it is routed to the agent adapter.
@@ -247,6 +247,10 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       // `false` asks it to reject with `AgentBusy` instead.
       ...optionalQueue(p),
       ...optionalClientTurnId(p),
+      // Sent from a desktop: its agents get that desktop's tools.
+      ...(session?.local !== undefined && isDesktopClientId(session.local)
+        ? { desktopClient: session.local }
+        : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });

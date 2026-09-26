@@ -1,10 +1,20 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.4.0
-> **Fecha:** 2026-09-25
+> **Version:** 1.4.1
+> **Fecha:** 2026-09-26
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.4.1):** a message the agent takes into its running
+> turn (steering, §5.8.13) now ends that turn there and carries the rest of the
+> agent's run as its own turn, so the answer shows under the message it
+> answers on every client (the `delivered` status and `stream/turn/delivered`
+> are gone). And every Uxnan Desktop profile is its own client
+> on the local control channel (`desktop-<profile>`, §5.8.15): the installed app
+> and a development build running at once no longer share one name, so neither
+> supersedes the other, and each keeps its own replay log, presence and the
+> tools the bridge's agents get from it.
 
 > **Executive summary (1.4.0):** one layer. The bridge is the single source of
 > truth for projects (a persistent, mirrored registry — add or remove on any
@@ -2326,16 +2336,31 @@ bridge hace lo mismo donde la CLI del agente realmente lo permite.
 //             + turno en vuelo
 //             + cola VACIA        (algo esperando ya se envio antes -> FIFO)
 //             + cola NO pausada   (el usuario paro al agente, o se rompio)
-//   exito -> ThreadStore.deliverQueuedTurn(threadId, turnId, intoTurnId)
-//            + stream/turn/delivered ; turn/send responde { delivered: true }
+//   exito -> #handOff: el turno en curso termina ahi (completed, con lo dicho
+//            hasta ese momento) y el nuevo pasa a streaming y lleva el RESTO
+//            de la misma ejecucion del agente (ThreadStore.handOffTurn)
+//            + stream/turn/completed (el anterior) y stream/turn/started (el
+//            nuevo), en ese orden ; turn/send responde { turnId }
 //   fallo  -> el turno se queda `queued` y corre normal despues
 ```
 
-El estado `delivered` es **terminal y exitoso**, deliberadamente distinto de
-`cancelled`: el mensaje SI llego al agente, la respuesta pertenece al turno al
-que se unio (`Turn.deliveredIntoTurnId`), y por eso `queue/clear` no lo toca ni
-`#drainQueue` lo reproduce. Cualquier negativa del adaptador cae a la cola de
-siempre, asi que un mensaje nunca se pierde: como mucho espera.
+**El mensaje queda donde el agente lo tomo.** Lo que el agente dice despues de
+recibirlo contesta a ese mensaje, asi que se muestra debajo de el: para cada
+cliente es exactamente una cola que avanzo antes de tiempo (el turno anterior
+termina, el nuevo empieza), sin logica propia de "entregado" en telefono,
+desktop ni CLI. El adaptador sigue nombrando la ejecucion por el id con el que
+empezo; el `AgentManager` mapea ese id de ejecucion al turno que muestra su
+salida (`#turnOfRun` / `#runOfTurn`), y lo usa tambien para `cancelTurn` y para
+la siguiente entrega. Un paso que empezo antes del relevo y termina despues se
+escribe en su fila original (`ThreadStore.settleStep`), sin repetirlo bajo el
+mensaje nuevo; el texto final que reporta el adaptador cubre toda la ejecucion,
+asi que tras un relevo se conserva el texto transmitido. Un turno ya relevado
+no esta en la cola, por eso `queue/clear` no lo toca ni `#drainQueue` lo
+reproduce. Cualquier negativa del adaptador cae a la cola de siempre, asi que
+un mensaje nunca se pierde: como mucho espera. (Hasta 2026-09 el mensaje
+quedaba `delivered`, sin respuesta propia, y la respuesta seguia en el turno
+anterior — por encima del mensaje que contestaba; los turnos guardados asi se
+leen como `completed`.)
 
 Que agentes pueden, y por que (verificado contra las CLI reales):
 
@@ -2475,6 +2500,17 @@ llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
   un cliente nativo no — ninguna pagina web alcanza el socket) y
   `Authorization: Bearer <token>` comparado en tiempo constante. URL:
   `/control?client=<id>&resume=<seq>&instance=<id>`.
+- **Una conexion viva por nombre de cliente:** una nueva con el mismo `client`
+  desplaza a la anterior (`4000 superseded`) — lo que necesita un desktop que se
+  reinicio o reconecto antes de notar que su socket murio. Por eso **cada perfil
+  del desktop tiene su propio nombre**, `desktop-<perfil>` (12 hex del SHA-256
+  del directorio del perfil, estable entre arranques): la app instalada, un
+  build de desarrollo (`…-dev`) o un `UXNAN_DATA_DIR` desechable corren a la vez
+  sobre el mismo bridge sin desplazarse. Compartiendo `desktop`, se
+  desplazaban en bucle: las ventanas parpadeaban y el `OutboundLog`, la
+  presencia y las herramientas de los agentes saltaban de una app a la otra.
+  `isDesktopClientId` (`shared`) reconoce `desktop` y `desktop-*`; los comandos
+  de la CLI se conectan como `cli` y no son presencia.
 - **Mismo router, mismo registro.** El cliente se registra en el
   `SessionRegistry` como `local:<id>`: recibe cada `stream/*` con su propio
   `seq` y su `OutboundLog`, exactamente como un telefono. Primer frame `hello`
@@ -2497,7 +2533,10 @@ llegar a el en `~/.uxnan/local-control.json` (`LOCAL_CONTROL_FILE`):
   `RequestSession.local`; un telefono recibe `-32001`) y solo para un endpoint
   loopback `http://127.0.0.1:<port>/mcp`; el token es uno propio del desktop
   para agentes del bridge, rotado en cada arranque, y el bridge lo olvida al
-  desconectarse ese cliente. Cada adapter registra el servidor **solo para su
+  desconectarse ese cliente. **Cada desktop conectado guarda las suyas** — uno
+  que se va no se lleva las de otro —; un turno corre con las del desktop que lo
+  envio (`turn/send` por el canal local) y, si lo envio un telefono, con las del
+  desktop adjunto desde hace mas tiempo. Cada adapter registra el servidor **solo para su
   conversacion**, con el nombre `uxnan-browser`, el token **nunca en argv ni en
   un archivo** (solo en el entorno o en un mensaje por el stdin del agente) y la
   carpeta de la conversacion en la cabecera `x-uxnan-cwd`, **codificada en

@@ -164,13 +164,11 @@ describe('Conversation', () => {
     expect(assistantOf(c.turns[0])?.content).toBe('partial');
   });
 
-  it('marks cancelled and delivered queue turns, and follows the queue', () => {
+  it('marks cancelled queue turns, and follows the queue', () => {
     const { c } = conversation();
     c.adoptPage({ turns: [turn('a', 'q1', 'queued'), turn('b', 'q2', 'queued')], total: 2 });
     c.apply(note('stream/turn/cancelled', { turnId: 'a' }));
-    c.apply(note('stream/turn/delivered', { turnId: 'b', intoTurnId: 'run' }));
-    expect(c.turns.map((t) => t.status)).toEqual(['cancelled', 'delivered']);
-    expect(c.turns[1].deliveredIntoTurnId).toBe('run');
+    expect(c.turns.map((t) => t.status)).toEqual(['cancelled', 'queued']);
     c.apply(note('stream/queue/updated', { queuedTurnIds: ['k'], paused: false }));
     expect(c.queue).toEqual({ turnIds: ['k'], paused: false });
   });

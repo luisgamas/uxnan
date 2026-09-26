@@ -35,7 +35,7 @@ class ClientPresence extends Equatable {
             if (fromJson(raw) case final ClientPresence presence) presence,
       ];
 
-  /// Stable id (a phone's device id, `local:desktop` for the desktop).
+  /// Stable id (a phone's device id, `local:desktop-<profile>` for a desktop).
   final String id;
 
   /// What kind of client it is.

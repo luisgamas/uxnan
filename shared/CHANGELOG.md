@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — a message taken mid-turn is shown where the agent took it
+
+- **Removed** the `delivered` `TurnStatus`, `Turn.deliveredIntoTurnId`,
+  `stream/turn/delivered` (`TurnDeliveredParams`) and `TurnSendResult.delivered`.
+  A message the agent takes into its running turn now ends that turn and
+  carries the rest of the agent's run as its own turn: clients see
+  `stream/turn/completed` then `stream/turn/started`, as a queue that drained
+  early, and `turn/send` answers `{ turnId }` (architecture/02a §5.8.13).
+
+### Added — every desktop profile is its own local client
+
+- `DESKTOP_LOCAL_CLIENT` and `isDesktopClientId(id)`: Uxnan Desktop connects to
+  the local control channel as `desktop-<profile>`, one id per profile, and the
+  bridge recognizes `desktop` / `desktop-*` as a desktop (architecture/02a
+  §5.8.15).
+
 ## [0.0.17-alpha.20260926] - 20260926
 ### Added — a step shows while it runs
 

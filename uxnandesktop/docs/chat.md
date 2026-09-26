@@ -96,12 +96,18 @@ ordered by the bridge's `Turn.seq`.
 The bridge publishes `~/.uxnan/local-control.json` — its loopback port and a
 token minted fresh at every start, owner-only (`0600`). The backend
 (`src-tauri/src/bridgeclient/`) reads it, opens
-`ws://127.0.0.1:<port>/control?client=desktop` with the token, and from then on
+`ws://127.0.0.1:<port>/control?client=desktop-<profile>` with the token, and from then on
 calls the bridge's JSON-RPC methods and receives its `stream/*` notifications
 exactly as a phone does. The token never leaves the Rust side: the window only
 sees the status (`bridge:status`), the notifications (`bridge:notification`)
 and call results (`bridge_call`). After a reconnect the bridge replays what the
 app missed, or says it cannot (a restart), and the app re-reads what it shows.
+
+The client id is derived from the app's profile directory (`desktop-` + 12 hex
+of its SHA-256), so it is stable across restarts and differs between the
+installed app, a development build and a disposable `UXNAN_DATA_DIR`. The
+channel keeps one live connection per id: two apps sharing one would knock each
+other off in a reconnect loop (the windows flicker and the chat freezes).
 
 ## Opening a chat
 
