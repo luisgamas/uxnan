@@ -1598,6 +1598,8 @@
   "@bridgeUpdateOlder": {"description": "Body of the notice when the PC's bridge predates updating itself."},
   "bridgeUpdateAction": "Update",
   "@bridgeUpdateAction": {"description": "Button that asks the PC's bridge to update itself."},
+  "bridgeCheckNowAction": "Check for a newer bridge",
+  "@bridgeCheckNowAction": {"description": "Tooltip of the button that asks the PC's bridge to look for a newer version right now."},
   "bridgeUpdatingTitle": "Updating the bridge",
   "@bridgeUpdatingTitle": {"description": "Title while the PC's bridge is updating."},
   "bridgeUpdatingBody": "Installing {version}. Your PC reconnects in a moment.",

@@ -121,6 +121,24 @@ export class BridgeInstallStore {
     }
   }
 
+  /**
+   * "Check again": what is installed, and the newest bridge asked of the
+   * running bridge right now (`bridge/checkForUpdate`, past its hourly check),
+   * so a release is offered the moment it is out. A bridge too old to answer
+   * is simply re-read.
+   */
+  async checkForUpdate(): Promise<void> {
+    await this.probe();
+    if (!this.#client.connected) return;
+    try {
+      const update = await this.#client.call<BridgeUpdate>('bridge/checkForUpdate');
+      if (this.status) this.status = { ...this.status, update };
+    } catch {
+      /* a bridge older than the method: its status is all there is */
+    }
+    await this.refreshStatus();
+  }
+
   /** Re-read the running bridge's version facts. */
   async refreshStatus(): Promise<void> {
     if (!this.#client.connected) {

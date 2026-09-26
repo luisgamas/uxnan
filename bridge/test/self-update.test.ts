@@ -344,3 +344,16 @@ test('a successful install leaves the new version on disk and says so', async ()
   assert.equal(result.failure, undefined);
   await rmrf(state.baseDir);
 });
+
+test('check asks the registry now, past the hourly cache, and tells the clients', async () => {
+  const state = freshState();
+  await state.ensureDir();
+  const { updater: u, changes } = updater(state, { fetchLatest: async () => NEW });
+  const answer = await u.check();
+  assert.equal(answer.latestVersion, NEW);
+  assert.equal(answer.available, true);
+  assert.equal(changes.length, 1, 'every client hears of the new version');
+  await u.check();
+  assert.equal(changes.length, 1, 'nothing new, nothing announced');
+  await rmrf(state.baseDir);
+});

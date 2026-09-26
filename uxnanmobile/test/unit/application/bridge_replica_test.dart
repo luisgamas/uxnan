@@ -109,6 +109,13 @@ void main() {
             'phase': 'updating',
             'targetVersion': '0.0.29',
           },
+        'bridge/checkForUpdate' => {
+            'version': '0.0.28',
+            'latestVersion': '0.0.30',
+            'available': true,
+            'canApply': true,
+            'phase': 'idle',
+          },
         _ => <String, dynamic>{},
       };
       return Future.value(RpcMessage.response(id: '1', result: result));
@@ -267,6 +274,13 @@ void main() {
         (await replica.bridgeUpdateStream.first)?.phase,
         BridgeUpdatePhase.updating,
       );
+    });
+
+    test('checking now asks the bridge and keeps what it knows', () async {
+      final update = await replica.checkBridgeUpdate();
+      expect(calls.map((c) => c.$1), contains('bridge/checkForUpdate'));
+      expect(update?.latestVersion, '0.0.30');
+      expect((await replica.bridgeUpdateStream.first)?.available, isTrue);
     });
 
     test("the bridge's refusal reaches the caller as it said it", () async {

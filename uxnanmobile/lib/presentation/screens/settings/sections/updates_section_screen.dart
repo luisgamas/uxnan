@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/enums/update_check_interval.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
+import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -108,11 +109,32 @@ class _CurrentVersionCard extends ConsumerWidget {
 /// The connected PC's bridge: its version, whether a newer one is out, and the
 /// same one-tap update the notice atop the conversations offers — the bridge
 /// updates itself (`bridge/update`) when it runs as the PC user's service.
-class _BridgeVersionCard extends ConsumerWidget {
+class _BridgeVersionCard extends ConsumerStatefulWidget {
   const _BridgeVersionCard();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_BridgeVersionCard> createState() => _BridgeVersionCardState();
+}
+
+class _BridgeVersionCardState extends ConsumerState<_BridgeVersionCard> {
+  bool _checking = false;
+
+  /// Asks the bridge for the newest version now; its answer lands through
+  /// `bridgeUpdateStreamProvider`, the same way a notification does.
+  Future<void> _check() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _checking = true);
+    try {
+      await ref.read(bridgeReplicaProvider).checkBridgeUpdate();
+    } on RpcError catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final status = ref.watch(bridgeStatusProvider).value;
@@ -139,6 +161,9 @@ class _BridgeVersionCard extends ConsumerWidget {
         update.canApply &&
         update.available &&
         !updating;
+    // A bridge that knows how to update itself can also be asked to look
+    // again now; an older one has no such question to answer.
+    final canCheck = status != null && update != null && !updating;
 
     return ExpressiveCard(
       color: colors.surfaceContainer,
@@ -147,14 +172,23 @@ class _BridgeVersionCard extends ConsumerWidget {
         leading: UxIcon(UxIcons.dns, color: colors.onSurfaceVariant),
         title: Text(l10n.bridgeVersionTitle),
         subtitle: Text(subtitle),
-        trailing: updating
+        trailing: updating || _checking
             ? const PolygonLoader(size: 20)
             : canUpdate
                 ? FilledButton.tonal(
                     onPressed: () => requestBridgeUpdate(context, ref),
                     child: Text(l10n.bridgeUpdateAction),
                   )
-                : null,
+                : canCheck
+                    ? IconButton(
+                        tooltip: l10n.bridgeCheckNowAction,
+                        onPressed: _check,
+                        icon: UxIcon(
+                          UxIcons.refresh,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      )
+                    : null,
       ),
     );
   }
