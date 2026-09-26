@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A turn position is never handed out twice.** The next position was the
+  highest one left plus one, so dropping a turn (a duplicate import) freed its
+  position for the next turn — and a phone still holding the dropped one mixed
+  the two. The store now keeps the highest position it ever gave.
+
 ## [0.0.32-alpha.20260926] - 20260926
 ### Fixed — a conversation read from the agent's transcript renders again
 

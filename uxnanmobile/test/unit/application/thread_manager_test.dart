@@ -62,6 +62,8 @@ void main() {
   Object? agentListResult;
   // When set, `turn/send` waits for it — to deliver a notification first.
   Completer<void>? turnSendGate;
+  // Runs while `turn/list` is on the wire — what happens in flight.
+  Future<void> Function()? duringTurnList;
   late ThreadManager manager;
 
   setUp(() {
@@ -75,6 +77,7 @@ void main() {
     turnReadResult = null;
     agentListResult = null;
     turnSendGate = null;
+    duringTurnList = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
       messageRepository: messageRepo,
@@ -85,6 +88,7 @@ void main() {
           turnSendParams = params;
           await turnSendGate?.future;
         }
+        if (method == 'turn/list') await duringTurnList?.call();
         final result = switch (method) {
           'turn/list' => turnListResult ?? <String, dynamic>{},
           'turn/read' => turnReadResult ?? <String, dynamic>{},
@@ -1972,20 +1976,20 @@ void main() {
     test('never takes a message written after the sync began with it',
         () async {
       await seedDuplicate();
-      await messageRepo.saveMessage(
-        Message(
-          id: 'in-flight',
-          threadId: 'th1',
-          turnId: 'sent-while-syncing',
-          role: MessageRole.user,
-          contents: const [TextContent('y esto?')],
-          deliveryState: MessageDeliveryState.sent,
-          orderIndex: 4,
-          // A send that lands while the page is still on the wire: the page
-          // cannot know about it, so it is not evidence that the turn is gone.
-          createdAt: DateTime.now().add(const Duration(hours: 1)),
-        ),
-      );
+      // A send that lands while the page is still on the wire: the page cannot
+      // know about it, so it is not evidence that the turn is gone.
+      duringTurnList = () => messageRepo.saveMessage(
+            Message(
+              id: 'in-flight',
+              threadId: 'th1',
+              turnId: 'sent-while-syncing',
+              role: MessageRole.user,
+              contents: const [TextContent('y esto?')],
+              deliveryState: MessageDeliveryState.sent,
+              orderIndex: 4,
+              createdAt: DateTime.now(),
+            ),
+          );
       turnListResult = pageWithT1();
 
       await manager.selectThread('th1');
@@ -1994,6 +1998,62 @@ void main() {
       final stored = await messageRepo.getMessages('th1');
       expect(stored.map((m) => m.id), ['u1', 'stream-t1', 'in-flight']);
     });
+  });
+
+  test('a turn the bridge dropped at the end of the conversation goes too',
+      () async {
+    // The dropped copies sat AFTER every turn the newest page lists — the
+    // phone judged only inside the page and kept them for good.
+    await messageRepo.saveMessages([
+      _msg(
+        'u1',
+        order: 1000,
+        role: MessageRole.user,
+        text: 'hola',
+        turnId: 't1',
+      ),
+      _msg(
+        'stream-t1',
+        order: 1001,
+        role: MessageRole.assistant,
+        text: 'respuesta',
+        turnId: 't1',
+      ),
+      _msg(
+        'stream-user-s#t5',
+        order: 5000,
+        role: MessageRole.user,
+        text: '<task-notification>',
+        turnId: 's#t5',
+      ),
+      _msg(
+        'stream-s#t5',
+        order: 5001,
+        role: MessageRole.assistant,
+        text: 'otra vez',
+        turnId: 's#t5',
+      ),
+    ]);
+    turnListResult = <String, dynamic>{
+      'turns': [
+        {
+          'id': 't1',
+          'seq': 1,
+          'status': 'completed',
+          'messages': [
+            {'role': 'user', 'content': 'hola', 'createdAt': 1000},
+            {'role': 'assistant', 'content': 'respuesta', 'createdAt': 1001},
+          ],
+        },
+      ],
+      'total': 1,
+    };
+
+    await manager.selectThread('th1');
+    await _settle();
+
+    final stored = await messageRepo.getMessages('th1');
+    expect(stored.map((m) => m.id), ['u1', 'stream-t1']);
   });
 
   group('multi-client sync', () {

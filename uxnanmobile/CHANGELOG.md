@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Old bubbles the bridge had dropped stay gone.** A turn the bridge removed at
+  the end of a conversation (a duplicate read back from the agent's history)
+  stayed on the phone forever: a re-sync only judged turns inside the page it
+  fetched. The phone now drops any turn it held before asking that the newest
+  page no longer lists — while one created during the request is left alone.
+
 ### Added
 
 - **Check for a newer bridge from the phone.** The *Bridge on your PC* card in

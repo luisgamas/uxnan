@@ -1084,3 +1084,38 @@ test('a message an older bridge took mid-turn gets its reply back', async () => 
   );
   await rmrf(baseDir);
 });
+
+test('a position is never handed out twice, even after its turn was dropped', async () => {
+  // A client still holding the dropped turn would mix it with the new one.
+  const { store, baseDir } = newStore();
+  await mkdir(join(baseDir, 'threads'), { recursive: true });
+  const turn = (id: string, seq: number, user: string) => ({
+    id,
+    threadId: 'th',
+    seq,
+    status: 'completed',
+    createdAt: seq,
+    nativeHistoryTurnId: id,
+    messages: [
+      { id: `${id}u`, turnId: id, role: 'user', text: user, createdAt: seq },
+      { id: `${id}a`, turnId: id, role: 'assistant', text: 'ok', createdAt: seq },
+    ],
+  });
+  await writeFile(
+    join(baseDir, 'threads', 'th.json'),
+    JSON.stringify({
+      id: 'th',
+      projectId: 'p',
+      title: 'T',
+      status: 'active',
+      createdAt: 1,
+      updatedAt: 1,
+      turns: [turn('s#t0', 1, 'go'), turn('s#t1', 2, '<task-notification>')],
+    }),
+    'utf-8',
+  );
+  assert.equal((await store.listTurns('th')).total, 1, 'the wake-up row is dropped');
+  const next = await store.startTurn('th', 'next', 10);
+  assert.equal((await store.getTurn(next.turnId)).seq, 3);
+  await rmrf(baseDir);
+});
