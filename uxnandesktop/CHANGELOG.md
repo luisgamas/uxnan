@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.59] - 20260926
 ### Fixed — chat order when the agent takes a message mid-turn
 
 - The answer to a message the agent took while it worked now shows under that
