@@ -1,6 +1,8 @@
 /**
  * Mid-turn delivery: a follow-up handed to the turn already running instead of
- * waiting for it, on agents whose CLI has an input channel while it works.
+ * waiting for it, on agents whose CLI has an input channel while it works. The
+ * message becomes the turn that carries the rest of the agent's run, so what
+ * the agent says after taking it shows under it.
  *
  * Driven by an in-process adapter (no subprocess) so the hand-off, and every
  * way it can decline, are asserted deterministically. The rule under test
@@ -80,6 +82,12 @@ class SteerableAdapter extends BaseAgentAdapter {
     });
     return Promise.resolve(true);
   }
+  say(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'delta', threadId, turnId, data: { text } });
+  }
+  step(threadId: string, turnId: string, content: Record<string, unknown>): void {
+    this.emit({ type: 'block', threadId, turnId, data: { content } });
+  }
   complete(threadId: string, turnId: string, text = 'ok'): void {
     this.emit({ type: 'turn_completed', threadId, turnId, data: { text } });
   }
@@ -132,61 +140,124 @@ async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 
   throw new Error('waitFor timed out');
 }
 
-test('a follow-up reaches a steering agent inside the running turn', async () => {
+test('a follow-up reaches a steering agent and carries the rest of its run', async () => {
   const h = await harness();
   try {
     const first = await h.manager.sendTurn(h.threadId, 'first');
+    h.adapter.say(h.threadId, first.turnId, 'Before. ');
+    await waitFor(async () => (await h.store.getTurn(first.turnId)).messages.length === 2);
+    await new Promise((resolve) => setTimeout(resolve, 20));
     const second = await h.manager.sendTurn(h.threadId, 'second');
 
-    assert.equal(second.delivered, true);
     assert.equal(second.queued, undefined, 'it did not wait in the queue');
     assert.deepEqual(h.adapter.steered, [
       { turnId: second.turnId, activeTurnId: first.turnId, text: 'second' },
     ]);
-    // It reached the agent WITHOUT starting a second turn — the invariant the
-    // whole one-turn-per-thread design rests on.
+    // It reached the agent WITHOUT starting a second run — the invariant the
+    // whole one-run-per-thread design rests on.
     assert.deepEqual(
       h.adapter.ran.map((r) => r.text),
       ['first'],
     );
     assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, []);
+    assert.equal(h.manager.activeTurnId(h.threadId), second.turnId);
+    assert.equal((await h.store.getTurn(first.turnId)).status, 'completed');
+    assert.equal((await h.store.getTurn(second.turnId)).status, 'streaming');
 
-    const stored = await h.store.getTurn(second.turnId);
-    assert.equal(stored.status, 'delivered');
-    assert.equal(stored.deliveredIntoTurnId, first.turnId);
-    assert.equal(stored.messages.find((m) => m.role === 'user')?.content, 'second');
+    // The adapter keeps naming its run by the first turn's id: what it says
+    // now answers the second message, and is shown under it.
+    h.adapter.say(h.threadId, first.turnId, 'After.');
+    h.adapter.complete(h.threadId, first.turnId, 'the whole run');
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'completed');
 
-    const delivered = h.notifications.find(
-      (n) => n.method === StreamNotification.TurnDelivered,
-    )?.params;
-    assert.deepEqual(delivered, {
-      threadId: h.threadId,
-      turnId: second.turnId,
-      intoTurnId: first.turnId,
-    });
+    const reply = async (turnId: string) =>
+      (await h.store.getTurn(turnId)).messages.find((m) => m.role === 'assistant')?.content;
+    assert.equal(await reply(first.turnId), 'Before. ');
+    assert.equal(await reply(second.turnId), 'After.');
+    assert.equal(h.manager.activeTurnId(h.threadId), undefined);
+
+    // To a client it is a queue that drained early, in order: the first turn
+    // ends, the second starts, and only then does its prose arrive.
+    const order = h.notifications.map((n) =>
+      [n.method, n.params?.['turnId'] === second.turnId ? 'second' : 'first'].join(':'),
+    );
+    const at = (entry: string) => order.indexOf(entry);
+    assert.ok(at(`${StreamNotification.TurnCompleted}:first`) >= 0);
+    assert.ok(
+      at(`${StreamNotification.TurnCompleted}:first`) <
+        at(`${StreamNotification.TurnStarted}:second`),
+    );
+    assert.ok(
+      at(`${StreamNotification.TurnStarted}:second`) <
+        at(`${StreamNotification.MessageDelta}:second`),
+    );
+    const firstDone = h.notifications.find(
+      (n) => n.method === StreamNotification.TurnCompleted && n.params?.['turnId'] === first.turnId,
+    );
+    assert.equal(firstDone?.params?.['text'], 'Before. ');
   } finally {
     await h.cleanup();
   }
 });
 
-test('a delivered turn never runs again when the current turn ends', async () => {
+test('a steered message never runs again when the run ends', async () => {
   const h = await harness();
   try {
     const first = await h.manager.sendTurn(h.threadId, 'first');
     const second = await h.manager.sendTurn(h.threadId, 'second');
     h.adapter.complete(h.threadId, first.turnId);
 
-    await waitFor(async () => (await h.store.getTurn(first.turnId)).status === 'completed');
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'completed');
     // Give the drain path a chance to do the wrong thing before asserting it didn't.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     assert.deepEqual(
       h.adapter.ran.map((r) => r.text),
       ['first'],
-      'the delivered message must not be replayed as its own turn',
+      'the steered message must not be replayed as a run of its own',
     );
-    assert.equal((await h.store.getTurn(second.turnId)).status, 'delivered');
     assert.equal(h.manager.activeTurnId(h.threadId), undefined);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('stopping the steered turn stops the run the agent knows', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    await h.manager.cancelTurn(h.threadId, second.turnId);
+    assert.deepEqual(h.adapter.cancelled, [first.turnId]);
+    h.adapter.abort(h.threadId, first.turnId);
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'aborted');
+    assert.equal((await h.store.getTurn(first.turnId)).status, 'completed');
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('a step that settles after the hand-off updates its row where it started', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    const running = { type: 'command_execution', blockId: 's1', command: 'ls', status: 'running' };
+    h.adapter.step(h.threadId, first.turnId, running);
+    await waitFor(async () => {
+      const assistant = (await h.store.getTurn(first.turnId)).messages[1];
+      return (assistant?.segments?.length ?? 0) > 0;
+    });
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    h.adapter.step(h.threadId, first.turnId, { ...running, status: 'failed', output: 'boom' });
+    h.adapter.complete(h.threadId, first.turnId);
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'completed');
+
+    const segments = async (turnId: string) =>
+      (await h.store.getTurn(turnId)).messages.find((m) => m.role === 'assistant')?.segments ?? [];
+    assert.deepEqual(await segments(first.turnId), [
+      { ...running, status: 'failed', output: 'boom' },
+    ]);
+    assert.deepEqual(await segments(second.turnId), [], 'no second row under the new message');
   } finally {
     await h.cleanup();
   }
@@ -200,9 +271,7 @@ test('an agent without steering still queues, exactly as before', async () => {
 
     assert.equal(second.queued, true);
     assert.equal(second.queuePosition, 1);
-    assert.equal(second.delivered, undefined);
     assert.equal((await h.store.getTurn(second.turnId)).status, 'queued');
-    assert.equal(h.methods().includes(StreamNotification.TurnDelivered), false);
 
     h.adapter.complete(h.threadId, first.turnId);
     await waitFor(() => h.adapter.ran.length === 2);
@@ -219,7 +288,6 @@ test('a declined hand-off falls back to the queue and runs next', async () => {
     const first = await h.manager.sendTurn(h.threadId, 'first');
     const second = await h.manager.sendTurn(h.threadId, 'second');
 
-    assert.equal(second.delivered, undefined);
     assert.equal(second.queued, true);
     assert.equal((await h.store.getTurn(second.turnId)).status, 'queued');
 
@@ -259,7 +327,6 @@ test('an earlier queued message keeps its place — no jumping the line', async 
     h.adapter.behaviour = 'accept';
     const third = await h.manager.sendTurn(h.threadId, 'third');
 
-    assert.equal(third.delivered, undefined);
     assert.equal(third.queued, true);
     assert.equal(third.queuePosition, 2);
     assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [second.turnId, third.turnId]);
@@ -287,9 +354,35 @@ test('a paused queue is never bypassed by a hand-off', async () => {
     await waitFor(() => h.manager.queueState(h.threadId).paused);
 
     const third = await h.manager.sendTurn(h.threadId, 'third');
-    assert.equal(third.delivered, undefined);
     assert.equal(third.queued, true);
     assert.deepEqual(h.adapter.steered, []);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('while the agent waits on an approval a follow-up queues instead', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    h.adapter.step(h.threadId, first.turnId, {
+      type: 'approval',
+      approvalId: 'appr-1',
+      action: 'run ls',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Handing it in would end the turn that holds the card, and no client
+    // would still offer to answer it.
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    assert.equal(second.queued, true);
+    assert.deepEqual(h.adapter.steered, []);
+    assert.equal(h.manager.activeTurnId(h.threadId), first.turnId);
+
+    h.adapter.complete(h.threadId, first.turnId);
+    await waitFor(() => h.adapter.ran.length === 2);
+    // A new run asks nothing yet: the next follow-up goes straight in again.
+    const third = await h.manager.sendTurn(h.threadId, 'third');
+    assert.equal(third.queued, undefined);
   } finally {
     await h.cleanup();
   }
@@ -299,7 +392,6 @@ test('with no turn in flight a message just starts one', async () => {
   const h = await harness();
   try {
     const only = await h.manager.sendTurn(h.threadId, 'only');
-    assert.equal(only.delivered, undefined);
     assert.equal(only.queued, undefined);
     assert.deepEqual(h.adapter.steered, []);
     assert.deepEqual(
@@ -311,20 +403,19 @@ test('with no turn in flight a message just starts one', async () => {
   }
 });
 
-test('clearing the queue leaves an already-delivered turn alone', async () => {
+test('clearing the queue leaves an already-steered turn alone', async () => {
   const h = await harness();
   try {
-    const first = await h.manager.sendTurn(h.threadId, 'first');
-    const delivered = await h.manager.sendTurn(h.threadId, 'delivered');
+    await h.manager.sendTurn(h.threadId, 'first');
+    const steered = await h.manager.sendTurn(h.threadId, 'steered');
     h.adapter.behaviour = 'decline';
     const waiting = await h.manager.sendTurn(h.threadId, 'waiting');
 
     await h.manager.clearQueue(h.threadId);
 
     assert.equal((await h.store.getTurn(waiting.turnId)).status, 'cancelled');
-    const stored = await h.store.getTurn(delivered.turnId);
-    assert.equal(stored.status, 'delivered', 'it already reached the agent; it is not cancellable');
-    assert.equal(stored.deliveredIntoTurnId, first.turnId);
+    const stored = await h.store.getTurn(steered.turnId);
+    assert.equal(stored.status, 'streaming', 'it already reached the agent; it is not cancellable');
   } finally {
     await h.cleanup();
   }

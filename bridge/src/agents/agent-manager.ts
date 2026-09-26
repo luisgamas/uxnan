@@ -31,7 +31,6 @@ import {
   type ApprovalResolvedParams,
   type QuestionResolvedParams,
   type TurnCreatedParams,
-  type TurnDeliveredParams,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
@@ -39,6 +38,7 @@ import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
 import {
   approvalBlock,
+  blockIdOf,
   errorBlock,
   questionBlock,
   withProjectPaths,
@@ -163,12 +163,6 @@ export interface SendTurnResult {
   queued?: boolean;
   /** 1-based place in the queue when `queued` (1 = runs next). */
   queuePosition?: number;
-  /**
-   * True when the agent took the message **into the turn already running** and
-   * it will never run as a turn of its own (status `delivered`). Mutually
-   * exclusive with {@link queued}.
-   */
-  delivered?: boolean;
 }
 
 /**
@@ -239,8 +233,33 @@ export class AgentManager {
    * queue waits for an explicit `resumeQueue`/`clearQueue`.
    */
   readonly #queuePausedByThread = new Map<string, QueuePausedReason>();
-  /** turnId → temp attachment dir to remove once the turn ends (best-effort). */
+  /** run id → temp attachment dir to remove once the run ends (best-effort). */
   readonly #attachmentDirByTurn = new Map<string, string>();
+  /**
+   * A message the agent takes into its running turn (steering) becomes a turn
+   * of its own inside the same agent run (`#handOff`): what the agent says from
+   * then on answers it, so it is shown under it. The adapter keeps naming the
+   * run by the id it started with; this maps that run id to the turn now
+   * showing its output, and {@link #runOfTurn} back. A run never steered has
+   * no entry — its id is its turn's.
+   */
+  readonly #turnOfRun = new Map<string, string>();
+  readonly #runOfTurn = new Map<string, string>();
+  /** run id → the turn each of its steps (`blockId`) was first shown in, so a
+   *  step that settles after a hand-off updates its row where it started
+   *  instead of appearing again under the new message. */
+  readonly #stepsOfRun = new Map<string, Map<string, string>>();
+  /** turnId → the prose streamed so far while it runs: the text a turn ended
+   *  by a hand-off reports, known without waiting on the store. */
+  readonly #textOfTurn = new Map<string, string>();
+  /**
+   * threadId → the approvals and questions its agent is waiting on right now,
+   * whoever raised them (the Claude hook, Codex, an adapter's own block). While
+   * one is open a follow-up is not handed into the run: the turn holding the
+   * card must stay the running one, or no client would still offer to answer
+   * it and the agent would wait forever. The follow-up queues instead.
+   */
+  readonly #awaitingInput = new Map<string, Set<string>>();
   /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
    * hook round-trip AND the Codex app-server approval elicitations; the pending
    * map is shared so a single `respondApproval` call resolves both). The
@@ -488,6 +507,18 @@ export class AgentManager {
     }
   }
 
+  #openInput(threadId: string, id: string): void {
+    let open = this.#awaitingInput.get(threadId);
+    if (!open) this.#awaitingInput.set(threadId, (open = new Set()));
+    open.add(id);
+  }
+
+  #closeInput(threadId: string, id: string): void {
+    const open = this.#awaitingInput.get(threadId);
+    open?.delete(id);
+    if (open?.size === 0) this.#awaitingInput.delete(threadId);
+  }
+
   /** Every client retires its card for [approvalId]. */
   #announceApproval(
     threadId: string,
@@ -495,6 +526,7 @@ export class AgentManager {
     decision: ApprovalDecision,
     timedOut = false,
   ): void {
+    this.#closeInput(threadId, approvalId);
     this.#options.notify(
       makeNotification(StreamNotification.ApprovalResolved, {
         threadId,
@@ -512,6 +544,7 @@ export class AgentManager {
     answers: string[][],
     timedOut = false,
   ): void {
+    this.#closeInput(threadId, questionId);
     this.#options.notify(
       makeNotification(StreamNotification.QuestionResolved, {
         threadId,
@@ -561,7 +594,7 @@ export class AgentManager {
     // Agents whose CLI has an input channel mid-turn take the message NOW,
     // inside the running turn, instead of parking it here.
     if (await this.#tryDeliverMidTurn(threadId, adapter, entry)) {
-      return { turnId: queued.turnId, delivered: true };
+      return { turnId: queued.turnId };
     }
 
     queue.push(entry);
@@ -592,14 +625,18 @@ export class AgentManager {
     if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
     if (this.#queuePausedByThread.has(threadId)) return false;
     if ((this.#queueByThread.get(threadId)?.length ?? 0) > 0) return false;
+    if (this.#awaitingInput.has(threadId)) return false;
     const activeTurnId = this.#activeTurnByThread.get(threadId);
     if (!activeTurnId) return false;
+    // The adapter knows the run by the id it started with, which a previous
+    // hand-off may have moved to a later turn.
+    const runId = this.#runOfTurn.get(activeTurnId) ?? activeTurnId;
 
     // The turn's own text still needs the command/attachment resolution a
     // normal turn gets, so a steered `/command` or image behaves identically.
     let text: string;
     try {
-      text = await this.#resolveTurnText(adapter, entry, activeTurnId);
+      text = await this.#resolveTurnText(adapter, entry, runId);
     } catch (err) {
       this.#options.logger.warn(`could not prepare a mid-turn message: ${String(err)}`);
       return false;
@@ -611,7 +648,7 @@ export class AgentManager {
         ...entry.options,
         threadId,
         turnId: entry.turnId,
-        activeTurnId,
+        activeTurnId: runId,
         text,
       });
     } catch (err) {
@@ -621,24 +658,56 @@ export class AgentManager {
     }
     if (!taken) return false;
 
-    // Re-check: `steerTurn` is async, so the turn may have ended while it ran.
-    // The agent still received the text — a CLI that took the message and then
-    // finished has already answered it — so the turn is `delivered` either way;
-    // what we must not do is claim it joined a turn that is no longer current.
-    await this.#options.store.deliverQueuedTurn(
-      threadId,
-      entry.turnId,
-      activeTurnId,
-      this.#options.now(),
+    // `steerTurn` is async, so the run may have ended while it ran. Then there
+    // is no run left to carry the answer: queue it, so it runs as a turn of its
+    // own rather than waiting on output that will never come.
+    if (this.#activeTurnByThread.get(threadId) !== activeTurnId) {
+      this.#options.logger.warn('the running turn ended during a mid-turn delivery; queueing it');
+      return false;
+    }
+    await this.#handOff(threadId, runId, entry);
+    return true;
+  }
+
+  /**
+   * The agent took [entry]'s message into run [runId]: the turn that was
+   * answering ends here, with everything said so far, and [entry] carries the
+   * rest of the run — its prose, its steps, its end and its usage. To every
+   * client this is exactly a queue that drained early: `turn/completed` for the
+   * one, `turn/started` for the other, in that order, before any of the new
+   * turn's output. So the message shows where the agent took it, and what it
+   * said after, under it — on the phone, the desktop and a re-read alike.
+   */
+  #handOff(threadId: string, runId: string, entry: QueuedTurn): Promise<void> {
+    const from = this.#turnOfRun.get(runId) ?? runId;
+    const to = entry.turnId;
+    const now = this.#options.now();
+    this.#flushText(from);
+    const text = this.#textOfTurn.get(from) ?? '';
+    const messageId = this.#assistantByTurn.get(from) ?? '';
+    // Switched synchronously, with nothing awaited before the notifications:
+    // any event the run emits from here on is the new turn's, and its store
+    // writes queue behind the hand-off's.
+    this.#turnOfRun.set(runId, to);
+    this.#runOfTurn.delete(from);
+    this.#runOfTurn.set(to, runId);
+    this.#activeTurnByThread.set(threadId, to);
+    this.#assistantByTurn.delete(from);
+    this.#assistantByTurn.set(to, entry.assistantMessageId);
+    this.#textOfTurn.delete(from);
+    const persisted = this.#options.store.handOffTurn(threadId, from, to, now);
+    this.#options.notify(
+      makeNotification(StreamNotification.TurnCompleted, {
+        threadId,
+        turnId: from,
+        messageId,
+        text,
+      }),
     );
     this.#options.notify(
-      makeNotification(StreamNotification.TurnDelivered, {
-        threadId,
-        turnId: entry.turnId,
-        intoTurnId: activeTurnId,
-      } satisfies TurnDeliveredParams),
+      makeNotification(StreamNotification.TurnStarted, { threadId, turnId: to }),
     );
-    return true;
+    return persisted;
   }
 
   /**
@@ -844,6 +913,7 @@ export class AgentManager {
     const turnId = this.#activeTurnByThread.get(threadId);
     if (!turnId) return 'reject'; // no in-flight turn to attach the approval to
     const approvalId = `appr-${turnId}-${(this.#approvalSeq += 1)}`;
+    this.#openInput(threadId, approvalId);
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = approvalContent(approvalId, info.toolName, info.input);
     try {
@@ -971,6 +1041,7 @@ export class AgentManager {
     const turnId = this.#activeTurnByThread.get(threadId);
     if (!turnId) return []; // no in-flight turn to attach the question to
     const questionId = `qst-${turnId}-${(this.#questionSeq += 1)}`;
+    this.#openInput(threadId, questionId);
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const content = questionBlock(questionId, questions);
     try {
@@ -1087,7 +1158,7 @@ export class AgentManager {
     const resolved = agentId ?? this.#agentByThread.get(threadId) ?? this.#options.defaultAgent;
     const adapter = this.#adapters.get(resolved);
     if (adapter) {
-      await adapter.cancelTurn(threadId, turnId);
+      await adapter.cancelTurn(threadId, this.#runOfTurn.get(turnId) ?? turnId);
     }
   }
 
@@ -1336,7 +1407,10 @@ export class AgentManager {
   }
 
   async #onEvent(event: AgentStreamEvent): Promise<void> {
-    const { threadId, turnId } = event;
+    const { threadId } = event;
+    // Adapters name the run; after a hand-off its output is a later turn's.
+    const runId = event.turnId;
+    const turnId = this.#turnOfRun.get(runId) ?? runId;
     const messageId = this.#assistantByTurn.get(turnId) ?? '';
     const now = this.#options.now();
     // Anything that is not more prose closes the open batch first, so the
@@ -1369,6 +1443,7 @@ export class AgentManager {
           // still receives this delta before `completeTurn` — that call is
           // enqueued on the same mutex, from a handler that started later.
           this.#bufferText(threadId, turnId, messageId, delta);
+          this.#textOfTurn.set(turnId, (this.#textOfTurn.get(turnId) ?? '') + delta);
           // Persisted per delta, exactly as before: the batching is about how
           // OFTEN the phone is told, never about when this becomes durable.
           await this.#options.store.appendDelta(threadId, turnId, delta, now);
@@ -1392,6 +1467,22 @@ export class AgentManager {
             readContent(event.data),
             this.#cwdByThread.get(threadId),
           );
+          // A step that started before a hand-off settles where it was shown,
+          // quietly: that turn has ended for every client, and a second row
+          // under the new message would repeat it.
+          const stepId = content !== undefined ? blockIdOf(content) : undefined;
+          if (stepId !== undefined) {
+            let steps = this.#stepsOfRun.get(runId);
+            if (!steps) this.#stepsOfRun.set(runId, (steps = new Map()));
+            const shownIn = steps.get(stepId);
+            if (shownIn !== undefined && shownIn !== turnId) {
+              await this.#options.store.settleStep(threadId, shownIn, content, now);
+              break;
+            }
+            steps.set(stepId, turnId);
+          }
+          const input = pendingInputId(content);
+          if (input !== undefined) this.#openInput(threadId, input);
           if (content !== undefined) {
             // A block flagged `beforeText` came from a parallel/background
             // activity while the main text was still streaming: the store slots
@@ -1426,7 +1517,10 @@ export class AgentManager {
           break;
         }
         case 'turn_completed': {
-          const provided = readOptionalText(event.data);
+          // The final text an adapter reports covers its whole run; after a
+          // hand-off part of that run is an earlier turn's answer, so the
+          // streamed text (all of it this turn's) is the one to keep.
+          const provided = runId === turnId ? readOptionalText(event.data) : undefined;
           // A turn ends once. An adapter whose CLI outlives its own end-of-turn
           // event can emit a second completion for the same turn (Claude Code
           // does, when the model leaves background work running and the CLI
@@ -1457,7 +1551,8 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          void this.#cleanupAttachments(turnId);
+          this.#forgetRun(runId, turnId, threadId);
+          void this.#cleanupAttachments(runId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
           // Now there is an answer to summarize, so the thread can stop living
@@ -1493,7 +1588,8 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          void this.#cleanupAttachments(turnId);
+          this.#forgetRun(runId, turnId, threadId);
+          void this.#cleanupAttachments(runId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           // The agent broke (auth, balance, a dead CLI). Hold the queue instead
@@ -1510,7 +1606,8 @@ export class AgentManager {
             makeNotification(StreamNotification.TurnAborted, { threadId, turnId }),
           );
           this.#assistantByTurn.delete(turnId);
-          void this.#cleanupAttachments(turnId);
+          this.#forgetRun(runId, turnId, threadId);
+          void this.#cleanupAttachments(runId);
           // The user stopped this turn. They stopped it for a reason, so the
           // follow-ups they queued earlier wait for an explicit resume.
           this.#pauseQueue(threadId, 'turnAborted');
@@ -1532,6 +1629,7 @@ export class AgentManager {
       ) {
         this.#activeTurnByThread.delete(threadId);
         this.#assistantByTurn.delete(turnId);
+        this.#forgetRun(runId, turnId, threadId);
         try {
           await this.#options.store.failTurn(threadId, turnId, now);
           this.#options.notify(
@@ -1558,8 +1656,18 @@ export class AgentManager {
     }
   }
 
+  /** A run ended: drop what linked it to the turns it answered, and whatever
+   *  it was still asking (nothing waits on a run that is over). */
+  #forgetRun(runId: string, turnId: string, threadId: string): void {
+    this.#awaitingInput.delete(threadId);
+    this.#turnOfRun.delete(runId);
+    this.#runOfTurn.delete(turnId);
+    this.#stepsOfRun.delete(runId);
+    this.#textOfTurn.delete(turnId);
+  }
+
   /**
-   * Remove a turn's temp attachment directory once the turn ends. Best-effort:
+   * Remove a run's temp attachment directory once the run ends. Best-effort:
    * the agent has already read the files by completion, and a failure to delete
    * (e.g. the dir vanished) is non-fatal.
    */
@@ -1668,6 +1776,15 @@ export class AgentManager {
       return '';
     }
   }
+}
+
+/** The id of an approval or question a block asks the user for, if it is one. */
+function pendingInputId(content: unknown): string | undefined {
+  if (!content || typeof content !== 'object') return undefined;
+  const block = content as { type?: unknown; approvalId?: unknown; questionId?: unknown };
+  if (block.type === 'approval' && typeof block.approvalId === 'string') return block.approvalId;
+  if (block.type === 'question' && typeof block.questionId === 'string') return block.questionId;
+  return undefined;
 }
 
 function readText(data: unknown): string {

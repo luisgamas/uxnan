@@ -47,6 +47,54 @@ test('turn lifecycle: start, delta, complete', async () => {
   await rmrf(baseDir);
 });
 
+test('a run handed on mid-turn matches the one exchange its agent recorded', async () => {
+  // Claude Code records a message taken mid-turn inside the running exchange:
+  // one native turn holds the whole run's reply. The bridge split that run in
+  // two turns, and reading the native history must not import it again.
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const first = await store.startTurn(thread.id, 'run it', 10);
+  await store.appendDelta(thread.id, first.turnId, 'Running it. ', 11);
+  const second = await store.queueTurn(thread.id, 'and say BANANA', 12);
+  await store.handOffTurn(thread.id, first.turnId, second.turnId, 13);
+  await store.appendDelta(thread.id, second.turnId, 'It printed one. BANANA', 14);
+  await store.completeTurn(thread.id, second.turnId, undefined, 15);
+
+  const result = await store.reconcileNativeHistory(
+    thread.id,
+    [
+      {
+        id: 'native#t0',
+        threadId: thread.id,
+        status: 'completed',
+        createdAt: 10,
+        completedAt: 15,
+        messages: [
+          { id: 'u', turnId: 'native#t0', role: 'user', content: 'run it', createdAt: 10 },
+          {
+            id: 'a',
+            turnId: 'native#t0',
+            role: 'assistant',
+            content: 'Running it.\n\nIt printed one. BANANA',
+            createdAt: 11,
+          },
+        ],
+      },
+    ],
+    20,
+  );
+  assert.deepEqual(result, { changed: false, importedTurnIds: [] });
+  const turns = (await store.listTurns(thread.id)).turns;
+  assert.deepEqual(
+    turns.map((t) => [t.id, t.status]),
+    [
+      [first.turnId, 'completed'],
+      [second.turnId, 'completed'],
+    ],
+  );
+  await rmrf(baseDir);
+});
+
 test('reconcileNativeHistory links bridge turns and imports only native-only completed turns', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p', agentId: 'codex' }, 1);

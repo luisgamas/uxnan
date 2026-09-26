@@ -107,10 +107,13 @@ interface StoredTurn {
    */
   nativeHistoryTurnId?: string;
   /**
-   * For a `delivered` turn: the turn its message was folded into (see
-   * {@link ThreadStore.deliverQueuedTurn}). Absent for every other status.
+   * The turn that carried the rest of this one's agent run, when the agent
+   * took a message mid-turn ({@link ThreadStore.handOffTurn}). Private: the
+   * agent's own transcript may record that whole run as this single exchange
+   * (Claude Code does), so matching it against native history reads the reply
+   * across the chain.
    */
-  deliveredIntoTurnId?: string;
+  handedOffTo?: string;
 }
 
 interface StoredThread {
@@ -721,30 +724,51 @@ export class ThreadStore {
   }
 
   /**
-   * Marks a queued turn as `delivered` — the agent took its message **into the
-   * turn already running** ({@link intoTurnId}) instead of making it wait, so
-   * it will never run on its own. Terminal and successful: unlike `cancelled`,
-   * the message did reach the agent, and the reply is part of `intoTurnId`.
+   * A message the agent took **into its running turn** (steering): the turn
+   * that was answering ends here, with everything said so far, and [toTurnId]
+   * — until now queued — carries the rest of the same agent run. One mutation,
+   * so no reader ever sees both turns streaming or neither.
    *
-   * The turn keeps its own (empty) assistant message rather than dropping it,
-   * so every turn in the store has the same shape and a client that renders
-   * turns generically needs no special case.
+   * The ended turn's running steps are settled as `completed`, as any ending
+   * does; a step that really settles later is written back in place by
+   * {@link settleStep}.
    */
-  deliverQueuedTurn(
-    threadId: string,
-    turnId: string,
-    intoTurnId: string,
-    now: number,
-  ): Promise<void> {
+  handOffTurn(threadId: string, fromTurnId: string, toTurnId: string, now: number): Promise<void> {
     return this.#mutateThread(threadId, async (threads) => {
-      const thread = await this.#requireThread(threads, threadId);
-      const turn = thread.turns.find((t) => t.id === turnId);
-      if (!turn) return;
-      turn.status = 'delivered';
-      turn.completedAt = now;
-      turn.deliveredIntoTurnId = intoTurnId;
-      thread.updatedAt = now;
-      this.#bump(thread);
+      const from = this.#turn(threads, threadId, fromTurnId);
+      const to = this.#turn(threads, threadId, toTurnId);
+      if (!TERMINAL_TURN_STATUSES.has(from.status)) {
+        from.status = 'completed';
+        from.completedAt = now;
+        settleRunningSteps(from, true);
+      }
+      from.handedOffTo = toTurnId;
+      to.status = 'streaming';
+      this.#touch(threads, threadId, now);
+      this.#bumpId(threads, threadId);
+    });
+  }
+
+  /**
+   * Writes a step's settled form over the running one it started as
+   * (`LiveBlock`, by `blockId`), even in a turn that already ended — the step
+   * was shown there, so its result belongs there. Changes nothing when the turn
+   * holds no such step.
+   */
+  settleStep(threadId: string, turnId: string, content: unknown, now: number): Promise<void> {
+    return this.#mutateThread(threadId, async (threads) => {
+      const blockId = blockIdOf(content);
+      if (blockId === undefined) return;
+      const assistant = this.#assistantMessage(threads, threadId, turnId);
+      const same = (b: unknown) => blockIdOf(b) === blockId;
+      const blocks = assistant.blocks ?? [];
+      const segments = assistant.segments ?? [];
+      const inBlocks = blocks.findIndex(same);
+      const inSegments = segments.findIndex(same);
+      if (inBlocks < 0 && inSegments < 0) return;
+      if (inBlocks >= 0) blocks[inBlocks] = content;
+      if (inSegments >= 0) segments[inSegments] = content;
+      this.#touch(threads, threadId, now);
     });
   }
 
@@ -1090,6 +1114,7 @@ export class ThreadStore {
     const threads = await this.#loadFiles();
     for (const thread of threads) {
       numberTurns(thread);
+      retireDeliveredTurns(thread);
       this.#ledger.observe(thread.rev);
     }
     return threads;
@@ -1254,6 +1279,21 @@ function lastDecision(thread: StoredThread): number {
   return last;
 }
 
+/**
+ * A message steered into a running turn used to be stored as a turn of its own
+ * with status `delivered` and no reply, the answer left in the turn before it.
+ * It is now a turn that carries the rest of the run ({@link
+ * ThreadStore.handOffTurn}); one stored the old way did reach the agent and
+ * ended, so it reads as `completed`.
+ */
+function retireDeliveredTurns(thread: StoredThread): void {
+  for (const turn of thread.turns) {
+    const stored = turn as StoredTurn & { deliveredIntoTurnId?: unknown };
+    if ((stored.status as string) === 'delivered') stored.status = 'completed';
+    delete stored.deliveredIntoTurnId;
+  }
+}
+
 /** The next free turn position in [thread] (see `Turn.seq`). */
 function nextSeq(thread: StoredThread): number {
   let max = 0;
@@ -1289,9 +1329,6 @@ function toTurn(turn: StoredTurn): Turn {
     createdAt: turn.createdAt,
   };
   if (turn.completedAt !== undefined) result.completedAt = turn.completedAt;
-  if (turn.deliveredIntoTurnId !== undefined) {
-    result.deliveredIntoTurnId = turn.deliveredIntoTurnId;
-  }
   return result;
 }
 
@@ -1399,6 +1436,25 @@ function storedTurnIdentity(turn: StoredTurn): TurnIdentity {
   return turnIdentity(turn.messages.map((m) => ({ role: m.role, text: m.text })));
 }
 
+/**
+ * [turn]'s prompt with the reply of its whole agent run: its own and that of
+ * every turn it handed the run on to ({@link StoredTurn.handedOffTo}) — the
+ * exchange an agent that records a steered message inside the running turn
+ * keeps in its own transcript.
+ */
+function storedRunIdentity(turns: readonly StoredTurn[], turn: StoredTurn): TurnIdentity {
+  const own = storedTurnIdentity(turn);
+  let assistant = own.assistant;
+  const seen = new Set<StoredTurn>([turn]);
+  let next = turns.find((t) => t.id === turn.handedOffTo);
+  while (next !== undefined && !seen.has(next)) {
+    seen.add(next);
+    assistant += storedTurnIdentity(next).assistant;
+    next = turns.find((t) => t.id === next?.handedOffTo);
+  }
+  return { user: own.user, assistant };
+}
+
 function withoutWhitespace(value: string): string {
   return value.replace(/\s+/gu, '');
 }
@@ -1427,7 +1483,11 @@ function findNativeTwin(
   );
   const exact = eligible.find((turn) => {
     const identity = storedTurnIdentity(turn);
-    return identity.user === wanted.user && identity.assistant === wanted.assistant;
+    if (identity.user !== wanted.user) return false;
+    return (
+      identity.assistant === wanted.assistant ||
+      storedRunIdentity(turns, turn).assistant === wanted.assistant
+    );
   });
   if (exact) return exact;
   // Some agents keep a different rendition of the same reply in their own log
@@ -1437,7 +1497,7 @@ function findNativeTwin(
   // window: only all three together identify the same turn. A turn genuinely
   // written elsewhere fails the window, so it still imports.
   return eligible.find((turn) => {
-    const identity = storedTurnIdentity(turn);
+    const identity = storedRunIdentity(turns, turn);
     if (identity.user !== wanted.user) return false;
     if (identity.assistant.length === 0 || wanted.assistant.length === 0) return false;
     if (

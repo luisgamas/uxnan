@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — an answer no longer shows above the message it answers
+
+- A message the agent took into its running turn (Claude Code, Codex,
+  OpenCode, pi) was stored as a turn of its own with no reply, while the
+  agent's answer kept growing in the turn before it — so on the phone and the
+  desktop the message showed **below** the answer to it, and moved around
+  between the live view and a re-read. The running turn now ends where the
+  agent took the message (with what it had said), and the message's turn
+  carries the rest of the same run: its prose, its steps, its end, its usage.
+  The adapter keeps naming its run by the id it started with; the manager maps
+  it to the turn now showing its output, for events, `turn/cancel` and the next
+  hand-off. A step that started before the hand-off and settles after it is
+  written back to its own row, and the run's final text is not copied into the
+  new turn. Turns stored the old way (`delivered`) read as `completed`.
+
 ### Fixed — a development build of the desktop no longer fights the installed one
 
 - **Each desktop profile is its own local client.** The channel keeps one live
