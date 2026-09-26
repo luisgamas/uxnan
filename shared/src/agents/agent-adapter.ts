@@ -146,7 +146,8 @@ export interface IAgentAdapter {
    * `activeTurnId` is the bridge turn currently in flight on the thread, so the
    * adapter can address the right run (and refuse if it has already moved on).
    * `turnId` is the queued turn the text came from — it does NOT start a run of
-   * its own; it exists so the bridge can mark it `delivered`.
+   * its own: the bridge makes it the turn that carries the rest of this run,
+   * and keeps naming the run by `activeTurnId` in every call to the adapter.
    *
    * Returns **true only when the agent actually took the message**. Return
    * `false` (don't throw) for an ordinary "too late / not applicable" — the
