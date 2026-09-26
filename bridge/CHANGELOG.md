@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.32-alpha.20260926] - 20260926
 ### Fixed — a conversation read from the agent's transcript renders again
 
 - **One assistant message per turn, always.** Turns read from an agent's own
