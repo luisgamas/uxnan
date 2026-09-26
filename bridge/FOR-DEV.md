@@ -364,6 +364,17 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
+- [ ] **Verify Codex's live step rows against a real turn.** The Codex half of
+      live steps (`codex-tools.ts` → `codexItemStartBlock` on `item/started`,
+      the final block replacing it by `blockId`) and the `error` with
+      `willRetry: true` no longer ending the turn are implemented and
+      unit-tested against the app-server v2 schema, but were never run against
+      a real Codex turn: on 2026-09-25 the account returned 401 even after a
+      fresh `codex login` (a direct `codex exec` failed the same way). Every
+      other wired agent was verified live. Run a Codex chat turn that reads,
+      searches and runs a command; confirm each row appears while it runs,
+      settles in place (no duplicate row), and that a stream reconnect keeps
+      the turn going.
 - [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
       mid-turn delivery is implemented and unit-tested against the published
       protocol schema (`codex app-server generate-json-schema`, codex-cli
