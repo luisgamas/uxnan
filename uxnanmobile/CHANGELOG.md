@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.26-alpha.20260926+20260928] - 20260926
 ### Added
 
 - **Update the PC's bridge from the phone.** The notice atop the conversations
