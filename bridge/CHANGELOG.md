@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a bridge that stops, stops
+
+- **A CLI process the bridge started kept it from exiting.** Stopping only
+  stopped the adapters that had run a turn, so Grok — started just to list its
+  models — stayed alive, and so did the bridge: a restart or a self-update
+  waited on it for good (found running the self-update on a real service).
+  Every adapter is stopped now, Grok ends its `grok agent stdio`, and the
+  update helper force-ends a bridge still up after the grace.
+- **A second bridge could start on a half-installed package.** An app that
+  keeps the bridge running starts it the moment it goes, which during a
+  self-update is mid-install. The bridge now hands its lock to the update
+  helper before stopping, and the helper lets go only right before starting
+  the service, so any bridge started meanwhile exits at once.
+
 ## [0.0.30-alpha.20260926] - 20260926
 ### Added — the bridge updates itself
 

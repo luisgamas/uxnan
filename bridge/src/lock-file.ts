@@ -53,6 +53,23 @@ export class LockFile {
     return true;
   }
 
+  /**
+   * Hand the lock to another process — the self-update helper — while `from`
+   * still holds it, so there is never a moment it is free for a second bridge
+   * to take while npm replaces the package. Returns false (and changes
+   * nothing) when `from` does not own it.
+   */
+  async transfer(
+    to: number,
+    from: number = process.pid,
+    now: number = Date.now(),
+  ): Promise<boolean> {
+    const existing = await this.read();
+    if (!existing || existing.pid !== from) return false;
+    await writeFile(this.#path, JSON.stringify({ pid: to, startedAt: now }), 'utf-8');
+    return true;
+  }
+
   /** Release the lock if it is owned by `pid` (no-op otherwise). */
   async release(pid: number = process.pid): Promise<void> {
     const existing = await this.read();

@@ -354,6 +354,7 @@ async function cmdSelfUpdate(args: string[]): Promise<void> {
     resultPath: state.pathFor(DAEMON_FILES.updateResult),
     platform: process.platform,
     startService: () => startService(env),
+    releaseLock: () => new LockFile(state.pathFor(DAEMON_FILES.lock)).release(process.pid),
     writeResult: (_path, value) => state.writeJson(DAEMON_FILES.updateResult, value),
   });
   process.exitCode = result.ok ? 0 : 1;

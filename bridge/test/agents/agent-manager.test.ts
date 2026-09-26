@@ -1067,3 +1067,27 @@ baseTest('a turn runs with the sending desktop’s tools, else the longest-attac
   assert.deepEqual(seen, ['dev', 'installed', 'dev', undefined]);
   await rmrf(baseDir);
 });
+
+baseTest('stopAll stops every adapter, including one that never ran a turn', async () => {
+  // Listing models or commands, or naming a thread, starts a CLI too; left
+  // alive, it keeps a stopping bridge from exiting.
+  const baseDir = join(tmpdir(), `uxnan-am-stop-${randomUUID()}`);
+  const manager = new AgentManager({
+    store: new ThreadStore(new DaemonState(baseDir)),
+    notify: () => undefined,
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  let stopped = 0;
+  class Idle extends ControlledAdapter {
+    override stop(): Promise<void> {
+      stopped += 1;
+      return Promise.resolve();
+    }
+  }
+  manager.register(new Idle());
+  await manager.stopAll();
+  assert.equal(stopped, 1);
+  await rmrf(baseDir);
+});

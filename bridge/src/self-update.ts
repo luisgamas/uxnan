@@ -49,6 +49,8 @@ export const DAEMON_UPDATE_CHECK_MS = 60 * 60 * 1000;
 
 /** How long the helper waits for the bridge it replaces to exit. */
 const HANDOVER_TIMEOUT_MS = 60_000;
+/** How long a force-stopped bridge is given to be gone. */
+const FORCE_STOP_GRACE_MS = 5_000;
 
 /** A result older than this is from some earlier run, not this start. */
 const RESULT_MAX_AGE_MS = 15 * 60 * 1000;
@@ -283,13 +285,14 @@ export function spawnUpdateHelper(input: {
   cliPath: string;
   pid: number;
   version: string;
-}): void {
+}): number | undefined {
   const child = spawn(
     input.execPath,
     [input.cliPath, 'self-update', '--pid', String(input.pid), '--to', input.version],
     { cwd: homedir(), detached: true, stdio: 'ignore', windowsHide: true },
   );
   child.unref();
+  return child.pid;
 }
 
 export interface SelfUpdateHelperInput {
@@ -303,12 +306,19 @@ export interface SelfUpdateHelperInput {
   layout?: UpdateLayout | { reason: string };
   /** Start the bridge's service again (the new version, or the old one if npm failed). */
   startService: () => Promise<void>;
+  /** Let go of the bridge's lock the old bridge handed over, just before the
+   *  service starts again: while the helper holds it, any bridge started
+   *  meanwhile (by an app keeping it running, or the service manager) exits
+   *  at once instead of running on a half-replaced package. */
+  releaseLock?: () => Promise<void>;
   /** Run npm; resolves with whether it worked and its output. */
   runNpm?: (layout: UpdateLayout, spec: string) => Promise<{ ok: boolean; output: string[] }>;
   writeResult: (path: string, result: UpdateResult) => Promise<void>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   alive?: (pid: number) => boolean;
+  /** End a bridge that did not stop by itself (tests); defaults to SIGKILL. */
+  forceStop?: (pid: number) => void;
 }
 
 /**
@@ -316,10 +326,8 @@ export interface SelfUpdateHelperInput {
  * outcome, start the service. Whatever npm did, the service is started again —
  * a failed install leaves the old version in place, which then reports why.
  */
-// FOR-DEV: never run as a live service yet — the clean stop, this helper
-// outliving the bridge, and startService under launchd / systemd / Task
-// Scheduler are verified only in tests and an isolated npm prefix. Unblocks
-// with the first release that carries it (see bridge/FOR-DEV.md).
+// FOR-DEV: run end to end as a live launchd service on macOS; systemd `--user`
+// and Task Scheduler are verified only in tests (see bridge/FOR-DEV.md).
 export async function runSelfUpdateHelper(input: SelfUpdateHelperInput): Promise<UpdateResult> {
   const now = input.now ?? Date.now;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
@@ -329,6 +337,24 @@ export async function runSelfUpdateHelper(input: SelfUpdateHelperInput): Promise
   let result: UpdateResult;
   const deadline = now() + HANDOVER_TIMEOUT_MS;
   while (alive(input.pid) && now() < deadline) await sleep(250);
+  // The bridge already said it was stopping and flushed its state; one that
+  // still has not exited is stuck (a child process it never ended kept one
+  // alive on a real service). Waiting on it would leave the service hung on the
+  // old version, so end it and go on.
+  if (alive(input.pid)) {
+    const forceStop =
+      input.forceStop ??
+      ((pid: number) => {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      });
+    forceStop(input.pid);
+    const grace = now() + FORCE_STOP_GRACE_MS;
+    while (alive(input.pid) && now() < grace) await sleep(250);
+  }
 
   if (alive(input.pid)) {
     result = {
@@ -370,6 +396,7 @@ export async function runSelfUpdateHelper(input: SelfUpdateHelperInput): Promise
   }
 
   await input.writeResult(input.resultPath, result).catch(() => undefined);
+  await input.releaseLock?.().catch(() => undefined);
   await input.startService().catch(() => undefined);
   return result;
 }

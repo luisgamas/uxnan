@@ -35,6 +35,7 @@ import type { BridgeContext } from './bridge-context.js';
 import { HandlerRouter } from './handler-router.js';
 import { registerAllHandlers } from './handlers/index.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
+import { LockFile } from './lock-file.js';
 import { SecureDeviceState } from './secure-device-state.js';
 import type { SecretStore } from './secret-store.js';
 import { createDefaultSecretStore } from './keyring-secret-store.js';
@@ -563,10 +564,25 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       fetchLatest: () => fetchLatestPublishedVersion(),
       handOver: (version) => {
         logger.info(`updating the bridge to ${version}: handing over to the helper`);
-        spawnUpdateHelper({ execPath: process.execPath, cliPath, pid: process.pid, version });
-        // The daemon's own shutdown (`cmdStart`): a clean exit the service
-        // manager leaves alone — the helper starts the service after npm.
-        process.kill(process.pid, 'SIGTERM');
+        const helper = spawnUpdateHelper({
+          execPath: process.execPath,
+          cliPath,
+          pid: process.pid,
+          version,
+        });
+        void (async () => {
+          // The lock passes to the helper before this bridge stops, so no
+          // other bridge can start on the package npm is about to replace —
+          // an app that keeps the bridge running starts it the moment it goes.
+          if (helper !== undefined) {
+            await new LockFile(state.pathFor(DAEMON_FILES.lock))
+              .transfer(helper)
+              .catch(() => false);
+          }
+          // The daemon's own shutdown (`cmdStart`): a clean exit the service
+          // manager leaves alone — the helper starts the service after npm.
+          process.kill(process.pid, 'SIGTERM');
+        })();
       },
     },
     (await cachedUpdateStatus(state, BRIDGE_VERSION)).latestVersion,

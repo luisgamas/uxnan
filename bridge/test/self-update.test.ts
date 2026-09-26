@@ -264,10 +264,45 @@ test('the helper records a stuck bridge instead of installing under it', async (
       clock += ms;
     },
     alive: () => true,
+    forceStop: () => undefined,
   });
   assert.equal(ran, false);
   assert.equal(result.ok, false);
   assert.match(result.failure?.message ?? '', /did not stop/);
+});
+
+test('a bridge stuck after stopping is ended, and the update goes on', async () => {
+  let clock = 0;
+  let stuck = true;
+  const forced: number[] = [];
+  let ran = false;
+  const result = await runSelfUpdateHelper({
+    pid: 42,
+    to: NEW,
+    from: OLD,
+    cliPath: '/usr/local/lib/node_modules/uxnan-bridge/dist/src/cli.js',
+    resultPath: '/tmp/r.json',
+    platform: 'darwin',
+    layout: LAYOUT,
+    startService: async () => undefined,
+    runNpm: async () => {
+      ran = true;
+      return { ok: false, output: ['npm error code E404'] };
+    },
+    writeResult: async () => undefined,
+    now: () => clock,
+    sleep: async (ms) => {
+      clock += ms;
+    },
+    alive: () => stuck,
+    forceStop: (pid) => {
+      forced.push(pid);
+      stuck = false;
+    },
+  });
+  assert.deepEqual(forced, [42]);
+  assert.equal(ran, true, 'npm ran once the stuck bridge was gone');
+  assert.equal(result.failure?.reason, 'install');
 });
 
 test('a successful install leaves the new version on disk and says so', async () => {
@@ -278,6 +313,7 @@ test('a successful install leaves the new version on disk and says so', async ()
   await mkdir(packageRoot, { recursive: true });
   let spec = '';
   let clock = 0;
+  const order: string[] = [];
   const result = await runSelfUpdateHelper({
     pid: 42,
     to: NEW,
@@ -286,20 +322,23 @@ test('a successful install leaves the new version on disk and says so', async ()
     resultPath: '/tmp/r.json',
     platform: 'darwin',
     layout: { ...LAYOUT, packageRoot },
-    startService: async () => undefined,
+    startService: async () => void order.push('start'),
     runNpm: async (layout, s) => {
       spec = s;
       assert.equal(layout.prefix, '/usr/local', 'into the prefix it came from');
       await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ version: NEW }));
       return { ok: true, output: ['added 1 package'] };
     },
-    writeResult: async () => undefined,
+    writeResult: async () => void order.push('result'),
+    releaseLock: async () => void order.push('release'),
     now: () => clock,
     sleep: async (ms) => {
       clock += ms;
     },
     alive: () => false,
   });
+  // The lock is let go only after the install, right before the service starts.
+  assert.deepEqual(order, ['result', 'release', 'start']);
   assert.equal(spec, `uxnan-bridge@${NEW}`);
   assert.equal(result.ok, true);
   assert.equal(result.failure, undefined);

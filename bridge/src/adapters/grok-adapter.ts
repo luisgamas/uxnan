@@ -357,6 +357,9 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: GrokAdapterOptions['onApprovalRequest'];
   readonly #spawnAcp: () => SpawnedAcp;
+  /** Ends the running `grok agent stdio` (closing the RPC alone leaves it
+   *  alive, and a live child keeps a stopping bridge from exiting). */
+  #killAcp: (() => void) | undefined;
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
   /** threadId → ACP sessionId, for continuity + history fallback. */
@@ -447,6 +450,8 @@ export class GrokAdapter extends BaseAgentAdapter {
       this.#rpc = null;
       this.#init = null;
     }
+    this.#killAcp?.();
+    this.#killAcp = undefined;
   }
 
   async sendTurn(options: SendTurnOptions): Promise<void> {
@@ -557,6 +562,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     if (this.#init) return this.#init;
     this.#init = (async () => {
       const streams = this.#spawnAcp();
+      this.#killAcp = () => streams.kill();
       const rpc = new NdjsonRpc(
         { stdin: streams.stdin, stdout: streams.stdout, onClose: () => this.#handleAcpClose() },
         {
