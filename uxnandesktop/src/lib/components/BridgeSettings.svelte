@@ -253,7 +253,7 @@
   }
 
   async function checkAgain() {
-    await bridgeInstall.probe();
+    await bridgeInstall.checkForUpdate();
     bridge.retry();
   }
 </script>

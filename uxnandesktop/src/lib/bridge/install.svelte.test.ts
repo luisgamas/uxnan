@@ -126,6 +126,43 @@ describe('BridgeInstallStore', () => {
     expect(result?.tail).toEqual(['boom']);
   });
 
+  it('"Check again" asks the running bridge for the newest version now', async () => {
+    const calls: string[] = [];
+    let latest = '0.0.29';
+    const status = (): BridgeStatus => ({
+      version: '0.0.29',
+      relayConnected: false,
+      lanEnabled: true,
+      activeSessions: 0,
+      platform: 'darwin',
+      uptimeMs: 1,
+      update: { ...UPDATE, latestVersion: latest, available: latest !== '0.0.29' },
+    });
+    installFakeBackend({
+      bridge_client_status: () => ({ state: 'connected', bridgeVersion: '0.0.29', managed: true }),
+      bridge_install_probe: () => ({ installed: true, version: '0.0.29', npm: true }),
+      bridge_call: (args) => {
+        calls.push(String(args.method));
+        if (args.method === 'bridge/checkForUpdate') {
+          latest = '0.0.30';
+          return status().update;
+        }
+        if (args.method === 'bridge/status') return status();
+        return null;
+      },
+    });
+    const client = new BridgeClientStore();
+    await client.start();
+    const store = new BridgeInstallStore(client);
+    await store.start();
+    await store.refreshStatus();
+    expect(store.offer).toBeNull();
+
+    await store.checkForUpdate();
+    expect(calls).toContain('bridge/checkForUpdate');
+    expect(store.offer).toEqual({ via: 'self', version: '0.0.30' });
+  });
+
   it('asks the bridge to update itself, then says so when it is back on the new version', async () => {
     const calls: string[] = [];
     let status: BridgeStatus = {

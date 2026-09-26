@@ -2839,6 +2839,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get bridgeUpdateAction => 'Actualizar';
 
   @override
+  String get bridgeCheckNowAction => 'Buscar un bridge más reciente';
+
+  @override
   String get bridgeUpdatingTitle => 'Actualizando el bridge';
 
   @override

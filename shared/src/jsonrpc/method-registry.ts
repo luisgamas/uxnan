@@ -96,6 +96,7 @@ export const METHOD_NAMES = [
   'bridge/trustedDevices',
   'bridge/removeTrustedDevice',
   'bridge/update',
+  'bridge/checkForUpdate',
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach',
   'desktop/detach',

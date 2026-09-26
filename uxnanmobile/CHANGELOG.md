@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Check for a newer bridge from the phone.** The *Bridge on your PC* card in
+  Settings → Updates has a button that asks the PC's bridge to look for a new
+  version right now.
+
+### Fixed
+
+- Conversations the bridge read back from the agent's own history (after a
+  restart, or continued in the agent's app) no longer flicker or swap
+  bubbles: the bridge now sends every turn with a single reply.
+
 ## [0.0.26-alpha.20260926+20260928] - 20260926
 ### Added
 

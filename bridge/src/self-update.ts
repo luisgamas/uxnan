@@ -234,6 +234,22 @@ export class BridgeUpdater {
   }
 
   /**
+   * `bridge/checkForUpdate`: ask the registry now, past the hourly check's
+   * cache — someone pressed "Check again". Tells every client when the newest
+   * version changed, and answers with the state either way.
+   */
+  async check(): Promise<BridgeUpdate> {
+    const fresh = await (this.#o.fetchLatest?.() ?? Promise.resolve(undefined)).catch(
+      () => undefined,
+    );
+    if (fresh !== undefined && fresh !== this.#latest) {
+      this.#latest = fresh;
+      this.#o.onChange(this.snapshot());
+    }
+    return this.snapshot();
+  }
+
+  /**
    * `bridge/update`: hand over to the helper, which installs the published
    * version and starts the service on it. Refuses while a turn runs anywhere,
    * and on a bridge that cannot replace itself. Answers with the state it

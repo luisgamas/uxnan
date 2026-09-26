@@ -556,6 +556,13 @@ export interface JsonRpcMethodRegistry {
   // Update the bridge to the published version: it answers with the state it
   // entered (`updating`), then stops, installs and restarts on the new version.
   'bridge/update': { params: void; result: BridgeUpdate };
+  /**
+   * Ask the registry for the newest bridge right now, past the hourly check —
+   * a person pressing "Check again". Answers with the bridge's update state,
+   * and tells every client (`stream/bridge/updated`) when it learned of a new
+   * version.
+   */
+  'bridge/checkForUpdate': { params: void; result: BridgeUpdate };
 
   // Desktop tools for bridge-run agents (local control channel only)
   'desktop/attach': { params: DesktopAttachParams; result: DesktopAttachResult };

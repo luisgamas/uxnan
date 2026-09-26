@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **"Check again" in Settings → Bridge & mobile asks the bridge for the newest
+  version right now** (`bridge/checkForUpdate`), so a release is offered the
+  moment it is out instead of within the hour.
+
 ## [0.0.60] - 20260926
 ### Fixed — the chat composer works like the phone's
 

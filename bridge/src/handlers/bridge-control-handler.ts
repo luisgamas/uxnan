@@ -32,6 +32,7 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
   // Install the published version and restart on it (`self-update.ts`): answers
   // with the state entered, then the bridge stops and its service comes back.
   router.register('bridge/update', (_params, ctx: BridgeContext) => ctx.updater.apply());
+  router.register('bridge/checkForUpdate', (_params, ctx: BridgeContext) => ctx.updater.check());
 
   // The payload of the running process, window armed — the same one `start`
   // prints — so a phone scanning a QR shown by Uxnan Desktop pairs over LAN.

@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 856, shared 40, relay
+standalone). It builds clean and the suite is green (bridge 861, shared 40, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining

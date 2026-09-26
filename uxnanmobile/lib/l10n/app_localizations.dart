@@ -5072,6 +5072,12 @@ abstract class AppLocalizations {
   /// **'Update'**
   String get bridgeUpdateAction;
 
+  /// Tooltip of the button that asks the PC's bridge to look for a newer version right now.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for a newer bridge'**
+  String get bridgeCheckNowAction;
+
   /// Title while the PC's bridge is updating.
   ///
   /// In en, this message translates to:

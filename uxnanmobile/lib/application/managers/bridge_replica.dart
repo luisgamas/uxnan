@@ -117,6 +117,18 @@ class BridgeReplica {
     return entered;
   }
 
+  /// Asks the bridge to look for a newer version right now
+  /// (`bridge/checkForUpdate`, past its hourly check) — the person pressed
+  /// "check". Returns what it knows; throws the bridge's [RpcError].
+  Future<BridgeUpdate?> checkBridgeUpdate() async {
+    final response = await _sendRequest('bridge/checkForUpdate', null);
+    final error = response.error;
+    if (error != null) throw error;
+    final update = BridgeUpdate.fromJson(response.result);
+    if (update != null) _bridgeUpdate.add(update);
+    return update;
+  }
+
   /// Fires when the PC's installed agents changed (re-read `agent/list`).
   Stream<void> get agentsChanged => _agentsChanged.stream;
 
