@@ -14,18 +14,20 @@ The Cloudflare Pages project, its secrets and the deploy workflow are all live �
 the previous site is what `uxnan.pages.dev` serves until this lands on `main`.
 
 The site is one route (`/`) that runs hero → agents → parallel worktrees →
-mobile → measured footprint → open source → call to action. It is a Next.js 15
+desktop-and-phone chats → mobile → measured footprint → open source → call to
+action. It is a Next.js 15
 static export (React 19, Tailwind v4, Hugeicons), self-hosting Geist and
 JetBrains Mono through `next/font`.
 
 What works today:
 
 - **DOM recreations of both apps**, held to the shipped UI: the Uxnan Desktop
-  window (one tab per running agent, the project rail with its live agent view
-  and nested subagents, a Claude Code terminal with its session header and
-  composer, and the Files / Changes / History / GitHub panel) and five Uxnan
-  Mobile screens (conversation list, live conversation, agent picker, profile
-  statistics, devices). Phone screens are drawn once at a canonical 260 × 563 and
+  window (one tab per open chat or agent terminal, the sidebar with the paired
+  phone and the open worktree's agent view, a chat streaming its steps with the
+  composer, the right dock on its Files surface, the status bar) and five Uxnan
+  Mobile screens (conversation list linked with the desktop, the desktop's chat
+  live with its work log, a finished answer, agent picker, the home screen
+  with your paired PCs). Phone screens are drawn once at a canonical 260 × 563 and
   scaled by the frame, so proportions stay real at any size.
 - **Every static claim sourced** through `src/lib/site.ts`, with the
   claim-to-source table in `docs/content.md`; moving repository counters come

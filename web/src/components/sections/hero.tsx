@@ -1,7 +1,7 @@
 import { RepoStatsRow } from "@/components/repo-stats";
 import { DownloadButton } from "@/components/download-button";
 import { DesktopWindow } from "@/components/mockups/desktop";
-import { Phone, PhoneConversations } from "@/components/mockups/phone";
+import { Phone, PhoneLiveChat } from "@/components/mockups/phone";
 import { getRepoStats } from "@/lib/github";
 import { LICENSE, LINKS, PLATFORM_LINE } from "@/lib/site";
 
@@ -44,9 +44,9 @@ export async function Hero() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-[62ch] text-[clamp(1rem,1.5vw,1.175rem)] leading-relaxed text-muted">
-          Uxnan Desktop runs Claude Code, Codex, OpenCode and four more side by
-          side — each in its own worktree, on a machine you can still use. Uxnan
-          Mobile puts all of them in your pocket.
+          Uxnan Desktop runs Claude Code, Codex, OpenCode and any other CLI
+          agent side by side — each in its own worktree, as a terminal or a
+          chat. Uxnan Mobile carries the same conversations in your pocket.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -92,7 +92,7 @@ export async function Hero() {
               width={200}
               className="absolute -right-5 -bottom-4 hidden lg:block xl:-right-12"
             >
-              <PhoneConversations />
+              <PhoneLiveChat />
             </Phone>
           </div>
         </div>

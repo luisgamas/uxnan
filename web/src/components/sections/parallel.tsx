@@ -48,7 +48,7 @@ const TONE = {
 export function Parallel() {
   return (
     <section id="desktop" className="relative py-16 sm:py-24">
-      <div className="wrap grid items-center gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-20">
+      <div className="wrap grid grid-cols-[minmax(0,1fr)] items-center gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-20">
         <Reveal>
           <p className="eyebrow">Parallel by default</p>
           <h2 className="display mt-4 text-[clamp(1.9rem,3.6vw,2.9rem)]">

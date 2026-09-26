@@ -6,6 +6,7 @@ import { Hero } from "@/components/sections/hero";
 import { Mobile } from "@/components/sections/mobile";
 import { OpenSource } from "@/components/sections/open-source";
 import { Parallel } from "@/components/sections/parallel";
+import { Together } from "@/components/sections/together";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
         <Hero />
         <Agents />
         <Parallel />
+        <Together />
         <Mobile />
         <Footprint />
         <OpenSource />

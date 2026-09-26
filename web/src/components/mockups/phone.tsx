@@ -1,28 +1,32 @@
-import { HugeiconsIcon } from "@hugeicons/react";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import CloudOffIcon from "@hugeicons/core-free-icons/CloudOffIcon";
+import LinkIcon from "@hugeicons/core-free-icons/Link05Icon";
+import PodcastIcon from "@hugeicons/core-free-icons/PodcastIcon";
+import RobotIcon from "@hugeicons/core-free-icons/Robot01Icon";
+import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+import SmartPhoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
+import WifiConnectedIcon from "@hugeicons/core-free-icons/WifiConnected01Icon";
 import AddIcon from "@hugeicons/core-free-icons/Add01Icon";
 import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 import CheckCircleIcon from "@hugeicons/core-free-icons/CheckmarkCircle01Icon";
 import CircleDashedIcon from "@hugeicons/core-free-icons/CircleDashedIcon";
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
-import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
 import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
-import CoinsIcon from "@hugeicons/core-free-icons/Coins01Icon";
 import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
 import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-import LayoutGridIcon from "@hugeicons/core-free-icons/Grid2X2Icon";
 import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
 import ListFilterIcon from "@hugeicons/core-free-icons/FilterIcon";
 import MicIcon from "@hugeicons/core-free-icons/Mic01Icon";
 import MoreVerticalIcon from "@hugeicons/core-free-icons/MoreVerticalIcon";
-import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
 import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
-import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
 import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
 import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
 import SquarePenIcon from "@hugeicons/core-free-icons/Edit02Icon";
 import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
-import { AGENT_ICON, AGENTS } from "@/lib/site";
+import { AGENT_ICON, CHAT_AGENTS } from "@/lib/site";
 
 /* ───────────────────────────────────────────────────────────────────────────
    DOM recreations of Uxnan Mobile.
@@ -50,7 +54,6 @@ const M3 = {
   periwinkle: "#dce3f7",
   onPeriwinkle: "#26365f",
   live: "#12a150",
-  danger: "#d0666b",
 } as const;
 
 export function Phone({
@@ -173,6 +176,8 @@ const SPACE_THREADS = [
     preview: "The socket now retries with jittered backoff…",
     icon: AGENT_ICON.claudecode,
     time: "17:35",
+    // started in Uxnan Desktop: the list marks it with a laptop
+    desktop: true,
   },
   {
     title: "Windows CI flake",
@@ -291,6 +296,19 @@ export function PhoneConversations() {
         </span>
       </div>
 
+      {/* this PC runs Uxnan Desktop: its chats are shared both ways */}
+      <div
+        className="flex items-center gap-[5px] px-[12px] pb-[6px] text-[7.5px]"
+        style={{ color: M3.onSurfaceVar }}
+      >
+        <HugeiconsIcon
+          icon={LaptopIcon}
+          className="size-[9px] shrink-0"
+          style={{ color: M3.onPeriwinkle }}
+        />
+        <span className="truncate">Linked with Uxnan Desktop on DESKTOP-4RO76Q2</span>
+      </div>
+
       <div className="flex flex-col px-[10px]">
         {/* A repository, drawn only because git/worktrees relates its folders
             to each other — never guessed from path prefixes. */}
@@ -338,8 +356,15 @@ export function PhoneConversations() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-[6px]">
                   <span className="truncate text-[8px]">{t.title}</span>
+                  {t.desktop ? (
+                    <HugeiconsIcon
+                      icon={LaptopIcon}
+                      className="ml-auto size-[8px] shrink-0"
+                      style={{ color: M3.onSurfaceVar }}
+                    />
+                  ) : null}
                   <span
-                    className="ml-auto shrink-0 text-[6.5px]"
+                    className={`${t.desktop ? "" : "ml-auto "}shrink-0 text-[6.5px]`}
                     style={{ color: M3.onSurfaceVar }}
                   >
                     {t.time}
@@ -422,7 +447,7 @@ export function PhoneConversation() {
           style={{ background: M3.container }}
         >
           <HugeiconsIcon icon={SparklesIcon} className="size-[9px] shrink-0" />
-          <span className="truncate">claude/opus-5</span>
+          <span className="truncate">Claude Code</span>
           <HugeiconsIcon icon={ChevronDownIcon} className="ml-auto size-[8px] shrink-0" />
         </span>
 
@@ -530,6 +555,116 @@ export function PhoneConversation() {
 }
 
 
+/* ── The desktop's conversation, live on the phone ─────────────────────── */
+
+/** The same turn the desktop window in the hero is showing: the prompt, the
+ *  agent's first line, and its steps folded into the work log — collapsed to
+ *  a count and the step running now, as the app draws it. */
+export function PhoneLiveChat() {
+  return (
+    <>
+      <div className="flex items-center gap-[5px] px-[9px] pt-[4px] pb-[8px]">
+        <RoundBtn>
+          <HugeiconsIcon icon={ArrowLeftIcon} className="size-[11px]" />
+        </RoundBtn>
+        <span
+          className="flex h-[23px] min-w-0 flex-1 items-center gap-[4px] rounded-full px-[8px] text-[8.5px]"
+          style={{ background: M3.container }}
+        >
+          <HugeiconsIcon icon={SparklesIcon} className="size-[9px] shrink-0" />
+          <span className="truncate">Claude Code</span>
+          <HugeiconsIcon icon={ChevronDownIcon} className="ml-auto size-[8px] shrink-0" />
+        </span>
+        <RoundBtn>
+          <HugeiconsIcon icon={FolderIcon} className="size-[10px]" />
+        </RoundBtn>
+        <RoundBtn>
+          <HugeiconsIcon icon={GitBranchIcon} className="size-[10px]" />
+        </RoundBtn>
+        <RoundBtn>
+          <HugeiconsIcon icon={MoreVerticalIcon} className="size-[10px]" />
+        </RoundBtn>
+      </div>
+
+      <div className="px-[11px] text-[9px] leading-[1.5]">
+        <div
+          className="ml-auto w-fit max-w-[85%] rounded-[12px] px-[9px] py-[6px]"
+          style={{ background: M3.periwinkle, color: M3.onPeriwinkle }}
+        >
+          Add a reconnect backoff to the zero adapter and cover it with a test.
+        </div>
+
+        <p className="mt-[10px]">
+          I&apos;ll read the adapter first, then add the backoff where the
+          socket closes.
+        </p>
+
+        {/* the work log, collapsed: a count and the step running now */}
+        <div
+          className="mt-[8px] flex h-[24px] items-center gap-[5px] rounded-full px-[9px]"
+          style={{ background: M3.containerSoft, color: M3.onSurfaceVar }}
+        >
+          <HugeiconsIcon icon={TerminalIcon} className="size-[9px] shrink-0" />
+          <span className="shrink-0 text-[7.5px] font-medium">Work log</span>
+          <span
+            className="grid h-[11px] min-w-[11px] shrink-0 place-items-center rounded-full px-[3px] text-[6.5px]"
+            style={{ background: M3.container }}
+          >
+            4
+          </span>
+          <span className="min-w-0 truncate font-mono text-[6.8px]">
+            $ npm test -w uxnan-bridge
+          </span>
+          <HugeiconsIcon icon={ChevronDownIcon} className="ml-auto size-[9px] shrink-0" />
+        </div>
+
+        <div
+          className="mt-[9px] flex items-center gap-[5px] text-[8px] italic"
+          style={{ color: M3.onSurfaceVar }}
+        >
+          <span
+            className="size-[4px] rounded-full"
+            style={{ background: "#3b5bdb", animation: "ux-pulse 2.4s ease-out infinite" }}
+          />
+          Agent responding…
+        </div>
+      </div>
+
+      <div className="absolute inset-x-[11px] bottom-[46px] flex items-center gap-[6px]">
+        <span
+          className="grid size-[21px] place-items-center rounded-full"
+          style={{ background: M3.container }}
+        >
+          <HugeiconsIcon icon={ChevronRightIcon} className="size-[10px]" />
+        </span>
+        <span
+          className="ml-auto grid size-[21px] place-items-center rounded-full border-[1.5px] text-[7.5px] font-medium"
+          style={{ borderColor: M3.mint, color: M3.onSurfaceVar }}
+        >
+          12
+        </span>
+      </div>
+
+      <div className="absolute inset-x-[11px] bottom-[11px]">
+        <div
+          className="flex h-[29px] items-center gap-[8px] rounded-full px-[10px]"
+          style={{ background: M3.container }}
+        >
+          <HugeiconsIcon icon={PlusIcon} className="size-[12px] shrink-0" />
+          <span className="truncate text-[9px]" style={{ color: M3.outline }}>
+            Message…
+          </span>
+          <HugeiconsIcon
+            icon={MicIcon}
+            className="ml-auto size-[11px] shrink-0"
+            style={{ color: M3.onSurfaceVar }}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ── New conversation (agent picker) ───────────────────────────────────── */
 
 export function PhoneNewConversation() {
@@ -604,162 +739,16 @@ export function PhoneNewConversation() {
 
         <div className="mb-[6px] px-[2px] text-[8px]">Agent</div>
         <div className="flex flex-col gap-[5px]">
-          {AGENTS.map((a) => {
-            const off = a.id === "zero";
-            return (
-              <div
-                key={a.id}
-                className="flex items-center gap-[8px] rounded-[15px] px-[9px] py-[7px]"
-                style={{ background: M3.container, opacity: off ? 0.55 : 1 }}
-              >
-                <AgentTile icon={a.icon} />
-                <span className="text-[9px]">{a.name}</span>
-                {off ? (
-                  <span
-                    className="ml-auto text-[7.5px]"
-                    style={{ color: M3.danger }}
-                  >
-                    Unavailable
-                  </span>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ── Profile / statistics ──────────────────────────────────────────────── */
-
-const STATS = [
-  { v: "27h", k: "Time connected" },
-  { v: "12h 42m", k: "Longest session" },
-  { v: "8", k: "Agents used" },
-  { v: "142", k: "Chats" },
-  { v: "476", k: "Messages" },
-  { v: "189", k: "Connections" },
-  { v: "355M", k: "Total tokens" },
-  { v: "31", k: "Models" },
-  { v: "0", k: "Git actions" },
-];
-
-const HEAT = [
-  0, 0, 1, 0, 2, 1, 0, 3, 1, 0, 2, 3, 1, 0, 1, 2, 3, 2, 1, 0, 1, 0, 2, 1, 3, 2,
-  1, 0, 0, 1, 2, 3, 1, 2, 0, 1, 3, 2, 1, 0, 2, 1, 0, 3, 1, 2, 0, 1, 2, 3, 1, 0,
-  1, 2, 0, 1, 3, 2, 1, 0, 2, 1, 3, 0, 1, 2, 1, 0, 2, 3, 1, 2, 0, 1, 3, 1, 0, 2,
-];
-
-export function PhoneProfile() {
-  return (
-    <>
-      <div className="flex items-center gap-[7px] px-[10px] pt-[4px] pb-[10px]">
-        <RoundBtn>
-          <HugeiconsIcon icon={ArrowLeftIcon} className="size-[11px]" />
-        </RoundBtn>
-        <span className="text-[13px]">Profile</span>
-      </div>
-
-      <div className="px-[10px]">
-        <div
-          className="flex items-center gap-[9px] rounded-[17px] px-[10px] py-[9px]"
-          style={{ background: M3.container }}
-        >
-          <span
-            className="grid size-[27px] shrink-0 place-items-center rounded-full text-[9px] font-semibold"
-            style={{ background: "#d8def0", color: "#2c4173" }}
-          >
-            LG
-          </span>
-          <div className="min-w-0">
-            <div className="text-[10.5px]">Luis Gamas</div>
-            <div className="text-[7px]" style={{ color: M3.onSurfaceVar }}>
-              Member since Jun 2026 · 1 PC
-            </div>
-            <div className="mt-[2px] flex items-center gap-[3px] text-[7px]">
-              <span
-                className="size-[3.5px] rounded-full"
-                style={{ background: "#3b5bdb" }}
-              />
-              1 online now
-            </div>
-          </div>
-          <HugeiconsIcon icon={PencilIcon}
-            className="ml-auto size-[10px] shrink-0"
-            style={{ color: M3.onSurfaceVar }}
-          />
-        </div>
-
-        <div className="mt-[13px] mb-[7px] flex items-center">
-          <span className="text-[13px]">Statistics</span>
-          <span
-            className="ml-auto grid size-[21px] place-items-center rounded-full"
-            style={{ background: M3.mint }}
-          >
-            <HugeiconsIcon icon={RefreshCwIcon} className="size-[10px]" style={{ color: M3.onMint }} />
-          </span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-[5px]">
-          {STATS.map((s) => (
+          {/* the agents the bridge drives — the phone offers no other */}
+          {CHAT_AGENTS.map((a) => (
             <div
-              key={s.k}
-              className="rounded-[15px] px-[7px] py-[8px]"
+              key={a.id}
+              className="flex items-center gap-[8px] rounded-[15px] px-[9px] py-[7px]"
               style={{ background: M3.container }}
             >
-              <div className="text-[11.5px] tracking-[-0.01em]">{s.v}</div>
-              <div
-                className="mt-[2px] text-[7px] leading-[1.25]"
-                style={{ color: M3.onSurfaceVar }}
-              >
-                {s.k}
-              </div>
+              <AgentTile icon={a.icon} />
+              <span className="text-[9px]">{a.name}</span>
             </div>
-          ))}
-        </div>
-
-        <div className="mt-[13px] mb-[6px] text-[13px]">Activity</div>
-
-        <div
-          className="mb-[7px] flex h-[21px] overflow-hidden rounded-full text-[7.5px]"
-          style={{ background: M3.container }}
-        >
-          <span
-            className="flex flex-1 items-center justify-center gap-[4px] rounded-full font-medium"
-            style={{ background: M3.mint, color: M3.onMint }}
-          >
-            <HugeiconsIcon icon={LayoutGridIcon} className="size-[8px]" /> Activity
-          </span>
-          <span
-            className="flex flex-1 items-center justify-center gap-[4px]"
-            style={{ color: M3.onSurfaceVar }}
-          >
-            <HugeiconsIcon icon={CoinsIcon} className="size-[8px]" /> Tokens
-          </span>
-        </div>
-
-        <div
-          className="mb-[7px] flex h-[18px] w-[74px] items-center justify-between rounded-full px-[7px] text-[8px]"
-          style={{ background: M3.container }}
-        >
-          <HugeiconsIcon icon={ChevronLeftIcon} className="size-[8px]" style={{ color: M3.onSurfaceVar }} />
-          2026
-          <HugeiconsIcon icon={ChevronRightIcon} className="size-[8px]" style={{ color: M3.onSurfaceVar }} />
-        </div>
-
-        <div className="grid grid-cols-[repeat(13,1fr)] gap-[2.5px]">
-          {HEAT.map((level, i) => (
-            <span
-              key={i}
-              className="aspect-square rounded-[2px]"
-              style={{
-                background:
-                  level === 0
-                    ? "#e4e5ea"
-                    : `color-mix(in srgb, #3b5bdb ${level * 28}%, #e4e5ea)`,
-              }}
-            />
           ))}
         </div>
       </div>
@@ -767,83 +756,187 @@ export function PhoneProfile() {
   );
 }
 
-/* ── Devices (pairing) ─────────────────────────────────────────────────── */
+/* ── Home: your PCs ────────────────────────────────────────────────────── */
+
+/** An M3 badge as the app draws it (`NeBadge`): a small pill with an optional
+ *  glyph, mint when it reports something live. */
+function Badge({
+  icon,
+  label,
+  live = false,
+}: {
+  icon?: IconSvgElement;
+  label: string;
+  live?: boolean;
+}) {
+  return (
+    <span
+      className="flex h-[13px] items-center gap-[3px] rounded-full px-[6px] text-[6.5px] font-medium"
+      style={{
+        background: live ? M3.mint : M3.containerSoft,
+        color: live ? M3.onMint : M3.onSurfaceVar,
+      }}
+    >
+      {icon ? <HugeiconsIcon icon={icon} className="size-[7px]" /> : null}
+      {label}
+    </span>
+  );
+}
+
+/** One paired PC (`_DeviceCard`): the laptop avatar with its status dot, the
+ *  name, the address blurred until tapped, the last connection; then how it is
+ *  connected, what is running there, and how many conversations it holds. */
+function PcCard({
+  name,
+  address,
+  last,
+  connected,
+  working,
+  threads,
+}: {
+  name: string;
+  address: string;
+  last: string;
+  connected: boolean;
+  working?: number;
+  threads: number;
+}) {
+  return (
+    <div className="rounded-[17px] px-[10px] py-[10px]" style={{ background: M3.container }}>
+      <div className="flex items-start gap-[8px]">
+        <span
+          className="relative grid size-[27px] shrink-0 place-items-center rounded-[9px]"
+          style={{ background: M3.containerSoft, border: `1px solid ${M3.hairline}` }}
+        >
+          <HugeiconsIcon
+            icon={LaptopIcon}
+            className="size-[13px]"
+            style={{ color: connected ? M3.live : M3.onSurfaceVar }}
+          />
+          <span
+            className="absolute -right-[1px] -bottom-[1px] size-[7px] rounded-full"
+            style={{
+              background: connected ? M3.live : M3.outline,
+              border: `1.5px solid ${M3.container}`,
+            }}
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[10px]">{name}</div>
+          <div className="mt-[1px] flex items-center gap-[3px]">
+            <span
+              className="truncate font-mono text-[6.5px]"
+              style={{ color: M3.onSurfaceVar, filter: "blur(2px)" }}
+            >
+              {address}
+            </span>
+            <HugeiconsIcon icon={ViewIcon} className="size-[7px] shrink-0" style={{ color: M3.onSurfaceVar }} />
+          </div>
+          <div className="mt-[1px] text-[6.5px]" style={{ color: M3.onSurfaceVar }}>
+            Last connection: {last}
+          </div>
+        </div>
+        <HugeiconsIcon
+          icon={MoreVerticalIcon}
+          className="size-[10px] shrink-0"
+          style={{ color: M3.onSurfaceVar }}
+        />
+      </div>
+
+      <div className="mt-[8px] flex flex-wrap gap-[4px]">
+        {connected ? (
+          <Badge icon={WifiConnectedIcon} label="LAN" live />
+        ) : (
+          <Badge icon={CloudOffIcon} label="Disconnected" />
+        )}
+        {working ? <Badge icon={RobotIcon} label={`${working} working`} live /> : null}
+      </div>
+
+      <div className="mt-[8px] flex items-center">
+        {connected ? null : (
+          <span
+            className="rounded-full px-[9px] py-[4px] text-[7.5px] font-medium"
+            style={{ background: M3.periwinkle, color: M3.onPeriwinkle }}
+          >
+            Connect
+          </span>
+        )}
+        <span className="ml-auto text-[6.5px]" style={{ color: M3.onSurfaceVar }}>
+          {threads} conversations
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function PhoneDevices() {
   return (
     <>
-      <div className="flex items-center px-[12px] pt-[6px] pb-[12px]">
-        <span className="text-[15px] tracking-[-0.01em]">Devices</span>
+      {/* the bar carries the product, not the screen: the mark on the left,
+          pairing, settings and your avatar on the right */}
+      <div className="flex items-center gap-[5px] px-[10px] pt-[4px] pb-[8px]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.svg" alt="" className="size-[24px] rounded-[6px]" />
+        <span className="ml-auto flex items-center gap-[5px]">
+          <RoundBtn>
+            <HugeiconsIcon icon={LinkIcon} className="size-[10px]" />
+          </RoundBtn>
+          <RoundBtn>
+            <HugeiconsIcon icon={SettingsIcon} className="size-[10px]" />
+          </RoundBtn>
+          <span
+            className="grid size-[23px] place-items-center rounded-full text-[8px] font-semibold"
+            style={{ background: "#d8def0", color: "#2c4173" }}
+          >
+            LG
+          </span>
+        </span>
+      </div>
+
+      <div className="px-[12px] pb-[10px]">
+        <div className="text-[13px] tracking-[-0.01em]" style={{ color: M3.onSurfaceVar }}>
+          Welcome back
+        </div>
+        <div className="text-[24px] leading-[1.15] tracking-[-0.02em]">Luis</div>
+        <div className="mt-[7px] flex flex-wrap gap-[4px]">
+          <Badge icon={PodcastIcon} label="1 online now" live />
+          <Badge label="Member since Jun 2026" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-[6px] px-[10px]">
         <div
-          className="rounded-[17px] px-[10px] py-[9px]"
+          className="flex items-center gap-[8px] rounded-[17px] px-[10px] py-[8px]"
           style={{ background: M3.container }}
         >
-          <div className="flex items-center gap-[8px]">
-            <span
-              className="grid size-[25px] shrink-0 place-items-center rounded-[8px]"
-              style={{ background: M3.mint }}
-            >
-              <HugeiconsIcon icon={LaptopIcon} className="size-[12px]" style={{ color: M3.onMint }} />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-[9.5px]">DESKTOP-4RO76Q2</div>
-              <div className="text-[7px]" style={{ color: M3.onSurfaceVar }}>
-                Last seen 13:00
-              </div>
+          <HugeiconsIcon icon={SmartPhoneIcon} className="size-[13px] shrink-0" style={{ color: "#3b5bdb" }} />
+          <div className="min-w-0 flex-1 leading-[1.3]">
+            <div className="text-[6.5px] font-medium" style={{ color: M3.onSurfaceVar }}>
+              This phone
             </div>
-            <HugeiconsIcon icon={MoreVerticalIcon}
-              className="ml-auto size-[10px] shrink-0"
-              style={{ color: M3.onSurfaceVar }}
-            />
-          </div>
-          <div className="mt-[7px] flex gap-[5px]">
-            <span
-              className="flex items-center gap-[3px] rounded-full px-[6px] py-[2px] text-[6.5px] font-medium"
-              style={{ background: M3.mint, color: M3.onMint }}
-            >
-              <span
-                className="size-[3.5px] rounded-full"
-                style={{ background: M3.live }}
-              />
-              Connected
-            </span>
-            <span
-              className="rounded-full bg-white px-[6px] py-[2px] text-[6.5px] font-medium"
-              style={{ color: M3.onSurfaceVar, border: `1px solid ${M3.hairline}` }}
-            >
-              LAN
-            </span>
-          </div>
-        </div>
-
-        <div
-          className="flex items-center gap-[8px] rounded-[17px] px-[10px] py-[9px] opacity-60"
-          style={{ background: M3.container }}
-        >
-          <span
-            className="grid size-[25px] shrink-0 place-items-center rounded-[8px] bg-white"
-            style={{ border: `1px solid ${M3.hairline}` }}
-          >
-            <HugeiconsIcon icon={LaptopIcon} className="size-[12px]" style={{ color: M3.onSurfaceVar }} />
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-[9.5px]">MBP-DEV</div>
-            <div className="text-[7px]" style={{ color: M3.onSurfaceVar }}>
-              Last seen Jul 30
+            <div className="truncate text-[9px]">Pixel 9</div>
+            <div className="text-[6.5px]" style={{ color: M3.onSurfaceVar }}>
+              Android 16
             </div>
           </div>
+          <HugeiconsIcon icon={SquarePenIcon} className="size-[10px] shrink-0" style={{ color: M3.onSurfaceVar }} />
         </div>
-      </div>
 
-      <div className="absolute inset-x-0 bottom-[18px] flex flex-col items-center gap-[5px] opacity-60">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.svg" alt="" className="size-[20px] rounded-[5px]" />
-        <span className="text-[6.5px] tracking-[0.16em]" style={{ color: M3.outline }}>
-          ALPHA
-        </span>
+        <PcCard
+          name="DESKTOP-4RO76Q2"
+          address="192.168.1.20:8765"
+          last="13:00"
+          connected
+          working={2}
+          threads={14}
+        />
+        <PcCard
+          name="MBP-DEV"
+          address="100.88.12.4:8765"
+          last="Jul 30, 18:42"
+          connected={false}
+          threads={3}
+        />
       </div>
     </>
   );
