@@ -393,6 +393,13 @@ again. Nothing about approvals is remembered: closing the page, a restart or a
 navigation ends them, and an approval is for the document the agent looked at —
 if the page navigated meanwhile, the action is refused.
 
+**What an action reports.** An action answers once its effect has landed: a
+navigation it started is waited for (up to 10 s) and the page read back, with
+`navigated` saying whether a new document loaded. The app looks for that
+navigation 350 ms after the action — and, when the click followed a link, keeps
+looking for up to 1.5 s, because a link through a redirector on the internet
+starts loading late. A click that navigates nowhere still answers quickly.
+
 **What is logged.** Every action an agent takes in a page — done or refused —
 leaves a line in the control audit log (`control-audit.log` in the app's data
 folder): who, which action, which reference, whether it ran. Typed text is

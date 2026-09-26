@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — the chat composer works like the phone's
+
+- **`@` lists the project and reaches its files through the bridge.** A bare
+  `@` showed "No matching files." — the desktop searched its own disk and only
+  for a name. It now asks the bridge that owns the conversation's folder, as the
+  phone does: `@` or `@dir/` lists the folder, a name searches the project, and
+  a picked folder drills in.
+- **A `/command` is sent as a command however it got into the message.** The
+  agent's commands loaded only once `/` was typed at the caret, so one recalled
+  with ↑, pasted or restored from the draft went out as plain text.
+- **Images: up to 10 per message, and dropped ones too.** The same limit as the
+  phone (it was 8 and extra images vanished silently; a toast now says so), and
+  images can be dropped onto the composer.
+
+### Fixed
+
+- **A click on a link that navigates late reports it.** A link through a
+  redirector starts loading after the 350 ms an action was watched for, so the
+  agent was told nothing changed while the page moved. A click that follows a
+  link now keeps watching for up to 1.5 s; any other click answers as quickly as
+  before.
+
+### Added
+
+- **Update the bridge in one click, from the sidebar.** While a newer bridge is
+  published, a row under the phone says **Update the bridge to …**; it asks the
+  bridge to update itself (`bridge/update`) — it stops, installs and its service
+  brings it back — and the app says when it is back on the new version, or what
+  failed. Settings → Bridge & mobile's **Update** and *Update automatically* ask
+  the same way. Never under a running turn on any client.
+
+### Changed
+
+- **The bridge's update has one owner.** The window mirrors `update` from
+  `bridge/status` and `stream/bridge/updated` in one place
+  (`BridgeInstallStore`). Uxnan's own npm path is left for what the bridge
+  cannot do for itself: installing it, and updating one older than updating
+  itself or not run as your service — which is how a bridge from before this
+  release gets updated.
+
 ## [0.0.59] - 20260926
 ### Fixed — chat order when the agent takes a message mid-turn
 

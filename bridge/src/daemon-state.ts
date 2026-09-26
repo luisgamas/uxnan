@@ -40,6 +40,8 @@ export const DAEMON_FILES = {
   checkpoints: 'checkpoints.json',
   threads: 'threads.json',
   updateCheck: 'update-check.json',
+  // What the self-update helper left for the bridge that starts after it.
+  updateResult: 'update-result.json',
   metrics: 'metrics.json',
   settingsDecided: 'settings-decided.json',
 } as const;
@@ -181,6 +183,11 @@ export class DaemonState {
       await rm(tmp, { force: true }).catch(() => undefined);
       throw err;
     }
+  }
+
+  /** Removes a file of the state directory. Missing is success. */
+  async remove(file: string): Promise<void> {
+    await rm(this.pathFor(file), { force: true });
   }
 
   /** Removes one conversation's file. Missing is success. */

@@ -180,6 +180,21 @@ a rule, not a preference.
   Inside a client, exactly one component writes what the owner sends; nothing
   else may write it "just this once". Change notifications are emitted by the
   store that changed (after it is on disk), never remembered by each handler.
+- **One owner per capability, and every client asks it.** What a component
+  *does* has one home, like what it *knows*: the component that owns the thing
+  performs the action, and every client — phone, desktop, CLI — asks that owner
+  instead of carrying its own copy of the logic. The bridge updating itself is
+  the model: it knows the newest version, installs it and restarts, and both
+  apps offer the same one-tap update through `bridge/update`; neither app asks
+  npm or reimplements the install. A client keeps its own path only for what
+  the owner cannot do for itself (installing a bridge that is not there yet),
+  and says so where that path lives.
+- **A fix reaches the whole ecosystem, in the same change.** When a behavior is
+  built or fixed, trace every component that shows or depends on it and land
+  them together: the owner, `shared/`, the desktop, the phone, the CLI, their
+  docs and the spec. A capability that works on one surface and is silent on
+  the others is not done — the bridge knew nothing about a release for a day,
+  and neither app could say so, because each surface had been treated alone.
 - **Converge, don't trust delivery.** A client must reach the same state after
   any gap — asleep, offline, restarted, paired later — by asking the owner what
   changed since the last revision it applied, not by hoping every notification

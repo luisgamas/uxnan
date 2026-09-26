@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Update the PC's bridge from the phone.** The notice atop the conversations
+  now offers **Update** when a newer bridge is out and the bridge can update
+  itself: it installs the new version and restarts, never while a turn is
+  running, and the phone says when the PC is back on it. It also shows the
+  update under way, a failed one (with the command to run on the PC), and a
+  bridge older than this app. Settings → Updates gains a **Bridge on your PC**
+  card with the same.
+
 ## [0.0.25-alpha.20260926+20260927] - 20260926
 ### Fixed — chat order when the agent takes a message mid-turn
 

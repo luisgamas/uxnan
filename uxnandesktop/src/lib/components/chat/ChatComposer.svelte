@@ -9,9 +9,12 @@
   // can put a withdrawn or failed message back into it.
   //
   // What the phone's composer does, the same way: `/` opens the agent's
-  // commands (`agent/commands`, grouped: skills, the user's own, built-ins) and
-  // a picked one is sent as `turn/send { command }`; `@` completes a file of
-  // the project; images — from "+", or pasted — ride along as `attachments`
+  // commands (`agent/commands`, grouped: skills, the user's own, built-ins,
+  // loaded as soon as the agent is known) and a `/name args` message is sent as
+  // `turn/send { command }`; `@` browses and searches the project through the
+  // bridge that owns its folder (`workspace/list`, `workspace/searchFiles`) —
+  // a folder drills in, a file is written as `@path`; images — from "+",
+  // pasted or dropped, up to the phone's limit — ride along as `attachments`
   // when the agent takes them. The suggestion panel sits over the composer,
   // which keeps the focus and drives it (↑ ↓, Enter or Tab, Esc).
   //
@@ -25,7 +28,7 @@
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
-  import type { Snippet } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { AgentCommand, AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
@@ -44,8 +47,9 @@
     MAX_IMAGES,
     type ComposerImage,
   } from "$lib/bridge/imageAttachment";
-  import { searchFilesOn } from "$lib/fsRouter";
-  import { toastError } from "$lib/toast";
+  import { mentionEntries } from "$lib/bridge/mentions";
+  import { bridge } from "$lib/bridge/client.svelte";
+  import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
@@ -129,23 +133,41 @@
     token = ref ? tokenAt(value, ref.selectionStart ?? value.length) : undefined;
   }
 
-  // Another agent (a new chat's picker) has other commands: ask again.
+  // The agent's commands, asked as soon as the agent is known — not when `/`
+  // is typed — so a `/name args` message recalled, pasted, restored from the
+  // draft or sent at once still goes out as the command it is. Another agent
+  // (a new chat's picker) has other commands: its own load replaces them.
+  let commandsRequest: Promise<AgentCommand[]> | null = null;
+  function ensureCommands(): Promise<AgentCommand[]> {
+    if (!loadCommands) return Promise.resolve([]);
+    if (commands !== null) return Promise.resolve(commands);
+    commandsRequest ??= loadCommands().catch(() => [] as AgentCommand[]);
+    return commandsRequest;
+  }
   $effect(() => {
-    void loadCommands;
-    commands = null;
+    const load = loadCommands;
+    // Only the loader is tracked: the load itself reads and writes `commands`.
+    return untrack(() => {
+      commands = null;
+      commandsRequest = null;
+      if (!load) return;
+      let current = true;
+      commandsLoading = true;
+      void ensureCommands()
+        .then((list) => {
+          if (current) commands = list;
+        })
+        .finally(() => {
+          if (current) commandsLoading = false;
+        });
+      return () => {
+        current = false;
+      };
+    });
   });
 
-  // The agent's commands, asked for the first time `/` is typed.
-  $effect(() => {
-    if (token?.kind !== "command" || !loadCommands || commands !== null || commandsLoading) return;
-    commandsLoading = true;
-    loadCommands()
-      .then((list) => (commands = list))
-      .catch(() => (commands = []))
-      .finally(() => (commandsLoading = false));
-  });
-
-  // The project's files matching the mention, a beat after typing stops.
+  // What the mention names — the folder it is in, or the project's matches —
+  // a beat after typing stops, asked of the bridge (`$lib/bridge/mentions`).
   let searchSeq = 0;
   $effect(() => {
     if (token?.kind !== "mention" || !mentionRoot || tokenKey === dismissed) return;
@@ -155,15 +177,14 @@
     filesLoading = true;
     const timer = setTimeout(async () => {
       try {
-        const found = await searchFilesOn(null, root, query, false, { include: "", exclude: "" }, 30);
-        if (seq !== searchSeq) return;
-        files = found.entries.map((e) => ({ path: relativeTo(root, e.path), isDir: e.isDir }));
+        const found = await mentionEntries((m, p) => bridge.call(m, p), root, query);
+        if (seq === searchSeq) files = found;
       } catch {
         if (seq === searchSeq) files = [];
       } finally {
         if (seq === searchSeq) filesLoading = false;
       }
-    }, 120);
+    }, 150);
     return () => clearTimeout(timer);
   });
 
@@ -172,13 +193,6 @@
     void tokenKey;
     active = 0;
   });
-
-  function relativeTo(root: string, path: string): string {
-    const base = root.replace(/[\\/]+$/, "");
-    return path.startsWith(`${base}/`) || path.startsWith(`${base}\\`)
-      ? path.slice(base.length + 1)
-      : path;
-  }
 
   function pick(item: Suggestion) {
     if (!token) return;
@@ -220,8 +234,9 @@
 
   // ---- images ----
   async function addImages(list: ComposerImage[]) {
-    const room = MAX_IMAGES - images.length;
-    if (room <= 0) return;
+    const room = Math.max(0, MAX_IMAGES - images.length);
+    if (list.length > room) toast(i18n.t("chat.imagesLimit", { count: MAX_IMAGES }));
+    if (room === 0) return;
     images = [...images, ...list.slice(0, room)];
   }
 
@@ -239,6 +254,25 @@
         ready.push(await imageFromDataUrl(dataUrl, path.split(/[\\/]/).pop() ?? "image"));
       }
       await addImages(ready);
+      ref?.focus();
+    } catch (err) {
+      toastError(err);
+    }
+  }
+
+  /** Images dropped on the composer, like pasted ones. */
+  let dragging = $state(false);
+  function carriesFiles(e: DragEvent): boolean {
+    return acceptsImages && !disabled && [...(e.dataTransfer?.types ?? [])].includes("Files");
+  }
+  async function ondrop(e: DragEvent) {
+    dragging = false;
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    const dropped = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (dropped.length === 0) return;
+    try {
+      await addImages(await Promise.all(dropped.map((f) => imageFromBlob(f, f.name || "image"))));
       ref?.focus();
     } catch (err) {
       toastError(err);
@@ -264,7 +298,9 @@
   async function submit() {
     if (empty || disabled) return;
     const message = value;
-    const command = asCommand(message, commands ?? []);
+    const command = message.trimStart().startsWith("/")
+      ? asCommand(message, await ensureCommands())
+      : undefined;
     const attachments = images.map((i) => i.attachment);
     value = "";
     images = [];
@@ -333,7 +369,17 @@
        buttons is (the send button is disabled on an empty draft, and the
        primitive's `has-disabled` would fade the whole composer for it). -->
   <InputGroup.Root
-    class="rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[textarea:disabled]:opacity-50"
+    class={cn(
+      "rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[textarea:disabled]:opacity-50",
+      dragging && "ring-2 ring-ring/40",
+    )}
+    ondragover={(e: DragEvent) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      dragging = true;
+    }}
+    ondragleave={() => (dragging = false)}
+    {ondrop}
   >
     {#if images.length > 0}
       <InputGroup.Addon align="block-start" class="flex-wrap gap-1.5">

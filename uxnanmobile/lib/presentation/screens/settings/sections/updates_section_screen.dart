@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/enums/update_check_interval.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
+import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/app_info_provider.dart';
+import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/bridge_update_action.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
@@ -62,6 +65,8 @@ class UpdatesSectionScreen extends ConsumerWidget {
               const _UpdateStateCard(),
               NeSectionHeader(label: l10n.updateIntervalSectionTitle),
               const _IntervalSelector(),
+              NeSectionHeader(label: l10n.settingsUpdatesBridgeGroup),
+              const _BridgeVersionCard(),
             ]),
           ),
         ),
@@ -95,6 +100,61 @@ class _CurrentVersionCard extends ConsumerWidget {
         ),
         title: Text(l10n.updateCurrentVersionTitle),
         subtitle: Text(version),
+      ),
+    );
+  }
+}
+
+/// The connected PC's bridge: its version, whether a newer one is out, and the
+/// same one-tap update the notice atop the conversations offers — the bridge
+/// updates itself (`bridge/update`) when it runs as the PC user's service.
+class _BridgeVersionCard extends ConsumerWidget {
+  const _BridgeVersionCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final status = ref.watch(bridgeStatusProvider).value;
+    final live = ref.watch(bridgeUpdateStreamProvider).value;
+    final update = live ?? status?.update;
+    final version = status?.version ?? update?.version ?? '';
+    final updating = update?.phase == BridgeUpdatePhase.updating;
+    final subtitle = switch (update) {
+      _ when status == null => l10n.bridgeVersionNotConnected,
+      null => l10n.bridgeVersionOlder(version),
+      _ when updating => l10n.bridgeVersionUpdating(
+          update.targetVersion ?? update.latestVersion ?? '',
+        ),
+      _ when update.phase == BridgeUpdatePhase.failed =>
+        l10n.bridgeVersionFailed(version),
+      _ when update.available => l10n.bridgeVersionAvailable(
+          version,
+          update.latestVersion ?? '',
+        ),
+      _ => l10n.bridgeVersionUpToDate(version),
+    };
+    final canUpdate = status != null &&
+        update != null &&
+        update.canApply &&
+        update.available &&
+        !updating;
+
+    return ExpressiveCard(
+      color: colors.surfaceContainer,
+      padding: EdgeInsets.zero,
+      child: ListTile(
+        leading: UxIcon(UxIcons.dns, color: colors.onSurfaceVariant),
+        title: Text(l10n.bridgeVersionTitle),
+        subtitle: Text(subtitle),
+        trailing: updating
+            ? const PolygonLoader(size: 20)
+            : canUpdate
+                ? FilledButton.tonal(
+                    onPressed: () => requestBridgeUpdate(context, ref),
+                    child: Text(l10n.bridgeUpdateAction),
+                  )
+                : null,
       ),
     );
   }

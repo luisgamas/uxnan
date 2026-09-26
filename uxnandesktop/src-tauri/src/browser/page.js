@@ -622,8 +622,17 @@
     if (retarget) setAttr.call(link, "target", "_self");
     const proceed = mouse(el, "click", x, y, MouseEv);
     if (retarget) setAttr.call(link, "target", original);
-    if (retarget && proceed) return { ok: true, effect: "opened here" };
-    return { ok: true };
+    // A followed link may start loading well after the click (a redirector on
+    // the internet): say so, and the host keeps watching for it a little longer.
+    const follows = !!link && proceed && followable(attr(link, "href"));
+    if (retarget && proceed) return { ok: true, effect: "opened here", link: follows };
+    return follows ? { ok: true, link: true } : { ok: true };
+  }
+
+  /** Whether following `href` loads a document (not an in-page anchor or script). */
+  function followable(href) {
+    const h = (href || "").trim().toLowerCase();
+    return h !== "" && h[0] !== "#" && h.indexOf("javascript:") !== 0;
   }
 
   function setNative(el, value) {

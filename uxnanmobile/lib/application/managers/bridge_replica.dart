@@ -12,9 +12,11 @@ import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/repositories/i_bridge_replica_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/client_presence.dart';
 import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/replica_cursor.dart';
+import 'package:uxnan/domain/value_objects/rpc_message.dart';
 
 /// This phone's copy of what the connected PC's bridge shares — its
 /// conversations, its project registry (the same list Uxnan Desktop shows on
@@ -76,6 +78,8 @@ class BridgeReplica {
   final PublishSubject<void> _agentsChanged = PublishSubject<void>();
   final BehaviorSubject<List<PairedPhone>> _devices =
       BehaviorSubject.seeded(const []);
+  final BehaviorSubject<BridgeUpdate?> _bridgeUpdate =
+      BehaviorSubject.seeded(null);
 
   /// The cursor of the connected PC, as last applied (in memory).
   ReplicaCursor? _cursor;
@@ -93,6 +97,25 @@ class BridgeReplica {
 
   /// The phones paired to the connected PC — this one among them.
   Stream<List<PairedPhone>> get devicesStream => _devices.stream;
+
+  /// The bridge's own update as the bridge last told it this connection
+  /// (`stream/bridge/updated`, or the answer to [applyBridgeUpdate]). Null
+  /// until it says something new — then `bridge/status` → `update` stands.
+  Stream<BridgeUpdate?> get bridgeUpdateStream => _bridgeUpdate.stream;
+
+  /// Asks the bridge to update itself (`bridge/update`): it answers with the
+  /// state it entered (`updating`), then stops, installs the published version
+  /// and its service brings it back. Throws the bridge's [RpcError] when it
+  /// refuses: a turn running on some client, or a bridge that cannot replace
+  /// itself.
+  Future<BridgeUpdate?> applyBridgeUpdate() async {
+    final response = await _sendRequest('bridge/update', null);
+    final error = response.error;
+    if (error != null) throw error;
+    final entered = BridgeUpdate.fromJson(response.result);
+    if (entered != null) _bridgeUpdate.add(entered);
+    return entered;
+  }
 
   /// Fires when the PC's installed agents changed (re-read `agent/list`).
   Stream<void> get agentsChanged => _agentsChanged.stream;
@@ -113,6 +136,9 @@ class BridgeReplica {
       unawaited(sync());
     } else if (phase != ConnectionPhase.connected) {
       _presence.add(const []);
+      // A new connection may be a new bridge: its `bridge/status` stands
+      // until it says otherwise.
+      _bridgeUpdate.add(null);
     }
   }
 
@@ -296,6 +322,10 @@ class BridgeReplica {
         _applyDevices(devices);
       case AgentsUpdatedEvent():
         _agentsChanged.add(null);
+      case BridgeUpdatedEvent(:final update):
+        if (BridgeUpdate.fromJson(update) case final BridgeUpdate next) {
+          _bridgeUpdate.add(next);
+        }
       default:
         break;
     }
@@ -442,6 +472,7 @@ class BridgeReplica {
     await _phaseSub?.cancel();
     await _devices.close();
     await _presence.close();
+    await _bridgeUpdate.close();
     await _home.close();
     await _agentsChanged.close();
   }

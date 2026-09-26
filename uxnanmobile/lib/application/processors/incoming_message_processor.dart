@@ -101,6 +101,7 @@ class IncomingMessageProcessor {
               : const [],
         ),
       'stream/agents/updated' => const AgentsUpdatedEvent(),
+      'stream/bridge/updated' => BridgeUpdatedEvent(update: params['update']),
       'stream/devices/updated' => DevicesUpdatedEvent(
           devices: params['devices'] is List
               ? params['devices'] as List<Object?>

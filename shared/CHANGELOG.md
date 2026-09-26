@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — the bridge updates itself
+
+- `BridgeUpdate` (`version`, `latestVersion`, `available`, `canApply`,
+  `unsupportedReason`, `phase: idle | updating | failed`, `targetVersion`,
+  `failure { reason: busy | unsupported | permission | install, message,
+  command? }`): the bridge's own update, owned by the bridge
+  (architecture/02a §5.8.18).
+- `bridge/update` (method 82) → `BridgeUpdate`: install the published version
+  and restart on it; `-32009` while a turn runs on any client.
+- `stream/bridge/updated { update }` (notification 22), broadcast when a newer
+  version is found or an update starts or fails.
+
+### Changed
+
+- `BridgeStatus` carries `update?: BridgeUpdate` in place of `latestVersion` /
+  `updateAvailable` — one model for knowing and applying an update. Absent
+  means a bridge older than updating itself.
+
 ## [0.0.18-alpha.20260926] - 20260926
 ### Changed — a message taken mid-turn is shown where the agent took it
 

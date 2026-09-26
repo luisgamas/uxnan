@@ -11,8 +11,8 @@ export const MAX_IMAGE_EDGE = 2048;
 /** Above this many bytes an image is re-encoded even if small enough in pixels. */
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
-/** How many images one message may carry. */
-export const MAX_IMAGES = 8;
+/** How many images one message may carry — the phone's limit too. */
+export const MAX_IMAGES = 10;
 
 /** An image waiting in the composer: what is sent, plus its preview. */
 export interface ComposerImage {

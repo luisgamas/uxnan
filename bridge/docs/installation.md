@@ -81,25 +81,39 @@ A newer bridge is available: <version> (you have <current>).
 Update with: npm install -g uxnan-bridge@latest
 ```
 
-The check is best-effort (silent when offline / up to date), cached in
-`~/.uxnan/update-check.json` with a 24h TTL, and the running daemon refreshes it
-in the background. **`start` always re-checks** (it ignores the cache), so a
-release published inside the 24h window is announced the next time you start the
-bridge instead of up to a day later; the short-lived `status`/`qr`/`code`
-commands keep using the cache so they stay fast. The paired phone learns the
-same thing via `bridge/status`
-(`latestVersion`/`updateAvailable`) and shows an informational hint — see the
-mobile app. Update with `npm install -g uxnan-bridge@latest` (or `git pull` +
-`npm install` for a source checkout). `uxnan-bridge version` prints the installed
-version without starting anything.
+The check is best-effort (silent when offline / up to date). The short-lived
+`status`/`qr`/`code` commands use a cache in `~/.uxnan/update-check.json` (24h)
+so they stay fast; `start` re-checks. **The running bridge asks the registry
+itself every hour**, and tells every connected client the moment a newer version
+appears (`stream/bridge/updated`; `bridge/status` → `update`).
 
-**From Uxnan Desktop.** Settings → *Bridge & mobile* (and a chat tab, when the
-bridge is missing) offers **Install** / **Update**: it runs that same npm command
-on your request, shows its output, and — when Uxnan is the one running the bridge
-— restarts it on the new version. If npm cannot write its global folder, it says
-so and offers the command to copy. *Update automatically* does the same on its
-own when a newer version is published, but only while no conversation is
-running on any device (`bridge/status` → `activeTurns`).
+**It updates itself** (architecture/02a §5.8.18). When the bridge runs as your
+user's service from a global npm install, any client can ask it to update —
+Uxnan Desktop's sidebar or Settings → *Bridge & mobile*, or the phone's notice
+and Settings → *Updates* (`bridge/update`). It refuses while a turn is running on
+any client. Otherwise it hands over to a helper (`uxnan-bridge self-update`,
+internal) and stops; the helper waits for it to exit, runs
+`npm install --global --prefix <the same prefix> uxnan-bridge@<version>` with the
+npm installed beside the bridge, writes the outcome to
+`~/.uxnan/update-result.json` and starts the service again. The bridge that comes
+back reports a failure (npm's last lines, and the command to run by hand) or
+simply runs the new version. Installing only once the bridge has stopped is what
+makes this work on Windows, where a running process keeps its native modules
+locked.
+
+From a terminal, `uxnan-bridge update` asks the running bridge the same way
+(one more client of the same owner; it never installs anything itself).
+
+A bridge you started in a terminal, or one run from a source checkout, cannot
+replace itself (`update.canApply: false` says why): update it with
+`npm install -g uxnan-bridge@latest` (or `git pull` + `npm install`).
+`uxnan-bridge version` prints the installed version without starting anything.
+
+**From Uxnan Desktop, before the bridge could do it.** Uxnan Desktop keeps its
+own npm path only for what the bridge cannot do for itself: installing it when
+there is none, and updating a bridge older than updating itself
+(`bridge/status` without `update`). *Update automatically* uses the same owner:
+it asks the bridge, and only while no conversation is running on any device.
 
 ## Run it as your user's service (the normal way)
 

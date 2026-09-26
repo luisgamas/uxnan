@@ -2815,6 +2815,72 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String bridgeUpdateBodyApply(String version) {
+    return '$version is available. Update the bridge from here: it installs the new version and restarts, never while a turn is running.';
+  }
+
+  @override
+  String get bridgeUpdateOlder =>
+      'The bridge on your PC is older than this app. Update it on your computer to use everything this version offers.';
+
+  @override
+  String get bridgeUpdateAction => 'Update';
+
+  @override
+  String get bridgeUpdatingTitle => 'Updating the bridge';
+
+  @override
+  String bridgeUpdatingBody(String version) {
+    return 'Installing $version. Your PC reconnects in a moment.';
+  }
+
+  @override
+  String get bridgeUpdateFailedTitle => 'The bridge could not update';
+
+  @override
+  String get bridgeUpdateRunOnPc => 'Or run this on your PC:';
+
+  @override
+  String bridgeUpdatedSnack(String version) {
+    return 'The bridge is now $version';
+  }
+
+  @override
+  String get settingsUpdatesBridgeGroup => 'Bridge on your PC';
+
+  @override
+  String get bridgeVersionTitle => 'Uxnan bridge';
+
+  @override
+  String get bridgeVersionNotConnected =>
+      'Connect to your PC to see its bridge';
+
+  @override
+  String bridgeVersionUpToDate(String version) {
+    return '$version · up to date';
+  }
+
+  @override
+  String bridgeVersionAvailable(String current, String latest) {
+    return '$current · $latest is available';
+  }
+
+  @override
+  String bridgeVersionOlder(String version) {
+    return '$version · older than this app — update it on your PC';
+  }
+
+  @override
+  String bridgeVersionUpdating(String version) {
+    return 'Updating to $version…';
+  }
+
+  @override
+  String bridgeVersionFailed(String version) {
+    return '$version · the last update failed';
+  }
+
+  @override
   String get bridgeUpdateDismiss => 'Dismiss';
 
   @override

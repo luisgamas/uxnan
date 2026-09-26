@@ -156,6 +156,7 @@ uxnan-bridge uninstall-service
 uxnan-bridge service-status   # installed / running, as JSON (Uxnan Desktop reads it)
 uxnan-bridge service-start    # start the installed service
 uxnan-bridge config get       # shared settings; `config set home <folder>` / `config set name <name>`
+uxnan-bridge update           # ask the running bridge to update itself
 uxnan-bridge version          # print the installed version (starts nothing)
 ```
 
@@ -175,11 +176,13 @@ platform scripts under `scripts/`.
 The bridge is the ecosystem's core engine, so `start`/`status`/`qr`/`code` also
 print a one-line **"a newer bridge is available"** notice to stderr when the
 running version is behind the latest published to npm (`latest` dist-tag). The
-check is best-effort and cached in `~/.uxnan/update-check.json` (24h TTL);
-**`start` always re-checks** (it bypasses the cache), so a release published
-inside that window is announced the next time you start the bridge rather than
-up to a day later. The result is also exposed to the phone via `bridge/status`
-(`latestVersion`/`updateAvailable`).
+check is best-effort; the short commands keep a 24h cache
+(`~/.uxnan/update-check.json`), while the **running bridge checks every hour**
+and tells every client (`stream/bridge/updated`, `bridge/status` → `update`).
+Run as your service, **the bridge updates itself** when any client asks
+(`bridge/update`, never under a running turn): it installs the published version
+and restarts on it — see [`docs/installation.md`](docs/installation.md) →
+*Staying up to date*.
 
 The Ed25519 identity is stored in the OS keychain (Windows Credential Manager /
 macOS Keychain / Linux Secret Service) via `@napi-rs/keyring`. With no keychain
@@ -200,8 +203,8 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **81 JSON-RPC methods +
-  21 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  E2EE types and runtime validators. The bridge exposes **82 JSON-RPC methods +
+  22 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,

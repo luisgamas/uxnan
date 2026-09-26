@@ -1,10 +1,11 @@
 import 'package:equatable/equatable.dart';
+import 'package:uxnan/domain/value_objects/bridge_update.dart';
 
 /// The bridge daemon's reported status (`bridge/status`). Sanitized and
 /// non-secret. Mirrors the contract `BridgeStatus = { version, relayConnected,
-/// lanEnabled, activeSessions, platform, uptimeMs, latestVersion?,
-/// updateAvailable?, features? }`; the parser is tolerant so the app degrades
-/// gracefully against newer/older bridges.
+/// lanEnabled, activeSessions, platform, uptimeMs, update?, features? }`; the
+/// parser is tolerant so the app degrades gracefully against newer/older
+/// bridges.
 class BridgeStatus extends Equatable {
   /// Creates a [BridgeStatus].
   const BridgeStatus({
@@ -12,8 +13,7 @@ class BridgeStatus extends Equatable {
     this.version,
     this.lanEnabled,
     this.activeSessions,
-    this.latestVersion,
-    this.updateAvailable = false,
+    this.update,
     this.supportsMessageQueue = false,
     this.supportsManagedWorktrees = false,
   });
@@ -27,8 +27,7 @@ class BridgeStatus extends Equatable {
       lanEnabled:
           json['lanEnabled'] is bool ? json['lanEnabled'] as bool : null,
       activeSessions: (json['activeSessions'] as num?)?.toInt(),
-      latestVersion: json['latestVersion'] as String?,
-      updateAvailable: json['updateAvailable'] == true,
+      update: BridgeUpdate.fromJson(json['update']),
       // Absent → false. Assuming a capability the bridge lacks is not a
       // cosmetic mistake here: offering to queue against a bridge that cannot
       // queue makes it start a second concurrent turn, corrupting the session.
@@ -51,13 +50,10 @@ class BridgeStatus extends Equatable {
   /// The number of phone sessions the bridge is serving, when reported.
   final int? activeSessions;
 
-  /// The latest bridge version published to npm, from the bridge's own
-  /// background update check — when reported (absent on older bridges/offline).
-  final String? latestVersion;
-
-  /// Whether the bridge reports that a newer version than [version] is
-  /// available. Drives the informational "bridge update available" banner.
-  final bool updateAvailable;
+  /// The bridge's own update. **Null on a bridge that predates updating
+  /// itself** — one older than this app, which then asks to update it on the
+  /// PC.
+  final BridgeUpdate? update;
 
   /// Whether the bridge queues a `turn/send` sent while a turn is in flight
   /// (`features.messageQueue`). **False on any bridge that doesn't advertise
@@ -79,8 +75,7 @@ class BridgeStatus extends Equatable {
         version,
         lanEnabled,
         activeSessions,
-        latestVersion,
-        updateAvailable,
+        update,
         supportsMessageQueue,
         supportsManagedWorktrees,
       ];

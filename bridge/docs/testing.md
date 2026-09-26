@@ -120,6 +120,17 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
   question, a steer, a cancel, `readSessionMessages`, `listModels` and
   `generateTitle`, and compare with [`agents.md`](./agents.md) → *OpenCode 1 and
   OpenCode 2*.
+- **Mid-turn delivery (steering) — every agent that has it.** Drive a scratch
+  bridge (`startBridge({ baseDir })`, never `~/.uxnan`) through a turn that works
+  a few seconds (`sleep 12 && echo one`), send a follow-up while it runs, and
+  check the lifecycle is `completed` for the first turn then `started` for the
+  follow-up, with the answer stored under the follow-up and no duplicate turn
+  after a `turn/list` (native history). Verified live 2026-09-26 on Claude Code,
+  Codex, OpenCode (including a follow-up sent while an approval was pending: it
+  queues) and pi.
+- **Codex live steps.** A turn that reads a file, searches and runs a command:
+  each `stream/content/block` arrives `running` and again settled with the same
+  `blockId`, and the stored turn holds one row per step (verified 2026-09-26).
 - **No next planned agent.** The wired set is complete for now; the recipe for
   wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md).
 

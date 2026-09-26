@@ -11,15 +11,21 @@ void main() {
         'activeSessions': 2,
         'platform': 'win32',
         'uptimeMs': 1000,
-        'latestVersion': '0.2.0',
-        'updateAvailable': true,
+        'update': {
+          'version': '0.1.0',
+          'latestVersion': '0.2.0',
+          'available': true,
+          'canApply': true,
+          'phase': 'idle',
+        },
       });
       expect(status.relayConnected, isTrue);
       expect(status.version, '0.1.0');
       expect(status.lanEnabled, isTrue);
       expect(status.activeSessions, 2);
-      expect(status.latestVersion, '0.2.0');
-      expect(status.updateAvailable, isTrue);
+      expect(status.update?.latestVersion, '0.2.0');
+      expect(status.update?.available, isTrue);
+      expect(status.update?.canApply, isTrue);
     });
 
     test('defaults relayConnected to false and leaves optionals null', () {
@@ -28,18 +34,17 @@ void main() {
       expect(status.version, isNull);
       expect(status.lanEnabled, isNull);
       expect(status.activeSessions, isNull);
-      expect(status.latestVersion, isNull);
-      expect(status.updateAvailable, isFalse);
+      expect(status.update, isNull);
     });
 
-    test('defaults updateAvailable to false against an older bridge', () {
-      // An older bridge omits the update fields entirely.
+    test('a bridge that predates updating itself reports no update', () {
+      // Such a bridge is older than this app: the notice asks to update it on
+      // the PC instead of offering to do it.
       final status = BridgeStatus.fromJson(const {
         'version': '0.1.0',
         'relayConnected': false,
       });
-      expect(status.latestVersion, isNull);
-      expect(status.updateAvailable, isFalse);
+      expect(status.update, isNull);
     });
 
     test('treats a non-bool relayConnected as false (tolerant)', () {

@@ -43,6 +43,13 @@ describe('complete', () => {
     const cmd = tokenAt('/re', 3)!;
     expect(complete('/re', cmd, '/review')).toEqual({ text: '/review ', caret: 8 });
   });
+
+  it('keeps a picked folder open so the mention drills into it', () => {
+    const token = tokenAt('see @sr', 7)!;
+    const next = complete('see @sr', token, '@src/');
+    expect(next).toEqual({ text: 'see @src/', caret: 9 });
+    expect(tokenAt(next.text, next.caret)).toMatchObject({ kind: 'mention', query: 'src/' });
+  });
 });
 
 describe('matchCommands', () => {

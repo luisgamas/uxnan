@@ -1,8 +1,17 @@
 # Integracion del Bridge y Conexion Movil
 
-> **Version:** 1.2.1
+> **Version:** 1.3.0
 > **Fecha:** 2026-09-26
 > **Estado:** Canal local (cliente) implementado; empaquetado embebido pendiente
+
+> **Resumen ejecutivo (1.3.0):** el bridge se actualiza a si mismo (`02a`
+> §5.8.18) y el desktop se lo pide: `bridge/update` desde una fila de la barra
+> lateral (visible solo mientras hay una version nueva), desde Ajustes → Bridge
+> y movil, y en la actualizacion automatica. El desktop refleja `update` de
+> `bridge/status` y de `stream/bridge/updated` en un solo lugar
+> (`BridgeInstallStore`). Su instalador npm (`bridgeclient/install.rs`) queda
+> solo para instalar el bridge y para actualizar uno anterior a esta funcion
+> (sin `update`) o que no corre como servicio.
 
 > **Resumen ejecutivo (1.2.1):** cada perfil del desktop se conecta con su
 > propio nombre de cliente, `desktop-<perfil>` (`02a` §5.8.15): la app instalada
@@ -428,10 +437,18 @@ src/lib/bridge/  client · chat (replica) · projectMirror · conversation  → 
   canal, el estado es `outdated` (el binario instalado no responde a
   `uxnan-bridge version`: es anterior al canal) o `channelOff` (lo conoce, pero
   corre un proceso anterior a la actualizacion o con `localControlEnabled:
-  false`). `managed` no arranca un segundo bridge sobre un lock ocupado. *Update*
-  en `managed` reinstala y reinicia el servicio; `bridge_restart` (a peticion
-  del usuario) detiene el que corre con `uxnan-bridge stop` y vuelve a levantar
-  el servicio.
+  false`). `managed` no arranca un segundo bridge sobre un lock ocupado.
+  `bridge_restart` (a peticion del usuario) detiene el que corre con
+  `uxnan-bridge stop` y vuelve a levantar el servicio.
+- **Actualizar el bridge (`02a` §5.8.18).** Lo hace el propio bridge:
+  *Actualizar* llama `bridge/update`, el bridge se detiene, instala la version
+  publicada y su servicio lo levanta; la ventana ve caer la conexion y volver con
+  la version nueva, y lo dice (o dice el fallo que reporta el bridge que vuelve).
+  Nunca con un turno en curso en cualquier cliente. El instalador del desktop
+  (`npm install -g uxnan-bridge@latest` + reinstalar y reiniciar el servicio en
+  `managed`) solo se usa cuando no hay bridge o cuando el bridge no puede
+  hacerlo: uno anterior a esta funcion (`bridge/status` sin `update`) o que no
+  corre como servicio del usuario.
 - **Herramientas del desktop para los agentes del bridge.** Al conectar, el
   cliente llama `desktop/attach { mcpUrl, token }` (`02a` §5.8.15) con el
   endpoint `/mcp` de su servidor de control y un **token de agente del bridge**
@@ -619,11 +636,11 @@ export interface JsonRpcMethodRegistry {
   'notifications/update':     { params: UpdateNotificationsParams;   result: void };
   'notifications/unregister': { params: void;                        result: void };
 
-  // Bridge control (6, desktop -> bridge)
-  // BridgeStatus incluye `latestVersion`/`updateAvailable` (chequeo npm del
-  // bridge) y `features` (capacidades opcionales, p.ej. `messageQueue`). El
-  // bridge embebido debe conservar ambos: el primero para que el telefono siga
-  // mostrando "actualiza el bridge" (ver bridge/src/update-check.ts), el
+  // Bridge control (7, desktop -> bridge)
+  // BridgeStatus incluye `update` (la actualizacion del propio bridge, 02a
+  // §5.8.18) y `features` (capacidades opcionales, p.ej. `messageQueue`). El
+  // bridge embebido debe conservar ambos: el primero para que todo cliente
+  // ofrezca actualizarlo a traves del mismo dueño, el
   // segundo porque el cliente decide con el si puede ofrecer una funcion —
   // ofrecer encolar contra un bridge que no sabe encolar arranca un turno
   // concurrente y corrompe la sesion del agente.
@@ -633,6 +650,7 @@ export interface JsonRpcMethodRegistry {
   'bridge/disconnectPhone':     { params: { deviceId: string }; result: void };
   'bridge/trustedDevices':      { params: void;                 result: TrustedDevice[] };
   'bridge/removeTrustedDevice': { params: { deviceId: string }; result: void };
+  'bridge/update':              { params: void;                 result: BridgeUpdate };
 }
 ```
 

@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 834, shared 39, relay
+standalone). It builds clean and the suite is green (bridge 852, shared 40, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -23,6 +23,16 @@ push validation (FOR-HUMAN).
 
 **Implemented (DONE):**
 
+- **The bridge updates itself** (architecture/02a §5.8.18, `self-update.ts`):
+  it checks the registry hourly while it runs, tells every client
+  (`stream/bridge/updated`, `bridge/status` → `update`), and on `bridge/update`
+  hands over to the `self-update` helper, which installs the published version
+  with the npm beside it once the bridge has stopped and starts the service
+  again; the bridge that comes back reports a failure. Covered by
+  `self-update.test.ts`, and run for real against npm in an isolated prefix
+  (install of a published version, and a failed one) on macOS. **Not yet run
+  end to end as a live service** on any platform (the helper against launchd /
+  systemd / Task Scheduler) — see *Pending*.
 - **One layer: the bridge is the source of truth** (architecture/02a §5.8.17) —
   a persistent, mirrored **project registry** (`projects/project-registry.ts`,
   `~/.uxnan/projects.json`: `project/add|remove|rename`, worktrees map to their
@@ -364,26 +374,13 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
-- [ ] **Verify Codex's live step rows against a real turn.** The Codex half of
-      live steps (`codex-tools.ts` → `codexItemStartBlock` on `item/started`,
-      the final block replacing it by `blockId`) and the `error` with
-      `willRetry: true` no longer ending the turn are implemented and
-      unit-tested against the app-server v2 schema, but were never run against
-      a real Codex turn: on 2026-09-25 the account returned 401 even after a
-      fresh `codex login` (a direct `codex exec` failed the same way). Every
-      other wired agent was verified live. Run a Codex chat turn that reads,
-      searches and runs a command; confirm each row appears while it runs,
-      settles in place (no duplicate row), and that a stream reconnect keeps
-      the turn going.
-- [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
-      mid-turn delivery is implemented and unit-tested against the published
-      protocol schema (`codex app-server generate-json-schema`, codex-cli
-      0.146.0), but has never run against a real turn: the account was at 100%
-      of its weekly limit with `credits.balance: "0"` when it landed (resets
-      2026-08-07). Steer a real Codex turn, confirm the follow-up lands inside
-      it (one `turn/completed`), and record it in `docs/testing.md`. Claude Code
-      and OpenCode were both verified live this way and are done.
-      See the `FOR-DEV:` marker in `codex-adapter.ts`.
+- [ ] **Codex's `error` with `willRetry: true` against a real reconnect.** The
+      rest of Codex's live steps was verified on a real turn (2026-09-26: read,
+      search and a command each appear `running` and settle in place by
+      `blockId`, one row per step), and `turn/steer` was verified live the same
+      day. The retry path — an `error` that must not end the turn while Codex
+      reconnects its model stream — is unit-tested against the app-server v2
+      schema but cannot be forced on demand; watch for it on a flaky network.
 - [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
       are DONE (reasoning effort wired per agent + the per-model option schema in
       `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-
@@ -465,6 +462,16 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 - [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
       secret redaction; add size-based rotation + pruning of old log files.
 - [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).
+- [ ] **Run the self-update as a live service on each platform.** `bridge/update`
+      and the `self-update` helper (`self-update.ts` → `runSelfUpdateHelper`)
+      are unit-tested and were run for real against npm in an isolated prefix
+      on macOS, but never as the user's live service: the clean stop, the
+      helper outliving it, and `startService` bringing the new version up under
+      launchd, systemd `--user` and Task Scheduler (and the Startup-folder
+      fallback) are unverified. The first bridge that can do it is the one
+      that ships this change, so the first live run is updating *from* it:
+      verify then on macOS, Linux and Windows, including a refused update
+      (a turn running) and a failed one (e.g. a read-only prefix).
 
 ## Packaging — npm publish readiness
 

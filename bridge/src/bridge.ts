@@ -10,6 +10,7 @@
 import { existsSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
   LOCAL_CONTROL_FILE,
@@ -18,6 +19,7 @@ import {
   localReceiverId,
   makeNotification,
   type AgentsUpdatedParams,
+  type BridgeUpdatedParams,
   type LocatedAgent,
   type BridgeStatus,
   type PairingPayload,
@@ -42,7 +44,13 @@ import { generatePairingPayload } from './qr.js';
 import { PairingCodeService } from './pairing/pairing-code-service.js';
 import { createFileLogger, type LogLevel } from './logger.js';
 import { BRIDGE_VERSION } from './version.js';
-import { cachedUpdateStatus, ensureUpdateStatus, type UpdateStatus } from './update-check.js';
+import { cachedUpdateStatus, fetchLatestPublishedVersion } from './update-check.js';
+import {
+  BridgeUpdater,
+  resolveUpdateLayout,
+  spawnUpdateHelper,
+  DAEMON_UPDATE_CHECK_MS,
+} from './self-update.js';
 import { FileTrustStore, type TrustStore } from './transport/trust-store.js';
 import { handleSecureConnection } from './transport/session-handler.js';
 import { connectRelayAsMac, type RelayConnection } from './transport/relay-client.js';
@@ -109,9 +117,6 @@ export interface Bridge {
   readonly router: HandlerRouter;
   readonly trustStore: TrustStore;
   status(): BridgeStatus;
-  /** Latest self-update status from the background npm check, or `undefined`
-   * before the first check resolves. */
-  updateStatus(): UpdateStatus | undefined;
   generatePairingQr(): PairingPayload;
   /**
    * The same payload WITHOUT opening the pairing window — its addresses and
@@ -541,20 +546,32 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // by both the CLI `status()` and the `bridge/status` handler (via the context).
   const relayState = { connected: false };
 
-  // Self-update status from the background npm check, read by the CLI notice and
-  // exposed to the phone via `bridge/status`. Seeded synchronously from the
-  // on-disk cache, then refreshed in the background (TTL-gated, non-blocking).
-  const updateState: { status: UpdateStatus | undefined } = {
-    status: await cachedUpdateStatus(state, BRIDGE_VERSION),
-  };
-  const refreshUpdate = (): Promise<void> =>
-    ensureUpdateStatus(state)
-      .then((status) => {
-        updateState.status = status;
-      })
-      .catch(() => {
-        /* best-effort — never surface update-check failures to the daemon */
-      });
+  // The bridge's own update (`self-update.ts`): seeded from the on-disk cache,
+  // checked against the registry hourly, applied by `bridge/update`, and told
+  // to every client with `stream/bridge/updated`.
+  const cliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
+  const updater = new BridgeUpdater(
+    {
+      state,
+      version: BRIDGE_VERSION,
+      launchedBy: host.launchedBy,
+      layout: resolveUpdateLayout(cliPath, process.platform),
+      activeTurns: () => agentManager.activeTurnCount(),
+      now,
+      onChange: (update) =>
+        broadcast(StreamNotification.BridgeUpdated, { update } satisfies BridgeUpdatedParams),
+      fetchLatest: () => fetchLatestPublishedVersion(),
+      handOver: (version) => {
+        logger.info(`updating the bridge to ${version}: handing over to the helper`);
+        spawnUpdateHelper({ execPath: process.execPath, cliPath, pid: process.pid, version });
+        // The daemon's own shutdown (`cmdStart`): a clean exit the service
+        // manager leaves alone — the helper starts the service after npm.
+        process.kill(process.pid, 'SIGTERM');
+      },
+    },
+    (await cachedUpdateStatus(state, BRIDGE_VERSION)).latestVersion,
+  );
+  await updater.init();
 
   const context: BridgeContext = {
     version: BRIDGE_VERSION,
@@ -580,7 +597,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     logger,
     relayConnected: () => relayState.connected,
     localControlActive: () => localControl !== undefined,
-    updateStatus: () => updateState.status,
+    updater,
     pairingPayload: () => {
       pairingCodeService.arm();
       return buildPairingPayload();
@@ -591,11 +608,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const router = new HandlerRouter(context);
   registerAllHandlers(router);
 
-  // Kick a background refresh on boot and every 6h; unref'd so a short-lived CLI
-  // command (qr/code/status) isn't kept alive, cleared on stop().
-  void refreshUpdate();
-  const UPDATE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
-  const updateTimer = setInterval(() => void refreshUpdate(), UPDATE_REFRESH_INTERVAL_MS);
+  // Check on boot and hourly; unref'd so a short-lived CLI command (qr/code/
+  // status) isn't kept alive, cleared on stop().
+  void updater.refresh();
+  const updateTimer = setInterval(() => void updater.refresh(), DAEMON_UPDATE_CHECK_MS);
   updateTimer.unref?.();
 
   const relayConnections: RelayConnection[] = [];
@@ -632,12 +648,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         activeTurns: agentManager.activeTurnCount(),
         host,
         clients: presence.list(),
-        ...(updateState.status?.latestVersion !== undefined
-          ? { latestVersion: updateState.status.latestVersion }
-          : {}),
-        ...(updateState.status?.updateAvailable ? { updateAvailable: true } : {}),
+        update: updater.snapshot(),
       }),
-    updateStatus: () => updateState.status,
     // Showing the QR (or the manual code, below) IS the operator's "pair a
     // phone now" signal: arm the LAN bootstrap window so the handshake accepts
     // a qr_bootstrap for the next PAIRING_WINDOW_MS (see the LAN

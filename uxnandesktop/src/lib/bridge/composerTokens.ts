@@ -35,14 +35,18 @@ function wordEnd(text: string, caret: number): number {
   return caret + (rest?.[0].length ?? 0);
 }
 
-/** [text] with [token] replaced by [replacement] and a space, and where the caret goes. */
+/**
+ * [text] with [token] replaced by [replacement] and a space, and where the caret
+ * goes. A folder (a replacement ending in `/`) gets no space: the mention stays
+ * open, so the panel drills into it.
+ */
 export function complete(
   text: string,
   token: ComposerToken,
   replacement: string,
 ): { text: string; caret: number } {
   const after = text.slice(token.end).replace(/^ /, '');
-  const inserted = `${replacement} `;
+  const inserted = replacement.endsWith('/') ? replacement : `${replacement} `;
   return {
     text: `${text.slice(0, token.start)}${inserted}${after}`,
     caret: token.start + inserted.length,

@@ -39,6 +39,7 @@ import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
+import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/client_presence.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
@@ -208,44 +209,83 @@ final bridgeSupportsManagedWorktreesProvider = Provider<bool>((ref) {
       false;
 });
 
-/// Tracks the bridge `latestVersion`s the user dismissed so the informational
-/// "bridge update available" banner stays hidden until a newer bridge appears.
-/// In-memory (per app session); the banner reappears next launch if the bridge
-/// is still outdated.
+/// Tracks the bridge-update notices the user dismissed (by
+/// [BridgeUpdateNotice.key]) so each stays hidden until a newer bridge, or a
+/// new failure, appears. In-memory (per app session).
 class BridgeUpdateDismissal extends Notifier<Set<String>> {
   @override
   Set<String> build() => const {};
 
-  /// Hides the banner for the given latest version.
-  void dismiss(String? latestVersion) {
-    if (latestVersion == null || latestVersion.isEmpty) return;
-    state = {...state, latestVersion};
+  /// Hides the notice with [key].
+  void dismiss(String? key) {
+    if (key == null || key.isEmpty) return;
+    state = {...state, key};
   }
 }
 
-/// Drives dismissal of the bridge-update banner.
+/// Drives dismissal of the bridge-update notice.
 final bridgeUpdateDismissalProvider =
     NotifierProvider<BridgeUpdateDismissal, Set<String>>(
   BridgeUpdateDismissal.new,
 );
 
-// FOR-DEV: also surface this as a fixed row in Settings → About once the
-// settings overhaul (feat/settings-updates-overhaul) merges — read this same
-// provider; no new data/contract work. See FOR-DEV.md.
-/// The informational "a newer bridge is available" state for the banner, or
-/// null when the bridge is up to date / unknown / the notice was dismissed.
-/// The **bridge** decides `updateAvailable` (it runs the npm check and reports
-/// it on `bridge/status`); the phone only renders the hint — it never queries
-/// npm itself. Refreshes with [bridgeStatusProvider] on (re)connect.
-final bridgeUpdateProvider =
-    Provider<({String? currentVersion, String? latestVersion})?>((ref) {
-  final status = ref.watch(bridgeStatusProvider).value;
-  if (status == null || !status.updateAvailable) return null;
-  final latest = status.latestVersion;
-  final dismissed = ref.watch(bridgeUpdateDismissalProvider);
-  if (latest != null && dismissed.contains(latest)) return null;
-  return (currentVersion: status.version, latestVersion: latest);
+/// The bridge's own update as the bridge last told this connection
+/// (`stream/bridge/updated`, or the answer to `bridge/update`), from the one
+/// replica that keeps it. Null until the bridge says something new.
+final bridgeUpdateStreamProvider = StreamProvider<BridgeUpdate?>(
+  (ref) => ref.watch(bridgeReplicaProvider).bridgeUpdateStream,
+);
+
+/// What the notice atop the conversations says about the PC's bridge.
+typedef BridgeUpdateNotice = ({
+  /// The bridge's update, or null for a bridge that predates updating itself.
+  BridgeUpdate? update,
+
+  /// The version running now.
+  String? currentVersion,
+
+  /// What dismissing it remembers.
+  String key,
 });
+
+/// The bridge-update notice, or null when there is nothing to say (up to
+/// date, unknown, or dismissed). The **bridge** owns its update — it checks
+/// npm, installs and restarts itself (`bridge/update`) — and the phone only
+/// shows it and asks: the latest word from the bridge this connection, else
+/// its `bridge/status`.
+final bridgeUpdateProvider = Provider<BridgeUpdateNotice?>((ref) {
+  final status = ref.watch(bridgeStatusProvider).value;
+  if (status == null) return null;
+  final update = ref.watch(bridgeUpdateStreamProvider).value ?? status.update;
+  final key = switch (update) {
+    null => 'from:${status.version}',
+    BridgeUpdate(phase: BridgeUpdatePhase.updating) => 'updating',
+    BridgeUpdate(phase: BridgeUpdatePhase.failed) =>
+      'failed:${update.targetVersion ?? update.latestVersion}',
+    BridgeUpdate(available: false) => null,
+    _ => update.latestVersion ?? '',
+  };
+  if (key == null) return null;
+  // An update under way is never hidden: the PC is about to drop and return.
+  final dismissed = ref.watch(bridgeUpdateDismissalProvider);
+  if (key != 'updating' && dismissed.contains(key)) return null;
+  return (update: update, currentVersion: status.version, key: key);
+});
+
+/// The version this phone asked the bridge to update to, until the bridge is
+/// back on it (then the notice says so once).
+class BridgeUpdatePending extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  /// Remembers the version asked for; null clears it.
+  // ignore: use_setters_to_change_properties
+  void set(String? version) => state = version;
+}
+
+/// Drives [BridgeUpdatePending].
+final bridgeUpdatePendingProvider =
+    NotifierProvider<BridgeUpdatePending, String?>(BridgeUpdatePending.new);
 
 /// Reactive list of paired trusted devices (PCs), for the UI.
 final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(

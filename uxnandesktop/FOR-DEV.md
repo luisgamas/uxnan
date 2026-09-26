@@ -30,11 +30,11 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins), **chat tabs that drive the Uxnan bridge's conversations next to
 the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridge/`,
-`docs/chat.md`). 1,010 Rust tests (933 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
+`docs/chat.md`). 1,015 Rust tests (938 unit in the app crate + 18 in `uxnan-control-protocol` + 14 in `uxnan-cli` + 45
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,587 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,601 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -888,17 +888,21 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
-- [ ] **Browser — a click whose navigation starts late reports `navigated: false`.**
-      `settle` (`control/services/browser.rs`) looks once, `SETTLE` (350 ms)
-      after the action, for a new document or a load in progress. A link that
-      first goes through a redirector on the internet starts loading later than
-      that, so the answer says nothing changed while the page does move — seen
-      2026-09-25 when an agent clicked the site's GitHub link (a short link that
-      redirects to github.com): the click reported no change and the next status
-      showed the repository. Waiting longer after every click would slow down
-      every click that does not navigate; decide the rule (e.g. keep watching up
-      to ~1.5 s only when the clicked element is a link, from the page script's
-      `effect`) and cover it with a test page that redirects slowly.
+- [ ] **Chat composer — keep what the phone keeps.** The phone stores a message
+      before it is sent, so a failed or offline send survives a restart and can
+      be retried; editing a queued message moves it back with its images, and a
+      draft already in the composer is set aside as a *rescued draft* instead of
+      being merged. The desktop keeps a failed send only in memory
+      (`conversation.svelte.ts` `pending`), and *Edit* / `putBack` bring back
+      the text alone and append it to the draft. Needs a durable outbox for the
+      desktop's chat (the principle: a user action is never silently dropped) and
+      the rescued-draft UI — a UI increment for the maintainer's review.
+- [ ] **Browser — confirm a late link navigation on a real redirector.** A
+      click that follows a link now keeps watching for its navigation up to
+      1.5 s (`LINK_SETTLE`, `control/services/browser.rs`; the page script
+      reports `link: true`), where every other click still answers after 350 ms.
+      Unit-tested; run it once against a slow short link (e.g. the site's GitHub
+      link) and confirm `navigated: true`.
 - [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
       now captures on every desktop platform — WebView2 `CapturePreview` into a
       memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —
@@ -1751,7 +1755,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,010 Rust + 1,587 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,015 Rust + 1,601 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
