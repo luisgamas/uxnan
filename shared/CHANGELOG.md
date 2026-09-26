@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.19-alpha.20260926] - 20260926
 ### Added — the bridge updates itself
 
 - `BridgeUpdate` (`version`, `latestVersion`, `available`, `canApply`,
