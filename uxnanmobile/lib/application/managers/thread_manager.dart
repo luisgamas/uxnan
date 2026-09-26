@@ -1674,11 +1674,12 @@ class ThreadManager {
 
   /// Drops [turnId] from the thread's mirrored queue.
   ///
-  /// A hand-off into the running turn changes no queue on the bridge (the turn
-  /// was never parked there), so no `stream/queue/updated` follows to settle
-  /// it. A client that HAD it listed — restored from a snapshot taken before
-  /// the hand-off — would otherwise keep drawing a dashed bubble for a message
-  /// the agent already has.
+  /// A turn that started is not waiting, whatever the last snapshot said. A
+  /// message the agent took into its running turn starts at once without ever
+  /// being parked in the bridge's queue, so no `stream/queue/updated` follows
+  /// to settle it; a client that HAD it listed — restored from a snapshot taken
+  /// before the hand-off — would otherwise keep drawing a dashed bubble for a
+  /// message the agent already has.
   void _removeFromQueue(String threadId, String turnId) {
     final current = _queues.value[threadId];
     if (current == null || !current.turnIds.contains(turnId)) return;
@@ -1793,24 +1794,6 @@ class ThreadManager {
         return;
       }
     });
-  }
-
-  /// Settles a message the agent took **into the turn already running**: it
-  /// becomes an ordinary sent message, in the place it was already showing.
-  ///
-  /// `reorderToEnd` only bites on a message that was still locally `queued`
-  /// (a second device, or a reconnect that restored it from a pre-hand-off
-  /// snapshot): a queued bubble sits below the timeline, so settling it at the
-  /// end is what keeps it exactly where the user last saw it, instead of
-  /// filing it back above the reply that was streaming when they wrote it.
-  Future<void> _settleDeliveredMessage(String threadId, String turnId) {
-    _removeFromQueue(threadId, turnId);
-    return _markUserMessage(
-      threadId,
-      turnId,
-      MessageDeliveryState.sent,
-      reorderToEnd: true,
-    );
   }
 
   /// Responds to a pending approval ([approvalId]) on [threadId] with
@@ -1947,6 +1930,7 @@ class ThreadManager {
           _live[threadId] = _LiveTurn(turnId: turnId);
         }
         _setActivity(threadId, ThreadActivity.running);
+        _removeFromQueue(threadId, turnId);
         // A turn the queue just drained to: its bubble stops being a ghost,
         // becomes an ordinary sent message, and takes its place at the end of
         // the conversation — where it was actually delivered.
@@ -2015,18 +1999,6 @@ class ThreadManager {
         unawaited(
           _markUserMessage(threadId, turnId, MessageDeliveryState.cancelled),
         );
-      case TurnDeliveredEvent(:final turnId):
-        // The agent took this message INTO the turn it was already running, so
-        // it will never run on its own. It is not cancelled — it was received —
-        // so the bubble becomes an ordinary sent message and simply stops
-        // offering to edit or cancel. Mirrors what a drained queue does; it
-        // just happened without the wait.
-        //
-        // Usually a no-op on the device that sent it, because `turn/send`
-        // already answered `delivered: true`. It matters for the OTHER cases:
-        // a second phone watching the thread, and a reconnect that restored
-        // this message from a queue snapshot taken before the hand-off.
-        unawaited(_settleDeliveredMessage(threadId, turnId));
       case QueueUpdatedEvent(
           :final queuedTurnIds,
           :final paused,
@@ -2602,7 +2574,6 @@ class ThreadManager {
         TurnErrorEvent(:final threadId) => threadId,
         TurnAbortedEvent(:final threadId) => threadId,
         TurnCancelledEvent(:final threadId) => threadId,
-        TurnDeliveredEvent(:final threadId) => threadId,
         QueueUpdatedEvent(:final threadId) => threadId,
         GitProgressEvent(:final threadId) => threadId,
         ModelResolvedEvent(:final threadId) => threadId,

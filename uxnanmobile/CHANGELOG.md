@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — chat order when the agent takes a message mid-turn
+
+- The answer to a message the agent took while it worked now streams under
+  that message instead of above it (or below it, after a re-read): the bridge
+  ends the running turn there and starts the message's own turn, which the
+  phone settles exactly as a drained queue. A started turn also leaves the
+  mirrored queue, so a stale snapshot never keeps a dashed bubble. The
+  `stream/turn/delivered` handling is gone.
+
 ## [0.0.24-alpha.20260926+20260926] - 20260926
 ### Added
 - **The work log shows a step while it runs.** A command or tool call appears

@@ -210,7 +210,6 @@ class PushRegistrar {
             TurnCreatedEvent() ||
             ApprovalResolvedEvent() ||
             QuestionResolvedEvent() ||
-            TurnDeliveredEvent() ||
             QueueUpdatedEvent() ||
             ModelResolvedEvent() ||
             ProjectUpdatedEvent() ||

@@ -157,9 +157,10 @@ connected to live bridge data, validated on-device against a real bridge.
   "not sent yet". On delivery the dashes dissolve in place, so the bubble never
   moves or changes colour — it just stops being provisional. On agents whose CLI
   has an input channel mid-turn (Claude Code, OpenCode, Codex, pi) that moment comes
-  **without waiting for the turn to end**: the bridge hands the message to the
-  running turn and reports `delivered` (`stream/turn/delivered`), which also
-  retires edit/cancel since the agent already has it. On every other agent it
+  **without waiting for the turn to end**: the bridge ends the running turn
+  there and starts this one at once (`turn/completed`, then `turn/started`),
+  so the phone settles it exactly as a drained queue — and the answer streams
+  under it. On every other agent it
   settles when the queue drains, exactly as before.
   **Edit** withdraws it to the composer leaving no trace; **cancel** leaves the
   bubble marked. Editing over a busy composer saves that text as a draft, behind
