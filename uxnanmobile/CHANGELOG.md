@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.24-alpha.20260926+20260926] - 20260926
 ### Added
 - **The work log shows a step while it runs.** A command or tool call appears
   as it starts, marked running, and its result replaces it where it stood (the
