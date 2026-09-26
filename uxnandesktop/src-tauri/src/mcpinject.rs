@@ -378,10 +378,17 @@ pub fn launch_env_all(
 /// The MCP config file Claude Code is launched with, for the window that owns
 /// `endpoint`. Named after the loopback port so two uxnan windows can never
 /// hand each other's agents the wrong endpoint (the failure the old user-global
-/// entry had). Lives in uxnan's app-data directory.
+/// entry had). Lives in this instance's own profile ([`config_dir`]).
 pub fn claude_config_path(app: &AppHandle, endpoint: &str) -> Option<PathBuf> {
-    let dir = app.path().app_data_dir().ok()?.join("mcp");
-    Some(dir.join(format!("claude-{}.json", endpoint_port(endpoint))))
+    Some(config_dir(app)?.join(format!("claude-{}.json", endpoint_port(endpoint))))
+}
+
+/// `<profile>/mcp`: the resolved profile ([`crate::datadir::resolve`]), not
+/// the platform directory, so a development build or a disposable profile
+/// never writes — or prunes — inside the installed app's.
+fn config_dir(app: &AppHandle) -> Option<PathBuf> {
+    let state = app.try_state::<AppState>()?;
+    Some(state.data_dir.join("mcp"))
 }
 
 /// The contents of that file: a standard `mcpServers` entry naming the token's
@@ -429,7 +436,7 @@ pub fn ensure_claude_config(app: &AppHandle, endpoint: &str) -> Option<String> {
 /// construction: every live window rewrites its own file on every terminal it
 /// spawns, so a pruned file is recreated before it could ever be read.
 fn prune_stale_configs(app: &AppHandle) {
-    let Ok(dir) = app.path().app_data_dir().map(|d| d.join("mcp")) else {
+    let Some(dir) = config_dir(app) else {
         return;
     };
     let Ok(entries) = std::fs::read_dir(&dir) else {

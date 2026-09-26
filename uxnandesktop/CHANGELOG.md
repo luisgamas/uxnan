@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **Running a development build no longer disturbs the installed app.** Both
+  connected to the bridge under the same name (`desktop`), and the bridge keeps
+  one connection per name, so they knocked each other off in a loop — the dev
+  window flickered and the chats and agents in both froze. Each profile now
+  connects under its own id, `desktop-<profile>`, derived from its profile
+  directory (stable across restarts), so the installed app, a dev build and a
+  disposable `UXNAN_DATA_DIR` share one bridge side by side.
+- A development build wrote the Claude Code launch config for its terminals
+  (`mcp/claude-<port>.json`) — and pruned stale ones — inside the installed
+  app's profile; it now uses its own.
+
 ## [0.0.58] - 20260926
 ### Added
 

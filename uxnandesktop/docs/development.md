@@ -78,6 +78,12 @@ Consequences worth knowing:
   use for a disposable profile).
 - To start a dev build from a copy of your real profile, copy the directory once
   — never point `UXNAN_DATA_DIR` at the installed app's own folder.
+- **A dev build and the installed app share your bridge as two clients.** Each
+  profile connects under its own id (`desktop-<profile>`, see
+  [chat](chat.md) → *How the connection works*), so neither knocks the other
+  off the local channel, and a chat keeps the tools of the window it was sent
+  from. Before this, both connected as `desktop` and superseded each other in
+  a loop — the windows flickered and chats froze in both.
 - **Running a dev or disposable profile does not touch your installed app's
   agents.** The reporters each agent's config names live once per machine
   (`~/.uxnan/hooks/`, see [agent hooks](agent-hooks.md) → *Why not inside the
