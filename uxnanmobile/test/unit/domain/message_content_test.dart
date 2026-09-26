@@ -65,7 +65,8 @@ void main() {
       }) as ToolUseContent;
       expect(decoded.kind, ToolKind.read);
       expect(decoded.target, 'notes.txt');
-      // An older bridge sent no kind; a newer one may send one this build lacks.
+      // An older bridge sent no kind; a newer one may send one this build
+      // lacks.
       expect(
         (MessageContent.fromJson({'type': 'tool', 'toolName': 'x'})
                 as ToolUseContent)

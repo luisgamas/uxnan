@@ -2141,24 +2141,25 @@ void main() {
         () async {
       final resolutions = <ElicitationResolution>[];
       final sub = manager.resolutionsStream.listen(resolutions.add);
-      events.add(
-        const ApprovalResolvedEvent(
-          threadId: 'th1',
-          approvalId: 'appr-1',
-          decision: 'approveSession',
-        ),
-      );
-      events.add(
-        const QuestionResolvedEvent(
-          threadId: 'th1',
-          questionId: 'q-1',
-          answers: [
-            ['A'],
-          ],
-          skipped: false,
-          timedOut: true,
-        ),
-      );
+      events
+        ..add(
+          const ApprovalResolvedEvent(
+            threadId: 'th1',
+            approvalId: 'appr-1',
+            decision: 'approveSession',
+          ),
+        )
+        ..add(
+          const QuestionResolvedEvent(
+            threadId: 'th1',
+            questionId: 'q-1',
+            answers: [
+              ['A'],
+            ],
+            skipped: false,
+            timedOut: true,
+          ),
+        );
       await _settle();
       expect(resolutions, [
         const ApprovalResolution(
