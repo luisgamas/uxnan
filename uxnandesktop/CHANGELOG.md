@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.60] - 20260926
 ### Fixed — the chat composer works like the phone's
 
 - **`@` lists the project and reaches its files through the bridge.** A bare
