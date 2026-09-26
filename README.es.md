@@ -42,12 +42,57 @@
 </p>
 
 <p align="center">
-  <img src="assets/uxnan-project.png" alt="Uxnan Desktop corriendo cuatro worktrees de agentes en un monitor panorámico, junto a Uxnan Mobile mostrando conversaciones en vivo, estadísticas de perfil y los checks de GitHub de un repositorio" width="960" />
+  <img src="assets/uxnan-ecosystem.png" alt="Uxnan Desktop con Claude Code en una terminal junto al navegador integrado, al lado de Uxnan Mobile mostrando una conversación de OpenCode con su registro de trabajo y los agentes que puede iniciar; un acercamiento muestra los pasos de un chat mientras se ejecutan" width="960" />
 </p>
 
 ## Cómo se siente usarlo
 
 <table>
+<tr>
+<td width="46%" valign="top">
+
+### Una conversación, en tu desktop y en tu teléfono
+Un chat corre en el bridge de Uxnan, así que el desktop y el teléfono muestran la misma conversación, en vivo: cada paso que da el agente y cada respuesta mientras se escribe. Envía desde cualquiera de los dos: el otro lo ve al instante, y ninguno necesita al otro para seguir funcionando.
+
+[Chat →](uxnandesktop/docs/chat.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/chat-desktop-mobile.gif" alt="Un chat de Claude Code respondido en vivo en Uxnan Desktop y Uxnan Mobile a la vez, y continuado desde el teléfono" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Agentes que trabajan juntos
+Cualquier agente que Uxnan ejecuta puede manejar Uxnan mismo con `uxnan-cli` o sus herramientas MCP, sin instalar nada más. Aquí Claude Code le pasa una tarea a OpenCode como chat, espera y lee su respuesta.
+
+[Superficie de control: CLI y MCP →](uxnandesktop/docs/control-api.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/agents-together.gif" alt="Claude Code abriendo un chat con OpenCode mediante uxnan-cli, OpenCode buscando en el repositorio y Claude Code resumiendo su respuesta" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Un navegador real que tus agentes pueden usar
+Cada espacio de trabajo tiene su propio navegador junto a sus terminales. Un agente abre ahí tu app, hace scroll, pulsa y la lee: la misma página que ves tú.
+
+[Navegador →](uxnandesktop/docs/browser.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/real-browser.gif" alt="Claude Code abriendo un sitio local en el navegador de Uxnan, bajando a una sección y pulsando hasta GitHub" width="440" />
+
+</td>
+</tr>
 <tr>
 <td width="46%" valign="top">
 
@@ -59,7 +104,7 @@ Uxnan Desktop es terminal-céntrico, así que corre cualquier agente CLI: elige 
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/launch-agent.gif" alt="Eligiendo un agente del catálogo y lanzándolo en una terminal de worktree" width="440" />
+<img src="assets/shorts/one-click-launch.gif" alt="Eligiendo Claude Code en el menú de nueva pestaña y lanzándolo en una terminal del worktree" width="440" />
 
 </td>
 </tr>

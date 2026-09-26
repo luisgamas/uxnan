@@ -42,12 +42,57 @@
 </p>
 
 <p align="center">
-  <img src="assets/uxnan-project.png" alt="Uxnan Desktop running four agent worktrees on a widescreen monitor, next to Uxnan Mobile showing live conversations, profile stats and a repository's GitHub checks" width="960" />
+  <img src="assets/uxnan-ecosystem.png" alt="Uxnan Desktop with Claude Code in a terminal next to the integrated browser, beside Uxnan Mobile showing an OpenCode conversation with its work log and the agents it can start; a close-up shows a chat's steps as they run" width="960" />
 </p>
 
 ## What it feels like to use
 
 <table>
+<tr>
+<td width="46%" valign="top">
+
+### One conversation, on your desktop and your phone
+A chat runs on the Uxnan bridge, so the desktop and the phone show the same conversation, live: every step the agent takes, every answer as it streams. Send from either one — the other sees it at once, and neither needs the other to keep working.
+
+[Chat →](uxnandesktop/docs/chat.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/chat-desktop-mobile.gif" alt="A Claude Code chat answered live on Uxnan Desktop and Uxnan Mobile at once, then continued from the phone" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Agents that work together
+Any agent Uxnan runs can drive Uxnan itself through `uxnan-cli` or its MCP tools — nothing else to install. Here Claude Code hands a task to OpenCode as a chat, waits for it and reads the answer back.
+
+[Control surface: CLI & MCP →](uxnandesktop/docs/control-api.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/agents-together.gif" alt="Claude Code starting a chat with OpenCode through uxnan-cli, OpenCode searching the repository, and Claude Code summarizing its answer" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### A real browser your agents can use
+Each workspace has its own browser beside its terminals. An agent opens your app there, scrolls, clicks and reads it — the same page you see.
+
+[Browser →](uxnandesktop/docs/browser.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/real-browser.gif" alt="Claude Code opening a local site in Uxnan's browser, scrolling to a section and clicking through to GitHub" width="440" />
+
+</td>
+</tr>
 <tr>
 <td width="46%" valign="top">
 
@@ -59,7 +104,7 @@ Uxnan Desktop is terminal-centric, so it runs any CLI agent — pick one from th
 </td>
 <td width="54%" valign="top">
 
-<img src="assets/shorts/launch-agent.gif" alt="Picking an agent from the catalog, then launching it into a worktree terminal" width="440" />
+<img src="assets/shorts/one-click-launch.gif" alt="Picking Claude Code from the new-tab menu and launching it into a terminal of the worktree" width="440" />
 
 </td>
 </tr>
