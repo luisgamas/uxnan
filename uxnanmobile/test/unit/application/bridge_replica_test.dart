@@ -8,6 +8,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_bridge_replica_repository.dart';
@@ -66,6 +67,8 @@ void main() {
   late ActionOutbox outbox;
   // When set, a request for this method is lost on the way.
   String? lose;
+  // When set, `bridge/update` is refused with this message.
+  String? refuseUpdate;
 
   setUp(() {
     db = UxnanDatabase.forTesting(NativeDatabase.memory());
@@ -77,10 +80,19 @@ void main() {
     answers = [];
     deviceId = 'pc-1';
     lose = null;
+    refuseUpdate = null;
     outbox = ActionOutbox(repository: replicaRepo);
     Future<RpcMessage> send(String method, [Map<String, dynamic>? params]) {
       calls.add((method, params));
       if (method == lose) return Future.error(TimeoutException('lost'));
+      if (method == 'bridge/update' && refuseUpdate != null) {
+        return Future.value(
+          RpcMessage.response(
+            id: '1',
+            error: RpcError(code: -32009, message: refuseUpdate!),
+          ),
+        );
+      }
       final Object result = switch (method) {
         'sync/changes' => answers.isEmpty ? _changes() : answers.removeAt(0),
         'project/add' => {
@@ -89,6 +101,14 @@ void main() {
             'cwd': params?['cwd'],
           },
         'settings/set' => {'home': params?['home']},
+        'bridge/update' => {
+            'version': '0.0.28',
+            'latestVersion': '0.0.29',
+            'available': true,
+            'canApply': true,
+            'phase': 'updating',
+            'targetVersion': '0.0.29',
+          },
         _ => <String, dynamic>{},
       };
       return Future.value(RpcMessage.response(id: '1', result: result));
@@ -208,6 +228,58 @@ void main() {
     phases.add(ConnectionPhase.disconnected);
     await _settle();
     expect(replica.desktopLinked, isFalse);
+  });
+
+  group('the bridge updating itself', () {
+    test('what the bridge says reaches the phone, and a new link resets it',
+        () async {
+      phases.add(ConnectionPhase.connected);
+      await _settle();
+      events.add(
+        const BridgeUpdatedEvent(
+          update: {
+            'version': '0.0.28',
+            'latestVersion': '0.0.29',
+            'available': true,
+            'canApply': true,
+            'phase': 'idle',
+          },
+        ),
+      );
+      await _settle();
+      final told = await replica.bridgeUpdateStream.first;
+      expect(told?.available, isTrue);
+      expect(told?.latestVersion, '0.0.29');
+      expect(told?.phase, BridgeUpdatePhase.idle);
+
+      phases.add(ConnectionPhase.disconnected);
+      await _settle();
+      expect(await replica.bridgeUpdateStream.first, isNull);
+    });
+
+    test('asking for it sends bridge/update and keeps the state entered',
+        () async {
+      final entered = await replica.applyBridgeUpdate();
+      expect(calls.map((c) => c.$1), contains('bridge/update'));
+      expect(entered?.phase, BridgeUpdatePhase.updating);
+      expect(entered?.targetVersion, '0.0.29');
+      expect(
+        (await replica.bridgeUpdateStream.first)?.phase,
+        BridgeUpdatePhase.updating,
+      );
+    });
+
+    test("the bridge's refusal reaches the caller as it said it", () async {
+      refuseUpdate = 'A turn is running';
+      await expectLater(
+        replica.applyBridgeUpdate(),
+        throwsA(
+          isA<RpcError>()
+              .having((e) => e.message, 'message', 'A turn is running'),
+        ),
+      );
+      expect(await replica.bridgeUpdateStream.first, isNull);
+    });
   });
 
   group('notifications', () {

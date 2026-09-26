@@ -5054,6 +5054,102 @@ abstract class AppLocalizations {
   /// **'A newer bridge ({version}) is available. Update it on your computer for the latest features and fixes.'**
   String bridgeUpdateBodyVersion(String version);
 
+  /// Body of the bridge-update notice when the bridge can update itself; {version} is the new version.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} is available. Update the bridge from here: it installs the new version and restarts, never while a turn is running.'**
+  String bridgeUpdateBodyApply(String version);
+
+  /// Body of the notice when the PC's bridge predates updating itself.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge on your PC is older than this app. Update it on your computer to use everything this version offers.'**
+  String get bridgeUpdateOlder;
+
+  /// Button that asks the PC's bridge to update itself.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get bridgeUpdateAction;
+
+  /// Title while the PC's bridge is updating.
+  ///
+  /// In en, this message translates to:
+  /// **'Updating the bridge'**
+  String get bridgeUpdatingTitle;
+
+  /// Body while the bridge installs {version} and restarts.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing {version}. Your PC reconnects in a moment.'**
+  String bridgeUpdatingBody(String version);
+
+  /// Title when the bridge's update failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge could not update'**
+  String get bridgeUpdateFailedTitle;
+
+  /// Lead-in to the command that updates the bridge by hand.
+  ///
+  /// In en, this message translates to:
+  /// **'Or run this on your PC:'**
+  String get bridgeUpdateRunOnPc;
+
+  /// Snack bar once the bridge is back on the new version.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge is now {version}'**
+  String bridgeUpdatedSnack(String version);
+
+  /// Header of the Updates section's bridge group.
+  ///
+  /// In en, this message translates to:
+  /// **'Bridge on your PC'**
+  String get settingsUpdatesBridgeGroup;
+
+  /// Title of the card with the PC's bridge version.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan bridge'**
+  String get bridgeVersionTitle;
+
+  /// Subtitle when no PC is connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to your PC to see its bridge'**
+  String get bridgeVersionNotConnected;
+
+  /// Subtitle when the bridge is current.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} · up to date'**
+  String bridgeVersionUpToDate(String version);
+
+  /// Subtitle when a newer bridge is published.
+  ///
+  /// In en, this message translates to:
+  /// **'{current} · {latest} is available'**
+  String bridgeVersionAvailable(String current, String latest);
+
+  /// Subtitle for a bridge that predates updating itself.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} · older than this app — update it on your PC'**
+  String bridgeVersionOlder(String version);
+
+  /// Subtitle while the bridge updates.
+  ///
+  /// In en, this message translates to:
+  /// **'Updating to {version}…'**
+  String bridgeVersionUpdating(String version);
+
+  /// Subtitle after a failed update.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} · the last update failed'**
+  String bridgeVersionFailed(String version);
+
   /// Accessibility label / tooltip for the button that dismisses the bridge-update banner.
   ///
   /// In en, this message translates to:

@@ -9,6 +9,7 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
+import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -23,6 +24,8 @@ import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_details_sheet.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/bridge_update_action.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
@@ -789,87 +792,142 @@ class _UpdateBanner extends ConsumerWidget {
   }
 }
 
-/// A dismissible, informational notice shown atop the thread list when the
-/// paired PC's Uxnan bridge reports a newer version is available
-/// (`bridge/status.updateAvailable`). The bridge is the core engine, so we
-/// nudge the user to update it **on their computer**. The phone can't update
-/// it, so there's no action button — swipe it away or tap the close icon to
-/// hide it until a newer bridge appears. Renders nothing when the bridge is up
-/// to date, unknown, or the notice was dismissed.
+/// The notice atop the thread list about the paired PC's Uxnan bridge — the
+/// ecosystem's core engine, which owns its own update (it checks npm, installs
+/// and restarts itself). It says:
+/// - a newer bridge is out, with **Update** when the bridge can do it itself
+///   (it runs as the PC user's service) — one tap, never under a running turn;
+/// - the bridge is older than this app and must be updated on the PC;
+/// - the bridge is updating (not dismissible: the PC drops and returns);
+/// - the last update failed, and the command that does it by hand.
+/// Renders nothing when there is nothing to say or it was dismissed; says once
+/// when the bridge is back on the version it was asked for.
 class _BridgeUpdateBanner extends ConsumerWidget {
   const _BridgeUpdateBanner();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final info = ref.watch(bridgeUpdateProvider);
-    if (info == null) return const SizedBox.shrink();
-
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final latest = info.latestVersion;
-    final body = latest == null
-        ? l10n.bridgeUpdateBody
-        : l10n.bridgeUpdateBodyVersion(latest);
+    ref.listen(bridgeStatusProvider, (_, next) {
+      final pending = ref.read(bridgeUpdatePendingProvider);
+      final version = next.value?.version;
+      if (pending == null || version != pending) return;
+      ref.read(bridgeUpdatePendingProvider.notifier).set(null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.bridgeUpdatedSnack(pending))),
+      );
+    });
+    final notice = ref.watch(bridgeUpdateProvider);
+    if (notice == null) return const SizedBox.shrink();
 
-    return Dismissible(
-      key: ValueKey('bridge-update-${latest ?? ''}'),
-      onDismissed: (_) =>
-          ref.read(bridgeUpdateDismissalProvider.notifier).dismiss(latest),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(
-          UxnanSpacing.lg,
-          UxnanSpacing.sm,
-          UxnanSpacing.lg,
-          0,
-        ),
-        padding: const EdgeInsets.all(UxnanSpacing.md),
-        decoration: BoxDecoration(
-          color: colors.tertiaryContainer,
-          borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                UxIcon(
-                  UxIcons.dns,
-                  size: 18,
-                  color: colors.onTertiaryContainer,
-                ),
-                const SizedBox(width: UxnanSpacing.sm),
-                Expanded(
-                  child: Text(
-                    l10n.bridgeUpdateTitle,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: colors.onTertiaryContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final update = notice.update;
+    final updating = update?.phase == BridgeUpdatePhase.updating;
+    final failed = update?.phase == BridgeUpdatePhase.failed;
+    final title = updating
+        ? l10n.bridgeUpdatingTitle
+        : failed
+            ? l10n.bridgeUpdateFailedTitle
+            : l10n.bridgeUpdateTitle;
+    final latest = update?.latestVersion;
+    final body = switch (update) {
+      null => l10n.bridgeUpdateOlder,
+      _ when updating =>
+        l10n.bridgeUpdatingBody(update.targetVersion ?? latest ?? ''),
+      _ when failed => update.failure?.message ?? l10n.bridgeUpdateBody,
+      _ when update.canApply && latest != null =>
+        l10n.bridgeUpdateBodyApply(latest),
+      _ when latest != null => l10n.bridgeUpdateBodyVersion(latest),
+      _ => l10n.bridgeUpdateBody,
+    };
+    final command = failed ? update?.failure?.command : null;
+    final canUpdate =
+        update != null && update.canApply && update.available && !updating;
+    final onColor = colors.onTertiaryContainer;
+
+    final card = Container(
+      margin: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        0,
+      ),
+      padding: const EdgeInsets.all(UxnanSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (updating)
+                PolygonLoader(color: onColor)
+              else
+                UxIcon(UxIcons.dns, size: 18, color: onColor),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  title,
+                  style: text.titleSmall?.copyWith(
+                    color: onColor,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
+              ),
+              if (!updating)
                 IconButton(
                   onPressed: () => ref
                       .read(bridgeUpdateDismissalProvider.notifier)
-                      .dismiss(latest),
+                      .dismiss(notice.key),
                   icon: const UxIcon(UxIcons.close, size: 18),
-                  color: colors.onTertiaryContainer,
+                  color: onColor,
                   tooltip: l10n.bridgeUpdateDismiss,
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
-              ],
-            ),
-            const SizedBox(height: UxnanSpacing.xs),
+            ],
+          ),
+          const SizedBox(height: UxnanSpacing.xs),
+          Text(
+            body,
+            maxLines: failed ? 4 : null,
+            overflow: failed ? TextOverflow.ellipsis : null,
+            style: text.bodySmall?.copyWith(color: onColor),
+          ),
+          if (command != null) ...[
+            const SizedBox(height: UxnanSpacing.sm),
             Text(
-              body,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.onTertiaryContainer,
-                  ),
+              l10n.bridgeUpdateRunOnPc,
+              style: text.bodySmall?.copyWith(color: onColor),
+            ),
+            SelectableText(
+              command,
+              style: UxnanTypography.codeSmall.copyWith(color: onColor),
             ),
           ],
-        ),
+          if (canUpdate) ...[
+            const SizedBox(height: UxnanSpacing.sm),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: () => requestBridgeUpdate(context, ref),
+                child: Text(l10n.bridgeUpdateAction),
+              ),
+            ),
+          ],
+        ],
       ),
+    );
+    if (updating) return card;
+    return Dismissible(
+      key: ValueKey('bridge-update-${notice.key}'),
+      onDismissed: (_) =>
+          ref.read(bridgeUpdateDismissalProvider.notifier).dismiss(notice.key),
+      child: card,
     );
   }
 }

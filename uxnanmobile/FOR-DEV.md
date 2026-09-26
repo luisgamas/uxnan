@@ -17,6 +17,14 @@ connected to live bridge data, validated on-device against a real bridge.
 
 **Built (DONE):**
 
+- **Updating the PC's bridge** (architecture/02a §5.8.18). `BridgeReplica`
+  mirrors the bridge's own update (`stream/bridge/updated`, the answer to
+  `bridge/update`); the notice atop the conversations and Settings → Updates →
+  *Bridge on your PC* show it and offer **Update** when the bridge can update
+  itself, the update under way, a failure with the command to run on the PC,
+  and a bridge older than this app. Covered by `bridge_replica_test`,
+  `bridge_status_test`, `bridge_update_test` and `bridge_update_notice_test`.
+  **Not yet device-verified** against a live bridge updating itself.
 - **One layer: a replica of the PC's bridge** (architecture/02a §5.8.17).
   `BridgeReplica` is the only writer of what the bridge owns: per-PC cursor
   (`replica_cursors`), `sync/changes` on connect / resume / a skipped `rev`,
@@ -313,17 +321,6 @@ shipping.
 
 ## App-side pending work (no live bridge needed)
 
-- [ ] **Bridge-update: fixed "About" row in Settings.** The bridge-outdated
-      **banner** (thread list) and its data are done — `bridgeUpdateProvider`
-      exposes `{ currentVersion, latestVersion }` from `bridge/status`
-      (`updateAvailable`/`latestVersion`), and `BridgeStatus` parses both. What's
-      left is a **fixed, always-visible row** in **Settings → About** showing the
-      bridge version and an "update available" hint. It was intentionally **not**
-      added on the current Settings screen to avoid a large collision with the
-      in-flight settings overhaul on `feat/settings-updates-overhaul` (which
-      rebuilds the settings landing + adds About/Licenses screens). **Unblocks
-      when that overhaul merges:** add the row to the new About section, reading
-      `bridgeUpdateProvider` (no new data/contract work needed).
 - [ ] **Mermaid diagrams in the Markdown preview.** A ```` ```mermaid ```` fence
       renders as highlighted source (the honest fallback); GitHub draws the
       diagram. Needs a pure-Dart renderer or an explicit diagram placeholder in

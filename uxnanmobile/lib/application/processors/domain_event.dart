@@ -337,6 +337,20 @@ class DevicesUpdatedEvent extends DomainEvent {
   List<Object?> get props => [devices];
 }
 
+/// The PC's bridge's own update changed (`stream/bridge/updated`): a newer
+/// version was published, or an update started or failed. The whole state,
+/// so applying it is idempotent.
+class BridgeUpdatedEvent extends DomainEvent {
+  /// Creates a [BridgeUpdatedEvent].
+  const BridgeUpdatedEvent({required this.update});
+
+  /// The wire `BridgeUpdate`.
+  final Object? update;
+
+  @override
+  List<Object?> get props => [update];
+}
+
 /// An agent CLI appeared or disappeared on the PC (`stream/agents/updated`).
 class AgentsUpdatedEvent extends DomainEvent {
   /// Creates an [AgentsUpdatedEvent].
