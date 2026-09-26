@@ -100,7 +100,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 82 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 83 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
@@ -294,6 +294,7 @@ bridge/disconnectPhone           -> desconectar un telefono
 bridge/trustedDevices            -> lista de dispositivos de confianza
 bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push registration
 bridge/update                    -> BridgeUpdate  el bridge instala la version publicada y se reinicia
+bridge/checkForUpdate            -> BridgeUpdate  el bridge consulta npm ahora mismo, sin esperar el chequeo horario ("Comprobar de nuevo")
                                     en ella (02a §5.8.18): responde con el estado en que entra
                                     (`updating`), luego se detiene. Rechaza con -32009 (AgentBusy,
                                     data.reason 'busy') si hay un turno en curso en cualquier cliente, y

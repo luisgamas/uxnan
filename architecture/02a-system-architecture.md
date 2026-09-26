@@ -2114,6 +2114,20 @@ Reconciliation then follows these rules:
 - a turn imported before it could be matched is **dropped** once its
   bridge-created twin is recognized, which is what converges a store that
   already holds the same exchange twice;
+- **every turn read from a transcript has the one shape a client renders**: at
+  most one user message and ONE assistant message whose `segments` hold its
+  prose and steps in order (`canonicalTurn`, `session-history.ts`). Handed a
+  reply split into a message per transcript line, the desktop showed only the
+  first (often empty) one and the phone kept replacing one with the next —
+  rows imported that way are reshaped when the store loads;
+- **an agent waking itself up is not a prompt.** Claude Code writes the end of a
+  background task as a user line (`<task-notification>…`) and answers it in the
+  same run: it opens no turn, and the reply continues the turn it belongs to;
+  a row imported as such a prompt is dropped on load;
+- a message a bridge from before the mid-turn hand-off (§5.8.13) stored as a
+  turn with no reply — the reply went on in the turn before it — is matched to
+  its transcript turn by prompt, and the part of the previous turn from where
+  that reply begins moves back into it (`takeBackSteeredReply`);
 - completed native-only user/assistant pairs are imported and can be refreshed
   on a later read;
 - user-only/in-progress native turns are ignored until an assistant result is
@@ -2785,6 +2799,13 @@ nativos.
 fallo, `update.phase` es `failed` con `failure { reason: permission | install |
 unsupported, message, command? }` (el comando para hacerlo a mano). Si
 funciono, no dice nada: el cliente ve la version nueva al reconectar.
+
+**Comprobar ahora.** `bridge/checkForUpdate` pide al registro la version mas
+nueva en ese momento, sin esperar el chequeo horario ni su cache: es lo que
+hace "Comprobar de nuevo" (Ajustes → Bridge y movil en el desktop, la tarjeta
+del bridge en Ajustes → Actualizaciones del telefono). Responde con el
+`BridgeUpdate` y, si supo de una version nueva, lo difunde con
+`stream/bridge/updated` a todos los clientes.
 
 **Clientes.** Uxnan Desktop (fila en la barra lateral, Ajustes → Bridge y
 movil, y la actualizacion automatica si esta activada) y el telefono (aviso en la

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — check for a newer bridge now
+
+- `bridge/checkForUpdate` → `BridgeUpdate` (method 83): the bridge asks the
+  registry right away, past its hourly check, and tells every client when it
+  learned of a new version.
+
+### Changed
+
+- `Turn` documents its one shape: at most one user message and one assistant
+  message whose `segments` carry the reply in order — turns read from an
+  agent's transcript included.
+
 ## [0.0.19-alpha.20260926] - 20260926
 ### Added — the bridge updates itself
 

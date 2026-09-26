@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a conversation read from the agent's transcript renders again
+
+- **One assistant message per turn, always.** Turns read from an agent's own
+  transcript kept a message per transcript line, so the desktop showed only
+  the first (often empty) one — a chat with no formatting — and the phone kept
+  replacing one with the next, flickering. They now come out as the bridge
+  stores the turns it runs: one assistant message whose `segments` hold the
+  prose and the steps in order. Rows already imported the old way are
+  reshaped when the store loads.
+- **Claude's wake-ups are no longer prompts.** Claude Code writes the end of a
+  background task as a user line (`<task-notification>…`); it was imported as
+  a message from you. It opens no turn now, and its reply continues the turn
+  it belongs to; such rows are dropped on load.
+- **A message an older bridge took mid-turn gets its reply back.** Stored as a
+  turn with no reply (the reply went on in the turn before it), it no longer
+  brings the transcript's copy of the exchange in a second time, and the part
+  of the previous turn from where its reply begins moves back under it.
+
+### Added
+
+- **`bridge/checkForUpdate`**: "Check again" asks the bridge for the newest
+  version now, past the hourly check.
+
 ## [0.0.31-alpha.20260926] - 20260926
 ### Fixed — a bridge that stops, stops
 
