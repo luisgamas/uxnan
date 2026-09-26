@@ -888,6 +888,15 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
+- [ ] **Chat composer — keep what the phone keeps.** The phone stores a message
+      before it is sent, so a failed or offline send survives a restart and can
+      be retried; editing a queued message moves it back with its images, and a
+      draft already in the composer is set aside as a *rescued draft* instead of
+      being merged. The desktop keeps a failed send only in memory
+      (`conversation.svelte.ts` `pending`), and *Edit* / `putBack` bring back
+      the text alone and append it to the draft. Needs a durable outbox for the
+      desktop's chat (the principle: a user action is never silently dropped) and
+      the rescued-draft UI — a UI increment for the maintainer's review.
 - [ ] **Browser — confirm a late link navigation on a real redirector.** A
       click that follows a link now keeps watching for its navigation up to
       1.5 s (`LINK_SETTLE`, `control/services/browser.rs`; the page script

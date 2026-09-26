@@ -248,16 +248,21 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   it (amber past 75%, red past 90%; the figures are in its tooltip).
 - **Commands, files and images** — what the phone's composer does, the same
   way. **`/`** at the start of a message lists the agent's commands in this
-  folder (`agent/commands`, as the bridge learns them from the agent itself),
-  grouped as *Skills*, *Your commands*, *Agent commands* and *Built-in*; ↑ ↓
-  move, Enter or Tab completes, Esc closes, and a known `/name args` is sent as
-  `turn/send { command }` — the bridge runs it natively or expands it — while
-  an unknown `/word` goes as text. **`@`** completes a file of the project (the
-  desktop's own file search, `.gitignore` honoured) and inserts its relative
-  path. **Images** come from **+** or a paste, shown as thumbnails; they are
-  scaled to 2048 px on the long edge (JPEG 85 % when larger, as on the phone),
-  up to 8 per message, and sent as `attachments` — offered only to an agent
-  that takes images (`capabilities.images`).
+  folder (`agent/commands`, as the bridge learns them from the agent itself,
+  loaded as soon as the agent is known), grouped as *Skills*, *Your commands*,
+  *Agent commands* and *Built-in*; ↑ ↓ move, Enter or Tab completes, Esc
+  closes, and a known `/name args` is sent as `turn/send { command }` — the
+  bridge runs it natively or expands it — even when it was recalled, pasted or
+  restored rather than typed, while an unknown `/word` goes as text. **`@`**
+  asks the bridge that owns the conversation's folder, as the phone does: a
+  bare `@` (or `@dir/`) lists that folder (`workspace/list`), a name searches
+  the whole project (`workspace/searchFiles`, `.gitignore` honoured); a picked
+  folder drills in and a picked file is inserted as its relative path.
+  **Images** come from **+**, a paste or a drop onto the composer, shown as
+  thumbnails; they are scaled to 2048 px on the long edge (JPEG 85 % when
+  larger, as on the phone), up to 10 per message (the phone's limit — past it
+  a toast says so), and sent as `attachments` — offered only to an agent that
+  takes images (`capabilities.images`).
 
 ## For developers
 

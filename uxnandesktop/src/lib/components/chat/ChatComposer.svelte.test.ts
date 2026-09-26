@@ -85,22 +85,69 @@ describe("ChatComposer", () => {
     expect(sent).toEqual([["/nope", {}]]);
   });
 
-  it("completes a project file with @", async () => {
+  it("completes a project file with @, asking the bridge", async () => {
+    const asked: { method: string; params: unknown }[] = [];
     const { screen, user } = mountWithProviders(ChatComposer, {
       props: { mentionRoot: "/repo", onsend: () => undefined },
       commands: {
-        fs_search_files: () => ({
-          entries: [{ name: "app.ts", path: "/repo/src/app.ts", isDir: false, ignored: false }],
-          truncated: false,
-        }),
+        bridge_call: (args) => {
+          asked.push({ method: String(args.method), params: args.params });
+          return { cwd: ".", matches: [{ path: "src/app.ts", type: "file" }], truncated: false };
+        },
       },
     });
     const box = screen.getByRole("textbox") as HTMLTextAreaElement;
     await user.click(box);
     await user.keyboard("look at @ap");
     await until(() => screen.queryByRole("option", { name: "src/app.ts" }) !== null);
+    expect(asked.at(-1)).toEqual({
+      method: "workspace/searchFiles",
+      params: { cwd: "/repo", query: "ap", limit: 40 },
+    });
     await user.keyboard("{Tab}");
     expect(box.value).toBe("look at @src/app.ts ");
+  });
+
+  it("lists the project on a bare @ and drills into a picked folder", async () => {
+    const listed: unknown[] = [];
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { mentionRoot: "/repo", onsend: () => undefined },
+      commands: {
+        bridge_call: (args) => {
+          listed.push(args.params);
+          const inSrc = (args.params as { cwd: string }).cwd === "/repo/src";
+          return {
+            cwd: ".",
+            entries: inSrc ? [{ name: "main.ts", type: "file" }] : [{ name: "src", type: "dir" }],
+          };
+        },
+      },
+    });
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    await user.click(box);
+    await user.keyboard("@");
+    await until(() => screen.queryByRole("option", { name: "src/" }) !== null);
+    await user.keyboard("{Enter}");
+    expect(box.value).toBe("@src/");
+    await until(() => screen.queryByRole("option", { name: "src/main.ts" }) !== null);
+    expect(listed).toContainEqual({ cwd: "/repo/src" });
+  });
+
+  it("sends a /command that was never typed at the caret as a command", async () => {
+    const sent: unknown[] = [];
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: {
+        value: "/compact now",
+        loadCommands: async () => [{ name: "compact", source: "builtin" } as AgentCommand],
+        onsend: (text: string, extras: unknown) => void sent.push([text, extras]),
+      },
+    });
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+    await user.keyboard("{Enter}");
+    await until(() => sent.length > 0);
+    expect(sent).toEqual([["/compact now", { command: { name: "compact", args: "now" } }]]);
   });
 
   it("offers images only to an agent that takes them", () => {

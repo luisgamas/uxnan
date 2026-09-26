@@ -2595,6 +2595,7 @@ export const en = {
   "chat.suggestionsLabel": "Suggestions",
   "chat.noCommands": "This agent has no commands here.",
   "chat.noFiles": "No matching files.",
+  "chat.imagesLimit": "A message carries up to {count} images.",
   "chat.addImages": "Add images",
   "chat.removeImage": "Remove {name}",
   "chat.commandGroup.skill": "Skills",

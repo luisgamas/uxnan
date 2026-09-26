@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — the chat composer works like the phone's
+
+- **`@` lists the project and reaches its files through the bridge.** A bare
+  `@` showed "No matching files." — the desktop searched its own disk and only
+  for a name. It now asks the bridge that owns the conversation's folder, as the
+  phone does: `@` or `@dir/` lists the folder, a name searches the project, and
+  a picked folder drills in.
+- **A `/command` is sent as a command however it got into the message.** The
+  agent's commands loaded only once `/` was typed at the caret, so one recalled
+  with ↑, pasted or restored from the draft went out as plain text.
+- **Images: up to 10 per message, and dropped ones too.** The same limit as the
+  phone (it was 8 and extra images vanished silently; a toast now says so), and
+  images can be dropped onto the composer.
+
 ### Fixed
 
 - **A click on a link that navigates late reports it.** A link through a

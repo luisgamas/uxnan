@@ -2597,6 +2597,7 @@ export const es: Record<MessageKey, string> = {
   "chat.suggestionsLabel": "Sugerencias",
   "chat.noCommands": "Este agente no tiene comandos aquí.",
   "chat.noFiles": "Ningún archivo coincide.",
+  "chat.imagesLimit": "Un mensaje lleva hasta {count} imágenes.",
   "chat.addImages": "Agregar imágenes",
   "chat.removeImage": "Quitar {name}",
   "chat.commandGroup.skill": "Skills",
