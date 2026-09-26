@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.30-alpha.20260926] - 20260926
 ### Added — the bridge updates itself
 
 - **`bridge/update`.** Run as the user's service from a global npm install, the
