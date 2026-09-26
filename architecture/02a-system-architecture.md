@@ -2765,11 +2765,18 @@ npm a su lado en la misma carpeta global (el PATH de un servicio no trae npm);
 si no, `update.canApply` es `false` con `unsupportedReason`. Rechaza con
 `-32009` si hay un turno en curso en cualquier cliente. Si procede, responde con
 el estado `updating`, lo difunde, lanza un **ayudante** desacoplado
-(`uxnan-bridge self-update --pid <pid> --to <version>`, desde el home) y se
-detiene limpiamente (el gestor de servicios no lo relanza). El ayudante espera a
-que el bridge salga, instala con `node <npm-cli.js> install --global --prefix
-<el mismo prefijo> uxnan-bridge@<version>`, comprueba la version que quedo en
-disco, escribe el resultado en `~/.uxnan/update-result.json` y **arranca el
+(`uxnan-bridge self-update --pid <pid> --to <version>`, desde el home), **le
+traspasa su lock** (`~/.uxnan/bridge.lock`, `LockFile.transfer`) y se detiene
+limpiamente (el gestor de servicios no lo relanza). Mientras el ayudante tenga el
+lock, cualquier bridge que se arranque (una app que lo mantiene corriendo, el
+propio gestor) sale enseguida en vez de correr sobre un paquete a medio
+reemplazar. Al detenerse, el bridge detiene **todos** sus adaptadores, aunque no
+hayan corrido un turno: un CLI arrancado solo para listar modelos lo mantenia
+vivo. El ayudante espera a que el bridge salga (si sigue vivo pasado el plazo lo
+termina a la fuerza: ya se habia detenido y guardado su estado), instala con
+`node <npm-cli.js> install --global --prefix <el mismo prefijo>
+uxnan-bridge@<version>`, comprueba la version que quedo en disco, escribe el
+resultado en `~/.uxnan/update-result.json`, **suelta el lock y arranca el
 servicio**, haya funcionado npm o no. Instalar solo con el bridge detenido es lo
 que lo hace funcionar en Windows, donde un proceso vivo bloquea sus modulos
 nativos.

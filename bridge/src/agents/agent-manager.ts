@@ -1342,12 +1342,17 @@ export class AgentManager {
     }
   }
 
+  /**
+   * Stop every adapter — not only those that ran a turn: listing models or
+   * commands, naming a thread, or a resident session also start a CLI process,
+   * and one left alive keeps the stopping bridge from exiting (so a restart or
+   * a self-update waits on it forever). Each adapter's `stop` is cheap when it
+   * holds nothing.
+   */
   async stopAll(): Promise<void> {
     for (const turnId of [...this.#pendingText.keys()]) this.#flushText(turnId);
-    for (const [agentId, adapter] of this.#adapters) {
-      if (this.#started.has(agentId)) {
-        await adapter.stop().catch(() => undefined);
-      }
+    for (const adapter of this.#adapters.values()) {
+      await adapter.stop().catch(() => undefined);
     }
     this.#started.clear();
   }

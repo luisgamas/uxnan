@@ -240,6 +240,18 @@ test('GrokAdapter discovers models from the initialize handshake', async () => {
   assert.equal(models.find((m) => m.id === 'grok-4.5')?.contextWindow, 500000);
 });
 
+test('GrokAdapter stop ends the grok process it started, even one only asked for models', async () => {
+  // A live child keeps a stopping bridge from exiting, so a restart or a
+  // self-update would wait on it forever (seen on a real service).
+  const { adapter, server } = setup();
+  let killed = 0;
+  const spawn = server.spawn.bind(server);
+  server.spawn = () => ({ ...spawn(), kill: () => void (killed += 1) });
+  await adapter.listModels();
+  await adapter.stop();
+  assert.equal(killed, 1);
+});
+
 test('GrokAdapter hands a session the desktop tools only when Grok takes HTTP MCP servers', async () => {
   const desktopTools = { mcpUrl: 'http://127.0.0.1:51234/mcp', token: 'k'.repeat(43) };
   for (const http of [true, false]) {
