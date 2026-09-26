@@ -56,9 +56,9 @@ export function isActivity(part: unknown): boolean {
 }
 
 /** Groups a turn's parts: runs of activity become one `work` item; blank text
- *  disappears; and of the plans the turn carries, only the latest stays — an
- *  agent resends its whole to-do list on every change, so each earlier one is
- *  a past state of the same list. */
+ *  and the zero-text response boundaries disappear; and of the plans the turn
+ *  carries, only the latest stays — an agent resends its whole to-do list on
+ *  every change, so each earlier one is a past state of the same list. */
 export function groupParts(parts: readonly unknown[]): TimelineItem[] {
   const items: TimelineItem[] = [];
   let lastPlan = -1;
@@ -67,6 +67,10 @@ export function groupParts(parts: readonly unknown[]): TimelineItem[] {
   });
   for (const [i, part] of parts.entries()) {
     if (typeOf(part) === "plan" && i !== lastPlan) continue;
+    // Where one of the agent's own responses ends: metadata, nothing to show.
+    // Taken for a block, it made every answer that closes with one (Claude,
+    // Codex and pi close each response so) fold away as work.
+    if (typeOf(part) === "assistant_response_boundary") continue;
     const text = textOf(part);
     if (text !== null) {
       if (text.trim()) items.push({ kind: "text", text });

@@ -51,6 +51,13 @@ describe("groupParts", () => {
     expect(items[1]).toMatchObject({ kind: "work", blocks: [{ command: "ls" }, { filename: "a.ts" }] });
   });
 
+  it("keeps an answer that closes with a response boundary as the answer", () => {
+    const boundary = { type: "assistant_response_boundary", phase: "unknown" };
+    const items = groupParts([cmd("cat a.ts"), text("It builds the blocks."), boundary]);
+    expect(items.map((i) => i.kind)).toEqual(["work", "text"]);
+    expect(splitAnswer(items).answer).toEqual([{ kind: "text", text: "It builds the blocks." }]);
+  });
+
   it("keeps only the latest of a turn's plans, in its place", () => {
     const plan = (done: boolean) => ({
       type: "plan",

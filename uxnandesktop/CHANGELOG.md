@@ -249,6 +249,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A chat's answer no longer folds away as work.** Claude Code, Codex and pi
+  close each response with a zero-text boundary; the timeline took it for a
+  block, so an answer that ended with one was hidden behind "Worked for …" on
+  the desktop (the phone showed it). The boundary is now skipped
+  (`timeline.ts`).
 - **The first message of a new chat no longer stays in the composer.** Its
   debounced draft save was cancelled when the view gave way to the
   conversation, which then read the stale draft back; the draft is now dropped
