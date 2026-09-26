@@ -53,9 +53,7 @@
   const prompt = $derived(userText(turn));
   const assistant = $derived(assistantOf(turn));
   const streaming = $derived(conversation.activeTurnId === turn.id);
-  const answered = $derived(
-    turn.status !== "queued" && turn.status !== "cancelled" && turn.status !== "delivered",
-  );
+  const answered = $derived(turn.status !== "queued" && turn.status !== "cancelled");
   let thinkingOpen = $state(false);
   let workOpen = $state(false);
 

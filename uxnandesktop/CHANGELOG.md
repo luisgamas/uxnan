@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — chat order when the agent takes a message mid-turn
+
+- The answer to a message the agent took while it worked now shows under that
+  message, not above it: the bridge ends the running turn there and starts the
+  message's own turn, which the chat already renders as a queue that moved on.
+  The `delivered` turn handling is gone.
+
 ### Fixed
 
 - **Running a development build no longer disturbs the installed app.** Both
