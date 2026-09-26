@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.61] - 20260926
 ### Changed
 
 - **"Check again" in Settings → Bridge & mobile asks the bridge for the newest
