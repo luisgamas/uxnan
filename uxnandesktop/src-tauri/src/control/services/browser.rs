@@ -678,6 +678,8 @@ async fn settle<R: tauri::Runtime>(
     workspace: &str,
     generation: u64,
 ) -> (Option<SessionState>, bool) {
+    // FOR-DEV: a navigation that starts after SETTLE (a link through a slow
+    // redirector) is reported as `navigated: false` — see FOR-DEV.md → Browser.
     tokio::time::sleep(SETTLE).await;
     let moved = state_of(app, workspace).is_some_and(|s| s.generation != generation || s.loading);
     if moved {
