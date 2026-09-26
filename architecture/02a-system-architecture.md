@@ -1,10 +1,20 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.4.1
+> **Version:** 1.5.0
 > **Fecha:** 2026-09-26
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.0):** the bridge owns its own update (§5.8.18). It
+> checks the npm registry itself every hour while it runs (a daemon that learned
+> of a release a day late was the bug), installs the published version and
+> restarts on it (`bridge/update`), and tells every client with
+> `stream/bridge/updated`; `bridge/status` carries it as `update: BridgeUpdate`.
+> Uxnan Desktop and every paired phone offer the same one-tap update through
+> that one owner — never under a running turn. The desktop's own npm path is
+> left only for what the bridge cannot do for itself: installing it, and
+> updating a bridge that predates updating itself.
 
 > **Executive summary (1.4.1):** a message the agent takes into its running
 > turn (steering, §5.8.13) now ends that turn there and carries the rest of the
@@ -1770,8 +1780,9 @@ bridge/
 │   ├── daemon-state.ts             # persiste config, pairing, status
 │   ├── daemon-config.ts            # ~/.uxnan/daemon-config.json
 │   ├── handler-router.ts           # ruteo + validacion Ajv de metodos JSON-RPC
-│   ├── bridge-status.ts            # snapshots de estado / relayConnected / update (latestVersion)
-│   ├── update-check.ts             # chequeo de version en npm (dist-tag latest, cache 24h; `start` la ignora y re-chequea)
+│   ├── bridge-status.ts            # snapshots de estado / relayConnected / update (BridgeUpdate)
+│   ├── update-check.ts             # consulta a npm (dist-tag latest) + cache 24h para los comandos cortos del CLI
+│   ├── self-update.ts              # §5.8.18: chequeo horario, bridge/update, ayudante `self-update`
 │   ├── qr.ts                       # QR + pairing code
 │   ├── account-status.ts           # snapshot sanitizado de auth (nunca tokens)
 │   ├── version.ts                  # BRIDGE_VERSION + BRIDGE_PACKAGE_NAME desde package.json
@@ -2734,6 +2745,47 @@ en launchd / systemd --user / Programador de tareas; se reinicia si se cae, no
 si se detiene a proposito. `service-status` / `service-start` permiten al
 desktop administrarlo; el bridge sigue sirviendo al telefono con el desktop
 cerrado.
+
+#### 5.8.18 El bridge se actualiza a si mismo (2026-09)
+
+La actualizacion del bridge tiene **un dueño: el bridge**, y todos los clientes
+la ofrecen pidiendosela a el (`bridge/self-update.ts`, modelo `BridgeUpdate`).
+
+**Saber.** El bridge en marcha consulta el registro de npm (`dist-tags`,
+etiqueta `latest`) **cada hora** y al arrancar. Los comandos cortos del CLI
+conservan la cache de 24 h de `update-check.json`; el demonio no la obedece,
+porque con ella podia tardar un dia en enterarse de una version publicada (el
+fallo que origino esta seccion). Cuando cambia la version mas nueva conocida,
+emite `stream/bridge/updated { update }` a todos los clientes; `bridge/status`
+lleva el mismo `update`. Un cliente nunca consulta npm.
+
+**Aplicar.** `bridge/update` solo corre si el bridge es el **servicio del
+usuario** (`host.launchedBy: service`) instalado **globalmente con npm** y con
+npm a su lado en la misma carpeta global (el PATH de un servicio no trae npm);
+si no, `update.canApply` es `false` con `unsupportedReason`. Rechaza con
+`-32009` si hay un turno en curso en cualquier cliente. Si procede, responde con
+el estado `updating`, lo difunde, lanza un **ayudante** desacoplado
+(`uxnan-bridge self-update --pid <pid> --to <version>`, desde el home) y se
+detiene limpiamente (el gestor de servicios no lo relanza). El ayudante espera a
+que el bridge salga, instala con `node <npm-cli.js> install --global --prefix
+<el mismo prefijo> uxnan-bridge@<version>`, comprueba la version que quedo en
+disco, escribe el resultado en `~/.uxnan/update-result.json` y **arranca el
+servicio**, haya funcionado npm o no. Instalar solo con el bridge detenido es lo
+que lo hace funcionar en Windows, donde un proceso vivo bloquea sus modulos
+nativos.
+
+**Informar.** El bridge que vuelve lee (y consume) `update-result.json`: si
+fallo, `update.phase` es `failed` con `failure { reason: permission | install |
+unsupported, message, command? }` (el comando para hacerlo a mano). Si
+funciono, no dice nada: el cliente ve la version nueva al reconectar.
+
+**Clientes.** Uxnan Desktop (fila en la barra lateral, Ajustes → Bridge y
+movil, y la actualizacion automatica si esta activada) y el telefono (aviso en la
+lista de conversaciones y Ajustes → Actualizaciones) llaman a `bridge/update`.
+Un bridge sin `update` en `bridge/status` es anterior a esta funcion y por lo
+tanto mas antiguo que el cliente: el desktop lo actualiza con su instalador npm
+(la unica ruta propia que conserva, junto con instalarlo cuando no hay bridge) y
+el telefono pide actualizarlo en la PC.
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 

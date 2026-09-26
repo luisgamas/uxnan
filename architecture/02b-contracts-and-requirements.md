@@ -100,7 +100,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 81 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 82 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
@@ -279,10 +279,11 @@ notifications/update            -> actualizar preferencias de notificacion (Repl
 notifications/unregister        -> desregistrar el telefono
 ```
 
-**Control del bridge (6):**
+**Control del bridge (7):**
 ```
 bridge/status                    -> snapshot de estado del bridge (incluye relayConnected,
-                                    version y, del chequeo npm de fondo, latestVersion/updateAvailable;
+                                    version y `update: BridgeUpdate` — su propia actualizacion,
+                                    02a §5.8.18 (ausente = bridge anterior a actualizarse solo);
                                     activeTurns = hilos con un turno en curso, para que un cliente
                                     espere un momento tranquilo antes de reiniciar el bridge;
                                     host { launchedBy: service|desktop|cli, machineName } y
@@ -292,6 +293,12 @@ bridge/connectedPhones           -> lista de telefonos conectados
 bridge/disconnectPhone           -> desconectar un telefono
 bridge/trustedDevices            -> lista de dispositivos de confianza
 bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push registration
+bridge/update                    -> BridgeUpdate  el bridge instala la version publicada y se reinicia
+                                    en ella (02a §5.8.18): responde con el estado en que entra
+                                    (`updating`), luego se detiene. Rechaza con -32009 (AgentBusy,
+                                    data.reason 'busy') si hay un turno en curso en cualquier cliente, y
+                                    con -32000 (data.reason 'unsupported') si no corre como servicio del
+                                    usuario desde una instalacion global de npm
 ```
 
 **Herramientas del desktop para agentes del bridge (2)** — solo por el canal de
@@ -383,7 +390,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 | `-32006` | Session expired | Handshake `expiresAt` vencido, o sesion rotada |
 | `-32007` | Confirmation required | (Reservado; el flujo de approval usa `approval` content block, no este codigo) |
 | `-32008` | Resource not found | `threadId` / `turnId` / `checkpointId` desconocido |
-| `-32009` | Agent busy | Ya hay un turno en vuelo en el thread y el llamante pidio NO encolar (`turn/send` con `queue:false`), o la cola del thread esta llena (10). Solo se emite ante un opt-out explicito: el default es encolar |
+| `-32009` | Agent busy | Ya hay un turno en vuelo en el thread y el llamante pidio NO encolar (`turn/send` con `queue:false`), o la cola del thread esta llena (10). Solo se emite ante un opt-out explicito: el default es encolar. Tambien lo devuelve `bridge/update` (data.reason `busy`) mientras algun cliente tiene un turno en curso: el bridge nunca se reinicia bajo uno |
 | `missing_transport` (en `PairingPayload`) | - | El payload no tiene ni `relay` ni `hosts` (validacion pairing) |
 
 ---
@@ -391,7 +398,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 ### 1.4 Notificaciones de streaming (bridge -> phone)
 
 > **Lista canonica:** `../../shared/src/jsonrpc/notifications.ts`
-> (`StreamNotification`, 21 entradas). Son JSON-RPC notifications (sin `id`,
+> (`StreamNotification`, 22 entradas). Son JSON-RPC notifications (sin `id`,
 > unidireccionales). El telefono las decodifica via
 > `IncomingMessageProcessor` y las proyecta en la timeline via un reducer
 > sobre `TurnTimelineSnapshot`. Los parametros exactos viven en `shared/`.
@@ -418,6 +425,7 @@ stream/settings/updated     -> SettingsUpdatedParams { settings, rev }          
 stream/presence/updated     -> PresenceUpdatedParams { clients }                            (NUEVO 2026-09; en vivo, sin rev)
 stream/devices/updated      -> DevicesUpdatedParams { devices }                             (NUEVO 2026-09; lista completa al emparejar, describir, renombrar o quitar un telefono)
 stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
+stream/bridge/updated       -> BridgeUpdatedParams  { update: BridgeUpdate }                (NUEVO 2026-09; la actualizacion del propio bridge: se publico una version, empezo o fallo — 02a §5.8.18)
 ```
 
 **Revisiones (2026-09, `02a` §5.8.17).** `stream/thread/updated` (via
