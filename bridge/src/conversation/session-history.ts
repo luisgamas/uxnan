@@ -235,6 +235,13 @@ export class SessionHistoryReader {
           pendingToolUses = null;
         }
         if (!text) continue; // pure tool_result echo — skip per existing behavior
+        // Not a prompt: what Claude Code adds to the conversation on its own —
+        // an image's size note, a loaded skill, a hook's context (`isMeta`),
+        // or the summary a compaction leaves (`isCompactSummary`). Each is
+        // written as a "user" line of the prompt it belongs to; taken as a
+        // prompt, one run became a turn per line, imported next to the
+        // bridge's own record of that run and shown as bubbles on the phone.
+        if (obj['isMeta'] === true || obj['isCompactSummary'] === true) continue;
         out.push({ role, text, createdAt: parseTime(obj['timestamp']) });
       }
     }

@@ -29,6 +29,90 @@ function block(b: unknown): Record<string, unknown> {
   return b as Record<string, unknown>;
 }
 
+test('claude: what Claude Code adds on its own opens no turn — one prompt, one turn', async () => {
+  // Shapes copied from a real session: an image read writes its size note, a
+  // loaded skill its body, each as an `isMeta` "user" line of the running
+  // prompt; a compaction leaves an `isCompactSummary` line.
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'sess-claude-meta';
+    await writeLines(join(home, '.claude', 'projects', 'p', `${sid}.jsonl`), [
+      {
+        type: 'user',
+        promptId: 'p1',
+        message: { role: 'user', content: [{ type: 'text', text: 'fix the dialog' }] },
+        timestamp: '2026-09-27T10:00:00Z',
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Looking at it.' }] },
+        timestamp: '2026-09-27T10:00:01Z',
+      },
+      {
+        type: 'user',
+        isMeta: true,
+        promptId: 'p1',
+        message: {
+          role: 'user',
+          content:
+            '[Image: original 2048x1013, displayed at 2000x989. Multiply coordinates by 1.02 to map to original image.]',
+        },
+        timestamp: '2026-09-27T10:00:02Z',
+      },
+      {
+        type: 'user',
+        isMeta: true,
+        promptId: 'p1',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'Base directory for this skill: /skills/x' }],
+        },
+        timestamp: '2026-09-27T10:00:03Z',
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: ' Done.' }] },
+        timestamp: '2026-09-27T10:00:04Z',
+      },
+      {
+        type: 'user',
+        isCompactSummary: true,
+        message: { role: 'user', content: 'This session is being continued from a previous one…' },
+        timestamp: '2026-09-27T10:05:00Z',
+      },
+      {
+        type: 'user',
+        promptId: 'p2',
+        message: { role: 'user', content: [{ type: 'text', text: 'thanks' }] },
+        timestamp: '2026-09-27T10:06:00Z',
+      },
+      {
+        type: 'assistant',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Anytime.' }] },
+        timestamp: '2026-09-27T10:06:01Z',
+      },
+    ]);
+    const reader = new SessionHistoryReader({ homeDir: home });
+    const turns = await reader.readTurns({ agentId: 'claude-code', agentSessionId: sid }, 'th-m');
+    assert.ok(turns);
+    assert.deepEqual(
+      turns!.map((t) => t.messages.map((m) => [m.role, m.content])),
+      [
+        [
+          ['user', 'fix the dialog'],
+          ['assistant', 'Looking at it.Done.'],
+        ],
+        [
+          ['user', 'thanks'],
+          ['assistant', 'Anytime.'],
+        ],
+      ],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 test('claude: parses user/assistant turns, keeps thinking, skips tool_result echo', async () => {
   const { home, cleanup } = await fakeHome();
   try {

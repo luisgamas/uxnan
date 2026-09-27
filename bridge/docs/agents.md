@@ -433,6 +433,13 @@ driving a turn for that thread, it reads the matching agent-owned transcript and
 merges completed native-only turns before paging the result. This makes a prompt
 written in an agent's desktop app or CLI appear back in Uxnan Mobile.
 
+What the transcript holds of a run the bridge itself drove is never native-only:
+a native turn starting inside a bridge-recorded turn's run is that run and is
+not imported (rows an older read imported that way are dropped on the next
+read). For Claude Code, only a genuine prompt opens a turn — the `isMeta` lines
+it writes on its own (an image's size note, a loaded skill, a hook's context)
+and a compaction's `isCompactSummary` line do not.
+
 | Agent | Native history source | Cross-client behavior |
 |---|---|---|
 | Codex | `~/.codex/sessions/.../rollout-*-<sessionId>.jsonl` | Codex Desktop/CLI completed turns converge |
