@@ -12,10 +12,8 @@
 //!
 //! Every platform runs the capture on the main thread (`with_webview`) and
 //! hands the bytes back through a channel with a timeout, so a page that never
-//! renders fails the call instead of hanging it.
-//!
-//! FOR-DEV: the Windows and Linux captures compile on CI but have not run on a
-//! real machine yet — see `FOR-DEV.md` → *Integrated developer browser*.
+//! renders fails the call instead of hanging it. Every platform's capture runs
+//! on a real machine in the *Smoke — platforms* workflow.
 
 use tauri::Webview;
 

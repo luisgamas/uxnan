@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **The browser captures a hidden page on Windows too.** A workspace whose
+  page was not on screen timed out on Windows, where WebView2 does not paint a
+  hidden controller: it is now shown off the window for the capture and hidden
+  again. The capture now runs on real Windows and Linux machines in CI.
+
 ## [0.0.62] - 20260927
 ### Added
 

@@ -891,15 +891,6 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
-- [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
-      now captures on every desktop platform — WebView2 `CapturePreview` into a
-      memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —
-      and both build on CI, but only macOS has run it. On each, call
-      `uxnan-cli browser screenshot --out shot.png` against a local page (the
-      page visible, then hidden in a background workspace) and open a dialog
-      over the panel to see the still image; then drop this item and the inline
-      `FOR-DEV:` in `browser/capture.rs`.
-
 ## Control surface — MCP tools + `uxnan-cli` ☐
 
 **Goal:** let the agents Uxnan launches, a person at a shell and scripts

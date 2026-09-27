@@ -391,8 +391,8 @@ export interface SelfUpdateHelperInput {
  * outcome, start the service. Whatever npm did, the service is started again —
  * a failed install leaves the old version in place, which then reports why.
  */
-// FOR-DEV: run end to end as a live launchd service on macOS; systemd `--user`
-// and Task Scheduler are verified only in tests (see bridge/FOR-DEV.md).
+// FOR-DEV: a refused update (a turn running) and the Windows Startup-folder
+// fallback have not run as a live service yet (see bridge/FOR-DEV.md).
 export async function runSelfUpdateHelper(input: SelfUpdateHelperInput): Promise<UpdateResult> {
   const now = input.now ?? Date.now;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));

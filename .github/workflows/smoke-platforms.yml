@@ -17,9 +17,6 @@ name: Smoke — platforms (bridge service, desktop capture)
 # FOR-DEV.md item — a green run here is the evidence, not a substitute for it.
 
 on:
-  # TEMP while the checks are brought up on this branch; removed before merge.
-  push:
-    branches: [ci/platform-smoke]
   workflow_dispatch:
     inputs:
       bridge_from:
