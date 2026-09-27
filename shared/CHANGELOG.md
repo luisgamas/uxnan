@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.23-alpha.20260927] - 20260927
 ### Added
 
 - **`agent/sessions`** (`{ cwd, agentId? }` → `{ sessions: AgentSessionSummary[], unlisted }`):
