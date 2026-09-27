@@ -19,7 +19,7 @@
   import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import Settings02Icon from "@hugeicons/core-free-icons/Settings02Icon";
   import type { AgentModelOption } from "$shared/agents/agent-capabilities";
-  import EffortBars from "./EffortBars.svelte";
+  import Brain01Icon from "@hugeicons/core-free-icons/Brain01Icon";
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
@@ -64,10 +64,6 @@
     return typeof option.default === "string" ? option.default : undefined;
   }
 
-  function levelIndex(option: AgentModelOption, value: string | undefined): number {
-    return value === undefined ? -1 : (option.values ?? []).findIndex((v) => v.value === value);
-  }
-
   function labelOf(option: AgentModelOption): string {
     const value = effective(option);
     const level = option.values?.find((v) => v.value === value);
@@ -109,7 +105,7 @@
           aria-label={`${knobLabel(option)}: ${labelOf(option)}`}
           title={knobLabel(option)}
         >
-          <EffortBars level={levelIndex(option, current)} of={levels.length} />
+          <Icon icon={Brain01Icon} class={icon.status} />
           <span class="truncate">{labelOf(option)}</span>
           <Icon icon={ArrowDown01Icon} class={cn(icon.status, "opacity-60")} />
         </Button>
@@ -124,14 +120,12 @@
         onValueChange={(v) => v && pick(option, v)}
       >
         {#if option.default === undefined}
-          <DropdownMenu.RadioItem value={UNSET} class={cn(text.menu, "pr-8")}>
-            <EffortBars level={-1} of={levels.length} class="text-muted-foreground" />
+          <DropdownMenu.RadioItem value={UNSET} class={cn(text.menu, "whitespace-nowrap pr-8")}>
             <span class="flex-1">{i18n.t("runOptions.modelDefault")}</span>
           </DropdownMenu.RadioItem>
         {/if}
-        {#each levels as level, index (level.value)}
-          <DropdownMenu.RadioItem value={level.value} class={cn(text.menu, "pr-8")}>
-            <EffortBars level={index} of={levels.length} class="text-muted-foreground" />
+        {#each levels as level (level.value)}
+          <DropdownMenu.RadioItem value={level.value} class={cn(text.menu, "whitespace-nowrap pr-8")}>
             <span class="flex-1">{levelLabel(level.value, level.label)}</span>
             {#if level.value === option.default}
               <span class={cn(text.meta, "shrink-0")}>{i18n.t("runOptions.default")}</span>

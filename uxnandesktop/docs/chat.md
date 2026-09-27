@@ -274,8 +274,9 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it. Its toolbar holds what can change mid-chat — the
   model (every client sees the change), the model's knobs beside it when it has
-  any — one picker for every agent (`RunOptionsPicker`): rising bars and the
-  level's name, a menu of the model's own levels with the one it runs at by
+  any — one picker for every agent (`RunOptionsPicker`): the brain mark the
+  phone uses for effort and the level's name, a menu of the model's own levels
+  (one per line) with the one it runs at by
   default marked (untouched, the bridge sends that default, so what the pill
   shows is what the turn uses; an agent that names no default offers "Model
   default") — and the access mode (*Ask first* / *Auto-approve edits* /
