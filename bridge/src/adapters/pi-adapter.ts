@@ -80,9 +80,11 @@ import {
   type CompactionReason,
   type DesktopTools,
   type GenerateTitleOptions,
+  type NativeSessionInfo,
   type SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { listPiSessions } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { piResultText, piToolBlock, piToolStartBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
@@ -253,12 +255,17 @@ export interface PiThinkingDefaults {
   fallback: string;
 }
 
+/** pi's own folder — settings and sessions: `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`. */
+export function piAgentDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent');
+}
+
 /** pi's thinking defaults as its settings file states them. */
 export function readPiThinkingDefaults(
   env: NodeJS.ProcessEnv = process.env,
   readFile: (path: string) => string = (path) => readFileSync(path, 'utf-8'),
 ): PiThinkingDefaults {
-  const dir = env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent');
+  const dir = piAgentDir(env);
   try {
     const settings = JSON.parse(readFile(join(dir, 'settings.json'))) as Record<string, unknown>;
     const levels = new Set<string>(PI_THINKING_LEVELS);
@@ -294,6 +301,8 @@ function piReasoningOption(defaultLevel: string): AgentModelOption {
 export type PiPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
 
 export interface PiAdapterOptions {
+  /** pi's own folder, where its sessions are listed from (tests); {@link piAgentDir} by default. */
+  agentDir?: string;
   /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[cli.js]` when running via node). */
@@ -621,6 +630,7 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #permissionMode: PiPermissionMode;
   readonly #spawn: SpawnFn;
   readonly #idleTimeoutMs: number;
+  readonly #agentDir: string;
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
   /** model id → context-window tokens, cached from `--list-models` for `usage`. */
@@ -649,10 +659,16 @@ export class PiAdapter extends BaseAgentAdapter {
     return Boolean(session && !session.exited);
   }
 
+  /** pi's sessions in a folder, from its own session store (`native-sessions.ts`). */
+  listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    return listPiSessions(this.#agentDir, cwd);
+  }
+
   constructor(options: PiAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'pi';
     this.#prependArgs = options.prependArgs ?? [];
+    this.#agentDir = options.agentDir ?? piAgentDir();
     this.#defaultModel = options.defaultModel;
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
     this.#spawn = options.spawnFn ?? defaultSpawn;

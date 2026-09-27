@@ -25,6 +25,7 @@ import {
   reconcileSuffix,
   str,
   type IOpenCodeServer,
+  type OpenCodeListedSession,
   type OpenCodeCommand,
   type OpenCodeCommandRun,
   type OpenCodeEvent,
@@ -489,6 +490,36 @@ export class OpenCodeV1Server implements IOpenCodeServer {
   async hasSession(sessionId: string): Promise<boolean> {
     await this.start();
     return this.#serve.exists(`/session/${encodeURIComponent(sessionId)}`);
+  }
+
+  /**
+   * OpenCode 1's `GET /session`: every session of the server's project, each
+   * with its `directory`, `title` and `time.updated`; filtered and ordered here.
+   */
+  async listSessions(directory: string, limit: number): Promise<OpenCodeListedSession[]> {
+    await this.start();
+    const value = await this.#serve.request<unknown>('GET', '/session');
+    const all = (Array.isArray(value) ? value : []).flatMap((raw) => {
+      const s = raw as {
+        id?: unknown;
+        title?: unknown;
+        directory?: unknown;
+        time?: { updated?: unknown };
+      };
+      if (typeof s.id !== 'string') return [];
+      return [
+        {
+          id: s.id,
+          ...(typeof s.directory === 'string' ? { directory: s.directory } : {}),
+          ...(typeof s.title === 'string' ? { title: s.title } : {}),
+          ...(typeof s.time?.updated === 'number' ? { updated: s.time.updated } : {}),
+        },
+      ];
+    });
+    return all
+      .filter((s) => s.directory === directory)
+      .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
+      .slice(0, limit);
   }
 
   async createSession(opts: {

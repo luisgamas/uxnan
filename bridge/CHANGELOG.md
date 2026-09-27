@@ -4,6 +4,26 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Pick up any agent session.** `agentSession/list` lists every agent's own
+  sessions in a folder — ones started in a terminal, in the agent's app, or by
+  the bridge — each read through the agent's CLI (Codex's app-server, OpenCode's
+  server, Zero's ACP `session/list`, and Claude Code's, pi's and Grok's session
+  stores, head and tail only). `thread/start` with `agentSessionId` continues
+  one as a conversation: its history comes in and its first turn resumes it.
+  Verified against all seven CLIs with a session each made on its own (every
+  one recalled a word from before; Antigravity has no listing and no readable
+  history, so its sessions are continued from the terminal that holds them).
+- **A session open in a terminal has one writer.** Uxnan Desktop tells the
+  bridge which sessions its terminals hold (`agentSession/hold` / `release`,
+  local channel only); the bridge refuses turns in a held session (`-32010`),
+  lets go of the process it kept for the conversation, and announces every
+  change (`stream/agentSession/held`). Any client can ask for a held session
+  (`agentSession/requestHandoff`): the holding desktop is asked and answers.
+- **Naming a chat on Claude Code leaves no session** in Claude's own history
+  (`--no-session-persistence`).
+
 ### Fixed
 
 - **A conversation keeps its agent's memory after the bridge restarts or

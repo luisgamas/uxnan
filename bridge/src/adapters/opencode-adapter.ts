@@ -42,11 +42,13 @@ import type {
   QuestionItem,
   DesktopTools,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { createHash } from 'node:crypto';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { mergePlanSteps, opencodeToolBlock, opencodeToolStartBlock } from './opencode-tools.js';
 import { compactionBlock, planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
@@ -844,6 +846,28 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
   }
 
+  /**
+   * OpenCode's sessions in a folder, from its server — the store OpenCode's
+   * own clients share, so a session started in its terminal UI is there. A
+   * session this bridge opened is titled with the conversation's id (see
+   * `sendTurn`), which is what tells it from a person's.
+   */
+  async listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    const server = await this.#ensureServer(cwd);
+    const sessions = await server.listSessions(cwd, MAX_LISTED);
+    return sessions.map((s) => {
+      const bridgeOwned = s.title !== undefined && UUID.test(s.title);
+      const title = bridgeOwned ? undefined : cleanTitle(s.title);
+      return {
+        sessionId: s.id,
+        cwd,
+        ...(title !== undefined ? { title } : {}),
+        updatedAt: s.updated ?? 0,
+        interactive: !bridgeOwned,
+      };
+    });
+  }
+
   /** A folder's commands, from the cache or its server. */
   async #commandsFor(cwd: string): Promise<OpenCodeCommand[]> {
     const cached = this.#commandsByCwd.get(cwd);
@@ -854,6 +878,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return commands;
   }
 }
+
+/** A conversation id, as the bridge titles the OpenCode sessions it opens. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

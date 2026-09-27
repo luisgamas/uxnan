@@ -25,6 +25,7 @@ import {
   type ApprovalDecision,
   type ApprovalRequestBlock,
   type IAgentAdapter,
+  type NativeSessionInfo,
   type QueuePausedReason,
   type QueueStateResult,
   type TurnAttachment,
@@ -421,6 +422,45 @@ export class AgentManager {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Every available agent's own sessions in a folder, each read through its
+   * CLI (`IAgentAdapter.listNativeSessions`), all at once and each bounded by
+   * {@link SESSION_LIST_TIMEOUT_MS} so one slow CLI never holds the others.
+   * An agent whose CLI cannot list its sessions is named in `unlisted`; one
+   * that fails to answer simply lists nothing.
+   */
+  async listAgentSessions(
+    cwd: string,
+    only?: AgentId,
+  ): Promise<{
+    lists: { agentId: AgentId; sessions: NativeSessionInfo[] }[];
+    unlisted: AgentId[];
+  }> {
+    const unlisted: AgentId[] = [];
+    const pending: Promise<{ agentId: AgentId; sessions: NativeSessionInfo[] }>[] = [];
+    for (const adapter of this.#adapters.values()) {
+      const { agentId } = adapter;
+      if (only !== undefined && agentId !== only) continue;
+      if (agentId === 'echo' || !this.isAvailable(agentId) || this.isDeprecated(agentId)) continue;
+      if (!adapter.listNativeSessions) {
+        unlisted.push(agentId);
+        continue;
+      }
+      const list = adapter.listNativeSessions(cwd);
+      pending.push(
+        withTimeout(list, SESSION_LIST_TIMEOUT_MS)
+          .then((sessions) => ({ agentId, sessions: sessions ?? [] }))
+          .catch((err: unknown) => {
+            this.#options.logger.warn(
+              `listing ${agentId} sessions failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return { agentId, sessions: [] };
+          }),
+      );
+    }
+    return { lists: await Promise.all(pending), unlisted };
   }
 
   /**
@@ -1251,6 +1291,29 @@ export class AgentManager {
   }
 
   /**
+   * A desktop terminal took the thread's agent session (`agentSession/hold`):
+   * let go of the process this bridge keeps for it (pi and Antigravity keep
+   * one resident per thread), so the terminal is the only writer. Nothing is
+   * cancelled — a turn in flight finishes (the desktop only hands a session to
+   * a terminal between turns) — and the next turn here, once the terminal lets
+   * go, resumes the session as usual.
+   */
+  async releaseThreadProcess(threadId: string): Promise<void> {
+    if (this.#activeTurnByThread.has(threadId)) return;
+    for (const adapter of this.#adapters.values()) {
+      const closable = adapter as unknown as { closeSession?(threadId: string): Promise<void> };
+      if (!closable.closeSession) continue;
+      try {
+        await closable.closeSession(threadId);
+      } catch (err) {
+        this.#options.logger.warn(
+          `release session failed for '${adapter.agentId}': ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  /**
    * Removes [turnId] from [threadId]'s queue if it is there. Returns whether it
    * was (so {@link cancelTurn} knows not to bother an adapter with it).
    */
@@ -1926,4 +1989,24 @@ function readUsage(data: unknown): { tokens: number; contextWindow?: number } | 
     tokens,
     ...(typeof window === 'number' ? { contextWindow: window } : {}),
   };
+}
+
+/** How long one agent's CLI may take to list its sessions. */
+export const SESSION_LIST_TIMEOUT_MS = 10_000;
+
+/** [promise]'s value, or `undefined` once [ms] have passed. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
 }

@@ -4,6 +4,16 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Naming a session or writing a commit message no longer leaves a session in
+  the agent's own history.** Each of those short runs was kept by the CLI like
+  a real conversation, filling `claude --resume` and every session list with
+  "Below is an excerpt of a terminal session…". Claude Code, Codex and pi now
+  run them without one (`--no-session-persistence`, `--ephemeral`,
+  `--no-session`); for the CLIs that cannot, the bridge's session list leaves
+  them out by how their prompt opens (`shared/src/agents/one-shot.ts`, checked
+  by a test against the desktop's prompts).
 
 ## [0.0.63] - 20260927
 ### Fixed

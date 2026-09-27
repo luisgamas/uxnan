@@ -6,6 +6,16 @@
  * uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */
 import type {
+  AgentSessionHandoffAnswerParams,
+  AgentSessionHandoffResult,
+  AgentSessionHold,
+  AgentSessionHoldParams,
+  AgentSessionHoldsResult,
+  AgentSessionKey,
+  AgentSessionListParams,
+  AgentSessionListResult,
+} from '../models/agent-session.js';
+import type {
   AccessMode,
   QueuePausedReason,
   Thread,
@@ -110,6 +120,13 @@ export interface StartThreadParams {
   model?: string;
   /** Working directory override; defaults to the project's cwd. */
   cwd?: string;
+  /**
+   * Continue this existing session of the agent (`agentSession/list`) instead
+   * of opening a new one: its turns become the conversation's history and the
+   * first turn resumes it. Requires `agentId`. When a conversation already
+   * continues the session, that conversation is returned instead of a second one.
+   */
+  agentSessionId?: string;
 }
 export interface ForkParams {
   threadId: string;
@@ -556,6 +573,14 @@ export interface JsonRpcMethodRegistry {
   'usage/redeemReset': { params: UsageRedeemResetParams; result: ProviderUsage };
   /** Tokens and cost the agent CLIs on this PC spent, by day, agent and model. */
   'usage/summary': { params: UsageSummaryParams; result: UsageSummary };
+  // Agent sessions (§5.8.19): every agent's sessions in a folder, and which
+  // ones a desktop terminal holds. hold/release/handoffAnswer: local channel only.
+  'agentSession/list': { params: AgentSessionListParams; result: AgentSessionListResult };
+  'agentSession/holds': { params: void; result: AgentSessionHoldsResult };
+  'agentSession/hold': { params: AgentSessionHoldParams; result: AgentSessionHold };
+  'agentSession/release': { params: AgentSessionKey; result: void };
+  'agentSession/requestHandoff': { params: AgentSessionKey; result: AgentSessionHandoffResult };
+  'agentSession/handoffAnswer': { params: AgentSessionHandoffAnswerParams; result: void };
   // Where the bridge looked for each agent's CLI and what it found
   'agent/doctor': { params: void; result: { agents: AgentDiagnosis[] } };
 

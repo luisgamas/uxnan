@@ -25,6 +25,7 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
+import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import type {
   AgentCapabilities,
@@ -35,11 +36,13 @@ import type {
   AgentModelOption,
   CompactionReason,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { listClaudeSessions } from './native-sessions.js';
 import {
   extractToolResults,
   extractToolUses,
@@ -204,6 +207,8 @@ export interface ClaudeModelSpec {
 }
 
 export interface ClaudeCodeAdapterOptions {
+  /** Home directory its session store is listed from (tests); the user's by default. */
+  homeDir?: string;
   /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[cli.js]` when running via node). */
@@ -549,6 +554,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  readonly #homeDir: string;
   #defaultCwd = process.cwd();
 
   /**
@@ -560,10 +566,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
+  /** Claude Code's sessions in a folder, from its own session store (`native-sessions.ts`). */
+  listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    return listClaudeSessions(this.#homeDir, cwd);
+  }
+
   constructor(options: ClaudeCodeAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'claude';
     this.#prependArgs = options.prependArgs ?? [];
+    this.#homeDir = options.homeDir ?? homedir();
     this.#defaultModel = options.defaultModel;
     this.#pinnedModels = options.pinnedModels ?? [];
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
@@ -1078,14 +1090,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /**
    * Name a conversation with `haiku`, the cheapest tier — a side errand, not a
    * turn: a fresh one-shot with **no `--resume`**, so it neither joins the
-   * thread's session nor shows up in its history.
+   * thread's session nor shows up in its history — and with
+   * `--no-session-persistence`, so it leaves no session in Claude's own
+   * history either (verified against claude 2.1.283: no transcript is written).
    *
    * Text in, text out (`--output-format text`): there is nothing to stream, and
    * parsing one line beats decoding a JSON event stream for it.
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
-    const args = ['-p', '--output-format', 'text', '--model', TITLE_MODEL, prompt];
+    const args = [
+      '-p',
+      '--no-session-persistence',
+      '--output-format',
+      'text',
+      '--model',
+      TITLE_MODEL,
+      prompt,
+    ];
     try {
       const cwd = options.cwd ?? this.#defaultCwd;
       const raw = await runTitleOneShot(() =>

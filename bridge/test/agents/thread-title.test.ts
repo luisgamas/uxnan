@@ -11,6 +11,7 @@ import {
   provisionalTitle,
   sanitizeTitle,
 } from '../../src/agents/thread-title.js';
+import { isOneShotPrompt } from '@uxnan/shared';
 
 test('provisionalTitle collapses whitespace and clips long openings', () => {
   assert.equal(provisionalTitle('  fix   the\n login  bug '), 'fix the login bug');
@@ -18,6 +19,12 @@ test('provisionalTitle collapses whitespace and clips long openings', () => {
   const title = provisionalTitle(long);
   assert.equal(title.length, TITLE_MAX_LENGTH);
   assert.ok(title.endsWith('…'));
+});
+
+// The session list leaves a naming run out by how its prompt opens
+// (`isOneShotPrompt`): a reworded prompt would leak these errands back in.
+test('buildTitlePrompt opens the way Uxnan’s one-shots are recognized', () => {
+  assert.equal(isOneShotPrompt(buildTitlePrompt('hola', 'hi')), true);
 });
 
 test('buildTitlePrompt includes the reply when there is one, and clips both', () => {

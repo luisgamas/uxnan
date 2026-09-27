@@ -354,6 +354,45 @@ test('ZeroAdapter reuses the session id across turns and cancels', async () => {
 // After a restart (or when a conversation takes over a terminal's session)
 // the bridge hands the stored id back: the first turn re-attaches it with
 // `session/load` instead of opening a new session.
+// The session list asks Zero itself (ACP `session/list`, which Zero 0.9.0
+// announces). A session opened over ACP keeps Zero's placeholder title — the
+// bridge's own — while one from Zero's terminal UI is named.
+test('ZeroAdapter lists the folder’s sessions over ACP', async () => {
+  const { adapter, server } = setup();
+  server.handle((m) => {
+    if (m.method !== 'session/list') return;
+    server.reply(m.id, {
+      sessions: [
+        {
+          sessionId: 'z-tui',
+          cwd: '/p',
+          title: 'Initial Greeting',
+          updatedAt: '2026-09-25T05:40:59Z',
+        },
+        { sessionId: 'z-acp', cwd: '/p', title: 'ACP session', updatedAt: '2026-09-25T05:30:00Z' },
+        { sessionId: 'z-else', cwd: '/q', title: 'x', updatedAt: '2026-09-25T05:00:00Z' },
+      ],
+    });
+  });
+  const sessions = await adapter.listNativeSessions('/p');
+  assert.equal(server.sent.find((m) => m.method === 'session/list')?.params.cwd, '/p');
+  assert.deepEqual(sessions, [
+    {
+      sessionId: 'z-tui',
+      cwd: '/p',
+      title: 'Initial Greeting',
+      updatedAt: Date.parse('2026-09-25T05:40:59Z'),
+      interactive: true,
+    },
+    {
+      sessionId: 'z-acp',
+      cwd: '/p',
+      updatedAt: Date.parse('2026-09-25T05:30:00Z'),
+      interactive: false,
+    },
+  ]);
+});
+
 test('ZeroAdapter loads an adopted session instead of opening a new one', async () => {
   const { adapter, server } = setup();
   server.handle((m) => {

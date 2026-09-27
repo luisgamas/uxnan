@@ -54,10 +54,12 @@ import type {
   AgentModel,
   ApprovalDecision,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
   TurnAttachment,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { proxyLaunchEnv } from './mcp-proxy.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
@@ -96,6 +98,18 @@ const ZERO_CAPABILITIES: AgentCapabilities = {
 
 /** How long a folder's skill list is reused before `zero skills list` runs again. */
 const COMMANDS_TTL_MS = 60_000;
+
+/** The title Zero gives a session opened over ACP (verified against zero 0.9.0). */
+const ZERO_ACP_TITLE = 'ACP session';
+
+/** The fields of an ACP `session/list` entry the session list reads. */
+interface AcpListedSession {
+  sessionId?: string;
+  cwd?: string;
+  title?: string | null;
+  /** ISO 8601. */
+  updatedAt?: string;
+}
 
 /**
  * Zero's skills as commands, from `zero skills list --json`
@@ -526,6 +540,35 @@ export class ZeroAdapter extends BaseAgentAdapter {
     this.#runBySession.delete(run.sessionId);
     if (this.#rpc) this.#rpc.notify('session/cancel', { sessionId: run.sessionId });
     this.emit({ type: 'turn_aborted', threadId, turnId });
+  }
+
+  /**
+   * Zero's sessions in a folder, through ACP `session/list { cwd }` (Zero
+   * 0.9.0 announces `sessionCapabilities.list`, and names each session). A
+   * session opened over ACP keeps the placeholder title `ACP session` —
+   * those are the bridge's own — while one started in Zero's terminal UI is
+   * named after what was asked.
+   */
+  async listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    const rpc = await this.#ensureAcp();
+    const res = await rpc.request<{ sessions?: AcpListedSession[] }>('session/list', { cwd });
+    return (res.sessions ?? [])
+      .flatMap((s): NativeSessionInfo[] => {
+        if (typeof s.sessionId !== 'string' || s.cwd !== cwd) return [];
+        const acpOpened = s.title === ZERO_ACP_TITLE;
+        const title = acpOpened ? undefined : cleanTitle(s.title ?? undefined);
+        const updatedAt = Date.parse(s.updatedAt ?? '');
+        return [
+          {
+            sessionId: s.sessionId,
+            cwd,
+            ...(title !== undefined ? { title } : {}),
+            updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+            interactive: !acpOpened,
+          },
+        ];
+      })
+      .slice(0, MAX_LISTED);
   }
 
   /** Close the running `zero acp` so the next turn starts a fresh one. */

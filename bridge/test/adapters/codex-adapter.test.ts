@@ -990,6 +990,62 @@ test('CodexAdapter reads the message of an error it will not retry', async () =>
   );
 });
 
+// The session list reads Codex's own `thread/list` for the folder: named like
+// Codex shows it, and a thread this bridge started (its `originator`) told
+// from a person's.
+test('CodexAdapter lists the folder’s threads from its app-server', async () => {
+  const { adapter, server } = setup();
+  server.handle((msg) => {
+    if (msg.method !== 'thread/list') return;
+    server.feed([
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          data: [
+            {
+              id: 't-cli',
+              cwd: '/p',
+              name: 'Fix the login',
+              originator: 'codex_cli_rs',
+              updatedAt: 1_000,
+            },
+            { id: 't-preview', cwd: '/p', name: null, preview: 'why is it slow?', createdAt: 900 },
+            {
+              id: 't-bridge',
+              cwd: '/p',
+              preview: 'go on',
+              originator: 'uxnan-bridge',
+              updatedAt: 800,
+            },
+            { id: 't-else', cwd: '/elsewhere', name: 'x', updatedAt: 700 },
+          ],
+        },
+      }),
+    ]);
+  });
+  const sessions = await adapter.listNativeSessions('/p');
+  const request = server.sent.find((m: any) => m.method === 'thread/list') as any;
+  assert.deepEqual(request.params, { cwd: '/p', limit: 30, sortKey: 'updated_at' });
+  assert.deepEqual(sessions, [
+    {
+      sessionId: 't-cli',
+      cwd: '/p',
+      title: 'Fix the login',
+      updatedAt: 1_000_000,
+      interactive: true,
+    },
+    {
+      sessionId: 't-preview',
+      cwd: '/p',
+      title: 'why is it slow?',
+      updatedAt: 900_000,
+      interactive: true,
+    },
+    { sessionId: 't-bridge', cwd: '/p', title: 'go on', updatedAt: 800_000, interactive: false },
+  ]);
+});
+
 test('CodexAdapter resumes a thread adopted after a bridge restart instead of starting a new one', async () => {
   const { adapter, server } = setup();
   // A fresh process (empty map) is handed the id the bridge persisted before.

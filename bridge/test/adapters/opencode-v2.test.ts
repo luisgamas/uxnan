@@ -385,6 +385,57 @@ test('OpenCodeV1Server asks the server whether it has a session', async () => {
   }
 });
 
+// Listing a folder's sessions. 2.x filters by `directory` itself and answers
+// newest first (verified against opencode 2.0.16); 1.x lists the project's
+// sessions, filtered and ordered here.
+test('OpenCodeV2Server lists a folder’s sessions', async () => {
+  const fake = fakeOpenCode(2, {
+    listedSessions: [
+      { id: 'ses_a', title: 'Dark theme', location: { directory: '/p' }, time: { updated: 20 } },
+      { id: 'ses_b', location: { directory: '/p' }, time: { updated: 10 } },
+      { id: 'ses_c', title: 'x', location: { directory: '/q' }, time: { updated: 30 } },
+    ],
+  });
+  const server = new OpenCodeV2Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.deepEqual(await server.listSessions('/p', 5), [
+      { id: 'ses_a', directory: '/p', title: 'Dark theme', updated: 20 },
+      { id: 'ses_b', directory: '/p', updated: 10 },
+    ]);
+    const request = fake.requests().find((r) => r.url.startsWith('/api/session?'));
+    assert.equal(request?.url, '/api/session?directory=%2Fp&limit=5');
+  } finally {
+    await server.close();
+  }
+});
+
+test('OpenCodeV1Server lists a folder’s sessions, newest first', async () => {
+  const fake = fakeOpenCode(1, {
+    listedSessions: [
+      { id: 'ses_old', title: 'Old', directory: '/p', time: { updated: 10 } },
+      { id: 'ses_new', title: 'New', directory: '/p', time: { updated: 30 } },
+      { id: 'ses_else', title: 'x', directory: '/q', time: { updated: 40 } },
+    ],
+  });
+  const server = new OpenCodeV1Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.deepEqual(
+      (await server.listSessions('/p', 1)).map((s) => s.id),
+      ['ses_new'],
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 /** Collect an adapter's events until its turn ends. */
 function collect(adapter: OpenCodeAdapter): { events: AgentStreamEvent[]; done: Promise<void> } {
   const events: AgentStreamEvent[] = [];

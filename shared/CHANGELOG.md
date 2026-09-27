@@ -4,6 +4,24 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added — agent sessions
+
+- **`agentSession/list`** (`{ cwd, agentId? }` → `{ sessions: AgentSessionSummary[], unlisted }`):
+  every agent's own sessions in a folder, with the conversation that continues
+  each and the terminal that holds it; ages, not dates.
+- **`thread/start` + `agentSessionId`**: a conversation that continues one of
+  the agent's sessions (one conversation per session).
+- **`agentSession/holds` / `hold` / `release`** and **`stream/agentSession/held`**:
+  the sessions a desktop terminal has open. **`SessionHeld` (`-32010`)**: a turn
+  refused while a terminal holds the conversation's session.
+- **`agentSession/requestHandoff` / `handoffAnswer`** and
+  **`stream/agentSession/handoffRequested`**: ask the holding desktop to let a
+  session go. 93 methods, 24 notifications.
+- **`IAgentAdapter.listNativeSessions`** (`NativeSessionInfo`), and
+  **`ONE_SHOT_PROMPT_OPENERS` / `isOneShotPrompt`**: how Uxnan's own naming and
+  commit-message runs open, so the session list leaves them out.
+- **`BridgeFeatures.agentSessions`**.
+
 ### Changed
 
 - **`IAgentAdapter.nativeSessionId` and `adoptNativeSession` are required.**

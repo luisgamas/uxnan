@@ -222,7 +222,8 @@ async fn run_agent(
         Some(GENERATE_TIMEOUT.as_millis() as u64),
         false,
         // The user picked this model themselves; its own effort default stands.
-        &[],
+        // The errand leaves no session in the CLI's history where it can help it.
+        &crate::agentcli::no_session_args(agent_id),
         // Not cancellable by name: the dialog that starts it is modal and the
         // run is seconds long.
         None,
@@ -451,6 +452,14 @@ fn sanitize_message(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commit_and_pr_prompts_open_like_a_one_shot() {
+        let openers = crate::agentcli::one_shot_openers();
+        let opens = |p: &str| openers.iter().any(|o| p.starts_with(o.as_str()));
+        assert!(opens(&build_prompt(&cfg(), "diff")), "commit prompt");
+        assert!(opens(&build_pr_prompt(&gh_cfg(), "diff")), "PR prompt");
+    }
 
     fn cfg() -> AiCommitSettings {
         AiCommitSettings {

@@ -27,6 +27,12 @@ export const JsonRpcErrorCode = {
    * explicit opt-out — the default is to queue.
    */
   AgentBusy: -32009,
+  /**
+   * The conversation's agent session is open in a desktop terminal
+   * (`agentSession/hold`): the bridge runs no turn in it until the terminal
+   * lets it go. `data` carries the {@link AgentSessionHold}.
+   */
+  SessionHeld: -32010,
 } as const;
 
 export type JsonRpcErrorCode = (typeof JsonRpcErrorCode)[keyof typeof JsonRpcErrorCode];
@@ -48,6 +54,7 @@ export const JSON_RPC_ERROR_MESSAGES: Record<JsonRpcErrorCode, string> = {
   [JsonRpcErrorCode.ConfirmationRequired]: 'Confirmation required',
   [JsonRpcErrorCode.ResourceNotFound]: 'Resource not found',
   [JsonRpcErrorCode.AgentBusy]: 'Agent busy',
+  [JsonRpcErrorCode.SessionHeld]: 'Session open in a terminal',
 };
 
 /** Shape of the `error` member of a JSON-RPC error response. */

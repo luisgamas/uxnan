@@ -34,6 +34,8 @@ export interface FakeOpenCodeScript {
   knownSessions?: string[];
   /** Answer those lookups with this status instead (a server that cannot say). */
   sessionLookupStatus?: number;
+  /** Sessions `GET /api/session` (V2, filtered by `directory`) / `GET /session` (V1) list. */
+  listedSessions?: Record<string, unknown>[];
 }
 
 /** One request the fake received. */
@@ -89,6 +91,11 @@ http.createServer((req, res) => {
       res.on('close', () => streams.delete(res));
       return;
     }
+    if (req.method === 'GET' && path === '/api/session' && version === '2') {
+      const dir = new URL(req.url, 'http://x').searchParams.get('directory');
+      return json({ data: (script.listedSessions || []).filter((s) => !dir || (s.location && s.location.directory === dir)), cursor: {} });
+    }
+    if (req.method === 'GET' && path === '/session' && version !== '2') return json(script.listedSessions || []);
     const lookup = req.method === 'GET' && path.match(version === '2' ? /^\/api\/session\/([^/]+)$/ : /^\/session\/([^/]+)$/);
     if (lookup) {
       if (script.sessionLookupStatus) { res.writeHead(script.sessionLookupStatus); res.end(); return; }

@@ -18,6 +18,7 @@ import {
   type OpenCodeCommandRun,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
+  type OpenCodeListedSession,
   type OpenCodeModel,
   type OpenCodeModelRef,
   type OpenCodePermissionPolicy,
@@ -63,6 +64,10 @@ class FakeServer implements IOpenCodeServer {
    *  or one a previous server process opened). */
   readonly known = new Set<string>();
   readonly checked: string[] = [];
+  listed: OpenCodeListedSession[] = [];
+  listSessions(directory: string, limit: number): Promise<OpenCodeListedSession[]> {
+    return Promise.resolve(this.listed.filter((s) => s.directory === directory).slice(0, limit));
+  }
   hasSession(sessionId: string): Promise<boolean> {
     this.checked.push(sessionId);
     return Promise.resolve(this.sessions.includes(sessionId) || this.known.has(sessionId));
@@ -712,6 +717,36 @@ test('OpenCodeAdapter opens a fresh session when the adopted one is gone', async
   assert.deepEqual(server.sessions, ['ses_1']);
   assert.equal(server.prompts[0]?.sessionId, 'ses_1');
   assert.equal(adapter.nativeSessionId('t1'), 'ses_1');
+});
+
+// The session list reads the folder's sessions from OpenCode's server. A
+// session this bridge opened is titled with the conversation's id — that is
+// what tells it from a person's, whose title is shown.
+test('OpenCodeAdapter lists the folder’s sessions from its server', async () => {
+  const server = new FakeServer();
+  server.listed = [
+    { id: 'ses_tui', directory: '/p', title: 'Add a dark theme', updated: 3_000 },
+    { id: 'ses_untitled', directory: '/p', updated: 2_000 },
+    {
+      id: 'ses_bridge',
+      directory: '/p',
+      title: '0f4ad2c1-3b5e-4c6d-8e9f-a1b2c3d4e5f6',
+      updated: 1_000,
+    },
+    { id: 'ses_else', directory: '/q', title: 'x', updated: 500 },
+  ];
+  const adapter = makeAdapter(server);
+  assert.deepEqual(await adapter.listNativeSessions('/p'), [
+    {
+      sessionId: 'ses_tui',
+      cwd: '/p',
+      title: 'Add a dark theme',
+      updatedAt: 3_000,
+      interactive: true,
+    },
+    { sessionId: 'ses_untitled', cwd: '/p', updatedAt: 2_000, interactive: true },
+    { sessionId: 'ses_bridge', cwd: '/p', updatedAt: 1_000, interactive: false },
+  ]);
 });
 
 test('OpenCodeAdapter surfaces session.error as turn_error', async () => {

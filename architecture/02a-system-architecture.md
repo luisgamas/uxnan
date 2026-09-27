@@ -2849,6 +2849,62 @@ tanto mas antiguo que el cliente: el desktop lo actualiza con su instalador npm
 (la unica ruta propia que conserva, junto con instalarlo cuando no hay bridge) y
 el telefono pide actualizarlo en la PC.
 
+#### 5.8.19 Sesiones de agente: retomar cualquier sesion y la terminal como escritor (2026-09)
+
+Una conversacion con un agente no siempre nace en Uxnan: la persona abre el CLI
+en una terminal del desktop, o en su propia terminal, y mas tarde quiere
+seguirla como chat — en el desktop o en el telefono. El bridge es el **dueño** de
+las dos cosas que eso necesita, y todo cliente se las pregunta a el:
+
+**El catalogo (`agentSession/list { cwd, agentId? }`).** Cada adaptador lista
+las sesiones de su CLI en una carpeta por la superficie que el CLI ofrece
+(`IAgentAdapter.listNativeSessions`), medido el 2026-09-27:
+
+| Agente | Como lista | Como distingue lo de una persona |
+|---|---|---|
+| Claude Code | su store (`~/.claude/projects/<cwd>/*.jsonl`), solo cabeza y cola (`cwd`, `entrypoint`, primer prompt, `ai-title`) | `entrypoint: cli` (su TUI) frente a `sdk-cli` (`-p`) |
+| Codex | app-server `thread/list { cwd, sortKey: updated_at }` (nombre, `preview`) | `originator` distinto del nombre de cliente del bridge |
+| OpenCode | su servidor: `GET /api/session?directory=` (2.x) / `GET /session` (1.x) | el bridge titula sus sesiones con el id del hilo (UUID) |
+| pi | su store (`<PI_CODING_AGENT_DIR o ~/.pi/agent>/sessions/--<cwd>--/`), cabecera `{type:'session', cwd}` | no lo registra: todas cuentan |
+| Grok | su store (`~/.grok/sessions/<cwd codificado>/<id>/updates.jsonl`): su `session/list` no trae titulo ni separa sesiones vacias | todas cuentan; una sin prompt no es sesion |
+| Zero | ACP `session/list { cwd }` (anuncia `sessionCapabilities.list`) | Zero titula `ACP session` las abiertas por ACP |
+| Antigravity | no tiene listado | se retoma solo desde la terminal (id capturado por hook) → `unlisted` |
+
+El bridge anade lo que sabe: la conversacion que continua cada sesion
+(`threadId`) y la terminal que la retiene (`hold`), convierte las fechas en
+edades (`updatedAgoMs`) y deja fuera lo que no fue de una persona: una sesion
+sin interfaz solo aparece si una conversacion la continua, y los encargos de un
+solo uso de Uxnan (nombrar, mensajes de commit, cuerpos de PR) nunca, por como
+abre su prompt (`shared/src/agents/one-shot.ts`; donde el CLI lo permite ni
+siquiera dejan sesion: `claude --no-session-persistence`, `codex exec
+--ephemeral`, `pi --no-session`). Una sesion retenida en esa carpeta aparece
+aunque su CLI no sepa listarla.
+
+**Retomar (`thread/start { agentId, agentSessionId, cwd }`).** El hilo nace
+guardando la sesion (`agentSessionId`): su primer turno la continua (adopcion,
+§5.8.8) y `turn/list` importa su historial por la convergencia de siempre. Una
+sesion tiene una sola conversacion: si ya hay una que la continua, `thread/start`
+devuelve esa. El titulo que traiga es provisional (`titleSource: prompt`).
+
+**La terminal como escritor (`agentSession/hold` / `release`).** Una sesion de
+un CLI tiene un solo escritor. Cuando una terminal del desktop tiene el agente
+abierto, el desktop lo dice (solo por el canal local, §5.8.15; `busy` cuando el
+agente trabaja) y el bridge: no corre turnos en ella (`turn/send` → `-32010
+SessionHeld` con la retencion en `data`), suelta el proceso residente que
+guardaba para la conversacion (pi, Antigravity; nunca cancela un turno) y avisa
+a todos (`stream/agentSession/held`). Las retenciones viven solo en memoria y
+pertenecen a la conexion del desktop: se van con ella (las terminales se cierran
+con la app) y el desktop que reconecta las declara de nuevo. Un cliente que se
+perdio avisos pregunta `agentSession/holds`.
+
+**El relevo (`agentSession/requestHandoff`).** Cualquier cliente pide una sesion
+retenida: si esta libre → `notHeld`; si el agente trabaja → `busy`; si no, el
+bridge le pregunta **solo** al desktop que la retiene
+(`stream/agentSession/handoffRequested { requestId, from }`), que cierra el
+agente en su terminal, suelta la retencion y responde
+(`agentSession/handoffAnswer`: `released` | `busy` | `declined`); sin respuesta
+en 20 s → `unreachable`. Nunca se simulan teclas en la terminal.
+
 ### 5.9 Transporte seguro y mensajeria E2EE
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.

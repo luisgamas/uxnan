@@ -81,17 +81,38 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     }
     const explicitModel = optionalString(p, 'model');
     const model = explicitModel ?? (pin && agentId === pin.agentId ? pin.model : undefined);
+    // Continuing one of the agent's own sessions (`agentSession/list`): one
+    // conversation per session, so the one that already continues it is
+    // returned rather than a second writer being made.
+    const agentSessionId = optionalString(p, 'agentSessionId');
+    if (agentSessionId !== undefined) {
+      if (explicitAgent === undefined) {
+        throw RpcError.invalidParams('agentSessionId requires agentId');
+      }
+      const existing = await ctx.threadStore.threadForSession(agentId, agentSessionId);
+      if (existing) return withLiveState(existing, ctx);
+    }
+    const title = optionalString(p, 'title');
     const thread = await ctx.threadStore.startThread(
       {
         projectId,
-        ...(optionalString(p, 'title') !== undefined ? { title: optionalString(p, 'title') } : {}),
+        ...(title !== undefined ? { title } : {}),
         agentId,
         ...(model !== undefined ? { model } : {}),
         cwd,
         ...(originOf(ctx, session) ? { origin: originOf(ctx, session) } : {}),
+        // The session's name (its CLI's title, or the first thing asked) is
+        // provisional, like a first prompt: the bridge still names the
+        // conversation from its first exchange here.
+        ...(agentSessionId !== undefined
+          ? { agentSessionId, ...(title !== undefined ? { titleSource: 'prompt' as const } : {}) }
+          : {}),
       },
       ctx.now(),
     );
+    if (agentSessionId !== undefined) {
+      ctx.sessionHolds.attachThread({ agentId, sessionId: agentSessionId }, thread.id);
+    }
     return thread;
   });
   // Opening a conversation changes nothing on it (see ThreadStore.resumeThread).
@@ -230,6 +251,20 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       throw RpcError.invalidParams('turn/send requires non-empty text, attachments, or a command');
     }
     const runtime = await ctx.threadStore.getThreadRuntime(threadId);
+    // A CLI's session has one writer: while a desktop terminal holds this
+    // conversation's session, no turn runs in it here (§5.8.19). The client
+    // shows who holds it and can ask for it (`agentSession/requestHandoff`).
+    const source = await ctx.threadStore.getHistorySource(threadId);
+    if (source.agentId !== undefined && source.agentSessionId !== undefined) {
+      const hold = ctx.sessionHolds.find(source.agentId, source.agentSessionId);
+      if (hold) {
+        throw new RpcError(
+          JsonRpcErrorCode.SessionHeld,
+          `This conversation is open in a terminal on ${hold.holder.name}`,
+          hold,
+        );
+      }
+    }
     // A turn runs with the thread's agent/model/cwd; explicit params override.
     const service = optionalString(p, 'service') ?? runtime.model;
     const options: SendTurnOptions = {

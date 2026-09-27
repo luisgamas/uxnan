@@ -316,6 +316,16 @@ It runs in `src-tauri/src/convtitle.rs` through the same one-shot headless runne
 as the AI commit message — no provider API and no keys, just the agent's own CLI
 under the account it is already authenticated with.
 
+**Neither run leaves a session behind where the CLI allows it**
+(`agentcli::no_session_args`): Claude Code `--no-session-persistence`, Codex
+`--ephemeral`, pi `--no-session`, each verified on 2026-09-27 to write no
+transcript. Otherwise every name and commit message would be kept like a
+conversation — in the CLI's own resume picker and in the bridge's session list.
+OpenCode, Grok, Zero and Antigravity have no such flag; the bridge recognizes
+their runs by how the prompt opens, and the list of openings lives in
+`shared/src/agents/one-shot.ts`, which a desktop test reads so a reworded prompt
+here fails instead of leaking back.
+
 **The input is the session's terminal transcript**, not the prompt. That is a
 deliberate correction: measured against a real run of all seven agents, only
 `claude` reports a prompt or a reply through the hook (`codex`, `opencode` and

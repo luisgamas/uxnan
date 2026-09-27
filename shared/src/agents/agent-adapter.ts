@@ -101,6 +101,27 @@ export interface GenerateTitleOptions {
   cwd?: string;
 }
 
+/**
+ * One of the agent's own sessions in a folder, as its CLI keeps it — the raw
+ * material of `agentSession/list` (the bridge turns the time into an age and
+ * links the conversation that continues it).
+ */
+export interface NativeSessionInfo {
+  sessionId: string;
+  cwd: string;
+  /** The CLI's own title for it, else the first thing the person asked. */
+  title?: string;
+  /** When it last changed, on this PC's clock (epoch ms). */
+  updatedAt: number;
+  /**
+   * Started by a person in the agent's own interface (its terminal UI or
+   * app), rather than run headless by a program — the bridge's own runs, or
+   * one-shots like naming a conversation. A headless session is listed only
+   * when a conversation continues it.
+   */
+  interactive: boolean;
+}
+
 export interface IAgentAdapter {
   readonly agentId: AgentId;
   readonly capabilities: AgentCapabilities;
@@ -137,6 +158,15 @@ export interface IAgentAdapter {
    * conversation continues in the fresh session that replaced it.
    */
   adoptNativeSession(threadId: string, sessionId: string): void;
+
+  /**
+   * The agent's sessions in a folder, most recent first, read the way this
+   * CLI exposes them (its app-server, its server, ACP `session/list`, or its
+   * own session store — head and tail only, never whole transcripts).
+   * Optional: an agent whose CLI cannot list its sessions (Antigravity) omits
+   * it, and its sessions are continued only from the terminal they run in.
+   */
+  listNativeSessions?(cwd: string): Promise<NativeSessionInfo[]>;
 
   /**
    * Name a conversation from its opening exchange — a handful of words, no

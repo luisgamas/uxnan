@@ -426,6 +426,34 @@ deduplicated, while divergent final text becomes another response instead of
 replacing content already streamed. Mobile excludes boundary metadata from
 copy/previews and uses it only to collapse earlier responses after completion.
 
+### Listing an agent's sessions
+
+`agentSession/list` (architecture/02a §5.8.19) asks each adapter for its CLI's
+sessions in a folder (`listNativeSessions`), through what that CLI offers —
+measured 2026-09-27 against the installed CLIs:
+
+| Agent | Listed from | A person's session vs. a program's |
+|---|---|---|
+| Claude Code | `~/.claude/projects/<cwd, non-alphanumerics → '-'>/*.jsonl`, 64 KB from each end (`cwd`, `entrypoint`, first prompt, latest `ai-title`) | `entrypoint: 'cli'` is its terminal UI, `'sdk-cli'` a headless `-p` run |
+| Codex | app-server `thread/list { cwd, limit: 30, sortKey: 'updated_at' }` (`name`, else `preview`) | the `originator` of a thread the bridge started is its client name, `uxnan-bridge` |
+| OpenCode | its server: `GET /api/session?directory=&limit=` (2.x), `GET /session` filtered here (1.x) | a session the bridge opens is titled with the conversation's id |
+| pi | `<$PI_CODING_AGENT_DIR or ~/.pi/agent>/sessions/--<cwd, '/' → '-'>--/*.jsonl` (header `{type:'session', id, cwd}`, first user message) | not recorded: every session counts |
+| Grok | `~/.grok/sessions/<cwd, URL-encoded>/<id>/updates.jsonl` (first `user_message_chunk`s); its ACP `session/list` carries no title and lists empty sessions too | every session with a prompt counts |
+| Zero | ACP `session/list { cwd }` (Zero 0.9.0 announces `sessionCapabilities.list`) | a session opened over ACP keeps the title `ACP session` |
+| Antigravity | — (`agy` has no listing) | continued from the terminal that holds it |
+
+The bridge lists a program's session only when a conversation continues it,
+never Uxnan's own one-shots (how their prompt opens:
+`shared/src/agents/one-shot.ts`), each CLI bounded to 10 s. Where a CLI can run
+a one-shot without keeping a session, Uxnan does: Claude Code
+`--no-session-persistence`, Codex `exec --ephemeral`, pi `--no-session`.
+
+`thread/start` with `agentSessionId` stores the session on the new thread, so
+the first turn adopts it (below) and `turn/list` imports its history. Verified
+2026-09-27 for all seven agents with a session each CLI made on its own: every
+continued conversation recalled a word from the session (Antigravity included,
+though its history cannot be read).
+
 ### Native-session history convergence
 
 `turn/list` is more than a bridge-store read. When the bridge is not currently

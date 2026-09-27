@@ -91,6 +91,7 @@ import type {
   ApprovalDecision,
   DesktopTools,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
@@ -101,6 +102,7 @@ import {
 } from './command-scan.js';
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
 import {
@@ -141,6 +143,25 @@ import { effortValues, reasoningOption, reasoningValue, withOptions } from './ru
  * against `gpt-5.4-mini`'s $0.75/$4.50, and naming the same conversation cost
  * 13.4k tokens on Luna against 18.3k on mini — roughly 5× cheaper per title.
  */
+/**
+ * The name this bridge introduces itself to Codex's app-server with. Codex
+ * records it as the `originator` of every thread the bridge starts, which is
+ * how the session list tells those from a person's own.
+ */
+const CODEX_CLIENT_NAME = 'uxnan-bridge';
+
+/** The fields of a `thread/list` entry the session list reads. */
+interface CodexListedThread {
+  id?: string;
+  cwd?: string;
+  name?: string | null;
+  preview?: string | null;
+  originator?: string | null;
+  /** Unix seconds. */
+  updatedAt?: number;
+  createdAt?: number;
+}
+
 const CODEX_TITLE_MODEL = 'gpt-5.6-luna';
 
 /**
@@ -502,6 +523,40 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
   }
 
+  /**
+   * Codex's sessions in a folder, from its app-server (`thread/list` with a
+   * `cwd` filter, newest change first — the list Codex's own resume picker
+   * reads, so each carries the name Codex shows). A thread this bridge started
+   * is recorded with the bridge's client name as its `originator`, which is
+   * what tells a person's session from the bridge's own.
+   */
+  async listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    try {
+      const rpc = await this.#ensureAppServer();
+      const page = await rpc.request<{ data?: CodexListedThread[] }>('thread/list', {
+        cwd,
+        limit: MAX_LISTED,
+        sortKey: 'updated_at',
+      });
+      const out: NativeSessionInfo[] = [];
+      for (const thread of page.data ?? []) {
+        if (typeof thread.id !== 'string' || thread.cwd !== cwd) continue;
+        const title =
+          cleanTitle(thread.name ?? undefined) ?? cleanTitle(thread.preview ?? undefined);
+        out.push({
+          sessionId: thread.id,
+          cwd,
+          ...(title !== undefined ? { title } : {}),
+          updatedAt: (thread.updatedAt ?? thread.createdAt ?? 0) * 1000,
+          interactive: thread.originator !== CODEX_CLIENT_NAME,
+        });
+      }
+      return out;
+    } finally {
+      this.#releaseAppServerIfIdle();
+    }
+  }
+
   constructor(options: CodexAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'codex';
@@ -843,7 +898,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       });
       try {
         await rpc.request('initialize', {
-          clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
+          clientInfo: { name: CODEX_CLIENT_NAME, title: null, version: '1.0.0' },
         });
       } catch (err) {
         rpc.close();
@@ -1409,7 +1464,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       timer = setTimeout(() => finish(fallback), MODEL_LIST_TIMEOUT_MS);
       rpc
         .request('initialize', {
-          clientInfo: { name: 'uxnan-bridge', title: null, version: '1.0.0' },
+          clientInfo: { name: CODEX_CLIENT_NAME, title: null, version: '1.0.0' },
         })
         .then(() => ask(rpc))
         .then(finish, () => finish(fallback));

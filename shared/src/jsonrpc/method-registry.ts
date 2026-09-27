@@ -79,6 +79,13 @@ export const METHOD_NAMES = [
   'agent/usageStats',
   'usage/redeemReset',
   'usage/summary',
+  // Agent sessions
+  'agentSession/list',
+  'agentSession/holds',
+  'agentSession/hold',
+  'agentSession/release',
+  'agentSession/requestHandoff',
+  'agentSession/handoffAnswer',
   'agent/doctor',
   // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
   'metrics/get',
