@@ -881,7 +881,9 @@ class _OverviewHeadline extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final name = ref.watch(profileNameProvider);
+    // Greets by the name the person gave this phone, never by the device's
+    // own model name.
+    final name = ref.watch(phoneNameProvider).value;
     final online = ref.watch(connectedDeviceProvider).value != null ? 1 : 0;
     // Cache only: a phone that has never synced metrics simply drops the
     // "member since" fragment instead of dragging the whole metrics

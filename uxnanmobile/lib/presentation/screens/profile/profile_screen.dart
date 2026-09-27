@@ -1,27 +1,34 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
+import 'package:uxnan/domain/value_objects/spend_view.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
-import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
 import 'package:uxnan/presentation/screens/profile/profile_backup_actions.dart';
+import 'package:uxnan/presentation/screens/profile/profile_identity_header.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
-import 'package:uxnan/presentation/screens/profile/this_phone_card.dart';
+import 'package:uxnan/presentation/screens/profile/spend_section.dart';
+import 'package:uxnan/presentation/screens/profile/usage_format.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// Aggregate activity across every paired PC: identity header, headline stats,
-/// a GitHub-style contribution heatmap and a per-agent breakdown — all derived
-/// from the bridge-owned snapshots.
+/// The profile, across every paired PC: who this is (the one name, this
+/// phone's), what the agents spent (`usage/summary`), the connected PC's plan
+/// limits, the activity (highlights, a year heatmap, the agents ranked) and
+/// each PC, opening its own stats. Everything comes from the bridges; the
+/// phone caches it per PC so a PC that is off still counts.
 class ProfileScreen extends ConsumerStatefulWidget {
   /// Creates the [ProfileScreen].
   const ProfileScreen({this.embedded = false, super.key});
@@ -52,6 +59,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!ref.read(metricsRefreshIntervalProvider).refreshesOnOpen) return;
       if (ref.read(connectedDeviceProvider).value == null) return;
       ref.read(metricsSnapshotsProvider.notifier).refresh();
+      ref.read(usageSummariesProvider.notifier).refresh();
     });
   }
 
@@ -63,7 +71,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return NeScaffold(
       automaticBackButton: !widget.embedded,
       title: l10n.profileTitle,
-      actions: const [_ProfileMenu()],
+      actions: const [_RefreshAction(), _ProfileMenu()],
       slivers: metricsAsync.when(
         loading: () => const [
           SliverFillRemaining(
@@ -100,45 +108,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // **No second clamp here.** [NeScaffold] already stops every screen's
         // slivers at the window class's [UxnanBreakpoint.maxContentWidth],
         // measured from its own constraints (so it is right inside Settings'
-        // pane too). This used to add `maxWidth: UxnanSpacing.maxContentWidth`
-        // on top of that — 760 dp is a typographic line length, correct for the
-        // conversation and the file viewer and wrong for a stats grid, provider
-        // cards and a 53-week heatmap. It left a third of a laptop empty while
-        // the heatmap squeezed inside a paragraph's width.
+        // pane too). A typographic line length is right for the conversation
+        // and wrong for charts, provider cards and a 53-week heatmap.
         sliver: SliverToBoxAdapter(
           // Staggered by BLOCK, not by widget: the spacers between them are not
-          // things that arrive, and the stats grid is one object even though it
-          // draws several tiles.
+          // things that arrive.
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const NeEntranceRow(index: 0, child: ThisPhoneCard()),
+              const NeEntranceRow(index: 0, child: ProfileIdentityHeader()),
+              const SizedBox(height: UxnanSpacing.xl),
+              const NeEntranceRow(index: 1, child: SpendSection()),
+              const SizedBox(height: UxnanSpacing.xl),
+              const NeEntranceRow(index: 2, child: UsageSection()),
               const SizedBox(height: UxnanSpacing.xl),
               NeEntranceRow(
-                index: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const _StatsHeader(),
-                    const SizedBox(height: UxnanSpacing.sm),
-                    MetricsStatGrid(metrics: m),
-                  ],
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.xl),
-              NeEntranceRow(
-                index: 2,
+                index: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(l10n.profileActivity, style: titleStyle),
                     const SizedBox(height: UxnanSpacing.sm),
+                    ActivityHighlights(metrics: m),
+                    const SizedBox(height: UxnanSpacing.md),
                     AgentActivitySection(firstYear: firstYear),
                   ],
                 ),
               ),
               const SizedBox(height: UxnanSpacing.xl),
-              const NeEntranceRow(index: 3, child: UsageSection()),
+              const NeEntranceRow(index: 4, child: _YourPcs()),
             ],
           ),
         ),
@@ -147,44 +145,124 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 }
 
-/// The stats section title plus a manual refresh — always available, whatever
-/// the configured refresh mode. Mirrors the usage section's header: a spinner
-/// replaces the button while a fetch is in flight, and the stats below stay put
-/// (Riverpod keeps the previous value during a refresh).
-class _StatsHeader extends ConsumerWidget {
-  const _StatsHeader();
+/// Every paired PC, each opening its own stats: the one connected now marked
+/// live, and what its agents spent in the last 30 days beside it (from the
+/// cache for a PC that is off).
+class _YourPcs extends ConsumerWidget {
+  const _YourPcs();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final titleStyle = Theme.of(context).textTheme.titleLarge;
-    final loading = ref.watch(metricsSnapshotsProvider).isLoading;
-    final connected = ref.watch(connectedDeviceProvider).value != null;
-
-    return Row(
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final devices = ref.watch(trustedDevicesProvider).value ?? const [];
+    if (devices.isEmpty) return const SizedBox.shrink();
+    final connected = ref.watch(connectedDeviceProvider).value?.macDeviceId;
+    final summaries = ref.watch(usageSummariesProvider).value ?? const {};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: Text(l10n.profileStatsTitle, style: titleStyle)),
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.all(UxnanSpacing.md),
-            child: PolygonLoader(),
-          )
-        else
-          IconButton.filledTonal(
-            icon: const UxIcon(UxIcons.refresh),
-            tooltip: l10n.profileStatsRefreshAction,
-            // Nothing to fetch without a live PC; the cached stats stay shown.
-            onPressed: connected
-                ? () => ref.read(metricsSnapshotsProvider.notifier).refresh()
-                : null,
-          ),
+        Text(l10n.profilePcsTitle, style: textTheme.titleLarge),
+        const SizedBox(height: UxnanSpacing.sm),
+        ExpressiveCardGroup(
+          count: devices.length,
+          itemBuilder: (context, index, position) {
+            final device = devices[index];
+            final online = device.macDeviceId == connected;
+            final summary = summaries[device.macDeviceId];
+            final spent = summary == null
+                ? null
+                : computeSpendView([summary], 30, SpendMetric.cost).total;
+            return ExpressiveCard(
+              position: position,
+              color: colors.surfaceContainer,
+              onTap: () =>
+                  context.push(AppRoutes.deviceStats(device.macDeviceId)),
+              child: Row(
+                children: [
+                  UxIcon(UxIcons.laptopMac, color: colors.onSurfaceVariant),
+                  const SizedBox(width: UxnanSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleSmall,
+                        ),
+                        Text(
+                          [
+                            if (online) l10n.profilePcOnline,
+                            if (spent != null && spent.responses > 0)
+                              l10n.profilePcSpent30(
+                                spent.unpriced
+                                    ? fmtTokens(spent.tokens)
+                                    : fmtUsd(spent.costUsd),
+                              ),
+                          ].join(' · '),
+                          style: textTheme.bodySmall?.copyWith(
+                            color: online
+                                ? colors.tertiary
+                                : colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  UxIcon(
+                    UxIcons.chevronRight,
+                    size: 20,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ],
     );
   }
 }
 
-/// The profile's overflow menu: editing your identity, and the backup of the
-/// stats ledger.
+/// Refreshes everything the profile reads: the activity, what the agents
+/// spent and the plan limits — whatever the configured refresh mode. A spinner
+/// replaces it while any of them is loading; the figures stay put meanwhile.
+class _RefreshAction extends ConsumerWidget {
+  const _RefreshAction();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final loading = ref.watch(metricsSnapshotsProvider).isLoading ||
+        ref.watch(usageSummariesProvider).isLoading ||
+        ref.watch(usageStatsProvider).isLoading;
+    final connected = ref.watch(connectedDeviceProvider).value != null;
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.all(UxnanSpacing.md),
+        child: PolygonLoader(),
+      );
+    }
+    return IconSurface(
+      icon: UxIcons.refresh,
+      tooltip: l10n.profileStatsRefreshAction,
+      // Nothing to fetch without a live PC; the cached figures stay shown.
+      onPressed: connected
+          ? () {
+              ref.read(metricsSnapshotsProvider.notifier).refresh();
+              ref.read(usageSummariesProvider.notifier).refresh();
+              ref.read(usageStatsProvider.notifier).refresh();
+            }
+          : null,
+    );
+  }
+}
+
+/// The profile's overflow menu: the backup of the stats ledger. (The name and
+/// the picture are changed on the identity header itself.)
 ///
 /// Both used to be inline — the identity as a card at the top (a duplicate of
 /// the overview's header, hidden one screen deeper) and the backup as a card at
@@ -208,10 +286,6 @@ class _ProfileMenu extends ConsumerWidget {
       tooltip: l10n.profileMenuTooltip,
       icon: UxIcons.moreVert,
       onSelected: (action) {
-        if (action == _ProfileAction.edit) {
-          EditProfileSheet.show(context);
-          return;
-        }
         if (ref.read(connectedDeviceProvider).value == null) {
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
@@ -225,15 +299,9 @@ class _ProfileMenu extends ConsumerWidget {
             unawaited(exportMetricsBackup(context, ref));
           case _ProfileAction.import:
             unawaited(importMetricsBackup(context, ref));
-          case _ProfileAction.edit:
-            break;
         }
       },
       itemBuilder: (context) => [
-        PopupMenuItem(
-          value: _ProfileAction.edit,
-          child: Text(l10n.profileEditTitle),
-        ),
         PopupMenuItem(
           value: _ProfileAction.export,
           child: Text(l10n.profileBackupExport),
@@ -248,4 +316,4 @@ class _ProfileMenu extends ConsumerWidget {
 }
 
 /// The entries of the profile's overflow menu.
-enum _ProfileAction { edit, export, import }
+enum _ProfileAction { export, import }

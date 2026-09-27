@@ -84,10 +84,11 @@ this app:
   Mobile stores both the external prompt and its answer without duplicating its
   own messages. Antigravity is excluded because `agy` has no reliable readable
   transcript; cross-client token streaming is not claimed.
-- **Your activity, at a glance.** A profile with a GitHub-style contribution
-  heatmap and stat tiles — conversations, agents used, time connected, longest
-  session and more — aggregated **locally** across every paired PC, plus a
-  per-PC breakdown from each device's menu, and a custom name and avatar. Each
+- **Your activity, at a glance.** A profile with what your agents spent (every
+  session they recorded, per day, agent and model), your plan limits and their
+  pace, a GitHub-style contribution heatmap and your activity highlights —
+  across every paired PC and per PC — under the one name your PCs know this
+  phone by, with a picture of your choice. Each
   bridge retains its complete activity ledger, so deleting conversations or
   restoring/reinstalling the app does not erase those statistics. Every
   successful connection refreshes them from the PC; if the installation no

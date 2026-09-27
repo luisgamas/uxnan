@@ -11,9 +11,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **The effort control names the level that really runs.** Untouched, it shows
   the model's default (the bridge sends it) instead of "Auto", and marks it in
   the menu; "Model default" is offered only for an agent that names none.
-- **This phone's name lives on the profile.** The card with the phone's name
-  (the one every paired PC shows, renamed from here) moved from the home
-  screen to the top of the profile.
+- **The profile, redesigned.** It opens on who you are — the picture and the
+  one name — then **what your agents spent**: every model response the agents
+  on your PCs recorded, chats and terminal sessions alike, over 7, 30 or 90
+  days, in cost or tokens, as a column per day stacked by agent (touch a day
+  for its figures), each agent's share (touch one to focus everything on it)
+  and the top models. Across every PC, and per PC on its own screen; a PC that
+  is off still counts from what it last reported. Cost is what the provider
+  billed where the CLI records it, else an estimate at API prices (said so); a
+  model with no known price reads *No price*, never $0.
+- **Plan limits show the pace.** Each window marks where it stands in time and
+  warns when the pace so far reaches the limit before it resets; the account
+  type shows beside the plan, and Codex's resets can be redeemed from the
+  phone, as on the desktop. Claude's limits now arrive from a Mac too (the
+  bridge asks Claude Code itself).
+- **Activity reads at a glance.** Conversations and messages lead, the other
+  figures sit quietly below, and the agents are ranked on one bar each; the
+  tokens lens is gone — tokens are the spend section's now, counted from every
+  session instead of only the phone's turns. The profile lists your PCs, each
+  opening its own stats, and one refresh in the bar updates everything.
+- **One name.** The phone's name — the one every paired PC shows, renamed from
+  the profile header — is the name the app greets you by; the separate profile
+  name is gone (the picture stays). The development echo agent is never
+  counted.
 
 ## [0.0.27-alpha.20260927+20260929] - 20260927
 ### Added

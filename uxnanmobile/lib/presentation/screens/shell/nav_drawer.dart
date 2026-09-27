@@ -9,7 +9,6 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
-import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -233,7 +232,7 @@ class _ProfileFooter extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final name = ref.watch(profileNameProvider) ?? l10n.profileDisplayName;
+    final name = ref.watch(shownPhoneNameProvider) ?? l10n.profileDisplayName;
 
     // `ListTile`, not a hand-rolled Material + InkWell: M3 already specifies
     // this row — ink, minimum height, leading/trailing slots, the disabled and
@@ -303,7 +302,6 @@ class _FooterMenu extends StatelessWidget {
     // open menu is what froze it: the barrier stayed up with nothing to
     // dismiss it.
     String? route;
-    var editProfile = false;
 
     await showMenu<void>(
       context: context,
@@ -314,13 +312,12 @@ class _FooterMenu extends StatelessWidget {
           enabled: false,
           padding: EdgeInsets.zero,
           child: _MenuRow(
-            icon: UxIcons.edit,
-            label: l10n.profileEditTitle,
-            // The same sheet the profile screen opens. Editing your name or
-            // avatar is a two-field job, and reaching it through a screen you
-            // then have to leave is most of the work.
+            icon: UxIcons.person,
+            label: l10n.profileTitle,
+            // Where the name and the picture are changed, beside the stats
+            // that are this phone's.
             onTap: () {
-              editProfile = true;
+              route = AppRoutes.profile;
               Navigator.of(context).pop();
             },
           ),
@@ -360,10 +357,6 @@ class _FooterMenu extends StatelessWidget {
     );
 
     if (!context.mounted) return;
-    if (editProfile) {
-      await EditProfileSheet.show(context);
-      return;
-    }
     final target = route;
     if (target != null) await context.push(target);
   }

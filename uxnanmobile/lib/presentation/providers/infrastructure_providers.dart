@@ -40,6 +40,7 @@ import 'package:uxnan/infrastructure/storage/question_response_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
 import 'package:uxnan/infrastructure/storage/thread_list_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/update_preferences_store.dart';
+import 'package:uxnan/infrastructure/storage/usage_summary_cache_store.dart';
 import 'package:uxnan/infrastructure/updates/app_update_service.dart';
 
 /// Infrastructure-layer providers.
@@ -106,6 +107,11 @@ final metricsRepositoryProvider = Provider<IMetricsRepository>(
 /// the all-PCs profile). Non-sensitive, on-device.
 final metricsCacheStoreProvider = Provider<MetricsCacheStore>(
   (ref) => MetricsCacheStore(),
+);
+
+/// The on-device cache of each PC's `usage/summary` (what its agents spent).
+final usageSummaryCacheStoreProvider = Provider<UsageSummaryCacheStore>(
+  (ref) => UsageSummaryCacheStore(),
 );
 
 /// Encrypted secure storage (Keychain / Keystore).

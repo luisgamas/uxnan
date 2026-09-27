@@ -56,15 +56,33 @@ void main() {
     expect(u.message, 'run grok login');
   });
 
-  test('accessRequired parses as its own state, not error', () {
+  test('the account type and Codex resets, soonest-expiring first', () {
+    final u = ProviderUsage.fromJson({
+      'provider': 'codex',
+      'status': 'ok',
+      'windows': <dynamic>[],
+      'updatedAt': 1,
+      'account': {'plan': 'Free', 'accountType': 'free'},
+      'resetCredits': {
+        'available': 2,
+        'entries': [
+          {'id': 'late', 'title': 'Full reset', 'expiresAt': 2000},
+          {'id': 'soon', 'title': 'Full reset', 'expiresAt': 1000},
+        ],
+      },
+    });
+    expect(u!.account!.accountType, AccountType.free);
+    expect(u.resetCredits!.available, 2);
+    expect(u.resetCredits!.entries.first.id, 'soon');
+  });
+
+  test('a status no reader sends any more is an error, not a state', () {
     final u = ProviderUsage.fromJson({
       'provider': 'claude',
       'status': 'accessRequired',
       'windows': <dynamic>[],
       'updatedAt': 1,
-      'message': 'grant access on the PC',
     });
-    expect(u!.status, UsageStatus.accessRequired);
-    expect(u.message, 'grant access on the PC');
+    expect(u!.status, UsageStatus.error);
   });
 }

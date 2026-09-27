@@ -444,9 +444,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statModelsUsed => 'Models';
 
   @override
-  String get profileStatsTitle => 'Statistics';
-
-  @override
   String get profileStatsRefreshAction => 'Refresh stats';
 
   @override
@@ -490,19 +487,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileMenuTooltip => 'Profile actions';
 
   @override
-  String get profileEditTitle => 'Edit profile';
-
-  @override
   String get profileChoosePhoto => 'Choose photo';
 
   @override
   String get profilePickIcon => 'Or pick an icon';
-
-  @override
-  String get profileNameLabel => 'Name';
-
-  @override
-  String get profileNameHint => 'Your name';
 
   @override
   String get profileAgentConversationsLabel => 'conversations';
@@ -570,42 +558,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t import this file. It may be from another PC or have been modified.';
 
   @override
-  String get statTotalTokens => 'Total tokens';
-
-  @override
   String get profileAgentScopeAll => 'All time';
-
-  @override
-  String get profileLensActivity => 'Activity';
-
-  @override
-  String get profileLensTokens => 'Tokens';
-
-  @override
-  String get profileTokensImprecise =>
-      'Some CLIs don\'t report their full token usage, so these token figures can be imprecise.';
-
-  @override
-  String profileHeatmapTokensSummary(String tokens, int activeDays) {
-    return '$tokens tokens · $activeDays active days';
-  }
-
-  @override
-  String profileHeatmapTokensDay(String date, String tokens) {
-    return '$date · $tokens tokens';
-  }
-
-  @override
-  String get profileAgentConvLabel => 'Conversations';
-
-  @override
-  String get profileAgentMsgLabel => 'Messages';
-
-  @override
-  String get profileAgentTokLabel => 'Tokens';
-
-  @override
-  String get profileUsageTitle => 'Usage & credit';
 
   @override
   String get usageNotSignedIn => 'Not signed in';
@@ -625,9 +578,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String usageResetsInDays(int days, String time) {
     return 'Resets in ${days}d at $time';
   }
-
-  @override
-  String get usageRefreshAction => 'Refresh usage';
 
   @override
   String get usageNoData => 'No usage data';
@@ -3077,4 +3027,179 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get licensesError => 'Couldn\'t load the licenses.';
+
+  @override
+  String get spendTitle => 'What your agents spent';
+
+  @override
+  String spendPeriodDays(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spendMetricCost => 'Cost';
+
+  @override
+  String get spendMetricTokens => 'Tokens';
+
+  @override
+  String get spendReading => 'Reading your agents\' history…';
+
+  @override
+  String get spendNoData =>
+      'Connect to a PC to see what its agents spent — its bridge reads every session they recorded, chats and terminal alike.';
+
+  @override
+  String get spendEmpty => 'Nothing spent in this period.';
+
+  @override
+  String get spendChartLabel => 'Spend per day, stacked by agent';
+
+  @override
+  String get spendTokensNoPrice => 'Tokens — no known price';
+
+  @override
+  String get spendCostEstimated => 'Billed plus estimated at API prices';
+
+  @override
+  String get spendCostBilled => 'As billed by the providers';
+
+  @override
+  String get spendTokensTotal => 'Tokens read and written';
+
+  @override
+  String spendResponses(int count, String formatted) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$formatted responses',
+      one: '1 response',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String spendTokensInline(String tokens) {
+    return '$tokens tokens';
+  }
+
+  @override
+  String spendCachedShare(int pct) {
+    return '$pct% from cache';
+  }
+
+  @override
+  String spendUnpriced(String tokens) {
+    return '$tokens tokens with no known price';
+  }
+
+  @override
+  String get spendNothingThatDay => 'Nothing that day';
+
+  @override
+  String get spendDayTotal => 'Total';
+
+  @override
+  String get spendNoPrice => 'No price';
+
+  @override
+  String get spendTopModels => 'Top models';
+
+  @override
+  String get spendEstimateNote =>
+      'Where a CLI does not record what was billed, cost is estimated at the provider\'s public API prices; a subscription plan pays a flat fee instead.';
+
+  @override
+  String profileAgentFigures(String conversations, String messages) {
+    return '$conversations chats · $messages messages';
+  }
+
+  @override
+  String get profileAvatarTitle => 'Profile picture';
+
+  @override
+  String get profilePcsTitle => 'Your PCs';
+
+  @override
+  String get profilePcOnline => 'Connected now';
+
+  @override
+  String profilePcSpent30(String amount) {
+    return '$amount in 30 days';
+  }
+
+  @override
+  String get usageLimitsTitle => 'Plan limits';
+
+  @override
+  String usageLimitsFrom(String pc) {
+    return 'As $pc reads them now';
+  }
+
+  @override
+  String get usageNoWindow => 'This account reports no limit window.';
+
+  @override
+  String get usagePaceOk => 'On pace';
+
+  @override
+  String usagePaceRunsOut(String duration) {
+    return 'At this pace you hit the limit in $duration';
+  }
+
+  @override
+  String usageResetsAvailable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count resets available',
+      one: '1 reset available',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String usageResetExpires(String date) {
+    return 'next expires $date';
+  }
+
+  @override
+  String get usageRedeemAction => 'Redeem';
+
+  @override
+  String get usageRedeemTitle => 'Redeem a reset?';
+
+  @override
+  String usageRedeemBody(int remaining) {
+    String _temp0 = intl.Intl.pluralLogic(
+      remaining,
+      locale: localeName,
+      other:
+          'Your limit goes back to zero now. $remaining resets will be left.',
+      one: 'Your limit goes back to zero now. 1 reset will be left.',
+      zero: 'Your limit goes back to zero now. It is your last reset.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get usageAccountSubscription => 'Subscription';
+
+  @override
+  String get usageAccountPayAsYouGo => 'Pay as you go';
+
+  @override
+  String get usageAccountFree => 'Free';
+
+  @override
+  String get usageAccountTeam => 'Team';
+
+  @override
+  String get usageAccountEnterprise => 'Enterprise';
 }

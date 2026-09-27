@@ -76,7 +76,7 @@ Future<void> main() async {
         // 30 s timeout behind — on the tablet too, where Settings opens the
         // profile into its own pane.
         agentsProvider.overrideWith((ref) async => const <AgentDescriptor>[]),
-        profileNameProvider.overrideWith(_FixedName.new),
+        phoneNameProvider.overrideWith((ref) => Stream.value('Tester')),
         trustedDevicesProvider.overrideWith((ref) => Stream.value(const [])),
         connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
         connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
@@ -239,10 +239,4 @@ final _noMetrics = ProfileMetrics(
 class _EmptyMetrics extends MetricsController {
   @override
   Future<Map<String, MetricsSnapshot>> build() async => const {};
-}
-
-/// A profile name that needs no store behind it.
-class _FixedName extends ProfileName {
-  @override
-  String? build() => 'Tester';
 }

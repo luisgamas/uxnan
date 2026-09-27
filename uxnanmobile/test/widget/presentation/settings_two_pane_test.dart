@@ -24,7 +24,7 @@ Future<void> main() async {
         overrides: [
           // The profile header reads the real profile store, which opens the
           // database and leaves drift timers pending in a layout test.
-          profileNameProvider.overrideWith(_FixedName.new),
+          phoneNameProvider.overrideWith((ref) => Stream.value('Tester')),
           connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
         ],
         child: const MaterialApp(
@@ -130,10 +130,4 @@ Future<void> main() async {
 
     expect(find.byType(TwoPaneScaffold), findsNothing);
   });
-}
-
-/// A profile name that needs no store behind it.
-class _FixedName extends ProfileName {
-  @override
-  String? build() => 'Tester';
 }

@@ -1140,9 +1140,11 @@ lib/presentation/
 │   ├── onboarding/
 │   ├── pairing/                          # QR, codigo manual, descubrimiento en LAN
 │   ├── profile/
-│   │   ├── profile_screen.dart           # metricas agregadas + heatmap + uso
-│   │   ├── agent_activity_section.dart
-│   │   ├── usage_section.dart
+│   │   ├── profile_screen.dart           # identidad, gasto, limites, actividad, PCs
+│   │   ├── profile_identity_header.dart  # foto + el nombre del telefono (uno solo)
+│   │   ├── spend_section.dart            # usage/summary: gasto por dia y agente
+│   │   ├── usage_section.dart            # agent/usageStats: limites y ritmo
+│   │   ├── agent_activity_section.dart   # heatmap + agentes
 │   │   └── pc_details_screen.dart        # ficha por PC
 │   └── settings/
 │       ├── settings_screen.dart          # accesos, y su seccion al lado en ancho

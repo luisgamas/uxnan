@@ -55,6 +55,7 @@ import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
+import 'package:uxnan/domain/value_objects/usage_summary.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
@@ -528,33 +529,6 @@ final activityHeatmapProvider = FutureProvider.autoDispose
   return aggregateActivity(scoped, year: query.year, metric: query.metric);
 });
 
-/// The user's custom profile display name, or null to use the default label.
-/// Persisted on-device; hydrates after returning null synchronously.
-class ProfileName extends Notifier<String?> {
-  @override
-  String? build() {
-    unawaited(_hydrate());
-    return null;
-  }
-
-  Future<void> _hydrate() async {
-    final stored = await ref.read(profilePreferencesStoreProvider).readName();
-    if (stored != state) state = stored;
-  }
-
-  /// Persists and applies the display name; a null/empty value clears it.
-  Future<void> set(String? name) async {
-    final value = (name == null || name.trim().isEmpty) ? null : name.trim();
-    if (value == state) return;
-    state = value;
-    await ref.read(profilePreferencesStoreProvider).writeName(value);
-  }
-}
-
-/// The user's custom profile display name (persisted; null = default label).
-final profileNameProvider =
-    NotifierProvider<ProfileName, String?>(ProfileName.new);
-
 /// The user's chosen profile avatar (default person / preset icon / picked
 /// image). Persisted; defaults to the fallback glyph, then hydrates.
 class ProfileAvatarSetting extends Notifier<ProfileAvatar> {
@@ -737,7 +711,107 @@ class UsageStatsController extends AsyncNotifier<List<ProviderUsage>> {
   /// previous data in `state.value` while `state.isLoading` is true — the cards
   /// stay put and the header shows a spinner during the refresh.
   void refresh() => ref.invalidateSelf();
+
+  /// Redeems one of [provider]'s rate-limit resets on the connected PC
+  /// (`usage/redeemReset`; Codex only today) — [creditId], or the
+  /// soonest-expiring one — and takes the fresh usage it answers with.
+  /// [attempt] names this try, so a retry after a lost answer never spends a
+  /// second reset. Throws [UsageRedeemException] with the bridge's reason.
+  Future<void> redeemReset(
+    UsageProvider provider, {
+    required String attempt,
+    String? creditId,
+  }) async {
+    final RpcMessage response;
+    try {
+      response = await ref.read(sessionCoordinatorProvider).sendRequest(
+        'usage/redeemReset',
+        {
+          'provider': provider.name,
+          'idempotencyKey': attempt,
+          if (creditId != null) 'creditId': creditId,
+        },
+      );
+    } on Object catch (error) {
+      throw UsageRedeemException(error.toString());
+    }
+    final error = response.error;
+    if (error != null) throw UsageRedeemException(error.message);
+    final result = response.result;
+    final fresh = result is Map
+        ? ProviderUsage.fromJson(result.cast<String, dynamic>())
+        : null;
+    if (fresh == null) return;
+    final current = state.value ?? const <ProviderUsage>[];
+    state = AsyncData([
+      for (final u in current)
+        if (u.provider == fresh.provider) fresh else u,
+    ]);
+  }
 }
+
+/// Thrown when the bridge could not redeem a rate-limit reset, carrying its
+/// reason for the UI to show.
+class UsageRedeemException implements Exception {
+  /// Creates a [UsageRedeemException] with the bridge's [message].
+  const UsageRedeemException(this.message);
+
+  /// Why the redeem failed.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// What the agents on each PC spent (`usage/summary`), keyed by the PC's
+/// `macDeviceId`. The connected PC is asked for its last
+/// [kUsageSummaryDays] days on every (re)connection and on [refresh]; the
+/// others come from the on-device cache, so the all-PCs spend still adds a PC
+/// that is off right now. Degrades to the cache against a bridge without the
+/// method.
+class UsageSummariesController
+    extends AsyncNotifier<Map<String, UsageSummary>> {
+  @override
+  Future<Map<String, UsageSummary>> build() async {
+    final store = ref.read(usageSummaryCacheStoreProvider);
+    final cache = await store.readAll();
+    final connected = ref.watch(connectedDeviceProvider).value;
+    if (connected == null) return cache;
+    final fresh = await _fetch();
+    if (fresh != null) {
+      cache[connected.macDeviceId] = fresh;
+      await store.writeOne(connected.macDeviceId, fresh);
+    }
+    return cache;
+  }
+
+  Future<UsageSummary?> _fetch() async {
+    try {
+      final response = await ref
+          .read(sessionCoordinatorProvider)
+          .sendRequest('usage/summary', {'days': kUsageSummaryDays});
+      final result = response.result;
+      if (response.error != null || result is! Map) return null;
+      return UsageSummary.fromJson(result.cast<String, dynamic>());
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('usage/summary failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Asks the connected PC again. Riverpod keeps the previous value while
+  /// loading, so the chart stays put.
+  void refresh() => ref.invalidateSelf();
+}
+
+/// How many days of spend each PC is asked for: the longest period shown.
+const int kUsageSummaryDays = 90;
+
+/// What the agents on each PC spent, keyed by PC (kept alive).
+final usageSummariesProvider =
+    AsyncNotifierProvider<UsageSummariesController, Map<String, UsageSummary>>(
+  UsageSummariesController.new,
+);
 
 /// Per-provider usage/quota for the connected PC (kept alive; auto-polls).
 final usageStatsProvider =
@@ -813,6 +887,15 @@ final phoneDetailsProvider = FutureProvider<PhoneDetails>(
 /// The name this phone goes by (`null` until it is known).
 final phoneNameProvider = StreamProvider<String?>(
   (ref) => ref.watch(phoneNameManagerProvider).nameStream,
+);
+
+/// The one name this person goes by in the app: this phone's name, the same
+/// on every paired PC (desktop and bridge show it), or the device's own name
+/// until one is set. Null only before either has loaded.
+final shownPhoneNameProvider = Provider<String?>(
+  (ref) =>
+      ref.watch(phoneNameProvider).value ??
+      ref.watch(phoneDetailsProvider).value?.defaultName,
 );
 
 /// This phone's copy of the connected PC's bridge — its conversations,

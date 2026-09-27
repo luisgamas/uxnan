@@ -52,7 +52,7 @@ Widget _wrap({
   String? connectedEndpoint,
   List<Thread> threads = const [],
   Map<String, ThreadActivity> activity = const {},
-  String? profileName,
+  String? phoneName,
 }) {
   final router = GoRouter(
     routes: [
@@ -62,8 +62,8 @@ Widget _wrap({
   return ProviderScope(
     overrides: [
       metricsSnapshotsProvider.overrideWith(_EmptyMetricsController.new),
-      if (profileName != null)
-        profileNameProvider.overrideWith(() => _FixedName(profileName)),
+      if (phoneName != null)
+        phoneNameProvider.overrideWith((ref) => Stream.value(phoneName)),
       // The device card's signal line is derived from the phone's own thread
       // cache, so this screen now reads the thread manager. Feeding the two
       // streams directly keeps the real manager (drift, transport, its poll
@@ -346,8 +346,10 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _wrap(devices: [_device('mac-1', 'My Mac')], profileName: 'Jorge'),
+        _wrap(devices: [_device('mac-1', 'My Mac')], phoneName: 'Jorge'),
       );
+      // The phone's name arrives as the stream's first event.
+      await tester.pump();
       await tester.pump();
 
       // Two rows: the constant half quiet, the name carrying the weight.
@@ -512,14 +514,4 @@ void main() {
       expect(find.textContaining('conversation'), findsNothing);
     });
   });
-}
-
-/// A profile name that is already set, without touching the real secure store.
-class _FixedName extends ProfileName {
-  _FixedName(this._name);
-
-  final String _name;
-
-  @override
-  String? build() => _name;
 }
