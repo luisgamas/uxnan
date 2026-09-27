@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — send a queued message now
+
+- **`queue/sendNow`** (`{ threadId, turnId }` → `QueueStateResult`): one queued
+  message goes now — into the running turn when its agent takes input
+  mid-turn, else as the next turn at once. 87 methods.
+
 ### Added — usage from the CLIs themselves
 
 - **`usage/summary`** (`UsageSummaryParams { days }` → `UsageSummary`): tokens

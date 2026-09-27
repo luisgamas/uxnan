@@ -660,9 +660,18 @@ export class AgentManager {
     adapter: IAgentAdapter,
     entry: QueuedTurn,
   ): Promise<boolean> {
-    if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
     if (this.#queuePausedByThread.has(threadId)) return false;
     if ((this.#queueByThread.get(threadId)?.length ?? 0) > 0) return false;
+    return this.#steer(threadId, adapter, entry);
+  }
+
+  /**
+   * Hands [entry] to the running turn — the part {@link #tryDeliverMidTurn}
+   * and {@link sendQueuedNow} share. Returns whether the agent took it; any
+   * refusal leaves the caller to keep it queued.
+   */
+  async #steer(threadId: string, adapter: IAgentAdapter, entry: QueuedTurn): Promise<boolean> {
+    if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
     if (this.#awaitingInput.has(threadId)) return false;
     const activeTurnId = this.#activeTurnByThread.get(threadId);
     if (!activeTurnId) return false;
@@ -1268,6 +1277,53 @@ export class AgentManager {
       paused: paused !== undefined,
       ...(paused !== undefined ? { pausedReason: paused } : {}),
     };
+  }
+
+  /**
+   * The person asked for one queued message to go NOW (`queue/sendNow`): into
+   * the running turn when its agent takes input mid-turn, or — with nothing
+   * running — as the next turn at once, ahead of the rest and through a pause
+   * (asking for it is the decision the pause waits for). The rest of the queue
+   * keeps its order. Refused, with the reason, when a turn runs whose agent
+   * cannot take it, or the agent is waiting on an answer from the person.
+   */
+  async sendQueuedNow(threadId: string, turnId: string): Promise<QueueStateResult> {
+    const queue = this.#queueByThread.get(threadId);
+    const index = queue?.findIndex((entry) => entry.turnId === turnId) ?? -1;
+    if (!queue || index < 0) {
+      throw new RpcError(JsonRpcErrorCode.InvalidParams, 'that message is no longer queued');
+    }
+    const entry = queue[index]!;
+    if (this.#activeTurnByThread.has(threadId)) {
+      const agentId = entry.options.agentId ?? this.#options.defaultAgent;
+      const adapter = this.#adapters.get(agentId);
+      if (!adapter || adapter.capabilities.steering !== true || !adapter.steerTurn) {
+        throw new RpcError(
+          JsonRpcErrorCode.AgentBusy,
+          'this agent takes no message while it works; it goes when the turn ends',
+        );
+      }
+      if (this.#awaitingInput.has(threadId)) {
+        throw new RpcError(
+          JsonRpcErrorCode.AgentBusy,
+          'the agent is waiting on your answer; answer it first',
+        );
+      }
+      queue.splice(index, 1);
+      if (!(await this.#steer(threadId, adapter, entry))) {
+        queue.splice(index, 0, entry);
+        throw new RpcError(JsonRpcErrorCode.AgentBusy, 'the agent did not take the message');
+      }
+      if (queue.length === 0) this.#queuePausedByThread.delete(threadId);
+      this.#notifyQueue(threadId);
+      return this.queueState(threadId);
+    }
+    queue.splice(index, 1);
+    queue.unshift(entry);
+    this.#queuePausedByThread.delete(threadId);
+    this.#notifyQueue(threadId);
+    await this.#drainQueue(threadId);
+    return this.queueState(threadId);
   }
 
   /** Lifts a pause and drains the queue (no-op when it was not paused). */

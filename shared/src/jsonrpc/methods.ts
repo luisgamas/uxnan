@@ -482,6 +482,13 @@ export interface JsonRpcMethodRegistry {
   'queue/resume': { params: { threadId: string }; result: QueueStateResult };
   /** Drops every queued turn (each → `cancelled`) and clears the paused state. */
   'queue/clear': { params: { threadId: string }; result: QueueStateResult };
+  /**
+   * Sends one queued message now: into the running turn when its agent takes
+   * input mid-turn (`capabilities.steering`), else — nothing running — as the
+   * next turn at once, through a pause. Refused while a turn runs whose agent
+   * cannot take it, or the agent waits on the person's answer.
+   */
+  'queue/sendNow': { params: { threadId: string; turnId: string }; result: QueueStateResult };
 
   // Git
   'git/status': { params: { cwd: string }; result: GitRepoStatus };

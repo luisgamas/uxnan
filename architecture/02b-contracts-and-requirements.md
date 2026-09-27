@@ -100,7 +100,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 86 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 87 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
@@ -133,6 +133,7 @@ turn/attachment         -> los bytes de una imagen que un mensaje del usuario ll
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
 queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason? }.
 queue/clear             -> descartar todos los turnos encolados del thread (cada uno -> `cancelled`) y levantar la pausa. Mismo Result que `queue/resume`.
+queue/sendNow           -> mandar YA un mensaje encolado: dentro del turno en curso si su agente toma entrada a mitad de turno (`capabilities.steering`, el mismo relevo de la entrega automatica), o -- sin nada corriendo -- como el siguiente turno de inmediato, por delante del resto y atravesando una pausa. Rechazado (con el motivo) mientras corre un turno cuyo agente no puede tomarlo, o el agente espera una respuesta de la persona. Params `{ threadId, turnId }`; mismo Result que `queue/resume`.
 ```
 
 **Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge

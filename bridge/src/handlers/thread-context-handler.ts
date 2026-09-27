@@ -267,6 +267,9 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   router.register('queue/clear', (p, ctx: BridgeContext) =>
     ctx.agentManager.clearQueue(requireString(p, 'threadId')),
   );
+  router.register('queue/sendNow', (p, ctx: BridgeContext) =>
+    ctx.agentManager.sendQueuedNow(requireString(p, 'threadId'), requireString(p, 'turnId')),
+  );
 }
 
 const ACCESS_MODES: readonly AccessMode[] = ['requestApproval', 'approveForMe', 'fullAccess'];

@@ -25,6 +25,7 @@ export const METHOD_NAMES = [
   // Message queue
   'queue/resume',
   'queue/clear',
+  'queue/sendNow',
   // Git
   'git/status',
   'git/diff',

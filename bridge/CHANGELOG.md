@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Send a queued message now** — `queue/sendNow`: the person picks one queued
+  message and it goes into the running turn (agents that take input mid-turn,
+  through the same hand-off as the automatic delivery), or, with nothing
+  running, starts at once ahead of the rest and through a pause. Refused, with
+  the reason, when the running agent cannot take it or waits on an answer.
+
 - **What the agents spent, from their own transcripts** — `usage/summary`:
   tokens and cost per local day, agent and model for every model response the
   agent CLIs on this PC recorded (Claude Code, Codex, pi, Grok, OpenCode 2,

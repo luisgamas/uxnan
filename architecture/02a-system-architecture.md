@@ -2396,7 +2396,10 @@ mensaje nuevo; el texto final que reporta el adaptador cubre toda la ejecucion,
 asi que tras un relevo se conserva el texto transmitido. Un turno ya relevado
 no esta en la cola, por eso `queue/clear` no lo toca ni `#drainQueue` lo
 reproduce. Cualquier negativa del adaptador cae a la cola de siempre, asi que
-un mensaje nunca se pierde: como mucho espera. (Hasta 2026-09 el mensaje
+un mensaje nunca se pierde: como mucho espera. La entrega automatica solo toma
+el mensaje que seria el siguiente (cola vacia y sin pausa); cualquier otro lo
+puede mandar la persona con `queue/sendNow` ("Enviar ahora" en telefono y
+desktop), que usa el mismo relevo. (Hasta 2026-09 el mensaje
 quedaba `delivered`, sin respuesta propia, y la respuesta seguia en el turno
 anterior — por encima del mensaje que contestaba; los turnos guardados asi se
 leen como `completed`.)
