@@ -118,9 +118,18 @@ class _EnumControl extends ConsumerWidget {
   final AgentModelOption option;
   final Object? selected;
 
-  /// Sentinel value for the "Auto" (cleared) menu entry, so a dismissed menu
-  /// (`showMenu` returns null) is distinguishable from picking "Auto".
-  static const String _autoValue = '__uxnan_run_option_auto__';
+  /// Sentinel value for the "Default" (cleared) menu entry, so a
+  /// dismissed menu (`showMenu` returns null) is distinguishable from it.
+  static const String _unsetValue = '__uxnan_run_option_unset__';
+
+  /// The level the model runs at when nobody picks one — the bridge sends it —
+  /// or null when the agent names none (then its own default applies).
+  String? get _defaultValue {
+    final value = option.defaultValue;
+    return value is String && option.values.any((v) => v.value == value)
+        ? value
+        : null;
+  }
 
   /// Waits for the software keyboard to finish collapsing.
   ///
@@ -139,9 +148,11 @@ class _EnumControl extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    var currentLabel = l10n.runOptionAuto;
+    // What the turn runs at: the pick, else the default the bridge sends.
+    final effective = selected ?? _defaultValue;
+    var currentLabel = l10n.runOptionModelDefault;
     for (final value in option.values) {
-      if (value.value == selected) currentLabel = value.label;
+      if (value.value == effective) currentLabel = value.label;
     }
 
     // Opens the value menu from the shared circular control surface — not a
@@ -160,6 +171,7 @@ class _EnumControl extends ConsumerWidget {
     WidgetRef ref,
   ) async {
     final notifier = ref.read(runOptionSelectionsProvider.notifier);
+    final defaultValue = _defaultValue;
 
     // This button sits directly above the keyboard, and the menu is anchored to
     // it — so with the keyboard up the menu opens underneath it, out of reach.
@@ -191,19 +203,37 @@ class _EnumControl extends ConsumerWidget {
       requestFocus: false,
       constraints: const BoxConstraints(minWidth: 200),
       items: [
-        PopupMenuItem<String?>(
-          value: _autoValue,
-          child: Text(l10n.runOptionAuto),
-        ),
+        // Only an agent that names no default gets "send nothing": otherwise
+        // the default IS one of the levels, marked below.
+        if (defaultValue == null)
+          CheckedPopupMenuItem<String?>(
+            value: _unsetValue,
+            checked: selected == null,
+            child: Text(l10n.runOptionModelDefault),
+          ),
         for (final choice in option.values)
-          PopupMenuItem<String?>(
+          CheckedPopupMenuItem<String?>(
             value: choice.value,
-            child: Text(choice.label),
+            checked: (selected ?? defaultValue) == choice.value,
+            child: Row(
+              children: [
+                Expanded(child: Text(choice.label)),
+                if (choice.value == defaultValue)
+                  Text(
+                    l10n.runOptionDefaultTag,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+              ],
+            ),
           ),
       ],
     );
     if (value == null) return; // dismissed without choosing
-    if (value == _autoValue) {
+    // Picking the default forgets the pick, so a changed default keeps
+    // applying.
+    if (value == _unsetValue || value == defaultValue) {
       notifier.clear(threadId, option.key);
     } else {
       notifier.set(threadId, option.key, value);

@@ -21,10 +21,12 @@
   import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
   import type { Turn } from "$shared/models/thread";
   import MarkdownView from "$lib/components/MarkdownView.svelte";
+  import ChatUserText from "./ChatUserText.svelte";
   import ChatBlock from "./ChatBlock.svelte";
   import ChatMessageMeta from "./ChatMessageMeta.svelte";
   import ChatWorkGroup from "./ChatWorkGroup.svelte";
   import ChatImages from "./ChatImages.svelte";
+  import ChatFiles from "./ChatFiles.svelte";
   import { chat as chatStore } from "$lib/bridge/chat.svelte";
   import {
     assistantOf,
@@ -60,7 +62,15 @@
   const prompt = $derived(userText(turn));
   /** The images the user sent with the message, kept by the bridge. */
   const images = $derived(
-    userAttachments(turn).map((a) => ({ id: a.id, load: () => chatStore.attachment(threadId, a.id) })),
+    userAttachments(turn)
+      .filter((a) => a.name === undefined && a.mimeType.startsWith("image/"))
+      .map((a) => ({ id: a.id, load: () => chatStore.attachment(threadId, a.id) })),
+  );
+  /** And the files: every other attachment, named. */
+  const sentFiles = $derived(
+    userAttachments(turn)
+      .filter((a) => a.name !== undefined || !a.mimeType.startsWith("image/"))
+      .map((a) => ({ id: a.id, name: a.name ?? a.id, bytes: a.bytes })),
   );
   const assistant = $derived(assistantOf(turn));
   const streaming = $derived(conversation.activeTurnId === turn.id);
@@ -157,13 +167,14 @@
 {/snippet}
 
 <div class="flex flex-col gap-2">
-  {#if prompt || images.length > 0}
+  {#if prompt || images.length > 0 || sentFiles.length > 0}
     <div class="group/message flex flex-col items-end gap-0.5">
       {#if images.length > 0}
         <ChatImages {images} class={cn("max-w-[85%]", prompt && "mb-1")} />
       {/if}
+      <ChatFiles files={sentFiles} class={cn(prompt && "mb-1")} />
       {#if prompt}
-        <div class={cn(chat.userBubble, turn.status === "cancelled" && "opacity-60")}>{prompt}</div>
+        <ChatUserText text={prompt} class={cn(turn.status === "cancelled" && "opacity-60")} />
       {/if}
       <ChatMessageMeta text={prompt} at={turn.createdAt} align="end" />
     </div>

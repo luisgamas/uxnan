@@ -633,7 +633,7 @@ pub struct AppSettings {
     pub pets: PetSettings,
     /// AI providers whose usage stats the user activated (Settings → Providers).
     /// Frontend-owned shape (`UsageProviderConfig`), persisted opaquely. Only the
-    /// providers listed here are ever polled by `usage_read`.
+    /// providers listed here are ever polled (through the bridge).
     #[serde(default)]
     pub usage_providers: Vec<serde_json::Value>,
     /// How often (minutes) activated providers refresh; a provider may override

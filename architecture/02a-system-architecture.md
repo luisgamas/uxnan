@@ -53,8 +53,9 @@
 > payloads reconcile additively and mobile collapses completed progress replies
 > without discarding them. Profile activity is owned by a complete,
 > global-per-PC bridge ledger. Conversation deletion never subtracts historical
-> metrics; export/import includes conversations, messages, reported tokens,
-> sessions and Git actions. Phone transport identity remains installation-local
+> metrics; export/import includes conversations, messages, sessions and Git
+> actions (what the agents spent is read from each CLI's history by
+> `usage/summary`, never kept in the ledger). Phone transport identity remains installation-local
 > and is not used as an activity-profile identity. LAN discovery is an
 > unauthenticated host hint, emitted explicitly on every eligible IPv4 interface;
 > it never carries the pairing code and never bypasses the operator-gated E2EE
@@ -1139,9 +1140,11 @@ lib/presentation/
 │   ├── onboarding/
 │   ├── pairing/                          # QR, codigo manual, descubrimiento en LAN
 │   ├── profile/
-│   │   ├── profile_screen.dart           # metricas agregadas + heatmap + uso
-│   │   ├── agent_activity_section.dart
-│   │   ├── usage_section.dart
+│   │   ├── profile_screen.dart           # identidad, gasto, limites, actividad, PCs
+│   │   ├── profile_identity_header.dart  # foto + el nombre del telefono (uno solo)
+│   │   ├── spend_section.dart            # usage/summary: gasto por dia y agente
+│   │   ├── usage_section.dart            # agent/usageStats: limites y ritmo
+│   │   ├── agent_activity_section.dart   # heatmap + agentes
 │   │   └── pc_details_screen.dart        # ficha por PC
 │   └── settings/
 │       ├── settings_screen.dart          # accesos, y su seccion al lado en ancho
@@ -2185,57 +2188,58 @@ conversation continues in a fresh native thread.
 }
 ```
 
-#### 5.8.10 Estadisticas de uso por proveedor (`agent/usageStats`)
+#### 5.8.10 Uso por proveedor: limites (`agent/usageStats`) y gasto (`usage/summary`)
 
-Metodo `agent/usageStats` (contrato `ProviderUsage[]` en `shared/src/models/usage.ts`;
-ver 02b). Surface las ventanas de cuota (% consumido + reinicio), plan/cuenta y
-saldo de credito de los CLIs de IA que el usuario **activo** — nunca de todos, para
-ahorrar recursos.
+**Un solo lector, el bridge; todos los clientes le preguntan** (el telefono y el
+panel Proveedores de Uxnan Desktop). Contratos en `shared/src/models/usage.ts`
+(ver 02b).
 
-**Postura de datos:** solo se lee el **token OAuth que el propio CLI guardo** —
-su archivo local o, cuando el CLI lo guarda ahi, el **almacen de credenciales del
-SO** — y se llama a la **API oficial de uso** de cada proveedor. **Nunca** cookies
-del navegador, API keys pegadas por el usuario ni el refresh token (solo el access
-token, en memoria durante una llamada; los CLIs tratan la reutilizacion del
-refresh como sesion comprometida). Proveedores wired: **Codex**
-(`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
-en Windows/Linux; en macOS el item `Claude Code-credentials` del login Keychain →
-`api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-and **Grok** (`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
-`status` (`ok`/`authRequired`/`accessRequired`/`notInstalled`/`error`); uno lento
-o roto no tumba a los demas.
+**Limites del plan — `agent/usageStats { providers }`.** Ventanas de cuota (%
+consumido + reinicio), plan/cuenta, saldo y reinicios canjeables de los
+proveedores que el usuario **activo** (nunca de todos). Postura:
+- **Claude Code y Codex se preguntan a si mismos.** Cada CLI responde por la cuenta
+  con la que ya inicio sesion, desde la sesion que el mismo guarda, asi que el
+  bridge **no lee ninguna credencial ni necesita permisos del SO** — los limites
+  de Claude llegan tambien en macOS (antes quedaban en el llavero, fuera del
+  alcance del bridge). Claude: `claude --input-format stream-json`, peticiones de
+  control `initialize` (cuenta, organizacion, plan) y `get_usage` (`rate_limits`
+  con `limits[]` `percent`/`resets_at`, `extra_usage`); Codex: `codex app-server`,
+  `account/read` y `account/rateLimits/read` (ventanas `primary`/`secondary`,
+  creditos y `rateLimitResetCredits`). Procesos efimeros, sin turno ni tokens
+  (`bridge/src/usage/cli-usage.ts`).
+- **Copilot y Grok** no tienen esa superficie: solo se lee el token que cada CLI
+  guardo (`gh auth token`, `~/.grok/auth.json`) y se llama a la API oficial de uso
+  del proveedor. Nunca cookies del navegador, API keys pegadas ni refresh tokens.
+- Cada proveedor degrada a un `status` (`ok`/`authRequired`/`notInstalled`/`error`);
+  uno lento o roto no tumba a los demas.
+- **`usage/redeemReset { provider, idempotencyKey, creditId? }`** canjea un reinicio
+  de Codex (`account/rateLimitResetCredit/consume`) y responde el uso actualizado.
 
-**Almacen de credenciales del SO (consentimiento explicito):** el lector **nunca
-abre un dialogo por su cuenta**. Un poll corre con la interaccion del SO
-desactivada; si el SO tendria que preguntar, el proveedor reporta `accessRequired`
-y la UI ofrece *Grant access* — la unica lectura interactiva, iniciada por el
-usuario, en la que el SO muestra su propio dialogo y (con *Always Allow*) registra
-a la app en la lista de acceso del item. La autorizacion es del SO, revocable desde
-su gestor de credenciales; la app no persiste nada sobre ella. Hoy lo implementa el
-desktop en macOS (`src-tauri/src/credstore.rs`); Windows Credential Manager y
-Linux Secret Service se incorporan en el mismo modulo cuando un CLI wired los use.
-
-**Lectura per-runtime (dual-reader, mismo contrato):** el acceso al disco de la PC
-es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codigo:
-- **Desktop (standalone, hoy):** lo lee **nativo en Rust** (`src-tauri/src/usage.rs`,
-  comando `usage_read`), sin dependencia de Node — Settings → Providers.
-- **Bridge (implementado):** lo lee en **TS** (`bridge/src/usage/usage-reader.ts`,
-  handler `agent/usageStats`) portando el mismo reader del desktop, y lo sirve al
-  telefono, que no ve el disco de la PC directamente — mismo contrato, misma
-  postura de datos. El bridge **no abre el almacen del SO** (su binario Node
-  necesitaria una autorizacion propia y su binding de keyring no puede silenciar
-  el dialogo): en una Mac reporta el estado honesto y remite al desktop
-  (`bridge/FOR-DEV.md`). La UI del telefono (seccion "Uso y credito" en el perfil)
-  es el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
+**Gasto — `usage/summary { days }`.** Tokens y costo por dia local de la PC, agente
+y modelo, leidos de las **transcripciones que cada CLI guarda en disco** (Claude
+Code `~/.claude/projects`, Codex `~/.codex/sessions`, pi `~/.pi/agent/sessions`,
+Grok `~/.grok/sessions`, OpenCode 2 `opencode.db`, Zero `~/.local/share/zero/sessions`):
+cuenta **todo** lo que el agente gasto en esa PC, los turnos del bridge y las sesiones
+que la persona corrio en una terminal. Antigravity queda fuera: su transcripcion no
+registra tokens (`bridge/FOR-DEV.md`). El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
+una estimacion a precios de API (Claude, con la tabla de precios del propio CLI);
+un modelo sin precio conocido se muestra como tal (`unpricedTokens`), nunca se
+adivina. Escaneo incremental con cache en `~/.uxnan/usage-scan.json` (lo leido de
+cada archivo y hasta donde); las respuestas de Claude que una sesion reanudada
+copia a otro archivo se cuentan una vez. Nada crudo sale del bridge: solo sumas.
 
 #### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
 
 Mobile profile metrics (conversations, messages, agents/models used, connected
-time, sessions, Git actions, reported tokens and activity heatmaps) are owned by
+time, sessions, Git actions and activity heatmaps) are owned by
 the **bridge** and served through `metrics/*` (`MetricsSnapshot` in
 `shared/src/models/metrics.ts`; see 02b §1.2). The phone caches/renders one
-snapshot per PC and sums PCs. Provider quota/credit usage is a separate live
-surface (`agent/usageStats`) and is never written to this ledger.
+snapshot per PC and sums PCs. The development `echo` agent is never counted.
+Tokens and cost are **not** in this ledger: `usage/summary` (§5.8.10) reads them
+from each CLI's own history, which covers every session on the PC — one source
+for what the agents spent, not a second count of the bridge's turns. Provider
+quota/credit usage is a separate live surface (`agent/usageStats`) and is never
+written to this ledger either.
 
 `metrics/metrics-store.ts` persists a version-2 ledger in
 `~/.uxnan/metrics.json`:
@@ -2298,6 +2302,11 @@ Reglas (no negociables, verificadas contra los CLIs reales):
   (`IAgentAdapter.defaultCwd()`), que es donde el CLI se lanza realmente. El
   temp del SO queda solo como ultimo recurso para un adaptador que no reporte
   ninguno.
+- Un **archivo** (`type: 'file'`) conserva su nombre, en una carpeta propia
+  (`.../<turnId>/<n>/<nombre>`) para que dos con el mismo nombre no choquen; la
+  nota del prompt dice *Attached file(s)*. Una imagen es `image-<n>.<ext>`.
+  Cualquier agente lo abre con sus herramientas de archivos, asi que no depende
+  de `capabilities.images`.
 - El directorio se borra al terminar el turno.
 - El mensaje que se persiste en el historial no filtra rutas temporales: guarda
   el texto del usuario tal cual (vacio en un turno solo-imagen) y **las imagenes
@@ -2392,7 +2401,10 @@ mensaje nuevo; el texto final que reporta el adaptador cubre toda la ejecucion,
 asi que tras un relevo se conserva el texto transmitido. Un turno ya relevado
 no esta en la cola, por eso `queue/clear` no lo toca ni `#drainQueue` lo
 reproduce. Cualquier negativa del adaptador cae a la cola de siempre, asi que
-un mensaje nunca se pierde: como mucho espera. (Hasta 2026-09 el mensaje
+un mensaje nunca se pierde: como mucho espera. La entrega automatica solo toma
+el mensaje que seria el siguiente (cola vacia y sin pausa); cualquier otro lo
+puede mandar la persona con `queue/sendNow` ("Enviar ahora" en telefono y
+desktop), que usa el mismo relevo. (Hasta 2026-09 el mensaje
 quedaba `delivered`, sin respuesta propia, y la respuesta seguia en el turno
 anterior — por encima del mensaje que contestaba; los turnos guardados asi se
 leen como `completed`.)

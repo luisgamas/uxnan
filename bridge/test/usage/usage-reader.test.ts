@@ -35,142 +35,128 @@ function deps(over: Partial<UsageReaderDeps> = {}): UsageReaderDeps {
       throw new Error('no network in test');
     },
     ghAuthToken: async () => undefined,
+    askClaude: async () => undefined,
+    askCodex: async () => undefined,
     ...over,
   };
 }
 
-test('codex maps rate windows, credit and plan', async () => {
+test('codex: its own answer — windows by length, plan, the resets it can redeem', async () => {
   const [u] = await readUsage(
     ['codex'],
     deps({
-      readFile: fileMap({
-        '/.codex/auth.json': { tokens: { access_token: 'tok', account_id: 'acc' } },
-      }),
-      fetchImpl: async (url, init) => {
-        assert.match(String(url), /wham\/usage/);
-        assert.equal((init?.headers as Record<string, string>).authorization, 'Bearer tok');
-        assert.equal((init?.headers as Record<string, string>)['ChatGPT-Account-Id'], 'acc');
-        return res(200, {
-          plan_type: 'chatgpt_pro',
-          email: 'a@b.com',
-          rate_limit: {
-            primary_window: {
-              used_percent: 0.4,
-              limit_window_seconds: 18_000,
-              reset_at: 1_700_000_600,
+      askCodex: async () => ({
+        account: { type: 'chatgpt', email: 'a@b.com', planType: 'pro' },
+        rateLimits: {
+          rateLimitsByLimitId: {
+            codex: {
+              primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1_700_000_600 },
+              secondary: { usedPercent: 12, windowDurationMins: 10_080, resetsAt: 1_700_300_000 },
+              credits: { hasCredits: true, unlimited: false, balance: 250 },
             },
           },
-          credits: { balance: 12.5, currency: 'USD' },
-        });
-      },
-    }),
-  );
-  assert.equal(u?.provider, 'codex');
-  assert.equal(u?.status, 'ok');
-  assert.equal(u?.source, 'token');
-  assert.equal(u?.account?.plan, 'Chatgpt Pro');
-  assert.equal(u?.account?.email, 'a@b.com');
-  assert.equal(u?.windows.length, 1);
-  assert.equal(u?.windows[0]?.usedPercent, 40);
-  assert.equal(u?.windows[0]?.windowMinutes, 300);
-  assert.equal(u?.windows[0]?.label, 'Session (5h)');
-  assert.equal(u?.credit?.used, 12.5);
-  assert.equal(u?.updatedAt, 1_700_000_000_000);
-});
-
-test('codex is notInstalled when auth.json is missing', async () => {
-  const [u] = await readUsage(['codex'], deps());
-  assert.equal(u?.status, 'notInstalled');
-  assert.match(u?.message ?? '', /not set up/);
-});
-
-test('codex requires auth when the token is absent', async () => {
-  const [u] = await readUsage(
-    ['codex'],
-    deps({ readFile: fileMap({ '/.codex/auth.json': { tokens: {} } }) }),
-  );
-  assert.equal(u?.status, 'authRequired');
-});
-
-test('a 401 from the usage API maps to authRequired (keeping the account)', async () => {
-  const [u] = await readUsage(
-    ['claude'],
-    deps({
-      readFile: fileMap({
-        '/.claude/.credentials.json': {
-          claudeAiOauth: { accessToken: 'tok', subscriptionType: 'max' },
-        },
-      }),
-      fetchImpl: async () => res(401, {}),
-    }),
-  );
-  assert.equal(u?.status, 'authRequired');
-  assert.equal(u?.account?.plan, 'Max');
-});
-
-test('claude on macOS without a credentials file reports the Keychain honestly', async () => {
-  const [u] = await readUsage(
-    ['claude'],
-    deps({
-      platform: 'darwin',
-      readFile: fileMap({ '/.claude.json': { oauthAccount: { emailAddress: 'd@x.io' } } }),
-    }),
-  );
-  assert.equal(u?.status, 'authRequired');
-  assert.match(u?.message ?? '', /Keychain/);
-  // Elsewhere the same state is simply "not signed in".
-  const [v] = await readUsage(
-    ['claude'],
-    deps({
-      platform: 'linux',
-      readFile: fileMap({ '/.claude.json': { oauthAccount: { emailAddress: 'd@x.io' } } }),
-    }),
-  );
-  assert.equal(v?.status, 'notInstalled');
-});
-
-test('claude reports an expired access token as authRequired without calling the API', async () => {
-  let fetched = false;
-  const [u] = await readUsage(
-    ['claude'],
-    deps({
-      readFile: fileMap({
-        '/.claude/.credentials.json': {
-          claudeAiOauth: { accessToken: 'tok', expiresAt: 1_699_999_000_000 },
-        },
-      }),
-      fetchImpl: async () => {
-        fetched = true;
-        return res(200, {});
-      },
-    }),
-  );
-  assert.equal(u?.status, 'authRequired');
-  assert.match(u?.message ?? '', /expired/);
-  assert.equal(fetched, false);
-});
-
-test('claude takes email and organization from ~/.claude.json', async () => {
-  const [u] = await readUsage(
-    ['claude'],
-    deps({
-      readFile: fileMap({
-        '/.claude/.credentials.json': {
-          claudeAiOauth: {
-            accessToken: 'tok',
-            subscriptionType: 'max',
-            expiresAt: 1_800_000_000_000,
+          rateLimitResetCredits: {
+            availableCount: 2,
+            credits: [
+              { id: 'r2', status: 'available', title: 'Full reset', expiresAt: 1_700_900_000 },
+              { id: 'r1', status: 'available', title: 'Full reset', expiresAt: 1_700_500_000 },
+              { id: 'r0', status: 'used', title: 'Full reset', expiresAt: 1_700_100_000 },
+            ],
           },
         },
-        '/.claude.json': { oauthAccount: { emailAddress: 'd@x.io', organizationName: 'Acme' } },
       }),
-      fetchImpl: async () => res(200, { five_hour: { utilization: 0.2 } }),
     }),
   );
   assert.equal(u?.status, 'ok');
-  assert.equal(u?.account?.email, 'd@x.io');
-  assert.equal(u?.account?.organization, 'Acme');
-  assert.equal(u?.account?.plan, 'Max');
+  assert.deepEqual(u?.account, { email: 'a@b.com', plan: 'Pro' });
+  assert.deepEqual(
+    u?.windows.map((w) => [w.id, w.label, w.usedPercent, w.windowMinutes, w.resetsAt]),
+    [
+      ['session5h', 'Session (5h)', 40, 300, 1_700_000_600_000],
+      ['weekly', 'Weekly', 12, 10_080, 1_700_300_000_000],
+    ],
+  );
+  assert.equal(u?.credit?.available, 250);
+  // Soonest-expiring first; a used one is not offered.
+  assert.deepEqual(u?.resetCredits, {
+    available: 2,
+    nextExpiresAt: 1_700_500_000_000,
+    entries: [
+      { id: 'r1', title: 'Full reset', expiresAt: 1_700_500_000_000 },
+      { id: 'r2', title: 'Full reset', expiresAt: 1_700_900_000_000 },
+    ],
+  });
+});
+
+test('codex: not installed, not signed in, or on an API key (no plan limits)', async () => {
+  const [missing] = await readUsage(['codex'], deps({ askCodex: async () => undefined }));
+  assert.equal(missing?.status, 'notInstalled');
+  const [signedOut] = await readUsage(['codex'], deps({ askCodex: async () => ({}) }));
+  assert.equal(signedOut?.status, 'authRequired');
+  const [apiKey] = await readUsage(
+    ['codex'],
+    deps({ askCodex: async () => ({ account: { type: 'apiKey' } }) }),
+  );
+  assert.equal(apiKey?.status, 'ok');
+  assert.deepEqual(apiKey?.windows, []);
+});
+
+test('claude: its own answer — account from initialize, limits from get_usage', async () => {
+  const [u] = await readUsage(
+    ['claude'],
+    deps({
+      askClaude: async () => ({
+        account: { email: 'me@x.io', organization: 'Acme', subscriptionType: 'Claude Max' },
+        usage: {
+          subscription_type: 'max',
+          rate_limits_available: true,
+          rate_limits: {
+            limits: [
+              { kind: 'session', group: 'session', percent: 57, resets_at: '2026-09-27T06:00:00Z' },
+              {
+                kind: 'weekly_all',
+                group: 'weekly',
+                percent: 16,
+                resets_at: '2026-09-29T12:00:00Z',
+              },
+              {
+                kind: 'weekly_scoped',
+                group: 'weekly',
+                percent: 0,
+                resets_at: '2026-09-29T12:00:00Z',
+                scope: { model: { display_name: 'Fable' } },
+              },
+            ],
+            extra_usage: { is_enabled: false },
+          },
+        },
+      }),
+    }),
+  );
+  assert.equal(u?.status, 'ok');
+  assert.deepEqual(u?.account, { email: 'me@x.io', organization: 'Acme', plan: 'Claude Max' });
+  assert.deepEqual(
+    u?.windows.map((w) => [w.id, w.label, w.usedPercent, w.windowMinutes]),
+    [
+      ['session', 'Session (5h)', 57, 300],
+      ['weekly_all', 'Weekly', 16, 10_080],
+      ['weekly_fable', 'Fable (weekly)', 0, 10_080],
+    ],
+  );
+  assert.equal(u?.windows[0]?.resetsAt, Date.parse('2026-09-27T06:00:00Z'));
+});
+
+test('claude: not installed, not signed in, or with no plan limits (API key)', async () => {
+  const [missing] = await readUsage(['claude'], deps({ askClaude: async () => undefined }));
+  assert.equal(missing?.status, 'notInstalled');
+  const [signedOut] = await readUsage(['claude'], deps({ askClaude: async () => ({}) }));
+  assert.equal(signedOut?.status, 'authRequired');
+  const [apiKey] = await readUsage(
+    ['claude'],
+    deps({ askClaude: async () => ({ usage: { rate_limits_available: false } }) }),
+  );
+  assert.equal(apiKey?.status, 'ok');
+  assert.deepEqual(apiKey?.windows, []);
 });
 
 test('grok picks the first keyed credential and maps a credit window', async () => {
@@ -204,15 +190,15 @@ test('one failing provider does not abort the others', async () => {
   const usage = await readUsage(
     ['codex', 'claude'],
     deps({
-      readFile: fileMap({
-        '/.claude/.credentials.json': { claudeAiOauth: { accessToken: 'tok' } },
-      }),
-      fetchImpl: async () => res(200, { limits: [] }),
+      askCodex: async () => {
+        throw new Error('the CLI did not answer in time');
+      },
+      askClaude: async () => ({ usage: { rate_limits: { limits: [] } } }),
     }),
   );
   assert.equal(usage.length, 2);
   assert.equal(usage[0]?.provider, 'codex');
-  assert.equal(usage[0]?.status, 'notInstalled');
+  assert.equal(usage[0]?.status, 'error');
   assert.equal(usage[1]?.provider, 'claude');
   assert.equal(usage[1]?.status, 'ok');
 });

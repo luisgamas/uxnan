@@ -36,6 +36,7 @@ import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import type { Logger } from '../logger.js';
 import { materializeAttachments } from './attachments.js';
+import { REASONING_KEY } from '../adapters/run-options.js';
 import {
   approvalBlock,
   blockIdOf,
@@ -187,6 +188,9 @@ interface QueuedTurn {
  */
 const QUEUE_LIMIT = 10;
 
+/** How long a model list is reused to fill a turn's default run options. */
+const MODELS_SEEN_TTL_MS = 5 * 60 * 1000;
+
 /**
  * How long streamed prose may wait to be sent as one notification, and how much
  * may accumulate before it is sent regardless.
@@ -211,6 +215,8 @@ interface PendingText {
 export class AgentManager {
   readonly #adapters = new Map<AgentId, IAgentAdapter>();
   readonly #meta = new Map<AgentId, AgentMeta>();
+  /** The last model list each agent gave, for {@link AgentManager.#withDefaults}. */
+  readonly #modelsSeen = new Map<AgentId, { models: AgentModel[]; at: number }>();
   readonly #started = new Set<AgentId>();
   readonly #assistantByTurn = new Map<string, string>();
   /** The folder each thread's agent last ran in, to show block paths from it. */
@@ -367,10 +373,37 @@ export class AgentManager {
     const adapter = this.#adapters.get(agentId);
     if (!adapter?.listModels) return [];
     try {
-      return await adapter.listModels();
+      const models = await adapter.listModels();
+      if (models.length > 0) this.#modelsSeen.set(agentId, { models, at: this.#options.now() });
+      return models;
     } catch {
       return [];
     }
+  }
+
+  /**
+   * The turn's run options with every knob nobody picked set to the default
+   * the model advertises — so the level a picker shows as the default is the
+   * one the turn runs at, whatever the CLI's own configuration would choose.
+   * A knob with no advertised default stays unset: the agent's own applies.
+   */
+  async #withDefaults(agentId: AgentId, options: SendTurnOptions): Promise<SendTurnOptions> {
+    const seen = this.#modelsSeen.get(agentId);
+    const fresh = seen && this.#options.now() - seen.at < MODELS_SEEN_TTL_MS;
+    const models = fresh ? seen.models : await this.getModels(agentId);
+    const model =
+      models.find((m) => m.id === options.service) ??
+      (options.service === undefined ? models.find((m) => m.isDefault) : undefined);
+    const chosen = { ...(options.options ?? {}) };
+    let filled = false;
+    for (const option of model?.options ?? []) {
+      if (option.default === undefined || chosen[option.key] !== undefined) continue;
+      // The legacy flat `effort` is a choice too.
+      if (option.key === REASONING_KEY && options.effort) continue;
+      chosen[option.key] = option.default;
+      filled = true;
+    }
+    return filled ? { ...options, options: chosen } : options;
   }
 
   /**
@@ -452,6 +485,7 @@ export class AgentManager {
       );
     }
 
+    options = await this.#withDefaults(agentId, options);
     const attachments = options.attachments ?? [];
     // A command invocation carries no free-form text: show the command (`/name
     // args`), not its expansion, in history — the expanded prompt can be large.
@@ -626,9 +660,18 @@ export class AgentManager {
     adapter: IAgentAdapter,
     entry: QueuedTurn,
   ): Promise<boolean> {
-    if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
     if (this.#queuePausedByThread.has(threadId)) return false;
     if ((this.#queueByThread.get(threadId)?.length ?? 0) > 0) return false;
+    return this.#steer(threadId, adapter, entry);
+  }
+
+  /**
+   * Hands [entry] to the running turn — the part {@link #tryDeliverMidTurn}
+   * and {@link sendQueuedNow} share. Returns whether the agent took it; any
+   * refusal leaves the caller to keep it queued.
+   */
+  async #steer(threadId: string, adapter: IAgentAdapter, entry: QueuedTurn): Promise<boolean> {
+    if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
     if (this.#awaitingInput.has(threadId)) return false;
     const activeTurnId = this.#activeTurnByThread.get(threadId);
     if (!activeTurnId) return false;
@@ -1234,6 +1277,53 @@ export class AgentManager {
       paused: paused !== undefined,
       ...(paused !== undefined ? { pausedReason: paused } : {}),
     };
+  }
+
+  /**
+   * The person asked for one queued message to go NOW (`queue/sendNow`): into
+   * the running turn when its agent takes input mid-turn, or — with nothing
+   * running — as the next turn at once, ahead of the rest and through a pause
+   * (asking for it is the decision the pause waits for). The rest of the queue
+   * keeps its order. Refused, with the reason, when a turn runs whose agent
+   * cannot take it, or the agent is waiting on an answer from the person.
+   */
+  async sendQueuedNow(threadId: string, turnId: string): Promise<QueueStateResult> {
+    const queue = this.#queueByThread.get(threadId);
+    const index = queue?.findIndex((entry) => entry.turnId === turnId) ?? -1;
+    if (!queue || index < 0) {
+      throw new RpcError(JsonRpcErrorCode.InvalidParams, 'that message is no longer queued');
+    }
+    const entry = queue[index]!;
+    if (this.#activeTurnByThread.has(threadId)) {
+      const agentId = entry.options.agentId ?? this.#options.defaultAgent;
+      const adapter = this.#adapters.get(agentId);
+      if (!adapter || adapter.capabilities.steering !== true || !adapter.steerTurn) {
+        throw new RpcError(
+          JsonRpcErrorCode.AgentBusy,
+          'this agent takes no message while it works; it goes when the turn ends',
+        );
+      }
+      if (this.#awaitingInput.has(threadId)) {
+        throw new RpcError(
+          JsonRpcErrorCode.AgentBusy,
+          'the agent is waiting on your answer; answer it first',
+        );
+      }
+      queue.splice(index, 1);
+      if (!(await this.#steer(threadId, adapter, entry))) {
+        queue.splice(index, 0, entry);
+        throw new RpcError(JsonRpcErrorCode.AgentBusy, 'the agent did not take the message');
+      }
+      if (queue.length === 0) this.#queuePausedByThread.delete(threadId);
+      this.#notifyQueue(threadId);
+      return this.queueState(threadId);
+    }
+    queue.splice(index, 1);
+    queue.unshift(entry);
+    this.#queuePausedByThread.delete(threadId);
+    this.#notifyQueue(threadId);
+    await this.#drainQueue(threadId);
+    return this.queueState(threadId);
   }
 
   /** Lifts a pause and drains the queue (no-op when it was not paused). */

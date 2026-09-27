@@ -54,6 +54,7 @@ function mount(tab: ChatTab, calls: { method: string; params: unknown }[] = []) 
 afterEach(() => {
   chat.release(THREAD);
   chat.threads.delete(THREAD);
+  chat.agents = [];
 });
 
 describe("ChatConversation", () => {
@@ -108,6 +109,45 @@ describe("ChatConversation", () => {
     const thumb = await screen.findByRole("button", { name: "Open image 1" });
     await until(() => thumb.querySelector("img")?.getAttribute("src") === "data:image/png;base64,AAAA");
     expect(screen.getByText("What overlaps here?")).toBeTruthy();
+  });
+
+  it("sends a queued message now when nothing is running", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const { screen, user } = mount(chatTab(), calls);
+    chat.conversation(THREAD).adoptPage({
+      turns: [queuedTurn("q1", "first"), queuedTurn("q2", "second")],
+      total: 2,
+      queuedTurnIds: ["q1", "q2"],
+      queuePaused: true,
+    });
+    const sendNow = await screen.findAllByRole("button", { name: "Send now" });
+    await user.click(sendNow[1]!);
+    await until(() => calls.some((c) => c.method === "queue/sendNow"));
+    expect(calls.find((c) => c.method === "queue/sendNow")?.params).toEqual({
+      threadId: THREAD,
+      turnId: "q2",
+    });
+  });
+
+  it("offers no send now while an agent that takes no input mid-turn works", async () => {
+    chat.agents = [{ agentId: "codex", displayName: "Codex", available: true, capabilities: {} }] as never;
+    const { screen } = mount(chatTab());
+    chat.conversation(THREAD).adoptPage({
+      turns: [
+        { id: "run", threadId: THREAD, status: "streaming", createdAt: 1, messages: [] },
+        queuedTurn("q1", "later"),
+      ],
+      total: 2,
+      activeTurnId: "run",
+      queuedTurnIds: ["q1"],
+    });
+    await screen.findByText("later");
+    expect(screen.queryByRole("button", { name: "Send now" })).toBeNull();
+
+    chat.agents = [
+      { agentId: "codex", displayName: "Codex", available: true, capabilities: { steering: true } },
+    ] as never;
+    expect(await screen.findByRole("button", { name: "Send now" })).toBeTruthy();
   });
 
   it("sets the composer's text aside when a queued message comes back to be edited", async () => {

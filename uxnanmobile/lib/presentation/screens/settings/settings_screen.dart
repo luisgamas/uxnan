@@ -229,7 +229,7 @@ class _ProfileHeaderCard extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final name = ref.watch(profileNameProvider) ?? l10n.profileDisplayName;
+    final name = ref.watch(shownPhoneNameProvider) ?? l10n.profileDisplayName;
     final avatar = ref.watch(profileAvatarProvider);
     final online = ref.watch(connectedDeviceProvider).value != null ? 1 : 0;
 

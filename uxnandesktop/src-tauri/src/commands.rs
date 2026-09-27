@@ -918,47 +918,6 @@ pub async fn agents_detect(commands: Vec<String>) -> Result<Vec<String>, Command
         .collect())
 }
 
-/// Read usage statistics (quota windows / credit / local token tally) for the
-/// activated providers only. Never fails as a whole — each provider reports its
-/// own status, so a slow/broken one doesn't sink the rest.
-#[tauri::command]
-pub async fn usage_read(
-    providers: Vec<crate::usage::UsageProvider>,
-) -> Result<Vec<crate::usage::ProviderUsage>, CommandError> {
-    Ok(crate::usage::read_usage(providers).await)
-}
-
-/// The subset of `providers` whose CLI / config is present on this machine, so
-/// the Providers catalog can enable only the available ones (mirrors
-/// `agents_detect`).
-#[tauri::command]
-pub async fn usage_detect(
-    providers: Vec<crate::usage::UsageProvider>,
-) -> Result<Vec<crate::usage::UsageProvider>, CommandError> {
-    Ok(crate::usage::detect_present(&providers))
-}
-
-/// Let the OS ask the user to authorize Uxnan to read `provider`'s token from
-/// the OS credential store (Claude Code on macOS). The only interactive read —
-/// triggered by the *Grant access* button after a poll reported
-/// `accessRequired`; the frontend re-reads usage on success.
-#[tauri::command]
-pub async fn usage_grant_access(provider: crate::usage::UsageProvider) -> Result<(), CommandError> {
-    crate::usage::grant_access(provider)
-        .await
-        .map_err(|e| CommandError::from(AppError::Invalid(e)))
-}
-
-/// Redeem one Codex rate-limit reset ("reinicio") from the UI. Returns the outcome
-/// code (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`) so the
-/// frontend can message the result and refresh.
-#[tauri::command]
-pub async fn usage_codex_redeem_reset() -> Result<String, CommandError> {
-    crate::usage::codex_redeem_reset()
-        .await
-        .map_err(|e| CommandError::from(AppError::Invalid(e)))
-}
-
 /// Resize a PTY when its pane changes size.
 #[tauri::command]
 pub async fn pty_resize(
@@ -3495,6 +3454,14 @@ pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, Comman
 #[tauri::command]
 pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
     crate::fs::read_data_url(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Read any file to attach it to a chat message (name, MIME type, base64).
+#[tauri::command]
+pub async fn fs_read_attachment(path: String) -> Result<crate::fs::FileAttachment, CommandError> {
+    crate::fs::read_attachment(&path)
         .await
         .map_err(CommandError::from)
 }

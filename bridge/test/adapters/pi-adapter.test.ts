@@ -2,10 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { join } from 'node:path';
 import {
   PiAdapter,
   parsePiLine,
   parsePiModelList,
+  readPiThinkingDefaults,
   parsePiUsageTokens,
   parsePiContextWindow,
   DEFAULT_PI_IDLE_TIMEOUT_MS,
@@ -565,7 +567,36 @@ test('parsePiModelList parses the --list-models table', () => {
   assert.equal(models[1]?.options, undefined);
   assert.deepEqual(
     models[0]?.options?.[0]?.values?.map((v) => v.value),
-    ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+  );
+  // pi's own default when its settings name none.
+  assert.equal(models[0]?.options?.[0]?.default, 'medium');
+});
+
+test('a pi model defaults to the thinking level pi itself would use', () => {
+  const table = [
+    'provider  model           context  max-out  thinking  images',
+    'google    gemini-2.5-pro  1.0M     65.5K    yes       yes',
+    'openai    gpt-6           400K     128K     yes       yes',
+  ].join('\n');
+  const settings = JSON.stringify({
+    defaultThinkingLevel: 'high',
+    modelThinkingLevels: { 'openai/gpt-6': 'xhigh', 'openai/bogus': 'loud' },
+  });
+  const defaults = readPiThinkingDefaults({ PI_CODING_AGENT_DIR: '/pi' }, (path) => {
+    assert.equal(path, join('/pi', 'settings.json'));
+    return settings;
+  });
+  assert.deepEqual(defaults, { byModel: { 'openai/gpt-6': 'xhigh' }, fallback: 'high' });
+  const models = parsePiModelList(table, undefined, defaults);
+  assert.equal(models[0]?.options?.[0]?.default, 'high');
+  assert.equal(models[1]?.options?.[0]?.default, 'xhigh');
+  // No settings file: pi's built-in medium.
+  assert.deepEqual(
+    readPiThinkingDefaults({}, () => {
+      throw new Error('ENOENT');
+    }),
+    { byModel: {}, fallback: 'medium' },
   );
 });
 

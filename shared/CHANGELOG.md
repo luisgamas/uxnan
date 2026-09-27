@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — files as attachments
+
+- **`TurnAttachment.type: 'file'`** with **`name`**, and **`MessageAttachment.name`**:
+  a message carries any file, not only images. **`MAX_ATTACHMENT_BYTES`**
+  (20 MB decoded) bounds each one.
+
+### Added — send a queued message now
+
+- **`queue/sendNow`** (`{ threadId, turnId }` → `QueueStateResult`): one queued
+  message goes now — into the running turn when its agent takes input
+  mid-turn, else as the next turn at once. 87 methods.
+
+### Added — usage from the CLIs themselves
+
+- **`usage/summary`** (`UsageSummaryParams { days }` → `UsageSummary`): tokens
+  and cost per local day, agent and model (`UsageDay`, `UsageBucket`,
+  `UsageSpend`, `UsageAgentSource`).
+- **`usage/redeemReset`** (`UsageRedeemResetParams`): redeem a rate-limit reset
+  (Codex); `ResetCreditEntry.id` names one. 86 methods.
+
+### Changed
+
+- `UsageSource` gains `cli` (asked of the CLI itself); `UsageStatus` loses
+  `accessRequired` — no reader opens an OS credential store any more.
+
+### Removed
+
+- **`MetricsAgentDay.tokens`.** The metrics ledger counts activity only; what the
+  agents spent is `usage/summary`'s, read from every session each CLI recorded
+  rather than only the bridge's turns — one count, not two that disagree.
+
 ## [0.0.21-alpha.20260927] - 20260927
 ### Added — a message keeps its images
 

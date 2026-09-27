@@ -8,6 +8,8 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
+import 'package:uxnan/presentation/screens/profile/spend_section.dart';
+import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -18,12 +20,12 @@ import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// Per-PC metrics: the same activity heatmap, stat tiles and per-agent
-/// breakdown as the profile, but scoped to a single paired PC (its
-/// conversations, work, connection time and agents used). Reached from the
-/// device card's overflow menu. The metrics are all local; while this PC is
-/// connected the screen also shows its shared start folder (`settings/set`,
-/// architecture/02a §5.8.17), which the phone can change.
+/// One PC's stats: what its agents spent, its plan limits while it is the
+/// connected PC, and its activity — the same sections as the profile, scoped
+/// to this PC. Reached from the profile's PC list and the device card's
+/// overflow menu. While this PC is connected the screen also shows its shared
+/// start folder (`settings/set`, architecture/02a §5.8.17), which the phone
+/// can change.
 class PcDetailsScreen extends ConsumerWidget {
   /// Creates a [PcDetailsScreen] for the PC with [deviceId].
   const PcDetailsScreen({required this.deviceId, super.key});
@@ -81,7 +83,7 @@ class PcDetailsScreen extends ConsumerWidget {
     required bool? relayConnected,
   }) {
     final firstYear = m.memberSince?.year ?? DateTime.now().year;
-    final titleStyle = Theme.of(context).textTheme.titleMedium;
+    final titleStyle = Theme.of(context).textTheme.titleLarge;
     return [
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(
@@ -101,11 +103,17 @@ class PcDetailsScreen extends ConsumerWidget {
               const SizedBox(height: UxnanSpacing.lg),
               const _StartFolderCard(),
             ],
-            const SizedBox(height: UxnanSpacing.lg),
-            MetricsStatGrid(metrics: m),
+            const SizedBox(height: UxnanSpacing.xl),
+            SpendSection(deviceId: deviceId),
+            if (isConnected) ...[
+              const SizedBox(height: UxnanSpacing.xl),
+              const UsageSection(),
+            ],
             const SizedBox(height: UxnanSpacing.xl),
             Text(l10n.profileActivity, style: titleStyle),
             const SizedBox(height: UxnanSpacing.sm),
+            ActivityHighlights(metrics: m),
+            const SizedBox(height: UxnanSpacing.md),
             AgentActivitySection(firstYear: firstYear, deviceId: deviceId),
           ],
         ),

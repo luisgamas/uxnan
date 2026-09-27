@@ -7,10 +7,72 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A provider's organization hides with the account.** Claude names an
+  organization after its owner's email, which showed in full beside the
+  blurred email; it now blurs and shows with it.
+- **A provider asked directly says so.** Claude Code's and Codex's limits read
+  *Asked of Claude Code itself* (or Codex) instead of *No data source*.
 - **The browser captures a hidden page on Windows too.** A workspace whose
   page was not on screen timed out on Windows, where WebView2 does not paint a
   hidden controller: it is now shown off the window for the capture and hidden
   again. The capture now runs on real Windows and Linux machines in CI.
+
+### Added
+
+- **The context ring says where the plan stands.** For Claude Code, Codex and
+  Grok, the ring's tooltip adds the plan's most pressing window (its used
+  share and when it resets) and, when the pace so far hits the limit before
+  the reset, when that happens — with a dot on the ring. The plan is read for
+  the chat's agent whether or not it is activated in Providers.
+- **Long messages fold.** A long message you sent shows its first ten lines
+  under a fade, with *Show more* / *Show less*.
+- **Back where you were.** Returning to a conversation read earlier in the
+  session opens it where you left it, not at the bottom.
+- **Attach any file.** "+", a paste or a drop attaches files of any kind (up
+  to 20 MB each), for every agent: they travel by their name and the agent
+  opens them with its own tools. They show as chips in the composer and in
+  the message; images still go as images to an agent that takes them.
+- **Send a queued message now.** A message waiting behind the running turn
+  can go now — into that turn, for an agent that takes a message while it
+  works, or as the next turn at once when nothing runs.
+- **Questions one at a time, answered from the keyboard.** When the agent asks
+  several questions they come one at a time (*1 of 3*, Back / Next), a single
+  choice moves on by itself, and 1–9 pick an option.
+- **What your agents spent, in Settings → Providers.** Every model response the
+  agents on this PC recorded — chats, bridge turns and terminal sessions alike —
+  per day, agent and model, over 7, 30 or 90 days, in cost or tokens: the
+  headline total, a column per day stacked by agent (each agent keeps its own
+  colour; hover a day for its figures), each agent's share, and the models
+  behind it. Click an agent to focus the chart, the total and the models on it.
+  Cost is what the provider billed where the CLI records it, else an estimate at
+  API prices (said so); a model with no known price reads *No price*, never $0.
+
+### Changed
+
+- **One effort picker for every agent, showing the level that really runs.**
+  The model's knobs left the model menu for a picker of their own beside it:
+  the brain mark the phone uses for effort and the level's name, and a menu of
+  the model's own levels, one per line, with its default marked. Untouched, a turn runs at that default (the bridge sends
+  it), so the pill never shows a level that is not used; an agent that names no
+  default offers "Default" first. A thread without a model yet shows its
+  agent's default model's levels.
+- **Plan limits come from the bridge, and macOS no longer asks for the
+  Keychain.** Providers asks the bridge (`agent/usageStats`), which asks Claude
+  Code and Codex themselves for their limits — the app reads no credential, so
+  the *Access required* / *Grant access* step and its re-grant after every
+  update are gone, Codex in keyring mode works, and the phone sees the same
+  numbers. A Codex reset is redeemed through the bridge too.
+- **The access mode says itself in colour.** The composer's access pill takes
+  the phone's colours — amber when the agent asks first, green when it approves
+  edits on its own, red with full access — so the mode reads at a glance, and
+  each mode in its menu shows its icon in the same colour.
+
+### Removed
+
+- The native usage reader (`usage.rs`), the OS credential-store reader
+  (`credstore.rs`) and their commands (`usage_read`, `usage_detect`,
+  `usage_grant_access`, `usage_codex_redeem_reset`), with the `zeroize` and
+  `security-framework` dependencies: the bridge is the one reader.
 
 ## [0.0.62] - 20260927
 ### Added

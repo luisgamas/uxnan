@@ -445,9 +445,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get statModelsUsed => 'Modelos';
 
   @override
-  String get profileStatsTitle => 'Estadísticas';
-
-  @override
   String get profileStatsRefreshAction => 'Actualizar estadísticas';
 
   @override
@@ -491,19 +488,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get profileMenuTooltip => 'Acciones de perfil';
 
   @override
-  String get profileEditTitle => 'Editar perfil';
-
-  @override
   String get profileChoosePhoto => 'Elegir foto';
 
   @override
   String get profilePickIcon => 'O elige un icono';
-
-  @override
-  String get profileNameLabel => 'Nombre';
-
-  @override
-  String get profileNameHint => 'Tu nombre';
 
   @override
   String get profileAgentConversationsLabel => 'conversaciones';
@@ -572,42 +560,7 @@ class AppLocalizationsEs extends AppLocalizations {
       'No se pudo importar este archivo. Puede ser de otra PC o haber sido modificado.';
 
   @override
-  String get statTotalTokens => 'Tokens totales';
-
-  @override
   String get profileAgentScopeAll => 'Histórico';
-
-  @override
-  String get profileLensActivity => 'Actividad';
-
-  @override
-  String get profileLensTokens => 'Tokens';
-
-  @override
-  String get profileTokensImprecise =>
-      'Algunos CLI no informan todo su uso de tokens, así que estas cifras de tokens pueden ser imprecisas.';
-
-  @override
-  String profileHeatmapTokensSummary(String tokens, int activeDays) {
-    return '$tokens tokens · $activeDays días activos';
-  }
-
-  @override
-  String profileHeatmapTokensDay(String date, String tokens) {
-    return '$date · $tokens tokens';
-  }
-
-  @override
-  String get profileAgentConvLabel => 'Conversaciones';
-
-  @override
-  String get profileAgentMsgLabel => 'Mensajes';
-
-  @override
-  String get profileAgentTokLabel => 'Tokens';
-
-  @override
-  String get profileUsageTitle => 'Uso y crédito';
 
   @override
   String get usageNotSignedIn => 'Sin sesión';
@@ -627,9 +580,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String usageResetsInDays(int days, String time) {
     return 'Se reinicia en ${days}d a las $time';
   }
-
-  @override
-  String get usageRefreshAction => 'Actualizar uso';
 
   @override
   String get usageNoData => 'Sin datos de uso';
@@ -1552,7 +1502,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get conversationAgentResponding => 'Agente respondiendo…';
 
   @override
-  String get runOptionAuto => 'Automático';
+  String get runOptionModelDefault => 'Predeterminado';
+
+  @override
+  String get runOptionDefaultTag => 'Predeterminado';
 
   @override
   String get authRequiresLoginTitle => 'Agente sin sesión iniciada';
@@ -3089,4 +3042,217 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get licensesError => 'No se pudieron cargar las licencias.';
+
+  @override
+  String get spendTitle => 'Lo que gastaron tus agentes';
+
+  @override
+  String spendPeriodDays(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days días',
+      one: '1 día',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spendMetricCost => 'Costo';
+
+  @override
+  String get spendMetricTokens => 'Tokens';
+
+  @override
+  String get spendReading => 'Leyendo el historial de tus agentes…';
+
+  @override
+  String get spendNoData =>
+      'Conéctate a un PC para ver lo que gastaron sus agentes — su bridge lee cada sesión que registraron, chats y terminal por igual.';
+
+  @override
+  String get spendEmpty => 'Nada gastado en este periodo.';
+
+  @override
+  String get spendChartLabel => 'Gasto por día, apilado por agente';
+
+  @override
+  String get spendTokensNoPrice => 'Tokens — sin precio conocido';
+
+  @override
+  String get spendCostEstimated => 'Facturado más lo estimado a precios de API';
+
+  @override
+  String get spendCostBilled => 'Tal como lo facturaron los proveedores';
+
+  @override
+  String get spendTokensTotal => 'Tokens leídos y escritos';
+
+  @override
+  String spendResponses(int count, String formatted) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$formatted respuestas',
+      one: '1 respuesta',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String spendTokensInline(String tokens) {
+    return '$tokens tokens';
+  }
+
+  @override
+  String spendCachedShare(int pct) {
+    return '$pct% desde caché';
+  }
+
+  @override
+  String spendUnpriced(String tokens) {
+    return '$tokens tokens sin precio conocido';
+  }
+
+  @override
+  String get spendNothingThatDay => 'Nada ese día';
+
+  @override
+  String get spendDayTotal => 'Total';
+
+  @override
+  String get spendNoPrice => 'Sin precio';
+
+  @override
+  String get spendTopModels => 'Modelos principales';
+
+  @override
+  String get spendEstimateNote =>
+      'Cuando un CLI no registra lo facturado, el costo se estima con los precios públicos de API del proveedor; un plan de suscripción paga una cuota fija.';
+
+  @override
+  String profileAgentFigures(String conversations, String messages) {
+    return '$conversations chats · $messages mensajes';
+  }
+
+  @override
+  String get profileAvatarTitle => 'Foto de perfil';
+
+  @override
+  String get profilePcsTitle => 'Tus PCs';
+
+  @override
+  String get profilePcOnline => 'Conectado ahora';
+
+  @override
+  String profilePcSpent30(String amount) {
+    return '$amount en 30 días';
+  }
+
+  @override
+  String get usageLimitsTitle => 'Límites del plan';
+
+  @override
+  String usageLimitsFrom(String pc) {
+    return 'Como los lee $pc ahora';
+  }
+
+  @override
+  String get usageNoWindow =>
+      'Esta cuenta no reporta ninguna ventana de límite.';
+
+  @override
+  String get usagePaceOk => 'A buen ritmo';
+
+  @override
+  String usagePaceRunsOut(String duration) {
+    return 'A este ritmo llegas al límite en $duration';
+  }
+
+  @override
+  String usageResetsAvailable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count reinicios disponibles',
+      one: '1 reinicio disponible',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String usageResetExpires(String date) {
+    return 'el próximo vence el $date';
+  }
+
+  @override
+  String get usageRedeemAction => 'Canjear';
+
+  @override
+  String get usageRedeemTitle => '¿Canjear un reinicio?';
+
+  @override
+  String usageRedeemBody(int remaining) {
+    String _temp0 = intl.Intl.pluralLogic(
+      remaining,
+      locale: localeName,
+      other: 'Tu límite vuelve a cero ahora. Te quedarán $remaining reinicios.',
+      one: 'Tu límite vuelve a cero ahora. Te quedará 1 reinicio.',
+      zero: 'Tu límite vuelve a cero ahora. Es tu último reinicio.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get usageAccountSubscription => 'Suscripción';
+
+  @override
+  String get usageAccountPayAsYouGo => 'Pago por uso';
+
+  @override
+  String get usageAccountFree => 'Gratis';
+
+  @override
+  String get usageAccountTeam => 'Equipo';
+
+  @override
+  String get usageAccountEnterprise => 'Empresa';
+
+  @override
+  String questionStep(int n, int total) {
+    return '$n de $total';
+  }
+
+  @override
+  String get questionNext => 'Siguiente';
+
+  @override
+  String get questionBack => 'Pregunta anterior';
+
+  @override
+  String get queuedMessageSendNow => 'Enviar ahora';
+
+  @override
+  String get composerAttachFile => 'Archivo';
+
+  @override
+  String composerFilesLimit(int count) {
+    return 'Un mensaje lleva hasta $count archivos.';
+  }
+
+  @override
+  String composerFileTooLarge(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Se omitieron $count archivos: pesan más de 20 MB.',
+      one: 'Se omitió un archivo: pesa más de 20 MB.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String composerPlanLine(String plan, String window, int percent) {
+    return '$plan · $window $percent% usado';
+  }
 }

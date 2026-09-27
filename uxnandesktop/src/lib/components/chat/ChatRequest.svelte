@@ -11,6 +11,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
   import { Spinner } from "$lib/components/ui/spinner";
+  import Kbd from "$lib/components/Kbd.svelte";
   import ShieldKeyIcon from "@hugeicons/core-free-icons/ShieldKeyIcon";
   import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
   import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
@@ -29,6 +30,7 @@
     conversation,
     live = true,
     compact = false,
+    keys = false,
   }: {
     block: Record<string, unknown>;
     threadId: string;
@@ -39,6 +41,8 @@
     live?: boolean;
     /** The timeline's one-line record instead of the answerable card. */
     compact?: boolean;
+    /** This card takes the number keys (the first open request in the dock). */
+    keys?: boolean;
   } = $props();
 
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -94,6 +98,11 @@
     if (picks.length !== questions.length) picks = questions.map(() => []);
   });
 
+  /** The question on screen: several are asked one at a time. */
+  let step = $state(0);
+  const open = $derived(!questionOutcome && live);
+  const last = $derived(step >= questions.length - 1);
+
   function toggle(qi: number, label: string, multiple: boolean) {
     const current = picks[qi] ?? [];
     const next = multiple
@@ -102,6 +111,29 @@
         : [...current, label]
       : [label];
     picks = picks.map((p, i) => (i === qi ? next : p));
+    // A single choice answers its question: on to the next one.
+    if (!multiple && qi === step && !last) step += 1;
+  }
+
+  /** Whether a key press belongs to something the person is typing in. */
+  function typing(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    return (
+      !!el &&
+      (el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")
+    );
+  }
+
+  // 1–9 pick the on-screen question's options, as in a terminal prompt —
+  // never while a field has the focus, never with a modifier held.
+  function onKey(event: KeyboardEvent) {
+    if (!keys || !open || answering !== null || type !== "question") return;
+    if (event.metaKey || event.ctrlKey || event.altKey || typing(event.target)) return;
+    const n = Number.parseInt(event.key, 10);
+    const q = questions[step];
+    if (!q || Number.isNaN(n) || n < 1 || n > Math.min(9, q.options.length)) return;
+    event.preventDefault();
+    toggle(step, q.options[n - 1]!.label, q.multiple);
   }
 
   async function answer(skip: boolean) {
@@ -129,6 +161,8 @@
     {label}
   </Button>
 {/snippet}
+
+<svelte:window onkeydown={onKey} />
 
 {#if compact}
   {@const outcome = type === "approval" ? approvalOutcome : questionOutcome}
@@ -208,63 +242,117 @@
     </div>
   {:else if type === "question" && questionId}
     <div class={cn(chat.card, "my-1 flex flex-col gap-3")}>
-      {#each questions as q, qi (qi)}
-        <div class="flex flex-col gap-1.5">
-          <div class="flex items-start gap-2">
-            <Icon
-              icon={HelpCircleIcon}
-              class={cn(icon.nav, "mt-0.5 shrink-0 text-sky-600 dark:text-sky-400")}
-            />
-            <div class="flex min-w-0 flex-col">
-              {#if q.header}<span class={text.menuLabel}>{q.header}</span>{/if}
-              <span class={text.bodyStrong}>{q.question}</span>
+      {#if open}
+        {@const q = questions[step]}
+        {#if q}
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-start gap-2">
+              <Icon
+                icon={HelpCircleIcon}
+                class={cn(icon.nav, "mt-0.5 shrink-0 text-sky-600 dark:text-sky-400")}
+              />
+              <div class="flex min-w-0 flex-1 flex-col">
+                {#if q.header}<span class={text.menuLabel}>{q.header}</span>{/if}
+                <span class={text.bodyStrong}>{q.question}</span>
+              </div>
+              {#if questions.length > 1}
+                <span class={cn(text.meta, "shrink-0 tabular-nums")}>
+                  {i18n.t("chat.questionStep", { n: step + 1, total: questions.length })}
+                </span>
+              {/if}
             </div>
-          </div>
-          {#if !questionOutcome && !live}
-            <p class={cn(text.meta, "pl-6")}>{i18n.t("chat.noLongerPending")}</p>
-          {:else if questionOutcome}
-            {@const chosen = questionOutcome.answers[qi] ?? []}
-            <p class={cn(text.meta, "pl-6")}>
-              {chosen.length > 0 ? chosen.join(", ") : i18n.t("chat.questionSkipped")}
-            </p>
-          {:else}
             <div class="flex flex-col overflow-hidden rounded-md border border-border/60">
-              {#each q.options as option (option.label)}
-                {@const selected = (picks[qi] ?? []).includes(option.label)}
+              {#each q.options as option, oi (option.label)}
+                {@const selected = (picks[step] ?? []).includes(option.label)}
                 <button
                   type="button"
-                  class={cn(
-                    row.choice,
-                    selected ? row.choiceActive : row.choiceInactive,
-                    "flex-col items-start gap-0.5",
-                  )}
+                  class={cn(row.choice, selected ? row.choiceActive : row.choiceInactive, "items-start gap-2.5")}
                   aria-pressed={selected}
-                  onclick={() => toggle(qi, option.label, q.multiple)}
+                  onclick={() => toggle(step, option.label, q.multiple)}
                 >
-                  <span>{option.label}</span>
-                  {#if option.description}<span class={text.meta}>{option.description}</span>{/if}
+                  {#if keys && oi < 9}
+                    <Kbd class="mt-px shrink-0">{oi + 1}</Kbd>
+                  {/if}
+                  <span class="flex min-w-0 flex-col items-start gap-0.5">
+                    <span>{option.label}</span>
+                    {#if option.description}<span class={text.meta}>{option.description}</span>{/if}
+                  </span>
                 </button>
               {/each}
             </div>
+            {#if q.multiple}
+              <p class={cn(text.meta, "pl-6")}>{i18n.t("chat.questionPickAny")}</p>
+            {/if}
+          </div>
+        {/if}
+        <div class="flex items-center gap-1.5">
+          {#if questions.length > 1}
+            <div class="mr-auto flex items-center gap-1" aria-hidden="true">
+              {#each questions as _, i (i)}
+                <span
+                  class={cn(
+                    "size-1.5 rounded-full transition-colors",
+                    i === step
+                      ? "bg-foreground/70"
+                      : (picks[i] ?? []).length > 0
+                        ? "bg-sky-500/70"
+                        : "bg-foreground/15",
+                  )}
+                ></span>
+              {/each}
+            </div>
+          {:else}
+            <span class="mr-auto"></span>
+          {/if}
+          {@render actionButton("skip", i18n.t("chat.skip"), "ghost", () => void answer(true))}
+          {#if step > 0}
+            <Button size="sm" variant="outline" disabled={answering !== null} onclick={() => (step -= 1)}>
+              {i18n.t("chat.questionBack")}
+            </Button>
+          {/if}
+          {#if !last}
+            <Button size="sm" variant="outline" disabled={answering !== null} onclick={() => (step += 1)}>
+              {i18n.t("chat.questionNext")}
+            </Button>
+          {:else}
+            <Button
+              size="sm"
+              disabled={answering !== null || picks.every((p) => p.length === 0)}
+              onclick={() => void answer(false)}
+            >
+              {#if answering === "submit"}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {/if}
+              {i18n.t("chat.submit")}
+            </Button>
           {/if}
         </div>
-      {/each}
-      {#if questionOutcome?.timedOut}
-        <p class={text.meta}>{i18n.t("chat.questionTimedOut")}</p>
-      {:else if !questionOutcome && live}
-        <div class="flex justify-end gap-1.5">
-          {@render actionButton("skip", i18n.t("chat.skip"), "ghost", () => void answer(true))}
-          <Button
-            size="sm"
-            disabled={answering !== null || picks.every((p) => p.length === 0)}
-            onclick={() => void answer(false)}
-          >
-            {#if answering === "submit"}
-              <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+      {:else}
+        {#each questions as q, qi (qi)}
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-start gap-2">
+              <Icon
+                icon={HelpCircleIcon}
+                class={cn(icon.nav, "mt-0.5 shrink-0 text-sky-600 dark:text-sky-400")}
+              />
+              <div class="flex min-w-0 flex-col">
+                {#if q.header}<span class={text.menuLabel}>{q.header}</span>{/if}
+                <span class={text.bodyStrong}>{q.question}</span>
+              </div>
+            </div>
+            {#if questionOutcome}
+              {@const chosen = questionOutcome.answers[qi] ?? []}
+              <p class={cn(text.meta, "pl-6")}>
+                {chosen.length > 0 ? chosen.join(", ") : i18n.t("chat.questionSkipped")}
+              </p>
+            {:else}
+              <p class={cn(text.meta, "pl-6")}>{i18n.t("chat.noLongerPending")}</p>
             {/if}
-            {i18n.t("chat.submit")}
-          </Button>
-        </div>
+          </div>
+        {/each}
+        {#if questionOutcome?.timedOut}
+          <p class={text.meta}>{i18n.t("chat.questionTimedOut")}</p>
+        {/if}
       {/if}
     </div>
   {/if}

@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Files as attachments.** `turn/send` takes any file (`type: 'file'` with its
+  `name`), up to 20 MB each: written under its own name in the agent's folder
+  for the turn, named in the prompt as an attached file, and kept with the
+  message for `turn/attachment`. A larger one is refused rather than dropped.
+- **Send a queued message now** — `queue/sendNow`: the person picks one queued
+  message and it goes into the running turn (agents that take input mid-turn,
+  through the same hand-off as the automatic delivery), or, with nothing
+  running, starts at once ahead of the rest and through a pause. Refused, with
+  the reason, when the running agent cannot take it or waits on an answer.
+
+- **What the agents spent, from their own transcripts** — `usage/summary`:
+  tokens and cost per local day, agent and model for every model response the
+  agent CLIs on this PC recorded (Claude Code, Codex, pi, Grok, OpenCode 2,
+  Zero — Antigravity records no token counts),
+  the bridge's turns and a person's own terminal sessions alike. Billed cost
+  where the CLI records it, Claude priced from the CLI's own rates, anything
+  else shown as unpriced. Incremental, cached in `~/.uxnan/usage-scan.json`.
+- **`usage/redeemReset`**: redeem one of Codex's rate-limit resets.
+
+### Changed
+
+- **The metrics ledger counts activity, not tokens, and never the echo agent.**
+  Turn rows lose `tokens`/`tokenDay` and `metrics/get` serves no per-agent token
+  figure: `usage/summary` is the one count of what the agents spent. The
+  development echo agent's conversations and turns are left out of every
+  metrics figure.
+
+- **Plan limits are asked of Claude Code and Codex themselves.** Each CLI
+  answers for the account it is signed in to (`get_usage` / `account/rateLimits/read`),
+  so the bridge reads no credential file and no Keychain item — and Claude's
+  limits now reach the phone from a Mac too. Both of each CLI's answers (the
+  account and the limits) are awaited in whatever order they come.
+
+- **The effort a picker shows as the default is the effort the turn runs at.**
+  Every reasoning knob now names the level its model runs at when nobody picks
+  one, and the bridge sends that level itself instead of leaving it to the CLI's
+  configuration: Claude Code models default to `high` (Haiku has no effort
+  knob), pi models to the level pi's own settings give them (and pi's `max` is
+  offered), Codex and Grok keep the default they report. OpenCode 2 models now
+  offer their reasoning variants.
+
 ### Fixed
 
 - **The bridge updates itself on a standard Windows install.** Global packages

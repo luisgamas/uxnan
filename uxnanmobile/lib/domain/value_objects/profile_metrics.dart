@@ -35,7 +35,6 @@ class ProfileMetrics extends Equatable {
     required this.relaySessions,
     required this.directSessions,
     required this.byAgent,
-    this.totalTokens = 0,
     this.memberSince,
     this.mostUsedTransport,
   });
@@ -53,7 +52,6 @@ class ProfileMetrics extends Equatable {
         relaySessions = 0,
         directSessions = 0,
         byAgent = const [],
-        totalTokens = 0,
         memberSince = null,
         mostUsedTransport = null;
 
@@ -90,10 +88,6 @@ class ProfileMetrics extends Equatable {
   /// Per-agent conversation tallies, most-used first.
   final List<AgentUsage> byAgent;
 
-  /// Total tokens processed across all agents/days (throughput, not billed
-  /// cost). 0 when unknown — e.g. the drift fallback, which has no tokens.
-  final int totalTokens;
-
   /// The earliest conversation's creation time ("member since"), or null when
   /// there are no conversations yet.
   final DateTime? memberSince;
@@ -114,7 +108,6 @@ class ProfileMetrics extends Equatable {
         relaySessions,
         directSessions,
         byAgent,
-        totalTokens,
         memberSince,
         mostUsedTransport,
       ];

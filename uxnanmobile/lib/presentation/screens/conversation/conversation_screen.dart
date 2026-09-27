@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -13,8 +14,10 @@ import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
+import 'package:uxnan/domain/value_objects/window_pace.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -30,6 +33,7 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_context_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/plan_chip.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
@@ -152,6 +156,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Images the user attached for the next turn (shown as removable thumbnails
   /// inside the composer, above the text field); cleared on send.
   final List<ImageContent> _attachments = [];
+  final List<AttachedFileContent> _files = [];
 
   // Captured in initState: using `ref` inside dispose() is unreliable in
   // Riverpod (the clear could be dropped, leaving this thread marked as
@@ -629,6 +634,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// The gallery allows a multi-selection; the queue is capped at
   /// [_maxAttachments] because every image rides inline on the turn.
   Future<void> _pickAttachment(AttachmentSource source) async {
+    if (source == AttachmentSource.file) return _pickFiles();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
     final free = _maxAttachments - _attachments.length;
@@ -660,6 +666,38 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           SnackBar(content: Text(l10n.composerAttachLimit(_maxAttachments))),
         );
     }
+  }
+
+  /// Picks files of any kind for the next message, up to [_maxAttachments];
+  /// a file past the size limit is left out, and the snackbar says so.
+  Future<void> _pickFiles() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    final free = _maxAttachments - _files.length;
+    if (free <= 0) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.composerFilesLimit(_maxAttachments))),
+        );
+      return;
+    }
+    final picked =
+        await ref.read(attachmentPickerServiceProvider).pickFiles(limit: free);
+    if (!mounted) return;
+    if (picked.files.isNotEmpty) setState(() => _files.addAll(picked.files));
+    if (picked.tooLarge > 0) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.composerFileTooLarge(picked.tooLarge))),
+        );
+    }
+  }
+
+  void _removeFile(int index) {
+    if (index < 0 || index >= _files.length) return;
+    setState(() => _files.removeAt(index));
   }
 
   void _removeAttachment(int index) {
@@ -886,6 +924,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
+    // Where the agent's plan stands (its most pressing limit window), beside
+    // the context meter: read whether or not the profile is open.
+    final planProvider = usageProviderForAgent(thread?.agentId);
+    final plan = planProvider == null
+        ? null
+        : pressingWindow(
+            (ref.watch(usageStatsProvider).value ?? const <ProviderUsage>[])
+                .where((u) => u.provider == planProvider)
+                .firstOrNull,
+            DateTime.now(),
+          );
     // Scroll-rail anchors: one tick per user message (the minimap on the right
     // edge), derived + memoized in [railAnchorsProvider] off the timeline.
     // Prune stale bubble keys so the map tracks the current anchors.
@@ -898,7 +947,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
     // The "+" is reserved for immediate media actions. Persistent turn
     // context (reasoning and approval) lives in the collapsible shelf.
-    final showAttach = caps?.images ?? false;
+    // Photos for an agent that takes images; a file for any agent.
+    final showImages = caps?.images ?? false;
     final showRunOptions = connectedHere && runOptions.isNotEmpty;
     final showApproval = caps?.approvals ?? false;
     final showTurnControls = showRunOptions || showApproval;
@@ -1204,9 +1254,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                                     onApprovalTap: _pickApprovalMode,
                                   )
                                 : null,
-                            info: lastEdits != null || environment.showContext
+                            info: lastEdits != null ||
+                                    environment.showContext ||
+                                    plan != null
                                 ? _ComposerInfoBar(
                                     edits: lastEdits,
+                                    plan: plan,
+                                    planName: planProvider == null
+                                        ? null
+                                        : planDisplayName(planProvider),
                                     showContext: environment.showContext,
                                     hasContext: environment.hasContext,
                                     percent: environment.contextPercent,
@@ -1254,6 +1310,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       // Pending images ride inside the pill, above the field.
                       attachments: _attachments,
                       onRemoveAttachment: _removeAttachment,
+                      files: _files,
+                      onRemoveFile: _removeFile,
+                      acceptsImages: showImages,
                       // A drafted message during a live turn is what reveals
                       // the floating "queue message" action above the pill.
                       onDraftChanged: (hasDraft) {
@@ -1272,7 +1331,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       onStop: () => ref
                           .read(threadManagerProvider)
                           .cancelTurn(widget.threadId),
-                      onAttach: showAttach ? _pickAttachment : null,
+                      onAttach: connectedHere ? _pickAttachment : null,
                       onSend: (text) {
                         // Honor the scroll-to-latest-on-send setting: arm a
                         // forced scroll so the user sees their message even if
@@ -1283,6 +1342,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         final options =
                             ref.read(threadRunOptionsProvider(widget.threadId));
                         final attachments = List<ImageContent>.of(_attachments);
+                        final files = List<AttachedFileContent>.of(_files);
                         // Route `/name args` for an advertised agent command as a
                         // real command (turn/send `command`); anything else is
                         // sent verbatim as text.
@@ -1292,10 +1352,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                               text,
                               options: options,
                               attachments: attachments,
+                              files: files,
                               command: command,
                             );
-                        if (_attachments.isNotEmpty) {
-                          setState(_attachments.clear);
+                        if (_attachments.isNotEmpty || _files.isNotEmpty) {
+                          setState(() {
+                            _attachments.clear();
+                            _files.clear();
+                          });
                         }
                       },
                     ),
@@ -1582,9 +1646,17 @@ class _ComposerInfoBar extends StatelessWidget {
     required this.mode,
     this.edits,
     this.tokenLabel,
+    this.plan,
+    this.planName,
   });
 
   final _TurnEdits? edits;
+
+  /// The agent's plan: its most pressing window and pace.
+  final ({UsageWindow window, WindowPace? pace})? plan;
+
+  /// The plan's name (Claude, Codex, Grok).
+  final String? planName;
   final bool showContext;
   final bool hasContext;
   final int percent;
@@ -1623,6 +1695,9 @@ class _ComposerInfoBar extends StatelessWidget {
         if (edits != null && showContext)
           const SizedBox(width: UxnanSpacing.xs),
         if (showContext) ..._contextWidgets(),
+        if (plan != null && (edits != null || showContext))
+          const SizedBox(width: UxnanSpacing.xs),
+        if (plan != null) PlanChip(plan: plan!, name: planName ?? ''),
       ],
     );
   }

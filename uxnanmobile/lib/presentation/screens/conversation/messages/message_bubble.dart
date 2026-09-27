@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -14,6 +15,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/file_chip.dart';
 import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
 import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
 import 'package:uxnan/presentation/widgets/ne_dashed_outline.dart';
@@ -101,9 +103,18 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
   List<ImageContent> get _images =>
       widget.message.contents.whereType<ImageContent>().toList();
 
-  /// Content that is neither text nor an image — kept inside the bubble.
+  /// The message's attached files, shown as chips above the bubble.
+  List<AttachedFileContent> get _files =>
+      widget.message.contents.whereType<AttachedFileContent>().toList();
+
+  /// Content that is neither text nor an attachment — kept inside the bubble.
   List<MessageContent> get _otherBlocks => widget.message.contents
-      .where((c) => c is! TextContent && c is! ImageContent)
+      .where(
+        (c) =>
+            c is! TextContent &&
+            c is! ImageContent &&
+            c is! AttachedFileContent,
+      )
       .toList();
 
   void _copy() {
@@ -131,6 +142,35 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
         );
     // The bubble is gone on success, so guard before touching state.
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// **Send now** — the message goes now instead of waiting its turn: into the
+  /// running turn when the agent takes a message while it works, or as the
+  /// next turn at once when nothing runs. A refusal says why; the message
+  /// stays queued.
+  Future<void> _sendNow() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final refused = await ref.read(threadManagerProvider).sendQueuedNow(
+          widget.message.threadId,
+          widget.message.turnId,
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (refused != null) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(refused)));
+    }
+  }
+
+  bool _canSendNow(String threadId) {
+    final agentId = ref.watch(threadByIdProvider(threadId))?.agentId;
+    final steers = (ref.watch(agentsProvider).value ?? const [])
+        .any((a) => a.agentId == agentId && a.capabilities.steering);
+    return ref.watch(threadActivityForProvider(threadId)) !=
+            ThreadActivity.running ||
+        steers;
   }
 
   /// **Cancel** — drops the message from the queue and leaves it in the
@@ -166,6 +206,11 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
         // the bridge says the message left the queue, so it cannot get stuck.
         message.deliveryState == MessageDeliveryState.queued;
     final cancelled = message.deliveryState == MessageDeliveryState.cancelled;
+    // A queued message can go now: into the running turn when its agent takes
+    // a message while it works, or — nothing running — as the next turn. Read
+    // only for a waiting message: every sent one would otherwise watch the
+    // agent list and the thread's activity for nothing.
+    final canSendNow = queued && _canSendNow(message.threadId);
     final motion =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
     final images = _images;
@@ -198,6 +243,20 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                     ),
                   ),
                 ),
+              ),
+            ),
+          ),
+        if (_files.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UxnanSpacing.xs),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Wrap(
+                key: const ValueKey('message-files'),
+                alignment: WrapAlignment.end,
+                spacing: UxnanSpacing.sm,
+                runSpacing: UxnanSpacing.sm,
+                children: [for (final file in _files) FileChip(file: file)],
               ),
             ),
           ),
@@ -277,6 +336,15 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (canSendNow) ...[
+                              _QueuedActionButton(
+                                icon: UxIcons.arrowUpward,
+                                tooltip: l10n.queuedMessageSendNow,
+                                busy: _busy,
+                                onTap: _sendNow,
+                              ),
+                              const SizedBox(width: UxnanSpacing.xs),
+                            ],
                             // Edit first (reading order): the recoverable
                             // action sits before the one that ends the
                             // message.

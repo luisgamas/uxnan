@@ -109,29 +109,36 @@ test('conversation and turn rows advance only to newer projections', async () =>
       threadId: 'thread-1',
       agentId: 'codex',
       messageDays: [{ day: 0, messages: 2 }],
-      tokens: 0,
-      tokenDay: 0,
       updatedAt: 1000,
     };
 
     assert.equal(await store.mergeConversationHistory([conversation], [turn]), 2);
     assert.equal(await store.mergeConversationHistory([conversation], [turn]), 0);
     assert.equal(
-      await store.mergeConversationHistory([], [{ ...turn, tokens: 21 }]),
+      await store.mergeConversationHistory(
+        [],
+        [{ ...turn, messageDays: [{ day: 0, messages: 3 }] }],
+      ),
       1,
       'a later local projection can advance within the same clock millisecond',
     );
     assert.equal(
-      await store.mergeConversationHistory([], [{ ...turn, tokens: 42, updatedAt: 2000 }]),
+      await store.mergeConversationHistory(
+        [],
+        [{ ...turn, messageDays: [{ day: 0, messages: 4 }], updatedAt: 2000 }],
+      ),
       1,
     );
     assert.equal(
-      await store.mergeConversationHistory([], [{ ...turn, tokens: 1, updatedAt: 1500 }]),
+      await store.mergeConversationHistory(
+        [],
+        [{ ...turn, messageDays: [{ day: 0, messages: 1 }], updatedAt: 1500 }],
+      ),
       0,
     );
 
     const events = await store.readEvents();
-    assert.equal(events.turns[0]?.tokens, 42);
+    assert.equal(events.turns[0]?.messageDays[0]?.messages, 4);
   } finally {
     await rmrf(baseDir);
   }

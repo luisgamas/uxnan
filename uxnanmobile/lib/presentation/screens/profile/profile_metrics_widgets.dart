@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
-/// The headline stat tiles for a [ProfileMetrics] set (all PCs, or one PC on
-/// the details screen), adapting from two columns on narrow phones to three on
-/// standard phones and wider surfaces.
-class MetricsStatGrid extends StatelessWidget {
-  /// Creates a [MetricsStatGrid].
-  const MetricsStatGrid({required this.metrics, super.key});
+/// The activity figures of a [ProfileMetrics] set (every PC, or one on its
+/// details screen), each in its own small container: conversations and
+/// messages first, wider and larger — how much you worked with your agents —
+/// then the other six in a grid three wide (two on a narrow phone).
+class ActivityHighlights extends StatelessWidget {
+  /// Creates an [ActivityHighlights].
+  const ActivityHighlights({required this.metrics, super.key});
 
   /// The metrics to render.
   final ProfileMetrics metrics;
@@ -17,63 +19,83 @@ class MetricsStatGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final m = metrics;
-    // Order: connection stats first, then conversation volume, then
-    // work/details (three tiles per row).
-    final tiles = <_StatTile>[
-      _StatTile(
-        value: fmtDuration(m.totalConnected),
-        label: l10n.statTimeConnected,
-      ),
-      _StatTile(
-        value: fmtDuration(m.longestSession),
-        label: l10n.statLongestSession,
-      ),
-      _StatTile(value: '${m.agentsUsed}', label: l10n.statAgentsUsed),
-      _StatTile(value: '${m.conversations}', label: l10n.statConversations),
-      _StatTile(value: '${m.messages}', label: l10n.statMessages),
-      _StatTile(value: '${m.sessions}', label: l10n.statSessions),
-      // Row 3: total tokens, models, git actions.
-      _StatTile(value: fmtTokens(m.totalTokens), label: l10n.statTotalTokens),
-      _StatTile(value: '${m.modelsUsed}', label: l10n.statModelsUsed),
-      _StatTile(value: '${m.gitActions}', label: l10n.statGitActions),
+    final number = NumberFormat.decimalPattern();
+    final facts = [
+      (fmtDuration(m.totalConnected), l10n.statTimeConnected),
+      (fmtDuration(m.longestSession), l10n.statLongestSession),
+      (number.format(m.sessions), l10n.statSessions),
+      ('${m.agentsUsed}', l10n.statAgentsUsed),
+      ('${m.modelsUsed}', l10n.statModelsUsed),
+      (number.format(m.gitActions), l10n.statGitActions),
     ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth < 340 ? 2 : 3;
-        final tileWidth =
-            (constraints.maxWidth - UxnanSpacing.sm * (columns - 1)) / columns;
-        return Wrap(
-          spacing: UxnanSpacing.sm,
-          runSpacing: UxnanSpacing.sm,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            for (final tile in tiles) SizedBox(width: tileWidth, child: tile),
+            Expanded(
+              child: _Tile(
+                value: number.format(m.conversations),
+                label: l10n.statConversations,
+                large: true,
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            Expanded(
+              child: _Tile(
+                value: number.format(m.messages),
+                label: l10n.statMessages,
+                large: true,
+              ),
+            ),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: UxnanSpacing.sm),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth < 300 ? 2 : 3;
+            final width =
+                (constraints.maxWidth - UxnanSpacing.sm * (columns - 1)) /
+                    columns;
+            return Wrap(
+              spacing: UxnanSpacing.sm,
+              runSpacing: UxnanSpacing.sm,
+              children: [
+                for (final (value, label) in facts)
+                  SizedBox(
+                    width: width,
+                    child: _Tile(value: value, label: label),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.value, required this.label});
+/// One figure in its own small container.
+class _Tile extends StatelessWidget {
+  const _Tile({
+    required this.value,
+    required this.label,
+    this.large = false,
+  });
 
   final String value;
   final String label;
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    // A fixed height keeps every tile in a row the same size (labels may wrap
-    // to two lines) without a cross-axis stretch, which would demand an
-    // unbounded height inside the scrolling sliver.
+    // A fixed height keeps a row's tiles the same size (labels may wrap to
+    // two lines) without a stretch, which the scrolling sliver cannot give.
     return Container(
       height: 96,
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.md,
-        vertical: UxnanSpacing.md,
-      ),
+      padding: const EdgeInsets.all(UxnanSpacing.md),
       decoration: BoxDecoration(
         color: colors.surfaceContainer,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
@@ -86,7 +108,11 @@ class _StatTile extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: textTheme.headlineMedium?.copyWith(color: colors.onSurface),
+            style: large
+                ? textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  )
+                : textTheme.titleLarge,
           ),
           const SizedBox(height: 2),
           Text(
@@ -110,15 +136,4 @@ String fmtDuration(Duration d) {
   final h = d.inHours;
   final m = d.inMinutes % 60;
   return m == 0 ? '${h}h' : '${h}h ${m}m';
-}
-
-/// Formats a token count compactly: `840`, `1.2K`, `231K`, `1.5M`.
-String fmtTokens(int n) {
-  if (n < 1000) return '$n';
-  if (n < 1000000) {
-    final k = n / 1000;
-    return k >= 10 ? '${k.round()}K' : '${k.toStringAsFixed(1)}K';
-  }
-  final m = n / 1000000;
-  return m >= 10 ? '${m.round()}M' : '${m.toStringAsFixed(1)}M';
 }

@@ -9,37 +9,30 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// A bottom sheet to customize the profile: a display name and an avatar
-/// (a picked image or one of the preset icons). Changes are applied on Save.
-class EditProfileSheet extends ConsumerStatefulWidget {
-  const EditProfileSheet._();
+/// A bottom sheet to pick the profile's picture: a photo, or one of the preset
+/// icons. Applied on Save. The name beside it is this phone's own, renamed from
+/// the profile header (one name, the same on every paired PC).
+class AvatarSheet extends ConsumerStatefulWidget {
+  const AvatarSheet._();
 
-  /// Shows the edit-profile sheet.
+  /// Shows the avatar sheet.
   static Future<void> show(BuildContext context) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => const EditProfileSheet._(),
+      builder: (_) => const AvatarSheet._(),
     );
   }
 
   @override
-  ConsumerState<EditProfileSheet> createState() => _EditProfileSheetState();
+  ConsumerState<AvatarSheet> createState() => _AvatarSheetState();
 }
 
-class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
-  late final TextEditingController _name =
-      TextEditingController(text: ref.read(profileNameProvider) ?? '');
+class _AvatarSheetState extends ConsumerState<AvatarSheet> {
   late ProfileAvatar _avatar = ref.read(profileAvatarProvider);
   bool _picking = false;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
 
   Future<void> _pickImage() async {
     setState(() => _picking = true);
@@ -54,7 +47,6 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
   }
 
   Future<void> _save() async {
-    await ref.read(profileNameProvider.notifier).set(_name.text);
     await ref.read(profileAvatarProvider.notifier).set(_avatar);
     if (mounted) Navigator.of(context).pop();
   }
@@ -79,7 +71,7 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(l10n.profileEditTitle, style: textTheme.titleMedium),
+              Text(l10n.profileAvatarTitle, style: textTheme.titleMedium),
               const SizedBox(height: UxnanSpacing.lg),
               Center(child: ProfileAvatarView(avatar: _avatar, size: 88)),
               const SizedBox(height: UxnanSpacing.md),
@@ -112,17 +104,6 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
                       ),
                     ),
                 ],
-              ),
-              const SizedBox(height: UxnanSpacing.lg),
-              TextField(
-                controller: _name,
-                textCapitalization: TextCapitalization.words,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: l10n.profileNameLabel,
-                  hintText: l10n.profileNameHint,
-                ),
-                onSubmitted: (_) => _save(),
               ),
               const SizedBox(height: UxnanSpacing.lg),
               Row(

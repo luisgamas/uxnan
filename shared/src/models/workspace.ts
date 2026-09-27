@@ -30,14 +30,22 @@ export interface WorkspaceFileTarget {
 }
 
 /**
- * An image (or other media) attached to a user turn (`turn/send { attachments }`).
- * Tolerant by design — the phone sends inline base64 with the original
+ * An image or a file attached to a user turn (`turn/send { attachments }`).
+ * Tolerant by design — clients send inline base64 with the original
  * `mimeType`; `path`/`width`/`height` are best-effort metadata. At least one of
  * `base64Data`/`path` must be present for the bridge to deliver it to the agent.
+ * The bridge writes each one into the agent's folder for the turn and names
+ * it in the prompt, so every agent opens it with its own tools; a file keeps
+ * its `name` there. At most {@link MAX_ATTACHMENT_BYTES} each.
  */
+/** The largest attachment `turn/send` takes, decoded: 20 MB. */
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
 export interface TurnAttachment {
-  /** Wire discriminator (always `image` today). */
-  type?: 'image';
+  /** An image (the default), or any other file. */
+  type?: 'image' | 'file';
+  /** A file's name (no directories), kept when the agent receives it. */
+  name?: string;
   /** MIME type, e.g. `image/png`. */
   mimeType: string;
   /** Inline base64 payload (no `data:` URI prefix). */

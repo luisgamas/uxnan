@@ -1,24 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
+import 'package:uxnan/domain/value_objects/window_pace.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/profile/usage_format.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// The "Usage & credit" block on the profile: per-provider quota windows, plan
-/// and credit read live from the connected PC (`agent/usageStats`). While
-/// connected the block is always present — it shows a loading state, then the
-/// provider cards (not-installed providers hidden) with a manual refresh — and
-/// the data is kept in memory so scrolling never reloads it. Hidden only when
-/// offline (no PC to query).
+/// Plan limits: how much of each provider's allowance is used, read live from
+/// the connected PC (`agent/usageStats` — the bridge asks Claude Code and Codex
+/// themselves). Each window shows what is used, where the window stands in
+/// time, and whether the current pace reaches the limit before it resets.
+/// Codex's redeemable resets can be spent from here, as on the desktop.
+///
+/// Hidden while no PC is connected: limits are live, never cached.
 class UsageSection extends ConsumerWidget {
   /// Creates a [UsageSection].
   const UsageSection({super.key});
@@ -29,57 +32,47 @@ class UsageSection extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final connected = ref.watch(connectedDeviceProvider).value;
-    // Nothing to query without a live PC — hide the whole block.
     if (connected == null) return const SizedBox.shrink();
-
     final usageAsync = ref.watch(usageStatsProvider);
-    // The data is kept in memory (the provider is not autoDispose), so it stays
-    // put while scrolling and during a manual refresh.
-    final data = usageAsync.value ?? const <ProviderUsage>[];
-    final shown =
-        data.where((u) => u.status != UsageStatus.notInstalled).toList();
+    final shown = (usageAsync.value ?? const <ProviderUsage>[])
+        .where((u) => u.status != UsageStatus.notInstalled)
+        .toList();
     final loading = usageAsync.isLoading;
     final use24h = ref.watch(usageClock24hProvider);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: UxnanSpacing.xl),
         Row(
           children: [
             Expanded(
-              child: Text(l10n.profileUsageTitle, style: textTheme.titleMedium),
-            ),
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.all(UxnanSpacing.md),
-                child: PolygonLoader(),
-              )
-            else
-              IconButton.filledTonal(
-                icon: const UxIcon(UxIcons.refresh),
-                tooltip: l10n.usageRefreshAction,
-                onPressed: () =>
-                    ref.read(usageStatsProvider.notifier).refresh(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.usageLimitsTitle, style: textTheme.titleLarge),
+                  Text(
+                    l10n.usageLimitsFrom(connected.displayName),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            if (loading) const PolygonLoader(),
           ],
         ),
         const SizedBox(height: UxnanSpacing.sm),
         if (shown.isNotEmpty)
           ExpressiveCardGroup(
             count: shown.length,
-            itemBuilder: (context, index, position) => _ProviderUsageCard(
+            itemBuilder: (context, index, position) => _ProviderCard(
               usage: shown[index],
               use24h: use24h,
               position: position,
             ),
           )
-        else if (loading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: UxnanSpacing.lg),
-            child: Center(child: PolygonLoader(size: UxnanSpacing.xxl)),
-          )
-        else
+        else if (!loading)
           Text(
             l10n.usageNoData,
             style:
@@ -90,8 +83,8 @@ class UsageSection extends ConsumerWidget {
   }
 }
 
-class _ProviderUsageCard extends StatelessWidget {
-  const _ProviderUsageCard({
+class _ProviderCard extends ConsumerWidget {
+  const _ProviderCard({
     required this.usage,
     required this.use24h,
     required this.position,
@@ -102,115 +95,80 @@ class _ProviderUsageCard extends StatelessWidget {
   final CardGroupPosition position;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final visuals = _visualsFor(usage.provider);
-
+    final agent = _agentOf(usage.provider);
+    final plan = usage.account?.plan;
+    final type = usage.account?.accountType;
+    final resets = usage.resetCredits;
     return ExpressiveCard(
       position: position,
       color: colors.surfaceContainer,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainerHigh,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: colors.outlineVariant),
-                ),
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: visuals.logo != null
-                      ? SvgPicture.asset(visuals.logo!)
-                      : UxIcon(
-                          visuals.icon,
-                          size: 24,
-                          color: colors.onSurfaceVariant,
-                        ),
-                ),
-              ),
+              if (agent != null)
+                AgentLogo(agent: agent, size: 22, color: colors.onSurface)
+              else
+                UxIcon(UxIcons.code, size: 22, color: colors.onSurfaceVariant),
               const SizedBox(width: UxnanSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      visuals.label,
-                      style: textTheme.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (usage.account?.plan != null ||
-                        usage.status != UsageStatus.ok) ...[
-                      const SizedBox(height: UxnanSpacing.xs),
-                      Wrap(
-                        spacing: UxnanSpacing.xs,
-                        runSpacing: UxnanSpacing.xs,
-                        children: [
-                          if (usage.account?.plan != null)
-                            _PlanPill(label: usage.account!.plan!),
-                          if (usage.status != UsageStatus.ok)
-                            _StatusPill(status: usage.status),
-                        ],
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  _labelOf(usage.provider),
+                  style: textTheme.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (plan != null) _Pill(label: plan),
+              if (type != null && _accountTypeLabel(l10n, type) != plan) ...[
+                const SizedBox(width: UxnanSpacing.xs),
+                _Pill(label: _accountTypeLabel(l10n, type)),
+              ],
             ],
           ),
-          if (usage.status == UsageStatus.ok) ...[
+          if (usage.status != UsageStatus.ok) ...[
+            const SizedBox(height: UxnanSpacing.sm),
+            Text(
+              usage.status == UsageStatus.error
+                  ? (usage.message ?? l10n.usageLoadError)
+                  : l10n.usageNotSignedIn,
+              style: textTheme.bodySmall?.copyWith(
+                color: usage.status == UsageStatus.error
+                    ? colors.error
+                    : colors.onSurfaceVariant,
+              ),
+            ),
+          ] else ...[
+            if (usage.windows.isEmpty && usage.credit == null)
+              Padding(
+                padding: const EdgeInsets.only(top: UxnanSpacing.sm),
+                child: Text(
+                  l10n.usageNoWindow,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
             for (final window in usage.windows) ...[
               const SizedBox(height: UxnanSpacing.md),
               _WindowBar(window: window, use24h: use24h),
             ],
             if (usage.credit != null) ...[
               const SizedBox(height: UxnanSpacing.md),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UxnanSpacing.md,
-                  vertical: UxnanSpacing.sm,
-                ),
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainerHigh,
-                  borderRadius: const BorderRadius.all(UxnanRadius.lg),
-                ),
-                child: Row(
-                  children: [
-                    UxIcon(
-                      UxIcons.accountBalanceWallet,
-                      size: 18,
-                      color: colors.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        _creditLine(l10n, usage.credit!),
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              _Line(
+                icon: UxIcons.accountBalanceWallet,
+                text: _creditLine(l10n, usage.credit!),
               ),
             ],
-          ] else if (usage.message != null) ...[
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              usage.message!,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-            ),
+            if (resets != null && resets.available > 0) ...[
+              const SizedBox(height: UxnanSpacing.sm),
+              _Resets(provider: usage.provider, resets: resets),
+            ],
           ],
         ],
       ),
@@ -218,6 +176,8 @@ class _ProviderUsageCard extends StatelessWidget {
   }
 }
 
+/// One window: what is used, a mark where the window stands in time, when it
+/// resets, and whether the current pace reaches the limit first.
 class _WindowBar extends StatelessWidget {
   const _WindowBar({required this.window, required this.use24h});
 
@@ -229,9 +189,19 @@ class _WindowBar extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final fraction = (window.usedPercent / 100).clamp(0.0, 1.0);
+    final used = window.usedPercent.clamp(0, 100).toDouble();
+    final pace = WindowPace.of(window, DateTime.now());
+    final hot = pace?.runsOutIn != null;
+    final fill = used >= 90 ? colors.error : colors.primary;
     final reset = window.resetsAt;
-
+    final lines = [
+      if (reset != null && reset.isAfter(DateTime.now()))
+        _resetLabel(l10n, reset, use24h: use24h),
+      if (pace != null && hot)
+        l10n.usagePaceRunsOut(shortDuration(pace.runsOutIn!))
+      else if (pace != null)
+        l10n.usagePaceOk,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -248,7 +218,7 @@ class _WindowBar extends StatelessWidget {
             Text(
               '${window.usedPercent.round()}%',
               style: textTheme.titleSmall?.copyWith(
-                color: colors.primary,
+                color: fill,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -258,22 +228,54 @@ class _WindowBar extends StatelessWidget {
         Semantics(
           label: window.label,
           value: '${window.usedPercent.round()}%',
-          child: ClipRRect(
-            borderRadius: const BorderRadius.all(UxnanRadius.full),
-            child: LinearProgressIndicator(
-              value: fraction,
-              minHeight: UxnanSpacing.sm,
-              backgroundColor: colors.surfaceContainerHighest,
-              color: colors.primary,
+          child: SizedBox(
+            height: 12,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.all(UxnanRadius.full),
+                    child: LinearProgressIndicator(
+                      value: used / 100,
+                      minHeight: UxnanSpacing.sm,
+                      backgroundColor: colors.surfaceContainerHighest,
+                      color: fill,
+                    ),
+                  ),
+                  // Where the window stands in time: used left of this mark
+                  // means spending slower than the window passes.
+                  if (pace != null)
+                    Positioned(
+                      left: (constraints.maxWidth * pace.elapsed - 2)
+                          .clamp(0, constraints.maxWidth - 4),
+                      top: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 4,
+                        decoration: BoxDecoration(
+                          color: colors.onSurface,
+                          border: Border.symmetric(
+                            vertical:
+                                BorderSide(color: colors.surfaceContainer),
+                          ),
+                          borderRadius:
+                              const BorderRadius.all(UxnanRadius.full),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
-        if (reset != null && reset.isAfter(DateTime.now())) ...[
+        if (lines.isNotEmpty) ...[
           const SizedBox(height: 2),
           Text(
-            _resetLabel(l10n, reset, use24h: use24h),
-            style:
-                textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+            lines.join(' · '),
+            style: textTheme.labelSmall?.copyWith(
+              color: hot ? colors.error : colors.onSurfaceVariant,
+            ),
           ),
         ],
       ],
@@ -281,19 +283,127 @@ class _WindowBar extends StatelessWidget {
   }
 }
 
-class _PlanPill extends StatelessWidget {
-  const _PlanPill({required this.label});
+/// Codex's redeemable resets: how many, when the next one expires, and a
+/// button that spends the soonest-expiring one, after a confirmation.
+class _Resets extends ConsumerStatefulWidget {
+  const _Resets({required this.provider, required this.resets});
+
+  final UsageProvider provider;
+  final ResetCredits resets;
+
+  @override
+  ConsumerState<_Resets> createState() => _ResetsState();
+}
+
+class _ResetsState extends ConsumerState<_Resets> {
+  bool _busy = false;
+
+  Future<void> _redeem() async {
+    final l10n = AppLocalizations.of(context);
+    final next = widget.resets.entries.firstOrNull;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.usageRedeemTitle),
+        content: Text(
+          l10n.usageRedeemBody(widget.resets.available - 1),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.usageRedeemAction),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(usageStatsProvider.notifier).redeemReset(
+            widget.provider,
+            attempt: const Uuid().v4(),
+            creditId: next?.id,
+          );
+    } on UsageRedeemException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final expires = widget.resets.entries.firstOrNull?.expiresAt;
+    return Row(
+      children: [
+        Expanded(
+          child: _Line(
+            icon: UxIcons.refresh,
+            text: [
+              l10n.usageResetsAvailable(widget.resets.available),
+              if (expires != null)
+                l10n.usageResetExpires(DateFormat.MMMd().format(expires)),
+            ].join(' · '),
+          ),
+        ),
+        const SizedBox(width: UxnanSpacing.sm),
+        FilledButton.tonal(
+          onPressed: _busy ? null : _redeem,
+          child: Text(l10n.usageRedeemAction),
+        ),
+      ],
+    );
+  }
+}
+
+class _Line extends StatelessWidget {
+  const _Line({required this.icon, required this.text});
+
+  final UxIconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        UxIcon(icon, size: 16, color: colors.onSurfaceVariant),
+        const SizedBox(width: UxnanSpacing.sm),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.label});
 
   final String label;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UxnanSpacing.sm,
-        vertical: UxnanSpacing.xs,
+        vertical: 2,
       ),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
@@ -301,47 +411,18 @@ class _PlanPill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall
+            ?.copyWith(color: colors.onSurfaceVariant),
       ),
     );
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final UsageStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final isError = status == UsageStatus.error;
-    final label = isError ? l10n.usageLoadError : l10n.usageNotSignedIn;
-    final bg = isError ? colors.errorContainer : colors.secondaryContainer;
-    final fg = isError ? colors.onErrorContainer : colors.onSecondaryContainer;
-
-    final textTheme = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: UxnanSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: const BorderRadius.all(UxnanRadius.full),
-      ),
-      child: Text(
-        label,
-        style: textTheme.labelSmall?.copyWith(color: fg),
-      ),
-    );
-  }
-}
-
-/// Builds the reset label: a relative duration for windows resetting within a
-/// day ("Resets in 6h 30min"), or days-remaining + the clock time for longer
-/// (weekly/monthly) windows ("Resets in 5d at 14:30" / "… 2:30 PM").
+/// The reset label: a relative duration for a window resetting within a day
+/// ("Resets in 6h 30min"), days and the clock time past that ("Resets in 5d at
+/// 14:30" / "… 2:30 PM").
 String _resetLabel(
   AppLocalizations l10n,
   DateTime reset, {
@@ -352,12 +433,7 @@ String _resetLabel(
   if (diff.inDays >= 1) {
     return l10n.usageResetsInDays(diff.inDays, clock.format(reset));
   }
-  final hours = diff.inHours;
-  final minutes = diff.inMinutes % 60;
-  final duration = hours > 0
-      ? (minutes > 0 ? '${hours}h ${minutes}min' : '${hours}h')
-      : '${minutes}min';
-  return l10n.usageResetsIn(duration);
+  return l10n.usageResetsIn(shortDuration(diff));
 }
 
 String _creditLine(AppLocalizations l10n, CreditBalance credit) {
@@ -368,28 +444,25 @@ String _creditLine(AppLocalizations l10n, CreditBalance credit) {
   return '${l10n.usageCreditLabel}: $amount · ${credit.period}';
 }
 
-typedef _ProviderVisuals = ({String label, String? logo, UxIconData icon});
+AgentId? _agentOf(UsageProvider provider) => switch (provider) {
+      UsageProvider.codex => AgentId.codex,
+      UsageProvider.claude => AgentId.claudeCode,
+      UsageProvider.grok => AgentId.grok,
+      UsageProvider.copilot => null,
+    };
 
-_ProviderVisuals _visualsFor(UsageProvider provider) {
-  AgentId? agent;
-  String label;
-  switch (provider) {
-    case UsageProvider.codex:
-      agent = AgentId.codex;
-      label = 'Codex';
-    case UsageProvider.claude:
-      agent = AgentId.claudeCode;
-      label = 'Claude';
-    case UsageProvider.grok:
-      agent = AgentId.grok;
-      label = 'Grok';
-    case UsageProvider.copilot:
-      agent = null;
-      label = 'GitHub Copilot';
-  }
-  return (
-    label: label,
-    logo: agent != null ? AgentVisuals.logoFor(agent) : null,
-    icon: UxIcons.code,
-  );
-}
+String _labelOf(UsageProvider provider) => switch (provider) {
+      UsageProvider.codex => 'Codex',
+      UsageProvider.claude => 'Claude',
+      UsageProvider.grok => 'Grok',
+      UsageProvider.copilot => 'GitHub Copilot',
+    };
+
+String _accountTypeLabel(AppLocalizations l10n, AccountType type) =>
+    switch (type) {
+      AccountType.subscription => l10n.usageAccountSubscription,
+      AccountType.payAsYouGo => l10n.usageAccountPayAsYouGo,
+      AccountType.free => l10n.usageAccountFree,
+      AccountType.team => l10n.usageAccountTeam,
+      AccountType.enterprise => l10n.usageAccountEnterprise,
+    };

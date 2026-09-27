@@ -346,7 +346,14 @@ export function openCodeV2Models(data: unknown): OpenCodeModel[] {
     seen.add(id);
     const limit = isRecord(m['limit']) ? m['limit'] : {};
     const context = typeof limit['context'] === 'number' ? limit['context'] : 0;
-    out.push(context > 0 ? { id, contextWindow: context } : { id });
+    const variants = (Array.isArray(m['variants']) ? m['variants'] : [])
+      .map((v) => (isRecord(v) ? str(v['id']) : undefined))
+      .filter((v): v is string => typeof v === 'string' && v.length > 0);
+    out.push({
+      id,
+      ...(context > 0 ? { contextWindow: context } : {}),
+      ...(variants.length > 0 ? { variants } : {}),
+    });
   }
   return out;
 }

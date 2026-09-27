@@ -420,3 +420,80 @@ test('clearing the queue leaves an already-steered turn alone', async () => {
     await h.cleanup();
   }
 });
+
+test('send now: a queued message the person picks goes into the running turn', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    // Declined on arrival, both wait in the queue.
+    h.adapter.behaviour = 'decline';
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    const third = await h.manager.sendTurn(h.threadId, 'third');
+    assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [second.turnId, third.turnId]);
+
+    // The person picks the LAST one: it goes now, the other keeps its place.
+    h.adapter.behaviour = 'accept';
+    const state = await h.manager.sendQueuedNow(h.threadId, third.turnId);
+    assert.deepEqual(state.queuedTurnIds, [second.turnId]);
+    assert.deepEqual(
+      h.adapter.steered.map((s) => [s.text, s.activeTurnId]),
+      [['third', first.turnId]],
+    );
+    assert.equal(h.manager.activeTurnId(h.threadId), third.turnId);
+
+    await assert.rejects(h.manager.sendQueuedNow(h.threadId, third.turnId), /no longer queued/);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('send now: a refusal keeps the message queued, in its place', async () => {
+  const h = await harness();
+  try {
+    await h.manager.sendTurn(h.threadId, 'first');
+    h.adapter.behaviour = 'decline';
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    await assert.rejects(h.manager.sendQueuedNow(h.threadId, second.turnId), /did not take/);
+    assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [second.turnId]);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('send now: an agent without mid-turn input says the message waits', async () => {
+  const h = await harness(false);
+  try {
+    await h.manager.sendTurn(h.threadId, 'first');
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    await assert.rejects(
+      h.manager.sendQueuedNow(h.threadId, second.turnId),
+      /takes no message while it works/,
+    );
+    assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, [second.turnId]);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('send now: with nothing running, it starts at once, through a pause', async () => {
+  const h = await harness(false);
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    const third = await h.manager.sendTurn(h.threadId, 'third');
+    // Stopping the running turn pauses the queue.
+    h.adapter.abort(h.threadId, first.turnId);
+    await waitFor(() => h.manager.queueState(h.threadId).paused);
+
+    const state = await h.manager.sendQueuedNow(h.threadId, third.turnId);
+    assert.equal(state.paused, false);
+    assert.deepEqual(state.queuedTurnIds, [second.turnId]);
+    assert.deepEqual(
+      h.adapter.ran.map((r) => r.text),
+      ['first', 'third'],
+    );
+    assert.equal(h.manager.activeTurnId(h.threadId), third.turnId);
+  } finally {
+    await h.cleanup();
+  }
+});

@@ -369,6 +369,70 @@ pub async fn read_data_url(path: &str) -> Result<String, AppError> {
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
 }
 
+/// The largest file a chat message carries: the bridge's `MAX_ATTACHMENT_BYTES`.
+pub(crate) const MAX_ATTACHMENT_BYTES: u64 = 20 * 1024 * 1024;
+
+/// A file read to be attached to a chat message.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAttachment {
+    pub name: String,
+    pub mime_type: String,
+    pub base64_data: String,
+    pub bytes: u64,
+}
+
+/// Read any file to attach it to a chat message (`turn/send { attachments }`):
+/// its name, a MIME type from its extension (or its first bytes), and the
+/// bytes as base64. Refused past [`MAX_ATTACHMENT_BYTES`] — the bridge would
+/// refuse it too.
+pub async fn read_attachment(path: &str) -> Result<FileAttachment, AppError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let meta = tokio::fs::metadata(path).await?;
+    if !meta.is_file() {
+        return Err(AppError::Invalid(format!("{path} is not a file")));
+    }
+    if meta.len() > MAX_ATTACHMENT_BYTES {
+        return Err(AppError::Invalid(format!(
+            "the file is larger than {} MB",
+            MAX_ATTACHMENT_BYTES / (1024 * 1024)
+        )));
+    }
+    let bytes = tokio::fs::read(path).await?;
+    let name = std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    Ok(FileAttachment {
+        mime_type: attachment_mime(&name, &bytes).into(),
+        name,
+        base64_data: BASE64.encode(&bytes),
+        bytes: meta.len(),
+    })
+}
+
+/// The MIME type an attached file travels as: an image or PDF as the preview
+/// knows it, common text and archive types by extension, else octet-stream.
+pub(crate) fn attachment_mime(name: &str, bytes: &[u8]) -> &'static str {
+    if let Some(mime) = preview_mime(name, bytes) {
+        return mime;
+    }
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("txt" | "log") => "text/plain",
+        Some("md" | "markdown") => "text/markdown",
+        Some("csv") => "text/csv",
+        Some("json") => "application/json",
+        Some("yaml" | "yml") => "application/yaml",
+        Some("xml") => "application/xml",
+        Some("html" | "htm") => "text/html",
+        Some("zip") => "application/zip",
+        Some("gz" | "tgz") => "application/gzip",
+        _ => "application/octet-stream",
+    }
+}
+
 /// The MIME type a previewable file should be inlined as, or `None` when it is
 /// neither a known image nor a PDF. Shared with the host reader so the same file
 /// is recognized (or refused) wherever it lives.
@@ -905,6 +969,28 @@ pub fn search_content(
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn read_attachment_names_types_and_caps_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let csv = dir.path().join("people.csv");
+        std::fs::write(&csv, b"id\n1\n").unwrap();
+        let read = read_attachment(csv.to_str().unwrap()).await.unwrap();
+        assert_eq!(read.name, "people.csv");
+        assert_eq!(read.mime_type, "text/csv");
+        assert_eq!(read.bytes, 5);
+        assert_eq!(read.base64_data, "aWQKMQo=");
+
+        let odd = dir.path().join("blob.xyz");
+        std::fs::write(&odd, b"\x00\x01").unwrap();
+        let read = read_attachment(odd.to_str().unwrap()).await.unwrap();
+        assert_eq!(read.mime_type, "application/octet-stream");
+
+        let big = dir.path().join("big.bin");
+        std::fs::write(&big, vec![0u8; (MAX_ATTACHMENT_BYTES + 1) as usize]).unwrap();
+        assert!(read_attachment(big.to_str().unwrap()).await.is_err());
+        assert!(read_attachment(dir.path().to_str().unwrap()).await.is_err());
+    }
     use super::*;
 
     /// The "search everything" filter set — most tests aren't about narrowing.

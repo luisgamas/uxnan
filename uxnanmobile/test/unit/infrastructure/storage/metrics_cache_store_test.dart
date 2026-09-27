@@ -28,7 +28,6 @@ MetricsSnapshot _snap(String deviceId, {int conversations = 1}) {
             agentId: 'codex',
             conversations: 1,
             messages: 2,
-            tokens: 1200,
           ),
         ],
       ),

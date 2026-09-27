@@ -29,6 +29,7 @@ sealed class MessageContent {
         AssistantResponseBoundaryContent.fromJson(json),
       CodeContent.typeName => CodeContent.fromJson(json),
       ImageContent.typeName => ImageContent.fromJson(json),
+      AttachedFileContent.typeName => AttachedFileContent.fromJson(json),
       ToolUseContent.typeName => ToolUseContent.fromJson(json),
       DiffContent.typeName => DiffContent.fromJson(json),
       MermaidContent.typeName => MermaidContent.fromJson(json),
@@ -345,6 +346,68 @@ class ImageContent extends MessageContent with EquatableMixin {
   @override
   List<Object?> get props =>
       [path, base64Data, attachmentId, mimeType, width, height];
+}
+
+/// A file (not an image) the user attached to a message: sent inline with its
+/// name (`turn/send { attachments: [{ type: 'file', name, … }] }`); the bridge
+/// writes it under that name where the agent opens it with its own tools, and
+/// keeps it with the message (`Message.attachments[].name`).
+class AttachedFileContent extends MessageContent with EquatableMixin {
+  /// Creates a [AttachedFileContent].
+  const AttachedFileContent({
+    required this.name,
+    required this.mimeType,
+    required this.bytes,
+    this.base64Data,
+    this.attachmentId,
+  });
+
+  /// Decodes a [AttachedFileContent].
+  factory AttachedFileContent.fromJson(Map<String, dynamic> json) =>
+      AttachedFileContent(
+        name: json['name'] as String? ?? 'file',
+        mimeType: json['mimeType'] as String? ?? 'application/octet-stream',
+        bytes: (json['bytes'] as num?)?.toInt() ?? 0,
+        base64Data: json['base64Data'] as String?,
+        attachmentId: json['attachmentId'] as String?,
+      );
+
+  /// The file's name (no directories).
+  final String name;
+
+  /// MIME type.
+  final String mimeType;
+
+  /// Its size in bytes.
+  final int bytes;
+
+  /// Inline base64 data, while it is being sent.
+  final String? base64Data;
+
+  /// The id the bridge keeps it under with its message, once sent.
+  final String? attachmentId;
+
+  /// Wire type discriminator.
+  static const String typeName = 'file';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '[file: $name]';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'name': name,
+        'mimeType': mimeType,
+        'bytes': bytes,
+        if (base64Data != null) 'base64Data': base64Data,
+        if (attachmentId != null) 'attachmentId': attachmentId,
+      };
+
+  @override
+  List<Object?> get props => [name, mimeType, bytes, base64Data, attachmentId];
 }
 
 /// What a tool call did, as the bridge classifies every agent's tools

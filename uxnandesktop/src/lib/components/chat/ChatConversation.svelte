@@ -6,7 +6,7 @@
   //
   // A pane like a file or commit tab (`pane.root` / `pane.header`). The header
   // names the conversation and its fixed agent. What can change mid-chat lives
-  // in the composer's toolbar: the model and its run options (`ModelPicker`)
+  // in the composer's toolbar: the model (`ModelPicker`) and its run options (`RunOptionsPicker`)
   // and the access mode (`ChatAccessMenu`). Anything waiting on the user — an open approval or
   // question, follow-ups queued behind the running turn — is pinned above the
   // composer (the dock) until it is answered, here or on the phone.
@@ -20,21 +20,29 @@
   import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
   import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+  import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import PencilEdit02Icon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import NoteEditIcon from "@hugeicons/core-free-icons/NoteEditIcon";
   import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import type { AccessMode } from "$shared/models/thread";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import ChatUserText from "./ChatUserText.svelte";
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
   import ChatImages from "./ChatImages.svelte";
+  import ChatFiles from "./ChatFiles.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
+  import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { usage } from "$lib/state/usage.svelte";
+  import { usageProviderForAgent } from "$lib/usageCatalog";
+  import { pressingWindow } from "$lib/usagePace";
+  import { readingPosition, saveReadingPosition } from "$lib/bridge/readingPosition";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
   import { userText, type PendingSend } from "$lib/bridge/conversation.svelte";
@@ -105,7 +113,7 @@
   function editFailed(p: PendingSend) {
     conversation.dropPending(p.clientTurnId);
     putBack(p.request.command ? p.text : (p.request.text ?? ""));
-    if (p.request.attachments?.length) composer?.restoreImages(p.request.attachments);
+    if (p.request.attachments?.length) composer?.restoreAttachments(p.request.attachments);
   }
 
   /** Withdraws a queued message into the composer — only once the bridge has
@@ -131,8 +139,30 @@
   /** Deleted on another client (or the bridge lost it): nothing to show. */
   const missing = $derived(chat.threadsLoaded && !thread);
   const agent = $derived(chat.agent(thread?.agentId));
+
+  // Where the agent's plan stands, for the context ring: the plan is read
+  // (once, then every few minutes while open) whether or not it is activated
+  // in Settings → Providers.
+  const planProvider = $derived(usageProviderForAgent(thread?.agentId));
+  $effect(() => {
+    const provider = planProvider?.id;
+    if (!provider || !active) return;
+    void usage.ensureProvider(provider);
+    const timer = setInterval(() => void usage.ensureProvider(provider), 5 * 60_000);
+    return () => clearInterval(timer);
+  });
+  const plan = $derived.by(() => {
+    if (!planProvider) return null;
+    const pressing = pressingWindow(usage.byProvider[planProvider.id], Date.now());
+    return pressing ? { name: planProvider.name, ...pressing } : null;
+  });
   const models = $derived(chat.cachedModels(thread?.agentId));
-  const model = $derived(models.find((m) => m.id === thread?.model));
+  /** The thread's model; before it has one, the agent's default — the one
+   *  its turns run on (the phone reads the same). */
+  const model = $derived(
+    models.find((m) => m.id === thread?.model) ??
+      (thread?.model ? undefined : models.find((m) => m.isDefault)),
+  );
   let optionValues = $state<Record<string, string | boolean>>({});
   let modelsLoading = $state(false);
 
@@ -145,6 +175,12 @@
 
   const accessMode = $derived<AccessMode>(thread?.accessMode ?? "fullAccess");
 
+  /** A queued message can go now: into the running turn when the agent takes
+   *  input mid-turn, or — nothing running (a paused queue) — as the next turn. */
+  const canSendNow = $derived(
+    !conversation.running || chat.agent(thread?.agentId)?.capabilities?.steering === true,
+  );
+
   /** Turns shown in the timeline; queued ones wait below, as ghosts. */
   const shown = $derived(conversation.turns.filter((t) => t.status !== "queued"));
   const queued = $derived(
@@ -155,12 +191,31 @@
 
   // --- scrolling -----------------------------------------------------------
   let scroller = $state<HTMLDivElement | null>(null);
-  let following = $state(true);
+  // Returning to a conversation read this session opens where it was left;
+  // otherwise (or when it was left at its end) at the end.
+  const saved = readingPosition(untrack(() => threadId));
+  let following = $state(saved?.atEnd ?? true);
+  let restored = saved === undefined || saved.atEnd;
+
+  // Put the reader back once the saved stretch of the timeline is there.
+  $effect(() => {
+    void conversation.turns.length;
+    if (restored || !scroller || conversation.turns.length === 0) return;
+    const el = scroller;
+    void tick().then(() => {
+      if (restored || !saved) return;
+      el.scrollTop = saved.top;
+      restored = true;
+    });
+  });
 
   function onScroll() {
     if (!scroller) return;
     const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
     following = distance < 80;
+    if (restored) {
+      saveReadingPosition(threadId, { top: scroller.scrollTop, atEnd: following });
+    }
     if (scroller.scrollTop < 40 && conversation.hasOlder && !conversation.loadingOlder) {
       const before = scroller.scrollHeight;
       void conversation.loadOlder().then(async () => {
@@ -187,6 +242,7 @@
 
   function jumpToEnd() {
     following = true;
+    restored = true;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
 
@@ -327,16 +383,26 @@
 
           {#each conversation.pending as p (p.clientTurnId)}
             {@const failed = p.error !== undefined}
-            {@const images = (p.request.attachments ?? []).map((a, i) => ({
-              id: `${p.clientTurnId}-${i}`,
-              load: () => Promise.resolve(`data:${a.mimeType};base64,${a.base64Data ?? ""}`),
-            }))}
+            {@const images = (p.request.attachments ?? [])
+              .filter((a) => a.type !== "file")
+              .map((a, i) => ({
+                id: `${p.clientTurnId}-${i}`,
+                load: () => Promise.resolve(`data:${a.mimeType};base64,${a.base64Data ?? ""}`),
+              }))}
+            {@const sentFiles = (p.request.attachments ?? [])
+              .filter((a) => a.type === "file")
+              .map((a, i) => ({
+                id: `${p.clientTurnId}-f${i}`,
+                name: a.name ?? "file",
+                bytes: Math.floor(((a.base64Data ?? "").length * 3) / 4),
+              }))}
             <div class="flex flex-col items-end gap-1">
               {#if images.length > 0}
                 <ChatImages {images} class={cn("max-w-[85%]", !failed && "opacity-70")} />
               {/if}
+              <ChatFiles files={sentFiles} class={cn(!failed && "opacity-70")} />
               {#if p.text}
-                <div class={cn(chatTokens.userBubble, !failed && "opacity-70")}>{p.text}</div>
+                <ChatUserText text={p.text} class={cn(!failed && "opacity-70")} />
               {/if}
               {#if failed}
                 <p class="flex items-center gap-2 text-xs text-destructive">
@@ -398,8 +464,8 @@
       {/if}
       {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused || rescued.length > 0}
         <div class={chatTokens.dock}>
-          {#each conversation.openRequests as request (requestIdOf(request))}
-            <ChatRequest block={request} {threadId} {conversation} />
+          {#each conversation.openRequests as request, ri (requestIdOf(request))}
+            <ChatRequest block={request} {threadId} {conversation} keys={ri === 0} />
           {/each}
 
           {#if conversation.queue.paused}
@@ -441,6 +507,17 @@
                   <span class="min-w-0 flex-1 truncate">
                     {turn.messages.find((m) => m.role === "user")?.content ?? ""}
                   </span>
+                  {#if canSendNow}
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={i18n.t("chat.sendQueuedNow")}
+                      title={i18n.t("chat.sendQueuedNow")}
+                      onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
+                    >
+                      <Icon icon={ArrowUp02Icon} class={icon.status} />
+                    </Button>
+                  {/if}
                   <Button
                     variant="ghost"
                     size="icon-xs"
@@ -516,6 +593,7 @@
         context={conversation.usage?.contextWindow
           ? { tokens: conversation.usage.tokens, limit: conversation.usage.contextWindow }
           : null}
+        {plan}
         onsend={send}
         onstop={() => void stop()}
         {loadCommands}
@@ -529,10 +607,9 @@
             value={thread?.model ?? ""}
             loading={modelsLoading}
             allowDefault={false}
-            options={model?.options ?? []}
-            bind:optionValues
             onSelect={(id) => void setModel(id)}
           />
+          <RunOptionsPicker options={model?.options ?? []} bind:values={optionValues} />
         {/snippet}
         {#snippet trailing()}
           <ChatAccessMenu value={accessMode} onChange={(mode) => void setAccess(mode)} />

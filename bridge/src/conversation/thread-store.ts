@@ -905,9 +905,10 @@ export class ThreadStore {
   }
 
   /**
-   * Keeps the images of a user message beside the thread, so every client can
-   * show them in the message long after the agent's own copies are gone. Only
-   * inline images are kept: a path names a file the bridge does not own.
+   * Keeps the images and files of a user message beside the thread, so every
+   * client can show them in the message long after the agent's own copies are
+   * gone. Only inline ones are kept: a path names a file the bridge does not
+   * own.
    */
   async #storeAttachments(
     threadId: string,
@@ -919,12 +920,17 @@ export class ThreadStore {
       if (!attachment.base64Data) continue;
       const data = Buffer.from(attachment.base64Data, 'base64');
       if (data.length === 0) continue;
-      const id = `${turnId}-${index}.${attachmentExtension(attachment.mimeType)}`;
+      const isFile = attachment.type === 'file';
+      const ext = isFile
+        ? fileNameExtension(attachment.name)
+        : attachmentExtension(attachment.mimeType);
+      const id = `${turnId}-${index}.${ext}`;
       await this.#state.writeAttachment(threadId, id, data);
       stored.push({
         id,
         mimeType: attachment.mimeType,
         bytes: data.length,
+        ...(isFile && attachment.name ? { name: attachment.name } : {}),
         ...(attachment.width !== undefined ? { width: attachment.width } : {}),
         ...(attachment.height !== undefined ? { height: attachment.height } : {}),
       });
@@ -1295,16 +1301,9 @@ function metricProjection(thread: StoredThread): {
   };
   const turns = thread.turns.map((turn): TurnMetricEvent => {
     const messageDays = new Map<number, number>();
-    let tokens = 0;
-    let tokenDay = utcDayKey(turn.createdAt);
     for (const message of turn.messages) {
       const day = utcDayKey(message.createdAt);
       messageDays.set(day, (messageDays.get(day) ?? 0) + 1);
-      if (message.role === 'assistant') {
-        tokenDay = day;
-        const reported = message.usage?.tokens;
-        if (typeof reported === 'number' && reported > 0) tokens += reported;
-      }
     }
     return {
       id: `${thread.id}:${turn.id}`,
@@ -1312,8 +1311,6 @@ function metricProjection(thread: StoredThread): {
       ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
       ...(thread.model !== undefined ? { model: thread.model } : {}),
       messageDays: [...messageDays].map(([day, messages]) => ({ day, messages })),
-      tokens,
-      tokenDay,
       updatedAt: thread.updatedAt,
     };
   });
@@ -1534,6 +1531,12 @@ function toMessage(message: StoredMessage): Message {
 }
 
 /** File extension for a stored image (no dot); `bin` for an unknown type. */
+/** A stored file's extension from its name (letters and digits only), else `bin`. */
+function fileNameExtension(name: string | undefined): string {
+  const match = /\.([A-Za-z0-9]{1,10})$/.exec(name ?? '');
+  return match?.[1]?.toLowerCase() ?? 'bin';
+}
+
 function attachmentExtension(mimeType: string): string {
   const subtype = mimeType.toLowerCase().split('/')[1] ?? '';
   const known: Record<string, string> = {

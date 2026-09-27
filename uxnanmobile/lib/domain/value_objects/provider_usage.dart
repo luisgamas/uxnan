@@ -1,11 +1,22 @@
 import 'package:equatable/equatable.dart';
 
-/// A coding CLI whose usage the bridge reads from its own stored token.
-/// Mirrors `shared` `UsageProvider`.
+/// A provider whose plan limits the bridge reads — asking Claude Code and
+/// Codex themselves, reading Copilot's and Grok's own stored token. Mirrors
+/// `shared` `UsageProvider`.
 enum UsageProvider { codex, claude, copilot, grok }
 
 /// Outcome of reading one provider's usage. Mirrors `shared` `UsageStatus`.
-enum UsageStatus { ok, authRequired, accessRequired, notInstalled, error }
+enum UsageStatus { ok, authRequired, notInstalled, error }
+
+/// How the account is billed. Mirrors `shared` `AccountType`.
+enum AccountType { subscription, payAsYouGo, free, team, enterprise }
+
+AccountType? _accountTypeFromWire(Object? id) {
+  for (final value in AccountType.values) {
+    if (value.name == id) return value;
+  }
+  return null;
+}
 
 /// Parses a wire provider id, or null when unknown.
 UsageProvider? usageProviderFromWire(String id) {
@@ -19,7 +30,6 @@ UsageStatus _statusFromWire(Object? id) {
   return switch (id) {
     'ok' => UsageStatus.ok,
     'authRequired' => UsageStatus.authRequired,
-    'accessRequired' => UsageStatus.accessRequired,
     'notInstalled' => UsageStatus.notInstalled,
     _ => UsageStatus.error,
   };
@@ -106,13 +116,19 @@ class CreditBalance extends Equatable {
 /// The account identity a provider reports (never a secret).
 class UsageAccount extends Equatable {
   /// Creates a [UsageAccount].
-  const UsageAccount({this.email, this.organization, this.plan});
+  const UsageAccount({
+    this.email,
+    this.organization,
+    this.plan,
+    this.accountType,
+  });
 
   /// Reconstructs a [UsageAccount] from its wire map.
   factory UsageAccount.fromJson(Map<String, dynamic> json) => UsageAccount(
         email: json['email'] as String?,
         organization: json['organization'] as String?,
         plan: json['plan'] as String?,
+        accountType: _accountTypeFromWire(json['accountType']),
       );
 
   /// The signed-in email (or login), when reported.
@@ -124,8 +140,76 @@ class UsageAccount extends Equatable {
   /// The plan name, when reported.
   final String? plan;
 
+  /// How the account is billed, when reported.
+  final AccountType? accountType;
+
   @override
-  List<Object?> get props => [email, organization, plan];
+  List<Object?> get props => [email, organization, plan, accountType];
+}
+
+/// One redeemable rate-limit reset (Codex).
+class ResetCreditEntry extends Equatable {
+  /// Creates a [ResetCreditEntry].
+  const ResetCreditEntry({this.id, this.title, this.expiresAt});
+
+  /// Reconstructs a [ResetCreditEntry] from its wire map.
+  factory ResetCreditEntry.fromJson(Map<String, dynamic> json) =>
+      ResetCreditEntry(
+        id: json['id'] as String?,
+        title: json['title'] as String?,
+        expiresAt: _epoch(json['expiresAt']),
+      );
+
+  /// The credit's id, to redeem this one.
+  final String? id;
+
+  /// Its title ("Full reset"), when reported.
+  final String? title;
+
+  /// When it expires unused.
+  final DateTime? expiresAt;
+
+  @override
+  List<Object?> get props => [id, title, expiresAt];
+}
+
+/// The rate-limit resets an account holds (Codex): each one rolls a limit
+/// back to zero early when redeemed.
+class ResetCredits extends Equatable {
+  /// Creates a [ResetCredits].
+  const ResetCredits({required this.available, this.entries = const []});
+
+  /// Reconstructs [ResetCredits] from its wire map.
+  factory ResetCredits.fromJson(Map<String, dynamic> json) {
+    final raw = json['entries'];
+    final entries = <ResetCreditEntry>[
+      if (raw is List)
+        for (final e in raw.whereType<Map<dynamic, dynamic>>())
+          ResetCreditEntry.fromJson(e.cast<String, dynamic>()),
+    ]
+      // Soonest-expiring first: the one a redeem spends.
+      ..sort((a, b) {
+        final x = a.expiresAt;
+        final y = b.expiresAt;
+        if (x == null) return y == null ? 0 : 1;
+        if (y == null) return -1;
+        return x.compareTo(y);
+      });
+    final available = json['available'];
+    return ResetCredits(
+      available: available is num ? available.toInt() : entries.length,
+      entries: entries,
+    );
+  }
+
+  /// How many can be redeemed now.
+  final int available;
+
+  /// Each one, soonest-expiring first.
+  final List<ResetCreditEntry> entries;
+
+  @override
+  List<Object?> get props => [available, entries];
 }
 
 /// One provider's usage snapshot. Mirrors `shared` `ProviderUsage`.
@@ -138,6 +222,7 @@ class ProviderUsage extends Equatable {
     required this.updatedAt,
     this.account,
     this.credit,
+    this.resetCredits,
     this.message,
   });
 
@@ -149,6 +234,7 @@ class ProviderUsage extends Equatable {
     final windowsRaw = json['windows'];
     final accountRaw = json['account'];
     final creditRaw = json['credit'];
+    final resetsRaw = json['resetCredits'];
     return ProviderUsage(
       provider: provider,
       status: _statusFromWire(json['status']),
@@ -164,6 +250,9 @@ class ProviderUsage extends Equatable {
           : null,
       credit: creditRaw is Map
           ? CreditBalance.fromJson(creditRaw.cast<String, dynamic>())
+          : null,
+      resetCredits: resetsRaw is Map
+          ? ResetCredits.fromJson(resetsRaw.cast<String, dynamic>())
           : null,
       message: json['message'] as String?,
     );
@@ -187,8 +276,10 @@ class ProviderUsage extends Equatable {
   /// The credit balance, when reported.
   final CreditBalance? credit;
 
-  /// Error/hint message for `error` / `authRequired` / `accessRequired` /
-  /// `notInstalled`.
+  /// Redeemable rate-limit resets (Codex), when reported.
+  final ResetCredits? resetCredits;
+
+  /// Error/hint message for `error` / `authRequired` / `notInstalled`.
   final String? message;
 
   @override
@@ -199,6 +290,7 @@ class ProviderUsage extends Equatable {
         updatedAt,
         account,
         credit,
+        resetCredits,
         message,
       ];
 }

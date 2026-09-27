@@ -22,6 +22,7 @@ import 'package:uxnan/presentation/screens/conversation/composer/mention_text_co
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/file_chip.dart';
 import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -50,6 +51,9 @@ class ComposerBar extends ConsumerStatefulWidget {
     this.enabled = true,
     this.running = false,
     this.attachments = const [],
+    this.files = const [],
+    this.acceptsImages = true,
+    this.onRemoveFile,
     this.cwd,
     this.agentCommands = const [],
     this.onStop,
@@ -85,6 +89,15 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// stacking a separate box on top of it. A non-empty list also lets the user
   /// send with an empty field (image-only message) and shows Send.
   final List<ImageContent> attachments;
+
+  /// The files queued for the next turn, as chips beside the images.
+  final List<AttachedFileContent> files;
+
+  /// Whether the agent takes images (the "+" menu offers photos).
+  final bool acceptsImages;
+
+  /// Drops the file at the given index.
+  final ValueChanged<int>? onRemoveFile;
 
   /// Whether the agent is currently producing a turn — Send becomes Stop.
   final bool running;
@@ -198,7 +211,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     }
     // An attachment picked (or removed) outside the pill changes whether there
     // is anything to send, which the screen's floating actions depend on.
-    if (oldWidget.attachments.isNotEmpty != widget.attachments.isNotEmpty) {
+    final had = oldWidget.attachments.isNotEmpty || oldWidget.files.isNotEmpty;
+    final has = widget.attachments.isNotEmpty || widget.files.isNotEmpty;
+    if (had != has) {
       _notifyDraft();
     }
   }
@@ -253,7 +268,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
 
   /// Tells the screen whether the pill currently holds something sendable.
   void _notifyDraft() {
-    widget.onDraftChanged?.call(_hasText || widget.attachments.isNotEmpty);
+    widget.onDraftChanged?.call(
+      _hasText || widget.attachments.isNotEmpty || widget.files.isNotEmpty,
+    );
   }
 
   /// The floating "queue message" action asked us to send the draft.
@@ -445,7 +462,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (!widget.enabled) return;
-    if (text.isEmpty && widget.attachments.isEmpty) return;
+    if (text.isEmpty && widget.attachments.isEmpty && widget.files.isEmpty) {
+      return;
+    }
     // Voice remains an independent action even when the field has text. Stop
     // an active session before clearing so a late recognition result cannot
     // repopulate a message that was already sent.
@@ -507,7 +526,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final hasAttachments = widget.attachments.isNotEmpty;
+    final hasImages = widget.attachments.isNotEmpty;
+    final hasAttachments = hasImages || widget.files.isNotEmpty;
     final showSend = _hasText || hasAttachments;
     final canSend = showSend && widget.enabled;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
@@ -619,11 +639,39 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                                 UxnanSpacing.sm,
                                 UxnanSpacing.sm,
                               ),
-                              child: ImageThumbStrip(
-                                key: const ValueKey('composer-attachments'),
-                                images: widget.attachments,
-                                size: _attachmentThumbSize,
-                                onRemove: widget.onRemoveAttachment,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (hasImages)
+                                    ImageThumbStrip(
+                                      key: const ValueKey(
+                                        'composer-attachments',
+                                      ),
+                                      images: widget.attachments,
+                                      size: _attachmentThumbSize,
+                                      onRemove: widget.onRemoveAttachment,
+                                    ),
+                                  if (hasImages && widget.files.isNotEmpty)
+                                    const SizedBox(height: UxnanSpacing.sm),
+                                  if (widget.files.isNotEmpty)
+                                    Wrap(
+                                      key: const ValueKey('composer-files'),
+                                      spacing: UxnanSpacing.sm,
+                                      runSpacing: UxnanSpacing.sm,
+                                      children: [
+                                        for (var i = 0;
+                                            i < widget.files.length;
+                                            i++)
+                                          FileChip(
+                                            file: widget.files[i],
+                                            onRemove: widget.onRemoveFile ==
+                                                    null
+                                                ? null
+                                                : () => widget.onRemoveFile!(i),
+                                          ),
+                                      ],
+                                    ),
+                                ],
                               ),
                             ),
                           Row(
@@ -638,6 +686,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                               if (widget.onAttach != null)
                                 TurnToolsMenuButton(
                                   onSelected: widget.onAttach!,
+                                  images: widget.acceptsImages,
                                 )
                               else
                                 const SizedBox(width: UxnanSpacing.sm),

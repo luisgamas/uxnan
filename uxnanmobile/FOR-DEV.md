@@ -112,10 +112,15 @@ connected to live bridge data, validated on-device against a real bridge.
 - **Profile & metrics (bridge-owned, survivable).** A **Profile** screen (Devices
   app-bar avatar + a Settings header) aggregating activity across every paired PC
   — a GitHub-style contribution heatmap (Combined / Conversations / Messages /
-  Work, per year, tap-a-day / tap-outside-to-clear), stat tiles (time connected,
-  longest session, agents used, conversations, messages, sessions, git actions,
-  most-used transport, models) and a per-agent breakdown — plus a **per-PC
-  details** screen (device-card ▸ Statistics) and a customizable name + avatar.
+  Work, per year, tap-a-day / tap-outside-to-clear), activity highlights
+  (conversations and messages leading; time connected, longest session,
+  sessions, agents, models, Git actions below) and the agents ranked — plus
+  **what the agents spent** (`usage/summary`, per PC cached in
+  `UsageSummaryCacheStore`, stacked daily chart with agent focus, top models,
+  7/30/90 days, cost or tokens), **plan limits** with pace and Codex reset
+  redeem, a **Your PCs** list and a **per-PC details** screen with the same
+  sections. The one name is this phone's (`shownPhoneNameProvider`); the
+  picture stays a profile avatar.
   The metrics now come from the bridge's complete global ledger (`metrics/get`),
   so they survive app uninstall, device restore and conversation deletion. The
   root app shell keeps the controller alive and re-fetches on every connection,
@@ -130,8 +135,7 @@ connected to live bridge data, validated on-device against a real bridge.
   a **manual refresh** button (always available) and a persisted **refresh mode**
   — automatic (on every profile open, the default), a 5/15/30/60-min poll, or
   manual-only — in Settings ▸ *Metrics & provider usage*, which also names and
-  explains the provider-usage group (each provider's remaining limits). The
-  per-agent usage/credit view stays Phase B (the `agent/usageStats` item below).
+  explains the provider-usage group (each provider's remaining limits).
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual
@@ -432,14 +436,14 @@ shipping.
 - [ ] **OpenCode/pi interactive approvals** — blocked on the bridge side (their
       headless modes expose no pre-tool channel; see `bridge/FOR-DEV.md`). The app
       already renders approvals for Echo/Claude/Codex/OpenCode/Zero/Grok.
-- [ ] **AI-provider usage stats (`agent/usageStats`) — live verification.** The
-      **bridge reader** (`bridge/src/usage/usage-reader.ts`) and the **mobile
-      "Usage & credit" section** (profile: per-provider quota windows, plan,
-      credit; `usageStatsProvider` + `ProviderUsage`, shown only when connected)
-      are **implemented**. Remaining: **verify on-device against a real bridge**
-      with signed-in providers — confirm each provider's live response maps
-      correctly (Codex / Claude / Copilot / Grok) and the offline /
-      not-installed / auth-required / error states render right.
+- [ ] **Profile spend and plan limits — on-device verification.** The bridge
+      readers (`bridge/src/usage/`) are verified live on the maintainer's Mac,
+      and the phone's sections (`spend_section.dart`, `usage_section.dart`) are
+      covered by widget tests against the `shared/` shapes and reviewed as
+      rendered screenshots. Remaining: **run them on a phone against a real
+      bridge** — the spend of every agent on a PC, a second PC from the cache,
+      each provider's limits (Codex / Claude / Copilot / Grok), a Codex reset
+      redeemed, and the offline / not-signed-in / error states.
 
 ## iOS (all blocked on the first macOS build + FOR-HUMAN assets)
 

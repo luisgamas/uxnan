@@ -592,6 +592,73 @@ void main() {
     expect(submitAfter.onPressed, isNotNull, reason: 'enabled once chosen');
   });
 
+  testWidgets('several questions are asked one at a time', (tester) async {
+    final message = Message(
+      id: 'm-questions',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        QuestionContent(
+          QuestionRequest(
+            questionId: 'q2',
+            questions: [
+              QuestionItem(
+                question: 'Which database?',
+                options: [
+                  QuestionOption(label: 'SQLite'),
+                  QuestionOption(label: 'Postgres'),
+                ],
+              ),
+              QuestionItem(
+                question: 'Add tests?',
+                options: [
+                  QuestionOption(label: 'Yes'),
+                  QuestionOption(label: 'No'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    expect(find.text('1 of 2'), findsOneWidget);
+    expect(find.text('Which database?'), findsOneWidget);
+    expect(find.text('Add tests?'), findsNothing);
+    // Next waits for an answer; Submit waits for the last question.
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Next'))
+          .onPressed,
+      isNull,
+    );
+    expect(find.widgetWithText(FilledButton, 'Submit'), findsNothing);
+
+    // A single choice moves on by itself.
+    await tester.tap(find.text('Postgres'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('2 of 2'), findsOneWidget);
+    expect(find.text('Add tests?'), findsOneWidget);
+
+    // Back returns with the first answer kept.
+    await tester.tap(find.byTooltip('Previous question'));
+    await tester.pump();
+    expect(find.text('Which database?'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Next'))
+          .onPressed,
+      isNotNull,
+    );
+  });
+
   testWidgets(
     'a resolved question card stays resolved after restart '
     '(options gone, chosen labels shown, answers persist in the store)',

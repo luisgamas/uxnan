@@ -100,7 +100,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 84 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 87 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
@@ -129,10 +129,11 @@ thread/delete           -> eliminar thread y sus turns (misma liberacion previa 
 turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07):** al re-attachear, el telefono **re-siembra SIEMPRE** su buffer en vivo desde los `segments`/`content` acumulados que este `turn/list` reporta para el turno en vuelo — incluso si ya rastreaba ese `turnId` (los primeros deltas post-reconexion recrean el buffer solo con la cola nueva; el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el telefono ademas **reconcilia** el mensaje persistido contra el registro autoritativo del bridge con un `turn/read` (best-effort), de modo que la conversacion guardada converge siempre al intercalado exacto del bridge aunque la vista en vivo haya sido imperfecta. **Native-session convergence:** on every idle read, the bridge merges durable completed turns written by another client into its stored history before applying this pagination. Bridge-owned rows keep their ids and richer metadata; external user/assistant pairs receive deterministic ids and are never inferred from a partial native turn. The wire result is unchanged.
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
-turn/attachment         -> los bytes de una imagen que un mensaje del usuario lleva (`Message.attachments[].id`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
+turn/attachment         -> los bytes de una imagen o un archivo que un mensaje del usuario lleva (`MessageAttachment.name` nombra un archivo) (`Message.attachments[].id`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
 queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason? }.
 queue/clear             -> descartar todos los turnos encolados del thread (cada uno -> `cancelled`) y levantar la pausa. Mismo Result que `queue/resume`.
+queue/sendNow           -> mandar YA un mensaje encolado: dentro del turno en curso si su agente toma entrada a mitad de turno (`capabilities.steering`, el mismo relevo de la entrega automatica), o -- sin nada corriendo -- como el siguiente turno de inmediato, por delante del resto y atravesando una pausa. Rechazado (con el motivo) mientras corre un turno cuyo agente no puede tomarlo, o el agente espera una respuesta de la persona. Params `{ threadId, turnId }`; mismo Result que `queue/resume`.
 ```
 
 **Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge
@@ -252,13 +253,15 @@ agent/list              -> agentes registrados (IAgentAdapter.agentId, displayNa
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
 agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom'|'skill', headlessSupported?). Params { agentId, cwd? } (cwd: la carpeta del hilo). El bridge se los **pregunta al agente** en esa carpeta, por la superficie que maneja: Claude (`initialize` por stream-json), Codex (`skills/list` del app-server + `compact` nativo + prompts de `~/.codex/prompts`), OpenCode (su servidor, v1 y v2), pi (`get_commands`), Antigravity (sus skills, `agy -p /skills`), Grok (ACP `available_commands_update`; para una carpeta sin sesión, una sesión corta sin prompt), Zero (sus propias skills, `zero skills list --json`, solo las que su herramienta de skills puede cargar). Invocacion via `turn/send` `command`, nativa salvo los prompts de Codex y las skills de Zero (el bridge los expande a un prompt). Para cualquier agente `deprecated`, devuelve `[]`. Detalle: `bridge/docs/agents.md` → *Agent commands*.
 agent/doctor            -> { agents: AgentDiagnosis[] } — por agente: `available`, el comando que se ejecuta y cada ubicacion revisada (tabla compartida `shared/agent-locations.json` + PATH del shell de login)
-agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
+agent/usageStats        -> limites del plan por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo, reinicios canjeables). El bridge es el unico lector y todo cliente le pregunta; Claude Code y Codex se preguntan a si mismos (sin leer credenciales), Copilot y Grok por su token guardado → API oficial. Solo los proveedores solicitados (02a §5.8.10).
+usage/redeemReset       -> canjear un reinicio de limite (Codex). Params: { provider, idempotencyKey, creditId? }. Result: ProviderUsage actualizado.
+usage/summary           -> gasto por dia local de la PC, agente y modelo, de las transcripciones de cada CLI. Params: { days: 1..366 }. Result: UsageSummary { days: UsageDay[{ day, buckets: UsageBucket[] }], agents: UsageAgentSource[] }; cada bucket con tokens (input/cachedInput/cacheWrite/output/reasoning), costUsd, estimatedCostUsd, unpricedTokens, responses (02a §5.8.10).
 ```
 
 **Metricas de perfil (3):**
 ```
-metrics/get             -> `MetricsSnapshot` for the responding PC, derived from the bridge's durable global ledger: conversations, distinct agents/models, messages, reported token throughput, Git actions, sessions, connected-time totals, relay/direct split, per-agent totals, member-since and daily activity. Thread deletion does not subtract historical rows. The phone renders one snapshot per PC and sums PCs. `void` -> `MetricsSnapshot`.
-metrics/export          -> the bridge seals its **complete ledger** (conversation/turn/message/token + session + Git rows) into an opaque tamper-proof file only that same bridge can verify/decrypt (AES-256-GCM under an OS-keychain secret). An optional passphrase adds scrypt confidentiality. Params `{ passphrase? }` -> `{ blob, filename, passphraseProtected }`.
+metrics/get             -> `MetricsSnapshot` for the responding PC, derived from the bridge's durable global ledger: conversations, distinct agents/models, messages, Git actions, sessions, connected-time totals, relay/direct split, per-agent totals, member-since and daily activity. The development `echo` agent is never counted, and tokens/cost are `usage/summary`'s, not the ledger's. Thread deletion does not subtract historical rows. The phone renders one snapshot per PC and sums PCs. `void` -> `MetricsSnapshot`.
+metrics/export          -> the bridge seals its **complete ledger** (conversation/turn/message + session + Git rows) into an opaque tamper-proof file only that same bridge can verify/decrypt (AES-256-GCM under an OS-keychain secret). An optional passphrase adds scrypt confidentiality. Params `{ passphrase? }` -> `{ blob, filename, passphraseProtected }`.
 metrics/import          -> imports a prior export. The bridge rejects foreign/edited files, decrypts and validates them, then inserts or advances ledger rows **by id** (idempotent; version-1 partial backups remain accepted). `imported` is the number of inserted/advanced rows. Params `{ blob, passphrase? }` -> `{ imported, snapshot }`.
 ```
 > **Alcance:** el uso/creditos de proveedores queda **fuera** de metrics/* — se
@@ -601,7 +604,7 @@ MUST NOT create, refresh or upgrade a trusted-device record.
 interface TurnSendParams {
   threadId: string;
   text?: string;                              // OPCIONAL: un mensaje image-only es valido
-  attachments?: TurnAttachment[];             // imagenes inline (base64, mime, width, height)
+  attachments?: TurnAttachment[];             // imagenes y archivos inline (base64, mime, name?, width?, height?)
   options?: Record<string, string | boolean>; // per-model run-option knobs (ej. { reasoning: 'high' })
   approvalResponse?: ApprovalResponse;        // control-only: responde a un approval (no crea turno nuevo)
   questionResponse?: QuestionResponse;        // control-only: responde a un `question` del agente (no crea turno nuevo)
@@ -626,11 +629,14 @@ adapter lo enruta por `AgentManager.requestQuestion` → el bridge emite un bloq
 a `/question/{id}/reply` y el agente continua con la eleccion (o se rechaza para
 desbloquear si el usuario omite / expira).
 
-**`TurnAttachment`** (adjunto inline en `turn/send`):
+**`TurnAttachment`** (adjunto inline en `turn/send`: una imagen o cualquier
+archivo, hasta `MAX_ATTACHMENT_BYTES` = 20 MB decodificado cada uno; uno mayor
+se rechaza con `invalidParams` en vez de enviarse sin el):
 ```typescript
 interface TurnAttachment {
-  type?: 'image';
-  mimeType: string;                           // 'image/png' | 'image/jpeg' | ...
+  type?: 'image' | 'file';                    // 'image' por defecto
+  name?: string;                              // nombre de un archivo (solo el ultimo segmento)
+  mimeType: string;                           // 'image/png' | 'text/csv' | ...
   base64Data?: string;                        // una de base64Data o path
   path?: string;                              // ruta alternativa (tolerante)
   width?: number;
@@ -689,6 +695,10 @@ type AgentModelOption =
   | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }
   | { key: string; kind: 'toggle'; label: string; default?: boolean };
 // El telefono IGNORA kinds desconocidos (forward-compatible).
+// `default` es el valor con el que corre el turno si nadie elige: el bridge lo
+// ENVIA el mismo (AgentManager rellena cada knob sin elegir antes del turno), asi
+// que el predeterminado que muestra un selector es el que se usa. Sin `default`,
+// el knob queda sin enviar y aplica el propio del agente.
 ```
 
 **`AgentCapabilities`** (de `agent/list`):
@@ -716,10 +726,7 @@ interface TurnUsage {
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
 type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok';
-type UsageStatus = 'ok' | 'authRequired' | 'accessRequired' | 'notInstalled' | 'error';
-// accessRequired: el token existe en el almacen de credenciales del SO (Claude
-// Code en macOS: login Keychain) pero el SO aun no autoriza al lector a abrirlo;
-// el usuario lo concede una sola vez desde el desktop (dialogo del propio SO).
+type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 
 type AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise';
 
@@ -734,7 +741,7 @@ interface CreditBalance {
   resetsAt?: number;            // epoch ms
   available?: number;           // saldo restante cuando el proveedor lo da directo (Grok on-demand/prepaid)
 }
-interface ResetCreditEntry { title?: string; expiresAt?: number }  // detalle por-reinicio
+interface ResetCreditEntry { id?: string; title?: string; expiresAt?: number }  // detalle por-reinicio (id: para usage/redeemReset)
 interface ResetCredits {        // "reinicios" que el proveedor otorga (Codex)
   available: number;            // redimibles ahora
   totalEarned?: number;
@@ -745,7 +752,7 @@ interface ResetCredits {        // "reinicios" que el proveedor otorga (Codex)
 interface ProviderUsage {
   provider: UsageProvider;
   status: UsageStatus;
-  source?: 'token';             // se lee del token del CLI (nunca cookies ni keys pegadas)
+  source?: 'cli' | 'token';     // cli: preguntado al CLI (Claude, Codex); token: su token guardado → API oficial
   account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   windows: UsageWindow[];       // ventanas de cuota (%)
   credit?: CreditBalance;       // saldo $ cuando el proveedor lo expone (Codex/Claude/Grok)
@@ -753,12 +760,27 @@ interface ProviderUsage {
   updatedAt: number;            // epoch ms
   message?: string;             // hint/error para estados != ok
 }
-// Postura: solo el token que el propio CLI guardo (su archivo, o el almacen de
-// credenciales del SO donde el CLI lo guarde, tras una autorizacion explicita del
-// usuario mediada por el SO) + su API oficial de uso. Solo el access token: nunca
-// el refresh token, nunca cookies ni keys pegadas. El lector nunca muestra un
-// dialogo por su cuenta: si el SO tendria que preguntar, reporta `accessRequired`.
-// Cada proveedor degrada a un `status`; uno lento/roto no tumba a los demas.
+// Postura: Claude Code y Codex responden por su propia cuenta (el bridge no lee
+// credenciales ni pide permisos del SO); Copilot y Grok: solo el token que el CLI
+// guardo + su API oficial de uso — nunca el refresh token, cookies ni keys
+// pegadas. Cada proveedor degrada a un `status`; uno lento/roto no tumba a los demas.
+```
+
+**`UsageSummary`** (resultado de `usage/summary`, `shared/src/models/usage.ts`):
+```typescript
+interface UsageSpend {
+  inputTokens: number; cachedInputTokens: number; cacheWriteTokens: number;
+  outputTokens: number;         // incluye el razonamiento
+  reasoningTokens: number;
+  costUsd: number;              // facturado donde el CLI lo registra; si no, estimado a precio de API
+  estimatedCostUsd: number;     // la parte estimada de costUsd
+  unpricedTokens: number;       // tokens de modelos sin precio conocido (fuera de costUsd)
+  responses: number;
+}
+interface UsageBucket extends UsageSpend { agentId: string; model: string }
+interface UsageDay { day: string /* YYYY-MM-DD local de la PC */; buckets: UsageBucket[] }
+interface UsageAgentSource { agentId: string; sessions: number; status: 'ok' | 'unreadable'; message?: string }
+interface UsageSummary { days: UsageDay[]; agents: UsageAgentSource[] }
 ```
 
 **`ApprovalRequestBlock`** (forma de un `approval` content block):

@@ -158,7 +158,9 @@ The home screen (`presentation/screens/devices/my_devices_screen.dart`) is the
 `_BrandMark` as the title, a `ProfileAvatarView` action on the right — and its
 heading is `_OverviewHeadline`, a two-row greeting plus a status line that
 simply scrolls away under the pinned bar. Facts come from
-`profileNameProvider`, `trustedDevicesProvider`, `connectedDeviceProvider` and
+`phoneNameProvider` (the name the person gave this phone, the one every PC
+shows — never the device's model name), `trustedDevicesProvider`,
+`connectedDeviceProvider` and
 `memberSinceProvider`; each is dropped rather than faked when absent.
 `memberSinceProvider` reads the metrics **cache** only — `profileMetricsProvider`
 falls back to aggregating the whole local database, which the app's first screen

@@ -29,7 +29,7 @@ Future<void> main() async {
         // has to feed everything that screen reads — otherwise it opens the
         // real drift database and the test ends with pending timers.
         metricsSnapshotsProvider.overrideWith(_EmptyMetrics.new),
-        profileNameProvider.overrideWith(_FixedName.new),
+        phoneNameProvider.overrideWith((ref) => Stream.value('Tester')),
         trustedDevicesProvider.overrideWith((ref) => Stream.value(const [])),
         connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
         connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
@@ -108,10 +108,4 @@ Future<void> main() async {
 class _EmptyMetrics extends MetricsController {
   @override
   Future<Map<String, MetricsSnapshot>> build() async => const {};
-}
-
-/// A profile name that needs no store behind it.
-class _FixedName extends ProfileName {
-  @override
-  String? build() => 'Tester';
 }

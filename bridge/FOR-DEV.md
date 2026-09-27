@@ -336,20 +336,6 @@ push validation (FOR-HUMAN).
 - [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
       transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
       transport so the phone is dropped immediately.
-- [ ] **`agent/usageStats` — Claude Code on a macOS PC.** The reader
-      (`src/usage/usage-reader.ts` `readClaude`) only opens
-      `~/.claude/.credentials.json`; on macOS Claude Code keeps the token in the
-      login Keychain instead, so the phone sees `authRequired` with an honest
-      "open the desktop app" message while the desktop shows live data. The
-      desktop's answer — Security.framework with user interaction disabled on
-      polls + a user-initiated grant — does not port as-is: the bridge's Node
-      binary would need a Keychain grant of its own, and `@napi-rs/keyring`
-      cannot suppress the OS dialog, so a poll could not be kept silent (and the
-      `security` CLI's silent read is exactly the posture the desktop rejected).
-      Resolve by making the **desktop the reader** and serving the phone through
-      the local desktop↔bridge channel (`uxnandesktop/architecture/02e`)
-      rather than a second Keychain client; emit `accessRequired` (already
-      in the contract) when the desktop reports it. Same contract, one reader.
 
 ## Conversation history
 
@@ -397,6 +383,27 @@ push validation (FOR-HUMAN).
       phone shows no context meter for Zero. Read usage from `zero usage` (or Zero's
       on-disk session store) and emit `usage` on `stream/turn/completed` so the meter
       lights up. See the `FOR-DEV:` marker in `zero-adapter.ts`.
+- [ ] **Antigravity spend in `usage/summary`** — every other wired agent's
+      spend is read from the history it keeps (`src/usage/transcript-usage.ts`),
+      but Antigravity's transcript
+      (`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`)
+      records no token counts at all, so it has no row in Settings → Providers
+      or on the phone. Unblocks when `agy` records usage somewhere readable (or
+      exposes it headless — its `/usage` is interactive-only); add a parser
+      beside the others and a location in `usageLocations()`.
+- [ ] **Antigravity as a limits provider (`agent/usageStats`)** — moved here
+      from the desktop, which no longer reads usage itself. Its quota sits
+      behind Google's Code Assist API (`…/v1internal:retrieveUserQuota`,
+      `buckets[]`), but `agy` has no headless surface to ask (its `/usage`,
+      `/quota`, `/credits` are interactive-only) and keeps its OAuth token in the
+      OS keyring under undocumented, version-fragile item names. The way in,
+      consistent with how Claude Code and Codex are read now, is to ask `agy`
+      once it exposes a headless usage request — never to read its keyring.
+      **Do not** fall back to `~/.gemini/oauth_creds.json`: Antigravity bills a
+      separate quota pool, so those numbers would be another product's. Sites:
+      `src/usage/usage-reader.ts` (`readOne`), `shared/src/models/usage.ts`
+      (`UsageProvider`), the desktop's `usageCatalog.ts` and the phone's
+      provider list.
 - [ ] **Interactive `ask_user` for Zero** — Zero's `ask_user` tool is **non-interactive
       over ACP**: Zero's ACP agent (`internal/acp/agent.go`) wires no `OnAskUser` handler,
       so the loop auto-completes the call with "proceed with your best assumption" and

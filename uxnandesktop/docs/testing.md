@@ -161,7 +161,7 @@ must err towards testing.
 generated PowerShell is exercised against a local `pwsh`, which is not the same
 thing as an `sshd` launching it).
 
-The 896 passing unit tests of the app crate (938 with the ignored probes) — plus 18 in
+The 876 passing unit tests of the app crate (918 with the ignored probes) — plus 18 in
 `uxnan-control-protocol` and 14 in `uxnan-cli`, the two workspace crates behind the
 control surface (`docs/control-api.md` → *Verifying*) — cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
@@ -269,7 +269,7 @@ evidence that exists, and the announced level gated to it; see
 (`tests/bundled-pets.test.mjs` — `BUILTIN_PET_IDS` and the packs in
 `static/pets/` are the same set, each manifest's id matches its folder, and
 each sheet divides exactly into the format's 192 × 208 cell; art nobody listed
-ships in every build and is never shown). **1,613 tests** across both
+ships in every build and is never shown). **1,643 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -356,11 +356,15 @@ instead of quietly agreeing with a mock nobody updated.
   still type-checks and renders an empty `<svg>`. Each assertion is about painted
   geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
   it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
-- `ProviderUsageEditor.svelte.test.ts` — the OS credential-store consent flow
-  (`docs/providers.md` → *How Uxnan reaches a token*): an `accessRequired`
-  snapshot renders **Grant access**, clicking it issues `usage_grant_access` for
-  that provider and re-reads usage; the other non-live states never show the
-  button, so the OS dialog can only ever appear because the user asked.
+- `ProviderUsageEditor.svelte.test.ts` — a Codex reset is redeemed through the
+  bridge (`usage/redeemReset`, the soonest-expiring credit, a key per attempt),
+  and no provider state ever offers an OS grant: the bridge asks each CLI
+  itself (`docs/providers.md`).
+- `ProviderSpend.svelte.test.ts` — the spend panel: with the bridge stopped it
+  offers the Bridge window; a priced agent shows its cost and an unpriced one
+  reads *No price* (never $0); clicking an agent in the legend focuses the
+  chart, headline and models on it, and clicking again returns to every agent;
+  the tokens measure. `usageSpend.test.ts` covers the view data under it.
 
 - `state/pets.svelte.test.ts` — the library the Pets screen renders: every
   bundled pet loads (they are static assets, faked at `fetch`, not a command),

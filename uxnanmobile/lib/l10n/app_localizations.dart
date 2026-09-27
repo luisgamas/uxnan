@@ -788,12 +788,6 @@ abstract class AppLocalizations {
   /// **'Models'**
   String get statModelsUsed;
 
-  /// No description provided for @profileStatsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Statistics'**
-  String get profileStatsTitle;
-
   /// No description provided for @profileStatsRefreshAction.
   ///
   /// In en, this message translates to:
@@ -872,12 +866,6 @@ abstract class AppLocalizations {
   /// **'Profile actions'**
   String get profileMenuTooltip;
 
-  /// No description provided for @profileEditTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit profile'**
-  String get profileEditTitle;
-
   /// No description provided for @profileChoosePhoto.
   ///
   /// In en, this message translates to:
@@ -889,18 +877,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Or pick an icon'**
   String get profilePickIcon;
-
-  /// No description provided for @profileNameLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Name'**
-  String get profileNameLabel;
-
-  /// No description provided for @profileNameHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Your name'**
-  String get profileNameHint;
 
   /// No description provided for @profileAgentConversationsLabel.
   ///
@@ -1010,71 +986,11 @@ abstract class AppLocalizations {
   /// **'Couldn\'t import this file. It may be from another PC or have been modified.'**
   String get profileBackupImportFailed;
 
-  /// No description provided for @statTotalTokens.
-  ///
-  /// In en, this message translates to:
-  /// **'Total tokens'**
-  String get statTotalTokens;
-
   /// No description provided for @profileAgentScopeAll.
   ///
   /// In en, this message translates to:
   /// **'All time'**
   String get profileAgentScopeAll;
-
-  /// No description provided for @profileLensActivity.
-  ///
-  /// In en, this message translates to:
-  /// **'Activity'**
-  String get profileLensActivity;
-
-  /// No description provided for @profileLensTokens.
-  ///
-  /// In en, this message translates to:
-  /// **'Tokens'**
-  String get profileLensTokens;
-
-  /// No description provided for @profileTokensImprecise.
-  ///
-  /// In en, this message translates to:
-  /// **'Some CLIs don\'t report their full token usage, so these token figures can be imprecise.'**
-  String get profileTokensImprecise;
-
-  /// Tokens-lens heatmap caption for the whole year (tokens pre-formatted).
-  ///
-  /// In en, this message translates to:
-  /// **'{tokens} tokens · {activeDays} active days'**
-  String profileHeatmapTokensSummary(String tokens, int activeDays);
-
-  /// Tokens-lens heatmap caption for a single tapped day (tokens pre-formatted).
-  ///
-  /// In en, this message translates to:
-  /// **'{date} · {tokens} tokens'**
-  String profileHeatmapTokensDay(String date, String tokens);
-
-  /// No description provided for @profileAgentConvLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Conversations'**
-  String get profileAgentConvLabel;
-
-  /// No description provided for @profileAgentMsgLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Messages'**
-  String get profileAgentMsgLabel;
-
-  /// No description provided for @profileAgentTokLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Tokens'**
-  String get profileAgentTokLabel;
-
-  /// No description provided for @profileUsageTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Usage & credit'**
-  String get profileUsageTitle;
 
   /// No description provided for @usageNotSignedIn.
   ///
@@ -1105,12 +1021,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resets in {days}d at {time}'**
   String usageResetsInDays(int days, String time);
-
-  /// No description provided for @usageRefreshAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Refresh usage'**
-  String get usageRefreshAction;
 
   /// No description provided for @usageNoData.
   ///
@@ -2780,11 +2690,17 @@ abstract class AppLocalizations {
   /// **'Agent responding…'**
   String get conversationAgentResponding;
 
-  /// Run-option value meaning 'leave the agent's default' (no explicit choice).
+  /// Run-option value meaning 'send nothing: the agent's own default applies' — offered only when the agent names no default.
   ///
   /// In en, this message translates to:
-  /// **'Auto'**
-  String get runOptionAuto;
+  /// **'Default'**
+  String get runOptionModelDefault;
+
+  /// Tag beside the run-option level the model runs at when nobody picks one.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get runOptionDefaultTag;
 
   /// Banner title shown when the active thread's agent is not logged in on the PC.
   ///
@@ -5479,6 +5395,300 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t load the licenses.'**
   String get licensesError;
+
+  /// Profile: title of the spend section.
+  ///
+  /// In en, this message translates to:
+  /// **'What your agents spent'**
+  String get spendTitle;
+
+  /// Spend period option.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{1 day} other{{days} days}}'**
+  String spendPeriodDays(int days);
+
+  /// Spend measure: dollars.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost'**
+  String get spendMetricCost;
+
+  /// Spend measure: tokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get spendMetricTokens;
+
+  /// Spend: loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading your agents\' history…'**
+  String get spendReading;
+
+  /// Spend: nothing known yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to a PC to see what its agents spent — its bridge reads every session they recorded, chats and terminal alike.'**
+  String get spendNoData;
+
+  /// Spend: empty period.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing spent in this period.'**
+  String get spendEmpty;
+
+  /// Spend chart, for screen readers.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend per day, stacked by agent'**
+  String get spendChartLabel;
+
+  /// Spend headline caption for an agent without prices.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens — no known price'**
+  String get spendTokensNoPrice;
+
+  /// Spend headline caption.
+  ///
+  /// In en, this message translates to:
+  /// **'Billed plus estimated at API prices'**
+  String get spendCostEstimated;
+
+  /// Spend headline caption.
+  ///
+  /// In en, this message translates to:
+  /// **'As billed by the providers'**
+  String get spendCostBilled;
+
+  /// Spend headline caption in tokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens read and written'**
+  String get spendTokensTotal;
+
+  /// Model responses counted; formatted is the count with grouping.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 response} other{{formatted} responses}}'**
+  String spendResponses(int count, String formatted);
+
+  /// A token total beside the cost.
+  ///
+  /// In en, this message translates to:
+  /// **'{tokens} tokens'**
+  String spendTokensInline(String tokens);
+
+  /// Share of tokens read from the cache.
+  ///
+  /// In en, this message translates to:
+  /// **'{pct}% from cache'**
+  String spendCachedShare(int pct);
+
+  /// Tokens left out of the cost.
+  ///
+  /// In en, this message translates to:
+  /// **'{tokens} tokens with no known price'**
+  String spendUnpriced(String tokens);
+
+  /// Spend: a day with no spend.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing that day'**
+  String get spendNothingThatDay;
+
+  /// Spend: a day's total.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get spendDayTotal;
+
+  /// Spend: no known price.
+  ///
+  /// In en, this message translates to:
+  /// **'No price'**
+  String get spendNoPrice;
+
+  /// Spend: models list title.
+  ///
+  /// In en, this message translates to:
+  /// **'Top models'**
+  String get spendTopModels;
+
+  /// Spend: how cost is estimated.
+  ///
+  /// In en, this message translates to:
+  /// **'Where a CLI does not record what was billed, cost is estimated at the provider\'s public API prices; a subscription plan pays a flat fee instead.'**
+  String get spendEstimateNote;
+
+  /// An agent's activity figures in the ranking.
+  ///
+  /// In en, this message translates to:
+  /// **'{conversations} chats · {messages} messages'**
+  String profileAgentFigures(String conversations, String messages);
+
+  /// Title of the sheet that changes the profile picture.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile picture'**
+  String get profileAvatarTitle;
+
+  /// Profile: the list of paired PCs.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PCs'**
+  String get profilePcsTitle;
+
+  /// Profile PC row: this PC is connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected now'**
+  String get profilePcOnline;
+
+  /// Profile PC row: what its agents spent in 30 days.
+  ///
+  /// In en, this message translates to:
+  /// **'{amount} in 30 days'**
+  String profilePcSpent30(String amount);
+
+  /// Profile: the plan limits section title.
+  ///
+  /// In en, this message translates to:
+  /// **'Plan limits'**
+  String get usageLimitsTitle;
+
+  /// Plan limits: which PC answered.
+  ///
+  /// In en, this message translates to:
+  /// **'As {pc} reads them now'**
+  String usageLimitsFrom(String pc);
+
+  /// A live provider without windows (billed by spend).
+  ///
+  /// In en, this message translates to:
+  /// **'This account reports no limit window.'**
+  String get usageNoWindow;
+
+  /// Plan limits: the current pace stays under the limit.
+  ///
+  /// In en, this message translates to:
+  /// **'On pace'**
+  String get usagePaceOk;
+
+  /// Plan limits: the current pace reaches the limit before the reset.
+  ///
+  /// In en, this message translates to:
+  /// **'At this pace you hit the limit in {duration}'**
+  String usagePaceRunsOut(String duration);
+
+  /// Codex rate-limit resets available.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 reset available} other{{count} resets available}}'**
+  String usageResetsAvailable(int count);
+
+  /// When the soonest reset expires.
+  ///
+  /// In en, this message translates to:
+  /// **'next expires {date}'**
+  String usageResetExpires(String date);
+
+  /// Redeem a rate-limit reset.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem'**
+  String get usageRedeemAction;
+
+  /// Confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem a reset?'**
+  String get usageRedeemTitle;
+
+  /// Confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'{remaining, plural, =0{Your limit goes back to zero now. It is your last reset.} =1{Your limit goes back to zero now. 1 reset will be left.} other{Your limit goes back to zero now. {remaining} resets will be left.}}'**
+  String usageRedeemBody(int remaining);
+
+  /// Account type.
+  ///
+  /// In en, this message translates to:
+  /// **'Subscription'**
+  String get usageAccountSubscription;
+
+  /// Account type.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay as you go'**
+  String get usageAccountPayAsYouGo;
+
+  /// Account type.
+  ///
+  /// In en, this message translates to:
+  /// **'Free'**
+  String get usageAccountFree;
+
+  /// Account type.
+  ///
+  /// In en, this message translates to:
+  /// **'Team'**
+  String get usageAccountTeam;
+
+  /// Account type.
+  ///
+  /// In en, this message translates to:
+  /// **'Enterprise'**
+  String get usageAccountEnterprise;
+
+  /// Which of several questions is on screen.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} of {total}'**
+  String questionStep(int n, int total);
+
+  /// Move to the next question.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get questionNext;
+
+  /// Move to the previous question (tooltip).
+  ///
+  /// In en, this message translates to:
+  /// **'Previous question'**
+  String get questionBack;
+
+  /// Queued message: send it now instead of waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Send now'**
+  String get queuedMessageSendNow;
+
+  /// Composer + menu: attach any file.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get composerAttachFile;
+
+  /// Too many files.
+  ///
+  /// In en, this message translates to:
+  /// **'A message carries up to {count} files.'**
+  String composerFilesLimit(int count);
+
+  /// Picked files over the size limit.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{A file was left out: larger than 20 MB.} other{{count} files were left out: larger than 20 MB.}}'**
+  String composerFileTooLarge(int count);
+
+  /// The composer's plan chip: a plan window's used share.
+  ///
+  /// In en, this message translates to:
+  /// **'{plan} · {window} {percent}% used'**
+  String composerPlanLine(String plan, String window, int percent);
 }
 
 class _AppLocalizationsDelegate

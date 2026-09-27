@@ -555,7 +555,7 @@ function isSameSend(turn: Turn, send: PendingSend): boolean {
   return userText(turn) === send.text && userAttachments(turn).length === images;
 }
 
-/** The images the user attached to [turn]'s message. */
+/** The images and files the user attached to [turn]'s message. */
 export function userAttachments(turn: Turn | undefined): MessageAttachment[] {
   const attachments = turn?.messages.find((m) => m.role === 'user')?.attachments;
   return Array.isArray(attachments) ? attachments : [];

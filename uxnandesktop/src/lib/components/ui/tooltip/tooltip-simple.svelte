@@ -34,7 +34,7 @@
 			{@render children(props)}
 		{/snippet}
 	</TooltipPrimitive.Trigger>
-	<TooltipContent {side} {sideOffset}>
+	<TooltipContent {side} {sideOffset} class="whitespace-pre-line">
 		{title}
 	</TooltipContent>
 </TooltipPrimitive.Root>

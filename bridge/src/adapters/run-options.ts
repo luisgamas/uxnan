@@ -41,6 +41,8 @@ export function reasoningOption(
 /** Friendly label for a known reasoning-effort level (else Title-cased). */
 export function effortLabel(value: string): string {
   const known: Record<string, string> = {
+    none: 'None',
+    off: 'Off',
     minimal: 'Minimal',
     low: 'Low',
     medium: 'Medium',

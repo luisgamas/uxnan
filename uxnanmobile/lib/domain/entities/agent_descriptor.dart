@@ -13,6 +13,7 @@ class AgentCapabilities extends Equatable {
     this.reportsCompaction = false,
     this.autonomous = false,
     this.commands = false,
+    this.steering = false,
   });
 
   /// All-permissive capabilities: a safe default for capability-gated UI when
@@ -27,7 +28,8 @@ class AgentCapabilities extends Equatable {
         reportsContextUsage = true,
         reportsCompaction = true,
         autonomous = true,
-        commands = true;
+        commands = true,
+        steering = true;
 
   /// Reconstructs capabilities from a JSON map (tolerant).
   factory AgentCapabilities.fromJson(Map<String, dynamic> json) =>
@@ -41,6 +43,7 @@ class AgentCapabilities extends Equatable {
         reportsCompaction: json['reportsCompaction'] == true,
         autonomous: json['autonomous'] == true,
         commands: json['commands'] == true,
+        steering: json['steering'] == true,
       );
 
   /// Whether the agent supports a planning mode.
@@ -75,8 +78,14 @@ class AgentCapabilities extends Equatable {
   /// via `agent/commands` and offer in the composer's `/` palette.
   final bool commands;
 
+  /// Whether the agent takes a message while it works: a follow-up joins the
+  /// running turn instead of waiting for it (`capabilities.steering`), and a
+  /// queued one can be sent into it now.
+  final bool steering;
+
   @override
   List<Object?> get props => [
+        steering,
         planMode,
         streaming,
         approvals,

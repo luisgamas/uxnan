@@ -6,6 +6,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The effort control names the level that really runs.** Untouched, it shows
+  the model's default (the bridge sends it) instead of "Auto", and marks it in
+  the menu; "Default" is offered only for an agent that names none.
+- **The profile, redesigned.** It opens on who you are — the picture and the
+  one name — then **what your agents spent**: every model response the agents
+  on your PCs recorded, chats and terminal sessions alike, over 7, 30 or 90
+  days, in cost or tokens, as a column per day stacked by agent (touch a day
+  for its figures), each agent's share (touch one to focus everything on it)
+  and the top models. Across every PC, and per PC on its own screen; a PC that
+  is off still counts from what it last reported. Cost is what the provider
+  billed where the CLI records it, else an estimate at API prices (said so); a
+  model with no known price reads *No price*, never $0.
+- **Plan limits show the pace.** Each window marks where it stands in time and
+  warns when the pace so far reaches the limit before it resets; the account
+  type shows beside the plan, and Codex's resets can be redeemed from the
+  phone, as on the desktop. Claude's limits now arrive from a Mac too (the
+  bridge asks Claude Code itself).
+- **Activity reads at a glance.** Each figure keeps its own small container,
+  conversations and messages first and larger, and the agents are ranked on
+  one bar each; the
+  tokens lens is gone — tokens are the spend section's now, counted from every
+  session instead of only the phone's turns. The profile lists your PCs, each
+  opening its own stats, and one refresh in the bar updates everything.
+- **Attach any file.** The "+" menu has *File* for every agent (photos stay
+  for agents that take images): up to 20 MB each, sent by its name, shown as a
+  chip in the composer and in the message.
+- **Send a queued message now.** A waiting message has a send-now action:
+  into the running turn for an agent that takes a message while it works, or
+  as the next turn at once when nothing runs; a refusal says why.
+- **The plan beside the context.** For Claude, Codex and Grok the composer's
+  info row shows the plan's most pressing window as a small chip — its used
+  share, red when the pace so far hits the limit before the reset; a tap says
+  which window, when it resets and when the pace runs out.
+- **Questions one at a time.** When the agent asks several questions they
+  come one at a time (*1 of 3*, back and Next), and a single choice moves on
+  by itself; the answered card still shows every answer.
+- **One name.** The phone's name — the one every paired PC shows, renamed from
+  the profile header — is the name the app greets you by; the separate profile
+  name is gone (the picture stays). The development echo agent is never
+  counted.
+
 ## [0.0.27-alpha.20260927+20260929] - 20260927
 ### Added
 

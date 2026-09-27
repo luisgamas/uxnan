@@ -26,6 +26,9 @@ import { MetricsStore, type MetricsEvents } from './metrics-store.js';
 import { MetricsSealError, openMetrics, sealMetrics } from './metrics-seal.js';
 import { utcDayKey } from './day.js';
 
+/** The bridge's development echo agent, never counted as activity. */
+const DEV_AGENT_ID = 'echo';
+
 const SNAPSHOT_VERSION = 1;
 /** Keychain entry holding the 32-byte metrics sealing key (hex). */
 const SEAL_KEY_STORE_KEY = 'metrics-seal-key';
@@ -92,7 +95,14 @@ export class MetricsService {
   async getSnapshot(): Promise<MetricsSnapshot> {
     // Repairs any best-effort incremental capture that failed transiently.
     await this.#threadStore.captureAllMetrics();
-    const events = await this.#store.readEvents();
+    const recorded = await this.#store.readEvents();
+    // The development echo agent is not a person's work: its conversations
+    // and turns are left out of every figure (the clients hide it too).
+    const events = {
+      ...recorded,
+      conversations: recorded.conversations.filter((c) => c.agentId !== DEV_AGENT_ID),
+      turns: recorded.turns.filter((t) => t.agentId !== DEV_AGENT_ID),
+    };
     const now = this.#now();
 
     let totalConnectedMs = 0;
@@ -114,7 +124,7 @@ export class MetricsService {
     const byAgentCounts = new Map<string, number>();
     let memberSince: number | undefined;
 
-    type AgentDay = { conversations: number; messages: number; tokens: number };
+    type AgentDay = { conversations: number; messages: number };
     const byAgentDay = new Map<number, Map<string, AgentDay>>();
     const agentDay = (day: number, agentId: string): AgentDay => {
       let agentsForDay = byAgentDay.get(day);
@@ -124,7 +134,7 @@ export class MetricsService {
       }
       let entry = agentsForDay.get(agentId);
       if (!entry) {
-        entry = { conversations: 0, messages: 0, tokens: 0 };
+        entry = { conversations: 0, messages: 0 };
         agentsForDay.set(agentId, entry);
       }
       return entry;
@@ -168,9 +178,6 @@ export class MetricsService {
         if (turn.agentId !== undefined) {
           agentDay(bucket.day, turn.agentId).messages += bucket.messages;
         }
-      }
-      if (turn.tokens > 0 && turn.agentId !== undefined) {
-        agentDay(turn.tokenDay, turn.agentId).tokens += turn.tokens;
       }
     }
     for (const action of events.gitActions) {
@@ -333,8 +340,6 @@ function isTurnMetricEvent(v: unknown): v is MetricsEvents['turns'][number] {
       const bucket = entry as Record<string, unknown> | null;
       return !!bucket && isFiniteNumber(bucket['day']) && isNonNegativeInteger(bucket['messages']);
     }) &&
-    isNonNegativeInteger(event['tokens']) &&
-    isFiniteNumber(event['tokenDay']) &&
     isFiniteNumber(event['updatedAt'])
   );
 }

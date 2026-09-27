@@ -18,6 +18,7 @@ import { chat } from "$lib/bridge/chat.svelte";
 import type { Turn } from "$shared/models/thread";
 import ChatActivity from "./ChatActivity.svelte";
 import ChatBlock from "./ChatBlock.svelte";
+import ChatRequest from "./ChatRequest.svelte";
 import ChatBridgeGate from "./ChatBridgeGate.svelte";
 import ChatTurnView from "./ChatTurnView.svelte";
 import ChatWorkGroup from "./ChatWorkGroup.svelte";
@@ -86,6 +87,67 @@ describe("ChatBlock", () => {
       method: "turn/send",
       params: { threadId: "t1", questionResponse: { questionId: "q-1", answers: [["Postgres"]] } },
     });
+  });
+
+  it("asks several questions one at a time, and 1–9 pick an option", async () => {
+    const c = conversation();
+    const { screen, backend, user } = mount(ChatRequest, {
+      props: {
+        block: {
+          type: "question",
+          questionId: "q-2",
+          questions: [
+            { question: "Which database?", options: [{ label: "SQLite" }, { label: "Postgres" }] },
+            { question: "Add tests?", options: [{ label: "Yes" }, { label: "No" }] },
+          ],
+        },
+        threadId: "t1",
+        conversation: c,
+        keys: true,
+      },
+      commands: { bridge_call: () => ({ turnId: "" }) },
+    });
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+    expect(screen.queryByText("Add tests?")).toBeNull();
+    // A single choice answers its question and moves on.
+    await user.keyboard("2");
+    await until(() => screen.queryByText("Add tests?") !== null);
+    expect(screen.getByText("2 of 2")).toBeTruthy();
+    // Back shows the first answer still picked.
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("button", { name: /Postgres/ }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.keyboard("1");
+    await user.click(screen.getByRole("button", { name: "Answer" }));
+    await until(() => backend.called("bridge_call"));
+    expect(backend.lastCallTo("bridge_call")?.args).toEqual({
+      method: "turn/send",
+      params: {
+        threadId: "t1",
+        questionResponse: { questionId: "q-2", answers: [["Postgres"], ["Yes"]] },
+      },
+    });
+  });
+
+  it("never takes a number typed in a field", async () => {
+    const { screen, user } = mount(ChatRequest, {
+      props: {
+        block: {
+          type: "question",
+          questionId: "q-3",
+          questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }],
+        },
+        threadId: "t1",
+        conversation: conversation(),
+        keys: true,
+      },
+    });
+    const field = document.createElement("textarea");
+    document.body.appendChild(field);
+    field.focus();
+    await user.keyboard("2");
+    expect(screen.getByRole("button", { name: /B/ }).getAttribute("aria-pressed")).toBe("false");
+    field.remove();
   });
 
   it("never offers to answer an approval whose turn already ended", () => {

@@ -137,7 +137,7 @@ describe("UsageStatusButton focus lifecycle", () => {
 
 	it("transfers one outside pointer click into an xterm-like target", async () => {
 		const { screen, user } = mountWithProviders(UsageStatusButton, {
-			commands: { usage_read: () => [] },
+			commands: { bridge_call: () => ({ usage: [] }) },
 		});
 		const trigger = screen.getByRole("button", { name: /ai provider usage/i });
 		const target = xtermTarget();
@@ -158,7 +158,7 @@ describe("UsageStatusButton focus lifecycle", () => {
 
   it("restores the trigger when Escape closes from an inner control", async () => {
     const { screen, user } = mountWithProviders(UsageStatusButton, {
-      commands: { usage_read: () => [] },
+      commands: { bridge_call: () => ({ usage: [] }) },
     });
     const trigger = screen.getByRole("button", { name: /ai provider usage/i });
     await user.click(trigger);
@@ -173,7 +173,7 @@ describe("UsageStatusButton focus lifecycle", () => {
 
   it("keeps focus from restoring to the trigger when navigating to providers", async () => {
     const { screen, user } = mountWithProviders(UsageStatusButton, {
-      commands: { usage_read: () => [] },
+      commands: { bridge_call: () => ({ usage: [] }) },
     });
     const trigger = screen.getByRole("button", { name: /ai provider usage/i });
     await user.click(trigger);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupModels, modelName, modelProvider, optionSummary } from "./models";
+import { groupModels, modelName, modelProvider } from "./models";
 
 describe("model presentation", () => {
   it("splits provider and model name", () => {
@@ -24,23 +24,5 @@ describe("model presentation", () => {
       ["openai", ["openai/gpt-6", "openai/gpt-6-mini"]],
       ["anthropic", ["anthropic/opus"]],
     ]);
-  });
-
-  it("summarizes the chosen run options, falling back to defaults", () => {
-    const options = [
-      {
-        key: "reasoning",
-        kind: "enum" as const,
-        label: "Reasoning",
-        values: [
-          { value: "low", label: "Low" },
-          { value: "high", label: "High" },
-        ],
-        default: "low",
-      },
-      { key: "fast", kind: "toggle" as const, label: "Fast" },
-    ];
-    expect(optionSummary(options, {})).toEqual(["Low"]);
-    expect(optionSummary(options, { reasoning: "high", fast: true })).toEqual(["High", "Fast"]);
   });
 });

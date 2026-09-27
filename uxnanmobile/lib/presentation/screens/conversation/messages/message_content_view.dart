@@ -29,6 +29,7 @@ import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/file_chip.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
@@ -75,6 +76,7 @@ class MessageContentView extends StatelessWidget {
       final SystemContent c => _SystemBanner(content: c),
       final DiffContent c => _DiffBlock(content: c),
       final ImageContent c => _ImageBlock(content: c),
+      final AttachedFileContent c => FileChip(file: c),
       final ToolUseContent c =>
         _Placeholder(icon: UxIcons.build, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>
@@ -509,6 +511,9 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
   /// order the user chose.
   late List<Set<String>> _selected;
 
+  /// The question on screen: several are asked one at a time.
+  int _step = 0;
+
   List<QuestionItem> get _questions => widget.content.request.questions;
 
   @override
@@ -523,6 +528,7 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
     // Re-sync the selection buffer if the question set is swapped under us.
     if (_questions.length != _selected.length) {
       _selected = List.generate(_questions.length, (_) => <String>{});
+      _step = 0;
     }
   }
 
@@ -564,8 +570,15 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
       return answers[i];
     }
 
+    // Several questions are asked one at a time while they can be answered;
+    // once settled, every answer shows at once.
+    final stepping = interactive && questions.length > 1;
+    final step = _step.clamp(0, questions.isEmpty ? 0 : questions.length - 1);
+    final onLast = !stepping || step == questions.length - 1;
+
     void toggle(int qIndex, String label) {
       if (!interactive) return;
+      final single = !questions[qIndex].multiple;
       setState(() {
         final selection = _selected[qIndex];
         if (questions[qIndex].multiple) {
@@ -578,6 +591,13 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
             ..add(label);
         }
       });
+      // A single choice answers its question: on to the next one, after a
+      // beat so the pick is seen.
+      if (stepping && single && qIndex == step && !onLast) {
+        Future<void>.delayed(const Duration(milliseconds: 260), () {
+          if (mounted && _step == qIndex) setState(() => _step = qIndex + 1);
+        });
+      }
     }
 
     void submit() {
@@ -627,20 +647,29 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
                   style: textTheme.labelMedium,
                 ),
                 const Spacer(),
-                if (questions.length > 1) _CountBadge(count: questions.length),
+                if (stepping)
+                  Text(
+                    l10n.questionStep(step + 1, questions.length),
+                    style: textTheme.labelMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  )
+                else if (questions.length > 1)
+                  _CountBadge(count: questions.length),
               ],
             ),
-            for (var i = 0; i < questions.length; i++) ...[
-              const SizedBox(height: UxnanSpacing.md),
-              _QuestionBlock(
-                question: questions[i],
-                selected: _selected[i],
-                resolved: resolved,
-                chosen: chosenFor(i),
-                enabled: interactive,
-                onToggle: (label) => toggle(i, label),
-              ),
-            ],
+            for (var i = 0; i < questions.length; i++)
+              if (!stepping || i == step) ...[
+                const SizedBox(height: UxnanSpacing.md),
+                _QuestionBlock(
+                  question: questions[i],
+                  selected: _selected[i],
+                  resolved: resolved,
+                  chosen: chosenFor(i),
+                  enabled: interactive,
+                  onToggle: (label) => toggle(i, label),
+                ),
+              ],
             const SizedBox(height: UxnanSpacing.sm),
             AnimatedSize(
               duration: const Duration(milliseconds: 220),
@@ -655,6 +684,13 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
                       enabled: canRespond,
                       onSubmit: submit,
                       onSkip: skip,
+                      onNext: onLast
+                          ? null
+                          : () => setState(() => _step = step + 1),
+                      canNext: questions.isNotEmpty && _satisfied(step),
+                      onBack: stepping && step > 0
+                          ? () => setState(() => _step = step - 1)
+                          : null,
                     ),
             ),
           ],
@@ -901,7 +937,19 @@ class _QuestionActions extends StatelessWidget {
     required this.enabled,
     required this.onSubmit,
     required this.onSkip,
+    this.onNext,
+    this.canNext = false,
+    this.onBack,
   });
+
+  /// Moves to the next question; null on the last one (Submit shows instead).
+  final VoidCallback? onNext;
+
+  /// Whether the question on screen is answered enough to move on.
+  final bool canNext;
+
+  /// Moves to the previous question; null on the first one.
+  final VoidCallback? onBack;
 
   final bool canSubmit;
   final bool sending;
@@ -937,6 +985,14 @@ class _QuestionActions extends StatelessWidget {
         ],
         Row(
           children: [
+            if (onBack != null) ...[
+              IconButton(
+                tooltip: l10n.questionBack,
+                onPressed: acting ? onBack : null,
+                icon: const UxIcon(UxIcons.chevronLeft),
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+            ],
             Expanded(
               child: OutlinedButton(
                 onPressed: acting ? onSkip : null,
@@ -945,12 +1001,17 @@ class _QuestionActions extends StatelessWidget {
             ),
             const SizedBox(width: UxnanSpacing.sm),
             Expanded(
-              child: FilledButton(
-                onPressed: acting && canSubmit ? onSubmit : null,
-                child: sending
-                    ? const PolygonLoader(size: 16)
-                    : Text(l10n.questionSubmit),
-              ),
+              child: onNext != null
+                  ? FilledButton.tonal(
+                      onPressed: acting && canNext ? onNext : null,
+                      child: Text(l10n.questionNext),
+                    )
+                  : FilledButton(
+                      onPressed: acting && canSubmit ? onSubmit : null,
+                      child: sending
+                          ? const PolygonLoader(size: 16)
+                          : Text(l10n.questionSubmit),
+                    ),
             ),
           ],
         ),

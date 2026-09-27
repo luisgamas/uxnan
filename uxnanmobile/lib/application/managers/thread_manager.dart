@@ -611,7 +611,7 @@ class ThreadManager {
 
   /// The user's message in a wire turn — its text and the images the bridge
   /// keeps with it — when it has either.
-  static ({String text, List<ImageContent> images, Object? createdAt})?
+  static ({String text, List<MessageContent> images, Object? createdAt})?
       _userMessageOf(Map<String, dynamic> turn) {
     final messages = turn['messages'];
     if (messages is! List) return null;
@@ -627,9 +627,10 @@ class ThreadManager {
     return null;
   }
 
-  /// The images a wire user message carries (`Message.attachments`), as
-  /// references to fetch with `turn/attachment` when they are shown.
-  static List<ImageContent> _attachmentsOf(Map<dynamic, dynamic> message) {
+  /// The images and files a wire user message carries
+  /// (`Message.attachments`), as references to fetch with `turn/attachment`
+  /// when they are shown. A named one, or one that is not an image, is a file.
+  static List<MessageContent> _attachmentsOf(Map<dynamic, dynamic> message) {
     final raw = message['attachments'];
     if (raw is! List) return const [];
     return [
@@ -637,21 +638,36 @@ class ThreadManager {
         if (entry is Map &&
             entry['id'] is String &&
             (entry['id'] as String).isNotEmpty)
-          ImageContent(
-            mimeType: entry['mimeType'] is String
-                ? entry['mimeType'] as String
-                : 'application/octet-stream',
-            attachmentId: entry['id'] as String,
-            width: entry['width'] is int ? entry['width'] as int : null,
-            height: entry['height'] is int ? entry['height'] as int : null,
-          ),
+          _attachmentOf(entry),
     ];
   }
 
-  /// A user message's contents: its images, then its text when it has any.
+  static MessageContent _attachmentOf(Map<dynamic, dynamic> entry) {
+    final mimeType = entry['mimeType'] is String
+        ? entry['mimeType'] as String
+        : 'application/octet-stream';
+    final name = entry['name'] is String ? entry['name'] as String : null;
+    if (name != null || !mimeType.startsWith('image/')) {
+      return AttachedFileContent(
+        name: name ?? entry['id'] as String,
+        mimeType: mimeType,
+        bytes: (entry['bytes'] as num?)?.toInt() ?? 0,
+        attachmentId: entry['id'] as String,
+      );
+    }
+    return ImageContent(
+      mimeType: mimeType,
+      attachmentId: entry['id'] as String,
+      width: entry['width'] is int ? entry['width'] as int : null,
+      height: entry['height'] is int ? entry['height'] as int : null,
+    );
+  }
+
+  /// A user message's contents: its images and files, then its text when it
+  /// has any.
   static List<MessageContent> _userContents(
     String text,
-    List<ImageContent> images,
+    List<MessageContent> images,
   ) =>
       [...images, if (text.isNotEmpty) TextContent(text)];
 
@@ -1568,16 +1584,21 @@ class ThreadManager {
   }
 
   /// Saves a user [text] message locally and sends it to the active turn.
-  /// [attachments] are inline images (base64) picked in the composer; they are
-  /// echoed in the local message and ride on `turn/send`.
+  /// [attachments] are inline images (base64) picked in the composer and
+  /// [files] any other files; they are echoed in the local message and ride
+  /// on `turn/send`.
   Future<void> sendUserMessage(
     String threadId,
     String text, {
     Map<String, Object>? options,
     List<ImageContent>? attachments,
+    List<AttachedFileContent>? files,
     ({String name, String? args})? command,
   }) async {
-    final images = attachments ?? const <ImageContent>[];
+    final images = <MessageContent>[
+      ...?attachments,
+      ...?files,
+    ];
     final contents = <MessageContent>[
       if (text.isNotEmpty) TextContent(text),
       ...images,
@@ -1711,17 +1732,29 @@ class ThreadManager {
     await _queueControl(threadId, 'queue/clear');
   }
 
+  /// Sends the queued [turnId] now (`queue/sendNow`): into the running turn
+  /// when the agent takes a message while it works, else as the next turn at
+  /// once. Returns the bridge's reason when it refused (the message stays
+  /// queued), or null.
+  Future<String?> sendQueuedNow(String threadId, String turnId) =>
+      _queueControl(threadId, 'queue/sendNow', {'turnId': turnId});
+
   /// Sends a `queue/*` control call and applies the state it returns, so the UI
-  /// settles even if the broadcast notification is slow or lost.
-  Future<void> _queueControl(String threadId, String method) async {
+  /// settles even if the broadcast notification is slow or lost. Returns why
+  /// the bridge refused, or null.
+  Future<String?> _queueControl(
+    String threadId,
+    String method, [
+    Map<String, dynamic> extra = const {},
+  ]) async {
     try {
-      final res = await _sendRequest(method, {'threadId': threadId});
+      final res = await _sendRequest(method, {'threadId': threadId, ...extra});
       if (res.error != null) {
         AppLogger.warn('$method rejected: ${res.error!.message}');
-        return;
+        return res.error!.message;
       }
       final result = res.result;
-      if (result is! Map) return;
+      if (result is! Map) return null;
       _setQueue(
         threadId,
         ThreadQueueState(
@@ -1732,8 +1765,10 @@ class ThreadManager {
               : null,
         ),
       );
+      return null;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('$method failed', error, stackTrace);
+      return error.toString();
     }
   }
 

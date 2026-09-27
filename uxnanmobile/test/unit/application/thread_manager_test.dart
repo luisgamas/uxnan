@@ -1586,6 +1586,87 @@ void main() {
     expect(user.contents.whereType<TextContent>().single.text, 'look');
   });
 
+  test('sendUserMessage sends a file by its name, beside the images', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    await manager.sendUserMessage(
+      'th1',
+      'read it',
+      files: const [
+        AttachedFileContent(
+          name: 'people.csv',
+          mimeType: 'text/csv',
+          bytes: 5,
+          base64Data: 'aWQKMQo=',
+        ),
+      ],
+    );
+    await _settle();
+
+    expect(turnSendParams?['attachments'], [
+      {
+        'type': 'file',
+        'name': 'people.csv',
+        'mimeType': 'text/csv',
+        'bytes': 5,
+        'base64Data': 'aWQKMQo=',
+      },
+    ]);
+    final user = (await messageRepo.getMessages('th1'))
+        .firstWhere((m) => m.role == MessageRole.user);
+    expect(
+      user.contents.whereType<AttachedFileContent>().single.name,
+      'people.csv',
+    );
+  });
+
+  test('a named attachment in history is a file', () async {
+    await seedThread();
+    turnListResult = {
+      'turns': [
+        {
+          'id': 't-file',
+          'seq': 1,
+          'status': 'completed',
+          'messages': [
+            {
+              'role': 'user',
+              'content': 'see',
+              'attachments': [
+                {
+                  'id': 't-file-0.csv',
+                  'mimeType': 'text/csv',
+                  'bytes': 5,
+                  'name': 'people.csv',
+                },
+              ],
+              'createdAt': 1000,
+            },
+            {'role': 'assistant', 'content': 'ok', 'createdAt': 1001},
+          ],
+        },
+      ],
+      'total': 1,
+    };
+    await manager.selectThread('th1');
+    await _settle();
+    await manager.resyncActive();
+    await _settle();
+
+    final user = (await messageRepo.getMessages('th1'))
+        .firstWhere((m) => m.role == MessageRole.user);
+    expect(
+      user.contents.whereType<AttachedFileContent>().single,
+      const AttachedFileContent(
+        name: 'people.csv',
+        mimeType: 'text/csv',
+        bytes: 5,
+        attachmentId: 't-file-0.csv',
+      ),
+    );
+  });
+
   test('sendUserMessage allows an image-only message (empty text)', () async {
     await manager.selectThread('th1');
     await _settle();

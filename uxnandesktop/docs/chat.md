@@ -228,19 +228,31 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 short) — followed by a card of the **files the turn changed** (+/− per file; a
   click opens the file). *Thinking* folds away. Scrolling to the top loads older
   turns.
-- **Messages**: hovering one shows when it was sent and a copy button. The
+- **Where you were**: coming back to a conversation read earlier in the session
+  (another tab, another chat) opens it where you left it; one left at its end,
+  or not read yet, opens at the end (`src/lib/bridge/readingPosition.ts`,
+  in memory — a restart opens every conversation at its end, as on the phone).
+- **Messages**: a long message you sent folds to its first ten lines under a
+  fade, with *Show more* / *Show less* (copying always takes the whole text).
+  Hovering one shows when it was sent and a copy button. The
   images sent with a message sit beside it as thumbnails — the bridge keeps
   them with the message and hands each over with `turn/attachment` — and a
   click shows one whole.
 - **Approvals and questions** wait in a dock **pinned above the composer**
-  until they are answered; the timeline keeps a one-line record of each (what
+  until they are answered. Several questions asked at once come one at a
+  time (*1 of 3*, *Back* / *Next*, *Answer* on the last; a single choice moves
+  on by itself), and **1–9** pick the options of the one on screen (never
+  while a field has the focus); the timeline keeps a one-line record of each (what
   was asked, then how it ended). One answered on the phone (or timed out)
   settles here too; one from a turn that already ended never offers its buttons
   again.
 - **Queue**: a message sent while the agent works is queued behind the running
   turn (or handed to it, on agents that take input mid-turn); queued messages
-  are listed in the dock, each with **Edit** (takes it off the queue and puts
-  it back in the composer — only once the bridge confirms) and cancel. A
+  are listed in the dock, each with **Send now** (`queue/sendNow`: into the
+  running turn on an agent that takes input mid-turn, or — nothing running —
+  as the next turn at once; offered only when one of the two can happen),
+  **Edit** (takes it off the queue and puts it back in the composer — only
+  once the bridge confirms) and cancel. A
   stopped or failed turn pauses the queue: *Resume* or *Discard*.
 - **Drafts and recall**: the composer's unsent text is the tab's draft, saved
   with the layout, so it survives switching tabs and restarting. On an empty
@@ -261,11 +273,21 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   only as a count.
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it. Its toolbar holds what can change mid-chat — the
-  model (every client sees the change), the model's knobs (reasoning effort, …)
-  when it has any, and the access mode (*Ask first* / *Auto-approve edits* /
+  model (every client sees the change), the model's knobs beside it when it has
+  any — one picker for every agent (`RunOptionsPicker`): the brain mark the
+  phone uses for effort and the level's name, a menu of the model's own levels
+  (one per line) with the one it runs at by
+  default marked (untouched, the bridge sends that default, so what the pill
+  shows is what the turn uses; an agent that names no default offers
+  "Default") — and the access mode (*Ask first* / *Auto-approve edits* /
   *Full access*; new chats start at *Full access*, like new chats on the phone)
   — and a ring showing how full the context window is, when the agent reports
-  it (amber past 75%, red past 90%; the figures are in its tooltip).
+  it (amber past 75%, red past 90%; the figures are in its tooltip). For an
+  agent with a plan the bridge reads (Claude Code, Codex, Grok) the tooltip
+  adds that plan's most pressing window — its used share, when it resets and,
+  when the pace so far hits the limit first, when (`usagePace.ts`) — and a dot
+  on the ring marks that pace; the chat reads the plan
+  (`usage.ensureProvider`) whether or not it is activated in Providers.
 - **Commands, files and images** — what the phone's composer does, the same
   way. **`/`** at the start of a message lists the agent's commands in this
   folder (`agent/commands`, as the bridge learns them from the agent itself,
@@ -278,11 +300,16 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   bare `@` (or `@dir/`) lists that folder (`workspace/list`), a name searches
   the whole project (`workspace/searchFiles`, `.gitignore` honoured); a picked
   folder drills in and a picked file is inserted as its relative path.
-  **Images** come from **+**, a paste or a drop onto the composer, shown as
-  thumbnails; they are scaled to 2048 px on the long edge (JPEG 85 % when
-  larger, as on the phone), up to 10 per message (the phone's limit — past it
-  a toast says so), and sent as `attachments` — offered only to an agent that
-  takes images (`capabilities.images`).
+  **Images and files** come from **+**, a paste or a drop onto the composer.
+  Images show as thumbnails; they are scaled to 2048 px on the long edge (JPEG
+  85 % when larger, as on the phone), up to 10 per message (the phone's limit —
+  past it a toast says so), and go as images only to an agent that takes them
+  (`capabilities.images`). Anything else — and an image for an agent that takes
+  none — goes as a **file** (`type: 'file'` with its name, up to 20 MB and 10
+  per message; `fs_read_attachment` reads a picked one), shown as a chip with
+  its name and size in the composer and in the message: the bridge writes it
+  under its name in the agent's folder, so every agent opens it with its own
+  tools.
 
 ## For developers
 

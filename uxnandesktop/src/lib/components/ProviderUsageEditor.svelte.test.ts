@@ -12,33 +12,49 @@ function snapshot(over: Partial<ProviderUsage>): ProviderUsage {
   return { provider: "claude", status: "ok", windows: [], updatedAt: 1_700_000_000_000, ...over };
 }
 
-describe("ProviderUsageEditor — OS credential store access", () => {
-  // The poller never opens an OS dialog; the only interactive read is the one
-  // the user asks for with this button, and a successful grant re-reads usage.
-  it("offers Grant access on accessRequired and refreshes once granted", async () => {
-    const onrefresh = vi.fn();
-    const { screen, user, backend } = mountWithProviders(ProviderUsageEditor, {
+describe("ProviderUsageEditor — resets", () => {
+  // Codex's resets are redeemed by the bridge (asking Codex itself), behind a
+  // confirmation, and the card takes the fresh usage it answers with.
+  it("redeems the soonest-expiring reset through the bridge", async () => {
+    const calls: { method: string; params: Record<string, unknown> }[] = [];
+    const { screen, user } = mountWithProviders(ProviderUsageEditor, {
       props: {
-        config: config(),
-        snapshot: snapshot({
-          status: "accessRequired",
-          message: "Claude Code keeps its sign-in in the macOS Keychain",
-        }),
+        config: { provider: "codex", refreshMinutes: null, statusBar: { show: true, windows: ["*"] } },
+        snapshot: {
+          provider: "codex",
+          status: "ok",
+          windows: [],
+          updatedAt: 1_700_000_000_000,
+          resetCredits: {
+            available: 2,
+            entries: [
+              { id: "r1", title: "Full reset", expiresAt: 1_900_000_000_000 },
+              { id: "r2", title: "Full reset", expiresAt: 1_950_000_000_000 },
+            ],
+          },
+        },
         onchange: () => {},
         onremove: () => {},
-        onrefresh,
+        onrefresh: () => {},
       },
-      commands: { usage_grant_access: () => undefined },
+      commands: {
+        bridge_call: (args: Record<string, unknown>) => {
+          calls.push({ method: String(args.method), params: args.params as Record<string, unknown> });
+          return { provider: "codex", status: "ok", windows: [], updatedAt: 1 };
+        },
+      },
     });
-
-    const button = await screen.findByRole("button", { name: "Grant access" });
-    await user.click(button);
-
-    expect(backend.lastCallTo("usage_grant_access")?.args).toEqual({ provider: "claude" });
-    expect(onrefresh).toHaveBeenCalledTimes(1);
+    await user.click(await screen.findByRole("button", { name: /Redeem/ }));
+    const confirm = await screen.findAllByRole("button", { name: /Redeem/ });
+    await user.click(confirm.at(-1)!);
+    await vi.waitFor(() => expect(calls.some((c) => c.method === "usage/redeemReset")).toBe(true));
+    const sent = calls.find((c) => c.method === "usage/redeemReset")!.params;
+    expect(sent.provider).toBe("codex");
+    expect(sent.creditId).toBe("r1");
+    expect(typeof sent.idempotencyKey).toBe("string");
   });
 
-  it("shows no grant button for the other non-live states", async () => {
+  it("shows no OS grant flow for any state: the bridge needs none", async () => {
     for (const status of ["authRequired", "notInstalled", "error"] as const) {
       const { screen } = mountWithProviders(ProviderUsageEditor, {
         props: {
@@ -54,3 +70,40 @@ describe("ProviderUsageEditor — OS credential store access", () => {
     }
   });
 });
+
+describe("ProviderUsageEditor — account", () => {
+  // Claude names an organization after its owner's email: it stays hidden
+  // with the email until the person reveals the account.
+  it("hides the email and an organization named after it until revealed", async () => {
+    const { screen, user } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: config(),
+        snapshot: snapshot({
+          account: { email: "me@x.com", plan: "Max", organization: "me@x.com's Organization" },
+        }),
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    const org = screen.getByText("me@x.com's Organization");
+    expect(org.className).toContain("blur");
+    expect(screen.getByText("me@x.com").className).toContain("blur");
+    await user.click(screen.getByRole("button", { name: "Show account" }));
+    expect(org.className).not.toContain("blur");
+  });
+
+  it("says the limits were asked of the CLI itself", () => {
+    const { screen } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: config(),
+        snapshot: snapshot({ source: "cli", windows: [{ id: "w", label: "Weekly", usedPercent: 10 }] }),
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    expect(screen.getByText("Asked of Claude Code itself")).toBeTruthy();
+  });
+});
+

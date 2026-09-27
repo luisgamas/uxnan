@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AgentCapabilities, AgentId, SendTurnOptions, TurnList } from '@uxnan/shared';
-import { makeRequest, type Project } from '@uxnan/shared';
+import { MAX_ATTACHMENT_BYTES, makeRequest, type Project } from '@uxnan/shared';
 import {
   BaseAgentAdapter,
   DaemonState,
@@ -169,6 +169,67 @@ test(
       String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
       /Attached image/,
     );
+
+    await bridge.stop();
+    await rmrf(baseDir);
+  },
+);
+
+test(
+  'turn/send keeps a file with its name, and refuses one too large',
+  { skip: SKIP_ECHO_E2E_ON_WIN_CI },
+  async () => {
+    const { bridge, baseDir } = await boot();
+    const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
+    assert.ok('result' in projectsRes);
+    const projectId = (projectsRes.result as Project[])[0]!.id;
+    const startRes = await bridge.router.dispatch(
+      makeRequest('1', 'thread/start', { projectId, title: 'Chat', agentId: 'echo' }),
+    );
+    assert.ok('result' in startRes);
+    const threadId = (startRes.result as { id: string }).id;
+    const csv = Buffer.from('a,b\n1,2\n').toString('base64');
+
+    const sendRes = await bridge.router.dispatch(
+      makeRequest('2', 'turn/send', {
+        threadId,
+        text: 'read this',
+        attachments: [
+          { type: 'file', mimeType: 'text/csv', name: '../secret/table.csv', base64Data: csv },
+        ],
+      }),
+    );
+    assert.ok('result' in sendRes);
+    const turnId = (sendRes.result as { turnId: string }).turnId;
+    await waitFor(
+      async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
+    );
+    const turn = await bridge.context.threadStore.getTurn(turnId);
+    const [file] = turn.messages.find((m) => m.role === 'user')?.attachments ?? [];
+    assert.equal(file?.name, 'table.csv');
+    assert.equal(file?.mimeType, 'text/csv');
+    assert.ok(file?.id.endsWith('.csv'));
+    const back = await bridge.router.dispatch(
+      makeRequest('3', 'turn/attachment', { threadId, attachmentId: file!.id }),
+    );
+    assert.ok('result' in back);
+    assert.deepEqual(back.result, { mimeType: 'text/csv', base64Data: csv });
+    assert.match(
+      String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
+      /Attached file/,
+    );
+
+    const huge = 'A'.repeat(Math.ceil((MAX_ATTACHMENT_BYTES + 1) / 3) * 4);
+    const tooBig = await bridge.router.dispatch(
+      makeRequest('4', 'turn/send', {
+        threadId,
+        attachments: [
+          { type: 'file', mimeType: 'application/zip', name: 'x.zip', base64Data: huge },
+        ],
+      }),
+    );
+    assert.ok('error' in tooBig);
+    assert.match(tooBig.error.message, /larger than 20 MB/);
 
     await bridge.stop();
     await rmrf(baseDir);

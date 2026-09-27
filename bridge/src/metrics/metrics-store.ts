@@ -3,10 +3,12 @@
  *
  * The bridge is the source of truth for the mobile profile metrics. This store
  * holds every activity stream the bridge observes — conversations, turns
- * (message/day buckets + reported tokens), connection sessions and mutating Git
- * actions — as rows keyed by stable ids. Conversation/turn rows are upserted
- * because a turn is first observed with zero tokens and may receive final usage
- * later; sessions and Git actions are append-only.
+ * (message/day buckets), connection sessions and mutating Git actions — as
+ * rows keyed by stable ids. Conversation/turn rows are upserted because a turn
+ * gains messages after it is first observed; sessions and Git actions are
+ * append-only. What the agents spent is not kept here: `usage/summary` reads it
+ * from each CLI's own history, which counts every session, not only the
+ * bridge's.
  *
  * Deleting mutable conversation history never removes rows from this ledger.
  * Export/import therefore restores the complete activity history instead of
@@ -79,10 +81,6 @@ export interface TurnMetricEvent {
   model?: string;
   /** Message counts split by UTC calendar day. */
   messageDays: MetricMessageDay[];
-  /** Tokens reported by the assistant message (0 when unavailable). */
-  tokens: number;
-  /** UTC day that receives [tokens]. */
-  tokenDay: number;
   /** Last time this record was refreshed from authoritative thread state. */
   updatedAt: number;
 }

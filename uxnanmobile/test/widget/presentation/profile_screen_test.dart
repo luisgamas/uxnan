@@ -8,6 +8,8 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
+import 'package:uxnan/domain/value_objects/provider_usage.dart';
+import 'package:uxnan/domain/value_objects/usage_summary.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
@@ -34,6 +36,23 @@ class _CountingMetrics extends MetricsController {
     builds++;
     return const <String, MetricsSnapshot>{};
   }
+}
+
+/// Counts loads of what the agents spent, and answers with nothing.
+class _CountingSummaries extends UsageSummariesController {
+  int builds = 0;
+
+  @override
+  Future<Map<String, UsageSummary>> build() async {
+    builds++;
+    return const <String, UsageSummary>{};
+  }
+}
+
+/// No plan limits, without asking a PC.
+class _NoUsage extends UsageStatsController {
+  @override
+  Future<List<ProviderUsage>> build() async => const [];
 }
 
 /// Rejects `metrics/export` the way the bridge does, carrying its own reason.
@@ -192,6 +211,7 @@ void main() {
 
       final device = _device();
       final controller = _CountingMetrics();
+      final summaries = _CountingSummaries();
 
       await tester.pumpWidget(
         ProviderScope(
@@ -204,6 +224,8 @@ void main() {
             agentsProvider
                 .overrideWith((ref) async => const <AgentDescriptor>[]),
             metricsSnapshotsProvider.overrideWith(() => controller),
+            usageSummariesProvider.overrideWith(() => summaries),
+            usageStatsProvider.overrideWith(_NoUsage.new),
           ],
           child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -219,15 +241,14 @@ void main() {
       expect(controller.builds, greaterThanOrEqualTo(1));
       final afterOpen = controller.builds;
 
-      final refresh = find.ancestor(
-        of: findUxIcon(UxIcons.refresh),
-        matching: find.byType(IconButton),
-      );
-      await tester.ensureVisible(refresh.first);
-      await tester.tap(refresh.first);
+      final spentAfterOpen = summaries.builds;
+
+      // One refresh in the bar, for everything the profile reads.
+      await tester.tap(find.byTooltip('Refresh stats'));
       await tester.pumpAndSettle();
 
       expect(controller.builds, greaterThan(afterOpen));
+      expect(summaries.builds, greaterThan(spentAfterOpen));
     },
   );
 
