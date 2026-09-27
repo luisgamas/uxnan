@@ -15,7 +15,9 @@
   // bridge that owns its folder (`workspace/list`, `workspace/searchFiles`) —
   // a folder drills in, a file is written as `@path`; images — from "+",
   // pasted or dropped, up to the phone's limit — ride along as `attachments`
-  // when the agent takes them. The suggestion panel sits over the composer,
+  // when the agent takes them. A file dropped on it (from the OS or the file
+  // tree, routed by `$lib/fileDrop`) is mentioned when it is one of the
+  // project's and attached otherwise. The suggestion panel sits over the composer,
   // which keeps the focus and drives it (↑ ↓, Enter or Tab, Esc).
   //
   // Built on the shared `InputGroup` (the same primitive the command palette's
@@ -48,7 +50,8 @@
     MAX_IMAGES,
     type ComposerImage,
   } from "$lib/bridge/imageAttachment";
-  import { mentionEntries } from "$lib/bridge/mentions";
+  import { mentionEntries, mentionFor } from "$lib/bridge/mentions";
+  import { fileDropTarget } from "$lib/fileDrop";
   import { clipSpan, fitPanel, type PanelFit } from "$lib/floatingFit";
   import {
     MAX_FILES,
@@ -314,35 +317,39 @@
     );
   }
 
-  /** "+": any file. An image goes as an image (scaled, a thumbnail) when the
-   *  agent takes images; everything else — and an image for an agent that
-   *  takes none — goes as a file, which every agent opens with its tools. */
+  /** Attach files by path: an image goes as an image (scaled, a thumbnail)
+   *  when the agent takes images; everything else — and an image for an agent
+   *  that takes none — goes as a file, which every agent opens with its tools. */
+  async function attachPaths(paths: string[]) {
+    const readyImages: ComposerImage[] = [];
+    const readyFiles: ComposerFile[] = [];
+    for (const path of paths) {
+      const name = path.split(/[\\/]/).pop() ?? "file";
+      if (acceptsImages && isImageName(name)) {
+        const dataUrl = await invoke<string>("fs_read_data_url", { path });
+        readyImages.push(await imageFromDataUrl(dataUrl, name));
+      } else {
+        readyFiles.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
+      }
+    }
+    await addImages(readyImages);
+    await addFiles(readyFiles);
+  }
+
+  /** "+": any file, attached. */
   async function chooseAttachments() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const picked = await open({ multiple: true });
-      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
-      const readyImages: ComposerImage[] = [];
-      const readyFiles: ComposerFile[] = [];
-      for (const path of paths) {
-        const name = path.split(/[\\/]/).pop() ?? "file";
-        if (acceptsImages && isImageName(name)) {
-          const dataUrl = await invoke<string>("fs_read_data_url", { path });
-          readyImages.push(await imageFromDataUrl(dataUrl, name));
-        } else {
-          readyFiles.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
-        }
-      }
-      await addImages(readyImages);
-      await addFiles(readyFiles);
+      await attachPaths(Array.isArray(picked) ? picked : picked ? [picked] : []);
       ref?.focus();
     } catch (err) {
       toastError(err);
     }
   }
 
-  /** Dropped or pasted files: images as images when the agent takes them,
-   *  everything else as files. */
+  /** Pasted files: images as images when the agent takes them, everything
+   *  else as files. */
   async function takeBlobs(blobs: File[]) {
     const asImage = (f: File) => acceptsImages && f.type.startsWith("image/");
     await addImages(
@@ -353,23 +360,46 @@
     );
   }
 
-  let dragging = $state(false);
-  function carriesFiles(e: DragEvent): boolean {
-    return !disabled && [...(e.dataTransfer?.types ?? [])].includes("Files");
+  /** [insert] written at the caret (the end, before the composer was ever
+   *  focused), set apart from the words around it. */
+  function insertAtCaret(insert: string) {
+    const at = ref?.selectionEnd ?? value.length;
+    const before = value.slice(0, at);
+    const after = value.slice(at);
+    const text = `${before === "" || /\s$/.test(before) ? "" : " "}${insert}${/^\s/.test(after) ? "" : " "}`;
+    value = before + text + after;
+    const caret = at + text.length;
+    queueMicrotask(() => {
+      ref?.focus();
+      ref?.setSelectionRange(caret, caret);
+    });
   }
-  async function ondrop(e: DragEvent) {
-    dragging = false;
-    if (!carriesFiles(e)) return;
-    e.preventDefault();
-    const dropped = [...(e.dataTransfer?.files ?? [])];
-    if (dropped.length === 0) return;
+
+  /** Paths dropped on the composer — from the OS or the file tree. An image is
+   *  attached as one (the agent sees it); any other file of the project is
+   *  mentioned, `@path`, exactly as picking it from `@` writes it (the agent
+   *  opens it itself, nothing is copied); anything else is attached like "+". */
+  async function takeDroppedPaths(paths: string[]) {
+    if (disabled) return;
+    const mentions: string[] = [];
+    const attach: string[] = [];
+    for (const path of paths) {
+      const image = acceptsImages && isImageName(path.split(/[\\/]/).pop() ?? "");
+      const mention = !image && mentionRoot ? mentionFor(mentionRoot, path) : null;
+      if (mention) mentions.push(mention);
+      else attach.push(path);
+    }
+    if (mentions.length > 0) insertAtCaret(mentions.join(" "));
     try {
-      await takeBlobs(dropped);
+      await attachPaths(attach);
       ref?.focus();
     } catch (err) {
       toastError(err);
     }
   }
+
+  /** Files are being dragged over the composer (`$lib/fileDrop` says so). */
+  let dragging = $state(false);
 
   async function onpaste(e: ClipboardEvent) {
     const pasted = [...(e.clipboardData?.files ?? [])];
@@ -444,7 +474,14 @@
   }
 </script>
 
-<div bind:this={root} class="relative flex flex-col gap-1">
+<div
+  bind:this={root}
+  class="relative flex flex-col gap-1"
+  use:fileDropTarget={{
+    ondrop: (paths) => void takeDroppedPaths(paths),
+    onover: (over) => (dragging = over && !disabled),
+  }}
+>
   {#if panelOpen}
     <div class={cn("absolute inset-x-0 z-20", fit.side === "above" ? "bottom-full mb-2" : "top-full mt-2")}>
       <ChatSuggestions
@@ -466,13 +503,6 @@
       "rounded-xl bg-card shadow-xs has-disabled:bg-card has-disabled:opacity-100 has-[textarea:disabled]:opacity-50",
       dragging && "ring-2 ring-ring/40",
     )}
-    ondragover={(e: DragEvent) => {
-      if (!carriesFiles(e)) return;
-      e.preventDefault();
-      dragging = true;
-    }}
-    ondragleave={() => (dragging = false)}
-    {ondrop}
   >
     {#if images.length > 0 || attachedFiles.length > 0}
       <InputGroup.Addon align="block-start" class="flex-wrap gap-1.5">

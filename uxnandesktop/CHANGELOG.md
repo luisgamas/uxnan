@@ -4,12 +4,24 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Drop files on the chat composer.** Files dragged from Finder / Explorer or
+  from the file tree land in the composer: one of the conversation's project
+  is mentioned as `@path` (the agent opens it itself), an image is attached
+  when the agent takes images, and anything else is attached as a file. The
+  composer lights up while files hover over it.
+
 ### Fixed
 
 - **The `/` and `@` list stays on screen.** On a new chat, where the composer
   sits mid-pane, a long list of files or commands ran up under the tabs and
   hid its first rows. It now opens below the composer when there is more room
   there and is never taller than the room it has.
+
+- **A file dropped on the chat no longer goes to a terminal.** Every OS drop
+  used to be typed into the active terminal wherever it landed; one router now
+  hands a drop to what is under the pointer.
 
 ### Changed
 

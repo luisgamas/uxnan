@@ -1,12 +1,9 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
-  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { setTerminalLayout } from "$lib/api";
   import { registerFlush, unregisterFlush } from "$lib/state/flushRegistry";
-  import { dropPayload } from "$lib/terminal/terminalDrop";
   import {
     terminals,
     computeAreaLayout,
@@ -88,7 +85,6 @@
     ].filter((h): h is { label: string; chord: string } => !!h && h.chord.length > 0),
   );
 
-  let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   // Latest layout awaiting the debounced write, or null when nothing is pending.
   // Held so a window close can flush it before the webview is torn down.
@@ -104,23 +100,11 @@
     await setTerminalLayout(snapshot);
   }
 
-  onMount(async () => {
+  onMount(() => {
     registerFlush("terminal-layout", flushLayout);
-    // Native file drag-and-drop: insert the dropped paths into the terminal the
-    // cursor is over (falls back to the active terminal).
-    try {
-      unlistenDrop = await getCurrentWebview().onDragDropEvent((event) => {
-        if (event.payload.type === "drop") {
-          handleFileDrop(event.payload.paths, event.payload.position);
-        }
-      });
-    } catch {
-      // Not running inside Tauri (web preview) — no native file drop.
-    }
   });
   onDestroy(() => {
     unregisterFlush("terminal-layout");
-    unlistenDrop?.();
     clearTimeout(saveTimer);
   });
 
@@ -136,20 +120,6 @@
       void setTerminalLayout(snapshot);
     }, 500);
   });
-
-  function handleFileDrop(paths: string[], position: { x: number; y: number }) {
-    if (!paths.length) return;
-    // OS drop coordinates are physical pixels; the DOM hit-test wants CSS px. This
-    // path keeps the active-terminal fallback (an OS drop can land anywhere in the
-    // app); the in-app file-tree drag instead requires a terminal target.
-    const dpr = window.devicePixelRatio || 1;
-    const el = document.elementFromPoint(position.x / dpr, position.y / dpr);
-    const paneEl = el?.closest("[data-pty-id]") as HTMLElement | null;
-    const ptyId = paneEl?.dataset.ptyId ?? terminals.activePtyId();
-    if (!ptyId) return;
-    invoke("pty_write", { id: ptyId, data: dropPayload(paths) }).catch(() => {});
-    terminals.controller(ptyId)?.focus(); // keep the cursor in the terminal
-  }
 
   // --- Divider drag --------------------------------------------------------
   let drag = $state<{
@@ -392,7 +362,7 @@
 
   // --- Tab drag (reorder within a region + move across regions) ------------
   // Implemented with pointer events, not HTML5 drag-and-drop: Tauri's native
-  // OS drag-drop (used for dropping files into a terminal) suppresses HTML5
+  // OS drag-drop (files dropped from the OS, `$lib/fileDrop`) suppresses HTML5
   // dnd inside the WebView, so a tab couldn't be dragged at all. Pointer events
   // mirror how the split dividers already work.
   //

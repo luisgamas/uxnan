@@ -49,3 +49,23 @@ export async function mentionEntries(
   });
   return found.matches.map((m) => ({ path: m.path, isDir: m.type === 'dir' }));
 }
+
+/**
+ * The mention for [path] — a file dropped on the composer — when it lies inside
+ * the project at [root]: its project-relative path, `/`-separated, exactly as
+ * picking it from `@` writes it. `null` for anything outside (or the folder
+ * itself). The desktop's bridge runs on this machine, so a local path under
+ * the root names the same file the bridge will read.
+ */
+export function mentionFor(root: string, path: string): string | null {
+  const windows = /^[A-Za-z]:[\\/]/.test(root);
+  const norm = (p: string) => {
+    const slashed = p.replace(/\\/g, '/').replace(/\/+$/, '');
+    return windows ? slashed.toLowerCase() : slashed;
+  };
+  const base = norm(root);
+  const full = norm(path);
+  if (base === '' || !full.startsWith(`${base}/`)) return null;
+  const relative = path.replace(/\\/g, '/').replace(/\/+$/, '').slice(base.length + 1);
+  return relative === '' ? null : `@${relative}`;
+}
