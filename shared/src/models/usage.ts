@@ -1,21 +1,17 @@
 /**
- * AI-provider usage statistics: quota/rate windows, plan/account, credit
- * balance and local token tallies read from a coding CLI's on-disk state — its
- * stored OAuth token (→ the provider's official usage API) and/or its local
- * session logs.
+ * AI-provider usage: plan limits (quota windows, plan, account, credit) and
+ * spend (tokens and cost by day, agent and model).
  *
- * Surfaced in the desktop's Settings → Providers section and, over the bridge,
- * on the phone. The access path is per-runtime by design (02a §5.8.10): the
- * desktop reads these files natively in Rust; the bridge reads them in TS so a
- * paired phone — which cannot see the PC's disk directly — gets the same data
- * over `agent/usageStats`. The Dart equivalents live in uxnanmobile and are kept
- * in sync manually (see 02e-bridge-integration.md §4.2).
- *
- * Posture: only the token the CLI itself stored is read — from its file, or
- * from the OS credential store where that is where the CLI keeps it (Claude
- * Code on macOS), and then only after the user has granted the OS-level
- * permission once (see `accessRequired`). Never browser cookies, never
- * user-pasted API keys, never a refresh token.
+ * The bridge is the one reader; every client — the phone, Uxnan Desktop's
+ * Providers panel — asks it (`agent/usageStats`, `usage/summary`,
+ * `usage/redeemReset`). Claude Code and Codex are asked themselves: each CLI
+ * answers for the account it is signed in to, so no credential is read and no
+ * OS permission is needed. Copilot and Grok have no such surface: only the
+ * token each CLI stored is read (`gh auth token`, `~/.grok/auth.json`) and sent
+ * to the provider's own usage API. Spend comes from the transcripts every
+ * agent CLI keeps on disk. Never browser cookies, never a pasted key, never a
+ * refresh token. The Dart equivalents live in uxnanmobile and are kept in sync
+ * manually.
  */
 
 /** A coding CLI whose usage we read from its own stored token. */
@@ -27,19 +23,14 @@ export type UsageStatus =
   | 'ok'
   /** CLI is present but not signed in (no usable token). */
   | 'authRequired'
-  /** The CLI's token exists in the OS credential store, but the OS has not yet
-   *  authorized the reader to open it. The user grants that once from the
-   *  desktop's Providers panel (the OS shows its own dialog); the reader never
-   *  prompts on its own. A phone shows "grant access on the PC". */
-  | 'accessRequired'
   /** CLI / its config directory is not present on this machine. */
   | 'notInstalled'
   /** Read/network/parse failure — see {@link ProviderUsage.message}. */
   | 'error';
 
-/** How the data was obtained, for the UI's provenance label. Every wired
- *  provider reads its quota from the CLI's own signed-in token. */
-export type UsageSource = 'token';
+/** How the data was obtained: asked of the CLI itself (`cli`, Claude Code and
+ *  Codex), or its stored token sent to the provider's usage API (`token`). */
+export type UsageSource = 'cli' | 'token';
 
 /**
  * The kind of billing relationship, so the UI can label an account beyond its
@@ -101,6 +92,8 @@ export interface CreditBalance {
  */
 /** One redeemable reset — for the per-credit detail (which one, when it expires). */
 export interface ResetCreditEntry {
+  /** The provider's id for this reset, to redeem exactly it (`usage/redeemReset`). */
+  id?: string;
   /** Short label the provider gives the reset (e.g. "Full reset"). */
   title?: string;
   /** When this reset lapses (epoch ms). */
@@ -133,8 +126,7 @@ export interface ProviderUsage {
   resetCredits?: ResetCredits;
   /** When this snapshot was produced (epoch ms). */
   updatedAt: number;
-  /** Error/hint message for `error` / `authRequired` / `accessRequired` /
-   *  `notInstalled` states. */
+  /** Error/hint message for `error` / `authRequired` / `notInstalled` states. */
   message?: string;
 }
 
@@ -149,4 +141,89 @@ export interface UsageStatsParams {
 
 export interface UsageStatsResult {
   usage: ProviderUsage[];
+}
+
+/**
+ * `usage/redeemReset` request: redeem one of a provider's rate-limit resets
+ * (Codex today) — [creditId] from `ResetCredits.entries`, or the
+ * soonest-expiring one when absent. [idempotencyKey] names the attempt, so a
+ * retry after a lost answer never redeems twice.
+ */
+export interface UsageRedeemResetParams {
+  provider: UsageProvider;
+  idempotencyKey: string;
+  creditId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Spend: what each agent CLI used, from the transcripts it keeps itself
+// ---------------------------------------------------------------------------
+
+/**
+ * `usage/summary` request: the last [days] calendar days of this PC (today
+ * included), 1–366.
+ */
+export interface UsageSummaryParams {
+  days: number;
+}
+
+/** Tokens and cost of a set of model responses. */
+export interface UsageSpend {
+  /** Input not read from the cache. */
+  inputTokens: number;
+  /** Input read from the cache. */
+  cachedInputTokens: number;
+  /** Input written to the cache. */
+  cacheWriteTokens: number;
+  /** Output, reasoning included. */
+  outputTokens: number;
+  /** The reasoning part of `outputTokens`, where the CLI records it. */
+  reasoningTokens: number;
+  /** US dollars: what the provider billed where the CLI records it, else the
+   *  estimate at API prices (`estimatedCostUsd` of it). */
+  costUsd: number;
+  /** The part of `costUsd` estimated at API prices (on a subscription, what
+   *  the same work would cost pay-as-you-go). */
+  estimatedCostUsd: number;
+  /** Tokens of responses whose model has no known price — not in `costUsd`. */
+  unpricedTokens: number;
+  /** Model responses counted. */
+  responses: number;
+}
+
+/** One agent + model's spend on one day. */
+export interface UsageBucket extends UsageSpend {
+  /** Wire agent id (`claude-code`, `codex`, `pi-agent`, `grok`, `opencode`). */
+  agentId: string;
+  /** The model id as the CLI recorded it (`provider/model` where it routes). */
+  model: string;
+}
+
+/** One calendar day of this PC. */
+export interface UsageDay {
+  /** `YYYY-MM-DD`, the PC's local date. */
+  day: string;
+  buckets: UsageBucket[];
+}
+
+/** What was found for one agent. */
+export interface UsageAgentSource {
+  agentId: string;
+  /** Sessions with spend in the period. */
+  sessions: number;
+  /** `ok`: read (possibly nothing in the period); `unreadable`: its store
+   *  exists but could not be read (see `message`). Agents with no store on
+   *  this PC are not listed. */
+  status: 'ok' | 'unreadable';
+  message?: string;
+}
+
+/**
+ * `usage/summary` result: every model response the agent CLIs on this PC
+ * recorded in the period — the bridge's turns and a person's own terminal
+ * sessions alike — by day, agent and model. Only days with spend are listed.
+ */
+export interface UsageSummary {
+  days: UsageDay[];
+  agents: UsageAgentSource[];
 }

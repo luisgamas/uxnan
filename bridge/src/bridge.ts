@@ -71,6 +71,7 @@ import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { constantTimeEqual } from './transport/constant-time.js';
 import { ThreadStore } from './conversation/thread-store.js';
+import { UsageScanner } from './usage/usage-scan.js';
 import { MetricsService } from './metrics/metrics-service.js';
 import { MetricsStore } from './metrics/metrics-store.js';
 import { AgentManager } from './agents/agent-manager.js';
@@ -209,6 +210,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     deviceId: deviceState.identity.macDeviceId,
     now,
   });
+  const usage = new UsageScanner({ state, now, logger });
   // Close crash-leftover sessions and migrate existing thread history before
   // accepting connections. Failure is non-fatal because each read/export also
   // retries the idempotent backfill.
@@ -600,6 +602,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     trustStore,
     threadStore,
     metrics,
+    usage,
     sessionHistory,
     agentManager,
     agentInstalls,

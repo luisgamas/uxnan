@@ -16,6 +16,7 @@ function fakeContext(): BridgeContext {
     trustStore: {} as BridgeContext['trustStore'],
     threadStore: {} as BridgeContext['threadStore'],
     metrics: {} as BridgeContext['metrics'],
+    usage: {} as BridgeContext['usage'],
     sessionHistory: {} as BridgeContext['sessionHistory'],
     agentManager: {} as BridgeContext['agentManager'],
     agentInstalls: {} as BridgeContext['agentInstalls'],

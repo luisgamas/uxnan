@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — usage from the CLIs themselves
+
+- **`usage/summary`** (`UsageSummaryParams { days }` → `UsageSummary`): tokens
+  and cost per local day, agent and model (`UsageDay`, `UsageBucket`,
+  `UsageSpend`, `UsageAgentSource`).
+- **`usage/redeemReset`** (`UsageRedeemResetParams`): redeem a rate-limit reset
+  (Codex); `ResetCreditEntry.id` names one. 86 methods.
+
+### Changed
+
+- `UsageSource` gains `cli` (asked of the CLI itself); `UsageStatus` loses
+  `accessRequired` — no reader opens an OS credential store any more.
+
 ## [0.0.21-alpha.20260927] - 20260927
 ### Added — a message keeps its images
 

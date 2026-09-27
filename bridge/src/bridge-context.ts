@@ -10,6 +10,7 @@ import type { TrustStore } from './transport/trust-store.js';
 import type { ThreadStore } from './conversation/thread-store.js';
 import type { SessionHistoryReader } from './conversation/session-history.js';
 import type { MetricsService } from './metrics/metrics-service.js';
+import type { UsageScanner } from './usage/usage-scan.js';
 import type { AgentManager } from './agents/agent-manager.js';
 import type { ProjectRegistry } from './projects/project-registry.js';
 import type { BrowseService } from './workspace/browse-service.js';
@@ -37,6 +38,8 @@ export interface BridgeContext {
   readonly threadStore: ThreadStore;
   /** Bridge-owned profile metrics (survivable stats + tamper-proof backup). */
   readonly metrics: MetricsService;
+  /** What the agent CLIs on this PC spent, from their own transcripts (`usage/summary`). */
+  readonly usage: UsageScanner;
   /** Reads agent on-disk session logs as a `turn/list` fallback (§5.8.8). */
   readonly sessionHistory: SessionHistoryReader;
   /** Agent turn orchestration. */

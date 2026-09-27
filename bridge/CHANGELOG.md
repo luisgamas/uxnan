@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **What the agents spent, from their own transcripts** — `usage/summary`:
+  tokens and cost per local day, agent and model for every model response the
+  agent CLIs on this PC recorded (Claude Code, Codex, pi, Grok, OpenCode 2),
+  the bridge's turns and a person's own terminal sessions alike. Billed cost
+  where the CLI records it, Claude priced from the CLI's own rates, anything
+  else shown as unpriced. Incremental, cached in `~/.uxnan/usage-scan.json`.
+- **`usage/redeemReset`**: redeem one of Codex's rate-limit resets.
+
+### Changed
+
+- **Plan limits are asked of Claude Code and Codex themselves.** Each CLI
+  answers for the account it is signed in to (`get_usage` / `account/rateLimits/read`),
+  so the bridge reads no credential file and no Keychain item — and Claude's
+  limits now reach the phone from a Mac too.
+
 ### Changed
 
 - **The effort a picker shows as the default is the effort the turn runs at.**

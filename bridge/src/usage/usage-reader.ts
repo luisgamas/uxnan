@@ -1,31 +1,32 @@
 /**
- * Reads AI-provider usage/quota by porting the desktop's native Rust reader
- * (`uxnandesktop/src-tauri/src/usage.rs`) to TypeScript, so a paired phone gets
- * the same data over `agent/usageStats` (architecture 02a §5.8.10, 02e §4.2).
+ * Reads each AI provider's plan limits for `agent/usageStats` (architecture
+ * 02a §5.8.10): the one reader every client asks — the phone and Uxnan
+ * Desktop alike.
  *
- * Posture (identical to the desktop): only each CLI's OWN already-stored OAuth
- * token is read from its `~/.<cli>/…` file (or, for Copilot, `gh auth token`) →
- * the provider's official usage API. Never browser cookies, never a pasted key,
- * never a refresh token. Every provider is best-effort and isolated: a
- * slow/failed provider degrades to its own `status` + `message` and never
- * rejects the whole call.
+ * Claude Code and Codex are asked themselves (`cli-usage.ts`): each CLI
+ * answers for the account it is signed in to, from the sign-in it keeps, so
+ * the bridge reads no credential and needs no OS permission — Claude's limits
+ * reach every client on macOS too. Copilot and Grok have no such surface; for
+ * them only the token each CLI itself stored is read (`gh auth token`,
+ * `~/.grok/auth.json`) → the provider's official usage API. Never browser
+ * cookies, never a pasted key, never a refresh token. Every provider is
+ * best-effort and isolated: a slow or failed one degrades to its own
+ * `status` + `message` and never rejects the whole call.
  *
- * Claude Code on macOS keeps its token in the login Keychain, not in
- * `~/.claude/.credentials.json`. The desktop reads that item natively behind an
- * explicit, OS-mediated grant (`credstore.rs`); this reader does not — the
- * bridge's Node binary would need a grant of its own and its keyring binding
- * cannot suppress the OS dialog, so a poller could not be kept silent. It
- * reports the honest state instead (FOR-DEV: bridge/FOR-DEV.md → *Providers*).
- *
- * All I/O is injectable (`homeDir` / `readFile` / `fetchImpl` / `ghAuthToken` /
- * `now` / `platform`) so each provider's mapping is unit-tested against canned
- * JSON with no disk or network.
+ * All I/O is injectable so each provider's mapping is unit-tested against
+ * canned answers with no process, disk or network.
  */
 import { execFile } from 'node:child_process';
 import { readFile as fsReadFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import {
+  askClaudeUsage,
+  askCodexUsage,
+  type ClaudeUsageAnswer,
+  type CodexUsageAnswer,
+} from './cli-usage.js';
 import type {
   CreditBalance,
   ProviderUsage,
@@ -53,9 +54,10 @@ export interface UsageReaderDeps {
   ghAuthToken?: () => Promise<string | undefined>;
   /** Per-request timeout in ms. */
   timeoutMs?: number;
-  /** OS platform (defaults to `process.platform`) — decides how a missing
-   *  Claude Code credentials file is reported. */
-  platform?: NodeJS.Platform;
+  /** Asks Claude Code for its account and limits (`cli-usage.ts`). */
+  askClaude?: () => Promise<ClaudeUsageAnswer | undefined>;
+  /** Asks Codex for its account and limits (`cli-usage.ts`). */
+  askCodex?: () => Promise<CodexUsageAnswer | undefined>;
 }
 
 interface ResolvedDeps {
@@ -65,7 +67,8 @@ interface ResolvedDeps {
   now: () => number;
   ghAuthToken: () => Promise<string | undefined>;
   timeoutMs: number;
-  platform: NodeJS.Platform;
+  askClaude: () => Promise<ClaudeUsageAnswer | undefined>;
+  askCodex: () => Promise<CodexUsageAnswer | undefined>;
 }
 
 /** Reads usage for exactly [providers] — inactive providers cost nothing. */
@@ -80,7 +83,8 @@ export async function readUsage(
     now: deps.now ?? (() => Date.now()),
     ghAuthToken: deps.ghAuthToken ?? defaultGhAuthToken,
     timeoutMs: deps.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    platform: deps.platform ?? process.platform,
+    askClaude: deps.askClaude ?? askClaudeUsage,
+    askCodex: deps.askCodex ?? askCodexUsage,
   };
   const out: ProviderUsage[] = [];
   for (const provider of providers) {
@@ -110,142 +114,111 @@ function readOne(provider: UsageProvider, deps: ResolvedDeps): Promise<ProviderU
 
 async function readCodex(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();
-  const auth = await readJson(join(deps.homeDir, '.codex', 'auth.json'), deps);
-  if (!auth) {
-    return withMessage(
-      base('codex', 'notInstalled', now),
-      'Codex is not set up on this PC (~/.codex/auth.json missing)',
-    );
+  const answer = await deps.askCodex();
+  if (!answer) {
+    return withMessage(base('codex', 'notInstalled', now), 'Codex is not installed on this PC');
   }
-  const tokens = asObj(auth.tokens);
-  const token = str(tokens?.access_token);
-  if (!token) {
-    return withMessage(
-      base('codex', 'authRequired', now),
-      'Codex is not signed in with a ChatGPT account',
-    );
-  }
-  const accountId = str(tokens?.account_id);
-  const baseUrl = await codexBaseUrl(deps);
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${token}`,
-    accept: 'application/json',
-  };
-  if (accountId) headers['ChatGPT-Account-Id'] = accountId;
-
-  const res = await fetchJson({ url: `${baseUrl}/wham/usage`, headers }, deps);
-  if (!res.ok) return httpError('codex', res, now);
-  const body = asObj(res.body) ?? {};
-
-  const plan = str(body.plan_type);
+  const signedIn = asObj(answer.account);
+  const plan = str(signedIn?.planType);
   const account = makeAccount({
-    email: str(body.email),
+    email: str(signedIn?.email),
     plan: plan ? prettifyPlan(plan) : undefined,
   });
-
-  const windows: UsageWindow[] = [];
-  const rate = asObj(body.rate_limit) ?? asObj(body.rate_limits);
-  if (rate) {
-    for (const key of ['primary_window', 'secondary_window']) {
-      const w = asObj(rate[key]);
-      if (w) {
-        const win = windowFromValue(key, key, w);
-        win.label = labelForMinutes(win.windowMinutes);
-        windows.push(win);
-      }
-    }
+  if (!signedIn) {
+    return withMessage(base('codex', 'authRequired', now), 'Codex is not signed in on this PC');
   }
-  const codeReview = asObj(body.code_review_rate_limit);
-  if (codeReview) windows.push(windowFromValue('code_review', 'Code review', codeReview));
-  const additional = Array.isArray(body.additional_rate_limits) ? body.additional_rate_limits : [];
-  additional.forEach((item, i) => {
-    const w = asObj(item);
-    if (w) windows.push(windowFromValue(`extra${i}`, str(w.name) ?? 'Extra', w));
-  });
-
-  const credit = withCreditOf(body.credits, 'Credits');
-  return finish('codex', now, windows, account, credit);
+  if (signedIn.type !== 'chatgpt') {
+    // An API key has no plan limits: usage is billed per token.
+    return finish('codex', now, [], account, undefined);
+  }
+  const limits = asObj(answer.rateLimits);
+  const byId = asObj(limits?.rateLimitsByLimitId);
+  const main = asObj(byId?.codex) ?? asObj(limits?.rateLimits);
+  const windows: UsageWindow[] = [];
+  for (const key of ['primary', 'secondary'] as const) {
+    const w = asObj(main?.[key]);
+    const pct = num(w?.usedPercent);
+    if (!w || pct === undefined) continue;
+    const minutes = num(w.windowDurationMins);
+    windows.push({
+      id:
+        key === 'primary' ? codexWindowId(minutes, 'primary') : codexWindowId(minutes, 'secondary'),
+      label: labelForMinutes(minutes),
+      usedPercent: clampPct(pct),
+      ...spreadWindowMinutes(minutes),
+      ...spreadResets(epochMs(w.resetsAt)),
+    });
+  }
+  const credits = asObj(main?.credits);
+  const balance = num(credits?.balance);
+  const credit: CreditBalance | undefined =
+    credits?.hasCredits === true && balance !== undefined
+      ? { used: 0, available: balance, currency: 'credits', period: 'Credits' }
+      : undefined;
+  const usage = finish('codex', now, windows, account, credit);
+  const resets = asObj(limits?.rateLimitResetCredits);
+  const entries = (Array.isArray(resets?.credits) ? resets.credits : [])
+    .map((c) => asObj(c))
+    .filter((c): c is Record<string, unknown> => !!c && c.status === 'available')
+    .map((c) => ({
+      ...(str(c.id) ? { id: str(c.id) } : {}),
+      ...(str(c.title) ? { title: str(c.title) } : {}),
+      ...spreadExpires(epochMs(c.expiresAt)),
+    }))
+    .sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
+  const available = num(resets?.availableCount) ?? entries.length;
+  if (available > 0) {
+    usage.resetCredits = {
+      available,
+      ...(entries[0]?.expiresAt !== undefined ? { nextExpiresAt: entries[0].expiresAt } : {}),
+      entries,
+    };
+  }
+  return usage;
 }
 
-async function codexBaseUrl(deps: ResolvedDeps): Promise<string> {
-  const fallback = 'https://chatgpt.com/backend-api';
-  try {
-    const raw = await deps.readFile(join(deps.homeDir, '.codex', 'config.toml'));
-    for (const line of raw.split('\n')) {
-      const captured = line.match(/^\s*chatgpt_base_url\s*=\s*"?([^"\r\n]+)"?/)?.[1];
-      if (captured !== undefined) {
-        const url = captured.trim().replace(/\/+$/, '');
-        if (url.startsWith('https://')) return url;
-      }
-    }
-  } catch {
-    // No config.toml (or unreadable) → default base URL.
-  }
+/** A Codex window's stable id from its length: the 5-hour and weekly ones by name. */
+function codexWindowId(minutes: number | undefined, fallback: string): string {
+  if (minutes === 300) return 'session5h';
+  if (minutes === 10_080) return 'weekly';
+  if (minutes !== undefined && minutes >= 40_000) return 'monthly';
   return fallback;
+}
+
+function spreadExpires(expiresAt: number | undefined): { expiresAt?: number } {
+  return expiresAt === undefined ? {} : { expiresAt };
 }
 
 // ── Claude ───────────────────────────────────────────────────────────────────
 
 async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();
-  // `CLAUDE_CONFIG_DIR` moves the whole config dir, credentials file included.
-  const configDir = process.env.CLAUDE_CONFIG_DIR || join(deps.homeDir, '.claude');
-  const creds = await readJson(join(configDir, '.credentials.json'), deps);
-  if (!creds) {
-    // On macOS a signed-in install has no file at all — the token lives in the
-    // login Keychain, which this reader does not open (module docs). Say so,
-    // rather than sending the user off to sign in again.
-    if (deps.platform === 'darwin' && (await readJson(join(deps.homeDir, '.claude.json'), deps))) {
-      return withMessage(
-        base('claude', 'authRequired', now),
-        'Claude Code keeps its sign-in in the macOS Keychain, which the bridge does not read — open the desktop app for usage',
-      );
-    }
+  const answer = await deps.askClaude();
+  if (!answer) {
     return withMessage(
       base('claude', 'notInstalled', now),
-      'Claude Code is not signed in (~/.claude/.credentials.json missing)',
+      'Claude Code is not installed on this PC',
     );
   }
-  const oauth = asObj(creds.claudeAiOauth);
-  const token = str(oauth?.accessToken);
-  if (!token) {
-    return withMessage(
-      base('claude', 'authRequired', now),
-      'Claude Code has no OAuth access token',
-    );
-  }
-  // Claude Code refreshes its access token only while it runs; a stale one would
-  // 401 and read as "signed out". The bridge never refreshes it itself.
-  const expiresAt = epochMs(oauth?.expiresAt);
-  if (expiresAt !== undefined && expiresAt <= now) {
-    return withMessage(
-      base('claude', 'authRequired', now),
-      "Claude Code's session token has expired — open Claude Code once so it refreshes it",
-    );
-  }
-  const plan = str(oauth?.subscriptionType);
-  // Identity comes from `~/.claude.json` (`oauthAccount`), a settings file with
-  // no secrets in it.
-  const identity = asObj((await readJson(join(deps.homeDir, '.claude.json'), deps))?.oauthAccount);
+  const identity = answer.account;
+  const plan = str(identity?.subscriptionType) ?? str(answer.usage?.subscription_type);
   const account = makeAccount({
-    email: str(identity?.emailAddress),
-    organization: str(identity?.organizationName),
+    email: str(identity?.email),
+    organization: str(identity?.organization),
     plan: plan ? prettifyPlan(plan) : undefined,
   });
-
-  const res = await fetchJson(
-    {
-      url: 'https://api.anthropic.com/api/oauth/usage',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'anthropic-beta': 'oauth-2025-04-20',
-        accept: 'application/json',
-      },
-    },
-    deps,
-  );
-  if (!res.ok) return httpError('claude', res, now, account);
-  const body = asObj(res.body) ?? {};
+  const usage = answer.usage;
+  if (!usage) {
+    return withMessage(
+      base('claude', 'authRequired', now),
+      'Claude Code is not signed in on this PC',
+    );
+  }
+  if (usage.rate_limits_available === false) {
+    // An API key, Bedrock or Vertex: no plan limits apply.
+    return finish('claude', now, [], account, undefined);
+  }
+  const body = asObj(usage.rate_limits) ?? {};
 
   const windows: UsageWindow[] = [];
   const limits = Array.isArray(body.limits) ? body.limits : [];
@@ -259,7 +232,8 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
     const model = str(asObj(asObj(w.scope)?.model)?.display_name);
     const windowMinutes = group === 'session' ? 300 : group === 'weekly' ? 10_080 : undefined;
     windows.push({
-      id: kind ?? `limit${i}`,
+      id:
+        kind === 'weekly_scoped' && model ? `weekly_${model.toLowerCase()}` : (kind ?? `limit${i}`),
       label: claudeLimitLabel(kind, group, model),
       usedPercent: clampPct(pct),
       ...(windowMinutes !== undefined ? { windowMinutes } : {}),
@@ -269,8 +243,6 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
   if (windows.length === 0) {
     claudeWindow(windows, body.five_hour, 'five_hour', 'Session (5h)', 300);
     claudeWindow(windows, body.seven_day, 'seven_day', 'Weekly', 10_080);
-    claudeWindow(windows, body.seven_day_opus, 'seven_day_opus', 'Opus (weekly)', 10_080);
-    claudeWindow(windows, body.seven_day_sonnet, 'seven_day_sonnet', 'Sonnet (weekly)', 10_080);
   }
 
   let credit: CreditBalance | undefined;
@@ -578,14 +550,18 @@ function finish(
   const usage: ProviderUsage = {
     provider,
     status: 'ok',
-    source: 'token',
+    source: provider === 'claude' || provider === 'codex' ? 'cli' : 'token',
     windows,
     updatedAt: now,
     ...(account ? { account } : {}),
     ...(credit ? { credit } : {}),
   };
   if (windows.length === 0 && !credit) {
-    usage.message = hints.empty ?? 'signed in, but the usage API returned no quota windows';
+    usage.message =
+      hints.empty ??
+      (provider === 'claude' || provider === 'codex'
+        ? 'signed in; no plan limits apply to this account'
+        : 'signed in, but the usage API returned no quota windows');
   }
   return usage;
 }
@@ -612,45 +588,6 @@ function makeAccount(fields: {
   if (fields.organization) account.organization = fields.organization;
   if (fields.plan) account.plan = fields.plan;
   return account.email || account.organization || account.plan ? account : undefined;
-}
-
-function withCreditOf(value: unknown, period: string): CreditBalance | undefined {
-  const v = asObj(value);
-  return v ? creditFromValue(v, period) : undefined;
-}
-
-function creditFromValue(v: Record<string, unknown>, period: string): CreditBalance | undefined {
-  const used = num(v.used ?? v.balance ?? v.used_credits);
-  if (used === undefined) return undefined;
-  const limit = num(v.limit ?? v.total);
-  const currency = str(v.currency) ?? 'USD';
-  const resetsAt = epochMs(v.resets_at ?? v.resetAt);
-  return {
-    used,
-    currency,
-    period,
-    ...(limit !== undefined ? { limit } : {}),
-    ...spreadResets(resetsAt),
-  };
-}
-
-function windowFromValue(
-  id: string,
-  label: string,
-  w: Record<string, unknown>,
-  minDefault?: number,
-): UsageWindow {
-  let pct = num(w.used_percent ?? w.usedPercent) ?? 0;
-  if (pct <= 1) pct *= 100;
-  const limitSeconds = num(w.limit_window_seconds ?? w.limitWindowSeconds);
-  const windowMinutes = limitSeconds !== undefined ? Math.round(limitSeconds / 60) : minDefault;
-  return {
-    id,
-    label,
-    usedPercent: clampPct(pct),
-    ...spreadWindowMinutes(windowMinutes),
-    ...spreadResets(epochMs(w.reset_at ?? w.resetAt ?? w.resets_at)),
-  };
 }
 
 function labelForMinutes(minutes: number | undefined): string {

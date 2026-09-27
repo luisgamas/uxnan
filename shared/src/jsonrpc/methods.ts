@@ -78,7 +78,14 @@ import type {
   AgentId,
   AgentModel,
 } from '../agents/agent-capabilities.js';
-import type { UsageStatsParams, UsageStatsResult } from '../models/usage.js';
+import type {
+  ProviderUsage,
+  UsageRedeemResetParams,
+  UsageStatsParams,
+  UsageStatsResult,
+  UsageSummary,
+  UsageSummaryParams,
+} from '../models/usage.js';
 import type {
   MetricsExportParams,
   MetricsExportResult,
@@ -538,6 +545,10 @@ export interface JsonRpcMethodRegistry {
   'agent/commands': { params: AgentCommandsParams; result: AgentCommandsResult };
   // Usage statistics (per-provider quota / credit / local token tally)
   'agent/usageStats': { params: UsageStatsParams; result: UsageStatsResult };
+  /** Redeem a rate-limit reset (Codex); answers the provider's fresh usage. */
+  'usage/redeemReset': { params: UsageRedeemResetParams; result: ProviderUsage };
+  /** Tokens and cost the agent CLIs on this PC spent, by day, agent and model. */
+  'usage/summary': { params: UsageSummaryParams; result: UsageSummary };
   // Where the bridge looked for each agent's CLI and what it found
   'agent/doctor': { params: void; result: { agents: AgentDiagnosis[] } };
 

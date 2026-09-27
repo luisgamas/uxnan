@@ -336,20 +336,6 @@ push validation (FOR-HUMAN).
 - [ ] **`bridge/disconnectPhone`** — removes the session but does not close the live
       transport (`FOR-DEV:` in `bridge-control-handler.ts`). Also close the live
       transport so the phone is dropped immediately.
-- [ ] **`agent/usageStats` — Claude Code on a macOS PC.** The reader
-      (`src/usage/usage-reader.ts` `readClaude`) only opens
-      `~/.claude/.credentials.json`; on macOS Claude Code keeps the token in the
-      login Keychain instead, so the phone sees `authRequired` with an honest
-      "open the desktop app" message while the desktop shows live data. The
-      desktop's answer — Security.framework with user interaction disabled on
-      polls + a user-initiated grant — does not port as-is: the bridge's Node
-      binary would need a Keychain grant of its own, and `@napi-rs/keyring`
-      cannot suppress the OS dialog, so a poll could not be kept silent (and the
-      `security` CLI's silent read is exactly the posture the desktop rejected).
-      Resolve by making the **desktop the reader** and serving the phone through
-      the local desktop↔bridge channel (`uxnandesktop/architecture/02e`)
-      rather than a second Keychain client; emit `accessRequired` (already
-      in the contract) when the desktop reports it. Same contract, one reader.
 
 ## Conversation history
 

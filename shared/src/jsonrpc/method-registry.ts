@@ -76,6 +76,8 @@ export const METHOD_NAMES = [
   'agent/models',
   'agent/commands',
   'agent/usageStats',
+  'usage/redeemReset',
+  'usage/summary',
   'agent/doctor',
   // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
   'metrics/get',
