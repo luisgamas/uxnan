@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Images sent from another device show in the message.** A message's images
+  came only from this phone's own copy, so one sent from the desktop — or any
+  message read back from history — showed without them. The bridge now keeps
+  them with the message (`Message.attachments`); the timeline and the viewer
+  fetch each with `turn/attachment` when it is shown and keep recent ones.
+- **Check for a newer bridge from the phone.** The *Bridge on your PC* card in
+  Settings → Updates has a button that asks the PC's bridge to look for a new
+  version right now.
+
 ### Fixed
 
 - **Old bubbles the bridge had dropped stay gone.** A turn the bridge removed at
@@ -13,15 +24,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   stayed on the phone forever: a re-sync only judged turns inside the page it
   fetched. The phone now drops any turn it held before asking that the newest
   page no longer lists — while one created during the request is left alone.
-
-### Added
-
-- **Check for a newer bridge from the phone.** The *Bridge on your PC* card in
-  Settings → Updates has a button that asks the PC's bridge to look for a new
-  version right now.
-
-### Fixed
-
 - Conversations the bridge read back from the agent's own history (after a
   restart, or continued in the agent's app) no longer flicker or swap
   bubbles: the bridge now sends every turn with a single reply.

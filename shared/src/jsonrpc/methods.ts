@@ -119,6 +119,17 @@ export interface TurnListParams {
    */
   fromEnd?: boolean;
 }
+/** `turn/attachment`: one image a user message carries (`Message.attachments`). */
+export interface TurnAttachmentParams {
+  threadId: string;
+  attachmentId: string;
+}
+/** The image's bytes, as they were sent. */
+export interface TurnAttachmentData {
+  mimeType: string;
+  /** Base64 payload (no `data:` URI prefix). */
+  base64Data: string;
+}
 export interface TurnSendParams {
   threadId: string;
   /**
@@ -457,6 +468,8 @@ export interface JsonRpcMethodRegistry {
   'turn/send': { params: TurnSendParams; result: TurnSendResult };
   // Stops a RUNNING turn, or takes a QUEUED one off the queue (→ `cancelled`).
   'turn/cancel': { params: { threadId: string; turnId: string }; result: void };
+  /** The bytes of an image a user message carries (`Message.attachments`). */
+  'turn/attachment': { params: TurnAttachmentParams; result: TurnAttachmentData };
   // Message queue (follow-ups sent while a turn is in flight)
   /** Resumes draining after a stop/failure held the queue. */
   'queue/resume': { params: { threadId: string }; result: QueueStateResult };

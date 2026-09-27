@@ -151,7 +151,20 @@ test(
       async () => (await bridge.context.threadStore.getTurn(turnId)).status === 'completed',
     );
     const turn = await bridge.context.threadStore.getTurn(turnId);
-    assert.equal(turn.messages.find((m) => m.role === 'user')?.content, '[1 image attachment]');
+    const user = turn.messages.find((m) => m.role === 'user');
+    assert.equal(user?.content, '');
+    // The image is kept with the message and served back as it was sent.
+    const [attachment] = user?.attachments ?? [];
+    assert.ok(attachment);
+    const imageRes = await bridge.router.dispatch(
+      makeRequest('3', 'turn/attachment', { threadId, attachmentId: attachment.id }),
+    );
+    assert.ok('result' in imageRes);
+    assert.deepEqual(imageRes.result, { mimeType: 'image/png', base64Data: PNG_1x1 });
+    const missing = await bridge.router.dispatch(
+      makeRequest('4', 'turn/attachment', { threadId, attachmentId: '../threads.json' }),
+    );
+    assert.ok('error' in missing);
     assert.match(
       String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
       /Attached image/,

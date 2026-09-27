@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
@@ -597,7 +600,7 @@ class ThreadManager {
           threadId: threadId,
           turnId: turnId,
           role: MessageRole.user,
-          contents: [TextContent(user.text)],
+          contents: _userContents(user.text, user.images),
           deliveryState: state,
           orderIndex: userOrder ?? _maxOrder(messages) + 1,
           createdAt: _millisToDate(user.createdAt ?? turn['createdAt']),
@@ -606,20 +609,99 @@ class ThreadManager {
     });
   }
 
-  /// The user's message text in a wire turn, when it has one.
-  static ({String text, Object? createdAt})? _userMessageOf(
-    Map<String, dynamic> turn,
-  ) {
+  /// The user's message in a wire turn — its text and the images the bridge
+  /// keeps with it — when it has either.
+  static ({String text, List<ImageContent> images, Object? createdAt})?
+      _userMessageOf(Map<String, dynamic> turn) {
     final messages = turn['messages'];
     if (messages is! List) return null;
     for (final raw in messages) {
       if (raw is! Map || raw['role'] != 'user') continue;
       final content = raw['content'];
-      if (content is String && content.isNotEmpty) {
-        return (text: content, createdAt: raw['createdAt']);
+      final text = content is String ? content : '';
+      final images = _attachmentsOf(raw);
+      if (text.isNotEmpty || images.isNotEmpty) {
+        return (text: text, images: images, createdAt: raw['createdAt']);
       }
     }
     return null;
+  }
+
+  /// The images a wire user message carries (`Message.attachments`), as
+  /// references to fetch with `turn/attachment` when they are shown.
+  static List<ImageContent> _attachmentsOf(Map<dynamic, dynamic> message) {
+    final raw = message['attachments'];
+    if (raw is! List) return const [];
+    return [
+      for (final entry in raw)
+        if (entry is Map &&
+            entry['id'] is String &&
+            (entry['id'] as String).isNotEmpty)
+          ImageContent(
+            mimeType: entry['mimeType'] is String
+                ? entry['mimeType'] as String
+                : 'application/octet-stream',
+            attachmentId: entry['id'] as String,
+            width: entry['width'] is int ? entry['width'] as int : null,
+            height: entry['height'] is int ? entry['height'] as int : null,
+          ),
+    ];
+  }
+
+  /// A user message's contents: its images, then its text when it has any.
+  static List<MessageContent> _userContents(
+    String text,
+    List<ImageContent> images,
+  ) =>
+      [...images, if (text.isNotEmpty) TextContent(text)];
+
+  /// Images of user messages already fetched, newest last (bounded).
+  final LinkedHashMap<String, Future<Uint8List?>> _attachmentCache =
+      LinkedHashMap();
+
+  /// How many fetched images stay in memory.
+  static const int _attachmentCacheSize = 40;
+
+  /// The bytes of an image a user message carries, asked of the bridge once
+  /// (`turn/attachment`) and then kept; null when it cannot be had now.
+  Future<Uint8List?> loadAttachment(String threadId, String attachmentId) {
+    final key = '$threadId/$attachmentId';
+    final cached = _attachmentCache.remove(key);
+    if (cached != null) {
+      _attachmentCache[key] = cached;
+      return cached;
+    }
+    final future = _fetchAttachment(threadId, attachmentId);
+    _attachmentCache[key] = future;
+    while (_attachmentCache.length > _attachmentCacheSize) {
+      _attachmentCache.remove(_attachmentCache.keys.first);
+    }
+    // A failure is not kept: the next view of the message asks again.
+    unawaited(
+      future.then((bytes) {
+        if (bytes == null) _attachmentCache.remove(key);
+      }),
+    );
+    return future;
+  }
+
+  Future<Uint8List?> _fetchAttachment(
+    String threadId,
+    String attachmentId,
+  ) async {
+    try {
+      final res = await _sendRequest('turn/attachment', {
+        'threadId': threadId,
+        'attachmentId': attachmentId,
+      });
+      final result = res.result;
+      if (res.error != null || result is! Map) return null;
+      final data = result['base64Data'];
+      return data is String ? base64Decode(data) : null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('turn/attachment failed', error, stackTrace);
+      return null;
+    }
   }
 
   /// Archives a thread (`thread/archive`): sets its local status to
@@ -1265,8 +1347,11 @@ class ThreadManager {
       for (final rawMsg in messages) {
         if (rawMsg is! Map) continue;
         final role = rawMsg['role'];
-        final content = rawMsg['content'];
-        if (content is! String || content.isEmpty) continue;
+        final rawContent = rawMsg['content'];
+        final content = rawContent is String ? rawContent : '';
+        final images =
+            role == 'user' ? _attachmentsOf(rawMsg) : const <ImageContent>[];
+        if (content.isEmpty && images.isEmpty) continue;
         if (role == 'user') {
           // Mobile-authored messages already carry the bridge turn id after
           // `turn/send`, so matching by (turn, role) preserves their UUID,
@@ -1283,7 +1368,7 @@ class ThreadManager {
           }
           // Adopt the local echo instead of inserting beside it: same row, now
           // stamped with the turn it turned out to belong to.
-          final orphans = orphanUsers[content];
+          final orphans = content.isEmpty ? null : orphanUsers[content];
           if (orphans != null && orphans.isNotEmpty) {
             final adopted = orphans
                 .removeAt(0)
@@ -1297,7 +1382,7 @@ class ThreadManager {
             threadId: threadId,
             turnId: turnId,
             role: MessageRole.user,
-            contents: [TextContent(content)],
+            contents: _userContents(content, images),
             deliveryState: rawTurn['status'] == 'cancelled'
                 ? MessageDeliveryState.cancelled
                 : MessageDeliveryState.sent,

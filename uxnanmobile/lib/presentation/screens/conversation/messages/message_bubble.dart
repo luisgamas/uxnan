@@ -187,11 +187,13 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                 child: ImageThumbStrip(
                   key: const ValueKey('message-attachments'),
                   images: images,
+                  threadId: message.threadId,
                   size: _sentThumbSize,
                   onTap: (index) => unawaited(
                     showImageViewerDialog(
                       context,
                       images: images,
+                      threadId: message.threadId,
                       initialIndex: index,
                     ),
                   ),

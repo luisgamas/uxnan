@@ -88,14 +88,24 @@ export function groupParts(parts: readonly unknown[]): TimelineItem[] {
   return items;
 }
 
+/** A notice the bridge adds about the turn (`system`: a background task cut
+ *  short, a limit reached) — said after the answer, never part of the work. */
+function isNotice(item: TimelineItem): boolean {
+  return item.kind === "block" && typeOf(item.block) === "system";
+}
+
 /** Splits a settled turn into the work that led to the answer and the answer
- *  itself: the text after the last block. A turn with no blocks is all answer. */
+ *  itself: the text after the last block, with any notices that follow it. A
+ *  turn with no blocks is all answer. A notice closing the turn used to count
+ *  as its last block, which folded the whole answer away behind it. */
 export function splitAnswer(items: readonly TimelineItem[]): {
   work: TimelineItem[];
   answer: TimelineItem[];
 } {
   let cut = items.length;
-  while (cut > 0 && items[cut - 1].kind === "text") cut -= 1;
+  while (cut > 0 && (items[cut - 1].kind === "text" || isNotice(items[cut - 1]))) cut -= 1;
+  // Notices alone are not an answer: they stay where they are, after the work.
+  if (!items.slice(cut).some((i) => i.kind === "text")) cut = items.length;
   return { work: items.slice(0, cut), answer: items.slice(cut) };
 }
 

@@ -21,6 +21,7 @@ export const METHOD_NAMES = [
   'turn/read',
   'turn/send',
   'turn/cancel',
+  'turn/attachment',
   // Message queue
   'queue/resume',
   'queue/clear',

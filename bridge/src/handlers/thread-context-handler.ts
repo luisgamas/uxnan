@@ -254,6 +254,9 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });
+  router.register('turn/attachment', (p, ctx: BridgeContext) =>
+    ctx.threadStore.readAttachment(requireString(p, 'threadId'), requireString(p, 'attachmentId')),
+  );
   router.register('turn/cancel', async (p, ctx: BridgeContext) => {
     await ctx.agentManager.cancelTurn(requireString(p, 'threadId'), requireString(p, 'turnId'));
     return null;

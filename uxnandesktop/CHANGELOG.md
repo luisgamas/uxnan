@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A message shows the images sent with it.** The bubble of a sent message
+  showed only its words (or `[1 image attachment]`); its images now sit beside
+  it as thumbnails, from the bridge (`turn/attachment`) or, while it is being
+  sent, from the message itself. A click shows one whole.
 - **A message that did not reach the bridge is kept, and can be retried.** Every
   chat message waits in an outbox on this machine until the bridge has it; one
   that failed — or was in flight when the app closed — comes back after a
@@ -27,6 +31,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   window — the bridge's state and version with its update, every paired phone
   and connected desktop and whether each is connected, and the QR that
   connects a phone.
+
+### Fixed
+
+- **An answer followed by a notice stays open.** When the bridge closed a turn
+  with a notice (a background task cut short), the notice counted as the
+  turn's last step, so the whole answer folded away behind *Worked for…*. The
+  answer and its notice now show under the fold.
 
 ## [0.0.61] - 20260926
 ### Changed

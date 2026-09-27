@@ -1119,3 +1119,35 @@ test('a position is never handed out twice, even after its turn was dropped', as
   assert.equal((await store.getTurn(next.turnId)).seq, 3);
   await rmrf(baseDir);
 });
+
+test('a user message keeps its images: served back, carried by a fork, gone with the thread', async () => {
+  const { store, baseDir } = newStore();
+  try {
+    const thread = await store.startThread({ projectId: 'p' }, 1);
+    const png = Buffer.from('not really a png').toString('base64');
+    const { turnId } = await store.startTurn(thread.id, 'look at this', 2, [
+      { type: 'image', mimeType: 'image/png', base64Data: png, width: 4, height: 3 },
+      { type: 'image', mimeType: 'image/jpeg', path: '/elsewhere/not-ours.jpg' },
+    ]);
+
+    const [user] = (await store.getTurn(turnId)).messages;
+    assert.deepEqual(user?.attachments, [
+      { id: `${turnId}-0.png`, mimeType: 'image/png', bytes: 16, width: 4, height: 3 },
+    ]);
+    assert.deepEqual(await store.readAttachment(thread.id, `${turnId}-0.png`), {
+      mimeType: 'image/png',
+      base64Data: png,
+    });
+    // Only an id a message of this thread names is served — never a path.
+    await assert.rejects(store.readAttachment(thread.id, '../threads/x.json'), RpcError);
+
+    const fork = await store.forkThread(thread.id, 3);
+    assert.equal((await store.readAttachment(fork.id, `${turnId}-0.png`)).base64Data, png);
+
+    await store.deleteThread(thread.id);
+    assert.equal(existsSync(join(baseDir, 'attachments', thread.id)), false);
+    assert.equal(existsSync(join(baseDir, 'attachments', fork.id)), true);
+  } finally {
+    await rmrf(baseDir);
+  }
+});

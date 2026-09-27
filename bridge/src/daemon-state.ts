@@ -8,12 +8,13 @@
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_DAEMON_CONFIG, resolveDaemonConfig, type DaemonConfig } from './daemon-config.js';
 
 export const DAEMON_DIRS = {
   threads: 'threads',
+  attachments: 'attachments',
 } as const;
 
 /**
@@ -22,10 +23,15 @@ export const DAEMON_DIRS = {
  * the store from elsewhere must never be able to name a path.
  */
 export function threadFileName(threadId: string): string {
-  if (!/^[A-Za-z0-9._-]+$/.test(threadId) || threadId === '.' || threadId === '..') {
-    throw new Error(`unsafe thread id: ${threadId}`);
+  return `${safeName(threadId, 'thread id')}.json`;
+}
+
+/** A path segment made only of safe characters, never `.` or `..`. */
+function safeName(value: string, what: string): string {
+  if (!/^[A-Za-z0-9._-]+$/.test(value) || value === '.' || value === '..') {
+    throw new Error(`unsafe ${what}: ${value}`);
   }
-  return `${threadId}.json`;
+  return value;
 }
 
 export const DAEMON_FILES = {
@@ -193,6 +199,43 @@ export class DaemonState {
   /** Removes one conversation's file. Missing is success. */
   async removeThreadFile(threadId: string): Promise<void> {
     await rm(join(this.threadsDir, threadFileName(threadId)), { force: true });
+  }
+
+  /**
+   * Directory holding the images users attached to a conversation's messages
+   * (`attachments/<threadId>/<file>`), kept beside the conversation so every
+   * client can show them.
+   */
+  #attachmentsDir(threadId: string): string {
+    return join(this.baseDir, DAEMON_DIRS.attachments, safeName(threadId, 'thread id'));
+  }
+
+  /** Writes one attachment of a conversation. */
+  async writeAttachment(threadId: string, file: string, data: Buffer): Promise<void> {
+    const dir = this.#attachmentsDir(threadId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, safeName(file, 'attachment')), data);
+  }
+
+  /** Reads one attachment of a conversation. */
+  readAttachment(threadId: string, file: string): Promise<Buffer> {
+    return readFile(join(this.#attachmentsDir(threadId), safeName(file, 'attachment')));
+  }
+
+  /** Copies a conversation's attachments to another (a fork keeps its images). */
+  async copyAttachments(fromThreadId: string, toThreadId: string): Promise<void> {
+    try {
+      await cp(this.#attachmentsDir(fromThreadId), this.#attachmentsDir(toThreadId), {
+        recursive: true,
+      });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  }
+
+  /** Removes every attachment of a conversation. Missing is success. */
+  async removeAttachments(threadId: string): Promise<void> {
+    await rm(this.#attachmentsDir(threadId), { recursive: true, force: true });
   }
 
   /**

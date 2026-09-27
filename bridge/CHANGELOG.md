@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **A user message keeps its images.** The images sent with a message were
+  handed to the agent and then lost: history kept the text, or
+  `[N image attachments]` for an image-only message, so neither app could show
+  them. The thread store now writes them to
+  `~/.uxnan/attachments/<threadId>/`, names them on the message
+  (`Message.attachments`) and serves each with the new `turn/attachment`; a
+  fork copies them and deleting the thread removes them. An image-only message
+  is stored as its images, without placeholder words.
+
 ### Fixed
 
 - **A turn position is never handed out twice.** The next position was the

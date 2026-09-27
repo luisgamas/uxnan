@@ -11,7 +11,13 @@
 import type {
   ApprovalDecision,
 } from '$shared/models/approval';
-import type { Message, QueuePausedReason, Turn, TurnList } from '$shared/models/thread';
+import type {
+  Message,
+  MessageAttachment,
+  QueuePausedReason,
+  Turn,
+  TurnList,
+} from '$shared/models/thread';
 import type {
   ApprovalResolvedParams,
   ContentBlockParams,
@@ -200,7 +206,7 @@ export class Conversation {
       }
     }
     // A bubble already stored on the bridge is no longer pending.
-    const stored = this.pending.filter((p) => turns.some((t) => userText(t) === p.text));
+    const stored = this.pending.filter((p) => turns.some((t) => isSameSend(t, p)));
     if (stored.length > 0) this.#setPending(this.pending.filter((p) => !stored.includes(p)));
   }
 
@@ -542,6 +548,19 @@ export function assistantOf(turn: Turn | undefined): Message | undefined {
 }
 
 /** The user message text of a turn ('' when none). */
+/** Whether [turn] is the stored copy of a message this window sent: the same
+ *  words (or command) and as many images. */
+function isSameSend(turn: Turn, send: PendingSend): boolean {
+  const images = send.request.attachments?.length ?? 0;
+  return userText(turn) === send.text && userAttachments(turn).length === images;
+}
+
+/** The images the user attached to [turn]'s message. */
+export function userAttachments(turn: Turn | undefined): MessageAttachment[] {
+  const attachments = turn?.messages.find((m) => m.role === 'user')?.attachments;
+  return Array.isArray(attachments) ? attachments : [];
+}
+
 export function userText(turn: Turn | undefined): string {
   const message = turn?.messages.find((m) => m.role === 'user');
   return typeof message?.content === 'string' ? message.content : '';

@@ -456,16 +456,10 @@ export class AgentManager {
     // A command invocation carries no free-form text: show the command (`/name
     // args`), not its expansion, in history — the expanded prompt can be large.
     const commandDisplay = options.command ? this.#commandDisplay(options.command) : undefined;
-    // Persist a faithful user message (no temp paths): the command form, the
-    // original text, or a short placeholder for an image-only turn so history
-    // isn't a blank bubble.
-    const persistBase = commandDisplay ?? userText;
-    const persistText =
-      persistBase.length > 0
-        ? persistBase
-        : attachments.length > 0
-          ? `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`
-          : persistBase;
+    // Persist a faithful user message (no temp paths): the command form or the
+    // original text. Its images are kept with it (`Message.attachments`), so an
+    // image-only message is its images, not a placeholder sentence.
+    const persistText = commandDisplay ?? userText;
 
     // A queue that is merely PAUSED still queues: draining is held, so starting
     // this turn now would run it ahead of messages the user sent earlier.
@@ -474,7 +468,12 @@ export class AgentManager {
       return this.#enqueueTurn(threadId, agentId, adapter, persistText, userText, options);
     }
 
-    const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
+    const started = await this.#options.store.startTurn(
+      threadId,
+      persistText,
+      this.#options.now(),
+      attachments,
+    );
     await this.#announceTurn(threadId, started.turnId, options.clientTurnId);
     await this.#runTurn(threadId, agentId, adapter, {
       turnId: started.turnId,
@@ -578,7 +577,12 @@ export class AgentManager {
         `the thread's message queue is full (${QUEUE_LIMIT})`,
       );
     }
-    const queued = await this.#options.store.queueTurn(threadId, persistText, this.#options.now());
+    const queued = await this.#options.store.queueTurn(
+      threadId,
+      persistText,
+      this.#options.now(),
+      options.attachments ?? [],
+    );
     await this.#announceTurn(threadId, queued.turnId, options.clientTurnId);
     // The agent is recorded now so a `turn/cancel` for this queued turn — and any
     // later cancel on the thread — reaches the right adapter even if it is the

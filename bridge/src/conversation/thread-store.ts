@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   AccessMode,
   Message,
+  MessageAttachment,
   MessageRole,
   Thread,
   ThreadList,
@@ -26,6 +27,8 @@ import type {
   ThreadStatus,
   ThreadTitleSource,
   Turn,
+  TurnAttachment,
+  TurnAttachmentData,
   TurnList,
   TurnStatus,
 } from '@uxnan/shared';
@@ -88,6 +91,8 @@ interface StoredMessage {
   segments?: unknown[];
   /** Token usage for this turn (so the phone restores the context meter). */
   usage?: { tokens: number; contextWindow?: number };
+  /** Images the user attached (user messages), stored beside the thread. */
+  attachments?: MessageAttachment[];
   createdAt: number;
 }
 
@@ -337,6 +342,20 @@ export class ThreadStore {
       if (turn) return toTurn(turn);
     }
     throw notFound(`turn not found: ${turnId}`);
+  }
+
+  /** The bytes of an image a user message of [threadId] carries. */
+  async readAttachment(threadId: string, attachmentId: string): Promise<TurnAttachmentData> {
+    const thread = await this.#requireThread(await this.#read(), threadId);
+    const attachment = thread.turns
+      .flatMap((turn) => turn.messages)
+      .flatMap((message) => message.attachments ?? [])
+      .find((a) => a.id === attachmentId);
+    if (!attachment) throw notFound(`attachment not found: ${attachmentId}`);
+    const data = await this.#state.readAttachment(threadId, attachment.id).catch(() => {
+      throw notFound(`attachment not found: ${attachmentId}`);
+    });
+    return { mimeType: attachment.mimeType, base64Data: data.toString('base64') };
   }
 
   /**
@@ -699,12 +718,19 @@ export class ThreadStore {
       this.#bump(copy);
       return { result: structuredCloneThread(copy), write: [copy.id] };
     });
+    // The fork's messages keep their images: they are the same messages.
+    await this.#state.copyAttachments(threadId, fork.id);
     await this.#captureMetrics(fork);
     return toThread(fork);
   }
 
-  async startTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
-    return this.#createTurn(threadId, userText, 'streaming', now);
+  async startTurn(
+    threadId: string,
+    userText: string,
+    now: number,
+    attachments: readonly TurnAttachment[] = [],
+  ): Promise<StartTurnResult> {
+    return this.#createTurn(threadId, userText, 'streaming', now, attachments);
   }
 
   /**
@@ -714,8 +740,13 @@ export class ThreadStore {
    * stays empty, and nothing is handed to an adapter until
    * {@link beginQueuedTurn} promotes it.
    */
-  async queueTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
-    return this.#createTurn(threadId, userText, 'queued', now);
+  async queueTurn(
+    threadId: string,
+    userText: string,
+    now: number,
+    attachments: readonly TurnAttachment[] = [],
+  ): Promise<StartTurnResult> {
+    return this.#createTurn(threadId, userText, 'queued', now, attachments);
   }
 
   /** Promotes a `queued` turn to `streaming` as the queue drains to it. */
@@ -822,15 +853,18 @@ export class ThreadStore {
     userText: string,
     status: TurnStatus,
     now: number,
+    attachments: readonly TurnAttachment[],
   ): Promise<StartTurnResult> {
     const captured = await this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const turnId = randomUUID();
+      const stored = await this.#storeAttachments(threadId, turnId, attachments);
       const userMessage: StoredMessage = {
         id: randomUUID(),
         turnId,
         role: 'user',
         text: userText,
+        ...(stored.length > 0 ? { attachments: stored } : {}),
         createdAt: now,
       };
       const assistantMessage: StoredMessage = {
@@ -868,6 +902,34 @@ export class ThreadStore {
     });
     await this.#captureMetrics(captured.thread);
     return captured.result;
+  }
+
+  /**
+   * Keeps the images of a user message beside the thread, so every client can
+   * show them in the message long after the agent's own copies are gone. Only
+   * inline images are kept: a path names a file the bridge does not own.
+   */
+  async #storeAttachments(
+    threadId: string,
+    turnId: string,
+    attachments: readonly TurnAttachment[],
+  ): Promise<MessageAttachment[]> {
+    const stored: MessageAttachment[] = [];
+    for (const [index, attachment] of attachments.entries()) {
+      if (!attachment.base64Data) continue;
+      const data = Buffer.from(attachment.base64Data, 'base64');
+      if (data.length === 0) continue;
+      const id = `${turnId}-${index}.${attachmentExtension(attachment.mimeType)}`;
+      await this.#state.writeAttachment(threadId, id, data);
+      stored.push({
+        id,
+        mimeType: attachment.mimeType,
+        bytes: data.length,
+        ...(attachment.width !== undefined ? { width: attachment.width } : {}),
+        ...(attachment.height !== undefined ? { height: attachment.height } : {}),
+      });
+    }
+    return stored;
   }
 
   appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
@@ -1163,7 +1225,10 @@ export class ThreadStore {
       try {
         const threads = await this.#read();
         const scope = await fn(threads);
-        for (const id of scope.remove ?? []) await this.#state.removeThreadFile(id);
+        for (const id of scope.remove ?? []) {
+          await this.#state.removeThreadFile(id);
+          await this.#state.removeAttachments(id);
+        }
         const write = new Set([...(scope.write ?? []), ...this.#changed]);
         for (const id of write) {
           const thread = threads.find((t) => t.id === id);
@@ -1461,8 +1526,26 @@ function toMessage(message: StoredMessage): Message {
       ? { segments: message.segments }
       : {}),
     ...(message.usage ? { usage: message.usage } : {}),
+    ...(message.attachments && message.attachments.length > 0
+      ? { attachments: message.attachments }
+      : {}),
     createdAt: message.createdAt,
   };
+}
+
+/** File extension for a stored image (no dot); `bin` for an unknown type. */
+function attachmentExtension(mimeType: string): string {
+  const subtype = mimeType.toLowerCase().split('/')[1] ?? '';
+  const known: Record<string, string> = {
+    png: 'png',
+    jpeg: 'jpg',
+    jpg: 'jpg',
+    webp: 'webp',
+    gif: 'gif',
+    heic: 'heic',
+    bmp: 'bmp',
+  };
+  return known[subtype] ?? 'bin';
 }
 
 function structuredCloneThread(thread: StoredThread): StoredThread {

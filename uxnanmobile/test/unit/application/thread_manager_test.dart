@@ -139,6 +139,7 @@ void main() {
               'status': 'active',
               'model': 'gpt-5',
             },
+          'turn/attachment' => {'mimeType': 'image/png', 'base64Data': 'AAEC'},
           _ => <String, dynamic>{},
         };
         return RpcMessage.response(id: '1', result: result);
@@ -179,6 +180,62 @@ void main() {
 
     expect(manager.timeline.messages.map((m) => m.id).toList(), ['m1', 'm2']);
   });
+
+  test(
+    'a message sent with images elsewhere shows them, fetched once',
+    () async {
+      await seedThread();
+      turnListResult = {
+        'turns': [
+          {
+            'id': 't-img',
+            'seq': 1,
+            'status': 'completed',
+            'messages': [
+              {
+                'role': 'user',
+                'content': '',
+                'attachments': [
+                  {
+                    'id': 't-img-0.png',
+                    'mimeType': 'image/png',
+                    'bytes': 3,
+                    'width': 4,
+                    'height': 3,
+                  },
+                ],
+                'createdAt': 1000,
+              },
+              {'role': 'assistant', 'content': 'I see it', 'createdAt': 1001},
+            ],
+          },
+        ],
+        'total': 1,
+      };
+
+      await manager.selectThread('th1');
+      await _settle();
+      await manager.resyncActive();
+      await _settle();
+
+      final user = (await messageRepo.getMessages('th1'))
+          .firstWhere((m) => m.role == MessageRole.user);
+      expect(user.contents, [
+        const ImageContent(
+          mimeType: 'image/png',
+          attachmentId: 't-img-0.png',
+          width: 4,
+          height: 3,
+        ),
+      ]);
+
+      final first = await manager.loadAttachment('th1', 't-img-0.png');
+      final again = await manager.loadAttachment('th1', 't-img-0.png');
+      expect(first, [0, 1, 2]);
+      expect(again, [0, 1, 2]);
+      expect(sentMethods.where((m) => m == 'turn/attachment'), hasLength(1));
+    },
+  );
 
   test(
     'resync persists native-only user and assistant messages '

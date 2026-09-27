@@ -89,6 +89,17 @@ describe("splitAnswer", () => {
     expect(splitAnswer(groupParts([text("just text")])).work).toEqual([]);
     expect(splitAnswer(groupParts([text("a"), cmd("ls")])).answer).toEqual([]);
   });
+
+  it("keeps an answer open when a notice closes the turn", () => {
+    const notice = { type: "system", kind: "warning", text: "A background task was interrupted." };
+    const boundary = { type: "assistant_response_boundary", phase: "unknown" };
+    const items = groupParts([cmd("ls"), text("Phase 1 is done."), boundary, notice]);
+    const { work, answer } = splitAnswer(items);
+    expect(work.map((i) => i.kind)).toEqual(["work"]);
+    expect(answer).toEqual([{ kind: "text", text: "Phase 1 is done." }, { kind: "block", block: notice }]);
+    // A notice alone after the work is not an answer.
+    expect(splitAnswer(groupParts([cmd("ls"), notice])).answer).toEqual([]);
+  });
 });
 
 describe("activity state", () => {

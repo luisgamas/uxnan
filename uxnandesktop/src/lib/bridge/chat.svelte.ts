@@ -25,6 +25,7 @@ import type {
   AgentModel,
 } from '$shared/agents/agent-capabilities';
 import type { TurnAttachment } from '$shared/models/workspace';
+import type { TurnAttachmentData } from '$shared/jsonrpc/methods';
 import type { Project } from '$shared/models/project';
 import type { BridgeSettings, ClientPresence, SyncChanges } from '$shared/models/sync';
 import type { TrustedDevice } from '$shared/models/session';
@@ -98,6 +99,8 @@ export class ChatStore {
   readonly #modelRequests = new Map<string, Promise<AgentModel[]>>();
   #prefetching = false;
   #conversations = new SvelteMap<string, Conversation>();
+  /** Images of user messages already fetched (`attachment`), by thread and id. */
+  readonly #attachments = new Map<string, Promise<string>>();
   #started = false;
 
   constructor(client: BridgeClientStore) {
@@ -481,13 +484,9 @@ export class ChatStore {
     if (trimmed.length === 0 && attachments.length === 0 && !command) return;
     const conversation = this.conversation(threadId);
     const clientTurnId = crypto.randomUUID();
-    // The bubble shows what history will: the command as typed, the text, or
-    // (for images alone) how many there are — the bridge stores the same.
-    const shown = command
-      ? `/${command.name}${command.args ? ` ${command.args}` : ''}`
-      : trimmed.length > 0
-        ? trimmed
-        : `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`;
+    // The bubble shows what history will: the command as typed or the text,
+    // with the images beside it — the bridge stores the same.
+    const shown = command ? `/${command.name}${command.args ? ` ${command.args}` : ''}` : trimmed;
     // The bridge names the conversation from its first message itself. A
     // command carries no text: the bridge resolves it (as for the phone).
     const request: SendRequest = {
@@ -521,6 +520,24 @@ export class ChatStore {
     const open = this.#conversations.get(threadId);
     if (open) open.forgetPending();
     else writeOutbox(threadId, []);
+  }
+
+  /**
+   * An image a user message carries (`Message.attachments`) as a `data:` URL,
+   * asked of the bridge once and then kept: a message's images never change.
+   */
+  attachment(threadId: string, attachmentId: string): Promise<string> {
+    const key = `${threadId}/${attachmentId}`;
+    let image = this.#attachments.get(key);
+    if (!image) {
+      image = this.#client
+        .call<TurnAttachmentData>('turn/attachment', { threadId, attachmentId })
+        .then((data) => `data:${data.mimeType};base64,${data.base64Data}`);
+      // A failed fetch is not kept: the next view of the message asks again.
+      image.catch(() => this.#attachments.delete(key));
+      this.#attachments.set(key, image);
+    }
+    return image;
   }
 
   /** Stop the running turn, or take a queued one off the queue. */

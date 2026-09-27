@@ -224,10 +224,14 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
   …*) — which opens back to it, each work group then closed to its summary
   (*Ran 3 commands · 2 edits*, and how many failed). The closing answer stays
-  open, followed by a card of the **files the turn changed** (+/− per file; a
+  open — with any notice the bridge added after it (a background task cut
+short) — followed by a card of the **files the turn changed** (+/− per file; a
   click opens the file). *Thinking* folds away. Scrolling to the top loads older
   turns.
-- **Messages**: hovering one shows when it was sent and a copy button.
+- **Messages**: hovering one shows when it was sent and a copy button. The
+  images sent with a message sit beside it as thumbnails — the bridge keeps
+  them with the message and hands each over with `turn/attachment` — and a
+  click shows one whole.
 - **Approvals and questions** wait in a dock **pinned above the composer**
   until they are answered; the timeline keeps a one-line record of each (what
   was asked, then how it ended). One answered on the phone (or timed out)
