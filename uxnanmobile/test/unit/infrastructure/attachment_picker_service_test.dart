@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
@@ -116,6 +117,48 @@ void main() {
     test('a failing plugin is swallowed into an empty list', () async {
       final service = AttachmentPickerService(_FakePicker(throwOnPick: true));
       expect(await service.pickImages(AttachmentSource.gallery), isEmpty);
+    });
+  });
+
+  group('AttachmentPickerService.pickFiles', () {
+    test('any file, by its name and type; one too large is left out', () async {
+      final service = AttachmentPickerService(
+        _FakePicker(),
+        () async => FilePickerResult([
+          PlatformFile(
+            name: 'people.csv',
+            size: 5,
+            bytes: Uint8List.fromList(utf8.encode('id\n1\n')),
+          ),
+          PlatformFile(
+            name: 'huge.zip',
+            size: kMaxAttachmentBytes + 1,
+            bytes: Uint8List(kMaxAttachmentBytes + 1),
+          ),
+        ]),
+      );
+      final picked = await service.pickFiles();
+      expect(picked.tooLarge, 1);
+      expect(picked.files.single.name, 'people.csv');
+      expect(picked.files.single.mimeType, 'text/csv');
+      expect(picked.files.single.base64Data, 'aWQKMQo=');
+    });
+
+    test('a cancelled or failing pick yields nothing', () async {
+      expect(
+        (await AttachmentPickerService(_FakePicker(), () async => null)
+                .pickFiles())
+            .files,
+        isEmpty,
+      );
+      expect(
+        (await AttachmentPickerService(
+          _FakePicker(),
+          () async => throw StateError('no plugin'),
+        ).pickFiles())
+            .files,
+        isEmpty,
+      );
     });
   });
 }

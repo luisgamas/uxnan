@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/file_chip.dart';
 import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
 import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
 import 'package:uxnan/presentation/widgets/ne_dashed_outline.dart';
@@ -102,9 +103,18 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
   List<ImageContent> get _images =>
       widget.message.contents.whereType<ImageContent>().toList();
 
-  /// Content that is neither text nor an image — kept inside the bubble.
+  /// The message's attached files, shown as chips above the bubble.
+  List<AttachedFileContent> get _files =>
+      widget.message.contents.whereType<AttachedFileContent>().toList();
+
+  /// Content that is neither text nor an attachment — kept inside the bubble.
   List<MessageContent> get _otherBlocks => widget.message.contents
-      .where((c) => c is! TextContent && c is! ImageContent)
+      .where(
+        (c) =>
+            c is! TextContent &&
+            c is! ImageContent &&
+            c is! AttachedFileContent,
+      )
       .toList();
 
   void _copy() {
@@ -154,6 +164,15 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     }
   }
 
+  bool _canSendNow(String threadId) {
+    final agentId = ref.watch(threadByIdProvider(threadId))?.agentId;
+    final steers = (ref.watch(agentsProvider).value ?? const [])
+        .any((a) => a.agentId == agentId && a.capabilities.steering);
+    return ref.watch(threadActivityForProvider(threadId)) !=
+            ThreadActivity.running ||
+        steers;
+  }
+
   /// **Cancel** — drops the message from the queue and leaves it in the
   /// timeline marked as cancelled. Nothing goes back to the composer: this is
   /// the "I changed my mind" action, and the record of it is the point.
@@ -174,14 +193,6 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final message = widget.message;
-    // A queued message can go now: into the running turn when its agent takes
-    // a message while it works, or — nothing running — as the next turn.
-    final agentId = ref.watch(threadByIdProvider(message.threadId))?.agentId;
-    final steers = (ref.watch(agentsProvider).value ?? const [])
-        .any((a) => a.agentId == agentId && a.capabilities.steering);
-    final canSendNow = ref.watch(threadActivityForProvider(message.threadId)) !=
-            ThreadActivity.running ||
-        steers;
     // The BRIDGE owns the queue, so its state is what decides whether this is a
     // waiting message — not the locally-cached delivery state, which can lag a
     // reconnect or be stale after another device changed the queue. Falling
@@ -195,6 +206,11 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
         // the bridge says the message left the queue, so it cannot get stuck.
         message.deliveryState == MessageDeliveryState.queued;
     final cancelled = message.deliveryState == MessageDeliveryState.cancelled;
+    // A queued message can go now: into the running turn when its agent takes
+    // a message while it works, or — nothing running — as the next turn. Read
+    // only for a waiting message: every sent one would otherwise watch the
+    // agent list and the thread's activity for nothing.
+    final canSendNow = queued && _canSendNow(message.threadId);
     final motion =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
     final images = _images;
@@ -227,6 +243,20 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                     ),
                   ),
                 ),
+              ),
+            ),
+          ),
+        if (_files.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UxnanSpacing.xs),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Wrap(
+                key: const ValueKey('message-files'),
+                alignment: WrapAlignment.end,
+                spacing: UxnanSpacing.sm,
+                runSpacing: UxnanSpacing.sm,
+                children: [for (final file in _files) FileChip(file: file)],
               ),
             ),
           ),

@@ -1931,5 +1931,11 @@
   "questionBack": "Previous question",
   "@questionBack": {"description": "Move to the previous question (tooltip)."},
   "queuedMessageSendNow": "Send now",
-  "@queuedMessageSendNow": {"description": "Queued message: send it now instead of waiting."}
+  "@queuedMessageSendNow": {"description": "Queued message: send it now instead of waiting."},
+  "composerAttachFile": "File",
+  "@composerAttachFile": {"description": "Composer + menu: attach any file."},
+  "composerFilesLimit": "A message carries up to {count} files.",
+  "@composerFilesLimit": {"description": "Too many files.", "placeholders": {"count": {"type": "int"}}},
+  "composerFileTooLarge": "{count, plural, =1{A file was left out: larger than 20 MB.} other{{count} files were left out: larger than 20 MB.}}",
+  "@composerFileTooLarge": {"description": "Picked files over the size limit.", "placeholders": {"count": {"type": "int"}}}
 }

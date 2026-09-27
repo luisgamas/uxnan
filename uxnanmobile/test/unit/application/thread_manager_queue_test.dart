@@ -251,7 +251,9 @@ void main() {
     final refused = await manager.sendQueuedNow('th1', 'turn-b');
     expect(refused, isNull);
     expect(
-        sentParams['queue/sendNow'], {'threadId': 'th1', 'turnId': 'turn-b'});
+      sentParams['queue/sendNow'],
+      {'threadId': 'th1', 'turnId': 'turn-b'},
+    );
     expect(manager.queueOf('th1').turnIds, ['turn-a']);
 
     refuseSendNow = true;

@@ -152,6 +152,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Images the user attached for the next turn (shown as removable thumbnails
   /// inside the composer, above the text field); cleared on send.
   final List<ImageContent> _attachments = [];
+  final List<AttachedFileContent> _files = [];
 
   // Captured in initState: using `ref` inside dispose() is unreliable in
   // Riverpod (the clear could be dropped, leaving this thread marked as
@@ -629,6 +630,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// The gallery allows a multi-selection; the queue is capped at
   /// [_maxAttachments] because every image rides inline on the turn.
   Future<void> _pickAttachment(AttachmentSource source) async {
+    if (source == AttachmentSource.file) return _pickFiles();
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
     final free = _maxAttachments - _attachments.length;
@@ -660,6 +662,38 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           SnackBar(content: Text(l10n.composerAttachLimit(_maxAttachments))),
         );
     }
+  }
+
+  /// Picks files of any kind for the next message, up to [_maxAttachments];
+  /// a file past the size limit is left out, and the snackbar says so.
+  Future<void> _pickFiles() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final l10n = AppLocalizations.of(context);
+    final free = _maxAttachments - _files.length;
+    if (free <= 0) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.composerFilesLimit(_maxAttachments))),
+        );
+      return;
+    }
+    final picked =
+        await ref.read(attachmentPickerServiceProvider).pickFiles(limit: free);
+    if (!mounted) return;
+    if (picked.files.isNotEmpty) setState(() => _files.addAll(picked.files));
+    if (picked.tooLarge > 0) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.composerFileTooLarge(picked.tooLarge))),
+        );
+    }
+  }
+
+  void _removeFile(int index) {
+    if (index < 0 || index >= _files.length) return;
+    setState(() => _files.removeAt(index));
   }
 
   void _removeAttachment(int index) {
@@ -898,7 +932,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
     // The "+" is reserved for immediate media actions. Persistent turn
     // context (reasoning and approval) lives in the collapsible shelf.
-    final showAttach = caps?.images ?? false;
+    // Photos for an agent that takes images; a file for any agent.
+    final showImages = caps?.images ?? false;
     final showRunOptions = connectedHere && runOptions.isNotEmpty;
     final showApproval = caps?.approvals ?? false;
     final showTurnControls = showRunOptions || showApproval;
@@ -1254,6 +1289,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       // Pending images ride inside the pill, above the field.
                       attachments: _attachments,
                       onRemoveAttachment: _removeAttachment,
+                      files: _files,
+                      onRemoveFile: _removeFile,
+                      acceptsImages: showImages,
                       // A drafted message during a live turn is what reveals
                       // the floating "queue message" action above the pill.
                       onDraftChanged: (hasDraft) {
@@ -1272,7 +1310,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       onStop: () => ref
                           .read(threadManagerProvider)
                           .cancelTurn(widget.threadId),
-                      onAttach: showAttach ? _pickAttachment : null,
+                      onAttach: connectedHere ? _pickAttachment : null,
                       onSend: (text) {
                         // Honor the scroll-to-latest-on-send setting: arm a
                         // forced scroll so the user sees their message even if
@@ -1283,6 +1321,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         final options =
                             ref.read(threadRunOptionsProvider(widget.threadId));
                         final attachments = List<ImageContent>.of(_attachments);
+                        final files = List<AttachedFileContent>.of(_files);
                         // Route `/name args` for an advertised agent command as a
                         // real command (turn/send `command`); anything else is
                         // sent verbatim as text.
@@ -1292,10 +1331,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                               text,
                               options: options,
                               attachments: attachments,
+                              files: files,
                               command: command,
                             );
-                        if (_attachments.isNotEmpty) {
-                          setState(_attachments.clear);
+                        if (_attachments.isNotEmpty || _files.isNotEmpty) {
+                          setState(() {
+                            _attachments.clear();
+                            _files.clear();
+                          });
                         }
                       },
                     ),

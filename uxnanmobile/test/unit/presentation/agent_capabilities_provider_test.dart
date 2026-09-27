@@ -29,7 +29,10 @@ void main() {
   });
 
   test('AgentCapabilities.fromJson parses steering', () {
-    expect(AgentCapabilities.fromJson(const {'steering': true}).steering, isTrue);
+    expect(
+      AgentCapabilities.fromJson(const {'steering': true}).steering,
+      isTrue,
+    );
     expect(AgentCapabilities.fromJson(const {}).steering, isFalse);
     expect(const AgentCapabilities.permissive().steering, isTrue);
   });

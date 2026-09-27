@@ -30,6 +30,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   tokens lens is gone — tokens are the spend section's now, counted from every
   session instead of only the phone's turns. The profile lists your PCs, each
   opening its own stats, and one refresh in the bar updates everything.
+- **Attach any file.** The "+" menu has *File* for every agent (photos stay
+  for agents that take images): up to 20 MB each, sent by its name, shown as a
+  chip in the composer and in the message.
 - **Send a queued message now.** A waiting message has a send-now action:
   into the running turn for an agent that takes a message while it works, or
   as the next turn at once when nothing runs; a refusal says why.

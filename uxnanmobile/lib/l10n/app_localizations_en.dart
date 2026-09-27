@@ -3216,4 +3216,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get queuedMessageSendNow => 'Send now';
+
+  @override
+  String get composerAttachFile => 'File';
+
+  @override
+  String composerFilesLimit(int count) {
+    return 'A message carries up to $count files.';
+  }
+
+  @override
+  String composerFileTooLarge(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count files were left out: larger than 20 MB.',
+      one: 'A file was left out: larger than 20 MB.',
+    );
+    return '$_temp0';
+  }
 }

@@ -1046,5 +1046,8 @@
   "questionStep": "{n} de {total}",
   "questionNext": "Siguiente",
   "questionBack": "Pregunta anterior",
-  "queuedMessageSendNow": "Enviar ahora"
+  "queuedMessageSendNow": "Enviar ahora",
+  "composerAttachFile": "Archivo",
+  "composerFilesLimit": "Un mensaje lleva hasta {count} archivos.",
+  "composerFileTooLarge": "{count, plural, =1{Se omitió un archivo: pesa más de 20 MB.} other{Se omitieron {count} archivos: pesan más de 20 MB.}}"
 }

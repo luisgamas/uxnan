@@ -5665,6 +5665,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Send now'**
   String get queuedMessageSendNow;
+
+  /// Composer + menu: attach any file.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get composerAttachFile;
+
+  /// Too many files.
+  ///
+  /// In en, this message translates to:
+  /// **'A message carries up to {count} files.'**
+  String composerFilesLimit(int count);
+
+  /// Picked files over the size limit.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{A file was left out: larger than 20 MB.} other{{count} files were left out: larger than 20 MB.}}'**
+  String composerFileTooLarge(int count);
 }
 
 class _AppLocalizationsDelegate

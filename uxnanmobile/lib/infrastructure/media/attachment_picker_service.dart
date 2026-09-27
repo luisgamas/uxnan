@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
@@ -11,7 +12,13 @@ enum AttachmentSource {
 
   /// The device camera (capture a new photo).
   camera,
+
+  /// Any file from the device's files (sent as a file, not an image).
+  file,
 }
+
+/// The largest file a message carries: the bridge's `MAX_ATTACHMENT_BYTES`.
+const int kMaxAttachmentBytes = 20 * 1024 * 1024;
 
 /// Picks images for the composer and returns them as inline-base64
 /// [ImageContent] blocks ready to ride on `turn/send`.
@@ -23,10 +30,16 @@ enum AttachmentSource {
 /// ceiling. The plugin is injectable so tests run without the platform channel.
 class AttachmentPickerService {
   /// Creates an [AttachmentPickerService], optionally injecting the plugin.
-  AttachmentPickerService([ImagePicker? picker])
-      : _picker = picker ?? ImagePicker();
+  AttachmentPickerService([
+    ImagePicker? picker,
+    Future<FilePickerResult?> Function()? pickFiles,
+  ])  : _picker = picker ?? ImagePicker(),
+        _pickFiles = pickFiles ??
+            (() => FilePicker.platform
+                .pickFiles(allowMultiple: true, withData: true));
 
   final ImagePicker _picker;
+  final Future<FilePickerResult?> Function() _pickFiles;
 
   /// Picks images from [source]: the gallery allows a multi-selection (capped
   /// at [limit] when given, since every image rides inline on the turn), the
@@ -73,6 +86,44 @@ class AttachmentPickerService {
     }
   }
 
+  /// Picks files of any kind (up to [limit]) and returns them as inline
+  /// [AttachedFileContent] blocks, with how many were left out for being
+  /// larger than [kMaxAttachmentBytes]. Empty when the user cancels or the
+  /// pick fails.
+  Future<({List<AttachedFileContent> files, int tooLarge})> pickFiles({
+    int? limit,
+  }) async {
+    try {
+      final result = await _pickFiles();
+      if (result == null) {
+        return (files: const <AttachedFileContent>[], tooLarge: 0);
+      }
+      final files = <AttachedFileContent>[];
+      var tooLarge = 0;
+      for (final picked in result.files) {
+        if (limit != null && files.length >= limit) break;
+        final bytes = picked.bytes;
+        if (bytes == null) continue;
+        if (bytes.length > kMaxAttachmentBytes) {
+          tooLarge++;
+          continue;
+        }
+        files.add(
+          AttachedFileContent(
+            name: picked.name,
+            mimeType: _fileMimeFor(picked.name),
+            bytes: bytes.length,
+            base64Data: base64Encode(bytes),
+          ),
+        );
+      }
+      return (files: files, tooLarge: tooLarge);
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('file pick failed', error, stackTrace);
+      return (files: const <AttachedFileContent>[], tooLarge: 0);
+    }
+  }
+
   /// Picks a small avatar image from the gallery, downscaled to 256 px (q80) so
   /// it stays tiny enough to store inline. Returns its base64 + MIME, or `null`
   /// when the user cancels or the pick fails.
@@ -101,4 +152,26 @@ class AttachmentPickerService {
     if (lower.endsWith('.bmp')) return 'image/bmp';
     return 'image/jpeg';
   }
+}
+
+/// The MIME type a picked file travels as, from its extension.
+String _fileMimeFor(String name) {
+  final dot = name.lastIndexOf('.');
+  final ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+  return switch (ext) {
+    'pdf' => 'application/pdf',
+    'txt' || 'log' => 'text/plain',
+    'md' || 'markdown' => 'text/markdown',
+    'csv' => 'text/csv',
+    'json' => 'application/json',
+    'yaml' || 'yml' => 'application/yaml',
+    'xml' => 'application/xml',
+    'html' || 'htm' => 'text/html',
+    'zip' => 'application/zip',
+    'png' => 'image/png',
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+    _ => 'application/octet-stream',
+  };
 }

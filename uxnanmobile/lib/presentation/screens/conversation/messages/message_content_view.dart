@@ -29,6 +29,7 @@ import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/file_chip.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
@@ -75,6 +76,7 @@ class MessageContentView extends StatelessWidget {
       final SystemContent c => _SystemBanner(content: c),
       final DiffContent c => _DiffBlock(content: c),
       final ImageContent c => _ImageBlock(content: c),
+      final AttachedFileContent c => FileChip(file: c),
       final ToolUseContent c =>
         _Placeholder(icon: UxIcons.build, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>
