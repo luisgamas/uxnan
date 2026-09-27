@@ -305,7 +305,12 @@
             >{accountTypeLabel}</span>
           {/if}
           {#if snapshot.account?.organization}
-            <span class="truncate">·&nbsp;{snapshot.account.organization}</span>
+            <!-- An organization is often named after its owner's email
+                 ("me@x.com's Organization"): it hides and shows with it. -->
+            <span class="truncate">·&nbsp;<span
+                class={cn("transition-[filter] duration-150", !accountRevealed && "select-none blur-[5px]")}
+                >{snapshot.account.organization}</span
+              ></span>
           {/if}
         </div>
       {/if}

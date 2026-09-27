@@ -70,3 +70,27 @@ describe("ProviderUsageEditor — resets", () => {
     }
   });
 });
+
+describe("ProviderUsageEditor — account", () => {
+  // Claude names an organization after its owner's email: it stays hidden
+  // with the email until the person reveals the account.
+  it("hides the email and an organization named after it until revealed", async () => {
+    const { screen, user } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: config(),
+        snapshot: snapshot({
+          account: { email: "me@x.com", plan: "Max", organization: "me@x.com's Organization" },
+        }),
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    const org = screen.getByText("me@x.com's Organization");
+    expect(org.className).toContain("blur");
+    expect(screen.getByText("me@x.com").className).toContain("blur");
+    await user.click(screen.getByRole("button", { name: "Show account" }));
+    expect(org.className).not.toContain("blur");
+  });
+});
+

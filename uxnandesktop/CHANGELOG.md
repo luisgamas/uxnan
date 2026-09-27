@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **A provider's organization hides with the account.** Claude names an
+  organization after its owner's email, which showed in full beside the
+  blurred email; it now blurs and shows with it.
+
 ### Added
 
 - **Long messages fold.** A long message you sent shows its first ten lines
