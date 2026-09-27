@@ -6,7 +6,8 @@
 //!
 //! - **macOS** — `WKWebView takeSnapshotWithConfiguration:`, encoded by AppKit.
 //! - **Windows** — WebView2's `ICoreWebView2::CapturePreview` into an in-memory
-//!   stream.
+//!   stream. WebView2 does not render a hidden page, so a page in a background
+//!   workspace is shown off the window for the capture and hidden again.
 //! - **Linux** — WebKitGTK's `webkit_web_view_get_snapshot`, written by cairo.
 //!
 //! Every platform runs the capture on the main thread (`with_webview`) and
@@ -195,7 +196,10 @@ mod macos {
 mod windows_capture {
     use tauri::Webview;
     use webview2_com::CapturePreviewCompletedHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller;
     use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::RECT;
     use windows::Win32::System::Com::{IStream, STATFLAG_NONAME, STATSTG, STREAM_SEEK_SET};
     use windows::Win32::UI::Shell::SHCreateMemStream;
 
@@ -225,6 +229,57 @@ mod windows_capture {
         }
     }
 
+    /// A hidden page, put where it renders without being seen: visible, at its
+    /// own size, just off the window's left edge. Returns the bounds to put
+    /// back, or `None` when the page was already visible.
+    ///
+    /// SAFETY: call on the UI thread, with the page's own controller.
+    unsafe fn show_off_window(
+        controller: &ICoreWebView2Controller,
+    ) -> Result<Option<RECT>, String> {
+        unsafe {
+            let mut visible = BOOL::default();
+            controller
+                .IsVisible(&mut visible)
+                .map_err(|e| e.message())?;
+            if visible.as_bool() {
+                return Ok(None);
+            }
+            let mut bounds = RECT::default();
+            controller.Bounds(&mut bounds).map_err(|e| e.message())?;
+            // A page never laid out has no size yet: give it the panel's usual one.
+            let width = if bounds.right > bounds.left {
+                bounds.right - bounds.left
+            } else {
+                1280
+            };
+            let height = if bounds.bottom > bounds.top {
+                bounds.bottom - bounds.top
+            } else {
+                800
+            };
+            let off = RECT {
+                left: -width - 64,
+                top: 0,
+                right: -64,
+                bottom: height,
+            };
+            controller.SetBounds(off).map_err(|e| e.message())?;
+            controller.SetIsVisible(true).map_err(|e| e.message())?;
+            Ok(Some(bounds))
+        }
+    }
+
+    /// Put a page shown for a capture back where it was, hidden.
+    ///
+    /// SAFETY: call on the UI thread, with the page's own controller.
+    unsafe fn hide_again(controller: &ICoreWebView2Controller, bounds: RECT) {
+        unsafe {
+            let _ = controller.SetIsVisible(false);
+            let _ = controller.SetBounds(bounds);
+        }
+    }
+
     pub async fn png<R: tauri::Runtime>(webview: &Webview<R>) -> Result<Capture, CommandError> {
         let (send, rx) = reply();
         webview
@@ -234,14 +289,17 @@ mod windows_capture {
                     // SAFETY: WebView2 is called on the main (UI) thread, which
                     // is where `with_webview` runs this closure.
                     unsafe {
-                        let core = platform
-                            .controller()
-                            .CoreWebView2()
-                            .map_err(|e| e.message())?;
+                        let controller = platform.controller();
+                        let core = controller.CoreWebView2().map_err(|e| e.message())?;
+                        let restore = show_off_window(&controller)?;
                         let stream = SHCreateMemStream(None).ok_or("no memory stream")?;
                         let target = stream.clone();
+                        let shown = controller.clone();
                         let handler =
                             CapturePreviewCompletedHandler::create(Box::new(move |result| {
+                                if let Some(bounds) = restore {
+                                    hide_again(&shown, bounds);
+                                }
                                 send(
                                     result
                                         .map_err(|e| e.message())
@@ -250,12 +308,17 @@ mod windows_capture {
                                 );
                                 Ok(())
                             }));
-                        core.CapturePreview(
+                        let started = core.CapturePreview(
                             COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
                             &stream,
                             &handler,
-                        )
-                        .map_err(|e| e.message())
+                        );
+                        if started.is_err() {
+                            if let Some(bounds) = restore {
+                                hide_again(&controller, bounds);
+                            }
+                        }
+                        started.map_err(|e| e.message())
                     }
                 };
                 if let Err(e) = run() {
