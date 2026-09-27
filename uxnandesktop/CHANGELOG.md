@@ -11,6 +11,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   under a fade, with *Show more* / *Show less*.
 - **Back where you were.** Returning to a conversation read earlier in the
   session opens it where you left it, not at the bottom.
+- **Send a queued message now.** A message waiting behind the running turn
+  can go now — into that turn, for an agent that takes a message while it
+  works, or as the next turn at once when nothing runs.
 - **Questions one at a time, answered from the keyboard.** When the agent asks
   several questions they come one at a time (*1 of 3*, Back / Next), a single
   choice moves on by itself, and 1–9 pick an option.

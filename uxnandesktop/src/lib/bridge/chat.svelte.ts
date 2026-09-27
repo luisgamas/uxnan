@@ -606,6 +606,13 @@ export class ChatStore {
   async clearQueue(threadId: string): Promise<void> {
     await this.#client.call('queue/clear', { threadId });
   }
+
+  /** Sends one queued message now (`queue/sendNow`): into the running turn
+   *  when its agent takes input mid-turn, else as the next turn at once. The
+   *  bridge's queue notification moves it; a refusal throws with its reason. */
+  async sendQueuedNow(threadId: string, turnId: string): Promise<void> {
+    await this.#client.call('queue/sendNow', { threadId, turnId });
+  }
 }
 
 export const chat = new ChatStore(bridge);

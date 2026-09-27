@@ -20,6 +20,7 @@
   import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
   import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
+  import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
   import PencilEdit02Icon from "@hugeicons/core-free-icons/PencilEdit02Icon";
   import NoteEditIcon from "@hugeicons/core-free-icons/NoteEditIcon";
   import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
@@ -152,6 +153,12 @@
   });
 
   const accessMode = $derived<AccessMode>(thread?.accessMode ?? "fullAccess");
+
+  /** A queued message can go now: into the running turn when the agent takes
+   *  input mid-turn, or — nothing running (a paused queue) — as the next turn. */
+  const canSendNow = $derived(
+    !conversation.running || chat.agent(thread?.agentId)?.capabilities?.steering === true,
+  );
 
   /** Turns shown in the timeline; queued ones wait below, as ghosts. */
   const shown = $derived(conversation.turns.filter((t) => t.status !== "queued"));
@@ -469,6 +476,17 @@
                   <span class="min-w-0 flex-1 truncate">
                     {turn.messages.find((m) => m.role === "user")?.content ?? ""}
                   </span>
+                  {#if canSendNow}
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={i18n.t("chat.sendQueuedNow")}
+                      title={i18n.t("chat.sendQueuedNow")}
+                      onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
+                    >
+                      <Icon icon={ArrowUp02Icon} class={icon.status} />
+                    </Button>
+                  {/if}
                   <Button
                     variant="ghost"
                     size="icon-xs"

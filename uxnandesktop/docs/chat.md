@@ -248,8 +248,11 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   again.
 - **Queue**: a message sent while the agent works is queued behind the running
   turn (or handed to it, on agents that take input mid-turn); queued messages
-  are listed in the dock, each with **Edit** (takes it off the queue and puts
-  it back in the composer — only once the bridge confirms) and cancel. A
+  are listed in the dock, each with **Send now** (`queue/sendNow`: into the
+  running turn on an agent that takes input mid-turn, or — nothing running —
+  as the next turn at once; offered only when one of the two can happen),
+  **Edit** (takes it off the queue and puts it back in the composer — only
+  once the bridge confirms) and cancel. A
   stopped or failed turn pauses the queue: *Resume* or *Discard*.
 - **Drafts and recall**: the composer's unsent text is the tab's draft, saved
   with the layout, so it survives switching tabs and restarting. On an empty

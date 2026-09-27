@@ -2743,6 +2743,7 @@ export const en = {
   "chat.queuedCount": "{n} messages queued",
   "chat.waitingForYou": "Waiting for you",
   "chat.copy": "Copy",
+  "chat.sendQueuedNow": "Send now",
   "chat.questionStep": "{n} of {total}",
   "chat.questionNext": "Next",
   "chat.questionBack": "Back",

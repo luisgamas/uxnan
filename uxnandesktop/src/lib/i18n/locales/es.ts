@@ -2745,6 +2745,7 @@ export const es: Record<MessageKey, string> = {
   "chat.queuedCount": "{n} mensajes en cola",
   "chat.waitingForYou": "Esperándote",
   "chat.copy": "Copiar",
+  "chat.sendQueuedNow": "Enviar ahora",
   "chat.questionStep": "{n} de {total}",
   "chat.questionNext": "Siguiente",
   "chat.questionBack": "Atrás",
