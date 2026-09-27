@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.33-alpha.20260927] - 20260927
 ### Added
 
 - **A user message keeps its images.** The images sent with a message were
