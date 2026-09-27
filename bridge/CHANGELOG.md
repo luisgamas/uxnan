@@ -40,8 +40,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   limits now reach the phone from a Mac too. Both of each CLI's answers (the
   account and the limits) are awaited in whatever order they come.
 
-### Changed
-
 - **The effort a picker shows as the default is the effort the turn runs at.**
   Every reasoning knob now names the level its model runs at when nobody picks
   one, and the bridge sends that level itself instead of leaving it to the CLI's
@@ -49,6 +47,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   knob), pi models to the level pi's own settings give them (and pi's `max` is
   offered), Codex and Grok keep the default they report. OpenCode 2 models now
   offer their reasoning variants.
+
+### Fixed
+
+- **The bridge updates itself on a standard Windows install.** Global packages
+  live under `%APPDATA%\npm` there while npm lives with Node in
+  `C:\Program Files\nodejs`, and the bridge looked for npm only beside itself,
+  so it answered "npm is not installed beside this bridge" and never offered
+  to update. It now also uses the npm that came with the Node running it.
+- **Updating under systemd no longer leaves the bridge stopped.** systemd stops
+  every process of the service's unit when the bridge exits to be replaced,
+  the helper that installs the new version and starts the service again among
+  them. On Linux the helper now runs in a scope unit of its own
+  (`systemd-run --user --scope`).
+- **A long machine name no longer stops the bridge.** Advertising on the LAN
+  (mDNS) threw "label too long" for a machine name over 63 bytes and took the
+  bridge down, over and over under its service. Names are cut to what a DNS
+  label holds, and an answer that cannot be built is logged, never thrown.
 
 ## [0.0.33-alpha.20260927] - 20260927
 ### Added

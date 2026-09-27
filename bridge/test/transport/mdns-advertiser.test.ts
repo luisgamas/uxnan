@@ -4,6 +4,7 @@ import type { RemoteInfo } from 'node:dgram';
 import {
   MdnsAdvertiser,
   buildMessage,
+  dnsLabel,
   encodeName,
   parseQuestions,
   type UdpSocketLike,
@@ -173,4 +174,25 @@ test('start is idempotent and degrades silently if the socket throws', () => {
   // Must not throw — mDNS is best-effort.
   throwing.start();
   throwing.stop();
+});
+
+test('a machine name longer than a DNS label is cut, not fatal', () => {
+  const long = 'runner-' + 'x'.repeat(80);
+  assert.equal(dnsLabel(long).length, 63);
+  // Cut between characters, never inside one.
+  assert.equal(dnsLabel('é'.repeat(40)), 'é'.repeat(31));
+  const fake = fakeSocket();
+  const ad = new MdnsAdvertiser({
+    instanceName: long,
+    hostName: long,
+    port: 8765,
+    addresses: ['10.0.0.5'],
+    announceCount: 1,
+    socketFactory: () => fake.socket,
+  });
+  assert.doesNotThrow(() => ad.start());
+  assert.equal(fake.sends.length, 1, 'still announces');
+  // And answers a query for the name it announced.
+  fake.deliver(buildQuery([dnsLabel(long), 'local'], 1));
+  assert.equal(fake.sends.length, 2);
 });

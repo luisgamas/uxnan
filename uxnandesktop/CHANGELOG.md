@@ -12,6 +12,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   blurred email; it now blurs and shows with it.
 - **A provider asked directly says so.** Claude Code's and Codex's limits read
   *Asked of Claude Code itself* (or Codex) instead of *No data source*.
+- **The browser captures a hidden page on Windows too.** A workspace whose
+  page was not on screen timed out on Windows, where WebView2 does not paint a
+  hidden controller: it is now shown off the window for the capture and hidden
+  again. The capture now runs on real Windows and Linux machines in CI.
 
 ### Added
 

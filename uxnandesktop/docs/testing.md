@@ -495,6 +495,16 @@ polls, caches or runs at startup, and put the numbers in the PR (the template
 asks for them). Close every other uxnan window first — the harness refuses to
 measure otherwise, and the doc explains why.
 
+## Platform smoke (CI)
+
+`.github/workflows/smoke-platforms.yml` (*Smoke — platforms*, on demand) installs
+the newest desktop release on Linux (deb, under Xvfb) and Windows (NSIS) — or
+builds the chosen ref with `desktop_tag=branch` — opens a local page in the
+integrated browser through the control route, captures it — recording whether
+the page was on screen; on a fresh start it sits in a background workspace,
+the case Windows needs the off-window capture for — and keeps the PNG as a run
+artifact. Script: `scripts/smoke/desktop-capture.mjs`.
+
 ## UI / behavior verification
 
 Type-checks and unit tests verify *code* correctness, not *feature* correctness.

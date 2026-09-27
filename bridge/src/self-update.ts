@@ -70,12 +70,18 @@ export interface UpdateLayout {
 
 /**
  * Where this bridge was installed, from the path of its own `cli.js`
- * (`<package>/dist/src/cli.js`). A bridge run from a source checkout, or one
- * whose npm is not beside it, cannot replace itself. Pure but for `exists`.
+ * (`<package>/dist/src/cli.js`), and the npm that can reinstall it: the one in
+ * the same global root when there is one (npm updated globally), else the one
+ * that came with the Node running the bridge. The two differ on a standard
+ * Windows install — packages under `%APPDATA%\npm`, npm under
+ * `C:\Program Files\nodejs` — and on any Node whose global prefix was moved.
+ * A bridge run from a source checkout, or with no npm found, cannot replace
+ * itself. Pure but for `exists`.
  */
 export function resolveUpdateLayout(
   cliPath: string,
   platform: NodeJS.Platform,
+  nodePath: string = process.execPath,
   exists: (path: string) => boolean = existsSync,
 ): UpdateLayout | { reason: string } {
   // The path rules of the platform the bridge runs on — named here rather than
@@ -86,8 +92,15 @@ export function resolveUpdateLayout(
   if (basename(packageRoot) !== BRIDGE_PACKAGE_NAME || basename(globalRoot) !== 'node_modules') {
     return { reason: 'this bridge runs from a source checkout, not a global npm install' };
   }
-  const npmCli = join(globalRoot, 'npm', 'bin', 'npm-cli.js');
-  if (!exists(npmCli)) return { reason: 'npm is not installed beside this bridge' };
+  const npmEntry = (root: string): string => join(root, 'npm', 'bin', 'npm-cli.js');
+  // Node's own npm: `<dir of node.exe>\node_modules` on Windows,
+  // `<prefix>/lib/node_modules` beside `<prefix>/bin/node` elsewhere.
+  const nodeRoot =
+    platform === 'win32'
+      ? join(dirname(nodePath), 'node_modules')
+      : join(dirname(dirname(nodePath)), 'lib', 'node_modules');
+  const npmCli = [npmEntry(globalRoot), npmEntry(nodeRoot)].find((entry) => exists(entry));
+  if (!npmCli) return { reason: 'npm was not found beside this bridge or the Node running it' };
   // Windows: <prefix>\node_modules. Elsewhere: <prefix>/lib/node_modules.
   const prefix = platform === 'win32' ? dirname(globalRoot) : dirname(dirname(globalRoot));
   return { packageRoot, prefix, npmCli };
@@ -302,13 +315,49 @@ export function spawnUpdateHelper(input: {
   pid: number;
   version: string;
 }): number | undefined {
-  const child = spawn(
-    input.execPath,
-    [input.cliPath, 'self-update', '--pid', String(input.pid), '--to', input.version],
-    { cwd: homedir(), detached: true, stdio: 'ignore', windowsHide: true },
-  );
+  const { command, args } = updateHelperCommand({
+    ...input,
+    underSystemd: process.platform === 'linux' && process.env['INVOCATION_ID'] !== undefined,
+  });
+  const child = spawn(command, args, {
+    cwd: homedir(),
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
   child.unref();
   return child.pid;
+}
+
+/**
+ * How the helper is started. Under systemd it runs in a scope unit of its
+ * own: the service's unit owns every process it started, and when the bridge
+ * exits to be replaced systemd stops them all — the helper with them, so
+ * nothing was installed and nothing started the service again. `--scope`
+ * runs the command in place (same pid), so the lock can still pass to it. A
+ * detached process is enough for launchd and Task Scheduler.
+ */
+export function updateHelperCommand(input: {
+  execPath: string;
+  cliPath: string;
+  pid: number;
+  version: string;
+  underSystemd: boolean;
+}): { command: string; args: string[] } {
+  const helper = [input.cliPath, 'self-update', '--pid', String(input.pid), '--to', input.version];
+  if (!input.underSystemd) return { command: input.execPath, args: helper };
+  return {
+    command: 'systemd-run',
+    args: [
+      '--user',
+      '--scope',
+      '--collect',
+      '--quiet',
+      `--unit=uxnan-bridge-update-${input.pid}`,
+      input.execPath,
+      ...helper,
+    ],
+  };
 }
 
 export interface SelfUpdateHelperInput {
@@ -342,8 +391,8 @@ export interface SelfUpdateHelperInput {
  * outcome, start the service. Whatever npm did, the service is started again —
  * a failed install leaves the old version in place, which then reports why.
  */
-// FOR-DEV: run end to end as a live launchd service on macOS; systemd `--user`
-// and Task Scheduler are verified only in tests (see bridge/FOR-DEV.md).
+// FOR-DEV: a refused update (a turn running) and the Windows Startup-folder
+// fallback have not run as a live service yet (see bridge/FOR-DEV.md).
 export async function runSelfUpdateHelper(input: SelfUpdateHelperInput): Promise<UpdateResult> {
   const now = input.now ?? Date.now;
   const sleep = input.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));

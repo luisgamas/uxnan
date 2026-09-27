@@ -366,13 +366,6 @@ push validation (FOR-HUMAN).
       cheap-tier id to hard-code and they title on their own default. A
       configurable titling model belongs in daemon config. See the `#titleModel`
       marker in `pi-adapter.ts`.
-- [ ] **Codex's `error` with `willRetry: true` against a real reconnect.** The
-      rest of Codex's live steps was verified on a real turn (2026-09-26: read,
-      search and a command each appear `running` and settle in place by
-      `blockId`, one row per step), and `turn/steer` was verified live the same
-      day. The retry path — an `error` that must not end the turn while Codex
-      reconnects its model stream — is unit-tested against the app-server v2
-      schema but cannot be forced on demand; watch for it on a flaky network.
 - [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
       are DONE (reasoning effort wired per agent + the per-model option schema in
       `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-
@@ -475,13 +468,14 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 - [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
       secret redaction; add size-based rotation + pruning of old log files.
 - [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).
-- [ ] **Run the self-update as a live service on Linux and Windows, and the
-      lock hand-off live.** macOS launchd ran end to end on 2026-09-26 (see
-      *Implemented*). Still owed: systemd `--user` and Task Scheduler (and the
-      Startup-folder fallback) bringing the new version up, a refused update (a
-      turn running) and a failed one (a read-only prefix) on each — and, on
-      macOS, the next real update from a bridge that carries the lock hand-off
-      (`LockFile.transfer`), confirming no second bridge starts mid-install.
+- [ ] **The self-update's last live paths.** Run live on every platform by the
+      *Smoke — platforms* workflow (2026-09-27): systemd `--user` on Linux, Task
+      Scheduler on Windows and launchd on macOS each update to the newest
+      published bridge and come back as the service, once; on Linux and macOS a
+      read-only prefix fails the update and leaves the old bridge serving and
+      saying why. Still owed: a **refused** update (a turn running) as a live
+      service, and the Windows **Startup-folder** fallback (a machine where Task
+      Scheduler is not available). Marker: `runSelfUpdateHelper`.
 
 ## Packaging — npm publish readiness
 
