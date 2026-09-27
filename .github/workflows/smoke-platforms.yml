@@ -101,6 +101,15 @@ jobs:
           echo "XDG_RUNTIME_DIR=/run/user/$uid" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus" >> "$GITHUB_ENV"
 
+      # A macOS runner's machine name is longer than a DNS label holds, which
+      # published bridges up to 0.0.33 crash on when advertising on the LAN
+      # (fixed since): a short one keeps this check about the update itself.
+      - name: Give the Mac a short name (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo scutil --set HostName uxnan-smoke
+          sudo scutil --set LocalHostName uxnan-smoke
+
       - name: Install the bridge as the user's service
         run: |
           uxnan-bridge install-service
