@@ -37,7 +37,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Plan limits are asked of Claude Code and Codex themselves.** Each CLI
   answers for the account it is signed in to (`get_usage` / `account/rateLimits/read`),
   so the bridge reads no credential file and no Keychain item — and Claude's
-  limits now reach the phone from a Mac too.
+  limits now reach the phone from a Mac too. Both of each CLI's answers (the
+  account and the limits) are awaited in whatever order they come.
 
 ### Changed
 

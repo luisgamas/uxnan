@@ -134,11 +134,17 @@ function probeEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** The CLI to ask: its binary and any leading arguments (tests pass a fake). */
+export type CliBinary = { path: string; prependArgs: string[] };
+
 /** Ask Claude Code for its account and limits. */
-export async function askClaudeUsage(): Promise<ClaudeUsageAnswer | undefined> {
-  const binary = cliBinary('claude-code');
+export async function askClaudeUsage(
+  binary: CliBinary | undefined = cliBinary('claude-code'),
+): Promise<ClaudeUsageAnswer | undefined> {
   if (!binary) return undefined;
   const answer: ClaudeUsageAnswer = {};
+  // Both answers are awaited, in whatever order they come (see Codex below).
+  const answered = new Set<string>();
   return converse<ClaudeUsageAnswer>(
     binary,
     ['--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'],
@@ -150,13 +156,17 @@ export async function askClaudeUsage(): Promise<ClaudeUsageAnswer | undefined> {
       if (message['type'] !== 'control_response') return;
       const response = asObj(message['response']);
       const body = asObj(response?.['response']);
-      if (response?.['request_id'] === 'uxnan-init') {
+      const id = response?.['request_id'];
+      if (id === 'uxnan-init') {
         const account = asObj(body?.['account']);
         if (account) answer.account = account as ClaudeUsageAnswer['account'];
-      } else if (response?.['request_id'] === 'uxnan-usage') {
+      } else if (id === 'uxnan-usage') {
         if (body) answer.usage = body;
-        done(answer);
+      } else {
+        return;
       }
+      answered.add(id);
+      if (answered.has('uxnan-init') && answered.has('uxnan-usage')) done(answer);
     },
     probeEnv(),
   );
@@ -170,10 +180,15 @@ const CODEX_INITIALIZE: Json = {
 };
 
 /** Ask Codex for its account and limits. */
-export async function askCodexUsage(): Promise<CodexUsageAnswer | undefined> {
-  const binary = cliBinary('codex');
+export async function askCodexUsage(
+  binary: CliBinary | undefined = cliBinary('codex'),
+): Promise<CodexUsageAnswer | undefined> {
   if (!binary) return undefined;
   const answer: CodexUsageAnswer = {};
+  // Both answers are awaited, in whatever order they come: the app-server
+  // answers concurrent requests as each finishes, and resolving on the limits
+  // alone read a signed-in account as signed out whenever they came first.
+  const answered = new Set<number>();
   return converse<CodexUsageAnswer>(
     binary,
     ['app-server'],
@@ -184,12 +199,17 @@ export async function askCodexUsage(): Promise<CodexUsageAnswer | undefined> {
         send({ jsonrpc: '2.0', method: 'initialized' });
         send({ jsonrpc: '2.0', id: 2, method: 'account/read', params: { refreshToken: false } });
         send({ jsonrpc: '2.0', id: 3, method: 'account/rateLimits/read' });
+        return;
       }
-      if (message['id'] === 2) answer.account = asObj(asObj(message['result'])?.['account']);
+      if (message['id'] === 2) {
+        answer.account = asObj(asObj(message['result'])?.['account']);
+        answered.add(2);
+      }
       if (message['id'] === 3) {
         answer.rateLimits = asObj(message['result']);
-        done(answer);
+        answered.add(3);
       }
+      if (answered.has(2) && answered.has(3)) done(answer);
     },
     process.env,
   );
