@@ -213,6 +213,11 @@
   "profileMenuTooltip": "Profile actions",
   "profileChoosePhoto": "Choose photo",
   "profilePickIcon": "Or pick an icon",
+  "profileAvatarIconLabel": "{icon, select, person{Person} face{Face} astro{Rocket} bolt{Bolt} star{Star} robot{Robot} code{Code} terminal{Terminal} pets{Pet} bug{Bug} memory{Chip} public{Globe} other{Icon}}",
+  "@profileAvatarIconLabel": {
+    "description": "Screen-reader name of one preset profile-picture icon; the key is the icon's id in kProfileAvatarIcons.",
+    "placeholders": { "icon": { "type": "String" } }
+  },
   "profileAgentConversationsLabel": "conversations",
   "profileBackupNote": "Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.",
   "profileBackupExport": "Export",
@@ -240,6 +245,8 @@
   "profileBackupImportBadPassphrase": "Wrong passphrase for this backup.",
   "profileBackupImportFailed": "Couldn't import this file. It may be from another PC or have been modified.",
   "profileAgentScopeAll": "All time",
+  "previousYearTooltip": "Previous year",
+  "nextYearTooltip": "Next year",
   "usageNotSignedIn": "Not signed in",
   "usageLoadError": "Couldn't load",
   "usageCreditLabel": "Credit",

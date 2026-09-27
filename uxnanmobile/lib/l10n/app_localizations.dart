@@ -878,6 +878,12 @@ abstract class AppLocalizations {
   /// **'Or pick an icon'**
   String get profilePickIcon;
 
+  /// Screen-reader name of one preset profile-picture icon; the key is the icon's id in kProfileAvatarIcons.
+  ///
+  /// In en, this message translates to:
+  /// **'{icon, select, person{Person} face{Face} astro{Rocket} bolt{Bolt} star{Star} robot{Robot} code{Code} terminal{Terminal} pets{Pet} bug{Bug} memory{Chip} public{Globe} other{Icon}}'**
+  String profileAvatarIconLabel(String icon);
+
   /// No description provided for @profileAgentConversationsLabel.
   ///
   /// In en, this message translates to:
@@ -991,6 +997,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All time'**
   String get profileAgentScopeAll;
+
+  /// No description provided for @previousYearTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous year'**
+  String get previousYearTooltip;
+
+  /// No description provided for @nextYearTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Next year'**
+  String get nextYearTooltip;
 
   /// No description provided for @usageNotSignedIn.
   ///

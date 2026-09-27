@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The profile follows the design system.** Icon sizes, gaps and motion come
+  from the tokens; the PC's connection state and a plan's badges are the app's
+  badge; the PC rows are the standard navigation row; the year arrows in the
+  activity section are full-size and say *Previous year* / *Next year*; the
+  avatar icons are announced by name; an agent's mark in the spend legend is
+  drawn bare, as in every other row.
 
 ## [0.0.28-alpha.20260927+20260930] - 20260927
 ### Changed

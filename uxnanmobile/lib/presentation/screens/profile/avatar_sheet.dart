@@ -78,7 +78,10 @@ class _AvatarSheetState extends ConsumerState<AvatarSheet> {
               Center(
                 child: FilledButton.tonalIcon(
                   onPressed: _picking ? null : _pickImage,
-                  icon: const UxIcon(UxIcons.image, size: 18),
+                  icon: const UxIcon(
+                    UxIcons.image,
+                    size: UxnanSize.iconContentSmall,
+                  ),
                   label: Text(l10n.profileChoosePhoto),
                 ),
               ),
@@ -97,6 +100,7 @@ class _AvatarSheetState extends ConsumerState<AvatarSheet> {
                   for (final entry in kProfileAvatarIcons.entries)
                     _IconOption(
                       icon: entry.value,
+                      label: l10n.profileAvatarIconLabel(entry.key),
                       selected: _avatar.kind == ProfileAvatarKind.icon &&
                           _avatar.iconKey == entry.key,
                       onTap: () => setState(
@@ -128,39 +132,57 @@ class _AvatarSheetState extends ConsumerState<AvatarSheet> {
   }
 }
 
+/// One preset icon in the picker.
+///
+/// Not an `IconSurface`: that is a 44 dp chrome action whose tooltip would pop
+/// a name over a grid of pictures on every long-press, and whose selected tone
+/// is the quiet secondary container — here the chosen picture has to read as
+/// chosen at a glance, so it keeps the primary ring. What it borrows is the
+/// contract: a [UxnanSize.minTouchTarget] circle that announces itself as a
+/// named, selectable button.
 class _IconOption extends StatelessWidget {
   const _IconOption({
     required this.icon,
+    required this.label,
     required this.selected,
     required this.onTap,
   });
 
   final UxIconData icon;
+  final String label;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: const BorderRadius.all(UxnanRadius.full),
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color:
-              selected ? colors.primaryContainer : colors.surfaceContainerHigh,
-          shape: BoxShape.circle,
-          border: Border.all(
+    return Semantics(
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? colors.primaryContainer : colors.surfaceContainerHigh,
+        shape: CircleBorder(
+          side: BorderSide(
             color: selected ? colors.primary : colors.outline,
             width: selected ? 2 : 1,
           ),
         ),
-        child: UxIcon(
-          icon,
-          size: 22,
-          color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox.square(
+            dimension: UxnanSize.minTouchTarget,
+            child: UxIcon(
+              icon,
+              size: UxnanSize.iconSurfaceGlyph,
+              color: selected
+                  ? colors.onPrimaryContainer
+                  : colors.onSurfaceVariant,
+            ),
+          ),
         ),
       ),
     );

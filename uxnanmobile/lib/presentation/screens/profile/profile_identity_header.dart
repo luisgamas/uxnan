@@ -78,7 +78,7 @@ class ProfileIdentityHeader extends ConsumerWidget {
               ),
               IconButton(
                 tooltip: l10n.thisPhoneRename,
-                icon: const UxIcon(UxIcons.edit, size: 20),
+                icon: const UxIcon(UxIcons.edit, size: UxnanSize.iconContent),
                 color: colors.onSurfaceVariant,
                 onPressed: name == null
                     ? null

@@ -493,6 +493,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilePickIcon => 'Or pick an icon';
 
   @override
+  String profileAvatarIconLabel(String icon) {
+    String _temp0 = intl.Intl.selectLogic(
+      icon,
+      {
+        'person': 'Person',
+        'face': 'Face',
+        'astro': 'Rocket',
+        'bolt': 'Bolt',
+        'star': 'Star',
+        'robot': 'Robot',
+        'code': 'Code',
+        'terminal': 'Terminal',
+        'pets': 'Pet',
+        'bug': 'Bug',
+        'memory': 'Chip',
+        'public': 'Globe',
+        'other': 'Icon',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get profileAgentConversationsLabel => 'conversations';
 
   @override
@@ -559,6 +582,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileAgentScopeAll => 'All time';
+
+  @override
+  String get previousYearTooltip => 'Previous year';
+
+  @override
+  String get nextYearTooltip => 'Next year';
 
   @override
   String get usageNotSignedIn => 'Not signed in';

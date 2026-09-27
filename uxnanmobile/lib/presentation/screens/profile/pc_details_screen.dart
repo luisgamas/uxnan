@@ -11,12 +11,13 @@ import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart'
 import 'package:uxnan/presentation/screens/profile/spend_section.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
-import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -92,29 +93,45 @@ class PcDetailsScreen extends ConsumerWidget {
           UxnanSpacing.lg,
           UxnanSpacing.xxl,
         ),
+        // Staggered by BLOCK, as on the profile: the spacers between them
+        // are not things that arrive.
         sliver: SliverList.list(
           children: [
-            _PcHeader(
-              device: device,
-              isConnected: isConnected,
-              relayConnected: relayConnected,
+            NeEntranceRow(
+              index: 0,
+              child: _PcHeader(
+                device: device,
+                isConnected: isConnected,
+                relayConnected: relayConnected,
+              ),
             ),
             if (isConnected) ...[
               const SizedBox(height: UxnanSpacing.lg),
-              const _StartFolderCard(),
+              const NeEntranceRow(index: 1, child: _StartFolderCard()),
             ],
             const SizedBox(height: UxnanSpacing.xl),
-            SpendSection(deviceId: deviceId),
+            NeEntranceRow(index: 2, child: SpendSection(deviceId: deviceId)),
             if (isConnected) ...[
               const SizedBox(height: UxnanSpacing.xl),
-              const UsageSection(),
+              const NeEntranceRow(index: 3, child: UsageSection()),
             ],
             const SizedBox(height: UxnanSpacing.xl),
-            Text(l10n.profileActivity, style: titleStyle),
-            const SizedBox(height: UxnanSpacing.sm),
-            ActivityHighlights(metrics: m),
-            const SizedBox(height: UxnanSpacing.md),
-            AgentActivitySection(firstYear: firstYear, deviceId: deviceId),
+            NeEntranceRow(
+              index: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(l10n.profileActivity, style: titleStyle),
+                  const SizedBox(height: UxnanSpacing.sm),
+                  ActivityHighlights(metrics: m),
+                  const SizedBox(height: UxnanSpacing.md),
+                  AgentActivitySection(
+                    firstYear: firstYear,
+                    deviceId: deviceId,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -196,7 +213,7 @@ class _StartFolderCardState extends ConsumerState<_StartFolderCard> {
               label: l10n.bridgeHomeChange,
               child: UxIcon(
                 UxIcons.edit,
-                size: 20,
+                size: UxnanSize.iconContent,
                 color: colors.onSurfaceVariant,
               ),
             ),
@@ -234,9 +251,6 @@ class _PcHeader extends StatelessWidget {
     }
     final subtitle = parts.join(' · ');
 
-    final (statusLabel, statusColor) = isConnected
-        ? (l10n.connectionConnected, UxnanColors.connected)
-        : (l10n.connectionDisconnected, UxnanColors.disconnected);
     final transport = (isConnected && relayConnected != null)
         ? (relayConnected! ? l10n.connectionRelay : l10n.connectionDirect)
         : null;
@@ -254,9 +268,8 @@ class _PcHeader extends StatelessWidget {
             ),
             child: UxIcon(
               UxIcons.laptopMac,
-              size: 24,
-              color:
-                  isConnected ? UxnanColors.connected : colors.onSurfaceVariant,
+              size: UxnanSize.iconContentLarge,
+              color: isConnected ? colors.tertiary : colors.onSurfaceVariant,
             ),
           ),
           const SizedBox(width: UxnanSpacing.md),
@@ -271,7 +284,7 @@ class _PcHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: UxnanSpacing.xs),
                   Text(
                     subtitle,
                     style: textTheme.bodySmall?.copyWith(
@@ -282,30 +295,19 @@ class _PcHeader extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: UxnanSpacing.xs),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: UxnanSpacing.xs),
-                    Text(
-                      statusLabel,
-                      style: textTheme.bodySmall?.copyWith(color: statusColor),
-                    ),
-                    if (transport != null)
-                      Text(
-                        ' · $transport',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
+                // The same badge the device card wears, so "connected" is one
+                // shape wherever a PC is shown: the live fill while it is,
+                // supporting metadata while it is not.
+                NeBadge(
+                  icon: isConnected ? UxIcons.wifiTethering : UxIcons.cloudOff,
+                  label: [
+                    if (isConnected)
+                      l10n.connectionConnected
+                    else
+                      l10n.connectionDisconnected,
+                    if (transport != null) transport,
+                  ].join(' · '),
+                  tone: isConnected ? NeBadgeTone.live : NeBadgeTone.secondary,
                 ),
               ],
             ),
