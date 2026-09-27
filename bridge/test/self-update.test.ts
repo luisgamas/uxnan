@@ -12,6 +12,7 @@ import {
   manualUpdateCommand,
   resolveUpdateLayout,
   runSelfUpdateHelper,
+  updateHelperCommand,
   type BridgeUpdaterOptions,
   type UpdateLayout,
   type UpdateResult,
@@ -57,10 +58,11 @@ function updater(
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 450));
 
-test('resolveUpdateLayout finds the global install and the npm beside it', () => {
+test('resolveUpdateLayout finds the global install and the npm that can reinstall it', () => {
   const unix = resolveUpdateLayout(
     '/usr/local/lib/node_modules/uxnan-bridge/dist/src/cli.js',
     'darwin',
+    '/usr/local/bin/node',
     (p) => p === '/usr/local/lib/node_modules/npm/bin/npm-cli.js',
   );
   assert.deepEqual(unix, LAYOUT);
@@ -68,6 +70,7 @@ test('resolveUpdateLayout finds the global install and the npm beside it', () =>
   const win = resolveUpdateLayout(
     'C:\\nodejs\\node_modules\\uxnan-bridge\\dist\\src\\cli.js',
     'win32',
+    'C:\\nodejs\\node.exe',
     (p) => p === 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
   );
   assert.deepEqual(win, {
@@ -75,10 +78,39 @@ test('resolveUpdateLayout finds the global install and the npm beside it', () =>
     prefix: 'C:\\nodejs',
     npmCli: 'C:\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
   });
-  // A source checkout, and a global install without npm beside it, cannot update.
+  // The standard Windows install: packages under %APPDATA%\npm, npm with Node.
+  const appData = resolveUpdateLayout(
+    'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\uxnan-bridge\\dist\\src\\cli.js',
+    'win32',
+    'C:\\Program Files\\nodejs\\node.exe',
+    (p) => p === 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+  );
+  assert.deepEqual(appData, {
+    packageRoot: 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\uxnan-bridge',
+    prefix: 'C:\\Users\\me\\AppData\\Roaming\\npm',
+    npmCli: 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+  });
+  // A moved global prefix on Unix: npm comes from the Node's own prefix.
+  const moved = resolveUpdateLayout(
+    '/home/me/.npm-global/lib/node_modules/uxnan-bridge/dist/src/cli.js',
+    'linux',
+    '/opt/node/bin/node',
+    (p) => p === '/opt/node/lib/node_modules/npm/bin/npm-cli.js',
+  );
+  assert.equal((moved as { prefix: string }).prefix, '/home/me/.npm-global');
+  assert.equal(
+    (moved as { npmCli: string }).npmCli,
+    '/opt/node/lib/node_modules/npm/bin/npm-cli.js',
+  );
+  // A source checkout, and a global install with no npm to be found, cannot update.
   assert.match(
     (
-      resolveUpdateLayout('/src/uxnan/bridge/dist/src/cli.js', 'darwin', () => true) as {
+      resolveUpdateLayout(
+        '/src/uxnan/bridge/dist/src/cli.js',
+        'darwin',
+        '/usr/bin/node',
+        () => true,
+      ) as {
         reason: string;
       }
     ).reason,
@@ -89,11 +121,37 @@ test('resolveUpdateLayout finds the global install and the npm beside it', () =>
       resolveUpdateLayout(
         '/usr/local/lib/node_modules/uxnan-bridge/dist/src/cli.js',
         'linux',
+        '/usr/local/bin/node',
         () => false,
       ) as { reason: string }
     ).reason,
     /npm/,
   );
+});
+
+test('the helper gets a unit of its own under systemd, so the bridge stopping does not take it', () => {
+  const input = { execPath: '/usr/bin/node', cliPath: '/p/cli.js', pid: 42, version: '1.2.3' };
+  assert.deepEqual(updateHelperCommand({ ...input, underSystemd: false }), {
+    command: '/usr/bin/node',
+    args: ['/p/cli.js', 'self-update', '--pid', '42', '--to', '1.2.3'],
+  });
+  assert.deepEqual(updateHelperCommand({ ...input, underSystemd: true }), {
+    command: 'systemd-run',
+    args: [
+      '--user',
+      '--scope',
+      '--collect',
+      '--quiet',
+      '--unit=uxnan-bridge-update-42',
+      '/usr/bin/node',
+      '/p/cli.js',
+      'self-update',
+      '--pid',
+      '42',
+      '--to',
+      '1.2.3',
+    ],
+  });
 });
 
 test('installFailure tells a permission problem from any other', () => {

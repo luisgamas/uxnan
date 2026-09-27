@@ -79,7 +79,13 @@ export class MdnsAdvertiser {
   #started = false;
 
   constructor(options: MdnsAdvertiserOptions) {
-    this.#opts = options;
+    // A DNS label holds at most 63 bytes; a machine name can be longer (CI
+    // runners, some corporate names), and one that is must not stop the bridge.
+    this.#opts = {
+      ...options,
+      instanceName: dnsLabel(options.instanceName),
+      hostName: dnsLabel(options.hostName),
+    };
     this.#logger = options.logger;
   }
 
@@ -181,7 +187,16 @@ export class MdnsAdvertiser {
   #sendResponse(): void {
     const socket = this.#socket;
     if (!socket) return;
-    this.#sendPacket(socket, this.#buildResponse(DEFAULT_TTL), this.#joinedInterfaces);
+    // Runs from socket callbacks: advertising is best-effort, and an answer it
+    // cannot build is logged, never thrown into the process.
+    let packet: Buffer;
+    try {
+      packet = this.#buildResponse(DEFAULT_TTL);
+    } catch (err) {
+      this.#logger?.warn(`mDNS answer not sent: ${errMsg(err)}`);
+      return;
+    }
+    this.#sendPacket(socket, packet, this.#joinedInterfaces);
   }
 
   #sendPacket(
@@ -277,6 +292,16 @@ interface ResourceRecord {
   flush: boolean;
   ttl: number;
   rdata: Buffer;
+}
+
+/** [value] cut to the 63 bytes a DNS label may hold, never inside a character. */
+export function dnsLabel(value: string): string {
+  let out = '';
+  for (const char of value) {
+    if (Buffer.byteLength(out + char, 'utf-8') > 63) break;
+    out += char;
+  }
+  return out;
 }
 
 /** Encode a domain name as a sequence of length-prefixed labels + a 0 terminator. */
