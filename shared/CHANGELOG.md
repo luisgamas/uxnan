@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.21-alpha.20260927] - 20260927
 ### Added — a message keeps its images
 
 - **`Message.attachments`** (`MessageAttachment { id, mimeType, bytes, width?,
