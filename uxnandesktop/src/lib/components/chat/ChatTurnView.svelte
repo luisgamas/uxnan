@@ -24,7 +24,14 @@
   import ChatBlock from "./ChatBlock.svelte";
   import ChatMessageMeta from "./ChatMessageMeta.svelte";
   import ChatWorkGroup from "./ChatWorkGroup.svelte";
-  import { assistantOf, userText, type Conversation } from "$lib/bridge/conversation.svelte";
+  import ChatImages from "./ChatImages.svelte";
+  import { chat as chatStore } from "$lib/bridge/chat.svelte";
+  import {
+    assistantOf,
+    userAttachments,
+    userText,
+    type Conversation,
+  } from "$lib/bridge/conversation.svelte";
   import {
     changedFiles,
     formatElapsed,
@@ -51,6 +58,10 @@
   } = $props();
 
   const prompt = $derived(userText(turn));
+  /** The images the user sent with the message, kept by the bridge. */
+  const images = $derived(
+    userAttachments(turn).map((a) => ({ id: a.id, load: () => chatStore.attachment(threadId, a.id) })),
+  );
   const assistant = $derived(assistantOf(turn));
   const streaming = $derived(conversation.activeTurnId === turn.id);
   const answered = $derived(turn.status !== "queued" && turn.status !== "cancelled");
@@ -146,9 +157,14 @@
 {/snippet}
 
 <div class="flex flex-col gap-2">
-  {#if prompt}
+  {#if prompt || images.length > 0}
     <div class="group/message flex flex-col items-end gap-0.5">
-      <div class={cn(chat.userBubble, turn.status === "cancelled" && "opacity-60")}>{prompt}</div>
+      {#if images.length > 0}
+        <ChatImages {images} class={cn("max-w-[85%]", prompt && "mb-1")} />
+      {/if}
+      {#if prompt}
+        <div class={cn(chat.userBubble, turn.status === "cancelled" && "opacity-60")}>{prompt}</div>
+      {/if}
       <ChatMessageMeta text={prompt} at={turn.createdAt} align="end" />
     </div>
     {#if turn.status === "cancelled"}

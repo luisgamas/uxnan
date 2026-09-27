@@ -76,6 +76,40 @@ describe("ChatConversation", () => {
     expect(screen.queryByText("Not sent")).toBeNull();
   });
 
+  it("shows the images of a message, as the bridge keeps them", async () => {
+    const { screen } = mountWithProviders(ChatConversation, {
+      props: { tab: chatTab(), threadId: THREAD, cwd: "/repo", active: true },
+      commands: {
+        bridge_call: (args: Record<string, unknown>) =>
+          args.method === "turn/attachment" ? { mimeType: "image/png", base64Data: "AAAA" } : {},
+      },
+    });
+    chat.conversation(THREAD).adoptPage({
+      turns: [
+        {
+          id: "t-img",
+          threadId: THREAD,
+          status: "completed",
+          createdAt: 1,
+          messages: [
+            {
+              id: "t-img-u",
+              turnId: "t-img",
+              role: "user",
+              content: "What overlaps here?",
+              attachments: [{ id: "t-img-0.png", mimeType: "image/png", bytes: 3 }],
+              createdAt: 1,
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    const thumb = await screen.findByRole("button", { name: "Open image 1" });
+    await until(() => thumb.querySelector("img")?.getAttribute("src") === "data:image/png;base64,AAAA");
+    expect(screen.getByText("What overlaps here?")).toBeTruthy();
+  });
+
   it("sets the composer's text aside when a queued message comes back to be edited", async () => {
     const tab = chatTab({ draft: "half a thought" });
     const { screen, user } = mount(tab);

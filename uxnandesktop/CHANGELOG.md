@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A message shows the images sent with it.** The bubble of a sent message
+  showed only its words (or `[1 image attachment]`); its images now sit beside
+  it as thumbnails, from the bridge (`turn/attachment`) or, while it is being
+  sent, from the message itself. A click shows one whole.
 - **A message that did not reach the bridge is kept, and can be retried.** Every
   chat message waits in an outbox on this machine until the bridge has it; one
   that failed — or was in flight when the app closed — comes back after a

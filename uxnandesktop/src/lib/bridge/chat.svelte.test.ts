@@ -254,7 +254,9 @@ describe('ChatStore', () => {
     await store.send('t1', '', { attachments: [image] });
     const pic = calls.filter((c) => c.method === 'turn/send').at(-1)?.params as Record<string, unknown>;
     expect(pic.attachments).toEqual([image]);
-    expect(conversation.pending.at(-1)?.text).toBe('[1 image attachment]');
+    // An image-only message is its images: no placeholder words.
+    expect(conversation.pending.at(-1)?.text).toBe('');
+    expect(conversation.pending.at(-1)?.request.attachments).toEqual([image]);
 
     // Commands are asked for once per agent and folder.
     expect((await store.commandsFor('claude-code', '/repo')).map((c) => c.name)).toEqual(['compact']);
@@ -297,6 +299,24 @@ describe('ChatStore', () => {
       },
     });
     expect(store.conversation('t1').pending[0]?.error).toBeUndefined();
+  });
+
+  it('asks the bridge for a message image once, and again only after a failure', async () => {
+    let fail = true;
+    const { store, calls } = harness({
+      'turn/attachment': () => {
+        if (fail) {
+          fail = false;
+          throw new Error('bridge unreachable');
+        }
+        return { mimeType: 'image/png', base64Data: 'AAAA' };
+      },
+    });
+    await expect(store.attachment('t1', 'a-0.png')).rejects.toThrow('bridge unreachable');
+    expect(await store.attachment('t1', 'a-0.png')).toBe('data:image/png;base64,AAAA');
+    expect(await store.attachment('t1', 'a-0.png')).toBe('data:image/png;base64,AAAA');
+    expect(calls.filter((c) => c.method === 'turn/attachment')).toHaveLength(2);
+    expect(calls.at(-1)?.params).toEqual({ threadId: 't1', attachmentId: 'a-0.png' });
   });
 
   it('forgets what a deleted thread had waiting', async () => {

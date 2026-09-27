@@ -28,6 +28,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
+  import ChatImages from "./ChatImages.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
@@ -326,8 +327,17 @@
 
           {#each conversation.pending as p (p.clientTurnId)}
             {@const failed = p.error !== undefined}
+            {@const images = (p.request.attachments ?? []).map((a, i) => ({
+              id: `${p.clientTurnId}-${i}`,
+              load: () => Promise.resolve(`data:${a.mimeType};base64,${a.base64Data ?? ""}`),
+            }))}
             <div class="flex flex-col items-end gap-1">
-              <div class={cn(chatTokens.userBubble, !failed && "opacity-70")}>{p.text}</div>
+              {#if images.length > 0}
+                <ChatImages {images} class={cn("max-w-[85%]", !failed && "opacity-70")} />
+              {/if}
+              {#if p.text}
+                <div class={cn(chatTokens.userBubble, !failed && "opacity-70")}>{p.text}</div>
+              {/if}
               {#if failed}
                 <p class="flex items-center gap-2 text-xs text-destructive">
                   {p.error || i18n.t("chat.notSent")}
