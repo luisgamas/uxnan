@@ -224,7 +224,8 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
   …*) — which opens back to it, each work group then closed to its summary
   (*Ran 3 commands · 2 edits*, and how many failed). The closing answer stays
-  open, followed by a card of the **files the turn changed** (+/− per file; a
+  open — with any notice the bridge added after it (a background task cut
+short) — followed by a card of the **files the turn changed** (+/− per file; a
   click opens the file). *Thinking* folds away. Scrolling to the top loads older
   turns.
 - **Messages**: hovering one shows when it was sent and a copy button.

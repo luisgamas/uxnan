@@ -28,6 +28,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and connected desktop and whether each is connected, and the QR that
   connects a phone.
 
+### Fixed
+
+- **An answer followed by a notice stays open.** When the bridge closed a turn
+  with a notice (a background task cut short), the notice counted as the
+  turn's last step, so the whole answer folded away behind *Worked for…*. The
+  answer and its notice now show under the fold.
+
 ## [0.0.61] - 20260926
 ### Changed
 
