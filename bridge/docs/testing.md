@@ -131,10 +131,24 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
 - **Codex live steps.** A turn that reads a file, searches and runs a command:
   each `stream/content/block` arrives `running` and again settled with the same
   `blockId`, and the stored turn holds one row per step (verified 2026-09-26).
+- **Codex's retry.** An `error` with `willRetry: true` keeps the turn going while
+  Codex reconnects its model stream: verified 2026-09-27 through a proxy that
+  cut the stream twice mid-turn — the turn completed.
 - **No next planned agent.** The wired set is complete for now; the recipe for
   wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md).
 
-## 4. Push notifications (implemented, gated)
+## 4. The service on every platform (CI)
+
+`.github/workflows/smoke-platforms.yml` (*Smoke — platforms*, run on demand from
+the Actions tab) proves on real Linux, Windows and macOS runners what no unit
+test can: it installs a bridge as the user's service (systemd `--user`, Task
+Scheduler, launchd), makes an update fail on a read-only install (Unix), lets
+the bridge update itself to the newest published version and checks it came
+back as the service, once. `bridge_from=branch` starts from the bridge built
+from the chosen ref instead of a published one. The scripts are in
+`scripts/smoke/`; logs are kept as run artifacts.
+
+## 5. Push notifications (implemented, gated)
 
 The push path is implemented but gated on Firebase/APNs creds. Test the logic
 without devices: bridge `test/push/push-service.test.ts` (register + turn-end notify
