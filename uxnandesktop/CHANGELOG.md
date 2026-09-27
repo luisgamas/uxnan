@@ -4,6 +4,15 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Providers and usage follow the design system.** Status dots are the app's
+  `StatusDot` (the Providers tabs announce their state), loading shows the
+  `Spinner`, the account type is a `Badge`, the refresh interval is the same
+  select as the global one, the spend section has the settings section header,
+  its legend rows are full list rows with the app's focus ring, and the usage
+  popover's type sizes, icons and footer button come from the tokens. The
+  context ring's warm tone keeps its contrast in the light theme.
 
 ## [0.0.63] - 20260927
 ### Fixed

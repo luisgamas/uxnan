@@ -60,6 +60,7 @@
   import ModelPicker from "./ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import ProviderSpend from "./ProviderSpend.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
@@ -1247,7 +1248,7 @@
                  combobox), a subtle divider, and a tab per activated provider.
                  Each tab shows that provider's live data + status-bar options. -->
             {#snippet providerPrefix(item: ComboItem)}
-              <AgentLogo logo={usageProvider(item.value as UsageProvider)?.logo ?? item.value} class="size-4" />
+              <AgentLogo logo={usageProvider(item.value as UsageProvider)?.logo ?? item.value} class={icon.brand} />
             {/snippet}
             <section class="space-y-4">
               <h2 class={text.pageTitle}>{i18n.t("providers.yourProviders")}</h2>
@@ -1285,14 +1286,15 @@
                           <Tabs.Trigger
                             value={config.provider}
                             class={cn(
-                              "shrink-0 gap-1.5 px-3 text-[13px]",
+                              tab.panelTrigger,
+                              "gap-1.5",
                               tab.base,
                               activeProviderTab === config.provider ? tab.activeLine : tab.inactiveLine,
                             )}
                           >
-                            <AgentLogo logo={m?.logo ?? config.provider} class="size-4" />
+                            <AgentLogo logo={m?.logo ?? config.provider} class={icon.brand} />
                             {m?.name ?? config.provider}
-                            <span class={cn("size-1.5 shrink-0 rounded-full", st.dot)}></span>
+                            <StatusDot tone={st.tone} label={i18n.t(st.labelKey)} />
                           </Tabs.Trigger>
                         {/each}
                       </Tabs.List>

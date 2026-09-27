@@ -48,6 +48,7 @@
     triggerContent,
     searchable = true,
     triggerVariant = "outline",
+    ariaLabel,
   }: {
     /** Currently selected value (empty/undefined shows the placeholder). */
     value: string | undefined;
@@ -70,6 +71,9 @@
     /** The trigger's button variant: `outline` in a form, `ghost` where it sits
      *  in a toolbar or an appbar and should read as part of it. */
     triggerVariant?: "outline" | "ghost";
+    /** The trigger's accessible name, when no `<label>` names it (the trigger
+     *  is a button, and its text is the current value, not what it picks). */
+    ariaLabel?: string;
   } = $props();
 
   let open = $state(false);
@@ -91,6 +95,7 @@
         {...props}
         variant={triggerVariant}
         role="combobox"
+        aria-label={ariaLabel}
         aria-expanded={open}
         {disabled}
         class={cn("w-full justify-between font-normal", triggerClass)}
