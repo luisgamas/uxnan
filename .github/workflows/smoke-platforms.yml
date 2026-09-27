@@ -1,0 +1,193 @@
+name: Smoke — platforms (bridge service, desktop capture)
+
+# Platform checks that need a real Linux or Windows machine and that no unit
+# test can stand in for. On demand: each run installs PUBLISHED artifacts, so it
+# answers "does what we shipped work there", and it keeps what it saw.
+#
+#   bridge-service  installs the previous published bridge as the user's
+#                   service (systemd --user / Task Scheduler / launchd), makes
+#                   an update fail on a read-only install (Unix), then lets the
+#                   bridge update itself to the newest one and checks it came
+#                   back as the service, once.
+#   desktop-capture installs the newest desktop release, opens a local page in
+#                   its integrated browser through the control route and
+#                   captures it; the PNG is uploaded for a person to look at.
+#
+# Scripts: scripts/smoke/. What each run proved goes into the matching
+# FOR-DEV.md item — a green run here is the evidence, not a substitute for it.
+
+on:
+  # TEMP while the checks are brought up on this branch; removed before merge.
+  push:
+    branches: [ci/platform-smoke]
+  workflow_dispatch:
+    inputs:
+      bridge_from:
+        description: "Bridge version to start from (empty: the one before npm latest)"
+        required: false
+        default: ""
+      desktop_tag:
+        description: "Desktop release tag to install (empty: the latest stable)"
+        required: false
+        default: ""
+
+concurrency:
+  group: smoke-platforms
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-service:
+    name: bridge service (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Pick the versions
+        id: v
+        run: |
+          versions=$(npm view uxnan-bridge versions --json)
+          latest=$(npm view uxnan-bridge dist-tags.latest)
+          from="${{ github.event.inputs.bridge_from }}"
+          if [ -z "$from" ]; then
+            from=$(node -e "const v=JSON.parse(process.argv[1]);const i=v.indexOf(process.argv[2]);console.log(v[i-1])" "$versions" "$latest")
+          fi
+          echo "from=$from" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "from $from → latest $latest"
+
+      - name: Install the older bridge globally
+        run: npm install -g "uxnan-bridge@${{ steps.v.outputs.from }}"
+
+      # A systemd user manager needs a lingering user session on a runner: no
+      # one logs in there, so without it `systemctl --user` has no bus.
+      - name: Start a systemd user manager (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          uid=$(id -u)
+          for i in $(seq 1 30); do [ -S "/run/user/$uid/bus" ] && break; sleep 1; done
+          echo "XDG_RUNTIME_DIR=/run/user/$uid" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus" >> "$GITHUB_ENV"
+
+      - name: Install the bridge as the user's service
+        run: |
+          uxnan-bridge install-service
+          uxnan-bridge service-start || true
+          uxnan-bridge service-status || true
+
+      - name: The service runs the older bridge
+        run: node scripts/smoke/bridge-service.mjs wait "${{ steps.v.outputs.from }}" 120
+
+      # An install that cannot write its prefix must fail visibly and leave the
+      # running bridge on its version (Unix: a read-only global node_modules).
+      - name: A failed update leaves the bridge running
+        if: runner.os != 'Windows'
+        run: |
+          modules=$(npm root -g)
+          chmod a-w "$modules"
+          node scripts/smoke/bridge-service.mjs update
+          node scripts/smoke/bridge-service.mjs wait-failed 240
+          chmod u+w "$modules"
+          node scripts/smoke/bridge-service.mjs wait "${{ steps.v.outputs.from }}" 120
+
+      - name: The bridge updates itself
+        run: |
+          node scripts/smoke/bridge-service.mjs update
+          node scripts/smoke/bridge-service.mjs wait "${{ steps.v.outputs.latest }}" 300
+
+      - name: It came back as the service, once
+        run: |
+          uxnan-bridge service-status || true
+          case "$RUNNER_OS" in
+            Linux)   systemctl --user --no-pager status 'uxnan-bridge*' || true
+                     count=$(pgrep -fc 'uxnan-bridge.* start' || true) ;;
+            macOS)   count=$(pgrep -fc 'uxnan-bridge.* start' || true) ;;
+            Windows) count=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*uxnan-bridge*start*' -and \$_.Name -eq 'node.exe' }).Count") ;;
+          esac
+          echo "bridges running: $count"
+          [ "$count" = "1" ]
+
+      - name: Keep the bridge's logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-service-${{ matrix.os }}
+          path: ~/.uxnan/logs
+          if-no-files-found: warn
+
+  desktop-capture:
+    name: desktop capture (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Pick the release
+        id: tag
+        run: |
+          tag="${{ github.event.inputs.desktop_tag }}"
+          [ -n "$tag" ] || tag=$(gh release view --json tagName --jq .tagName)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "installing $tag"
+
+      - name: Install and start the app (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          gh release download "${{ steps.tag.outputs.tag }}" -p '*_amd64.deb' -D pkg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ./pkg/*.deb xvfb dbus-x11 > /dev/null
+          bin=$(dpkg -L "$(dpkg-deb -f pkg/*.deb Package)" | grep -E '^/usr/bin/' | head -1)
+          echo "binary: $bin"
+          nohup xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- "$bin" > app.log 2>&1 &
+
+      - name: Install and start the app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          gh release download "${{ steps.tag.outputs.tag }}" -p '*_x64-setup.exe' -D pkg
+          $setup = Get-ChildItem pkg -Filter '*-setup.exe' | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem "$env:LOCALAPPDATA" -Recurse -Filter 'uxnan-desktop.exe' -EA SilentlyContinue | Select-Object -First 1
+          "binary: $($exe.FullName)"
+          Start-Process $exe.FullName
+
+      - name: Capture a page in the integrated browser
+        run: node scripts/smoke/desktop-capture.mjs capture 240
+
+      - name: Keep the capture and the app's log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-capture-${{ matrix.os }}
+          path: |
+            capture
+            app.log
+          if-no-files-found: warn
