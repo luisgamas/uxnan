@@ -65,7 +65,18 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 const deadline = Date.now() + seconds * 1000;
 try {
   const d = await discovery(deadline);
-  console.log(JSON.stringify({ status: await call(d, 'browser/status') }));
+  // The control route is up before the window has loaded its page: ask until
+  // the window answers.
+  let status;
+  while (!status) {
+    try {
+      status = await call(d, 'browser/status');
+    } catch (err) {
+      if (Date.now() > deadline) throw err;
+      await sleep(3000);
+    }
+  }
+  console.log(JSON.stringify({ status }));
   const opened = await call(d, 'browser/open', { url });
   console.log(JSON.stringify({ opened }));
   if (opened.routed !== 'browser') throw new Error(`the page was routed to ${opened.routed}`);

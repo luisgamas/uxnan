@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       bridge_from:
-        description: "Bridge version to start from (empty: the one before npm latest)"
+        description: "Bridge to start from: a published version, 'branch' (built from this ref), or empty for the one before npm latest"
         required: false
         default: ""
       desktop_tag:
@@ -63,15 +63,32 @@ jobs:
           versions=$(npm view uxnan-bridge versions --json)
           latest=$(npm view uxnan-bridge dist-tags.latest)
           from="${{ github.event.inputs.bridge_from }}"
-          if [ -z "$from" ]; then
+          # A push runs the bridge of this checkout: what the branch changes is
+          # what needs a real machine.
+          [ "${{ github.event_name }}" = "push" ] && from=branch
+          if [ "$from" = "branch" ]; then
+            from=0.0.0-smoke
+          elif [ -z "$from" ]; then
             from=$(node -e "const v=JSON.parse(process.argv[1]);const i=v.indexOf(process.argv[2]);console.log(v[i-1])" "$versions" "$latest")
           fi
           echo "from=$from" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "from $from → latest $latest"
 
+      # Packed at a version below npm latest, so the running bridge offers the
+      # published one and its own helper — this branch's code — installs it.
+      - name: Build this checkout's bridge
+        if: steps.v.outputs.from == '0.0.0-smoke'
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -w @uxnan/shared -w uxnan-bridge
+          cd bridge
+          npm pkg set version=0.0.0-smoke
+          npm pack --pack-destination "$RUNNER_TEMP"
+          echo "BRIDGE_SPEC=$RUNNER_TEMP/uxnan-bridge-0.0.0-smoke.tgz" >> "$GITHUB_ENV"
+
       - name: Install the older bridge globally
-        run: npm install -g "uxnan-bridge@${{ steps.v.outputs.from }}"
+        run: npm install -g "${BRIDGE_SPEC:-uxnan-bridge@${{ steps.v.outputs.from }}}"
 
       # A systemd user manager needs a lingering user session on a runner: no
       # one logs in there, so without it `systemctl --user` has no bus.
@@ -164,7 +181,7 @@ jobs:
           gh release download "${{ steps.tag.outputs.tag }}" -p '*_amd64.deb' -D pkg
           sudo apt-get update -qq
           sudo apt-get install -y -qq ./pkg/*.deb xvfb dbus-x11 > /dev/null
-          bin=$(dpkg -L "$(dpkg-deb -f pkg/*.deb Package)" | grep -E '^/usr/bin/' | head -1)
+          bin=$(dpkg -L "$(dpkg-deb -f pkg/*.deb Package)" | grep -E '^/usr/bin/' | grep -v 'uxnan-cli' | head -1)
           echo "binary: $bin"
           nohup xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- "$bin" > app.log 2>&1 &
 
