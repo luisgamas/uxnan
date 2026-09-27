@@ -1,8 +1,7 @@
 <script lang="ts">
-  import SidebarPhoneRow from "./SidebarPhoneRow.svelte";
-  import SidebarBridgeUpdateRow from "./SidebarBridgeUpdateRow.svelte";
-  import BridgePairDialog from "./BridgePairDialog.svelte";
-  import { connectPhone } from "$lib/bridge/connectPhone.svelte";
+  import SidebarBridgeRow from "./SidebarBridgeRow.svelte";
+  import BridgeDialog from "./BridgeDialog.svelte";
+  import { bridgePanel } from "$lib/bridge/bridgePanel.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
@@ -205,8 +204,7 @@
         </button>
       {/snippet}
     </TooltipSimple>
-    <SidebarPhoneRow />
-    <SidebarBridgeUpdateRow />
+    <SidebarBridgeRow />
   </div>
 
   <!-- Region: Projects — header (label + actions) and the project tree. -->
@@ -475,8 +473,8 @@
 </div>
 
 <BatchCloseDialog bind:open={batchOpen} rows={batchRows} />
-<!-- "Connect a phone": one dialog for the window (see connectPhone). -->
-<BridgePairDialog bind:open={connectPhone.open} />
+<!-- The Bridge window: one for the whole app (see bridgePanel). -->
+<BridgeDialog bind:open={bridgePanel.open} />
 
 <!-- Floating label that follows the pointer while dragging a project card. -->
 {#if cardDrag.active && draggedRepo}

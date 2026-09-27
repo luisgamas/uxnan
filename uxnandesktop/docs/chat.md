@@ -28,12 +28,14 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 `PATH`, a chat tab says so and offers **Install** right there, with the command
 underneath for whoever prefers a terminal; Settings → Bridge & mobile has the
 same **Install** / **Update** next to the installed and newest versions, plus
-**Check again** (re-reads what is installed and retries the connection).
+**Check again** (re-reads what is installed, asks the running bridge for the
+newest version right now — `bridge/checkForUpdate` — and retries the
+connection).
 
 **The bridge updates itself** (architecture/02a §5.8.18). It checks for a newer
-version every hour and says so; the sidebar then shows **Update the bridge to
-…** under the phone row (only while there is one), and Settings → Bridge &
-mobile shows the newest version with **Update**. Either asks the bridge
+version every hour and says so; the sidebar's **Bridge** row then turns its
+badge blue (**New version**), the Bridge window offers the new version, and Settings →
+Bridge & mobile shows it with **Update**. Either asks the bridge
 (`bridge/update`): it stops, installs the published version and its service
 brings it back — the connection drops for a moment and the app says when it is
 on the new version, or what failed and the command to run by hand. It never
@@ -72,9 +74,12 @@ every client names it (`sync/changes.devices`, `stream/devices/updated`), with
 its model, OS and app version and whether it is connected now (presence,
 `stream/presence/updated`). A phone is renamed in place (`device/rename`; the
 latest rename wins, even one made on the phone offline) or unpaired
-(`bridge/removeTrustedDevice`). **Connect a phone** — also one click away in
-the left sidebar, under Search, where the paired phone shows by name with its
-connection — shows a QR drawn from the running bridge's own payload (its LAN hosts, its session, the pairing window
+(`bridge/removeTrustedDevice`). **Connect a phone** — also in the **Bridge**
+window, one click away from the left sidebar's **Bridge** row under Search
+(its badge's own colour is the state: green *Online*, amber *Starting* or
+*Attention*, red *Stopped* or *Failed*, blue *New version* or *Updating*; beside it, how many phones are connected now; the window
+holds the bridge's state and update, every paired phone and connected desktop
+with whether each is connected, and this QR) — shows a QR drawn from the running bridge's own payload (its LAN hosts, its session, the pairing window
 armed — the one `uxnan-bridge start` prints), with its countdown and *New
 code*; with the bridge off it offers to run it as your service first, and it
 notices the phone arrive (a new entry in the bridge's list, or a paired phone
@@ -236,9 +241,20 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - **Drafts and recall**: the composer's unsent text is the tab's draft, saved
   with the layout, so it survives switching tabs and restarting. On an empty
   composer **↑** recalls the thread's earlier messages (newest first) and **↓**
-  walks back. A message that failed to send offers **Edit** (back into the
-  composer) or *Dismiss*; nothing put back ever overwrites text being written —
-  it is added below it.
+  walks back.
+- **Nothing written is lost.** Every message waits in the chat's outbox
+  (`src/lib/bridge/outbox.ts`, this machine's storage) from the moment it is
+  sent until the bridge has it. One that did not get there — refused,
+  unreachable, or the app closed before an answer (*Not sent*) — stays as a
+  failed bubble, across restarts, with **Retry** (sent again as written,
+  images and model options included), **Edit** and *Dismiss*.
+- **Saved drafts.** A message coming back into the composer (**Edit** on a
+  queued or failed one) never merges with what is being written: that text is
+  set aside, whole, in a *saved drafts* card in the dock, kept with the tab.
+  Clicking one puts it back — setting aside whatever the composer holds then —
+  and the bin throws it away. A failed message brings its images back too; a
+  queued one only its text, since the bridge keeps a queued message's images
+  only as a count.
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it. Its toolbar holds what can change mid-chat — the
   model (every client sees the change), the model's knobs (reasoning effort, …)

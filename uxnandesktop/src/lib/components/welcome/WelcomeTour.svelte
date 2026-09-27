@@ -16,7 +16,7 @@
   import MockDesktop from "./mock/MockDesktop.svelte";
   import MockPhone from "./mock/MockPhone.svelte";
   import { welcome } from "$lib/state/welcome.svelte";
-  import { connectPhone } from "$lib/bridge/connectPhone.svelte";
+  import { bridgePanel } from "$lib/bridge/bridgePanel.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { app } from "$lib/state/app.svelte";
   import { AGENT_CATALOG } from "$lib/agentCatalog";
@@ -66,7 +66,7 @@
 
   function connect() {
     finish();
-    connectPhone.show();
+    bridgePanel.show();
   }
 
   function addProject() {

@@ -2113,7 +2113,10 @@ Reconciliation then follows these rules:
   three together, so a turn genuinely written elsewhere still imports;
 - a turn imported before it could be matched is **dropped** once its
   bridge-created twin is recognized, which is what converges a store that
-  already holds the same exchange twice;
+  already holds the same exchange twice. Its position (`Turn.seq`) is not
+  handed out again — the store keeps the highest one it ever gave — and a
+  client lets go of any turn it held before a re-sync that the newest page no
+  longer lists, the end of the conversation included;
 - **every turn read from a transcript has the one shape a client renders**: at
   most one user message and ONE assistant message whose `segments` hold its
   prose and steps in order (`canonicalTurn`, `session-history.ts`). Handed a

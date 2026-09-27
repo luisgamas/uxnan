@@ -5,6 +5,12 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The desktop mockup's sidebar shows the Bridge row** the app now has under
+  Search — the bridge, how many phones are connected and an *Online* badge —
+  instead of the paired phone's name.
+
 ### Added
 
 - **A "Desktop and phone, one workspace" section.** Uxnan Desktop now opens

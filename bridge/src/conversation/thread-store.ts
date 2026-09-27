@@ -149,6 +149,13 @@ interface StoredThread {
   /** Sync revision of the last change to its summary. */
   rev?: number;
   /**
+   * The highest position (`Turn.seq`) ever handed out in this thread. Private
+   * and persisted: a turn the store drops (a duplicate import) must not free its
+   * position for a new turn, or a client still holding the old one would mix
+   * the two.
+   */
+  lastSeq?: number;
+  /**
    * When someone last DECIDED its title (a hand rename) and its status
    * (archive / unarchive), on the bridge's clock. Private: what lets an action
    * a client took offline lose to a later one taken elsewhere
@@ -1394,11 +1401,15 @@ function isResponseBoundary(segment: unknown): boolean {
   );
 }
 
-/** The next free turn position in [thread] (see `Turn.seq`). */
+/**
+ * The next turn position in [thread] (see `Turn.seq`), taken: positions only
+ * ever grow, even past turns the store has since dropped.
+ */
 function nextSeq(thread: StoredThread): number {
-  let max = 0;
+  let max = thread.lastSeq ?? 0;
   for (const turn of thread.turns) if ((turn.seq ?? 0) > max) max = turn.seq ?? 0;
-  return max + 1;
+  thread.lastSeq = max + 1;
+  return thread.lastSeq;
 }
 
 /**
@@ -1412,6 +1423,8 @@ function numberTurns(thread: StoredThread): void {
     if (turn.seq === undefined || turn.seq < next) turn.seq = next;
     next = turn.seq + 1;
   }
+  // Every position handed out so far — before anything on load drops a turn.
+  thread.lastSeq = Math.max(thread.lastSeq ?? 0, next - 1);
 }
 
 function isPlaceholderTitle(title: string): boolean {

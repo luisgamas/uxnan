@@ -1001,9 +1001,13 @@ class ThreadManager {
   }
 
   Future<void> _performResyncThread(String threadId) async {
-    // Taken before the request so anything the user sends while it is in flight
-    // is newer than the page, and is therefore never mistaken for a leftover.
-    final syncedAt = DateTime.now();
+    // The turns this phone held before asking: only those can be leftovers. A
+    // turn created while the request is in flight is not among them, whatever
+    // either clock says.
+    final heldBefore = {
+      for (final message in await _messageRepository.getMessages(threadId))
+        if (message.turnId.isNotEmpty) message.turnId,
+    };
     final page = await _fetchTurns(
       threadId,
       limit: _turnPageSize,
@@ -1059,7 +1063,7 @@ class ThreadManager {
       threadId,
       page.turns,
       trackLatestUsage: true,
-      staleBefore: syncedAt,
+      heldBefore: heldBefore,
     );
     if (threadId != _activeThreadId) return;
     final total = page.total;
@@ -1213,7 +1217,7 @@ class ThreadManager {
     List<Object?> turns, {
     required bool trackLatestUsage,
     bool olderPage = false,
-    DateTime? staleBefore,
+    Set<String>? heldBefore,
   }) async {
     final existing = await _messageRepository.getMessages(threadId);
     final byId = {for (final m in existing) m.id: m};
@@ -1401,8 +1405,8 @@ class ThreadManager {
       }
     }
     if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
-    if (staleBefore != null) {
-      await _pruneStaleTurns(threadId, existing, turns, staleBefore);
+    if (heldBefore != null) {
+      await _pruneStaleTurns(threadId, existing, turns, heldBefore);
     }
     // Restore the context meter from the latest turn's stored usage, unless a
     // live turn already set a fresher value for this thread. Only the newest
@@ -1419,24 +1423,26 @@ class ThreadManager {
 
   /// Deletes the messages left behind by a turn the bridge no longer reports.
   ///
-  /// The bridge owns which turns a thread has, and it now drops a turn its own
+  /// The bridge owns which turns a thread has, and it drops a turn its own
   /// native-history import had stored twice. Since a re-sync otherwise only
   /// inserts and updates, without this the phone would keep rendering that
   /// duplicated exchange from its own store forever — reopening the
-  /// conversation included, which is exactly how it was reported.
+  /// conversation included, which is exactly how it was reported. [turns] is
+  /// the NEWEST page, so a dropped turn at the end of the conversation — past
+  /// every turn the page lists — is gone too; that is where they were left.
   ///
   /// Deliberately narrow, so a re-sync can never eat real history:
-  ///  - only inside the window this page actually covers, leaving an older page
-  ///    loaded by scrolling up untouched;
+  ///  - only turns the phone already held when it asked ([heldBefore]): a turn
+  ///    created while the page was in flight is never judged by it;
+  ///  - never older than the page's window, leaving an older page loaded by
+  ///    scrolling up untouched;
   ///  - never the turn streaming right now, one still waiting in the queue, or
-  ///    the local echo that has no turn id yet;
-  ///  - never a message written after this sync began, which is what lets a
-  ///    message sent while the page was in flight survive.
+  ///    the local echo that has no turn id yet.
   Future<void> _pruneStaleTurns(
     String threadId,
     List<Message> existing,
     List<Object?> turns,
-    DateTime staleBefore,
+    Set<String> heldBefore,
   ) async {
     final pageTurnIds = <String>{
       for (final rawTurn in turns)
@@ -1452,26 +1458,15 @@ class ThreadManager {
       }
     }
     if (windowStart == null) return;
-    // A turn newer than every turn of the page (created while it was in
-    // flight) is not the page's to judge — whatever the phone's clock says.
-    var pageMaxSeq = 0;
-    for (final rawTurn in turns) {
-      if (rawTurn is Map && rawTurn['seq'] is int) {
-        pageMaxSeq = max(pageMaxSeq, rawTurn['seq'] as int);
-      }
-    }
-    final newerThanPage =
-        pageMaxSeq > 0 ? (pageMaxSeq + 1) * _orderStride : null;
     final liveTurnId = _live[threadId]?.turnId;
     final queued = queueOf(threadId).turnIds.toSet();
     for (final message in existing) {
       if (message.turnId.isEmpty ||
+          !heldBefore.contains(message.turnId) ||
           pageTurnIds.contains(message.turnId) ||
           message.turnId == liveTurnId ||
           queued.contains(message.turnId) ||
-          message.orderIndex < windowStart ||
-          (newerThanPage != null && message.orderIndex >= newerThanPage) ||
-          !message.createdAt.isBefore(staleBefore)) {
+          message.orderIndex < windowStart) {
         continue;
       }
       await _messageRepository.deleteMessage(message.id);

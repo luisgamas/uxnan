@@ -275,6 +275,40 @@ describe('ChatStore', () => {
     expect(store.conversation('t1').pending[0]?.error).toBe('thread not found');
   });
 
+  it('sends a failed message again as it was written', async () => {
+    const { store, client, calls } = harness();
+    const call = client.call;
+    client.call = vi.fn(async () => {
+      throw new Error('bridge unreachable');
+    }) as BridgeClientStore['call'];
+    await store.send('t1', 'hello', { options: { reasoning: 'high' } });
+    const [failed] = store.conversation('t1').pending;
+    expect(failed?.error).toBe('bridge unreachable');
+
+    client.call = call;
+    await store.retry('t1', failed!.clientTurnId);
+    expect(calls.at(-1)).toEqual({
+      method: 'turn/send',
+      params: {
+        threadId: 't1',
+        text: 'hello',
+        options: { reasoning: 'high' },
+        clientTurnId: failed!.clientTurnId,
+      },
+    });
+    expect(store.conversation('t1').pending[0]?.error).toBeUndefined();
+  });
+
+  it('forgets what a deleted thread had waiting', async () => {
+    const { store, client } = harness();
+    client.call = vi.fn(async () => {
+      throw new Error('bridge unreachable');
+    }) as BridgeClientStore['call'];
+    await store.send('t1', 'hello');
+    store.apply({ method: 'stream/thread/deleted', params: { threadId: 't1' } });
+    expect(store.conversation('t1').pending).toEqual([]);
+  });
+
   it('answers an approval at once and tells the bridge', async () => {
     const { store, calls } = harness();
     await store.answerApproval('t1', 'ap', 'approve');

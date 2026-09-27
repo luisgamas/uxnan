@@ -41,6 +41,7 @@ import type {
 import { bridge, type BridgeClientStore, type BridgeNotification } from './client.svelte';
 import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelte';
 import { isUserFacingAgent } from './agents';
+import { writeOutbox, type SendRequest } from './outbox';
 import { ThreadActivity, type ChatActivity } from './activity.svelte';
 
 /** One spelling for comparing directories: forward slashes, no trailing slash. */
@@ -389,6 +390,7 @@ export class ChatStore {
         const params = notification.params as ThreadDeletedParams | undefined;
         if (typeof params?.threadId === 'string' && this.#admit(params.rev)) {
           this.threads.delete(params.threadId);
+          this.#forgetUnsent(params.threadId);
         }
         return;
       }
@@ -469,8 +471,9 @@ export class ChatStore {
     return this.threads.get(thread.id) ?? thread;
   }
 
-  /** Send a user message. The bubble shows at once; the bridge's
-   *  `stream/turn/created` echo (matched by `clientTurnId`) replaces it. */
+  /** Send a user message. The bubble shows at once and waits in the outbox;
+   *  the bridge's `stream/turn/created` echo (matched by `clientTurnId`)
+   *  replaces it. */
   async send(threadId: string, text: string, opts: SendOptions = {}): Promise<void> {
     const trimmed = text.trim();
     const attachments = opts.attachments ?? [];
@@ -485,20 +488,39 @@ export class ChatStore {
       : trimmed.length > 0
         ? trimmed
         : `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`;
-    conversation.addPending({ clientTurnId, text: shown });
+    // The bridge names the conversation from its first message itself. A
+    // command carries no text: the bridge resolves it (as for the phone).
+    const request: SendRequest = {
+      ...(command ? { command } : { text: trimmed }),
+      ...(opts.options && Object.keys(opts.options).length > 0 ? { options: opts.options } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
+    };
+    conversation.addPending({ clientTurnId, text: shown, request });
+    await this.#deliver(threadId, clientTurnId, request);
+  }
+
+  /** Send a message that did not get through again, as it was written. */
+  async retry(threadId: string, clientTurnId: string): Promise<void> {
+    const send = this.conversation(threadId).retryPending(clientTurnId);
+    if (send) await this.#deliver(threadId, clientTurnId, send.request);
+  }
+
+  async #deliver(threadId: string, clientTurnId: string, request: SendRequest): Promise<void> {
     try {
-      // The bridge names the conversation from its first message itself. A
-      // command carries no text: the bridge resolves it (as for the phone).
-      await this.#client.call('turn/send', {
-        threadId,
-        ...(command ? { command } : { text: trimmed }),
-        clientTurnId,
-        ...(opts.options && Object.keys(opts.options).length > 0 ? { options: opts.options } : {}),
-        ...(attachments.length > 0 ? { attachments } : {}),
-      });
+      await this.#client.call('turn/send', { threadId, ...request, clientTurnId });
     } catch (err) {
-      conversation.failPending(clientTurnId, err instanceof Error ? err.message : String(err));
+      this.conversation(threadId).failPending(
+        clientTurnId,
+        err instanceof Error ? err.message : String(err),
+      );
     }
+  }
+
+  /** A thread deleted for every device takes what it had waiting with it. */
+  #forgetUnsent(threadId: string): void {
+    const open = this.#conversations.get(threadId);
+    if (open) open.forgetPending();
+    else writeOutbox(threadId, []);
   }
 
   /** Stop the running turn, or take a queued one off the queue. */
@@ -553,6 +575,7 @@ export class ChatStore {
   async remove(threadId: string): Promise<void> {
     await this.#client.call('thread/delete', { threadId });
     this.threads.delete(threadId);
+    this.#forgetUnsent(threadId);
   }
 
   #adopt(thread: Thread | null | undefined): void {

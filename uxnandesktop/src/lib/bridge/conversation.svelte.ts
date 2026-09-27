@@ -5,7 +5,8 @@
 //
 // The model is the bridge's own (`Thread`, `Turn`, `Message` from `shared/`),
 // not a desktop copy. What this adds is only view state: the optimistic bubble
-// of a message this window sent and has not seen echoed back yet.
+// of a message this window sent and has not seen echoed back yet — kept in the
+// outbox (`outbox.ts`) until the bridge has it, so it survives a restart.
 
 import type {
   ApprovalDecision,
@@ -25,6 +26,7 @@ import type {
 } from '$shared/jsonrpc/notifications';
 import type { BridgeNotification } from './client.svelte';
 import { streamCoalesceWindow } from './streamingMarkdown';
+import { readOutbox, writeOutbox, type OutboxEntry } from './outbox';
 
 /** Calls a bridge method (injected so the reducer is testable without Tauri). */
 export type BridgeCall = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -32,13 +34,10 @@ export type BridgeCall = <T = unknown>(method: string, params?: unknown) => Prom
 /** How many turns one page loads. */
 export const TURN_PAGE = 30;
 
-/** A message this window sent that the bridge has not announced back yet. */
-export interface PendingSend {
-  clientTurnId: string;
-  text: string;
-  /** Set when `turn/send` failed; the bubble stays so the text is not lost. */
-  error?: string;
-}
+/** A message this window sent that the bridge has not announced back yet.
+ *  `error` is set when it did not get there (empty: the app closed before the
+ *  bridge answered); the bubble stays, with Retry, so the text is not lost. */
+export type PendingSend = OutboxEntry;
 
 export interface QueueState {
   turnIds: string[];
@@ -122,6 +121,7 @@ export class Conversation {
   resolvedModel = $state<string | null>(null);
   approvals = $state<Record<string, ApprovalOutcome>>({});
   questions = $state<Record<string, QuestionOutcome>>({});
+  /** Messages the bridge has not confirmed — mirrored to the outbox. */
   pending = $state<PendingSend[]>([]);
 
   running = $derived(this.activeTurnId !== null);
@@ -150,6 +150,13 @@ export class Conversation {
   constructor(threadId: string, call: BridgeCall) {
     this.threadId = threadId;
     this.#call = call;
+    this.pending = readOutbox(threadId);
+  }
+
+  /** The only writer of `pending`, so the outbox never disagrees with it. */
+  #setPending(next: PendingSend[]): void {
+    this.pending = next;
+    writeOutbox(this.threadId, next);
   }
 
   /** Load (or re-sync) the newest page and the thread's live state. */
@@ -193,7 +200,8 @@ export class Conversation {
       }
     }
     // A bubble already stored on the bridge is no longer pending.
-    this.pending = this.pending.filter((p) => !turns.some((t) => userText(t) === p.text));
+    const stored = this.pending.filter((p) => turns.some((t) => userText(t) === p.text));
+    if (stored.length > 0) this.#setPending(this.pending.filter((p) => !stored.includes(p)));
   }
 
   /** Load the page before the oldest one shown. */
@@ -220,16 +228,31 @@ export class Conversation {
 
   /** Remember a message this window is sending, until the bridge echoes it. */
   addPending(send: PendingSend): void {
-    this.pending = [...this.pending, send];
+    this.#setPending([...this.pending, send]);
   }
 
   /** Mark a pending send as failed (the text stays visible to retry/copy). */
   failPending(clientTurnId: string, error: string): void {
-    this.pending = this.pending.map((p) => (p.clientTurnId === clientTurnId ? { ...p, error } : p));
+    this.#setPending(this.pending.map((p) => (p.clientTurnId === clientTurnId ? { ...p, error } : p)));
+  }
+
+  /** A failed send is going out again: back to "sending". */
+  retryPending(clientTurnId: string): PendingSend | undefined {
+    const send = this.pending.find((p) => p.clientTurnId === clientTurnId);
+    if (!send) return undefined;
+    const { error: _, ...again } = send;
+    this.#setPending(this.pending.map((p) => (p === send ? again : p)));
+    return again;
   }
 
   dropPending(clientTurnId: string): void {
-    this.pending = this.pending.filter((p) => p.clientTurnId !== clientTurnId);
+    if (!this.pending.some((p) => p.clientTurnId === clientTurnId)) return;
+    this.#setPending(this.pending.filter((p) => p.clientTurnId !== clientTurnId));
+  }
+
+  /** The thread is gone for every device: nothing of it is left to send. */
+  forgetPending(): void {
+    this.#setPending([]);
   }
 
   /** Apply one notification that names this thread. */

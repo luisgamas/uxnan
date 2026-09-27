@@ -34,7 +34,7 @@ the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridg
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,602 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,610 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -49,10 +49,13 @@ desktop is a **client** of an installed bridge over its loopback local control
 channel (modes off / attach / managed — `managed` keeps the bridge running as
 the user's service, `docs/chat.md`); chat tabs show and drive the bridge's
 threads live alongside the phone, as a revisioned **replica** of the bridge's
-threads, projects, shared settings and presence; the desktop's projects and the
-phone's are **one mirrored registry**; a phone is **paired from Settings** with
-the running bridge's own QR; and agent detection follows the table shared with
-the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
+threads, projects, shared settings and presence, keeping every message in an
+outbox until the bridge has it (a failed one survives a restart with Retry) and
+setting the composer's text aside as a saved draft when a message comes back;
+the desktop's projects and the phone's are **one mirrored registry**; a phone
+is **paired from the Bridge window** (the sidebar's Bridge row, or Settings)
+with the running bridge's own QR; and agent detection follows the table shared
+with the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
 review** of the chat and Bridge & mobile UI; still left: packaging the bridge
 without Node (`02e` §3.1–§3.4, plan 007), trusted-device management from the
 desktop (revoke), and the mirror / hand-off of terminal-launched sessions
@@ -888,21 +891,6 @@ the browser MCP; user guide in `docs/browser.md`.
       `launch_env`. Never re-introduce writing into a config the user keeps: that is
       what made agents outside uxnan report a broken server. Recipe in
       `docs/browser.md` → *Adding another agent*.
-- [ ] **Chat composer — keep what the phone keeps.** The phone stores a message
-      before it is sent, so a failed or offline send survives a restart and can
-      be retried; editing a queued message moves it back with its images, and a
-      draft already in the composer is set aside as a *rescued draft* instead of
-      being merged. The desktop keeps a failed send only in memory
-      (`conversation.svelte.ts` `pending`), and *Edit* / `putBack` bring back
-      the text alone and append it to the draft. Needs a durable outbox for the
-      desktop's chat (the principle: a user action is never silently dropped) and
-      the rescued-draft UI — a UI increment for the maintainer's review.
-- [ ] **Browser — confirm a late link navigation on a real redirector.** A
-      click that follows a link now keeps watching for its navigation up to
-      1.5 s (`LINK_SETTLE`, `control/services/browser.rs`; the page script
-      reports `link: true`), where every other click still answers after 350 ms.
-      Unit-tested; run it once against a slow short link (e.g. the site's GitHub
-      link) and confirm `navigated: true`.
 - [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
       now captures on every desktop platform — WebView2 `CapturePreview` into a
       memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —
@@ -1755,7 +1743,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,015 Rust + 1,602 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,015 Rust + 1,610 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

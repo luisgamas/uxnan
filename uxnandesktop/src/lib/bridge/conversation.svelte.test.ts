@@ -49,7 +49,7 @@ describe('Conversation', () => {
 
   it('places a turn another client created, and confirms our own echo', () => {
     const { c } = conversation();
-    c.addPending({ clientTurnId: 'bubble', text: 'mine' });
+    c.addPending({ clientTurnId: 'bubble', text: 'mine', request: { text: 'mine' } });
     c.apply(note('stream/turn/created', { turn: turn('x', 'from the phone', 'pending') }));
     expect(c.turns.map((t) => t.id)).toEqual(['x']);
     expect(c.pending).toHaveLength(1);
@@ -214,11 +214,38 @@ describe('Conversation', () => {
 
   it('keeps a failed send visible with its error', () => {
     const { c } = conversation();
-    c.addPending({ clientTurnId: 'p', text: 'hi' });
+    c.addPending({ clientTurnId: 'p', text: 'hi', request: { text: 'hi' } });
     c.failPending('p', 'thread not found');
-    expect(c.pending).toEqual([{ clientTurnId: 'p', text: 'hi', error: 'thread not found' }]);
+    expect(c.pending).toEqual([
+      { clientTurnId: 'p', text: 'hi', request: { text: 'hi' }, error: 'thread not found' },
+    ]);
+    expect(c.retryPending('p')).toEqual({ clientTurnId: 'p', text: 'hi', request: { text: 'hi' } });
+    expect(c.pending[0]?.error).toBeUndefined();
     c.dropPending('p');
     expect(c.pending).toEqual([]);
+  });
+
+  it('keeps an unconfirmed send across a restart, and lets it go once the bridge has it', () => {
+    const { c } = conversation();
+    c.addPending({ clientTurnId: 'lost', text: 'never answered', request: { text: 'never answered' } });
+    c.addPending({ clientTurnId: 'sent', text: 'made it', request: { text: 'made it' } });
+    c.failPending('sent', 'socket closed');
+
+    // The app closes and opens again: both come back as failed bubbles, the
+    // one that got no answer at all without a reason.
+    const { c: again } = conversation();
+    expect(again.pending.map((p) => [p.clientTurnId, p.error])).toEqual([
+      ['lost', ''],
+      ['sent', 'socket closed'],
+    ]);
+
+    // The bridge did store one of them: it is no longer waiting, here or on disk.
+    again.adoptPage({ turns: [turn('a', 'made it')], total: 1 });
+    expect(again.pending.map((p) => p.clientTurnId)).toEqual(['lost']);
+    expect(conversation().c.pending.map((p) => p.clientTurnId)).toEqual(['lost']);
+
+    again.forgetPending();
+    expect(conversation().c.pending).toEqual([]);
   });
 });
 

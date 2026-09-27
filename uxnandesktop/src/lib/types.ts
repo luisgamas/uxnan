@@ -1639,6 +1639,8 @@ export type SavedTab =
       agentId?: string;
       /** The composer's unsent text, kept across restarts. */
       draft?: string;
+      /** Drafts set aside when a message came back to the composer, newest first. */
+      rescued?: string[];
     };
 
 export type SavedTermNode =

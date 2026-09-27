@@ -168,6 +168,9 @@ export interface ChatTab extends BaseTab {
   agentId?: string;
   /** The composer's unsent text — a draft survives closing the app. */
   draft?: string;
+  /** Drafts the composer held when a message came back into it (an edited
+   *  queued or failed one), set aside instead of merged — newest first. */
+  rescued?: string[];
 }
 
 export type GroupTab = TerminalTab | FileTab | CommitTab | ChatTab;
@@ -480,6 +483,7 @@ function serializeTab(t: GroupTab): SavedTab {
       threadId: t.threadId,
       agentId: t.agentId,
       ...(t.draft ? { draft: t.draft } : {}),
+      ...(t.rescued?.length ? { rescued: [...t.rescued] } : {}),
     };
   }
   if (t.kind === 'file') {
@@ -550,6 +554,7 @@ function buildTab(t: SavedTab): GroupTab {
       threadId: t.threadId,
       agentId: t.agentId,
       ...(t.draft ? { draft: t.draft } : {}),
+      ...(t.rescued?.length ? { rescued: [...t.rescued] } : {}),
     };
   }
   if (t.kind === 'file') {
