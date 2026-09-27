@@ -132,7 +132,9 @@ Future<Uint8List> _runBridge(
       ),
     );
 
-    return crypto.deriveSessionKey(
+    // Awaited here, so the `finally` below cancels the queue only after the
+    // key is derived rather than while the derivation is still pending.
+    return await crypto.deriveSessionKey(
       phoneEphemeralPrivateKey: bridgeEph.privateKey,
       macEphemeralPublicKey: phoneEphPub,
       clientNonce: clientNonce,
