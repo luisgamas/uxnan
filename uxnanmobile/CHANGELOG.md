@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.27-alpha.20260927+20260929] - 20260927
 ### Added
 
 - **Images sent from another device show in the message.** A message's images
