@@ -140,7 +140,8 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           uxnan-bridge service-status || true
-          count=$(pgrep -fc 'uxnan-bridge.* start' || true)
+          # BSD pgrep (macOS) has no -c: count the pids it lists.
+          count=$( (pgrep -f 'uxnan-bridge.* start' || true) | wc -l | tr -d ' ')
           echo "bridges running: $count"
           [ "$count" = "1" ]
 
