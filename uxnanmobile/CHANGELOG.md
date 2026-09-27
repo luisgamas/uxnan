@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.30-alpha.20260927+20260932] - 20260927
 ### Added
 
 - **Pick up a session from the PC.** A new conversation lists, under *Or
