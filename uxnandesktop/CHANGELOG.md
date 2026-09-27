@@ -17,6 +17,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Sessions in this folder.** A new chat lists the agents' own sessions in its
   folder that no conversation continues yet — from a terminal, here or
   elsewhere, or the agent's app — to pick up as the chat.
+- **A scroll rail for the conversation.** A short mark per message you sent
+  sits faintly on the chat's right edge, the one on screen a little longer.
+  Pointing at it grows the nearest marks and shows that message with the end
+  of its reply; a click (or ↑ ↓ and Enter) jumps there — the rail the phone
+  has for the same conversation.
+
+- **Drop files on the chat composer.** Files dragged from Finder / Explorer or
+  from the file tree land in the composer: one of the conversation's project
+  is mentioned as `@path` (the agent opens it itself), an image is attached
+  when the agent takes images, and anything else is attached as a file. The
+  composer lights up while files hover over it.
+
+### Changed
+
+- **Providers and usage follow the design system.** Status dots are the app's
+  `StatusDot` (the Providers tabs announce their state), loading shows the
+  `Spinner`, the account type is a `Badge`, the refresh interval is the same
+  select as the global one, the spend section has the settings section header,
+  its legend rows are full list rows with the app's focus ring, and the usage
+  popover's type sizes, icons and footer button come from the tokens. The
+  context ring's warm tone keeps its contrast in the light theme.
+
 ### Fixed
 
 - **Naming a session or writing a commit message no longer leaves a session in
@@ -27,6 +49,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `--no-session`); for the CLIs that cannot, the bridge's session list leaves
   them out by how their prompt opens (`shared/src/agents/one-shot.ts`, checked
   by a test against the desktop's prompts).
+- **The `/` and `@` list stays on screen.** On a new chat, where the composer
+  sits mid-pane, a long list of files or commands ran up under the tabs and
+  hid its first rows. It now opens below the composer when there is more room
+  there and is never taller than the room it has.
+- **A file dropped on the chat no longer goes to a terminal.** Every OS drop
+  used to be typed into the active terminal wherever it landed; one router now
+  hands a drop to what is under the pointer.
 
 ## [0.0.63] - 20260927
 ### Fixed

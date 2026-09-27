@@ -2734,6 +2734,8 @@ export const es: Record<MessageKey, string> = {
   "chat.edit": "Editar",
   "chat.editQueued": "Editar (sacarlo de la cola)",
   "chat.jumpToEnd": "Ir al último mensaje",
+  "chat.railLabel": "Mensajes de esta conversación",
+  "chat.railImage": "Imagen",
   "chat.queuePausedStopped": "La cola está en pausa porque se detuvo al agente.",
   "chat.queuePausedError": "La cola está en pausa porque el último turno falló.",
   "chat.queueResume": "Reanudar",

@@ -7,6 +7,7 @@ import 'package:uxnan/domain/value_objects/usage_summary.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/usage_format.dart';
+import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/spend_palette.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
@@ -165,8 +166,8 @@ class _SpendSectionState extends ConsumerState<SpendSection> {
                 const SizedBox(height: UxnanSpacing.xs),
                 _Axis(days: view.days),
                 AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOutCubic,
+                  duration: UxnanMotion.revealIn(context),
+                  curve: UxnanMotion.revealCurve,
                   alignment: Alignment.topCenter,
                   child: _day == null
                       ? const SizedBox(width: double.infinity)
@@ -375,7 +376,9 @@ class _DayDetail extends StatelessWidget {
             else
               for (final id in present)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UxnanSpacing.xs,
+                  ),
                   child: Row(
                     children: [
                       _Swatch(color: SpendPalette.colorFor(id, colors)),
@@ -422,6 +425,13 @@ class _AgentRow extends StatelessWidget {
     required this.onTap,
   });
 
+  /// How far the name sits from the row's leading edge — swatch, mark and
+  /// the gaps between them — so the share rule underneath starts under it.
+  static const double leadWidth = _Swatch.size +
+      UxnanSpacing.sm +
+      UxnanSize.iconContentSmall +
+      UxnanSpacing.md;
+
   final SpendAgent agent;
   final SpendMetric metric;
   final bool focused;
@@ -447,7 +457,9 @@ class _AgentRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 150),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : UxnanMotion.swap,
           opacity: dimmed ? 0.45 : 1,
           child: Container(
             color: focused ? colors.secondaryContainer : null,
@@ -460,7 +472,16 @@ class _AgentRow extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _AgentMark(agentId: agent.agentId),
+                    // The colour rides on the swatch, the same one the day
+                    // detail and the models use; the mark stays bare, as agent
+                    // marks do in rows.
+                    _Swatch(color: color),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    // Drawn at its default, [UxnanSize.iconContentSmall].
+                    AgentLogo(
+                      agent: AgentIdParsing.fromWireId(agent.agentId),
+                      color: colors.onSurface,
+                    ),
                     const SizedBox(width: UxnanSpacing.md),
                     Expanded(
                       child: Text(
@@ -493,7 +514,7 @@ class _AgentRow extends StatelessWidget {
                 // The share as a thin rule in the agent's colour: a second
                 // reading of the same figure, never the only one.
                 Padding(
-                  padding: const EdgeInsets.only(left: 36),
+                  padding: const EdgeInsets.only(left: _AgentRow.leadWidth),
                   child: ClipRRect(
                     borderRadius: const BorderRadius.all(UxnanRadius.full),
                     child: LinearProgressIndicator(
@@ -583,46 +604,18 @@ class _Models extends StatelessWidget {
 class _Swatch extends StatelessWidget {
   const _Swatch({required this.color});
 
+  /// The swatch's side.
+  static const double size = 10;
+
   final Color color;
 
   @override
   Widget build(BuildContext context) => Container(
-        width: 10,
-        height: 10,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: color,
           borderRadius: const BorderRadius.all(Radius.circular(3)),
         ),
       );
-}
-
-/// An agent's logo on a small Icon Surface, ringed in its chart colour so
-/// the legend reads without a separate swatch.
-class _AgentMark extends StatelessWidget {
-  const _AgentMark({required this.agentId});
-
-  final String agentId;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: 24,
-      height: 24,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: SpendPalette.colorFor(agentId, colors),
-          width: 2,
-        ),
-      ),
-      child: AgentLogo(
-        agent: AgentIdParsing.fromWireId(agentId),
-        size: 13,
-        color: colors.onSurface,
-      ),
-    );
-  }
 }

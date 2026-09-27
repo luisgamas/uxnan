@@ -37,7 +37,7 @@
 <div class="flex flex-col gap-1">
   <div class="flex items-baseline justify-between gap-2">
     <span class={cn("truncate text-foreground", compact ? "text-xs" : text.body)}>{window.label}</span>
-    <span class={cn("flex shrink-0 items-baseline gap-1", compact ? "text-[11px]" : "text-xs")}>
+    <span class={cn("flex shrink-0 items-baseline gap-1", compact ? text.indicator : "text-xs")}>
       <span class="font-mono font-medium tabular-nums text-foreground">{pct}%</span>
       <span class="text-muted-foreground">{i18n.t("providers.used")}</span>
     </span>

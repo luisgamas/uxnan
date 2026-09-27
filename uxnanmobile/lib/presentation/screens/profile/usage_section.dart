@@ -13,6 +13,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Plan limits: how much of each provider's allowance is used, read live from
@@ -112,9 +113,17 @@ class _ProviderCard extends ConsumerWidget {
           Row(
             children: [
               if (agent != null)
-                AgentLogo(agent: agent, size: 22, color: colors.onSurface)
+                AgentLogo(
+                  agent: agent,
+                  size: UxnanSize.iconContent,
+                  color: colors.onSurface,
+                )
               else
-                UxIcon(UxIcons.code, size: 22, color: colors.onSurfaceVariant),
+                UxIcon(
+                  UxIcons.code,
+                  size: UxnanSize.iconContent,
+                  color: colors.onSurfaceVariant,
+                ),
               const SizedBox(width: UxnanSpacing.md),
               Expanded(
                 child: Text(
@@ -124,10 +133,10 @@ class _ProviderCard extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (plan != null) _Pill(label: plan),
+              if (plan != null) NeBadge(label: plan),
               if (type != null && _accountTypeLabel(l10n, type) != plan) ...[
                 const SizedBox(width: UxnanSpacing.xs),
-                _Pill(label: _accountTypeLabel(l10n, type)),
+                NeBadge(label: _accountTypeLabel(l10n, type)),
               ],
             ],
           ),
@@ -270,7 +279,7 @@ class _WindowBar extends StatelessWidget {
           ),
         ),
         if (lines.isNotEmpty) ...[
-          const SizedBox(height: 2),
+          const SizedBox(height: UxnanSpacing.xs),
           Text(
             lines.join(' · '),
             style: textTheme.labelSmall?.copyWith(
@@ -376,7 +385,11 @@ class _Line extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
-        UxIcon(icon, size: 16, color: colors.onSurfaceVariant),
+        UxIcon(
+          icon,
+          size: UxnanSize.iconContentSmall,
+          color: colors.onSurfaceVariant,
+        ),
         const SizedBox(width: UxnanSpacing.sm),
         Expanded(
           child: Text(
@@ -388,34 +401,6 @@ class _Line extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: 2,
-      ),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: const BorderRadius.all(UxnanRadius.full),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context)
-            .textTheme
-            .labelSmall
-            ?.copyWith(color: colors.onSurfaceVariant),
-      ),
     );
   }
 }

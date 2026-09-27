@@ -24,6 +24,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Naming a chat on Claude Code leaves no session** in Claude's own history
   (`--no-session-persistence`).
 
+### Changed
+
+- The thread → native session map lives once, in `BaseAgentAdapter`, instead of
+  one copy per adapter (`setNativeSession` / `refuseNativeSession`), and
+  `nativeSessionId` / `adoptNativeSession` are part of `IAgentAdapter`.
+
 ### Fixed
 
 - **A conversation keeps its agent's memory after the bridge restarts or
@@ -38,12 +44,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **A fork no longer writes into the original's agent session.** It copied the
   native session id, so a Codex fork's turns landed in the original thread.
   A fork now opens a session of its own on its first turn.
-
-### Changed
-
-- The thread → native session map lives once, in `BaseAgentAdapter`, instead of
-  one copy per adapter (`setNativeSession` / `refuseNativeSession`), and
-  `nativeSessionId` / `adoptNativeSession` are part of `IAgentAdapter`.
+- **A Claude Code conversation no longer grows stray and duplicate turns.**
+  The transcript reader took every "user" line Claude Code writes on its own —
+  an image's size note, a loaded skill, a hook's context (`isMeta`), a
+  compaction summary — for a prompt, so one run became a turn per line, and
+  `turn/list` imported them beside the bridge's own record of that run. The
+  phone, which reads `turn/list` every three seconds, showed them as duplicate
+  bubbles, `[Image: original …]` and skill text as messages, and flickered as
+  each read imported more. Only a real prompt opens a turn now; a native turn
+  that starts inside a run the bridge drove is never imported (for every
+  agent); rows imported that way are dropped on the next read; and reconciling
+  is idempotent.
 
 ## [0.0.34-alpha.20260927] - 20260927
 ### Added

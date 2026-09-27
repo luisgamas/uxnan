@@ -5,6 +5,7 @@
 
 import type { MessageKey } from "./i18n/locales/en";
 import type { AccountType, UsageStatus } from "./types";
+import type { StatusTone } from "./components/StatusDot.svelte";
 
 /** A compact, unit-based countdown to `epochMs` (e.g. `2h 30m`, `3d`, `5m`),
  *  or null when the reset is unknown or already past. */
@@ -71,17 +72,18 @@ export function meterFill(usedPercent: number): string {
   return "bg-emerald-500";
 }
 
-/** Per-status presentation for the header dot + subtitle. `tone` picks the dot
- *  color; `labelKey` is an i18n key the caller resolves. */
-export function statusMeta(status: UsageStatus): { dot: string; labelKey: MessageKey } {
+/** Per-status presentation for the header dot + subtitle. `tone` is the
+ *  `StatusDot` tone (so the colours mean what they mean everywhere else);
+ *  `labelKey` is an i18n key the caller resolves. */
+export function statusMeta(status: UsageStatus): { tone: StatusTone; labelKey: MessageKey } {
   switch (status) {
     case "ok":
-      return { dot: "bg-emerald-500", labelKey: "providers.statusOk" };
+      return { tone: "ok", labelKey: "providers.statusOk" };
     case "authRequired":
-      return { dot: "bg-amber-500", labelKey: "providers.statusAuthRequired" };
+      return { tone: "warn", labelKey: "providers.statusAuthRequired" };
     case "notInstalled":
-      return { dot: "bg-muted-foreground/50", labelKey: "providers.statusNotInstalled" };
+      return { tone: "off", labelKey: "providers.statusNotInstalled" };
     case "error":
-      return { dot: "bg-destructive", labelKey: "providers.statusError" };
+      return { tone: "error", labelKey: "providers.statusError" };
   }
 }

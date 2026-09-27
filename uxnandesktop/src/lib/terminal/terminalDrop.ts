@@ -1,7 +1,5 @@
-// Insert file/folder paths into a running terminal by writing them to its PTY.
-// Shared by (a) the native OS file-drop (dragging a file in from Explorer/Finder)
-// and (b) the file tree's in-app drag. Tauri suppresses HTML5 drag-and-drop inside
-// the webview, so the in-app drag is pointer-based and resolves its target here.
+// Insert file/folder paths into a running terminal by writing them to its PTY —
+// the terminal's side of a drop (`$lib/fileDrop` decides where a drop goes).
 // Paths are typed at the cursor with NO trailing newline, so nothing is executed.
 import { invoke } from "@tauri-apps/api/core";
 import { terminals } from "$lib/state/terminals.svelte";
@@ -26,20 +24,10 @@ export function terminalPtyAt(clientX: number, clientY: number): string | null {
   return pane?.dataset.ptyId ?? null;
 }
 
-/** Write `paths` into the terminal pane under (clientX, clientY), if the point is
- *  over one, then hand focus to that terminal so the user keeps typing there.
- *  Returns true when a terminal received them (so the caller can give feedback /
- *  fall back). Unlike the OS drop, the in-app drag deliberately has no
- *  active-terminal fallback — you must drop onto a terminal. */
-export function dropPathsIntoTerminal(
-  paths: string[],
-  clientX: number,
-  clientY: number,
-): boolean {
-  if (paths.length === 0) return false;
-  const ptyId = terminalPtyAt(clientX, clientY);
-  if (!ptyId) return false;
+/** Type [paths] at the cursor of terminal [ptyId] (never run: no newline),
+ *  then hand it the focus so the user keeps typing there. Where paths are
+ *  routed from — an OS drop or the file tree's drag — is `$lib/fileDrop`. */
+export function writePathsToTerminal(ptyId: string, paths: string[]): void {
   void invoke("pty_write", { id: ptyId, data: dropPayload(paths) }).catch(() => {});
   terminals.controller(ptyId)?.focus(); // keep the cursor in the terminal
-  return true;
 }

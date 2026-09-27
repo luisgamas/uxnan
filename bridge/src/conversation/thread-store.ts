@@ -377,6 +377,11 @@ export class ThreadStore {
    * id and may be refreshed on a later read. Missing native turns are never
    * deleted because compaction and temporary read failures can shorten a
    * provider transcript without meaning that the user deleted history.
+   *
+   * One thing is never native-only: what the transcript holds from a run the
+   * bridge itself was driving ({@link insideBridgeRun}) — one native session
+   * runs one turn at a time, so it is that run, however the reader split it.
+   * It is not imported, and a row imported that way before is dropped.
    */
   async reconcileNativeHistory(
     threadId: string,
@@ -388,7 +393,24 @@ export class ThreadStore {
       const candidates = nativeTurns.filter(
         (turn) => turn.threadId === threadId && importableNativeTurn(turn),
       );
+      // Heal what an earlier read imported from the bridge's own runs (a
+      // transcript's per-line "prompts" once each became a turn of their own).
+      const strays = thread.turns.filter(
+        (turn) => isImportedTurn(turn) && insideBridgeRun(thread.turns, turn.createdAt),
+      );
+      for (const stray of strays) thread.turns.splice(thread.turns.indexOf(stray), 1);
       if (candidates.length === 0) {
+        if (strays.length > 0) {
+          thread.updatedAt = now;
+          this.#bump(thread);
+          return {
+            result: {
+              reconcile: { changed: true, importedTurnIds: [] },
+              thread: structuredCloneThread(thread),
+            },
+            write: [threadId],
+          };
+        }
         return {
           result: {
             reconcile: { changed: false, importedTurnIds: [] },
@@ -402,7 +424,7 @@ export class ThreadStore {
       const importedTurnIds: string[] = [];
       let refreshed = false;
       let linked = false;
-      let pruned = false;
+      let pruned = strays.length > 0;
 
       for (const native of candidates) {
         let stored = thread.turns.find(
@@ -447,6 +469,10 @@ export class ThreadStore {
           }
           continue;
         }
+
+        // The bridge was driving the session then: this is (part of) that
+        // run, not a turn of its own, even when no twin matched it.
+        if (insideBridgeRun(thread.turns, native.createdAt)) continue;
 
         const imported = storedTurnFromNative(native);
         imported.nativeHistoryTurnId = native.id;
@@ -1623,6 +1649,34 @@ function storedTurnFromNative(turn: Turn): StoredTurn {
 }
 
 /** Native history is imported only once a meaningful assistant result exists. */
+/** A row imported from the agent's own transcript (its id IS the native id),
+ *  as opposed to a turn the bridge ran and recorded itself. */
+function isImportedTurn(turn: StoredTurn): boolean {
+  return turn.nativeHistoryTurnId !== undefined && turn.id === turn.nativeHistoryTurnId;
+}
+
+/**
+ * Whether [at] falls inside a run the bridge itself drove in this thread: a
+ * turn it recorded (not an imported one) that started, and had not yet ended,
+ * by then. The start allows for the slack between the transcript's clock and
+ * the bridge's; the end does not, since an exchange typed elsewhere right
+ * after the run is a turn of its own. A queued or cancelled turn never ran.
+ *
+ * Native history is only reconciled while no turn is running (`turn/list`), so
+ * a turn with no end is one a restart cut short: all that is known of its run
+ * is when it started, and a later exchange written elsewhere must still import.
+ */
+function insideBridgeRun(turns: readonly StoredTurn[], at: number): boolean {
+  return turns.some(
+    (turn) =>
+      !isImportedTurn(turn) &&
+      turn.status !== 'queued' &&
+      turn.status !== 'cancelled' &&
+      at >= turn.createdAt - NATIVE_TWIN_CLOCK_SLACK_MS &&
+      at <= (turn.completedAt ?? turn.createdAt + NATIVE_TWIN_CLOCK_SLACK_MS),
+  );
+}
+
 function importableNativeTurn(turn: Turn): boolean {
   return turn.messages.some(
     (message) =>
@@ -1715,9 +1769,13 @@ function findNativeTwin(
   exclude: StoredTurn | undefined,
 ): StoredTurn | undefined {
   const wanted = nativeTurnIdentity(native);
+  // A twin is the bridge's own record of the exchange. Two imported rows that
+  // read alike (empty prompts, the same reply) are not each other's twin —
+  // pairing them swapped rows back and forth and left copies behind.
   const eligible = turns.filter(
     (turn) =>
       turn !== exclude &&
+      !isImportedTurn(turn) &&
       !claimed.has(turn) &&
       turn.status !== 'queued' &&
       turn.status !== 'cancelled',

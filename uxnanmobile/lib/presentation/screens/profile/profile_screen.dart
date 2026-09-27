@@ -22,7 +22,7 @@ import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
-import 'package:uxnan/presentation/widgets/ux_icon.dart';
+import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
 /// The profile, across every paired PC: who this is (the one name, this
 /// phone's), what the agents spent (`usage/summary`), the connected PC's plan
@@ -154,7 +154,6 @@ class _YourPcs extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final devices = ref.watch(trustedDevicesProvider).value ?? const [];
     if (devices.isEmpty) return const SizedBox.shrink();
@@ -174,51 +173,24 @@ class _YourPcs extends ConsumerWidget {
             final spent = summary == null
                 ? null
                 : computeSpendView([summary], 30, SpendMetric.cost).total;
-            return ExpressiveCard(
+            final detail = [
+              if (online) l10n.profilePcOnline,
+              if (spent != null && spent.responses > 0)
+                l10n.profilePcSpent30(
+                  spent.unpriced
+                      ? fmtTokens(spent.tokens)
+                      : fmtUsd(spent.costUsd),
+                ),
+            ].join(' · ');
+            return NeNavTile(
               position: position,
-              color: colors.surfaceContainer,
+              icon: UxIcons.laptopMac,
+              title: device.displayName,
+              // A PC that is off and spent nothing has nothing to say here, so
+              // the row stays one line instead of holding an empty second one.
+              subtitle: detail.isEmpty ? null : detail,
               onTap: () =>
                   context.push(AppRoutes.deviceStats(device.macDeviceId)),
-              child: Row(
-                children: [
-                  UxIcon(UxIcons.laptopMac, color: colors.onSurfaceVariant),
-                  const SizedBox(width: UxnanSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          device.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.titleSmall,
-                        ),
-                        Text(
-                          [
-                            if (online) l10n.profilePcOnline,
-                            if (spent != null && spent.responses > 0)
-                              l10n.profilePcSpent30(
-                                spent.unpriced
-                                    ? fmtTokens(spent.tokens)
-                                    : fmtUsd(spent.costUsd),
-                              ),
-                          ].join(' · '),
-                          style: textTheme.bodySmall?.copyWith(
-                            color: online
-                                ? colors.tertiary
-                                : colors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  UxIcon(
-                    UxIcons.chevronRight,
-                    size: 20,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ],
-              ),
             );
           },
         ),

@@ -11,6 +11,7 @@
   // a port exists (a terminal printed its address).
   import * as Popover from "$lib/components/ui/popover";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { openUrl } from "$lib/api";
   import { clipboardWrite } from "$lib/clipboard";
@@ -155,7 +156,7 @@
     >
       <div class="flex items-start justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div class="min-w-0 space-y-0.5">
-          <div class="text-sm font-medium leading-tight text-foreground">
+          <div class={cn(text.subheading, "leading-tight text-foreground")}>
             {i18n.t("ports.title")}
           </div>
           <div class={text.meta}>{i18n.t("ports.caption")}</div>
@@ -170,7 +171,11 @@
               aria-label={i18n.t("ports.refreshTooltip")}
               onclick={() => void scanAll()}
             >
-              <Icon icon={RefreshCwIcon} class={cn("size-3.5", ports.loading && "animate-spin")} />
+              {#if ports.loading}
+                <Spinner class={iconSize.action} />
+              {:else}
+                <Icon icon={RefreshCwIcon} class={iconSize.action} />
+              {/if}
             </Button>
           {/snippet}
         </TooltipSimple>

@@ -48,7 +48,8 @@
   import type { UsageSpend } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, panel, text } from "$lib/design";
+  import { focus as focusStyle, icon, row as rowStyle, text } from "$lib/design";
+  import SettingsSection from "./SettingsSection.svelte";
 
   let metric = $state<SpendMetric>("cost");
   const connected = $derived(bridge.status.state === "connected");
@@ -172,48 +173,45 @@
   );
 </script>
 
-<section class="space-y-4">
-  <div class="flex flex-wrap items-end justify-between gap-3">
-    <div class="min-w-0 space-y-1">
-      <h2 class={text.pageTitle}>{i18n.t("spend.title")}</h2>
-      <p class="max-w-lg text-[13px] leading-5 text-muted-foreground">{i18n.t("spend.desc")}</p>
-    </div>
-    {#if connected}
-      <div class="flex items-center gap-2">
-        <Segmented
-          label={i18n.t("spend.metric")}
-          value={metric}
-          options={[
-            { value: "cost", label: i18n.t("spend.cost") },
-            { value: "tokens", label: i18n.t("spend.tokens") },
-          ]}
-          onValueChange={(v) => (metric = v as SpendMetric)}
-        />
-        <Segmented
-          label={i18n.t("spend.period")}
-          value={String(usage.spendDays)}
-          options={SPEND_PERIODS.map((d) => ({ value: String(d), label: i18n.t("spend.days", { n: d }) }))}
-          onValueChange={(v) => void usage.loadSpend(Number(v) as SpendPeriod)}
-        />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={i18n.t("spend.refresh")}
-          title={i18n.t("spend.refresh")}
-          disabled={usage.spendLoading}
-          onclick={() => void usage.loadSpend()}
-        >
-          {#if usage.spendLoading}
-            <Spinner class={icon.action} />
-          {:else}
-            <Icon icon={RefreshIcon} class={icon.action} />
-          {/if}
-        </Button>
-      </div>
-    {/if}
+{#snippet spendControls()}
+  <div class="flex items-center gap-2">
+    <Segmented
+      label={i18n.t("spend.metric")}
+      value={metric}
+      options={[
+        { value: "cost", label: i18n.t("spend.cost") },
+        { value: "tokens", label: i18n.t("spend.tokens") },
+      ]}
+      onValueChange={(v) => (metric = v as SpendMetric)}
+    />
+    <Segmented
+      label={i18n.t("spend.period")}
+      value={String(usage.spendDays)}
+      options={SPEND_PERIODS.map((d) => ({ value: String(d), label: i18n.t("spend.days", { n: d }) }))}
+      onValueChange={(v) => void usage.loadSpend(Number(v) as SpendPeriod)}
+    />
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={i18n.t("spend.refresh")}
+      title={i18n.t("spend.refresh")}
+      disabled={usage.spendLoading}
+      onclick={() => void usage.loadSpend()}
+    >
+      {#if usage.spendLoading}
+        <Spinner class={icon.action} />
+      {:else}
+        <Icon icon={RefreshIcon} class={icon.action} />
+      {/if}
+    </Button>
   </div>
+{/snippet}
 
-  <div class={panel.settingsBody}>
+<SettingsSection
+  title={i18n.t("spend.title")}
+  description={i18n.t("spend.desc")}
+  headerAction={connected ? spendControls : undefined}
+>
     {#if !connected}
       <div class="flex flex-col items-center gap-3 py-6 text-center">
         <p class={cn(text.meta, "max-w-sm")}>{i18n.t("spend.bridgeOff")}</p>
@@ -307,7 +305,7 @@
               <div class="mb-1 font-medium">{dayLabel(hovered.day, true)}</div>
               {#each chartAgents.filter((a) => (hovered.byAgent[a.agentId] ?? 0) > 0) as agent (agent.agentId)}
                 <div class="flex items-center gap-2">
-                  <span class={cn("size-2 shrink-0 rounded-[2px]", colour(agent.agentId).swatch)}></span>
+                  <span class={cn("size-2 shrink-0 rounded-xs", colour(agent.agentId).swatch)}></span>
                   <span class="flex-1 text-muted-foreground">{agentName(agent.agentId)}</span>
                   <span class="tabular-nums">{fmt(hovered.byAgent[agent.agentId] ?? 0)}</span>
                 </div>
@@ -325,21 +323,24 @@
         </div>
 
         <!-- Each agent: its colour, share and figures (the legend). -->
-        <ul class="mt-5 -mx-2 grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
+        <ul class="mt-5 -mx-2.5 grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
           {#each (metric === "cost" ? (costView ?? view) : view).agents as agent (agent.agentId)}
             <li>
               <button
                 type="button"
                 class={cn(
-                  "flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1 text-left transition-[background-color,opacity] hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  rowStyle.list,
+                  "min-w-0 transition-[background-color,color,opacity]",
+                  focus === agent.agentId ? rowStyle.listActive : rowStyle.listInactive,
+                  focusStyle.ring,
                   focus !== null && focus !== agent.agentId && "opacity-45",
                 )}
                 aria-pressed={focus === agent.agentId}
                 title={focus === agent.agentId ? i18n.t("spend.showAll") : i18n.t("spend.showOnly")}
                 onclick={() => (focus = focus === agent.agentId ? null : agent.agentId)}
               >
-              <span class={cn("size-2.5 shrink-0 rounded-[3px]", colour(agent.agentId).swatch)}></span>
-              <AgentLogo logo={bridgeAgentLogo(agent.agentId)} class="size-4 shrink-0" />
+              <span class={cn("size-2.5 shrink-0 rounded-xs", colour(agent.agentId).swatch)}></span>
+              <AgentLogo logo={bridgeAgentLogo(agent.agentId)} class={cn(icon.brand, "shrink-0")} />
               <span class={cn(text.body, "min-w-0 flex-1 truncate")}>{agentName(agent.agentId)}</span>
               {#if metric === "cost" && unpriced(agent.spend)}
                 <span class={cn(text.meta, "shrink-0")}>{i18n.t("spend.noPrice")}</span>
@@ -360,7 +361,7 @@
         <!-- The models behind it (the table view). -->
         <div class="mt-5 border-t border-border/60 pt-4">
           <h3 class={cn(text.menuLabel, "mb-2")}>{i18n.t("spend.models")}</h3>
-          <table class="w-full text-[13px]">
+          <table class={cn("w-full", text.body)}>
             <thead>
               <tr class={cn(text.meta, "text-left")}>
                 <th class="pb-1.5 font-normal">{i18n.t("spend.model")}</th>
@@ -373,7 +374,7 @@
                 <tr class="border-t border-border/40">
                   <td class="max-w-0 py-1.5 pr-3">
                     <span class="flex min-w-0 items-center gap-2">
-                      <span class={cn("size-2 shrink-0 rounded-[2px]", colour(row.agentId).swatch)}></span>
+                      <span class={cn("size-2 shrink-0 rounded-xs", colour(row.agentId).swatch)}></span>
                       <span class="truncate" title={row.model}>{row.model}</span>
                     </span>
                   </td>
@@ -395,5 +396,4 @@
         </div>
       {/if}
     {/if}
-  </div>
-</section>
+</SettingsSection>

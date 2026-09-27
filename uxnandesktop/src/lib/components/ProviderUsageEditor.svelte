@@ -6,11 +6,12 @@
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
   import { Checkbox } from "$lib/components/ui/checkbox";
-  import * as Select from "$lib/components/ui/select";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { focus, icon, text } from "$lib/design";
+  import { divider, field, focus, icon, text } from "$lib/design";
   import { usageProvider } from "$lib/usageCatalog";
   import {
     accountTypeLabelKey,
@@ -25,6 +26,8 @@
   import { toast, toastError } from "$lib/toast";
   import UsageMeter from "./UsageMeter.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import Combobox, { type ComboGroup } from "./Combobox.svelte";
+  import StatusDot from "./StatusDot.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
@@ -65,9 +68,9 @@
     { value: "60", key: "providers.every60m" },
     { value: "0", key: "providers.refreshManual" },
   ] as const;
-  const intervalLabel = $derived(
-    i18n.t(intervalOptions.find((o) => o.value === intervalValue)?.key ?? "providers.refreshGlobal"),
-  );
+  const intervalGroups = $derived<ComboGroup[]>([
+    { items: intervalOptions.map((o) => ({ value: o.value, label: i18n.t(o.key) })) },
+  ]);
   function setInterval(v: string) {
     config.refreshMinutes = v === GLOBAL ? null : Number(v);
     onchange();
@@ -179,7 +182,7 @@
 <div class="flex flex-col gap-4">
   <!-- Toolbar: status / plan + refresh + remove -->
   <div class="flex items-center gap-2">
-    <span class={cn("size-1.5 shrink-0 rounded-full", status.dot)}></span>
+    <StatusDot tone={status.tone} />
     <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{statusLabel}</span>
     <TooltipSimple title={i18n.t("providers.refreshNow")}>
       {#snippet children(tp)}
@@ -191,7 +194,11 @@
           aria-label={i18n.t("providers.refreshNow")}
           onclick={onrefresh}
         >
-          <Icon icon={RefreshCwIcon} class={cn(icon.button, loading && "animate-spin")} />
+          {#if loading}
+            <Spinner class={icon.button} />
+          {:else}
+            <Icon icon={RefreshCwIcon} class={icon.button} />
+          {/if}
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -225,7 +232,7 @@
       {/if}
 
       {#if snapshot.credit}
-        <div class={cn("flex items-center justify-between gap-2", snapshot.windows.length > 0 && "border-t border-border/40 pt-3")}>
+        <div class={cn("flex items-center justify-between gap-2", snapshot.windows.length > 0 && cn(divider.top, "pt-3"))}>
           <span class={cn("text-foreground", text.body)}>{i18n.t("providers.credit")}</span>
           <span class="font-mono text-xs text-muted-foreground">
             {#if creditIsBalance}
@@ -242,18 +249,17 @@
       {/if}
 
       {#if snapshot.resetCredits}
-        <div class={cn("flex flex-col gap-1.5", (snapshot.windows.length > 0 || snapshot.credit) && "border-t border-border/40 pt-3")}>
+        <div class={cn("flex flex-col gap-1.5", (snapshot.windows.length > 0 || snapshot.credit) && cn(divider.top, "pt-3"))}>
           <div class="flex items-center justify-between gap-2">
             <span class={cn("text-foreground", text.body)}>{i18n.t("providers.resets")}</span>
             <div class="flex items-center gap-2">
-              <span class="text-xs text-muted-foreground">
+              <span class={text.meta}>
                 {i18n.t("providers.resetsCount", { count: snapshot.resetCredits.available })}
               </span>
               {#if config.provider === "codex" && snapshot.resetCredits.available > 0}
                 <Button
                   variant="outline"
                   size="sm"
-                  class="px-2 text-xs"
                   onclick={() => (confirmRedeemOpen = true)}
                 >
                   {i18n.t("providers.redeemReset")}
@@ -275,7 +281,7 @@
       {/if}
 
       {#if snapshot.account?.email || snapshot.account?.plan || snapshot.account?.organization || accountTypeLabel}
-        <div class={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1", (snapshot.windows.length > 0 || snapshot.credit || snapshot.resetCredits) && "border-t border-border/40 pt-3", text.meta)}>
+        <div class={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1", (snapshot.windows.length > 0 || snapshot.credit || snapshot.resetCredits) && cn(divider.top, "pt-3"), text.meta)}>
           {#if snapshot.account?.email}
             <span>{i18n.t("providers.authenticatedAs")}</span>
             <Button
@@ -287,9 +293,9 @@
               onclick={() => (accountRevealed = !accountRevealed)}
             >
               {#if accountRevealed}
-                <Icon icon={EyeIcon} class="size-3 shrink-0" />
+                <Icon icon={EyeIcon} class={cn(icon.status, "shrink-0")} />
               {:else}
-                <Icon icon={EyeOffIcon} class="size-3 shrink-0" />
+                <Icon icon={EyeOffIcon} class={cn(icon.status, "shrink-0")} />
               {/if}
               <span class={cn("truncate transition-[filter] duration-150", !accountRevealed && "select-none blur-[5px]")}>
                 {snapshot.account.email}
@@ -300,9 +306,7 @@
             <span class="whitespace-nowrap">{#if snapshot.account?.email}·&nbsp;{/if}{snapshot.account.plan}</span>
           {/if}
           {#if accountTypeLabel}
-            <span
-              class="rounded-full border border-border/60 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-            >{accountTypeLabel}</span>
+            <Badge variant="outline" class="text-muted-foreground">{accountTypeLabel}</Badge>
           {/if}
           {#if snapshot.account?.organization}
             <!-- An organization is often named after its owner's email
@@ -325,21 +329,21 @@
   {/if}
 
   <!-- Refresh interval -->
-  <div class="flex items-center gap-2">
-    <span class={cn("shrink-0", text.meta)}>{i18n.t("providers.refreshInterval")}</span>
-    <Select.Root type="single" value={intervalValue} onValueChange={setInterval}>
-      <Select.Trigger size="compact" class="flex-1 text-xs">{intervalLabel}</Select.Trigger>
-      <Select.Content>
-        {#each intervalOptions as opt (opt.value)}
-          <Select.Item value={opt.value} label={i18n.t(opt.key)}>{i18n.t(opt.key)}</Select.Item>
-        {/each}
-      </Select.Content>
-    </Select.Root>
+  <div class="flex items-center justify-between gap-2">
+    <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("providers.refreshInterval")}</span>
+    <Combobox
+      value={intervalValue}
+      groups={intervalGroups}
+      searchable={false}
+      triggerClass={field.selectNarrow}
+      ariaLabel={i18n.t("providers.refreshInterval")}
+      onChange={setInterval}
+    />
   </div>
 
   <!-- Status bar: whether (and what of) this provider surfaces in the bottom
        status-bar popover. -->
-  <div class="flex flex-col gap-2.5 border-t border-border/50 pt-3.5">
+  <div class={cn("flex flex-col gap-2.5 pt-3.5", divider.top)}>
     <label class="flex min-h-8 cursor-pointer items-center justify-between gap-2 py-1">
       <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showInStatusBar")}</span>
       <Switch

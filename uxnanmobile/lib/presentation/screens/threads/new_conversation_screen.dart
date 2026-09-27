@@ -16,6 +16,7 @@ import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart'
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
@@ -23,6 +24,7 @@ import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/session_handoff_message.dart';
@@ -41,10 +43,12 @@ const Set<String> _hiddenAgentIds = {
   'echo',
 };
 
-/// Material 3 dialog to start a new conversation: pick the project — the PC's
-/// registry, the same list Uxnan Desktop shows (architecture/02a §5.8.17), or
-/// add one from the PC's start folder — compare the available agents
-/// directly, choose an optional model, and optionally create a worktree.
+/// Material 3 dialog to start a new conversation: the folder it runs in — the
+/// project it was opened from, or the PC's start folder — shown as one card
+/// that opens onto the other choices (the PC's registered projects, the same
+/// list Uxnan Desktop shows, architecture/02a §5.8.17, and adding one); then
+/// compare the available agents directly, choose an optional model, and
+/// optionally create a worktree.
 /// Full-screen on a phone, bounded on a wide
 /// window — see [show]. The descriptive headline lives in the
 /// content area so translated text never competes with the close and start
@@ -54,8 +58,8 @@ class NewConversationScreen extends ConsumerStatefulWidget {
   const NewConversationScreen({this.initialCwd, super.key});
 
   /// Folder to start in, when the screen was opened from somewhere that
-  /// already knows one — a project's "+" in the spaces list. Null selects the
-  /// first project.
+  /// already knows one — a project's "+" in the spaces list. Null starts in the
+  /// PC's start folder (the first project while that is not known yet).
   final String? initialCwd;
 
   /// Opens the form and resolves with the new thread id.
@@ -123,8 +127,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   /// record the worktree as one uxnan placed.
   bool _worktreeManaged = false;
 
-  /// The folder the conversation will run in: a project's, or the folder the
-  /// screen was opened for. Null = the first project.
+  /// The folder the conversation will run in, once chosen: a project's, the
+  /// start folder, or the folder the screen was opened for. Null = the PC's
+  /// start folder.
   String? _cwd;
 
   /// Registering a folder picked in the browser is in flight.
@@ -290,17 +295,13 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     final textTheme = Theme.of(context).textTheme;
 
     final projects = ref.watch(projectsProvider);
+    final home = ref.watch(bridgeHomeProvider).value;
     final agentsAsync = ref.watch(agentsProvider);
 
-    // The first project until one is chosen.
+    // The PC's start folder until another is chosen — what a conversation
+    // started from nowhere in particular has always opened on.
     final projectList = projects.value ?? const <Project>[];
-    final workingCwd = _cwd ?? projectList.firstOrNull?.cwd;
-    // A folder the screen was opened for that is not itself a project root
-    // (a worktree) is shown above the list, selected.
-    final openedFolder = workingCwd != null &&
-            !projectList.any((p) => _samePath(p.cwd, workingCwd))
-        ? workingCwd
-        : null;
+    final workingCwd = _cwd ?? home ?? projectList.firstOrNull?.cwd;
 
     final agent = _agent;
     final models =
@@ -363,39 +364,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                       ),
                     ),
                     _SectionHeader(label: l10n.newThreadProject),
-                    if (projects.isLoading && projectList.isEmpty)
+                    if (workingCwd == null &&
+                        (projects.isLoading || home == null) &&
+                        projectList.isEmpty)
                       const _Loading()
-                    else ...[
-                      if (openedFolder != null) ...[
-                        _WorkingDirCard(
-                          name: _basename(openedFolder),
-                          path: openedFolder,
-                          onBrowse: _addProject,
-                        ),
-                        const SizedBox(height: UxnanSpacing.sm),
-                      ],
-                      ExpressiveCardGroup(
-                        count: projectList.length + 1,
-                        itemBuilder: (context, index, position) {
-                          if (index == projectList.length) {
-                            return _AddProjectCard(
-                              position: position,
-                              busy: _adding,
-                              onTap: _adding ? null : _addProject,
-                            );
-                          }
-                          final project = projectList[index];
-                          return _ProjectCard(
-                            project: project,
-                            position: position,
-                            selected: openedFolder == null &&
-                                workingCwd != null &&
-                                _samePath(project.cwd, workingCwd),
-                            onTap: () => setState(() => _cwd = project.cwd),
-                          );
-                        },
+                    else
+                      _ProjectPicker(
+                        selected: workingCwd,
+                        projects: projectList,
+                        home: home,
+                        adding: _adding,
+                        onSelect: (cwd) => setState(() => _cwd = cwd),
+                        onAdd: _addProject,
                       ),
-                    ],
                     const SizedBox(height: UxnanSpacing.lg),
                     _SectionHeader(label: l10n.newThreadAgent),
                     agentsAsync.when(
@@ -465,61 +446,208 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   }
 }
 
-/// One project of the PC's registry, selectable as the conversation's folder.
-class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({
-    required this.project,
-    required this.position,
+/// Where the conversation runs, as one card: the chosen folder — its name and
+/// path — with a round button that opens the other choices underneath it, in
+/// the same card group: the PC's registered projects, its start folder, and
+/// adding a project. Picking one closes the list again, so the dialog shows
+/// one answer, not every possible one.
+class _ProjectPicker extends StatefulWidget {
+  const _ProjectPicker({
     required this.selected,
-    required this.onTap,
+    required this.projects,
+    required this.home,
+    required this.adding,
+    required this.onSelect,
+    required this.onAdd,
   });
 
-  final Project project;
+  /// The folder chosen; null only when there is nothing to choose yet.
+  final String? selected;
+  final List<Project> projects;
+
+  /// The PC's start folder, when known.
+  final String? home;
+
+  /// Registering a newly picked folder is in flight.
+  final bool adding;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onAdd;
+
+  @override
+  State<_ProjectPicker> createState() => _ProjectPickerState();
+}
+
+class _ProjectPickerState extends State<_ProjectPicker> {
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(_ProjectPicker old) {
+    super.didUpdateWidget(old);
+    // A project just added is the answer: show it, closed.
+    if (old.selected != widget.selected) _expanded = false;
+  }
+
+  void _select(String cwd) {
+    setState(() => _expanded = false);
+    widget.onSelect(cwd);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final selected = widget.selected;
+    final home = widget.home;
+    bool isSelected(String cwd) =>
+        selected != null &&
+        _NewConversationScreenState._samePath(cwd, selected);
+    bool isProject(String cwd) => widget.projects
+        .any((p) => _NewConversationScreenState._samePath(p.cwd, cwd));
+
+    final selectedProject = selected == null
+        ? null
+        : widget.projects.firstWhereOrNull(
+            (p) => _NewConversationScreenState._samePath(p.cwd, selected),
+          );
+    final selectedIsHome = selected != null &&
+        home != null &&
+        _NewConversationScreenState._samePath(home, selected);
+
+    final options = <Widget Function(CardGroupPosition)>[
+      if (home != null && !isSelected(home) && !isProject(home))
+        (position) => _FolderOption(
+              position: position,
+              icon: UxIcons.folderOpen,
+              title: l10n.bridgeHomeTitle,
+              path: home,
+              onTap: () => _select(home),
+            ),
+      for (final project in widget.projects)
+        if (!isSelected(project.cwd))
+          (position) => _FolderOption(
+                position: position,
+                icon: UxIcons.folder,
+                title: project.name,
+                path: project.cwd,
+                onTap: () => _select(project.cwd),
+              ),
+      (position) => _AddProjectOption(
+            position: position,
+            busy: widget.adding,
+            onTap: widget.adding ? null : widget.onAdd,
+          ),
+    ];
+
+    if (selected == null) {
+      // Nothing to show as chosen (no start folder, no project): adding one
+      // is the only way forward, so it is the whole picker.
+      return options.last(CardGroupPosition.single);
+    }
+
+    return AnimatedSize(
+      duration: UxnanMotion.revealIn(context),
+      curve: UxnanMotion.revealCurve,
+      alignment: Alignment.topCenter,
+      child: ExpressiveCardGroup(
+        count: 1 + (_expanded ? options.length : 0),
+        itemBuilder: (context, index, position) => index == 0
+            ? _SelectedFolderCard(
+                position: position,
+                name: selectedProject?.name ??
+                    _NewConversationScreenState._basename(selected),
+                path: selected,
+                isHome: selectedIsHome,
+                expanded: _expanded,
+                onToggle: () => setState(() => _expanded = !_expanded),
+              )
+            : options[index - 1](position),
+      ),
+    );
+  }
+}
+
+/// The chosen folder: a tonal folder mark, the name over the path (and a
+/// "Start folder" badge when it is that), and the round button that shows or
+/// hides the other choices. The whole card toggles too.
+class _SelectedFolderCard extends StatelessWidget {
+  const _SelectedFolderCard({
+    required this.position,
+    required this.name,
+    required this.path,
+    required this.isHome,
+    required this.expanded,
+    required this.onToggle,
+  });
+
   final CardGroupPosition position;
-  final bool selected;
-  final VoidCallback onTap;
+  final String name;
+  final String path;
+  final bool isHome;
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final foreground = selected ? colors.onPrimaryContainer : colors.onSurface;
+    final l10n = AppLocalizations.of(context);
     return Semantics(
-      button: true,
-      selected: selected,
+      selected: true,
+      expanded: expanded,
       child: ExpressiveCard(
         position: position,
-        onTap: onTap,
-        color: selected ? colors.primaryContainer : colors.surfaceContainer,
+        onTap: onToggle,
+        color: colors.primaryContainer,
         child: Row(
           children: [
-            UxIcon(UxIcons.folder, color: foreground),
+            Container(
+              width: UxnanSize.minTouchTarget,
+              height: UxnanSize.minTouchTarget,
+              decoration: BoxDecoration(
+                color: colors.primary,
+                borderRadius: const BorderRadius.all(UxnanRadius.lg),
+              ),
+              child: UxIcon(
+                isHome ? UxIcons.folderOpen : UxIcons.folder,
+                color: colors.onPrimary,
+              ),
+            ),
             const SizedBox(width: UxnanSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    project.name,
+                    name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleMedium?.copyWith(color: foreground),
+                    style: textTheme.titleMedium?.copyWith(
+                      color: colors.onPrimaryContainer,
+                    ),
                   ),
+                  const SizedBox(height: UxnanSpacing.xs),
                   Text(
-                    project.cwd,
+                    path,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: UxnanTypography.codeSmall.copyWith(
-                      color: foreground.withValues(alpha: 0.75),
+                      color: colors.onPrimaryContainer.withValues(alpha: 0.75),
                     ),
                   ),
+                  if (isHome) ...[
+                    const SizedBox(height: UxnanSpacing.sm),
+                    NeBadge(label: l10n.bridgeHomeTitle),
+                  ],
                 ],
               ),
             ),
-            if (selected) ...[
-              const SizedBox(width: UxnanSpacing.sm),
-              UxIcon(UxIcons.checkCircle, color: foreground),
-            ],
+            const SizedBox(width: UxnanSpacing.sm),
+            IconSurface(
+              icon: expanded ? UxIcons.expandLess : UxIcons.expandMore,
+              tooltip: expanded
+                  ? l10n.newThreadHideProjects
+                  : l10n.newThreadChangeProject,
+              onPressed: onToggle,
+            ),
           ],
         ),
       ),
@@ -527,9 +655,69 @@ class _ProjectCard extends StatelessWidget {
   }
 }
 
-/// The last row of the project list: add a folder of the PC as a project.
-class _AddProjectCard extends StatelessWidget {
-  const _AddProjectCard({
+/// Another folder the conversation could run in: a project, or the start
+/// folder.
+class _FolderOption extends StatelessWidget {
+  const _FolderOption({
+    required this.position,
+    required this.icon,
+    required this.title,
+    required this.path,
+    required this.onTap,
+  });
+
+  final CardGroupPosition position;
+  final UxIconData icon;
+  final String title;
+  final String path;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Semantics(
+      button: true,
+      selected: false,
+      child: ExpressiveCard(
+        position: position,
+        onTap: onTap,
+        color: colors.surfaceContainer,
+        child: Row(
+          children: [
+            UxIcon(icon, color: colors.onSurfaceVariant),
+            const SizedBox(width: UxnanSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleMedium,
+                  ),
+                  Text(
+                    path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UxnanTypography.codeSmall.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The last choice: add a folder of the PC as a project.
+class _AddProjectOption extends StatelessWidget {
+  const _AddProjectOption({
     required this.position,
     required this.busy,
     required this.onTap,
@@ -551,7 +739,10 @@ class _AddProjectCard extends StatelessWidget {
       child: Row(
         children: [
           if (busy)
-            const SizedBox.square(dimension: 24, child: PolygonLoader())
+            const SizedBox.square(
+              dimension: UxnanSize.iconContentLarge,
+              child: PolygonLoader(),
+            )
           else
             UxIcon(UxIcons.add, color: colors.primary),
           const SizedBox(width: UxnanSpacing.md),
@@ -571,72 +762,6 @@ class _AddProjectCard extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The selected working directory. The whole card opens the folder browser,
-/// avoiding a second nested control with the same action.
-class _WorkingDirCard extends StatelessWidget {
-  const _WorkingDirCard({
-    required this.name,
-    required this.path,
-    required this.onBrowse,
-  });
-
-  final String name;
-  final String path;
-  final VoidCallback onBrowse;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return NeCard(
-      onTap: onBrowse,
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: colors.secondaryContainer,
-              borderRadius: const BorderRadius.all(UxnanRadius.md),
-            ),
-            child: UxIcon(
-              UxIcons.folder,
-              color: colors.onSecondaryContainer,
-            ),
-          ),
-          const SizedBox(width: UxnanSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: UxnanSpacing.xs),
-                Text(
-                  path,
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: UxnanSpacing.sm),
-          UxIcon(
-            UxIcons.chevronRight,
-            color: colors.onSurfaceVariant,
           ),
         ],
       ),

@@ -53,6 +53,8 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat as chatTokens, icon, pane, text } from "$lib/design";
+  import { railAnchors } from "$lib/bridge/railAnchors";
+  import ChatScrollRail from "./ChatScrollRail.svelte";
 
   let {
     tab,
@@ -242,8 +244,37 @@
     });
   });
 
+  // --- the scroll rail: a mark per message sent -----------------------------
+  const anchors = $derived(railAnchors(shown, i18n.t("chat.railImage")));
+  /** The anchor whose message is on screen: the last one whose turn begins
+   *  above the upper third of the pane. */
+  let railCurrent = $state<number | null>(null);
+  function measureRail() {
+    if (!scroller || anchors.length === 0) {
+      railCurrent = null;
+      return;
+    }
+    const line = scroller.getBoundingClientRect().top + scroller.clientHeight / 3;
+    let found: number | null = null;
+    anchors.forEach((anchor, index) => {
+      const el = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(anchor.turnId)}"]`);
+      if (el && el.getBoundingClientRect().top <= line) found = index;
+    });
+    railCurrent = found ?? 0;
+  }
+  $effect(() => {
+    void anchors.length;
+    void tick().then(measureRail);
+  });
+  function jumpToAnchor(index: number) {
+    const id = anchors[index]?.turnId;
+    const el = id ? scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`) : null;
+    el?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
   function onScroll() {
     if (!scroller) return;
+    measureRail();
     const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
     following = distance < 80;
     if (restored) {
@@ -421,7 +452,9 @@
           {/if}
 
           {#each shown as turn (turn.id)}
-            <ChatTurnView {turn} {threadId} {cwd} {conversation} />
+            <div data-turn-id={turn.id}>
+              <ChatTurnView {turn} {threadId} {cwd} {conversation} />
+            </div>
           {/each}
 
           {#each conversation.pending as p (p.clientTurnId)}
@@ -477,6 +510,7 @@
           {/each}
         </div>
       </div>
+      <ChatScrollRail {anchors} current={railCurrent} onselect={jumpToAnchor} />
       {#if !following}
         <Button
           variant="secondary"

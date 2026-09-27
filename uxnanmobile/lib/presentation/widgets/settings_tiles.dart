@@ -133,8 +133,8 @@ class NeNavTile extends StatelessWidget {
   const NeNavTile({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.onTap,
+    this.subtitle,
     this.trailing,
     this.color,
     this.position = CardGroupPosition.single,
@@ -154,8 +154,9 @@ class NeNavTile extends StatelessWidget {
   /// Primary label.
   final String title;
 
-  /// Secondary label.
-  final String subtitle;
+  /// Secondary label. Null renders a one-line row — never an empty second
+  /// line holding the row open.
+  final String? subtitle;
 
   /// Optional trailing widget (defaults to a chevron).
   final Widget? trailing;
@@ -174,7 +175,10 @@ class NeNavTile extends StatelessWidget {
       child: ListTile(
         leading: UxIcon(icon, color: colors.onSurfaceVariant),
         title: Text(title),
-        subtitle: Text(subtitle),
+        subtitle: switch (subtitle) {
+          final String text => Text(text),
+          null => null,
+        },
         trailing: trailing ??
             UxIcon(UxIcons.chevronRight, color: colors.onSurfaceVariant),
       ),

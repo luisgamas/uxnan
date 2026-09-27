@@ -114,7 +114,7 @@ class _Tile extends StatelessWidget {
                   )
                 : textTheme.titleLarge,
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: UxnanSpacing.xs),
           Text(
             label,
             maxLines: 2,

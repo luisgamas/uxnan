@@ -2142,6 +2142,20 @@ into one transcript. Reconciliation then follows these rules:
   background task as a user line (`<task-notification>…`) and answers it in the
   same run: it opens no turn, and the reply continues the turn it belongs to;
   a row imported as such a prompt is dropped on load;
+- **nor is anything else Claude Code adds on its own.** An image's size note,
+  a loaded skill's body or a hook's context is written as an `isMeta` "user"
+  line of the running prompt, and a compaction leaves an `isCompactSummary`
+  one: none of them opens a turn. Taken as prompts, one run became a turn per
+  line, each imported beside the bridge's own record of it — duplicate and
+  stray bubbles on the phone, which re-imported them on every 3-second poll;
+- **what the transcript holds of a run the bridge drove is never
+  native-only.** One native session runs one turn at a time, so a native turn
+  that starts inside a bridge-recorded turn's run (from its start, less the
+  clock slack, to its end — or just its start, for a turn a restart cut short)
+  is that run, whatever the reader made of it: it is not imported, a row
+  imported that way before is dropped on the next read, and a twin is always
+  the bridge's own record, never another imported row. Reconciling is
+  idempotent: a second read of an unchanged transcript changes nothing;
 - a message a bridge from before the mid-turn hand-off (§5.8.13) stored as a
   turn with no reply — the reply went on in the turn before it — is matched to
   its transcript turn by prompt, and the part of the previous turn from where

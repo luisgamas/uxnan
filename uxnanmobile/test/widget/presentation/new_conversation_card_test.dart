@@ -14,10 +14,13 @@ Widget _wrap({
   required bool requiresLogin,
   List<AgentDescriptor>? agents,
   List<AgentModel> models = const [],
+  String? home,
+  String? initialCwd,
   AgentSessionList? sessions,
 }) {
   return ProviderScope(
     overrides: [
+      bridgeHomeProvider.overrideWith((ref) => Stream.value(home)),
       if (sessions != null) ...[
         agentSessionsProvider.overrideWith((ref, cwd) async => sessions),
         agentSessionHoldsProvider.overrideWith((ref) => Stream.value(const {})),
@@ -65,10 +68,10 @@ Widget _wrap({
         ),
       ),
     ],
-    child: const MaterialApp(
+    child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: NewConversationScreen(),
+      home: NewConversationScreen(initialCwd: initialCwd),
     ),
   );
 }
@@ -100,33 +103,77 @@ void main() {
     expect(find.text('Select an agent'), findsNothing);
   });
 
-  testWidgets("the PC's projects are the choice, plus adding one", (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  group('the folder it runs in', () {
+    void tallView(WidgetTester tester) {
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+    }
 
-    await tester.pumpWidget(_wrap(requiresLogin: false));
-    await tester.pumpAndSettle();
+    Finder toggle(String tooltip) => find.byTooltip(tooltip);
 
-    expect(find.text('Project'), findsOneWidget);
-    expect(find.text('App'), findsOneWidget);
-    expect(find.text('Site'), findsOneWidget);
-    expect(find.text('Add a project'), findsOneWidget);
+    testWidgets("opens on the PC's start folder, the rest folded away", (
+      tester,
+    ) async {
+      tallView(tester);
+      await tester.pumpWidget(_wrap(requiresLogin: false, home: '/home/me'));
+      await tester.pumpAndSettle();
 
-    // The first project starts selected; tapping another moves the choice.
-    bool selected(String name) => tester
-        .widgetList<Semantics>(
-          find.ancestor(of: find.text(name), matching: find.byType(Semantics)),
-        )
-        .any((s) => s.properties.selected ?? false);
-    expect(selected('App'), isTrue);
-    await tester.tap(find.text('Site'));
-    await tester.pumpAndSettle();
-    expect(selected('Site'), isTrue);
-    expect(selected('App'), isFalse);
+      expect(find.text('Project'), findsOneWidget);
+      expect(find.text('me'), findsOneWidget);
+      expect(find.text('/home/me'), findsOneWidget);
+      expect(find.text('Start folder'), findsOneWidget);
+      expect(find.text('App'), findsNothing);
+      expect(find.text('Add a project'), findsNothing);
+
+      await tester.tap(toggle('Choose another folder'));
+      await tester.pumpAndSettle();
+      expect(find.text('App'), findsOneWidget);
+      expect(find.text('Site'), findsOneWidget);
+      expect(find.text('Add a project'), findsOneWidget);
+
+      // Picking one makes it the answer and folds the list again.
+      await tester.tap(find.text('Site'));
+      await tester.pumpAndSettle();
+      expect(find.text('Site'), findsOneWidget);
+      expect(find.text('/site'), findsOneWidget);
+      expect(find.text('App'), findsNothing);
+      expect(find.text('Start folder'), findsNothing);
+
+      // The start folder stays one of the choices.
+      await tester.tap(toggle('Choose another folder'));
+      await tester.pumpAndSettle();
+      expect(find.text('Start folder'), findsOneWidget);
+      expect(find.text('App'), findsOneWidget);
+      expect(toggle('Hide the other folders'), findsOneWidget);
+    });
+
+    testWidgets("opened from a project's +, shows that project chosen", (
+      tester,
+    ) async {
+      tallView(tester);
+      await tester.pumpWidget(
+        _wrap(requiresLogin: false, home: '/home/me', initialCwd: '/site'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Site'), findsOneWidget);
+      expect(find.text('/site'), findsOneWidget);
+      expect(find.text('App'), findsNothing);
+      expect(find.text('Start folder'), findsNothing);
+    });
+
+    testWidgets('without a start folder yet, the first project is chosen', (
+      tester,
+    ) async {
+      tallView(tester);
+      await tester.pumpWidget(_wrap(requiresLogin: false));
+      await tester.pumpAndSettle();
+
+      expect(find.text('App'), findsOneWidget);
+      expect(find.text('Site'), findsNothing);
+    });
   });
 
   testWidgets('selecting an agent expands only its capability chips', (
@@ -291,6 +338,7 @@ void main() {
                 const [Project(id: 'p1', name: 'App', cwd: '/app')],
               ),
             ),
+            bridgeHomeProvider.overrideWith((ref) => Stream.value(null)),
             agentsProvider.overrideWith(
               (ref) async => const <AgentDescriptor>[],
             ),

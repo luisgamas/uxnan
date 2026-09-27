@@ -183,14 +183,15 @@ spec, the spec wins.
   so a menu is the same menu wherever it opens from. A raw `PopupMenuButton` is
   only justified by a documented exception (the theme-manager card's fixed grey
   glyph over a colour preview), and even then it passes `kNeMenuConstraints`.
-- **Only five text styles are real.** `UxnanTheme` populates `displayLarge`
-  (32/w700), `headlineMedium` (20/w600), `titleSmall` (14/w500), `bodyMedium`
-  (14) and `bodySmall` (12); every other `textTheme.*` getter falls through to
-  **Flutter's defaults, in a different font family**. So `textTheme.headlineLarge`
-  or `labelSmall` silently render in the wrong typeface next to text that is
-  right — which reads as "the design broke" long before anyone suspects the
-  theme. Build from the five, or add the missing style to
-  `_buildTextTheme` + `UxnanTypography` first.
+- **Every text style comes from the one ladder.** `_buildTextTheme`
+  (`presentation/theme/uxnan_theme.dart`) sets **all fifteen** `TextTheme`
+  slots from `UxnanTypography`, and a new slot or size goes there first. A slot
+  left null is not unused: it falls back to Material's own value on a different
+  scale, and the screens that reached for one silently followed that other
+  ladder — which is why the app's density once jumped between screens. So pick
+  the role the Neural Expressive type rules name
+  ([`neural-expressive-design.md`](neural-expressive-design.md) §2.3) from
+  `textTheme`, and never build a `TextStyle` with its own size or family.
 - **Never compare a raw width.** `UxnanBreakpoint` (`presentation/theme/
   breakpoints.dart`) is the single source for what a window size means — its
   margin, its content clamp, whether a permanent side pane fits. A stray
