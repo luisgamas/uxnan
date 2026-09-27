@@ -49,6 +49,7 @@
     type ComposerImage,
   } from "$lib/bridge/imageAttachment";
   import { mentionEntries } from "$lib/bridge/mentions";
+  import { clipSpan, fitPanel, type PanelFit } from "$lib/floatingFit";
   import {
     MAX_FILES,
     fileFromBlob,
@@ -200,6 +201,33 @@
       }
     }, 150);
     return () => clearTimeout(timer);
+  });
+
+  // Where the panel fits: above the composer while there is room, below it
+  // when a new chat's mid-pane composer has more room there — never past the
+  // pane that would cut its first rows off.
+  let root = $state<HTMLDivElement | null>(null);
+  /** The menu's own cap (`overlay.menuCompactViewport`, `max-h-72`) and the
+   *  padding its surface (`overlay.menuSurface`, `p-1`) adds around it. */
+  const PANEL_CAP = 288;
+  const PANEL_PADDING = 8;
+  let fit = $state<PanelFit>({ side: "above", maxHeight: PANEL_CAP + PANEL_PADDING });
+  function measureFit() {
+    if (root) fit = fitPanel(root.getBoundingClientRect(), clipSpan(root), PANEL_CAP + PANEL_PADDING);
+  }
+  $effect(() => {
+    if (!panelOpen) return;
+    void value; // the composer grows as it is written
+    measureFit();
+  });
+  $effect(() => {
+    if (!panelOpen) return;
+    window.addEventListener("resize", measureFit);
+    window.addEventListener("scroll", measureFit, true);
+    return () => {
+      window.removeEventListener("resize", measureFit);
+      window.removeEventListener("scroll", measureFit, true);
+    };
   });
 
   // A new token starts at the top of the list.
@@ -416,12 +444,13 @@
   }
 </script>
 
-<div class="relative flex flex-col gap-1">
+<div bind:this={root} class="relative flex flex-col gap-1">
   {#if panelOpen}
-    <div class="absolute inset-x-0 bottom-full z-20 mb-2">
+    <div class={cn("absolute inset-x-0 z-20", fit.side === "above" ? "bottom-full mb-2" : "top-full mt-2")}>
       <ChatSuggestions
         {items}
         {active}
+        maxHeight={Math.max(0, fit.maxHeight - PANEL_PADDING)}
         loading={token?.kind === "command" ? commandsLoading : filesLoading}
         emptyLabel={token?.kind === "command" ? i18n.t("chat.noCommands") : i18n.t("chat.noFiles")}
         onpick={pick}

@@ -4,6 +4,13 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The `/` and `@` list stays on screen.** On a new chat, where the composer
+  sits mid-pane, a long list of files or commands ran up under the tabs and
+  hid its first rows. It now opens below the composer when there is more room
+  there and is never taller than the room it has.
+
 ### Changed
 
 - **Providers and usage follow the design system.** Status dots are the app's
