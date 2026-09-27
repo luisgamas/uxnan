@@ -39,6 +39,9 @@
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { usage } from "$lib/state/usage.svelte";
+  import { usageProviderForAgent } from "$lib/usageCatalog";
+  import { pressingWindow } from "$lib/usagePace";
   import { readingPosition, saveReadingPosition } from "$lib/bridge/readingPosition";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
@@ -136,6 +139,23 @@
   /** Deleted on another client (or the bridge lost it): nothing to show. */
   const missing = $derived(chat.threadsLoaded && !thread);
   const agent = $derived(chat.agent(thread?.agentId));
+
+  // Where the agent's plan stands, for the context ring: the plan is read
+  // (once, then every few minutes while open) whether or not it is activated
+  // in Settings → Providers.
+  const planProvider = $derived(usageProviderForAgent(thread?.agentId));
+  $effect(() => {
+    const provider = planProvider?.id;
+    if (!provider || !active) return;
+    void usage.ensureProvider(provider);
+    const timer = setInterval(() => void usage.ensureProvider(provider), 5 * 60_000);
+    return () => clearInterval(timer);
+  });
+  const plan = $derived.by(() => {
+    if (!planProvider) return null;
+    const pressing = pressingWindow(usage.byProvider[planProvider.id], Date.now());
+    return pressing ? { name: planProvider.name, ...pressing } : null;
+  });
   const models = $derived(chat.cachedModels(thread?.agentId));
   /** The thread's model; before it has one, the agent's default — the one
    *  its turns run on (the phone reads the same). */
@@ -573,6 +593,7 @@
         context={conversation.usage?.contextWindow
           ? { tokens: conversation.usage.tokens, limit: conversation.usage.contextWindow }
           : null}
+        {plan}
         onsend={send}
         onstop={() => void stop()}
         {loadCommands}

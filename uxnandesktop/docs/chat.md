@@ -282,7 +282,12 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   "Default") — and the access mode (*Ask first* / *Auto-approve edits* /
   *Full access*; new chats start at *Full access*, like new chats on the phone)
   — and a ring showing how full the context window is, when the agent reports
-  it (amber past 75%, red past 90%; the figures are in its tooltip).
+  it (amber past 75%, red past 90%; the figures are in its tooltip). For an
+  agent with a plan the bridge reads (Claude Code, Codex, Grok) the tooltip
+  adds that plan's most pressing window — its used share, when it resets and,
+  when the pace so far hits the limit first, when (`usagePace.ts`) — and a dot
+  on the ring marks that pace; the chat reads the plan
+  (`usage.ensureProvider`) whether or not it is activated in Providers.
 - **Commands, files and images** — what the phone's composer does, the same
   way. **`/`** at the start of a message lists the agent's commands in this
   folder (`agent/commands`, as the bridge learns them from the agent itself,

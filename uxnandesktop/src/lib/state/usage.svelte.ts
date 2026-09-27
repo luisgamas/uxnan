@@ -27,7 +27,8 @@ import { app } from "./app.svelte";
 import { resourceMode } from "./resourceMode.svelte";
 
 class UsageStore {
-  /** Latest snapshot per activated provider. */
+  /** Latest snapshot per provider read: the activated ones, and the plan of
+   *  an open chat's agent (its context ring shows where that plan stands). */
   byProvider = $state<Partial<Record<UsageProvider, ProviderUsage>>>({});
   /** A refresh is in flight (drives spinners). */
   loading = $state(false);
@@ -83,6 +84,14 @@ class UsageStore {
     await this.#refreshProviders(providers);
   }
 
+  /** Read [provider] when its snapshot is missing or older than [maxAgeMs]:
+   *  what a chat asks for its agent's plan, activated or not. */
+  async ensureProvider(provider: UsageProvider, maxAgeMs = 5 * 60_000): Promise<void> {
+    const snapshot = this.byProvider[provider];
+    if (snapshot && Date.now() - snapshot.updatedAt < maxAgeMs) return;
+    await this.#refreshProviders([provider]);
+  }
+
   /** Read a single provider (the card's "Refresh now"). */
   async refreshOne(provider: UsageProvider): Promise<void> {
     await this.#refreshProviders([provider]);
@@ -119,12 +128,6 @@ class UsageStore {
    *  changes. `0` minutes (manual only) or an empty active set stops polling. */
   reschedule(): void {
     this.#clearTimers();
-    const active = new Set(this.active());
-    this.byProvider = Object.fromEntries(
-      Object.entries(this.byProvider).filter(([provider]) =>
-        active.has(provider as UsageProvider),
-      ),
-    ) as Partial<Record<UsageProvider, ProviderUsage>>;
     if (!this.#started) return;
     for (const config of this.#activeConfigs()) {
       const mins = this.#effectiveMinutes(config);

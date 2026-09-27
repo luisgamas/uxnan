@@ -15,6 +15,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The context ring says where the plan stands.** For Claude Code, Codex and
+  Grok, the ring's tooltip adds the plan's most pressing window (its used
+  share and when it resets) and, when the pace so far hits the limit before
+  the reset, when that happens — with a dot on the ring. The plan is read for
+  the chat's agent whether or not it is activated in Providers.
 - **Long messages fold.** A long message you sent shows its first ten lines
   under a fade, with *Show more* / *Show less*.
 - **Back where you were.** Returning to a conversation read earlier in the

@@ -2758,4 +2758,7 @@ export const es: Record<MessageKey, string> = {
   "chat.showLess": "Ver menos",
   "chat.copied": "Copiado",
   "chat.contextDetail": "Contexto al {percent}% — {used} de {total} tokens",
+  "chat.planLine": "{plan} · {window} {percent}% usado",
+  "chat.planResets": "se reinicia en {time}",
+  "chat.planRunsOut": "A este ritmo llegas al límite en {time}",
 };

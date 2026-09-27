@@ -32,14 +32,19 @@ export const USAGE_CATALOG: UsageCatalogProvider[] = [
   { id: "codex", name: "Codex", agentId: "codex", logo: "codex", favicon: "openai.com", hasCredit: true, hasResetCredits: true },
   { id: "claude", name: "Claude Code", agentId: "claude-code", logo: "claudecode", favicon: "claude.ai", hasCredit: true },
   { id: "copilot", name: "GitHub Copilot", logo: "copilot", favicon: "github.com" },
-  // FOR-DEV: Antigravity itself is not listed here yet — its quota API is the
-  // same Code Assist one, but `agy` keeps its token in the OS keyring instead of
-  // on disk. Findings + what unblocks it: FOR-DEV.md → "Providers".
+  // FOR-DEV: Antigravity is not listed here yet — `agy` answers no headless
+  // usage request and keeps its token in the OS keyring. What unblocks it:
+  // bridge/FOR-DEV.md → "Antigravity as a limits provider".
   { id: "grok", name: "Grok", agentId: "grok", logo: "grok", favicon: "x.ai", hasCredit: true },
 ];
 
 export function usageProvider(id: UsageProvider): UsageCatalogProvider | undefined {
   return USAGE_CATALOG.find((p) => p.id === id);
+}
+
+/** The plan a bridge agent's usage counts against, when one is read. */
+export function usageProviderForAgent(agentId: string | undefined): UsageCatalogProvider | undefined {
+  return agentId ? USAGE_CATALOG.find((p) => p.agentId === agentId) : undefined;
 }
 
 /** The providers a user can activate. */

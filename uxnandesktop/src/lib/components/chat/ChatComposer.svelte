@@ -29,7 +29,7 @@
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
   import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-  import { untrack, type Snippet } from "svelte";
+  import { untrack, type ComponentProps, type Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { AgentCommand, AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
@@ -76,6 +76,7 @@
     leading,
     trailing,
     context = null,
+    plan = null,
     loadCommands,
     mentionRoot,
     acceptsImages = false,
@@ -100,6 +101,8 @@
     trailing?: Snippet;
     /** How full the context window is, when the agent reports it. */
     context?: { tokens: number; limit: number } | null;
+    /** Where the agent's plan stands (`ChatContextRing`), when it is read. */
+    plan?: ComponentProps<typeof ChatContextRing>["plan"];
     /** The agent's commands for the `/` panel (none offered without it). */
     loadCommands?: () => Promise<AgentCommand[]>;
     /** The project folder `@` completes files from (none without it). */
@@ -511,7 +514,7 @@
       {#if trailing}{@render trailing()}{/if}
       <span class="flex-1"></span>
       {#if context && context.limit > 0}
-        <ChatContextRing tokens={context.tokens} limit={context.limit} />
+        <ChatContextRing tokens={context.tokens} limit={context.limit} {plan} />
       {/if}
       {#if running && empty && onstop}
         <InputGroup.Button

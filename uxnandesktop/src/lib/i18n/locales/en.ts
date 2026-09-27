@@ -2756,6 +2756,9 @@ export const en = {
   "chat.showLess": "Show less",
   "chat.copied": "Copied",
   "chat.contextDetail": "Context {percent}% full — {used} of {total} tokens",
+  "chat.planLine": "{plan} · {window} {percent}% used",
+  "chat.planResets": "resets in {time}",
+  "chat.planRunsOut": "At this pace you hit the limit in {time}",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */
