@@ -1548,7 +1548,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationAgentResponding => 'Agent responding…';
 
   @override
-  String get runOptionAuto => 'Auto';
+  String get runOptionModelDefault => 'Model default';
+
+  @override
+  String get runOptionDefaultTag => 'Default';
 
   @override
   String get authRequiresLoginTitle => 'Agent not signed in';

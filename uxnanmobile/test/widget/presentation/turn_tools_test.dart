@@ -307,4 +307,60 @@ void main() {
     // the menu back on screen; the composer's text is untouched.
     expect(focusNode.hasFocus, isFalse);
   });
+
+  testWidgets(
+      'the effort menu marks the level the model runs at by default, '
+      'and offers "Model default" only when there is none', (tester) async {
+    Future<void> show(AgentModelOption option) async {
+      await tester.pumpWidget(
+        _wrap(
+          TurnControlShelf(
+            threadId: 'thread-1',
+            options: [option],
+            showApproval: false,
+            approvalMode: ApprovalMode.fullAccess,
+            expanded: true,
+            onExpandedChanged: (_) {},
+            onApprovalTap: () {},
+          ),
+        ),
+      );
+    }
+
+    const levels = [
+      AgentModelOptionValue(value: 'low', label: 'Low'),
+      AgentModelOptionValue(value: 'high', label: 'High'),
+    ];
+    await show(
+      const AgentModelOption(
+        key: 'reasoning',
+        kind: 'enum',
+        label: 'Reasoning effort',
+        values: levels,
+        defaultValue: 'high',
+      ),
+    );
+    // Untouched, it names the default it runs at — not a vague "Auto".
+    expect(find.byTooltip('Reasoning effort: High'), findsOneWidget);
+    await tester.tap(findUxIcon(UxIcons.psychologyAlt));
+    await tester.pumpAndSettle();
+    expect(find.text('Default'), findsOneWidget);
+    expect(find.text('Model default'), findsNothing);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+
+    await show(
+      const AgentModelOption(
+        key: 'reasoning',
+        kind: 'enum',
+        label: 'Reasoning effort',
+        values: levels,
+      ),
+    );
+    expect(find.byTooltip('Reasoning effort: Model default'), findsOneWidget);
+    await tester.tap(findUxIcon(UxIcons.psychologyAlt));
+    await tester.pumpAndSettle();
+    expect(find.text('Model default'), findsWidgets);
+    expect(find.text('Default'), findsNothing);
+  });
 }

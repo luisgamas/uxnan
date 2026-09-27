@@ -8,6 +8,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The effort control names the level that really runs.** Untouched, it shows
+  the model's default (the bridge sends it) instead of "Auto", and marks it in
+  the menu; "Model default" is offered only for an agent that names none.
 - **This phone's name lives on the profile.** The card with the phone's name
   (the one every paired PC shows, renamed from here) moved from the home
   screen to the top of the profile.

@@ -527,7 +527,8 @@
   "questionFailed": "No se pudo enviar tu respuesta; reintenta",
   "turnFailed": "El turno del agente falló",
   "conversationAgentResponding": "Agente respondiendo…",
-  "runOptionAuto": "Automático",
+  "runOptionModelDefault": "Predeterminado del modelo",
+  "runOptionDefaultTag": "Predeterminado",
 
   "authRequiresLoginTitle": "Agente sin sesión iniciada",
   "authRequiresLoginBody": "Inicia sesión en la CLI de este agente en tu PC para empezar a enviar mensajes.",

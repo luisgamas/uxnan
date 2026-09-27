@@ -2780,11 +2780,17 @@ abstract class AppLocalizations {
   /// **'Agent responding…'**
   String get conversationAgentResponding;
 
-  /// Run-option value meaning 'leave the agent's default' (no explicit choice).
+  /// Run-option value meaning 'send nothing: the agent's own default applies' — offered only when the agent names no default.
   ///
   /// In en, this message translates to:
-  /// **'Auto'**
-  String get runOptionAuto;
+  /// **'Model default'**
+  String get runOptionModelDefault;
+
+  /// Tag beside the run-option level the model runs at when nobody picks one.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get runOptionDefaultTag;
 
   /// Banner title shown when the active thread's agent is not logged in on the PC.
   ///
