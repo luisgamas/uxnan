@@ -241,9 +241,20 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 - **Drafts and recall**: the composer's unsent text is the tab's draft, saved
   with the layout, so it survives switching tabs and restarting. On an empty
   composer **↑** recalls the thread's earlier messages (newest first) and **↓**
-  walks back. A message that failed to send offers **Edit** (back into the
-  composer) or *Dismiss*; nothing put back ever overwrites text being written —
-  it is added below it.
+  walks back.
+- **Nothing written is lost.** Every message waits in the chat's outbox
+  (`src/lib/bridge/outbox.ts`, this machine's storage) from the moment it is
+  sent until the bridge has it. One that did not get there — refused,
+  unreachable, or the app closed before an answer (*Not sent*) — stays as a
+  failed bubble, across restarts, with **Retry** (sent again as written,
+  images and model options included), **Edit** and *Dismiss*.
+- **Saved drafts.** A message coming back into the composer (**Edit** on a
+  queued or failed one) never merges with what is being written: that text is
+  set aside, whole, in a *saved drafts* card in the dock, kept with the tab.
+  Clicking one puts it back — setting aside whatever the composer holds then —
+  and the bin throws it away. A failed message brings its images back too; a
+  queued one only its text, since the bridge keeps a queued message's images
+  only as a count.
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it. Its toolbar holds what can change mid-chat — the
   model (every client sees the change), the model's knobs (reasoning effort, …)

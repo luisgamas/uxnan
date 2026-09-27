@@ -240,6 +240,20 @@
     images = [...images, ...list.slice(0, room)];
   }
 
+  /** Images of a message coming back to be edited (a send that failed). */
+  export function restoreImages(attachments: TurnAttachment[]) {
+    void addImages(
+      attachments
+        .filter((a) => a.base64Data)
+        .map((attachment) => ({
+          id: crypto.randomUUID(),
+          name: attachment.path?.split(/[\\/]/).pop() || "image",
+          previewUrl: `data:${attachment.mimeType};base64,${attachment.base64Data}`,
+          attachment,
+        })),
+    );
+  }
+
   async function chooseImages() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");

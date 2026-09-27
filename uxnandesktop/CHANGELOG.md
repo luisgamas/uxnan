@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **A message that did not reach the bridge is kept, and can be retried.** Every
+  chat message waits in an outbox on this machine until the bridge has it; one
+  that failed — or was in flight when the app closed — comes back after a
+  restart as a failed bubble with **Retry**, **Edit** and *Dismiss*. Before,
+  a failed send lived only in memory.
+- **Saved drafts.** Editing a queued or failed message no longer appends it to
+  what the composer held: that text is set aside in a *saved drafts* card above
+  the composer, kept with the tab, to put back or throw away — as on the phone.
+  A failed message's images come back with it.
+
 ### Changed
 
 - **One Bridge row in the sidebar.** "Connect a phone" and the row that appeared

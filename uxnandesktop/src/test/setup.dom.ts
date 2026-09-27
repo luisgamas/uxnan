@@ -28,6 +28,9 @@ afterEach(async () => {
   cleanup();
   await flushScrollLockRestore();
   uninstallFakeBackend();
+  // Stores that keep per-viewer state there (the chat outbox, replayed
+  // project removals) must start every test empty.
+  localStorage.clear();
 });
 
 /**

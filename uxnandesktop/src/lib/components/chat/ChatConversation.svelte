@@ -21,6 +21,8 @@
   import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
   import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
   import PencilEdit02Icon from "@hugeicons/core-free-icons/PencilEdit02Icon";
+  import NoteEditIcon from "@hugeicons/core-free-icons/NoteEditIcon";
+  import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
   import type { AccessMode } from "$shared/models/thread";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -34,7 +36,7 @@
   import { chat } from "$lib/bridge/chat.svelte";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
-  import { userText } from "$lib/bridge/conversation.svelte";
+  import { userText, type PendingSend } from "$lib/bridge/conversation.svelte";
   import { requestIdOf } from "$lib/bridge/timeline";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
   import { toastError } from "$lib/toast";
@@ -72,9 +74,37 @@
   /** Earlier messages of this thread, oldest first, for ↑ recall. */
   const history = $derived(conversation.turns.map((t) => userText(t)).filter((t) => t.length > 0));
 
-  /** Puts a message back into the composer without losing what is there. */
+  // --- drafts set aside --------------------------------------------------------
+  // A message coming back to be edited takes the composer; what it held is set
+  // aside, whole, instead of being merged into it — kept with the tab, like the
+  // draft, until it is put back or thrown away.
+  let composer = $state<ReturnType<typeof ChatComposer> | null>(null);
+  let rescued = $state<string[]>(untrack(() => tab.rescued ?? []));
+  function setRescued(next: string[]) {
+    rescued = next;
+    tab.rescued = next.length > 0 ? next : undefined;
+  }
+
+  /** Puts a message back into the composer, setting aside what was there. */
   function putBack(text: string) {
-    draft = draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text;
+    if (draft.trim() && draft.trim() !== text.trim()) setRescued([draft, ...rescued]);
+    draft = text;
+  }
+
+  /** A saved draft returns to the composer; one being written takes its place. */
+  function restoreDraft(index: number) {
+    const chosen = rescued[index];
+    if (chosen === undefined) return;
+    const rest = rescued.filter((_, i) => i !== index);
+    setRescued(draft.trim() ? [draft, ...rest] : rest);
+    draft = chosen;
+  }
+
+  /** A failed message back in the composer, its images too, to be reworded. */
+  function editFailed(p: PendingSend) {
+    conversation.dropPending(p.clientTurnId);
+    putBack(p.request.command ? p.text : (p.request.text ?? ""));
+    if (p.request.attachments?.length) composer?.restoreImages(p.request.attachments);
   }
 
   /** Withdraws a queued message into the composer — only once the bridge has
@@ -295,22 +325,25 @@
           {/each}
 
           {#each conversation.pending as p (p.clientTurnId)}
+            {@const failed = p.error !== undefined}
             <div class="flex flex-col items-end gap-1">
-              <div class={cn(chatTokens.userBubble, !p.error && "opacity-70")}>{p.text}</div>
-              {#if p.error}
+              <div class={cn(chatTokens.userBubble, !failed && "opacity-70")}>{p.text}</div>
+              {#if failed}
                 <p class="flex items-center gap-2 text-xs text-destructive">
-                  {p.error}
+                  {p.error || i18n.t("chat.notSent")}
                   <Button
                     variant="link"
                     size="xs"
                     class="h-auto px-0"
-                    onclick={() => {
-                      conversation.dropPending(p.clientTurnId);
-                      putBack(p.text);
-                    }}
+                    onclick={() => void chat.retry(threadId, p.clientTurnId)}
                   >
-                    {i18n.t("chat.edit")}
+                    {i18n.t("chat.retry")}
                   </Button>
+                  {#if p.request.command || p.request.text || p.request.attachments?.length}
+                    <Button variant="link" size="xs" class="h-auto px-0" onclick={() => editFailed(p)}>
+                      {i18n.t("chat.edit")}
+                    </Button>
+                  {/if}
                   <Button
                     variant="link"
                     size="xs"
@@ -353,7 +386,7 @@
           </Button>
         </div>
       {/if}
-      {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused}
+      {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused || rescued.length > 0}
         <div class={chatTokens.dock}>
           {#each conversation.openRequests as request (requestIdOf(request))}
             <ChatRequest block={request} {threadId} {conversation} />
@@ -421,10 +454,50 @@
               {/each}
             </div>
           {/if}
+
+          {#if rescued.length > 0}
+            <div class={cn(chatTokens.card, "flex flex-col gap-0.5 p-1.5")}>
+              <span class={cn(text.menuLabel, "px-1.5 pb-1 pt-0.5")}>
+                {i18n.plural(rescued.length, "chat.savedDraftsOne", "chat.savedDrafts")}
+              </span>
+              {#each rescued as saved, index (index)}
+                <div class="flex min-h-7 items-center gap-2 rounded-md px-1.5 text-xs">
+                  <Icon icon={NoteEditIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+                  <button
+                    type="button"
+                    class="min-w-0 flex-1 truncate text-left hover:text-foreground"
+                    title={i18n.t("chat.restoreDraft")}
+                    onclick={() => restoreDraft(index)}
+                  >
+                    {saved.trim()}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={i18n.t("chat.restoreDraft")}
+                    title={i18n.t("chat.restoreDraft")}
+                    onclick={() => restoreDraft(index)}
+                  >
+                    <Icon icon={PencilEdit02Icon} class={icon.status} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={i18n.t("chat.discardDraft")}
+                    title={i18n.t("chat.discardDraft")}
+                    onclick={() => setRescued(rescued.filter((_, i) => i !== index))}
+                  >
+                    <Icon icon={Delete02Icon} class={icon.status} />
+                  </Button>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/if}
 
       <ChatComposer
+        bind:this={composer}
         bind:value={draft}
         {history}
         running={conversation.running}
