@@ -127,17 +127,24 @@ jobs:
           node scripts/smoke/bridge-service.mjs update
           node scripts/smoke/bridge-service.mjs wait "${{ steps.v.outputs.latest }}" 300
 
-      - name: It came back as the service, once
+      - name: It came back as the service, once (Unix)
+        if: runner.os != 'Windows'
         run: |
           uxnan-bridge service-status || true
-          case "$RUNNER_OS" in
-            Linux)   systemctl --user --no-pager status 'uxnan-bridge*' || true
-                     count=$(pgrep -fc 'uxnan-bridge.* start' || true) ;;
-            macOS)   count=$(pgrep -fc 'uxnan-bridge.* start' || true) ;;
-            Windows) count=$(powershell -NoProfile -Command "(Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*uxnan-bridge*start*' -and \$_.Name -eq 'node.exe' }).Count") ;;
-          esac
+          count=$(pgrep -fc 'uxnan-bridge.* start' || true)
           echo "bridges running: $count"
           [ "$count" = "1" ]
+
+      - name: It came back as the service, once (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          uxnan-bridge service-status
+          $bridges = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+            Where-Object { $_.CommandLine -match 'uxnan-bridge' -and $_.CommandLine -match ' start' })
+          "bridges running: $($bridges.Count)"
+          $bridges | ForEach-Object { $_.CommandLine }
+          if ($bridges.Count -ne 1) { exit 1 }
 
       - name: Keep the bridge's logs
         if: always()
@@ -196,7 +203,8 @@ jobs:
           cd uxnandesktop
           npm ci --no-audit --no-fund
           npm run bench:build
-          bin=$(ls src-tauri/target/release/uxnan-desktop src-tauri/target/release/uxnan-desktop.exe 2>/dev/null | head -1)
+          bin=src-tauri/target/release/uxnan-desktop
+          [ -f "$bin.exe" ] && bin="$bin.exe"
           echo "APP_BIN=$PWD/$bin" >> "$GITHUB_ENV"
           echo "built $bin"
 
