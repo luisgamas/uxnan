@@ -897,12 +897,6 @@ the browser MCP; user guide in `docs/browser.md`.
       the text alone and append it to the draft. Needs a durable outbox for the
       desktop's chat (the principle: a user action is never silently dropped) and
       the rescued-draft UI — a UI increment for the maintainer's review.
-- [ ] **Browser — confirm a late link navigation on a real redirector.** A
-      click that follows a link now keeps watching for its navigation up to
-      1.5 s (`LINK_SETTLE`, `control/services/browser.rs`; the page script
-      reports `link: true`), where every other click still answers after 350 ms.
-      Unit-tested; run it once against a slow short link (e.g. the site's GitHub
-      link) and confirm `navigated: true`.
 - [ ] **Browser — run the page capture on Windows and Linux.** `browser/capture.rs`
       now captures on every desktop platform — WebView2 `CapturePreview` into a
       memory stream on Windows, WebKitGTK `snapshot` written by cairo on Linux —
