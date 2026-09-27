@@ -2745,6 +2745,12 @@ export const es: Record<MessageKey, string> = {
   "chat.queuedCount": "{n} mensajes en cola",
   "chat.waitingForYou": "Esperándote",
   "chat.copy": "Copiar",
+  "chat.questionStep": "{n} de {total}",
+  "chat.questionNext": "Siguiente",
+  "chat.questionBack": "Atrás",
+  "chat.questionPickAny": "Elige todas las que apliquen.",
+  "chat.showMore": "Ver más",
+  "chat.showLess": "Ver menos",
   "chat.copied": "Copiado",
   "chat.contextDetail": "Contexto al {percent}% — {used} de {total} tokens",
 };

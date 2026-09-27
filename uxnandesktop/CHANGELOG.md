@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Long messages fold.** A long message you sent shows its first ten lines
+  under a fade, with *Show more* / *Show less*.
+- **Back where you were.** Returning to a conversation read earlier in the
+  session opens it where you left it, not at the bottom.
+- **Questions one at a time, answered from the keyboard.** When the agent asks
+  several questions they come one at a time (*1 of 3*, Back / Next), a single
+  choice moves on by itself, and 1–9 pick an option.
 - **What your agents spent, in Settings → Providers.** Every model response the
   agents on this PC recorded — chats, bridge turns and terminal sessions alike —
   per day, agent and model, over 7, 30 or 90 days, in cost or tokens: the

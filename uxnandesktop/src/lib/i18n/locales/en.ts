@@ -2743,6 +2743,12 @@ export const en = {
   "chat.queuedCount": "{n} messages queued",
   "chat.waitingForYou": "Waiting for you",
   "chat.copy": "Copy",
+  "chat.questionStep": "{n} of {total}",
+  "chat.questionNext": "Next",
+  "chat.questionBack": "Back",
+  "chat.questionPickAny": "Pick any that apply.",
+  "chat.showMore": "Show more",
+  "chat.showLess": "Show less",
   "chat.copied": "Copied",
   "chat.contextDetail": "Context {percent}% full — {used} of {total} tokens",
 } as const;

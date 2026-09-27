@@ -26,6 +26,7 @@
   import type { AccessMode } from "$shared/models/thread";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import ChatUserText from "./ChatUserText.svelte";
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
   import ChatImages from "./ChatImages.svelte";
@@ -36,6 +37,7 @@
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { readingPosition, saveReadingPosition } from "$lib/bridge/readingPosition";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
   import { userText, type PendingSend } from "$lib/bridge/conversation.svelte";
@@ -161,12 +163,31 @@
 
   // --- scrolling -----------------------------------------------------------
   let scroller = $state<HTMLDivElement | null>(null);
-  let following = $state(true);
+  // Returning to a conversation read this session opens where it was left;
+  // otherwise (or when it was left at its end) at the end.
+  const saved = readingPosition(untrack(() => threadId));
+  let following = $state(saved?.atEnd ?? true);
+  let restored = saved === undefined || saved.atEnd;
+
+  // Put the reader back once the saved stretch of the timeline is there.
+  $effect(() => {
+    void conversation.turns.length;
+    if (restored || !scroller || conversation.turns.length === 0) return;
+    const el = scroller;
+    void tick().then(() => {
+      if (restored || !saved) return;
+      el.scrollTop = saved.top;
+      restored = true;
+    });
+  });
 
   function onScroll() {
     if (!scroller) return;
     const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
     following = distance < 80;
+    if (restored) {
+      saveReadingPosition(threadId, { top: scroller.scrollTop, atEnd: following });
+    }
     if (scroller.scrollTop < 40 && conversation.hasOlder && !conversation.loadingOlder) {
       const before = scroller.scrollHeight;
       void conversation.loadOlder().then(async () => {
@@ -193,6 +214,7 @@
 
   function jumpToEnd() {
     following = true;
+    restored = true;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
 
@@ -342,7 +364,7 @@
                 <ChatImages {images} class={cn("max-w-[85%]", !failed && "opacity-70")} />
               {/if}
               {#if p.text}
-                <div class={cn(chatTokens.userBubble, !failed && "opacity-70")}>{p.text}</div>
+                <ChatUserText text={p.text} class={cn(!failed && "opacity-70")} />
               {/if}
               {#if failed}
                 <p class="flex items-center gap-2 text-xs text-destructive">
@@ -404,8 +426,8 @@
       {/if}
       {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused || rescued.length > 0}
         <div class={chatTokens.dock}>
-          {#each conversation.openRequests as request (requestIdOf(request))}
-            <ChatRequest block={request} {threadId} {conversation} />
+          {#each conversation.openRequests as request, ri (requestIdOf(request))}
+            <ChatRequest block={request} {threadId} {conversation} keys={ri === 0} />
           {/each}
 
           {#if conversation.queue.paused}

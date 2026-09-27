@@ -21,6 +21,7 @@
   import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
   import type { Turn } from "$shared/models/thread";
   import MarkdownView from "$lib/components/MarkdownView.svelte";
+  import ChatUserText from "./ChatUserText.svelte";
   import ChatBlock from "./ChatBlock.svelte";
   import ChatMessageMeta from "./ChatMessageMeta.svelte";
   import ChatWorkGroup from "./ChatWorkGroup.svelte";
@@ -163,7 +164,7 @@
         <ChatImages {images} class={cn("max-w-[85%]", prompt && "mb-1")} />
       {/if}
       {#if prompt}
-        <div class={cn(chat.userBubble, turn.status === "cancelled" && "opacity-60")}>{prompt}</div>
+        <ChatUserText text={prompt} class={cn(turn.status === "cancelled" && "opacity-60")} />
       {/if}
       <ChatMessageMeta text={prompt} at={turn.createdAt} align="end" />
     </div>

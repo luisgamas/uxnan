@@ -228,12 +228,21 @@ profiles: a chat runs on the bridge's drive surface for each CLI
 short) — followed by a card of the **files the turn changed** (+/− per file; a
   click opens the file). *Thinking* folds away. Scrolling to the top loads older
   turns.
-- **Messages**: hovering one shows when it was sent and a copy button. The
+- **Where you were**: coming back to a conversation read earlier in the session
+  (another tab, another chat) opens it where you left it; one left at its end,
+  or not read yet, opens at the end (`src/lib/bridge/readingPosition.ts`,
+  in memory — a restart opens every conversation at its end, as on the phone).
+- **Messages**: a long message you sent folds to its first ten lines under a
+  fade, with *Show more* / *Show less* (copying always takes the whole text).
+  Hovering one shows when it was sent and a copy button. The
   images sent with a message sit beside it as thumbnails — the bridge keeps
   them with the message and hands each over with `turn/attachment` — and a
   click shows one whole.
 - **Approvals and questions** wait in a dock **pinned above the composer**
-  until they are answered; the timeline keeps a one-line record of each (what
+  until they are answered. Several questions asked at once come one at a
+  time (*1 of 3*, *Back* / *Next*, *Answer* on the last; a single choice moves
+  on by itself), and **1–9** pick the options of the one on screen (never
+  while a field has the focus); the timeline keeps a one-line record of each (what
   was asked, then how it ended). One answered on the phone (or timed out)
   settles here too; one from a turn that already ended never offers its buttons
   again.
