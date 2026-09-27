@@ -2302,6 +2302,11 @@ Reglas (no negociables, verificadas contra los CLIs reales):
   (`IAgentAdapter.defaultCwd()`), que es donde el CLI se lanza realmente. El
   temp del SO queda solo como ultimo recurso para un adaptador que no reporte
   ninguno.
+- Un **archivo** (`type: 'file'`) conserva su nombre, en una carpeta propia
+  (`.../<turnId>/<n>/<nombre>`) para que dos con el mismo nombre no choquen; la
+  nota del prompt dice *Attached file(s)*. Una imagen es `image-<n>.<ext>`.
+  Cualquier agente lo abre con sus herramientas de archivos, asi que no depende
+  de `capabilities.images`.
 - El directorio se borra al terminar el turno.
 - El mensaje que se persiste en el historial no filtra rutas temporales: guarda
   el texto del usuario tal cual (vacio en un turno solo-imagen) y **las imagenes

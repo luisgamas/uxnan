@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — files as attachments
+
+- **`TurnAttachment.type: 'file'`** with **`name`**, and **`MessageAttachment.name`**:
+  a message carries any file, not only images. **`MAX_ATTACHMENT_BYTES`**
+  (20 MB decoded) bounds each one.
+
 ### Added — send a queued message now
 
 - **`queue/sendNow`** (`{ threadId, turnId }` → `QueueStateResult`): one queued

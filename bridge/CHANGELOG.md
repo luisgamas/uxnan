@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Files as attachments.** `turn/send` takes any file (`type: 'file'` with its
+  `name`), up to 20 MB each: written under its own name in the agent's folder
+  for the turn, named in the prompt as an attached file, and kept with the
+  message for `turn/attachment`. A larger one is refused rather than dropped.
 - **Send a queued message now** — `queue/sendNow`: the person picks one queued
   message and it goes into the running turn (agents that take input mid-turn,
   through the same hand-off as the automatic delivery), or, with nothing

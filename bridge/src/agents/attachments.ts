@@ -1,7 +1,7 @@
 /**
  * Turn attachment delivery.
  *
- * The phone sends inline image attachments on `turn/send { attachments }`. No
+ * Clients send inline images and files on `turn/send { attachments }`. No
  * agent CLI accepts inline base64 over the headless stdio path, but every
  * supported agent (Claude, Codex, OpenCode, pi, Antigravity, Zero,
  * Grok) can OPEN a local file with its own file/vision tools. So the bridge
@@ -115,8 +115,19 @@ export async function materializeAttachments(
       await mkdir(dir, { recursive: true });
       madeDir = true;
     }
-    const file = join(dir, `image-${i}.${extensionFor(att.mimeType ?? 'image/png')}`);
+    // A file keeps its own name — the agent and the person talk about it by
+    // that name — in a folder of its own, so two files named alike never
+    // collide; an image is `image-<n>`.
+    const file =
+      att.type === 'file'
+        ? join(
+            dir,
+            String(i),
+            sanitizeFileName(att.name) ?? `file-${i}${fileExtension(att.mimeType)}`,
+          )
+        : join(dir, `image-${i}.${extensionFor(att.mimeType ?? 'image/png')}`);
     try {
+      if (att.type === 'file') await mkdir(join(dir, String(i)), { recursive: true });
       await writeFile(file, bytes);
       paths.push(file);
       refs.push(referencePath(file, cwd));
@@ -126,9 +137,12 @@ export async function materializeAttachments(
   }
 
   if (paths.length === 0) return { paths: [], note: '' };
-  const label = paths.length > 1 ? 'images' : 'image';
+  const onlyImages = attachments.every((a) => a?.type !== 'file');
+  const noun = onlyImages ? 'image' : 'file';
+  const label = paths.length > 1 ? `${noun}s` : noun;
+  const tools = onlyImages ? 'file/vision tools' : 'file tools';
   const list = refs.map((p) => `- ${p}`).join('\n');
-  const note = `[Attached ${label} (open with your file/vision tools):\n${list}\n]`;
+  const note = `[Attached ${label} (open with your ${tools}):\n${list}\n]`;
   return { paths, ...(madeDir ? { dir } : {}), note };
 }
 
@@ -142,6 +156,34 @@ function referencePath(absPath: string, cwd: string | undefined): string {
   const rel = relative(cwd, absPath);
   if (!rel || rel.startsWith('..')) return absPath;
   return rel.split(sep).join('/');
+}
+
+/**
+ * A file name safe to write: its last segment, without control characters or
+ * characters Windows refuses, trimmed of dots and spaces at the end. Undefined
+ * when nothing usable is left.
+ */
+export function sanitizeFileName(name: string | undefined): string | undefined {
+  if (!name) return undefined;
+  const base = name.split(/[\\/]/).pop() ?? '';
+  const clean = base
+    .replace(/[\u0000-\u001f<>:"|?*]/g, '_')
+    .replace(/[. ]+$/, '')
+    .slice(0, 120);
+  return clean.length > 0 && clean !== '.' && clean !== '..' ? clean : undefined;
+}
+
+/** A likely extension (with its dot) for a MIME type with no file name. */
+function fileExtension(mimeType: string | undefined): string {
+  const known: Record<string, string> = {
+    'application/pdf': '.pdf',
+    'text/plain': '.txt',
+    'text/markdown': '.md',
+    'text/csv': '.csv',
+    'application/json': '.json',
+    'application/zip': '.zip',
+  };
+  return known[(mimeType ?? '').toLowerCase()] ?? '';
 }
 
 /** Strip path separators / unsafe chars from a path segment. */

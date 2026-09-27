@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { ATTACHMENTS_DIRNAME, materializeAttachments } from '../../src/agents/attachments.js';
+import {
+  ATTACHMENTS_DIRNAME,
+  materializeAttachments,
+  sanitizeFileName,
+} from '../../src/agents/attachments.js';
 import { rmrf } from '../helpers/fs.js';
 
 // A real 1x1 transparent PNG (base64, no data: prefix) — what the phone sends.
@@ -98,4 +102,35 @@ test('materializeAttachments uses the right extension per MIME type', async () =
   assert.ok(paths[0]!.endsWith('.jpg'));
   assert.ok(paths[1]!.endsWith('.webp'));
   await rmrf(cwd);
+});
+
+test('a file keeps its own name, in a folder of its own, and is named as a file', async () => {
+  const cwd = join(tmpdir(), `uxnan-cwd-${randomUUID()}`);
+  await mkdir(cwd, { recursive: true });
+  const text = Buffer.from('id,name\n1,ada\n').toString('base64');
+  const { paths, note } = await materializeAttachments(
+    [
+      { type: 'file', mimeType: 'text/csv', name: 'people.csv', base64Data: text },
+      { type: 'file', mimeType: 'text/csv', name: 'people.csv', base64Data: text },
+      { type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 },
+    ],
+    'turn-f',
+    { cwd },
+  );
+  assert.equal(paths.length, 3);
+  assert.ok(note.startsWith('[Attached files (open with your file tools):'));
+  assert.ok(note.includes(`${ATTACHMENTS_DIRNAME}/turn-f/0/people.csv`));
+  assert.ok(note.includes(`${ATTACHMENTS_DIRNAME}/turn-f/1/people.csv`));
+  assert.ok(note.includes(`${ATTACHMENTS_DIRNAME}/turn-f/image-2.png`));
+  assert.equal(await readFile(paths[0]!, 'utf-8'), 'id,name\n1,ada\n');
+  await rmrf(cwd);
+});
+
+test('sanitizeFileName keeps the last segment and drops what a file system refuses', () => {
+  assert.equal(sanitizeFileName('../../etc/passwd'), 'passwd');
+  assert.equal(sanitizeFileName('C:\\Users\\me\\report.pdf'), 'report.pdf');
+  assert.equal(sanitizeFileName('a<b>:c?.txt'), 'a_b__c_.txt');
+  assert.equal(sanitizeFileName('trailing. '), 'trailing');
+  assert.equal(sanitizeFileName('..'), undefined);
+  assert.equal(sanitizeFileName(undefined), undefined);
 });

@@ -5,7 +5,7 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { JsonRpcErrorCode, RpcError, isDesktopClientId } from '@uxnan/shared';
+import { JsonRpcErrorCode, MAX_ATTACHMENT_BYTES, RpcError, isDesktopClientId } from '@uxnan/shared';
 import type {
   AccessMode,
   ThreadOrigin,
@@ -368,9 +368,12 @@ function optionalQuestionResponse(params: unknown): QuestionResponse | undefined
 
 /**
  * Extracts the inline `attachments` from `turn/send` params, keeping only
- * well-formed image entries (a `mimeType` plus at least one of
- * `base64Data`/`path`). Tolerant — malformed entries are dropped, never thrown,
- * so an older/garbled client degrades to a text turn instead of an error.
+ * well-formed entries — an image, or a file with its name (a `mimeType` plus
+ * at least one of `base64Data`/`path`). Tolerant — malformed entries are
+ * dropped, never thrown, so an older/garbled client degrades to a text turn
+ * instead of an error. One past {@link MAX_ATTACHMENT_BYTES} is refused: it
+ * is the person's file, and silently dropping it would send the turn without
+ * what they meant to share.
  */
 function optionalAttachments(params: unknown): TurnAttachment[] {
   if (!params || typeof params !== 'object') return [];
@@ -385,7 +388,18 @@ function optionalAttachments(params: unknown): TurnAttachment[] {
     const base64Data = typeof obj['base64Data'] === 'string' ? obj['base64Data'] : undefined;
     const path = typeof obj['path'] === 'string' ? obj['path'] : undefined;
     if (base64Data === undefined && path === undefined) continue;
-    const att: TurnAttachment = { type: 'image', mimeType };
+    if (
+      base64Data !== undefined &&
+      Math.floor((base64Data.length * 3) / 4) > MAX_ATTACHMENT_BYTES
+    ) {
+      throw RpcError.invalidParams(
+        `an attachment is larger than ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB`,
+      );
+    }
+    const isFile = obj['type'] === 'file';
+    const att: TurnAttachment = { type: isFile ? 'file' : 'image', mimeType };
+    const name = isFile ? attachmentName(obj['name']) : undefined;
+    if (name !== undefined) att.name = name;
     if (base64Data !== undefined) att.base64Data = base64Data;
     if (path !== undefined) att.path = path;
     if (typeof obj['width'] === 'number') att.width = obj['width'];
@@ -393,6 +407,14 @@ function optionalAttachments(params: unknown): TurnAttachment[] {
     out.push(att);
   }
   return out;
+}
+
+/** A file's name, reduced to its last segment and a sane length, or none. */
+function attachmentName(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const base = raw.split(/[\\/]/).pop()?.trim() ?? '';
+  const name = base.replace(/[\u0000-\u001f]/g, '').slice(0, 120);
+  return name.length > 0 && name !== '.' && name !== '..' ? name : undefined;
 }
 
 /**
