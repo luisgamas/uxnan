@@ -1251,6 +1251,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadWorkingDir => 'Working directory';
 
   @override
+  String get newThreadChangeProject => 'Choose another folder';
+
+  @override
+  String get newThreadHideProjects => 'Hide the other folders';
+
+  @override
   String get newThreadAddProject => 'Add a project';
 
   @override

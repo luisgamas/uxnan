@@ -416,6 +416,8 @@
   "newThreadTitle": "Nueva conversación",
   "newThreadProject": "Proyecto",
   "newThreadWorkingDir": "Directorio de trabajo",
+  "newThreadChangeProject": "Elegir otra carpeta",
+  "newThreadHideProjects": "Ocultar las otras carpetas",
   "newThreadAddProject": "Agregar un proyecto",
   "newThreadAddProjectHint": "Elige una carpeta de tu PC. También aparece en Uxnan Desktop.",
   "newThreadAddProjectFailed": "No se pudo agregar esa carpeta. Los proyectos deben estar dentro de la carpeta de inicio de la PC.",

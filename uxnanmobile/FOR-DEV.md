@@ -34,8 +34,9 @@ connected to live bridge data, validated on-device against a real bridge.
   `stream/agents/updated`). Threads reach the store only through
   `ThreadManager.applyReplicaThreads`; messages sort by `Turn.seq`; titles are
   the bridge's. The list shows the PC's project registry (empty projects
-  included, remove from the long-press sheet); "New conversation" picks a
-  project or adds one (`project/add`); the PC screen shows and changes the
+  included, remove from the long-press sheet); "New conversation" opens on
+  the project it was started from (or the PC's start folder) and folds the
+  other projects and `project/add` under it; the PC screen shows and changes the
   shared start folder; a "Linked with Uxnan Desktop on <machine>" line and a
   desktop-origin mark tell the two setups apart. Another client's prompt is
   placed above its answer (`stream/turn/created` + `clientTurnId`), and a card
@@ -202,8 +203,10 @@ connected to live bridge data, validated on-device against a real bridge.
   response**, **Last edits** strip above the composer; **Thinking** remains
   settings-gated. Long user text defaults to a ten-line expandable preview and
   still copies in full.
-- **New conversation flow** — the PC's project registry (or **add a project**
-  through the folder browser, `workspace/browseDirs` → `project/add`) +
+- **New conversation flow** — one folder card: the project the dialog was
+  opened from (a project's "+"), else the PC's start folder (`bridgeHomeProvider`);
+  its round button unfolds the PC's project registry, the start folder and
+  **add a project** (the folder browser, `workspace/browseDirs` → `project/add`) +
   `agent/list` + `agent/models`. The thread starts in the chosen folder; the
   bridge decides its project. The
   full-screen Neural Expressive dialog compares agents in one dynamic-corner

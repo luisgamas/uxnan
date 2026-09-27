@@ -1255,6 +1255,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get newThreadWorkingDir => 'Directorio de trabajo';
 
   @override
+  String get newThreadChangeProject => 'Elegir otra carpeta';
+
+  @override
+  String get newThreadHideProjects => 'Ocultar las otras carpetas';
+
+  @override
   String get newThreadAddProject => 'Agregar un proyecto';
 
   @override

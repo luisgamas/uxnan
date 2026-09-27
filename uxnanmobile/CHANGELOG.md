@@ -7,6 +7,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 ### Changed
 
+- **New conversation shows one folder, not every folder.** It opens on the
+  project it was started from — or, from the main "+", on the PC's start
+  folder — as one card. Its round button unfolds the other projects, the start
+  folder and *Add a project* underneath; picking one folds them away again.
 - **The profile follows the design system.** Icon sizes, gaps and motion come
   from the tokens; the PC's connection state and a plan's badges are the app's
   badge; the PC rows are the standard navigation row; the year arrows in the

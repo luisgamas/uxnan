@@ -2174,6 +2174,18 @@ abstract class AppLocalizations {
   /// **'Working directory'**
   String get newThreadWorkingDir;
 
+  /// Tooltip of the round button on the new-conversation folder card that shows the other folders (projects, the start folder, adding one).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose another folder'**
+  String get newThreadChangeProject;
+
+  /// Tooltip of the same button once the other folders are showing.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide the other folders'**
+  String get newThreadHideProjects;
+
   /// No description provided for @newThreadAddProject.
   ///
   /// In en, this message translates to:
