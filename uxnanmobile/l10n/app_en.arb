@@ -1929,5 +1929,7 @@
   "questionNext": "Next",
   "@questionNext": {"description": "Move to the next question."},
   "questionBack": "Previous question",
-  "@questionBack": {"description": "Move to the previous question (tooltip)."}
+  "@questionBack": {"description": "Move to the previous question (tooltip)."},
+  "queuedMessageSendNow": "Send now",
+  "@queuedMessageSendNow": {"description": "Queued message: send it now instead of waiting."}
 }

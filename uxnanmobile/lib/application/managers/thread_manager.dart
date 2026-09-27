@@ -1711,17 +1711,29 @@ class ThreadManager {
     await _queueControl(threadId, 'queue/clear');
   }
 
+  /// Sends the queued [turnId] now (`queue/sendNow`): into the running turn
+  /// when the agent takes a message while it works, else as the next turn at
+  /// once. Returns the bridge's reason when it refused (the message stays
+  /// queued), or null.
+  Future<String?> sendQueuedNow(String threadId, String turnId) =>
+      _queueControl(threadId, 'queue/sendNow', {'turnId': turnId});
+
   /// Sends a `queue/*` control call and applies the state it returns, so the UI
-  /// settles even if the broadcast notification is slow or lost.
-  Future<void> _queueControl(String threadId, String method) async {
+  /// settles even if the broadcast notification is slow or lost. Returns why
+  /// the bridge refused, or null.
+  Future<String?> _queueControl(
+    String threadId,
+    String method, [
+    Map<String, dynamic> extra = const {},
+  ]) async {
     try {
-      final res = await _sendRequest(method, {'threadId': threadId});
+      final res = await _sendRequest(method, {'threadId': threadId, ...extra});
       if (res.error != null) {
         AppLogger.warn('$method rejected: ${res.error!.message}');
-        return;
+        return res.error!.message;
       }
       final result = res.result;
-      if (result is! Map) return;
+      if (result is! Map) return null;
       _setQueue(
         threadId,
         ThreadQueueState(
@@ -1732,8 +1744,10 @@ class ThreadManager {
               : null,
         ),
       );
+      return null;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('$method failed', error, stackTrace);
+      return error.toString();
     }
   }
 

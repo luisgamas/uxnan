@@ -5659,6 +5659,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Previous question'**
   String get questionBack;
+
+  /// Queued message: send it now instead of waiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Send now'**
+  String get queuedMessageSendNow;
 }
 
 class _AppLocalizationsDelegate

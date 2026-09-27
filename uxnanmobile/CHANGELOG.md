@@ -30,6 +30,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   tokens lens is gone — tokens are the spend section's now, counted from every
   session instead of only the phone's turns. The profile lists your PCs, each
   opening its own stats, and one refresh in the bar updates everything.
+- **Send a queued message now.** A waiting message has a send-now action:
+  into the running turn for an agent that takes a message while it works, or
+  as the next turn at once when nothing runs; a refusal says why.
 - **Questions one at a time.** When the agent asks several questions they
   come one at a time (*1 of 3*, back and Next), and a single choice moves on
   by itself; the answered card still shows every answer.

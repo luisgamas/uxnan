@@ -35,6 +35,13 @@ void main() {
   /// When true the fake bridge rejects `turn/cancel`.
   late bool rejectCancel;
 
+  /// When true the fake bridge refuses `queue/sendNow`, as for an agent that
+  /// takes no message while it works.
+  late bool refuseSendNow;
+
+  /// The params of the last request of each method.
+  late Map<String, Map<String, dynamic>?> sentParams;
+
   setUp(() {
     db = UxnanDatabase.forTesting(NativeDatabase.memory());
     messageRepo = DriftMessageRepository(db);
@@ -43,12 +50,24 @@ void main() {
     turnSendResult = {'turnId': 'turn-q1', 'queued': true, 'queuePosition': 1};
     turnListResult = null;
     rejectCancel = false;
+    refuseSendNow = false;
+    sentParams = {};
     manager = ThreadManager(
       threadRepository: DriftThreadRepository(db),
       messageRepository: messageRepo,
       domainEvents: events.stream,
       sendRequest: (method, [params]) async {
         sentMethods.add(method);
+        sentParams[method] = params;
+        if (method == 'queue/sendNow' && refuseSendNow) {
+          return RpcMessage.response(
+            id: '1',
+            error: const RpcError(
+              code: -32005,
+              message: 'this agent takes no message while it works',
+            ),
+          );
+        }
         if (method == 'turn/cancel' && rejectCancel) {
           return RpcMessage.response(
             id: '1',
@@ -60,6 +79,10 @@ void main() {
           'turn/list' => turnListResult ?? <String, dynamic>{},
           'queue/resume' => {'queuedTurnIds': <String>[], 'paused': false},
           'queue/clear' => {'queuedTurnIds': <String>[], 'paused': false},
+          'queue/sendNow' => {
+              'queuedTurnIds': <String>['turn-a'],
+              'paused': false,
+            },
           _ => <String, dynamic>{},
         };
         return RpcMessage.response(id: '1', result: result);
@@ -220,6 +243,22 @@ void main() {
 
     await manager.clearQueue('th1');
     expect(sentMethods, contains('queue/clear'));
+  });
+
+  test('send now asks for that message and applies the queue it answers',
+      () async {
+    await manager.selectThread('th1');
+    final refused = await manager.sendQueuedNow('th1', 'turn-b');
+    expect(refused, isNull);
+    expect(
+        sentParams['queue/sendNow'], {'threadId': 'th1', 'turnId': 'turn-b'});
+    expect(manager.queueOf('th1').turnIds, ['turn-a']);
+
+    refuseSendNow = true;
+    expect(
+      await manager.sendQueuedNow('th1', 'turn-a'),
+      'this agent takes no message while it works',
+    );
   });
 
   test('a resync settles messages whose fate we missed while away', () async {

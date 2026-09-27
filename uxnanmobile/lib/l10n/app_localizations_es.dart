@@ -3228,4 +3228,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get questionBack => 'Pregunta anterior';
+
+  @override
+  String get queuedMessageSendNow => 'Enviar ahora';
 }

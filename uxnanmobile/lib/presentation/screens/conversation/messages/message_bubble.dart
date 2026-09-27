@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
+import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -133,6 +134,26 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// **Send now** — the message goes now instead of waiting its turn: into the
+  /// running turn when the agent takes a message while it works, or as the
+  /// next turn at once when nothing runs. A refusal says why; the message
+  /// stays queued.
+  Future<void> _sendNow() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final refused = await ref.read(threadManagerProvider).sendQueuedNow(
+          widget.message.threadId,
+          widget.message.turnId,
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (refused != null) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(refused)));
+    }
+  }
+
   /// **Cancel** — drops the message from the queue and leaves it in the
   /// timeline marked as cancelled. Nothing goes back to the composer: this is
   /// the "I changed my mind" action, and the record of it is the point.
@@ -153,6 +174,14 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final message = widget.message;
+    // A queued message can go now: into the running turn when its agent takes
+    // a message while it works, or — nothing running — as the next turn.
+    final agentId = ref.watch(threadByIdProvider(message.threadId))?.agentId;
+    final steers = (ref.watch(agentsProvider).value ?? const [])
+        .any((a) => a.agentId == agentId && a.capabilities.steering);
+    final canSendNow = ref.watch(threadActivityForProvider(message.threadId)) !=
+            ThreadActivity.running ||
+        steers;
     // The BRIDGE owns the queue, so its state is what decides whether this is a
     // waiting message — not the locally-cached delivery state, which can lag a
     // reconnect or be stale after another device changed the queue. Falling
@@ -277,6 +306,15 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (canSendNow) ...[
+                              _QueuedActionButton(
+                                icon: UxIcons.arrowUpward,
+                                tooltip: l10n.queuedMessageSendNow,
+                                busy: _busy,
+                                onTap: _sendNow,
+                              ),
+                              const SizedBox(width: UxnanSpacing.xs),
+                            ],
                             // Edit first (reading order): the recoverable
                             // action sits before the one that ends the
                             // message.

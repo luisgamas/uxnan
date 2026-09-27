@@ -1045,5 +1045,6 @@
   "usageAccountEnterprise": "Empresa",
   "questionStep": "{n} de {total}",
   "questionNext": "Siguiente",
-  "questionBack": "Pregunta anterior"
+  "questionBack": "Pregunta anterior",
+  "queuedMessageSendNow": "Enviar ahora"
 }
