@@ -3235,4 +3235,9 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String composerPlanLine(String plan, String window, int percent) {
+    return '$plan · $window $percent% used';
+  }
 }

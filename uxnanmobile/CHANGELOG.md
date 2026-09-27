@@ -25,8 +25,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   type shows beside the plan, and Codex's resets can be redeemed from the
   phone, as on the desktop. Claude's limits now arrive from a Mac too (the
   bridge asks Claude Code itself).
-- **Activity reads at a glance.** Conversations and messages lead, the other
-  figures sit quietly below, and the agents are ranked on one bar each; the
+- **Activity reads at a glance.** Each figure keeps its own small container,
+  conversations and messages first and larger, and the agents are ranked on
+  one bar each; the
   tokens lens is gone — tokens are the spend section's now, counted from every
   session instead of only the phone's turns. The profile lists your PCs, each
   opening its own stats, and one refresh in the bar updates everything.
@@ -36,6 +37,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **Send a queued message now.** A waiting message has a send-now action:
   into the running turn for an agent that takes a message while it works, or
   as the next turn at once when nothing runs; a refusal says why.
+- **The plan beside the context.** For Claude, Codex and Grok the composer's
+  info row shows the plan's most pressing window as a small chip — its used
+  share, red when the pace so far hits the limit before the reset; a tap says
+  which window, when it resets and when the pace runs out.
 - **Questions one at a time.** When the agent asks several questions they
   come one at a time (*1 of 3*, back and Next), and a single choice moves on
   by itself; the answered card still shows every answer.

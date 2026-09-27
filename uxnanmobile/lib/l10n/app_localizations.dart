@@ -5683,6 +5683,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{A file was left out: larger than 20 MB.} other{{count} files were left out: larger than 20 MB.}}'**
   String composerFileTooLarge(int count);
+
+  /// The composer's plan chip: a plan window's used share.
+  ///
+  /// In en, this message translates to:
+  /// **'{plan} · {window} {percent}% used'**
+  String composerPlanLine(String plan, String window, int percent);
 }
 
 class _AppLocalizationsDelegate

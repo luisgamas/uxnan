@@ -571,6 +571,9 @@ class UxIcons {
   /// Replaces `UxIcons.widgets`.
   static const UxIconData widgets = HugeIcons.strokeRoundedDashboardSquare01;
 
+  /// A plan's usage limit (the composer's plan chip).
+  static const UxIconData planLimit = HugeIcons.strokeRoundedDashboardSpeed01;
+
   /// Replaces `UxIcons.wifiFind`.
   static const UxIconData wifiFind = HugeIcons.strokeRoundedWifiSync;
 

@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
+import 'package:uxnan/domain/value_objects/window_pace.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/profile/usage_format.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
@@ -281,46 +283,6 @@ class _WindowBar extends StatelessWidget {
   }
 }
 
-/// Where a usage window stands: how much of its time has passed, and — when
-/// the pace so far would use the rest before it resets — how soon the limit
-/// is reached.
-class WindowPace {
-  /// Creates a [WindowPace].
-  const WindowPace({required this.elapsed, this.runsOutIn});
-
-  /// The share of the window's time that has passed, 0–1.
-  final double elapsed;
-
-  /// How soon the limit is reached at the pace so far, when before the reset.
-  final Duration? runsOutIn;
-
-  /// The pace of [window] at [now], or null when the window gives no length
-  /// or reset, or has barely begun (too early to say).
-  static WindowPace? of(UsageWindow window, DateTime now) {
-    final minutes = window.windowMinutes;
-    final reset = window.resetsAt;
-    if (minutes == null || minutes <= 0 || reset == null) return null;
-    final length = Duration(minutes: minutes);
-    final left = reset.difference(now);
-    if (left.isNegative || left > length) return null;
-    final passed = length - left;
-    final elapsed = passed.inSeconds / length.inSeconds;
-    if (elapsed < 0.05) return null;
-    final used = window.usedPercent.clamp(0, 100).toDouble();
-    if (used <= 0) return WindowPace(elapsed: elapsed);
-    if (used >= 100) {
-      return WindowPace(elapsed: elapsed, runsOutIn: Duration.zero);
-    }
-    final secondsPerPercent = passed.inSeconds / used;
-    final toLimit =
-        Duration(seconds: ((100 - used) * secondsPerPercent).round());
-    return WindowPace(
-      elapsed: elapsed,
-      runsOutIn: toLimit < left ? toLimit : null,
-    );
-  }
-}
-
 /// Codex's redeemable resets: how many, when the next one expires, and a
 /// button that spends the soonest-expiring one, after a confirmation.
 class _Resets extends ConsumerStatefulWidget {
@@ -456,18 +418,6 @@ class _Pill extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A duration, short: `45min`, `6h 30min`, `3d 4h`.
-String shortDuration(Duration d) {
-  if (d.inDays >= 1) {
-    final h = d.inHours % 24;
-    return h == 0 ? '${d.inDays}d' : '${d.inDays}d ${h}h';
-  }
-  final hours = d.inHours;
-  final minutes = d.inMinutes % 60;
-  if (hours == 0) return '${minutes}min';
-  return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}min';
 }
 
 /// The reset label: a relative duration for a window resetting within a day

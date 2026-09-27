@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
+import 'package:uxnan/domain/value_objects/window_pace.dart';
 import 'package:uxnan/presentation/screens/profile/usage_format.dart';
-import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 
 UsageWindow _window(double used, {required Duration left, int minutes = 300}) =>
     UsageWindow(
@@ -61,5 +61,35 @@ void main() {
     expect(fmtUsd(0.004), r'<$0.01');
     expect(fmtUsd(12.5, locale: 'en_US'), r'$12.50');
     expect(fmtUsd(4384.2, locale: 'en_US'), r'$4,384');
+  });
+
+  test('the pressing window: one the pace runs out first, else the fullest',
+      () {
+    ProviderUsage plan(List<UsageWindow> windows) => ProviderUsage(
+          provider: UsageProvider.claude,
+          status: UsageStatus.ok,
+          windows: windows,
+          updatedAt: now,
+        );
+    final weekly = UsageWindow(
+      id: 'weekly',
+      label: 'Weekly',
+      usedPercent: 40,
+      windowMinutes: 10080,
+      resetsAt: now.add(const Duration(days: 3)),
+    );
+    final hot = _window(72, left: const Duration(hours: 2));
+    final calm = _window(10, left: const Duration(hours: 2));
+    expect(pressingWindow(plan([weekly, hot]), now)!.window, hot);
+    expect(pressingWindow(plan([calm, weekly]), now)!.window, weekly);
+    expect(pressingWindow(plan(const []), now), isNull);
+    expect(pressingWindow(null, now), isNull);
+  });
+
+  test('an agent maps to the plan it spends', () {
+    expect(usageProviderForAgent('claude-code'), UsageProvider.claude);
+    expect(usageProviderForAgent('codex'), UsageProvider.codex);
+    expect(usageProviderForAgent('grok'), UsageProvider.grok);
+    expect(usageProviderForAgent('opencode'), isNull);
   });
 }

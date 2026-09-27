@@ -1049,5 +1049,6 @@
   "queuedMessageSendNow": "Enviar ahora",
   "composerAttachFile": "Archivo",
   "composerFilesLimit": "Un mensaje lleva hasta {count} archivos.",
-  "composerFileTooLarge": "{count, plural, =1{Se omitió un archivo: pesa más de 20 MB.} other{Se omitieron {count} archivos: pesan más de 20 MB.}}"
+  "composerFileTooLarge": "{count, plural, =1{Se omitió un archivo: pesa más de 20 MB.} other{Se omitieron {count} archivos: pesan más de 20 MB.}}",
+  "composerPlanLine": "{plan} · {window} {percent}% usado"
 }

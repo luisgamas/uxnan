@@ -1937,5 +1937,7 @@
   "composerFilesLimit": "A message carries up to {count} files.",
   "@composerFilesLimit": {"description": "Too many files.", "placeholders": {"count": {"type": "int"}}},
   "composerFileTooLarge": "{count, plural, =1{A file was left out: larger than 20 MB.} other{{count} files were left out: larger than 20 MB.}}",
-  "@composerFileTooLarge": {"description": "Picked files over the size limit.", "placeholders": {"count": {"type": "int"}}}
+  "@composerFileTooLarge": {"description": "Picked files over the size limit.", "placeholders": {"count": {"type": "int"}}},
+  "composerPlanLine": "{plan} · {window} {percent}% used",
+  "@composerPlanLine": {"description": "The composer's plan chip: a plan window's used share.", "placeholders": {"plan": {"type": "String"}, "window": {"type": "String"}, "percent": {"type": "int"}}}
 }

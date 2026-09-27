@@ -25,3 +25,15 @@ String fmtUsd(double n, {String? locale}) {
     decimalDigits: n >= 100 ? 0 : 2,
   ).format(n);
 }
+
+/// A duration, short: `45min`, `6h 30min`, `3d 4h`.
+String shortDuration(Duration d) {
+  if (d.inDays >= 1) {
+    final h = d.inHours % 24;
+    return h == 0 ? '${d.inDays}d' : '${d.inDays}d ${h}h';
+  }
+  final hours = d.inHours;
+  final minutes = d.inMinutes % 60;
+  if (hours == 0) return '${minutes}min';
+  return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}min';
+}
