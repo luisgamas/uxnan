@@ -312,6 +312,13 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   active terminal. The `/` and `@` panel opens above the composer while it
   fits and below it when a new chat's mid-pane composer has more room there,
   never taller than the room it has (`src/lib/floatingFit.ts`).
+- **The scroll rail** — the phone's, for a mouse. A faint mark per message the
+  user sent sits on the conversation's right edge (`ChatScrollRail.svelte`,
+  anchors from `src/lib/bridge/railAnchors.ts`); the message on screen has a
+  longer mark. Pointing at the strip grows the nearest mark and its two
+  neighbours and shows that message with the last paragraph of its reply; a
+  click, or ↑ ↓ then Enter once it has the focus, scrolls to it. It needs at
+  least two messages.
   Images show as thumbnails; they are scaled to 2048 px on the long edge (JPEG
   85 % when larger, as on the phone), up to 10 per message (the phone's limit —
   past it a toast says so), and go as images only to an agent that takes them

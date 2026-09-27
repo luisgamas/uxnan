@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
+- **A scroll rail for the conversation.** A short mark per message you sent
+  sits faintly on the chat's right edge, the one on screen a little longer.
+  Pointing at it grows the nearest marks and shows that message with the end
+  of its reply; a click (or ↑ ↓ and Enter) jumps there — the rail the phone
+  has for the same conversation.
+
 - **Drop files on the chat composer.** Files dragged from Finder / Explorer or
   from the file tree land in the composer: one of the conversation's project
   is mentioned as `@path` (the agent opens it itself), an image is attached
@@ -18,7 +24,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   sits mid-pane, a long list of files or commands ran up under the tabs and
   hid its first rows. It now opens below the composer when there is more room
   there and is never taller than the room it has.
-
 - **A file dropped on the chat no longer goes to a terminal.** Every OS drop
   used to be typed into the active terminal wherever it landed; one router now
   hands a drop to what is under the pointer.
