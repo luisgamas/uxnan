@@ -1010,7 +1010,10 @@ test('background work the CLI stops as it comes down is reported instead of pass
   assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
   const found = warnings(events);
   assert.equal(found.length, 1, 'the user is told the background work did not finish');
-  assert.match((found[0]?.data as { content: { text: string } }).content.text, /left a background task/i);
+  assert.match(
+    (found[0]?.data as { content: { text: string } }).content.text,
+    /left a background task/i,
+  );
 });
 
 test('a background task that failed, or that the model stopped, is not reported as interrupted', async () => {
@@ -1018,7 +1021,11 @@ test('a background task that failed, or that the model stopped, is not reported 
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collectRun(adapter);
 
-  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'run the tests, and start the server then stop it' });
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'run the tests, and start the server then stop it',
+  });
   last().feed([
     '{"type":"system","subtype":"init","session_id":"s"}',
     '{"type":"system","subtype":"task_started","task_id":"tests","session_id":"s"}',
