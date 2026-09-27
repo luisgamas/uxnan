@@ -1923,5 +1923,11 @@
   "usageAccountTeam": "Team",
   "@usageAccountTeam": {"description": "Account type."},
   "usageAccountEnterprise": "Enterprise",
-  "@usageAccountEnterprise": {"description": "Account type."}
+  "@usageAccountEnterprise": {"description": "Account type."},
+  "questionStep": "{n} of {total}",
+  "@questionStep": {"description": "Which of several questions is on screen.", "placeholders": {"n": {"type": "int"}, "total": {"type": "int"}}},
+  "questionNext": "Next",
+  "@questionNext": {"description": "Move to the next question."},
+  "questionBack": "Previous question",
+  "@questionBack": {"description": "Move to the previous question (tooltip)."}
 }

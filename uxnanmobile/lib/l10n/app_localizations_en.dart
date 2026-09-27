@@ -3202,4 +3202,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get usageAccountEnterprise => 'Enterprise';
+
+  @override
+  String questionStep(int n, int total) {
+    return '$n of $total';
+  }
+
+  @override
+  String get questionNext => 'Next';
+
+  @override
+  String get questionBack => 'Previous question';
 }

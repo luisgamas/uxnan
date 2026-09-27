@@ -5641,6 +5641,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Enterprise'**
   String get usageAccountEnterprise;
+
+  /// Which of several questions is on screen.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} of {total}'**
+  String questionStep(int n, int total);
+
+  /// Move to the next question.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get questionNext;
+
+  /// Move to the previous question (tooltip).
+  ///
+  /// In en, this message translates to:
+  /// **'Previous question'**
+  String get questionBack;
 }
 
 class _AppLocalizationsDelegate

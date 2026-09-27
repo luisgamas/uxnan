@@ -30,6 +30,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   tokens lens is gone — tokens are the spend section's now, counted from every
   session instead of only the phone's turns. The profile lists your PCs, each
   opening its own stats, and one refresh in the bar updates everything.
+- **Questions one at a time.** When the agent asks several questions they
+  come one at a time (*1 of 3*, back and Next), and a single choice moves on
+  by itself; the answered card still shows every answer.
 - **One name.** The phone's name — the one every paired PC shows, renamed from
   the profile header — is the name the app greets you by; the separate profile
   name is gone (the picture stays). The development echo agent is never
