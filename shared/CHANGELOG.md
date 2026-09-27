@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.22-alpha.20260927] - 20260927
 ### Added — files as attachments
 
 - **`TurnAttachment.type: 'file'`** with **`name`**, and **`MessageAttachment.name`**:

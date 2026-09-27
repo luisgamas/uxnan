@@ -6,6 +6,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.28-alpha.20260927+20260930] - 20260927
 ### Changed
 
 - **The effort control names the level that really runs.** Untouched, it shows
