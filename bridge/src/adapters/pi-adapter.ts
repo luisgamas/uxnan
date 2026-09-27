@@ -621,8 +621,6 @@ export class PiAdapter extends BaseAgentAdapter {
   readonly #permissionMode: PiPermissionMode;
   readonly #spawn: SpawnFn;
   readonly #idleTimeoutMs: number;
-  /** threadId → pi session id (from `get_state`), passed as `--session-id` on every later spawn. */
-  readonly #sessionByThread = new Map<string, string>();
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
   /** model id → context-window tokens, cached from `--list-models` for `usage`. */
@@ -649,11 +647,6 @@ export class PiAdapter extends BaseAgentAdapter {
   hasActiveSession(threadId: string): boolean {
     const session = this.#sessions.get(threadId);
     return Boolean(session && !session.exited);
-  }
-
-  /** Native pi session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
   }
 
   constructor(options: PiAdapterOptions = {}) {
@@ -764,7 +757,7 @@ export class PiAdapter extends BaseAgentAdapter {
 
     // Resume the session pi announced on this thread's first `get_state`; on the
     // very first spawn there is none yet and pi creates one.
-    const sessionId = this.#sessionByThread.get(threadId);
+    const sessionId = this.nativeSessionId(threadId);
     const args = ['--mode', 'rpc', ...piPostureArgs(permissionMode)];
     if (model) args.push('--model', model);
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh|max>`.
@@ -821,7 +814,7 @@ export class PiAdapter extends BaseAgentAdapter {
       if (event.kind === 'state' || event.kind === 'session') {
         if (event.sessionId) {
           session.sessionId = event.sessionId;
-          this.#sessionByThread.set(threadId, event.sessionId);
+          this.setNativeSession(threadId, event.sessionId);
         }
         if (event.contextWindow !== undefined) session.contextWindow = event.contextWindow;
         return;

@@ -304,6 +304,9 @@ export interface ClaudeEvent {
   terminalCommands?: string[];
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
+  /** Only set for `result`: the CLI's error messages, when it failed before
+   *  running the turn (e.g. `No conversation found with session ID: …`). */
+  errors?: string[];
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
   /** Only set for `system/compact_boundary`. */
@@ -478,17 +481,28 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
     case 'result': {
       const isError = parsed['is_error'] === true || parsed['subtype'] !== 'success';
       const text = typeof parsed['result'] === 'string' ? parsed['result'] : undefined;
+      const errors = Array.isArray(parsed['errors'])
+        ? parsed['errors'].filter((e): e is string => typeof e === 'string')
+        : [];
       return {
         kind: 'result',
         ...base,
         text,
         isError,
+        ...(errors.length > 0 ? { errors } : {}),
         ...(parsed['usage'] !== undefined ? { usage: parsed['usage'] } : {}),
       };
     }
     default:
       return { kind: 'other', ...base };
   }
+}
+
+/** Whether a failed `result` says the resumed session does not exist — the
+ *  CLI's words for it, verified against claude 2.1.283: `No conversation found
+ *  with session ID: <id>`, before any turn ran. */
+function isMissingSession(errors: string[] | undefined): boolean {
+  return (errors ?? []).some((e) => e.startsWith('No conversation found with session ID'));
 }
 
 /** The environment variables a run's desktop MCP config expands: the bearer
@@ -529,8 +543,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     | { token: string; scriptPath: string; url: () => string | undefined }
     | undefined;
   readonly #spawn: SpawnFn;
-  /** threadId → Claude session id, for `--resume` continuity. */
-  readonly #sessionByThread = new Map<string, string>();
   /** What the CLI last said only works in its terminal (see listCommands). */
   #terminalCommands: string[] = CLAUDE_TERMINAL_COMMANDS;
   /** The CLI's command list per folder, briefly reused (see listCommands). */
@@ -546,11 +558,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    */
   defaultCwd(): string {
     return this.#defaultCwd;
-  }
-
-  /** Native Claude session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
   }
 
   constructor(options: ClaudeCodeAdapterOptions = {}) {
@@ -586,7 +593,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
-    const sessionId = this.#sessionByThread.get(threadId);
+    const sessionId = this.nativeSessionId(threadId);
 
     // The thread's persisted access mode (chosen on the phone) overrides the
     // adapter's configured posture for THIS turn. Absent → unchanged behaviour.
@@ -839,7 +846,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // their tool blocks still feed the work log, but their text/usage must
       // never fold into the main message or close the main text run.
       const subagent = event.parentToolUseId !== undefined;
-      if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
+      if (event.sessionId) this.setNativeSession(threadId, event.sessionId);
       // The CLI's own word on which commands only work in its terminal.
       if (event.terminalCommands) this.#terminalCommands = event.terminalCommands;
       // Register tool invocations (with their inputs) so the result can pair.
@@ -947,15 +954,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
         currentAssistantText = '';
       } else if (event.kind === 'result') {
-        if (event.isError) {
+        if (event.isError && sessionId && isMissingSession(event.errors)) {
+          // The session this conversation continues is gone (its transcript
+          // was deleted, or it belongs to another folder). Nothing ran yet:
+          // run the same turn again in a fresh session rather than failing it.
           errored = true;
           run.finished = true;
           endInput();
+          this.refuseNativeSession(threadId);
+          child.on('close', () => void this.sendTurn(options));
+        } else if (event.isError) {
+          errored = true;
+          run.finished = true;
+          endInput();
+          const reason =
+            event.text && event.text.length > 0 ? event.text : event.errors?.join('\n');
           this.emit({
             type: 'turn_error',
             threadId,
             turnId,
-            data: { text: event.text && event.text.length > 0 ? event.text : 'claude error' },
+            data: { text: reason && reason.length > 0 ? reason : 'claude error' },
           });
         } else {
           // Prefer the accumulated assistant envelopes (`full`) — they are the

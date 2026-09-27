@@ -415,6 +415,13 @@ export class OpenCodeV2Server implements IOpenCodeServer {
     return this.#serve.start();
   }
 
+  /** `GET /api/session/:id`: 200, or 404 for an unknown id (verified against
+   *  opencode 2.0.16). */
+  async hasSession(sessionId: string): Promise<boolean> {
+    await this.start();
+    return this.#serve.exists(`/api/session/${encodeURIComponent(sessionId)}`);
+  }
+
   async createSession(opts: {
     title?: string;
     permission: OpenCodePermissionPolicy;

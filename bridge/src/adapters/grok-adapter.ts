@@ -362,8 +362,6 @@ export class GrokAdapter extends BaseAgentAdapter {
   #killAcp: (() => void) | undefined;
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
-  /** threadId → ACP sessionId, for continuity + history fallback. */
-  readonly #sessionByThread = new Map<string, string>();
   /** sessionId → in-flight run, to route session-scoped updates/permissions. */
   readonly #runBySession = new Map<string, ActiveRun>();
   /** turnId → in-flight run, for cancellation. */
@@ -398,11 +396,6 @@ export class GrokAdapter extends BaseAgentAdapter {
    */
   defaultCwd(): string {
     return this.#defaultCwd;
-  }
-
-  /** Native Grok session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
   }
 
   constructor(options: GrokAdapterOptions = {}) {
@@ -605,7 +598,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     cwd: string,
     mcpServers: AcpMcpServerHttp[] = [],
   ): Promise<string> {
-    const known = this.#sessionByThread.get(threadId);
+    const known = this.nativeSessionId(threadId);
     if (known) {
       // The same process still holds it (common case); a restarted process needs
       // session/load to re-attach. Try load; fall through to new on failure.
@@ -614,7 +607,7 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#cwdBySession.set(known, cwd);
         return known;
       } catch {
-        this.#sessionByThread.delete(threadId);
+        this.refuseNativeSession(threadId);
         this.#modelBySession.delete(known);
         this.#effortBySession.delete(known);
       }
@@ -623,7 +616,7 @@ export class GrokAdapter extends BaseAgentAdapter {
       cwd,
       mcpServers,
     });
-    this.#sessionByThread.set(threadId, res.sessionId);
+    this.setNativeSession(threadId, res.sessionId);
     this.#cwdBySession.set(res.sessionId, cwd);
     const effortOption = effortOptionId(res.configOptions);
     if (effortOption) this.#effortOptionBySession.set(res.sessionId, effortOption);

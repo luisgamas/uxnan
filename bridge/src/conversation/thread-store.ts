@@ -714,6 +714,14 @@ export class ThreadStore {
         createdAt: now,
         updatedAt: now,
       };
+      // The fork is a conversation of its own: it must never continue the
+      // original's native session, or both would write into one transcript
+      // (and every agent now resumes the session a thread stores). Its first
+      // turn opens a session of its own.
+      // FOR-DEV: fork the native session instead, so the fork keeps the agent's
+      // memory of the copied history (bridge/FOR-DEV.md → "A fork keeps its
+      // agent's memory"); needs each CLI's fork measured on the driven surface.
+      delete copy.agentSessionId;
       threads.push(copy);
       this.#bump(copy);
       return { result: structuredCloneThread(copy), write: [copy.id] };

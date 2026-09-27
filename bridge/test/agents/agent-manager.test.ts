@@ -898,13 +898,9 @@ baseTest('a terminal event that throws ends the turn instead of hanging it', asy
 baseTest('a turn hands the persisted native session id back to its adapter', async () => {
   class AdoptingAdapter extends ControlledAdapter {
     readonly adopted: [string, string][] = [];
-    readonly #sessions = new Map<string, string>();
-    adoptNativeSession(threadId: string, sessionId: string): void {
+    override adoptNativeSession(threadId: string, sessionId: string): void {
       this.adopted.push([threadId, sessionId]);
-      this.#sessions.set(threadId, sessionId);
-    }
-    nativeSessionId(threadId: string): string | undefined {
-      return this.#sessions.get(threadId);
+      super.adoptNativeSession(threadId, sessionId);
     }
   }
 
@@ -939,8 +935,9 @@ baseTest('a turn hands the persisted native session id back to its adapter', asy
 baseTest('the persisted session id is not offered to a different agent', async () => {
   class AdoptingAdapter extends ControlledAdapter {
     readonly adopted: [string, string][] = [];
-    adoptNativeSession(threadId: string, sessionId: string): void {
+    override adoptNativeSession(threadId: string, sessionId: string): void {
       this.adopted.push([threadId, sessionId]);
+      super.adoptNativeSession(threadId, sessionId);
     }
   }
 

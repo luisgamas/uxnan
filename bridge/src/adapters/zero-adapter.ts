@@ -235,8 +235,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
   readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
-  /** threadId → ACP sessionId, for continuity + history fallback. */
-  readonly #sessionByThread = new Map<string, string>();
   /** sessionId → in-flight run, to route session-scoped updates/permissions. */
   readonly #runBySession = new Map<string, ActiveRun>();
   /** turnId → in-flight run, for cancellation. */
@@ -272,11 +270,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
    */
   handlesAttachments(): boolean {
     return true;
-  }
-
-  /** Native Zero session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
   }
 
   constructor(options: ZeroAdapterOptions = {}) {
@@ -595,7 +588,7 @@ export class ZeroAdapter extends BaseAgentAdapter {
     cwd: string,
     mcpServers: AcpMcpServerHttp[] = [],
   ): Promise<string> {
-    const known = this.#sessionByThread.get(threadId);
+    const known = this.nativeSessionId(threadId);
     if (known) {
       // The same acp process still holds it (common case); a restarted process
       // needs session/load to re-attach. Try load; fall through to new on failure.
@@ -603,13 +596,13 @@ export class ZeroAdapter extends BaseAgentAdapter {
         await rpc.request('session/load', { sessionId: known, cwd, mcpServers });
         return known;
       } catch {
-        this.#sessionByThread.delete(threadId);
+        this.refuseNativeSession(threadId);
         this.#modeBySession.delete(known);
         this.#modelBySession.delete(known);
       }
     }
     const res = await rpc.request<{ sessionId: string }>('session/new', { cwd, mcpServers });
-    this.#sessionByThread.set(threadId, res.sessionId);
+    this.setNativeSession(threadId, res.sessionId);
     return res.sessionId;
   }
 

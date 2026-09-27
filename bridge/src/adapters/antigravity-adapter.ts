@@ -667,7 +667,6 @@ export class AntigravityAdapter extends BaseAgentAdapter {
    * threadId → the `agy` conversation id announced on the thread's first `init`,
    * passed back as `--conversation` on every later spawn for that thread.
    */
-  readonly #conversationByThread = new Map<string, string>();
   /** threadId → the thread's resident process, while one is alive. */
   readonly #sessions = new Map<string, ActiveSession>();
   /** The folder's skill list, briefly reused (see listCommands). */
@@ -687,11 +686,6 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   /** The configured idle timeout (observability + tests). */
   get idleTimeoutMs(): number {
     return this.#idleTimeoutMs;
-  }
-
-  /** Native `agy` conversation id for a thread (surfaced as the thread's session id). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#conversationByThread.get(threadId);
   }
 
   /** Whether a resident process is alive for the thread (observability + tests). */
@@ -827,7 +821,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
 
     // Resume the conversation `agy` created on this thread's first turn; on the
     // very first spawn there is none yet and `agy` mints one (announced on `init`).
-    const conversationId = this.#conversationByThread.get(threadId);
+    const conversationId = this.nativeSessionId(threadId);
     const args = [
       ...(conversationId !== undefined ? ['--conversation', conversationId] : []),
       '--add-dir',
@@ -864,7 +858,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     const adoptConversation = (id: string | undefined): void => {
       if (id === undefined || id === session.conversationId) return;
       session.conversationId = id;
-      this.#conversationByThread.set(threadId, id);
+      this.setNativeSession(threadId, id);
     };
 
     const rl = createInterface({ input: child.stdout as unknown as Readable, crlfDelay: Infinity });

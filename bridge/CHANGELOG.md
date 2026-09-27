@@ -4,6 +4,26 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A conversation keeps its agent's memory after the bridge restarts or
+  updates itself.** Only Codex continued the native session a conversation had
+  stored; Claude Code, OpenCode, pi, Grok, Zero and Antigravity opened a new one
+  on the first turn after a restart, so the agent had forgotten everything the
+  phone still showed. Every adapter now continues the stored session (verified
+  against all seven CLIs). One that no longer exists — deleted meanwhile — is
+  refused once and the turn runs in a fresh session instead of failing: Claude
+  Code's `No conversation found` is caught before anything ran, and OpenCode
+  asks its server first.
+- **A fork no longer writes into the original's agent session.** It copied the
+  native session id, so a Codex fork's turns landed in the original thread.
+  A fork now opens a session of its own on its first turn.
+
+### Changed
+
+- The thread → native session map lives once, in `BaseAgentAdapter`, instead of
+  one copy per adapter (`setNativeSession` / `refuseNativeSession`), and
+  `nativeSessionId` / `adoptNativeSession` are part of `IAgentAdapter`.
 
 ## [0.0.34-alpha.20260927] - 20260927
 ### Added

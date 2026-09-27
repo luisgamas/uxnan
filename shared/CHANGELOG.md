@@ -4,6 +4,12 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **`IAgentAdapter.nativeSessionId` and `adoptNativeSession` are required.**
+  Every adapter continues the native session a conversation stored — after a
+  bridge restart, or when a conversation takes over a session started
+  elsewhere — instead of the capability being optional and Codex-only.
 
 ## [0.0.22-alpha.20260927] - 20260927
 ### Added — files as attachments

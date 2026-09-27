@@ -485,6 +485,12 @@ export class OpenCodeV1Server implements IOpenCodeServer {
     return this.#serve.start();
   }
 
+  /** OpenCode 1's `GET /session/:id`. */
+  async hasSession(sessionId: string): Promise<boolean> {
+    await this.start();
+    return this.#serve.exists(`/session/${encodeURIComponent(sessionId)}`);
+  }
+
   async createSession(opts: {
     title?: string;
     permission: OpenCodePermissionPolicy;

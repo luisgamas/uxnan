@@ -415,6 +415,24 @@ test('PiAdapter reuses the captured session id with --session-id across session 
   assert.equal(argsForSecond[idx + 1], 'sess-1');
 });
 
+// After a restart (or when a conversation takes over a terminal's) the bridge
+// hands the stored id back: the resident process starts on that session
+// (`--session-id` resumes it, creating it if pi no longer has it).
+test('PiAdapter starts the resident process on an adopted session', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  adapter.adoptNativeSession('t1', 'sess-stored');
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go on' });
+  const args = last().args;
+  last().feed([assistantEnd('a'), AGENT_END, AGENT_SETTLED]);
+  await done;
+
+  assert.equal(args[args.indexOf('--session-id') + 1], 'sess-stored');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess-stored');
+});
+
 test('PiAdapter passes the model and maps reasoning to --thinking', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });

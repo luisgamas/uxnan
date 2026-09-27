@@ -221,8 +221,14 @@ interface IAgentAdapter {
   listCommands?(cwd?: string): Promise<AgentCommand[]>;         // name, description?, argumentHint?, source, headlessSupported?
   expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;  // solo custom prompt-template agents; nativos (Claude/ACP) no lo implementan
 
-  // Native session identity used for completed-turn convergence in turn/list.
-  nativeSessionId?(threadId: string): string | null;
+  // Native session identity: the id the CLI resumes and its transcript is named
+  // after (completed-turn convergence in turn/list, continuity after a restart).
+  // Held once, in BaseAgentAdapter, for every adapter.
+  nativeSessionId(threadId: string): string | undefined;
+  // Continue a conversation in a native session this process did not open (the
+  // stored id after a bridge restart, or a terminal's session taken over). Never
+  // replaces a live one, never takes back an id the CLI refused to resume.
+  adoptNativeSession(threadId: string, sessionId: string): void;
 
   // Git
   gitStatus(cwd: string): Promise<GitRepoStatus>;
@@ -2097,9 +2103,15 @@ another client attached to the same native session converge into Uxnan.
 `AgentManager` persists it through `ThreadStore.setAgentSession`. The mirror of
 that — `IAgentAdapter.adoptNativeSession(threadId, sessionId)`, offered before a
 turn runs and only when the stored session belongs to the same agent — hands the
-id back after a bridge restart, so the conversation continues in the SAME agent
-session rather than opening a new one behind a history the phone still shows.
-Reconciliation then follows these rules:
+id back after a bridge restart (or a self-update), so the conversation continues
+in the SAME agent session rather than opening a new one behind a history the
+phone still shows. Every adapter implements it through the one map
+`BaseAgentAdapter` keeps (verified 2026-09-27 against all seven CLIs: each one
+recalled a word from before the restart). A stored session the CLI no longer
+has is refused once — the turn runs in a fresh session instead of failing — and
+never adopted again for that thread; a fork does not inherit the original's
+session (`thread/fork` drops `agentSessionId`), so two conversations never write
+into one transcript. Reconciliation then follows these rules:
 
 - bridge-owned turns keep their UUID and remain authoritative for ordered
   segments, queue state, usage and delivery status;

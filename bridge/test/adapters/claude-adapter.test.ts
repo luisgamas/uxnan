@@ -327,6 +327,60 @@ test('ClaudeCodeAdapter reuses the captured session id on the next turn', async 
   assert.equal(argsForSecond[idx + 1], 'sess_42');
 });
 
+// After a restart (or when a conversation takes over a terminal's session) the
+// bridge hands the stored id back: the very first turn resumes it.
+test('ClaudeCodeAdapter resumes an adopted session on its first turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  adapter.adoptNativeSession('t1', 'sess_stored');
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go on' });
+  const args = last().args;
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"sess_stored"}']);
+  await done;
+
+  assert.equal(args[args.indexOf('--resume') + 1], 'sess_stored');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess_stored');
+});
+
+// The CLI's own answer for a session that no longer exists (verified against
+// claude 2.1.283). Nothing ran, so the same turn runs again in a new session
+// instead of failing — and the gone id is never adopted again.
+test('ClaudeCodeAdapter runs the turn in a fresh session when the stored one is gone', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  adapter.adoptNativeSession('t1', 'sess_gone');
+
+  const { events, done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'still there?' });
+  const refused = last();
+  assert.equal(refused.args[refused.args.indexOf('--resume') + 1], 'sess_gone');
+  refused.feed([
+    '{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"session_id":"sess_gone","errors":["No conversation found with session ID: sess_gone"]}',
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const retried = last();
+  assert.notEqual(retried, refused);
+  assert.equal(retried.args.includes('--resume'), false);
+  await flush();
+  assert.deepEqual(retried.sent, ['still there?']);
+  retried.feed(['{"type":"result","subtype":"success","result":"yes","session_id":"sess_new"}']);
+  await done;
+
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  assert.equal(events.at(-1)?.type, 'turn_completed');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess_new');
+  // The store still holds the gone id until the new one is persisted: offering
+  // it again changes nothing.
+  adapter.adoptNativeSession('t1', 'sess_gone');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess_new');
+});
+
 test('ClaudeCodeAdapter surfaces an error result as turn_error', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });

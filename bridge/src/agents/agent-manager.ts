@@ -910,7 +910,7 @@ export class AgentManager {
       // rather than untitled (Codex today). After the notification, never
       // before it: this can spawn a process, and the phone should not wait for
       // that to see the new name. Optional adapter capability, read through a
-      // structural type like `nativeSessionId`, and never fatal.
+      // structural type, and never fatal.
       const nameable = adapter as unknown as {
         setNativeTitle?(threadId: string, title: string): Promise<void>;
       };
@@ -1213,8 +1213,8 @@ export class AgentManager {
    * Let go of everything the bridge holds for a thread that is being archived or
    * deleted: cancel its running turn, drop its queue, and tell every adapter to
    * tear down the resident process it may keep for the thread (pi, Antigravity
-   * — `closeSession`, an optional adapter capability read structurally like
-   * `nativeSessionId`). Best-effort throughout: the thread's own removal must
+   * — `closeSession`, an optional adapter capability read structurally).
+   * Best-effort throughout: the thread's own removal must
    * not fail because a process was already gone.
    *
    * Every adapter is asked, not just the thread's current one: a thread that
@@ -1788,12 +1788,7 @@ export class AgentManager {
   async #persistAgentSession(threadId: string, now: number): Promise<void> {
     const agentId = this.#agentByThread.get(threadId);
     if (!agentId) return;
-    // `nativeSessionId` is an optional adapter capability (not in the shared
-    // interface), so read it through a structural type rather than a hard dep.
-    const adapter = this.#adapters.get(agentId) as
-      | { nativeSessionId?(threadId: string): string | undefined }
-      | undefined;
-    const sessionId = adapter?.nativeSessionId?.(threadId);
+    const sessionId = this.#adapters.get(agentId)?.nativeSessionId(threadId);
     if (!sessionId) return;
     try {
       await this.#options.store.setAgentSession(threadId, sessionId, now);
@@ -1811,26 +1806,21 @@ export class AgentManager {
    * silently starting a new one (the phone would keep its history — read off
    * the agent's own transcript — while the agent had lost the context).
    *
-   * Optional adapter capability (`adoptNativeSession`), read structurally like
-   * `nativeSessionId`; an adapter that already knows the thread ignores it. The
-   * id is only offered when the stored session belongs to the SAME agent — a
-   * thread switched to another agent must not inherit the previous one's id.
+   * Every adapter adopts (`IAgentAdapter.adoptNativeSession`); one that
+   * already holds a session for the thread keeps it. The id is only offered
+   * when the stored session belongs to the SAME agent — a thread switched to
+   * another agent must not inherit the previous one's id.
    */
   async #restoreAgentSession(
     threadId: string,
     agentId: AgentId,
     adapter: IAgentAdapter,
   ): Promise<void> {
-    const adoptable = adapter as unknown as {
-      adoptNativeSession?(threadId: string, sessionId: string): void;
-      nativeSessionId?(threadId: string): string | undefined;
-    };
-    if (!adoptable.adoptNativeSession) return;
-    if (adoptable.nativeSessionId?.(threadId)) return; // already live in this process
+    if (adapter.nativeSessionId(threadId)) return; // already live in this process
     try {
       const source = await this.#options.store.getHistorySource(threadId);
       if (!source.agentSessionId || source.agentId !== agentId) return;
-      adoptable.adoptNativeSession(threadId, source.agentSessionId);
+      adapter.adoptNativeSession(threadId, source.agentSessionId);
     } catch (err) {
       // Best-effort: without it the turn simply starts a new agent session.
       this.#options.logger.warn(

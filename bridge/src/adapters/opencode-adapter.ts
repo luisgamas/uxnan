@@ -201,10 +201,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #wantedTools = new Map<string, DesktopTools | undefined>();
   /** cwd → fingerprint of the desktop tools its server was started with. */
   readonly #toolsByCwd = new Map<string, string>();
-  /** threadId → OpenCode session id, for continuity + the history fallback. */
-  readonly #sessionByThread = new Map<string, string>();
   /** OpenCode session id → in-flight run, to route session-scoped events. */
   readonly #runBySession = new Map<string, ActiveRun>();
+  /** Sessions the server is known to hold: opened here, or confirmed with it
+   *  before this process first resumed them. */
+  readonly #confirmedSessions = new Set<string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** cwd → the server's commands there, briefly reused (see `listCommands`). */
@@ -236,11 +237,6 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    */
   defaultCwd(): string {
     return this.#defaultCwd;
-  }
-
-  /** Native OpenCode session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
   }
 
   /**
@@ -310,7 +306,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       return;
     }
 
-    let sessionId = this.#sessionByThread.get(threadId);
+    let sessionId = this.nativeSessionId(threadId);
+    if (sessionId && !this.#confirmedSessions.has(sessionId)) {
+      // A session this process did not open (the bridge restarted, or the
+      // conversation took over a terminal's): ask the server before resuming
+      // it, so a deleted one opens a fresh session instead of failing the turn.
+      const known = await server.hasSession(sessionId).catch(() => true);
+      if (known) {
+        this.#confirmedSessions.add(sessionId);
+      } else {
+        this.refuseNativeSession(threadId);
+        sessionId = undefined;
+      }
+    }
     if (!sessionId) {
       try {
         sessionId = await server.createSession({
@@ -319,7 +327,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),
         });
-        this.#sessionByThread.set(threadId, sessionId);
+        this.setNativeSession(threadId, sessionId);
+        this.#confirmedSessions.add(sessionId);
       } catch (err) {
         this.emit({
           type: 'turn_error',
@@ -385,7 +394,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       run.finished = true;
       // Drop the stored session so the next turn recreates it (a restarted
       // server may no longer know this id).
-      this.#sessionByThread.delete(threadId);
+      this.refuseNativeSession(threadId);
       this.emit({
         type: 'turn_error',
         threadId,

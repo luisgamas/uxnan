@@ -442,8 +442,6 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #permissionMode: CodexPermissionMode;
   readonly #onApprovalRequest: CodexAdapterOptions['onApprovalRequest'];
   readonly #spawnAppServer: () => SpawnedAppServer;
-  /** threadId (bridge) → Codex app-server threadId, for `thread/resume` continuity. */
-  readonly #threadByBridgeThread = new Map<string, string>();
   /**
    * Codex thread ids loaded in the CURRENT app-server process (i.e. whose
    * writer this bridge holds right now). Cleared whenever the process goes
@@ -478,25 +476,6 @@ export class CodexAdapter extends BaseAgentAdapter {
   #pendingApprovals = new Map<string, { kind: ApprovalKind; serverRequestId: number | string }>();
   #approvalSeq = 0;
 
-  /** Native Codex thread id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#threadByBridgeThread.get(threadId);
-  }
-
-  /**
-   * Re-attach a thread to the Codex thread the bridge recorded for it before
-   * this process existed (i.e. after a bridge restart). Without it the map is
-   * empty and the next turn would open a NEW Codex thread — the phone would
-   * still show the history, read off the rollout, while Codex had lost it.
-   *
-   * Called by the AgentManager just before a turn; the first `sendTurn` then
-   * takes the ordinary `thread/resume` path. Never overwrites a live mapping.
-   */
-  adoptNativeSession(threadId: string, sessionId: string): void {
-    if (!sessionId || this.#threadByBridgeThread.has(threadId)) return;
-    this.#threadByBridgeThread.set(threadId, sessionId);
-  }
-
   /**
    * Mirror the conversation's name onto the Codex thread, so the phone's
    * conversation is recognizable in Codex Desktop / `codex resume` instead of
@@ -510,7 +489,7 @@ export class CodexAdapter extends BaseAgentAdapter {
    * leaves the Codex-side name alone and never touches the conversation.
    */
   async setNativeTitle(threadId: string, title: string): Promise<void> {
-    const codexThreadId = this.#threadByBridgeThread.get(threadId);
+    const codexThreadId = this.nativeSessionId(threadId);
     if (!codexThreadId || !title) return;
     try {
       const rpc = await this.#ensureAppServer();
@@ -617,7 +596,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     // `thread/resume` because the previous turn released the app-server (and
     // with it every loaded thread) so Codex Desktop / the CLI could open the
     // conversation in between.
-    let codexThreadId = this.#threadByBridgeThread.get(threadId);
+    let codexThreadId = this.nativeSessionId(threadId);
     if (codexThreadId && !this.#loadedThreads.has(codexThreadId)) {
       try {
         await rpc.request('thread/resume', {
@@ -649,7 +628,7 @@ export class CodexAdapter extends BaseAgentAdapter {
         }
         // The rollout is gone (deleted/archived from another client) — the
         // conversation continues in a fresh Codex thread rather than dead-ending.
-        this.#threadByBridgeThread.delete(threadId);
+        this.refuseNativeSession(threadId);
         this.#loadedThreads.delete(codexThreadId);
         codexThreadId = undefined;
       }
@@ -672,7 +651,7 @@ export class CodexAdapter extends BaseAgentAdapter {
           },
         );
         codexThreadId = started.thread.id;
-        this.#threadByBridgeThread.set(threadId, codexThreadId);
+        this.setNativeSession(threadId, codexThreadId);
         this.#loadedThreads.add(codexThreadId);
       } catch (err) {
         this.emit({
@@ -803,7 +782,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     // No app-server turn id yet means `turn/start` has not come back: there is
     // no turn to steer, and `expectedTurnId` would have nothing to match.
     if (!run.codexTurnId || !this.#rpc) return false;
-    const codexThreadId = this.#threadByBridgeThread.get(run.threadId);
+    const codexThreadId = this.nativeSessionId(run.threadId);
     if (!codexThreadId) return false;
 
     try {
@@ -830,7 +809,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.emit({ type: 'turn_aborted', threadId: run.threadId, turnId: run.bridgeTurnId });
       return;
     }
-    const codexThreadId = this.#threadByBridgeThread.get(run.threadId);
+    const codexThreadId = this.nativeSessionId(run.threadId);
     try {
       await this.#rpc.request('turn/interrupt', {
         threadId: codexThreadId,

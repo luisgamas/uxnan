@@ -178,7 +178,7 @@ timeout leaves the provisional title in place and never disturbs the thread.
 one.** Codex does (`thread/name/set`), so a conversation started on the phone
 shows the same title in Codex Desktop and `codex resume` instead of appearing
 untitled. It is an optional adapter capability (`setNativeTitle`, read
-structurally by the `AgentManager` like `nativeSessionId`), so agents without a
+structurally by the `AgentManager`), so agents without a
 name concept are unaffected, and it needs no loaded thread — verified against
 codex-cli 0.147.0 from a process that never resumed it: the name lands in
 `~/.codex/session_index.jsonl`, which is the list those clients read.
@@ -449,6 +449,28 @@ adapter before a turn** (`adoptNativeSession`, offered only when the stored
 session belongs to the same agent). Both halves matter: without the second one a
 restarted bridge opens a new agent session under a conversation whose history
 the phone still shows, so the agent has lost the context the user can see.
+
+Both live once, in `BaseAgentAdapter` — the one thread → session map every
+adapter reads and writes (`setNativeSession` when the CLI announces or the
+adapter opens a session, `refuseNativeSession` when the CLI cannot resume one).
+How each CLI continues an adopted session, and what it does with one it no
+longer has — verified 2026-09-27 by stopping each adapter mid-conversation and
+asking a fresh one for a word given before the stop:
+
+| Agent | Continues an adopted session with | A session the CLI no longer has |
+|---|---|---|
+| Claude Code | `claude -p --resume <id>` | the CLI answers `No conversation found with session ID: <id>` before running anything; the same turn runs again without `--resume` |
+| Codex | app-server `thread/resume` | `thread/resume` fails; the turn starts a new thread (a thread *held* by another Codex client is not refused: the turn says so and stops) |
+| OpenCode | the same `ses_…` id on `opencode serve` | asked once per process (`GET /api/session/:id` → 404, `GET /session/:id` on 1.x); a fresh session is created |
+| pi | `--session-id <id>` on the resident process | pi creates the session under that id |
+| Grok | ACP `session/load` | `session/load` fails; `session/new` |
+| Zero | ACP `session/load` | `session/load` fails; `session/new` |
+| Antigravity | `--conversation <id>` | `agy` answers with a new conversation on `init`, which the thread takes |
+
+A refused id is never adopted again for that thread (the store still holds it
+until the fresh session's first turn is persisted). A fork does not inherit
+the original's session — `thread/fork` drops `agentSessionId` — so two
+conversations never write into one transcript.
 
 Bridge-created turns keep their public UUID and richer ordered segments, queue
 state and usage. A deterministic native-history id is stored only as a private

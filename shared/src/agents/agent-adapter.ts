@@ -118,6 +118,27 @@ export interface IAgentAdapter {
   cancelTurn(threadId: string, turnId: string): Promise<void>;
 
   /**
+   * The agent's own session id for a conversation — the id its CLI resumes
+   * (`claude --resume`, Codex `thread/resume`, ACP `session/load`, …) and the
+   * one its transcript on disk is named after. `undefined` until the agent
+   * has one for the thread.
+   */
+  nativeSessionId(threadId: string): string | undefined;
+
+  /**
+   * Continue a conversation in a native session this process did not open:
+   * the id the bridge stored before it restarted, or a session started
+   * elsewhere (a terminal) that the conversation now takes over. The next
+   * turn resumes it instead of opening a new one, so the agent keeps the
+   * context the user can see.
+   *
+   * Never replaces a session the adapter already holds for the thread, and
+   * never takes back an id the CLI already refused to resume for it: that
+   * conversation continues in the fresh session that replaced it.
+   */
+  adoptNativeSession(threadId: string, sessionId: string): void;
+
+  /**
    * Name a conversation from its opening exchange — a handful of words, no
    * punctuation, in the language the user wrote in.
    *

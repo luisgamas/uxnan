@@ -59,6 +59,14 @@ class FakeServer implements IOpenCodeServer {
   start(): Promise<void> {
     return Promise.resolve();
   }
+  /** Sessions the server holds besides the ones created here (a terminal's,
+   *  or one a previous server process opened). */
+  readonly known = new Set<string>();
+  readonly checked: string[] = [];
+  hasSession(sessionId: string): Promise<boolean> {
+    this.checked.push(sessionId);
+    return Promise.resolve(this.sessions.includes(sessionId) || this.known.has(sessionId));
+  }
   createSession(opts: {
     title?: string;
     permission: OpenCodePermissionPolicy;
@@ -657,6 +665,53 @@ test('OpenCodeAdapter reuses the session id on the next turn', async () => {
   assert.equal(server.sessions.length, 1); // created once, reused
   assert.equal(adapter.nativeSessionId('t1'), 'ses_1');
   assert.equal(server.prompts[1]?.sessionId, 'ses_1');
+});
+
+// After a restart (or when a conversation takes over a terminal's) the bridge
+// hands the stored id back. The server is asked once whether it still has the
+// session; it does, so the turn runs there and nothing new is created.
+test('OpenCodeAdapter resumes an adopted session the server still has', async () => {
+  const server = new FakeServer();
+  server.known.add('ses_stored');
+  const adapter = makeAdapter(server);
+  adapter.adoptNativeSession('t1', 'ses_stored');
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go on' });
+  server.emit('session.idle', { sessionID: 'ses_stored' });
+  await first.done;
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u2', text: 'and then' });
+  server.emit('session.idle', { sessionID: 'ses_stored' });
+  await second.done;
+
+  assert.deepEqual(server.sessions, []);
+  assert.deepEqual(server.checked, ['ses_stored']); // asked once, not per turn
+  assert.deepEqual(
+    server.prompts.map((p) => p.sessionId),
+    ['ses_stored', 'ses_stored'],
+  );
+});
+
+// A session deleted meanwhile: the turn opens a fresh one instead of failing,
+// and the gone id is not taken back while the store still holds it.
+test('OpenCodeAdapter opens a fresh session when the adopted one is gone', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  adapter.adoptNativeSession('t1', 'ses_gone');
+
+  const { events, done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'still there?' });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+  await done;
+
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  assert.deepEqual(server.sessions, ['ses_1']);
+  assert.equal(server.prompts[0]?.sessionId, 'ses_1');
+  assert.equal(adapter.nativeSessionId('t1'), 'ses_1');
 });
 
 test('OpenCodeAdapter surfaces session.error as turn_error', async () => {

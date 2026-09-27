@@ -293,6 +293,30 @@ test('AntigravityAdapter resumes the conversation `agy` announced on a later spa
   assert.equal(adapter.nativeSessionId('t1'), 'c-real');
 });
 
+// After a restart (or when a conversation takes over a terminal's) the bridge
+// hands the stored id back: the first spawn resumes it. A conversation `agy`
+// no longer has is answered with a new one on `init`, which then takes over.
+test('AntigravityAdapter resumes an adopted conversation, and takes the one agy answers with', async () => {
+  const { spawnFn, last, spawns } = fakeSpawner();
+  const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });
+  adapter.adoptNativeSession('t1', 'c-stored');
+
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go on', cwd: '/p' });
+  const args = spawns[0]!.args;
+  assert.equal(args[args.indexOf('--conversation') + 1], 'c-stored');
+  last().feedOpen([initEvent('c-stored'), stepUpdate('a'), resultEvent('a')]);
+  await first.done;
+  assert.equal(adapter.nativeSessionId('t1'), 'c-stored');
+
+  adapter.adoptNativeSession('t2', 'c-gone');
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't2', turnId: 'u2', text: 'hello', cwd: '/p' });
+  last().feedOpen([initEvent('c-fresh'), stepUpdate('b'), resultEvent('b')]);
+  await second.done;
+  assert.equal(adapter.nativeSessionId('t2'), 'c-fresh');
+});
+
 test('AntigravityAdapter maintains persistent session across multiple turns without re-spawning', async () => {
   const { spawnFn, last, spawns } = fakeSpawner();
   const adapter = new AntigravityAdapter({ binaryPath: 'agy', spawnFn });

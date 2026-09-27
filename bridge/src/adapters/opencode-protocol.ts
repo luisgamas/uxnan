@@ -163,6 +163,12 @@ export interface IOpenCodeServer {
     model?: OpenCodeModelRef;
     variant?: string;
   }): Promise<string>;
+  /**
+   * Whether the server knows a session — the store it serves is the CLI's own,
+   * so a session started in a terminal is known too. False only when the
+   * server says it does not exist; throws when it cannot say.
+   */
+  hasSession(sessionId: string): Promise<boolean>;
   /** Start a turn (returns once accepted; results arrive via `onEvent`). */
   prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void>;
   /**
