@@ -32,6 +32,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **A Claude Code turn no longer says its background work was interrupted when
+  it was not.** A background command that exited with an error (`failed`), or
+  one the model stopped itself while the run went on, was reported as "left
+  running, and interrupted when the turn ended". Only work the CLI stops after
+  its input closes, or that is still running when it exits, is reported now.
 - **A conversation keeps its agent's memory after the bridge restarts or
   updates itself.** Only Codex continued the native session a conversation had
   stored; Claude Code, OpenCode, pi, Grok, Zero and Antigravity opened a new one

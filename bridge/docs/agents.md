@@ -587,11 +587,14 @@ An adapter must decide when the agent is done. There are two kinds:
 
 That distinction matters because **Claude Code really does come back**. When the
 model starts a background task (`Bash` with `run_in_background`) and ends its
-turn, the CLI emits its `result` and keeps running; if the work finishes within
-its grace period the CLI **wakes the model** and a second, complete turn follows
-on the same process. Timed against the real CLI, the grace period is about
-**4–6 seconds**, after which the CLI **kills** the task (`status:"stopped"`) and
-exits with that work unfinished.
+turn, the CLI emits its `result` and keeps running; when the work finishes the
+CLI **wakes the model** and a second, complete turn follows on the same process.
+How long it waits depends on its input, which the bridge controls: **while the
+input is open it waits for as long as the work takes** (a `sleep 240` left
+running after the turn was waited for in full), and **once the input closes**
+it gives the work about **4–6 seconds** and then **stops** it
+(`status:"stopped"`), exiting with that work unfinished. The bridge keeps the
+input open while any task is live, so the work gets its time.
 
 #### A long wait is not the same thing (and is not limited)
 
@@ -613,13 +616,23 @@ So the two cases split cleanly:
 | The agent… | Turn state | Bounded? |
 |---|---|---|
 | **waits** for long work (CI, build, tests) | still running; deltas and tool progress keep flowing | **No limit** |
-| **leaves** work running and ends its turn | held open by the adapter until the CLI's follow-up turn or its exit | ~4–6 s, then the CLI kills the work and the turn reports it |
+| **leaves** work running and ends its turn | held open by the adapter (input open) until the work ends and the CLI's follow-up turn completes | **No limit** while the input is open |
 
 So `claude-adapter.ts` tracks live background tasks (`system` lines with
 `subtype:"task_started"` / `"task_notification"` — the reason `system` is no
 longer parsed as one event kind) and **holds the completion** while any is live,
 emitting exactly one `turn_completed` carrying both replies. Work the CLI killed
 is reported to the user as a warning block rather than passing as a clean turn.
+
+How a task ended decides whether that is so. The CLI reports `completed` (exit
+0), `failed` (exit ≠ 0 — its work finished, and the model reads the result like
+any other) or `stopped`, which means two different things: the model or the
+user ended it while the run went on (a server the model starts and then stops
+itself), or the CLI ended it because its input had closed. Only the last is
+lost work, so only a `stopped` after the adapter closed the input — or a task
+still live when the process exits — is reported. Counting every non-`completed`
+end, as the adapter once did, put "interrupted when the turn ended" on turns
+whose tests had simply failed.
 
 Two guards make this safe for **every** adapter, present and future, since the
 first table row is where the hazard lives:
@@ -636,7 +649,7 @@ way — asked to leave a shell command running and end its turn — and timed:
 
 | Agent | Wakes the model after its turn? | What happens to the deferred work |
 |---|---|---|
-| **Claude Code** | **Yes** | ~4–6 s of grace. Finishes in time → the CLI wakes the model and a second turn reports it. Otherwise **killed** (`status:"stopped"`), work lost |
+| **Claude Code** | **Yes** | Waited for while its input is open (the bridge keeps it open while tasks run) → the CLI wakes the model and a second turn reports it. Once the input closes, ~4–6 s and then **stopped**, work lost |
 | **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
 | Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |

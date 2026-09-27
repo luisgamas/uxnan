@@ -275,12 +275,14 @@ export interface ClaudeEvent {
    */
   taskId?: string;
   /**
-   * Only for `task_ended`: how the background task finished. `completed` means
-   * its work is done (and the CLI then wakes the model for another turn);
-   * `stopped` means the CLI **killed** it as the process came down, so that work
-   * was lost.
+   * Only for `task_ended`: how the background task finished, as the CLI says
+   * it (verified on `claude -p --output-format stream-json`). `completed`: it
+   * exited 0. `failed`: it exited with an error — its work did finish, and the
+   * model is told the result like any other. `stopped`: something ended it —
+   * the model or the user while the run goes on, or the CLI itself as it comes
+   * down once its input is closed; only the last is work lost.
    */
-  taskStatus?: 'completed' | 'stopped';
+  taskStatus?: 'completed' | 'failed' | 'stopped';
   /**
    * The `parent_tool_use_id` of the line, set when the event belongs to a
    * SUBAGENT (Task-tool) turn running in parallel with the main loop rather
@@ -384,7 +386,9 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       // The CLI reports the outcome twice — `task_updated` then
       // `task_notification` — and only the notification carries the status.
       if (subtype === 'task_notification' && taskId) {
-        const status = parsed['status'] === 'completed' ? 'completed' : 'stopped';
+        const reported = parsed['status'];
+        const status =
+          reported === 'completed' ? 'completed' : reported === 'failed' ? 'failed' : 'stopped';
         return { kind: 'task_ended', ...base, taskId, taskStatus: status };
       }
       if (subtype === 'compact_boundary') {
@@ -739,6 +743,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       }
     };
 
+    // Once the input is closed the CLI comes down, and it stops whatever
+    // background work is still running as it goes.
+    let inputClosed = false;
     /**
      * Tell the CLI no more input is coming. REQUIRED to end the run: with
      * `--input-format stream-json` the process keeps waiting for another message
@@ -746,6 +753,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
      * the turn forever.
      */
     const endInput = (): void => {
+      inputClosed = true;
       try {
         child.stdin?.end();
       } catch {
@@ -801,9 +809,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // turn's completion is held until the tasks resolve and the CLI either
     // produces its follow-up turn or exits.
     let deferredCompletion = false;
-    // Background tasks the CLI killed on its way out (`stopped`). That work was
-    // started on the user's behalf and did NOT finish — staying silent about it
-    // is what let the phone report a clean success over lost work.
+    // Background tasks the CLI killed on its way out. That work was started on
+    // the user's behalf and did NOT finish — staying silent about it is what
+    // let the phone report a clean success over lost work. Only a task that
+    // ends BECAUSE the run is ending counts: one that failed on its own, or
+    // that the model stopped while the run went on, is an outcome the model
+    // was told about, not an interruption.
     let interruptedTasks = 0;
     // The completion payload observed at the last `result`, replayed if the run
     // ends without another one.
@@ -823,9 +834,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // the pipe — close it so the process can exit.
       endInput();
       if (interruptedTasks > 0) {
-        // Say it in the turn itself. The CLI gives background work only a few
-        // seconds' grace after the turn ends and then kills it, so this is a
-        // real, silent loss the user would otherwise never learn about.
+        // Say it in the turn itself. The CLI stops what is still running once
+        // its input closes, so this is a real, silent loss the user would
+        // otherwise never learn about.
         this.emit({
           type: 'block',
           threadId,
@@ -1020,7 +1031,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         liveBackgroundTasks.add(event.taskId);
       } else if (event.kind === 'task_ended' && event.taskId) {
         liveBackgroundTasks.delete(event.taskId);
-        if (event.taskStatus === 'stopped') interruptedTasks += 1;
+        // While the input is open the CLI waits for background work however
+        // long it takes, so a task `stopped` then was ended on purpose (the
+        // model or the user did it). After it closes, the CLI is the one
+        // ending it.
+        if (event.taskStatus === 'stopped' && inputClosed) interruptedTasks += 1;
         // Deliberately NOT completing here even when the last task resolves: a
         // `completed` task is exactly when the CLI wakes the model, so the run
         // is finished by its follow-up `result` or by the process exiting.
