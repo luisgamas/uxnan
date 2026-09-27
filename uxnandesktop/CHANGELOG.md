@@ -4,6 +4,19 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Continue an agent's terminal session as a chat, and back.** A terminal
+  running an agent tells the bridge which session it holds, so no chat or phone
+  writes into it meanwhile: a chat of it says it is open in a terminal and
+  offers *Continue here*. *Continue as chat* on the terminal tab closes the
+  agent there once it is idle (a signal to its process, never keystrokes) and
+  opens the conversation that continues its session, with its history; the
+  phone asking for it does the same. *Open in terminal* in a chat reopens its
+  session in a new terminal with the agent's own profile.
+- **Sessions in this folder.** A new chat lists the agents' own sessions in its
+  folder that no conversation continues yet — from a terminal, here or
+  elsewhere, or the agent's app — to pick up as the chat.
 ### Fixed
 
 - **Naming a session or writing a commit message no longer leaves a session in

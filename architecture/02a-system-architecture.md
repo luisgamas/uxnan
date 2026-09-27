@@ -2905,6 +2905,18 @@ agente en su terminal, suelta la retencion y responde
 (`agentSession/handoffAnswer`: `released` | `busy` | `declined`); sin respuesta
 en 20 s → `unreachable`. Nunca se simulan teclas en la terminal.
 
+**Clientes.** Uxnan Desktop reporta las retenciones desde sus pestanas de
+terminal (`terminalSessions.svelte.ts`: una sesion capturada por hook, viva y de
+un agente que el bridge conduce), las repite al reconectar, atiende
+`handoffRequested` cerrando el agente con una senal a su proceso
+(`pty_stop_agent`, nunca teclas; el shell y la pestana quedan) y ofrece
+*Continuar como chat* en la pestana y *Abrir en terminal* en el chat
+(`app.launchAgent` con `resume`). Ambas apps listan las sesiones de la carpeta
+al empezar una conversacion (desktop: el inicio del chat; movil: *Nueva
+conversacion*), muestran la retencion sobre el compositor con *Continuar aqui*
+(`requestHandoff`) y lo ofrecen solo si el bridge anuncia
+`features.agentSessions`.
+
 ### 5.9 Transporte seguro y mensajeria E2EE
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.

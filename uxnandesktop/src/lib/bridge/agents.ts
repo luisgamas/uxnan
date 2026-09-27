@@ -51,3 +51,21 @@ export function bridgeAgentForCommand(command: string | null | undefined): Agent
   const name = base.replace(/\.(exe|cmd|bat|ps1)$/i, '').toLowerCase();
   return AGENT_BY_COMMAND[name] ?? null;
 }
+
+/** Bridge agent id → the agent type its terminal hooks report (`claude`,
+ *  `antigravity`, …) — what `agentResume.ts` reopens a session with. Zero has
+ *  none: its terminal UI cannot resume a session, so a chat of it stays a chat. */
+const HOOK_AGENT_BY_AGENT: Partial<Record<AgentId, string>> = {
+  'claude-code': 'claude',
+  codex: 'codex',
+  opencode: 'opencode',
+  'pi-agent': 'pi',
+  'antigravity-cli': 'antigravity',
+  grok: 'grok',
+};
+
+/** The terminal agent type that reopens a bridge agent's sessions, if any. */
+export function hookAgentForBridgeAgent(agentId: string | null | undefined): string | null {
+  if (!agentId) return null;
+  return (HOOK_AGENT_BY_AGENT as Record<string, string>)[agentId] ?? null;
+}

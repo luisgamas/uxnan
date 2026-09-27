@@ -38,7 +38,8 @@
   import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chat, sessionKey } from "$lib/bridge/chat.svelte";
+  import { terminalSessions } from "$lib/state/terminalSessions.svelte";
   import { usage } from "$lib/state/usage.svelte";
   import { usageProviderForAgent } from "$lib/usageCatalog";
   import { pressingWindow } from "$lib/usagePace";
@@ -48,7 +49,7 @@
   import { userText, type PendingSend } from "$lib/bridge/conversation.svelte";
   import { requestIdOf } from "$lib/bridge/timeline";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
-  import { toastError } from "$lib/toast";
+  import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat as chatTokens, icon, pane, text } from "$lib/design";
@@ -143,6 +144,38 @@
   // Where the agent's plan stands, for the context ring: the plan is read
   // (once, then every few minutes while open) whether or not it is activated
   // in Settings → Providers.
+  // A terminal holding this conversation's session is its writer for now
+  // (architecture/02a §5.8.19): the composer waits, and the banner offers to
+  // take the session back here — or to jump to that terminal, when it is one
+  // of this window's.
+  const hold = $derived(chat.holdOf(thread));
+  const holdingTab = $derived(
+    hold ? terminalSessions.held().get(sessionKey(hold.agentId, hold.sessionId))?.tabId : undefined,
+  );
+  const terminalState = $derived(terminalSessions.openInTerminalState(thread));
+  let takingBack = $state(false);
+
+  async function continueHere() {
+    if (!hold || takingBack) return;
+    takingBack = true;
+    try {
+      const outcome = await chat.requestHandoff(hold);
+      if (outcome !== "released" && outcome !== "notHeld") {
+        toast(i18n.t(`sessions.handoff.${outcome}`));
+      }
+    } catch (err) {
+      toastError(err);
+    } finally {
+      takingBack = false;
+    }
+  }
+
+  function goToTerminal() {
+    if (!holdingTab) return;
+    const workspace = terminals.workspaceOfTab(holdingTab);
+    if (workspace !== undefined) terminals.revealTab(workspace, holdingTab);
+  }
+
   const planProvider = $derived(usageProviderForAgent(thread?.agentId));
   $effect(() => {
     const provider = planProvider?.id;
@@ -333,6 +366,16 @@
         <DropdownMenu.Content width="simple" align="end">
           <!-- The same actions as the chat's sidebar row (`chatActionsFor`);
                opening is moot here. -->
+          {#if thread && terminalState !== "unavailable"}
+            <DropdownMenu.Item
+              class={text.menu}
+              disabled={terminalState === "working"}
+              onclick={() => terminalSessions.openInTerminal(thread)}
+            >
+              {terminalState === "working" ? i18n.t("sessions.openInTerminalWait") : i18n.t("sessions.openInTerminal")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator />
+          {/if}
           {#if thread}
             {#each chatActionsFor(thread).filter((a) => a !== "open") as action (action)}
               {#if action === "delete"}<DropdownMenu.Separator />{/if}
@@ -462,6 +505,24 @@
           </Button>
         </div>
       {/if}
+      {#if hold && thread?.status !== "archived"}
+        <!-- The session is open in a terminal: one writer at a time. -->
+        <div class="mb-2 flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <span class="min-w-0 flex-1">
+            {hold.busy
+              ? i18n.t("sessions.heldBannerWorking", { name: hold.holder.name })
+              : i18n.t("sessions.heldBanner", { name: hold.holder.name })}
+          </span>
+          {#if holdingTab}
+            <Button size="sm" variant="ghost" onclick={goToTerminal}>
+              {i18n.t("sessions.goToTerminal")}
+            </Button>
+          {/if}
+          <Button size="sm" variant="outline" disabled={hold.busy || takingBack} onclick={() => void continueHere()}>
+            {takingBack ? i18n.t("sessions.opening") : i18n.t("sessions.continueHere")}
+          </Button>
+        </div>
+      {/if}
       {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused || rescued.length > 0}
         <div class={chatTokens.dock}>
           {#each conversation.openRequests as request, ri (requestIdOf(request))}
@@ -588,7 +649,7 @@
         bind:value={draft}
         {history}
         running={conversation.running}
-        disabled={thread?.status === "archived"}
+        disabled={thread?.status === "archived" || hold !== undefined}
         autofocus={active}
         context={conversation.usage?.contextWindow
           ? { tokens: conversation.usage.tokens, limit: conversation.usage.contextWindow }

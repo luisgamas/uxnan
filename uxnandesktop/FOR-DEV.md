@@ -58,8 +58,10 @@ with the running bridge's own QR; and agent detection follows the table shared
 with the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
 review** of the chat and Bridge & mobile UI; still left: packaging the bridge
 without Node (`02e` §3.1–§3.4, plan 007), trusted-device management from the
-desktop (revoke), and the mirror / hand-off of terminal-launched sessions
-(below, *Terminal-launched sessions*).
+desktop (revoke), and a live read-only view of a terminal's session on the
+phone while it runs (below, *Terminal-launched sessions*). The hand-off itself —
+Continue as chat / Open in terminal, holds and the sessions list — is built
+(`docs/chat.md` → *From a terminal to a chat, and back*).
 
 **Built (DONE), in detail:**
 
@@ -1020,11 +1022,18 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       from its own CLI) in the chat header's menu — the phone offers both.
 
 ### Terminal-launched sessions
-- [ ] Publish terminal sessions to the bridge's catalog, mirror them read-only
-      to the phone (`agentSession/watch`), and the hand-off both ways (desktop →
-      bridge after the TUI exits; bridge → desktop via `agentResume.ts`). Needs
-      the per-agent surface matrix first, measured (`bridge/docs/agents.md` →
-      *Drive surface*).
+- [ ] **A live view of a terminal's session on the phone while it runs.** The
+      hand-off is built (holds, Continue as chat, Continue here, Open in
+      terminal); what a terminal does shows in the chat once its turns complete
+      (native-history convergence). Following it turn by turn from the phone
+      needs a watch of the transcript (`agentSession/watch`), measured per CLI
+      for how soon each one writes. Where: the bridge's catalog handler +
+      `session-history.ts`.
+- [ ] **A supervised run of the hand-off on the installed app.** Verified by
+      unit and component tests, `agentstop.rs` against real processes, and the
+      bridge side live against all seven CLIs; the whole loop — a real agent in
+      a desktop terminal, *Continue here* on the phone, back to the terminal —
+      needs the branch bridge installed as the service.
 
 
 ### Backend (Rust)

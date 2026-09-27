@@ -52,12 +52,40 @@ function mount(tab: ChatTab, calls: { method: string; params: unknown }[] = []) 
 }
 
 afterEach(() => {
+  chat.holds.clear();
   chat.release(THREAD);
   chat.threads.delete(THREAD);
   chat.agents = [];
 });
 
 describe("ChatConversation", () => {
+  // While a terminal holds the conversation's session it is the writer: the
+  // composer waits and the banner offers to take the session back here.
+  it("says the session is open in a terminal, waits, and takes it back when asked", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const { screen, user } = mount(chatTab(), calls);
+    chat.threads.set(THREAD, { ...chat.threads.get(THREAD)!, agentSessionId: "c-1" });
+    chat.holds.set("codex:c-1", {
+      agentId: "codex",
+      sessionId: "c-1",
+      holder: { kind: "terminal", name: "Studio" },
+      heldAgoMs: 0,
+      busy: false,
+    });
+    await until(() => screen.queryByText(/open in a terminal on Studio/) !== null);
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(box.disabled).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Continue here" }));
+    await until(() => calls.some((c) => c.method === "agentSession/requestHandoff"));
+    expect(calls.find((c) => c.method === "agentSession/requestHandoff")?.params).toMatchObject({
+      agentId: "codex",
+      sessionId: "c-1",
+    });
+    chat.holds.delete("codex:c-1");
+    await until(() => screen.queryByText(/open in a terminal on Studio/) === null);
+    expect(box.disabled).toBe(false);
+  });
+
   it("brings back a message the bridge never confirmed, and sends it again", async () => {
     writeOutbox(THREAD, [
       { clientTurnId: "c1", text: "run the tests", request: { text: "run the tests" } },

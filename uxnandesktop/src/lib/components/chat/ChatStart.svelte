@@ -8,12 +8,17 @@
   // A centered hero: the question, then the composer, whose toolbar carries the
   // agent (the same `Combobox` + `AgentLogo` the new-worktree dialog uses) and
   // the model with its run options (`ModelPicker`) as quiet pills; the conversations
-  // already running here are listed below it.
+  // already running here are listed below it, and below those the agents' own
+  // sessions in this folder that no conversation continues yet — started in a
+  // terminal, here or elsewhere — to pick up as a chat (architecture/02a
+  // §5.8.19). One open in a terminal says so, and picking it asks that terminal
+  // to let it go first.
   import { untrack } from "svelte";
   import type { Thread } from "$shared/models/thread";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import { Button } from "$lib/components/ui/button";
+  import { Badge } from "$lib/components/ui/badge";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
@@ -24,7 +29,10 @@
   import ChatComposer from "./ChatComposer.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
-  import { chat } from "$lib/bridge/chat.svelte";
+  import { chat, sessionKey } from "$lib/bridge/chat.svelte";
+  import { bridge } from "$lib/bridge/client.svelte";
+  import type { AgentSessionSummary } from "$shared/models/agent-session";
+  import { toast } from "$lib/toast";
   import { bridgeAgentForCommand, bridgeAgentLogo } from "$lib/bridge/agents";
   import { app } from "$lib/state/app.svelte";
   import { terminals, type ChatTab } from "$lib/state/terminals.svelte";
@@ -89,6 +97,58 @@
   const archived = $derived(chat.threadsFor(tab.cwd).filter((t) => t.status === "archived"));
   let showAll = $state(false);
   let archivedOpen = $state(false);
+  // The agents' own sessions here that no conversation continues yet.
+  let sessions = $state<AgentSessionSummary[]>([]);
+  let unlisted = $state<string[]>([]);
+  let showAllSessions = $state(false);
+  let pickingSession = $state<string | null>(null);
+  $effect(() => {
+    const cwd = tab.cwd;
+    if (!bridge.connected) return;
+    let cancelled = false;
+    chat
+      .listAgentSessions(cwd)
+      .then((result) => {
+        if (cancelled) return;
+        sessions = result.sessions.filter((s) => !s.threadId);
+        unlisted = result.unlisted;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  });
+  const unlistedNames = $derived(
+    unlisted.map((id) => chat.agent(id)?.displayName ?? id).join(", "),
+  );
+
+  /** Continue one of the agents' sessions as this tab's conversation. */
+  async function pickSession(session: AgentSessionSummary) {
+    const key = sessionKey(session.agentId, session.sessionId);
+    if (pickingSession) return;
+    pickingSession = key;
+    try {
+      if (chat.holds.get(key) ?? session.hold) {
+        const outcome = await chat.requestHandoff(session);
+        if (outcome !== "released" && outcome !== "notHeld") {
+          toast(i18n.t(`sessions.handoff.${outcome}`));
+          return;
+        }
+      }
+      const thread = await chat.startThread({
+        cwd: tab.cwd,
+        agentId: session.agentId,
+        agentSessionId: session.sessionId,
+        ...(session.title ? { title: session.title } : {}),
+      });
+      openExisting(thread.id);
+    } catch (err) {
+      toastError(err);
+    } finally {
+      pickingSession = null;
+    }
+  }
+
   const folder = $derived(
     tab.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? tab.cwd,
   );
@@ -186,6 +246,33 @@
   </ContextMenu.Root>
 {/snippet}
 
+{#snippet sessionRow(session: AgentSessionSummary)}
+  {@const key = sessionKey(session.agentId, session.sessionId)}
+  {@const hold = chat.holds.get(key) ?? session.hold}
+  <button
+    type="button"
+    class={cn(row.list, row.listInactive)}
+    disabled={pickingSession !== null}
+    title={i18n.t("sessions.pickHint", { agent: chat.agent(session.agentId)?.displayName ?? session.agentId })}
+    onclick={() => void pickSession(session)}
+  >
+    <AgentLogo logo={bridgeAgentLogo(session.agentId)} class={cn(icon.brand, "shrink-0")} />
+    <span class={cn("min-w-0 flex-1 truncate", session.title ? "text-foreground" : "text-muted-foreground")}>
+      {session.title ?? i18n.t("sessions.untitled")}
+    </span>
+    {#if hold}
+      <Badge variant="outline" class={cn("shrink-0 font-normal", text.indicator)}>
+        {hold.busy ? i18n.t("sessions.inTerminalWorking") : i18n.t("sessions.inTerminal")}
+      </Badge>
+    {/if}
+    <span class={cn(text.meta, "shrink-0")}>
+      {pickingSession === key
+        ? i18n.t("sessions.opening")
+        : relativeTime(Date.now() - session.updatedAgoMs, i18n.locale)}
+    </span>
+  </button>
+{/snippet}
+
 {#snippet agentPrefix(item: ComboItem)}
   <AgentLogo logo={bridgeAgentLogo(item.value)} class={cn(icon.brand, "shrink-0")} />
 {/snippet}
@@ -246,6 +333,24 @@
           <Button variant="ghost" size="sm" class="self-start" onclick={() => (showAll = !showAll)}>
             {showAll ? i18n.t("chat.showFewer") : i18n.t("chat.showAll", { n: String(existing.length) })}
           </Button>
+        {/if}
+      </div>
+    {/if}
+
+    {#if sessions.length > 0}
+      <div class="flex flex-col gap-1 pt-2">
+        <span class={cn(text.section, "px-1")}>{i18n.t("sessions.section")}</span>
+        <p class={cn(text.meta, "px-1 pb-1")}>{i18n.t("sessions.sectionHint")}</p>
+        {#each showAllSessions ? sessions : sessions.slice(0, 6) as session (sessionKey(session.agentId, session.sessionId))}
+          {@render sessionRow(session)}
+        {/each}
+        {#if sessions.length > 6}
+          <Button variant="ghost" size="sm" class="self-start" onclick={() => (showAllSessions = !showAllSessions)}>
+            {showAllSessions ? i18n.t("chat.showFewer") : i18n.t("chat.showAll", { n: String(sessions.length) })}
+          </Button>
+        {/if}
+        {#if unlisted.length > 0}
+          <p class={cn(text.meta, "px-1 pt-1")}>{i18n.t("sessions.unlisted", { agents: unlistedNames })}</p>
         {/if}
       </div>
     {/if}

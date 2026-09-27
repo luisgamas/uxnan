@@ -4,6 +4,7 @@
   import { onMount, untrack } from "svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
+  import { terminalSessions } from "$lib/state/terminalSessions.svelte";
   import { projectMirror } from "$lib/bridge/projectMirror.svelte";
   import { bridgeInstall } from "$lib/bridge/install.svelte";
   import { app } from "$lib/state/app.svelte";
@@ -85,6 +86,9 @@
     // store that mirrors its conversations for the chat tabs.
     void bridge.start();
     chat.start();
+    // Tell the bridge which agent sessions this window's terminals hold, and
+    // hand one over when asked (architecture/02a §5.8.19).
+    terminalSessions.start();
     projectMirror.start();
     void bridgeInstall.start(() => app.settings.bridge?.autoUpdate === true);
     // Answer the control surface's questions about what this window holds

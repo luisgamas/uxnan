@@ -6,9 +6,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Thread } from '$shared/models/thread';
 import { BridgeClientStore } from './client.svelte';
-import { ChatStore, normalizeCwd, type ReplicaChange } from './chat.svelte';
+import { ChatStore, normalizeCwd, sessionKey, type ReplicaChange } from './chat.svelte';
 import type { SyncChanges } from '$shared/models/sync';
-import { bridgeAgentForCommand, bridgeAgentLogo, isUserFacingAgent } from './agents';
+import {
+  bridgeAgentForCommand,
+  bridgeAgentLogo,
+  hookAgentForBridgeAgent,
+  isUserFacingAgent,
+} from './agents';
 
 function thread(id: string, cwd: string, updatedAt: number, extra: Partial<Thread> = {}): Thread {
   return {
@@ -362,6 +367,50 @@ describe('ChatStore', () => {
   });
 });
 
+describe('agent sessions (architecture/02a §5.8.19)', () => {
+  const hold = {
+    agentId: 'claude-code',
+    sessionId: 's-1',
+    holder: { kind: 'terminal' as const, name: 'Studio' },
+    heldAgoMs: 0,
+    busy: false,
+  };
+
+  it('mirrors the holds the bridge announces, and reloads them after a reconnect', async () => {
+    const { store } = harness({ 'agentSession/holds': { holds: [hold] } });
+    await store.loadHolds();
+    expect(store.holds.get(sessionKey('claude-code', 's-1'))).toEqual(hold);
+    expect(store.holdOf(thread('t', '/r', 1, { agentSessionId: 's-1' }))).toEqual(hold);
+    expect(store.holdOf(thread('t', '/r', 1))).toBeUndefined();
+
+    store.apply({ method: 'stream/agentSession/held', params: { agentId: 'claude-code', sessionId: 's-1' } });
+    expect(store.holds.size).toBe(0);
+    store.apply({ method: 'stream/agentSession/held', params: { agentId: 'codex', sessionId: 'c', hold: { ...hold, agentId: 'codex', sessionId: 'c' } } });
+    expect(store.holds.get('codex:c')?.agentId).toBe('codex');
+    // Malformed: ignored.
+    store.apply({ method: 'stream/agentSession/held', params: { sessionId: 'x' } });
+    expect(store.holds.size).toBe(1);
+  });
+
+  it('lists a folder’s sessions, continues one, and asks a terminal to let one go', async () => {
+    const { store, calls } = harness({
+      'agentSession/list': { sessions: [], unlisted: ['antigravity-cli'] },
+      'agentSession/requestHandoff': { outcome: 'released' },
+      'thread/start': thread('th-1', '/r', 1, { agentSessionId: 's-1' }),
+    });
+    expect((await store.listAgentSessions('/r')).unlisted).toEqual(['antigravity-cli']);
+    expect(await store.requestHandoff({ agentId: 'claude-code', sessionId: 's-1' })).toBe('released');
+    await store.startThread({ cwd: '/r', agentId: 'claude-code', agentSessionId: 's-1', title: 'Old work' });
+    expect(calls.find((c) => c.method === 'thread/start')?.params).toEqual({
+      agentId: 'claude-code',
+      cwd: '/r',
+      title: 'Old work',
+      agentSessionId: 's-1',
+    });
+    expect(calls.find((c) => c.method === 'agentSession/list')?.params).toEqual({ cwd: '/r' });
+  });
+});
+
 describe('helpers', () => {
   it('compares folders in one spelling', () => {
     expect(normalizeCwd('C:\\repo\\')).toBe('C:/repo');
@@ -385,5 +434,15 @@ describe('helpers', () => {
     expect(bridgeAgentForCommand('/usr/local/bin/agy')).toBe('antigravity-cli');
     expect(bridgeAgentForCommand('aider')).toBeNull();
     expect(bridgeAgentForCommand(undefined)).toBeNull();
+  });
+
+  it('maps a bridge agent back to the terminal agent that reopens its sessions', () => {
+    expect(hookAgentForBridgeAgent('claude-code')).toBe('claude');
+    expect(hookAgentForBridgeAgent('pi-agent')).toBe('pi');
+    expect(hookAgentForBridgeAgent('antigravity-cli')).toBe('antigravity');
+    // Zero's terminal UI cannot resume a session.
+    expect(hookAgentForBridgeAgent('zero')).toBeNull();
+    expect(hookAgentForBridgeAgent(undefined)).toBeNull();
+    expect(sessionKey('codex', 'abc')).toBe('codex:abc');
   });
 });

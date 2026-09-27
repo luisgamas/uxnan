@@ -81,9 +81,12 @@ export function repairedSession(s: CapturedAgentSession): CapturedAgentSession {
   return found ? { ...s, agent: found[1] } : s;
 }
 
-/** The shell command that reopens this session, or `null` when the agent has
- *  no verified resume entry point. */
-export function resumeCommand(s: CapturedAgentSession): string | null {
+/** How to reopen a session: the CLI to run and the arguments after it, or
+ *  `null` when the agent has no verified resume entry point. `file` is the
+ *  session file among the arguments, when it resumes by one (Pi). */
+export function resumeInvocation(
+  s: CapturedAgentSession,
+): { command: string; args: string[]; file?: string } | null {
   if (!ID_RE.test(s.id)) return null;
   switch (s.agent) {
     // Claude and Grok take the same shape: `--resume` reopens a conversation
@@ -91,28 +94,38 @@ export function resumeCommand(s: CapturedAgentSession): string | null {
     // other's case (see `pending`). Grok spells the rule out in its own help:
     // "must not already exist under the target session directory".
     case "claude":
-      return s.pending ? `claude --session-id ${s.id}` : `claude --resume ${s.id}`;
     case "grok":
-      return s.pending ? `grok --session-id ${s.id}` : `grok --resume ${s.id}`;
+      return { command: s.agent, args: [s.pending ? "--session-id" : "--resume", s.id] };
     case "codex":
-      return `codex resume ${s.id}`;
+      return { command: "codex", args: ["resume", s.id] };
     case "opencode":
-      return `opencode --session ${s.id}`;
+      return { command: "opencode", args: ["--session", s.id] };
     // Antigravity reopens a *conversation* — a hook-captured one, since agy 1.2
     // only resumes ids it created itself (see `agentSessionId.ts`). A `pending`
     // one can only come from a tab saved by an older release; claiming it just
     // starts a fresh conversation, which is all an unused one ever was.
     case "antigravity":
-      return `agy --conversation ${s.id}`;
+      return { command: "agy", args: ["--conversation", s.id] };
     case "pi": {
       // Pi resumes by session file when one was reported, else by (partial) id.
       // For an id we named that Pi hasn't written yet, `--session-id` is the one
       // that "creates it if missing" (its own help), so it covers both cases.
       const file = safeFile(s.file);
-      if (s.pending) return `pi --session-id ${s.id}`;
-      return file ? `pi --session "${file}"` : `pi --session ${s.id}`;
+      if (s.pending) return { command: "pi", args: ["--session-id", s.id] };
+      return file
+        ? { command: "pi", args: ["--session", file], file }
+        : { command: "pi", args: ["--session", s.id] };
     }
     default:
       return null;
   }
+}
+
+/** The shell command that reopens this session, or `null` when the agent has
+ *  no verified resume entry point. A session file is double-quoted (it was
+ *  checked to hold no quote or control character). */
+export function resumeCommand(s: CapturedAgentSession): string | null {
+  const r = resumeInvocation(s);
+  if (!r) return null;
+  return [r.command, ...r.args.map((a) => (a === r.file ? `"${a}"` : a))].join(" ");
 }
