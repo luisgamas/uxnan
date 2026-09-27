@@ -12,6 +12,7 @@ import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/repositories/i_bridge_replica_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/client_presence.dart';
 import 'package:uxnan/domain/value_objects/pending_action.dart';
@@ -80,6 +81,8 @@ class BridgeReplica {
       BehaviorSubject.seeded(const []);
   final BehaviorSubject<BridgeUpdate?> _bridgeUpdate =
       BehaviorSubject.seeded(null);
+  final BehaviorSubject<Map<String, AgentSessionHold>> _holds =
+      BehaviorSubject.seeded(const {});
 
   /// The cursor of the connected PC, as last applied (in memory).
   ReplicaCursor? _cursor;
@@ -129,6 +132,56 @@ class BridgeReplica {
     return update;
   }
 
+  /// The agent sessions the PC's desktop terminals hold right now, by
+  /// `agentId:sessionId` (architecture/02a §5.8.19). Live, not revisioned:
+  /// reloaded on every connection, then followed.
+  Stream<Map<String, AgentSessionHold>> get holdsStream => _holds.stream;
+
+  /// Every agent's own sessions in [cwd], as the bridge lists them
+  /// (`agentSession/list`). Throws the bridge's [RpcError].
+  Future<AgentSessionList> listAgentSessions(String cwd) async {
+    final response = await _sendRequest('agentSession/list', {'cwd': cwd});
+    final error = response.error;
+    if (error != null) throw error;
+    return AgentSessionList.fromJson(response.result);
+  }
+
+  /// Asks the terminal holding a session to let it go
+  /// (`agentSession/requestHandoff`). Throws the bridge's [RpcError].
+  Future<AgentSessionHandoffOutcome> requestHandoff({
+    required String agentId,
+    required String sessionId,
+  }) async {
+    final response = await _sendRequest(
+      'agentSession/requestHandoff',
+      {'agentId': agentId, 'sessionId': sessionId},
+    );
+    final error = response.error;
+    if (error != null) throw error;
+    final result = response.result;
+    return AgentSessionHandoffOutcome.fromWire(
+      result is Map ? result['outcome'] : null,
+    );
+  }
+
+  Future<void> _loadHolds() async {
+    try {
+      final response = await _sendRequest('agentSession/holds', null);
+      final result = response.result;
+      if (response.error != null || result is! Map) return;
+      final holds = result['holds'];
+      _holds.add({
+        if (holds is List)
+          for (final raw in holds)
+            if (AgentSessionHold.fromJson(raw) case final AgentSessionHold h)
+              h.key: h,
+      });
+    } on Object catch (error, stackTrace) {
+      // An older bridge has no holds to tell; nothing is held then.
+      AppLogger.warn('agentSession/holds failed', error, stackTrace);
+    }
+  }
+
   /// Fires when the PC's installed agents changed (re-read `agent/list`).
   Stream<void> get agentsChanged => _agentsChanged.stream;
 
@@ -146,8 +199,10 @@ class BridgeReplica {
     if (phase == ConnectionPhase.connected &&
         was != ConnectionPhase.connected) {
       unawaited(sync());
+      unawaited(_loadHolds());
     } else if (phase != ConnectionPhase.connected) {
       _presence.add(const []);
+      _holds.add(const {});
       // A new connection may be a new bridge: its `bridge/status` stands
       // until it says otherwise.
       _bridgeUpdate.add(null);
@@ -334,6 +389,15 @@ class BridgeReplica {
         _applyDevices(devices);
       case AgentsUpdatedEvent():
         _agentsChanged.add(null);
+      case AgentSessionHeldEvent(:final agentId, :final sessionId, :final hold):
+        final next = Map<String, AgentSessionHold>.of(_holds.value);
+        final key = agentSessionKey(agentId, sessionId);
+        if (AgentSessionHold.fromJson(hold) case final AgentSessionHold h) {
+          next[key] = h;
+        } else {
+          next.remove(key);
+        }
+        _holds.add(next);
       case BridgeUpdatedEvent(:final update):
         if (BridgeUpdate.fromJson(update) case final BridgeUpdate next) {
           _bridgeUpdate.add(next);
@@ -485,6 +549,7 @@ class BridgeReplica {
     await _devices.close();
     await _presence.close();
     await _bridgeUpdate.close();
+    await _holds.close();
     await _home.close();
     await _agentsChanged.close();
   }

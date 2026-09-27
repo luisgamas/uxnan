@@ -8,6 +8,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/client_kind.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/pending_action.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -109,6 +110,32 @@ void main() {
             'phase': 'updating',
             'targetVersion': '0.0.29',
           },
+        'agentSession/holds' => {
+            'holds': [
+              {
+                'agentId': 'claude-code',
+                'sessionId': 's-1',
+                'holder': {'kind': 'terminal', 'name': 'Studio'},
+                'heldAgoMs': 0,
+                'busy': false,
+                'threadId': 'th-1',
+              },
+            ],
+          },
+        'agentSession/list' => {
+            'sessions': [
+              {
+                'agentId': 'codex',
+                'sessionId': 'c-1',
+                'cwd': params?['cwd'],
+                'title': 'Fix the login',
+                'updatedAgoMs': 60000,
+              },
+              {'agentId': 'codex', 'cwd': '/broken'},
+            ],
+            'unlisted': ['antigravity-cli'],
+          },
+        'agentSession/requestHandoff' => {'outcome': 'busy'},
         'bridge/checkForUpdate' => {
             'version': '0.0.28',
             'latestVersion': '0.0.30',
@@ -434,5 +461,61 @@ void main() {
     deviceId = null;
     await replica.sync();
     expect(calls, isEmpty);
+  });
+
+  group('agent sessions (architecture/02a §5.8.19)', () {
+    test('the holds are loaded on connecting, followed, and cleared offline',
+        () async {
+      phases.add(ConnectionPhase.connected);
+      await _settle();
+      expect(calls.map((c) => c.$1), contains('agentSession/holds'));
+      var holds = await replica.holdsStream.first;
+      expect(holds['claude-code:s-1']?.holderName, 'Studio');
+      expect(holds['claude-code:s-1']?.threadId, 'th-1');
+
+      events
+        ..add(
+          const AgentSessionHeldEvent(
+            agentId: 'codex',
+            sessionId: 'c-2',
+            hold: {
+              'agentId': 'codex',
+              'sessionId': 'c-2',
+              'holder': {'kind': 'terminal', 'name': 'Studio'},
+              'heldAgoMs': 0,
+              'busy': true,
+            },
+          ),
+        )
+        ..add(
+          const AgentSessionHeldEvent(
+            agentId: 'claude-code',
+            sessionId: 's-1',
+          ),
+        );
+      await _settle();
+      holds = await replica.holdsStream.first;
+      expect(holds.keys, ['codex:c-2']);
+      expect(holds['codex:c-2']?.busy, isTrue);
+
+      phases.add(ConnectionPhase.disconnected);
+      await _settle();
+      expect(await replica.holdsStream.first, isEmpty);
+    });
+
+    test("lists a folder's sessions and asks a terminal to let one go",
+        () async {
+      final list = await replica.listAgentSessions('/repo');
+      expect(list.sessions.single.title, 'Fix the login');
+      expect(list.sessions.single.updatedAgo, const Duration(minutes: 1));
+      expect(list.unlisted, ['antigravity-cli']);
+      expect(calls.last.$2, {'cwd': '/repo'});
+
+      final outcome =
+          await replica.requestHandoff(agentId: 'codex', sessionId: 'c-1');
+      expect(outcome, AgentSessionHandoffOutcome.busy);
+      expect(outcome.isFree, isFalse);
+      expect(calls.last.$2, {'agentId': 'codex', 'sessionId': 'c-1'});
+    });
   });
 }

@@ -39,6 +39,7 @@ import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/domain/value_objects/client_presence.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
@@ -208,6 +209,12 @@ final bridgeSupportsQueueProvider = Provider<bool>((ref) {
 final bridgeSupportsManagedWorktreesProvider = Provider<bool>((ref) {
   return ref.watch(bridgeStatusProvider).value?.supportsManagedWorktrees ??
       false;
+});
+
+/// Whether the connected bridge knows agent sessions
+/// (`features.agentSessions`).
+final bridgeSupportsAgentSessionsProvider = Provider<bool>((ref) {
+  return ref.watch(bridgeStatusProvider).value?.supportsAgentSessions ?? false;
 });
 
 /// Tracks the bridge-update notices the user dismissed (by
@@ -927,6 +934,42 @@ final pairedPhonesProvider = StreamProvider<List<PairedPhone>>(
 /// Who is connected to the connected PC's bridge right now.
 final bridgePresenceProvider = StreamProvider<List<ClientPresence>>(
   (ref) => ref.watch(bridgeReplicaProvider).presenceStream,
+);
+
+/// The agent sessions the connected PC's desktop terminals hold, by
+/// `agentId:sessionId` (architecture/02a §5.8.19).
+final agentSessionHoldsProvider = StreamProvider<Map<String, AgentSessionHold>>(
+  (ref) => ref.watch(bridgeReplicaProvider).holdsStream,
+);
+
+/// The terminal holding a conversation's session, if one does: while it
+/// holds it, no turn runs here and the conversation offers to take it back.
+final threadHoldProvider =
+    Provider.family<AgentSessionHold?, String>((ref, threadId) {
+  final holds = ref.watch(agentSessionHoldsProvider).value ?? const {};
+  for (final hold in holds.values) {
+    if (hold.threadId == threadId) return hold;
+  }
+  return null;
+});
+
+/// Every agent's own sessions in a folder of the connected PC, that no
+/// conversation continues yet — the ones a new conversation can pick up.
+final agentSessionsProvider =
+    FutureProvider.autoDispose.family<AgentSessionList, String>(
+  (ref, cwd) async {
+    if (!ref.watch(bridgeSupportsAgentSessionsProvider)) {
+      return const AgentSessionList(sessions: [], unlisted: []);
+    }
+    final list = await ref.watch(bridgeReplicaProvider).listAgentSessions(cwd);
+    return AgentSessionList(
+      sessions: [
+        for (final s in list.sessions)
+          if (s.threadId == null) s,
+      ],
+      unlisted: list.unlisted,
+    );
+  },
 );
 
 /// Whether Uxnan Desktop is connected to the connected PC's bridge.

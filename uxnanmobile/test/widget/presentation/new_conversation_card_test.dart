@@ -5,6 +5,7 @@ import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/project.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
@@ -13,9 +14,14 @@ Widget _wrap({
   required bool requiresLogin,
   List<AgentDescriptor>? agents,
   List<AgentModel> models = const [],
+  AgentSessionList? sessions,
 }) {
   return ProviderScope(
     overrides: [
+      if (sessions != null) ...[
+        agentSessionsProvider.overrideWith((ref, cwd) async => sessions),
+        agentSessionHoldsProvider.overrideWith((ref) => Stream.value(const {})),
+      ],
       projectsProvider.overrideWith(
         (ref) => Stream.value(
           const [
@@ -339,5 +345,49 @@ void main() {
         reason: 'the form stretched across the whole window',
       );
     });
+  });
+
+  // A session a person had in a terminal on the PC (or the agent's app) that
+  // no conversation continues yet can be picked up here; one open in a
+  // terminal says where (architecture/02a §5.8.19).
+  testWidgets("offers the folder's agent sessions to continue", (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        requiresLogin: false,
+        sessions: const AgentSessionList(
+          sessions: [
+            AgentSessionSummary(
+              agentId: 'claude-code',
+              sessionId: 's-1',
+              cwd: '/app',
+              updatedAgo: Duration(minutes: 5),
+              title: 'Payment flow refactor',
+              hold: AgentSessionHold(
+                agentId: 'claude-code',
+                sessionId: 's-1',
+                holderName: 'Studio',
+                busy: false,
+              ),
+            ),
+            AgentSessionSummary(
+              agentId: 'codex',
+              sessionId: 'c-1',
+              cwd: '/app',
+              updatedAgo: Duration(days: 2),
+            ),
+          ],
+          unlisted: ['antigravity-cli'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Payment flow refactor'), 200);
+    expect(find.text('Or continue a session in this folder'), findsOneWidget);
+    expect(find.text('Payment flow refactor'), findsOneWidget);
+    expect(find.text('In a terminal on Studio'), findsOneWidget);
+    expect(find.text('Untitled session'), findsOneWidget);
+    expect(find.textContaining("can't list its sessions"), findsOneWidget);
   });
 }

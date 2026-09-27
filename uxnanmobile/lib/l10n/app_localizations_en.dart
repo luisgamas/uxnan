@@ -1326,6 +1326,66 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newThreadFailed => 'Couldn\'t start the conversation';
 
   @override
+  String get sessionsSection => 'Or continue a session in this folder';
+
+  @override
+  String get sessionsSectionHint =>
+      'Conversations your agents had here outside Uxnan — in a terminal on the PC or their own app. Pick one to continue it here.';
+
+  @override
+  String get sessionsPickHint => 'Continue this session as a conversation';
+
+  @override
+  String get sessionsUntitled => 'Untitled session';
+
+  @override
+  String get sessionsShowFewer => 'Show fewer';
+
+  @override
+  String sessionsShowAll(int count) {
+    return 'Show all $count';
+  }
+
+  @override
+  String sessionsUnlisted(String agents) {
+    return '$agents can\'t list its sessions: continue one from the terminal it runs in.';
+  }
+
+  @override
+  String sessionsInTerminal(String name) {
+    return 'In a terminal on $name';
+  }
+
+  @override
+  String sessionsWorkingInTerminal(String name) {
+    return 'Working in a terminal on $name';
+  }
+
+  @override
+  String get sessionHandoffBusy =>
+      'The agent is working in its terminal. Try again when it\'s done.';
+
+  @override
+  String get sessionHandoffDeclined => 'The terminal kept the session.';
+
+  @override
+  String get sessionHandoffUnreachable =>
+      'Couldn\'t reach the PC\'s desktop holding the session.';
+
+  @override
+  String sessionHeldBanner(String name) {
+    return 'This conversation is open in a terminal on $name.';
+  }
+
+  @override
+  String sessionHeldBannerWorking(String name) {
+    return 'This conversation is working in a terminal on $name.';
+  }
+
+  @override
+  String get sessionContinueHere => 'Continue here';
+
+  @override
   String get newThreadLoadFailed => 'Couldn\'t load from the bridge';
 
   @override

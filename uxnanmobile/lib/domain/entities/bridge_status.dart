@@ -16,6 +16,7 @@ class BridgeStatus extends Equatable {
     this.update,
     this.supportsMessageQueue = false,
     this.supportsManagedWorktrees = false,
+    this.supportsAgentSessions = false,
   });
 
   /// Reconstructs a [BridgeStatus] from a `bridge/status` result.
@@ -34,6 +35,8 @@ class BridgeStatus extends Equatable {
       supportsMessageQueue: features is Map && features['messageQueue'] == true,
       supportsManagedWorktrees:
           features is Map && features['managedWorktrees'] == true,
+      supportsAgentSessions:
+          features is Map && features['agentSessions'] == true,
     );
   }
 
@@ -69,6 +72,12 @@ class BridgeStatus extends Equatable {
   /// deriving one as its fallback.
   final bool supportsManagedWorktrees;
 
+  /// Whether the bridge lists every agent's sessions in a folder, continues
+  /// one as a conversation, and knows which ones a desktop terminal holds
+  /// (`features.agentSessions`, architecture/02a §5.8.19). False otherwise:
+  /// then the phone offers none of it.
+  final bool supportsAgentSessions;
+
   @override
   List<Object?> get props => [
         relayConnected,
@@ -78,5 +87,6 @@ class BridgeStatus extends Equatable {
         update,
         supportsMessageQueue,
         supportsManagedWorktrees,
+        supportsAgentSessions,
       ];
 }

@@ -5,10 +5,13 @@ import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
+import 'package:uxnan/presentation/screens/threads/thread_tile.dart'
+    show activityTimeLabel;
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -22,6 +25,7 @@ import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/session_handoff_message.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Wire ids of agents hidden from the new-conversation picker even when the
@@ -106,6 +110,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
 
   bool _modelTouched = false;
   bool _starting = false;
+
+  /// The session being picked up (`agentId:sessionId`), while it is.
+  String? _pickingSession;
 
   /// Whether to spin up an isolated worktree for this conversation; when on, a
   /// `git/createWorktree` runs before the thread starts and the thread's working
@@ -220,6 +227,50 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
             ),
           ),
         );
+    }
+  }
+
+  /// Continue one of the agents' own sessions in this folder as the new
+  /// conversation (architecture/02a §5.8.19). One open in a terminal on the PC
+  /// is asked for first — the desktop closes the agent there once it is idle —
+  /// so the session never has two writers.
+  Future<void> _continueSession(AgentSessionSummary session) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _pickingSession = session.key);
+    try {
+      final holds = ref.read(agentSessionHoldsProvider).value ?? const {};
+      if (holds[session.key] != null || session.hold != null) {
+        final outcome = await ref.read(bridgeReplicaProvider).requestHandoff(
+              agentId: session.agentId,
+              sessionId: session.sessionId,
+            );
+        if (!outcome.isFree) {
+          if (!mounted) return;
+          messenger
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(content: Text(handoffMessage(l10n, outcome))),
+            );
+          return;
+        }
+      }
+      final coordinator = ref.read(sessionCoordinatorProvider);
+      final thread = await ref.read(threadManagerProvider).startThread(
+            agentId: session.agentId,
+            cwd: session.cwd,
+            title: session.title,
+            agentSessionId: session.sessionId,
+            deviceId: coordinator.connectedDevice?.macDeviceId,
+          );
+      if (mounted) Navigator.of(context).pop(thread.id);
+    } on Object {
+      if (!mounted) return;
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.newThreadFailed)));
+    } finally {
+      if (mounted) setState(() => _pickingSession = null);
     }
   }
 
@@ -394,6 +445,13 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         onToggle: (v) => setState(() => _useWorktree = v),
                         onToggleManaged: (v) =>
                             setState(() => _worktreeManaged = v),
+                      ),
+                      _PickUpSessions(
+                        cwd: workingCwd,
+                        picking: _pickingSession,
+                        onPick: _starting || _pickingSession != null
+                            ? null
+                            : _continueSession,
                       ),
                     ],
                   ],
@@ -1107,6 +1165,210 @@ class _Empty extends StatelessWidget {
       child: Text(
         message,
         style: textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+/// The agents' own sessions in the chosen folder that no conversation
+/// continues yet — started in a terminal on the PC, or in the agent's own app —
+/// to pick up as this conversation. One open in a terminal says so.
+class _PickUpSessions extends ConsumerStatefulWidget {
+  const _PickUpSessions({
+    required this.cwd,
+    required this.picking,
+    required this.onPick,
+  });
+
+  final String cwd;
+  final String? picking;
+  final ValueChanged<AgentSessionSummary>? onPick;
+
+  @override
+  ConsumerState<_PickUpSessions> createState() => _PickUpSessionsState();
+}
+
+class _PickUpSessionsState extends ConsumerState<_PickUpSessions> {
+  static const int _collapsed = 5;
+  bool _showAll = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final list = ref.watch(agentSessionsProvider(widget.cwd)).value;
+    final holds = ref.watch(agentSessionHoldsProvider).value ?? const {};
+    if (list == null || (list.sessions.isEmpty && list.unlisted.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+    final agents = ref.watch(agentsProvider).value ?? const [];
+    String nameOf(String id) =>
+        agents.firstWhereOrNull((a) => a.agentId == id)?.displayName ??
+        AgentVisuals.labelFor(AgentIdParsing.fromWireId(id));
+    final shown =
+        _showAll ? list.sessions : list.sessions.take(_collapsed).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: UxnanSpacing.lg),
+        _SectionHeader(label: l10n.sessionsSection),
+        if (list.sessions.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+            child: Text(
+              l10n.sessionsSectionHint,
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ExpressiveCardGroup(
+            count: shown.length,
+            itemBuilder: (context, index, position) {
+              final session = shown[index];
+              return _SessionCard(
+                session: session,
+                hold: holds[session.key] ?? session.hold,
+                position: position,
+                busy: widget.picking == session.key,
+                onTap: widget.onPick == null
+                    ? null
+                    : () => widget.onPick!(session),
+              );
+            },
+          ),
+          if (list.sessions.length > _collapsed)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(
+                  _showAll
+                      ? l10n.sessionsShowFewer
+                      : l10n.sessionsShowAll(list.sessions.length),
+                ),
+              ),
+            ),
+        ],
+        if (list.unlisted.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UxnanSpacing.sm),
+            child: Text(
+              l10n.sessionsUnlisted(list.unlisted.map(nameOf).join(', ')),
+              style: textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One session to pick up: its agent, its name, how long ago it changed, and
+/// whether a terminal on the PC has it open right now.
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.session,
+    required this.hold,
+    required this.position,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final AgentSessionSummary session;
+  final AgentSessionHold? hold;
+  final CardGroupPosition position;
+  final bool busy;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final hold = this.hold;
+    final when = activityTimeLabel(DateTime.now().subtract(session.updatedAgo));
+    return Semantics(
+      button: true,
+      label: l10n.sessionsPickHint,
+      child: ExpressiveCard(
+        position: position,
+        onTap: onTap,
+        color: colors.surfaceContainer,
+        child: Row(
+          children: [
+            _AgentLeading(agentId: session.agentId),
+            const SizedBox(width: UxnanSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.title ?? l10n.sessionsUntitled,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleSmall?.copyWith(
+                      color: session.title == null
+                          ? colors.onSurfaceVariant
+                          : colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: UxnanSpacing.xs),
+                  Row(
+                    children: [
+                      if (hold != null) ...[
+                        UxIcon(
+                          UxIcons.terminal,
+                          size: 14,
+                          color: hold.busy ? colors.tertiary : colors.primary,
+                        ),
+                        const SizedBox(width: UxnanSpacing.xs),
+                        Flexible(
+                          child: Text(
+                            hold.busy
+                                ? l10n.sessionsWorkingInTerminal(
+                                    hold.holderName,
+                                  )
+                                : l10n.sessionsInTerminal(hold.holderName),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.labelSmall?.copyWith(
+                              color:
+                                  hold.busy ? colors.tertiary : colors.primary,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '  ·  ',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      Text(
+                        when,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.sm),
+            if (busy)
+              const PolygonLoader()
+            else
+              UxIcon(
+                UxIcons.chevronRight,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+          ],
+        ),
       ),
     );
   }

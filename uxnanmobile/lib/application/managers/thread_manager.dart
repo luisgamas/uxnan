@@ -938,9 +938,13 @@ class ThreadManager {
     String? cwd,
     String? deviceId,
     String? worktreePath,
+    String? agentSessionId,
   }) async {
     // The folder decides the project (the bridge registers it); a project id
-    // only stands in for a folder when none is given.
+    // only stands in for a folder when none is given. With [agentSessionId]
+    // the conversation continues that session of the agent — one started in a
+    // terminal, say (architecture/02a §5.8.19); the bridge answers with the
+    // conversation that already continues it, when one does.
     final response = await _sendRequest('thread/start', {
       if (projectId != null && (cwd == null || cwd.isEmpty))
         'projectId': projectId,
@@ -948,6 +952,7 @@ class ThreadManager {
       if (agentId != null) 'agentId': agentId,
       if (model != null && model.isNotEmpty) 'model': model,
       if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
+      if (agentSessionId != null) 'agentSessionId': agentSessionId,
     });
     // The bridge MUST return the created thread (with its own id). Do NOT
     // fabricate a local id on failure: a phantom thread the bridge never
@@ -2181,6 +2186,7 @@ class ThreadManager {
             DevicesUpdatedEvent() ||
             AgentsUpdatedEvent() ||
             BridgeUpdatedEvent() ||
+            AgentSessionHeldEvent() ||
             UnknownDomainEvent():
         break;
     }
@@ -2707,6 +2713,7 @@ class ThreadManager {
         DevicesUpdatedEvent() ||
         AgentsUpdatedEvent() ||
         BridgeUpdatedEvent() ||
+        AgentSessionHeldEvent() ||
         UnknownDomainEvent() =>
           null,
       };

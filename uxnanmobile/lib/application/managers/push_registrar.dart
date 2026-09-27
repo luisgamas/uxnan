@@ -219,6 +219,7 @@ class PushRegistrar {
             DevicesUpdatedEvent() ||
             AgentsUpdatedEvent() ||
             BridgeUpdatedEvent() ||
+            AgentSessionHeldEvent() ||
             GitProgressEvent() ||
             UnknownDomainEvent():
         break;

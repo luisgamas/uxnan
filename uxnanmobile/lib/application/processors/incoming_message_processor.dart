@@ -102,6 +102,14 @@ class IncomingMessageProcessor {
         ),
       'stream/agents/updated' => const AgentsUpdatedEvent(),
       'stream/bridge/updated' => BridgeUpdatedEvent(update: params['update']),
+      'stream/agentSession/held' =>
+        params['agentId'] is String && params['sessionId'] is String
+            ? AgentSessionHeldEvent(
+                agentId: params['agentId'] as String,
+                sessionId: params['sessionId'] as String,
+                hold: params['hold'],
+              )
+            : const UnknownDomainEvent(method: 'stream/agentSession/held'),
       'stream/devices/updated' => DevicesUpdatedEvent(
           devices: params['devices'] is List
               ? params['devices'] as List<Object?>
