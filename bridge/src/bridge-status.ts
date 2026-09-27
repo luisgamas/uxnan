@@ -45,6 +45,9 @@ const BRIDGE_FEATURES = {
   // Replica sync, the persistent project registry, shared settings, presence
   // and `Turn.seq` ordering (architecture/02a §5.8.17).
   sync: true,
+  // Every agent's sessions in a folder, conversations that continue one, and
+  // the sessions a desktop terminal holds (architecture/02a §5.8.19).
+  agentSessions: true,
 } as const;
 
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {

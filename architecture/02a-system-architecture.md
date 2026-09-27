@@ -221,8 +221,14 @@ interface IAgentAdapter {
   listCommands?(cwd?: string): Promise<AgentCommand[]>;         // name, description?, argumentHint?, source, headlessSupported?
   expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;  // solo custom prompt-template agents; nativos (Claude/ACP) no lo implementan
 
-  // Native session identity used for completed-turn convergence in turn/list.
-  nativeSessionId?(threadId: string): string | null;
+  // Native session identity: the id the CLI resumes and its transcript is named
+  // after (completed-turn convergence in turn/list, continuity after a restart).
+  // Held once, in BaseAgentAdapter, for every adapter.
+  nativeSessionId(threadId: string): string | undefined;
+  // Continue a conversation in a native session this process did not open (the
+  // stored id after a bridge restart, or a terminal's session taken over). Never
+  // replaces a live one, never takes back an id the CLI refused to resume.
+  adoptNativeSession(threadId: string, sessionId: string): void;
 
   // Git
   gitStatus(cwd: string): Promise<GitRepoStatus>;
@@ -2097,9 +2103,15 @@ another client attached to the same native session converge into Uxnan.
 `AgentManager` persists it through `ThreadStore.setAgentSession`. The mirror of
 that — `IAgentAdapter.adoptNativeSession(threadId, sessionId)`, offered before a
 turn runs and only when the stored session belongs to the same agent — hands the
-id back after a bridge restart, so the conversation continues in the SAME agent
-session rather than opening a new one behind a history the phone still shows.
-Reconciliation then follows these rules:
+id back after a bridge restart (or a self-update), so the conversation continues
+in the SAME agent session rather than opening a new one behind a history the
+phone still shows. Every adapter implements it through the one map
+`BaseAgentAdapter` keeps (verified 2026-09-27 against all seven CLIs: each one
+recalled a word from before the restart). A stored session the CLI no longer
+has is refused once — the turn runs in a fresh session instead of failing — and
+never adopted again for that thread; a fork does not inherit the original's
+session (`thread/fork` drops `agentSessionId`), so two conversations never write
+into one transcript. Reconciliation then follows these rules:
 
 - bridge-owned turns keep their UUID and remain authoritative for ordered
   segments, queue state, usage and delivery status;
@@ -2850,6 +2862,74 @@ Un bridge sin `update` en `bridge/status` es anterior a esta funcion y por lo
 tanto mas antiguo que el cliente: el desktop lo actualiza con su instalador npm
 (la unica ruta propia que conserva, junto con instalarlo cuando no hay bridge) y
 el telefono pide actualizarlo en la PC.
+
+#### 5.8.19 Sesiones de agente: retomar cualquier sesion y la terminal como escritor (2026-09)
+
+Una conversacion con un agente no siempre nace en Uxnan: la persona abre el CLI
+en una terminal del desktop, o en su propia terminal, y mas tarde quiere
+seguirla como chat — en el desktop o en el telefono. El bridge es el **dueño** de
+las dos cosas que eso necesita, y todo cliente se las pregunta a el:
+
+**El catalogo (`agent/sessions { cwd, agentId? }`).** Cada adaptador lista
+las sesiones de su CLI en una carpeta por la superficie que el CLI ofrece
+(`IAgentAdapter.listNativeSessions`), medido el 2026-09-27:
+
+| Agente | Como lista | Como distingue lo de una persona |
+|---|---|---|
+| Claude Code | su store (`~/.claude/projects/<cwd>/*.jsonl`), solo cabeza y cola (`cwd`, `entrypoint`, primer prompt, `ai-title`) | `entrypoint: cli` (su TUI) frente a `sdk-cli` (`-p`) |
+| Codex | app-server `thread/list { cwd, sortKey: updated_at }` (nombre, `preview`) | `originator` distinto del nombre de cliente del bridge |
+| OpenCode | su servidor: `GET /api/session?directory=` (2.x) / `GET /session` (1.x) | el bridge titula sus sesiones con el id del hilo (UUID) |
+| pi | su store (`<PI_CODING_AGENT_DIR o ~/.pi/agent>/sessions/--<cwd>--/`), cabecera `{type:'session', cwd}` | no lo registra: todas cuentan |
+| Grok | su store (`~/.grok/sessions/<cwd codificado>/<id>/updates.jsonl`): su `session/list` no trae titulo ni separa sesiones vacias | todas cuentan; una sin prompt no es sesion |
+| Zero | ACP `session/list { cwd }` (anuncia `sessionCapabilities.list`) | Zero titula `ACP session` las abiertas por ACP |
+| Antigravity | no tiene listado | se retoma solo desde la terminal (id capturado por hook) → `unlisted` |
+
+El bridge anade lo que sabe: la conversacion que continua cada sesion
+(`threadId`) y la terminal que la retiene (`hold`), convierte las fechas en
+edades (`updatedAgoMs`) y deja fuera lo que no fue de una persona: una sesion
+sin interfaz solo aparece si una conversacion la continua, y los encargos de un
+solo uso de Uxnan (nombrar, mensajes de commit, cuerpos de PR) nunca, por como
+abre su prompt (`shared/src/agents/one-shot.ts`; donde el CLI lo permite ni
+siquiera dejan sesion: `claude --no-session-persistence`, `codex exec
+--ephemeral`, `pi --no-session`). Una sesion retenida en esa carpeta aparece
+aunque su CLI no sepa listarla.
+
+**Retomar (`thread/start { agentId, agentSessionId, cwd }`).** El hilo nace
+guardando la sesion (`agentSessionId`): su primer turno la continua (adopcion,
+§5.8.8) y `turn/list` importa su historial por la convergencia de siempre. Una
+sesion tiene una sola conversacion: si ya hay una que la continua, `thread/start`
+devuelve esa. El titulo que traiga es provisional (`titleSource: prompt`).
+
+**La terminal como escritor (`agent/hold` / `release`).** Una sesion de
+un CLI tiene un solo escritor. Cuando una terminal del desktop tiene el agente
+abierto, el desktop lo dice (solo por el canal local, §5.8.15; `busy` cuando el
+agente trabaja) y el bridge: no corre turnos en ella (`turn/send` → `-32010
+SessionHeld` con la retencion en `data`), suelta el proceso residente que
+guardaba para la conversacion (pi, Antigravity; nunca cancela un turno) y avisa
+a todos (`stream/agent/held`). Las retenciones viven solo en memoria y
+pertenecen a la conexion del desktop: se van con ella (las terminales se cierran
+con la app) y el desktop que reconecta las declara de nuevo. Un cliente que se
+perdio avisos pregunta `agent/holds`.
+
+**El relevo (`agent/requestHandoff`).** Cualquier cliente pide una sesion
+retenida: si esta libre → `notHeld`; si el agente trabaja → `busy`; si no, el
+bridge le pregunta **solo** al desktop que la retiene
+(`stream/agent/handoffRequested { requestId, from }`), que cierra el
+agente en su terminal, suelta la retencion y responde
+(`agent/handoffAnswer`: `released` | `busy` | `declined`); sin respuesta
+en 20 s → `unreachable`. Nunca se simulan teclas en la terminal.
+
+**Clientes.** Uxnan Desktop reporta las retenciones desde sus pestanas de
+terminal (`terminalSessions.svelte.ts`: una sesion capturada por hook, viva y de
+un agente que el bridge conduce), las repite al reconectar, atiende
+`handoffRequested` cerrando el agente con una senal a su proceso
+(`pty_stop_agent`, nunca teclas; el shell y la pestana quedan) y ofrece
+*Continuar como chat* en la pestana y *Abrir en terminal* en el chat
+(`app.launchAgent` con `resume`). Ambas apps listan las sesiones de la carpeta
+al empezar una conversacion (desktop: el inicio del chat; movil: *Nueva
+conversacion*), muestran la retencion sobre el compositor con *Continuar aqui*
+(`requestHandoff`) y lo ofrecen solo si el bridge anuncia
+`features.agentSessions`.
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 

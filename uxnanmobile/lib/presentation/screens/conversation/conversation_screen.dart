@@ -13,6 +13,7 @@ import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
@@ -57,6 +58,7 @@ import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
 import 'package:uxnan/presentation/widgets/ne_pill_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/session_handoff_message.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// How many images one turn may carry. Attachments travel inline (base64) on
@@ -109,6 +111,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // the State, so it resets every time the conversation is (re)opened — the
   // banner reappears on re-entry unless hidden permanently in settings.
   bool _autonomousBannerDismissed = false;
+
+  // Asking the PC's terminal for this conversation's session, while it is.
+  bool _takingBack = false;
   // Persistent turn context (reasoning / approval) starts folded to one
   // chevron for a quiet conversation surface; tapping the chevron expands it.
   bool _turnControlsExpanded = false;
@@ -620,6 +625,38 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
+  /// Ask the PC's terminal holding this conversation's session to let it go,
+  /// so it continues here. The hold disappears (and the composer comes back)
+  /// when the desktop has closed the agent.
+  Future<void> _continueHere(AgentSessionHold hold) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _takingBack = true);
+    try {
+      final outcome = await ref.read(bridgeReplicaProvider).requestHandoff(
+            agentId: hold.agentId,
+            sessionId: hold.sessionId,
+          );
+      if (!outcome.isFree && mounted) {
+        messenger
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(content: Text(handoffMessage(l10n, outcome))),
+          );
+      }
+    } on Object {
+      if (mounted) {
+        messenger
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(content: Text(l10n.sessionHandoffUnreachable)),
+          );
+      }
+    } finally {
+      if (mounted) setState(() => _takingBack = false);
+    }
+  }
+
   Future<void> _pickApprovalMode() async {
     final mode = await ApprovalModeSheet.show(context, _approvalMode);
     if (mode == null || !mounted || mode == _approvalMode) return;
@@ -955,6 +992,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
     // The thread's message queue, as the bridge reports it.
     final queue = ref.watch(threadQueueForProvider(widget.threadId));
+    // A terminal on the PC holding this conversation's session is its writer
+    // for now (architecture/02a §5.8.19): the composer waits.
+    final hold = ref.watch(threadHoldProvider(widget.threadId));
     // Sending now would QUEUE rather than start: either a turn is in flight, or
     // messages sent earlier are still waiting (a held queue keeps its order —
     // jumping ahead of them would run this one out of turn).
@@ -1227,6 +1267,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                               .clearQueue(widget.threadId),
                         ),
                       ),
+                    if (hold != null)
+                      _Centered(
+                        child: _SessionHeldBanner(
+                          hold: hold,
+                          busy: _takingBack,
+                          onContinueHere: () => _continueHere(hold),
+                        ),
+                      ),
                     if (requiresLogin && thread != null)
                       _Centered(
                         child: _LoginRequiredBanner(agentId: thread.agentId),
@@ -1306,7 +1354,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       // text just handed back from the queue.
                       key: const ValueKey('composer-bar'),
                       threadId: widget.threadId,
-                      enabled: connectedHere && !_cwdMissing,
+                      enabled: connectedHere && !_cwdMissing && hold == null,
                       // Pending images ride inside the pill, above the field.
                       attachments: _attachments,
                       onRemoveAttachment: _removeAttachment,
@@ -2003,6 +2051,73 @@ class _QueuePausedBanner extends StatelessWidget {
                 onPressed: onResume,
                 child: Text(l10n.queueResume),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The conversation's session is open in a terminal on the PC: say so, and
+/// offer to take it back here — the desktop closes the agent in that terminal
+/// once it is idle (architecture/02a §5.8.19).
+class _SessionHeldBanner extends StatelessWidget {
+  const _SessionHeldBanner({
+    required this.hold,
+    required this.busy,
+    required this.onContinueHere,
+  });
+
+  final AgentSessionHold hold;
+  final bool busy;
+  final VoidCallback onContinueHere;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+      child: Material(
+        color: colors.surfaceContainerHigh,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.md,
+            UxnanSpacing.xs,
+            UxnanSpacing.xs,
+            UxnanSpacing.xs,
+          ),
+          child: Row(
+            children: [
+              UxIcon(
+                UxIcons.terminal,
+                size: 18,
+                color: hold.busy ? colors.tertiary : colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  hold.busy
+                      ? l10n.sessionHeldBannerWorking(hold.holderName)
+                      : l10n.sessionHeldBanner(hold.holderName),
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: UxnanSpacing.md),
+                  child: PolygonLoader(),
+                )
+              else
+                FilledButton.tonal(
+                  onPressed: hold.busy ? null : onContinueHere,
+                  child: Text(l10n.sessionContinueHere),
+                ),
             ],
           ),
         ),

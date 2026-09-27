@@ -693,6 +693,39 @@
   "modelPickerDefault": "Default",
   "modelPickerRefresh": "Refresh models",
   "newThreadFailed": "Couldn't start the conversation",
+  "sessionsSection": "Or continue a session in this folder",
+  "sessionsSectionHint": "Conversations your agents had here outside Uxnan — in a terminal on the PC or their own app. Pick one to continue it here.",
+  "sessionsPickHint": "Continue this session as a conversation",
+  "sessionsUntitled": "Untitled session",
+  "sessionsShowFewer": "Show fewer",
+  "sessionsShowAll": "Show all {count}",
+  "@sessionsShowAll": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "sessionsUnlisted": "{agents} can't list its sessions: continue one from the terminal it runs in.",
+  "@sessionsUnlisted": {
+    "placeholders": { "agents": { "type": "String" } }
+  },
+  "sessionsInTerminal": "In a terminal on {name}",
+  "@sessionsInTerminal": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "sessionsWorkingInTerminal": "Working in a terminal on {name}",
+  "@sessionsWorkingInTerminal": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "sessionHandoffBusy": "The agent is working in its terminal. Try again when it's done.",
+  "sessionHandoffDeclined": "The terminal kept the session.",
+  "sessionHandoffUnreachable": "Couldn't reach the PC's desktop holding the session.",
+  "sessionHeldBanner": "This conversation is open in a terminal on {name}.",
+  "@sessionHeldBanner": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "sessionHeldBannerWorking": "This conversation is working in a terminal on {name}.",
+  "@sessionHeldBannerWorking": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "sessionContinueHere": "Continue here",
   "newThreadLoadFailed": "Couldn't load from the bridge",
   "newThreadNoProjects": "No projects available on this PC.",
   "newThreadNoAgents": "No agents available on this PC.",

@@ -351,6 +351,30 @@ class BridgeUpdatedEvent extends DomainEvent {
   List<Object?> get props => [update];
 }
 
+/// A session's hold changed (`stream/agent/held`): a desktop terminal
+/// took it, its agent started or stopped working, or the terminal let it go
+/// (`hold` null) — architecture/02a §5.8.19.
+class AgentSessionHeldEvent extends DomainEvent {
+  /// Creates an [AgentSessionHeldEvent].
+  const AgentSessionHeldEvent({
+    required this.agentId,
+    required this.sessionId,
+    this.hold,
+  });
+
+  /// The agent (bridge `AgentId`).
+  final String agentId;
+
+  /// The agent's own session id.
+  final String sessionId;
+
+  /// The wire `AgentSessionHold`; null when the session is free.
+  final Object? hold;
+
+  @override
+  List<Object?> get props => [agentId, sessionId, hold];
+}
+
 /// An agent CLI appeared or disappeared on the PC (`stream/agents/updated`).
 class AgentsUpdatedEvent extends DomainEvent {
   /// Creates an [AgentsUpdatedEvent].

@@ -281,7 +281,7 @@ class _FullContent extends ConsumerWidget {
             if (thread.lastActivity != null) ...[
               const SizedBox(width: UxnanSpacing.sm),
               Text(
-                _relativeTime(thread.lastActivity!),
+                activityTimeLabel(thread.lastActivity!),
                 style: textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,
                 ),
@@ -337,7 +337,7 @@ class _CompactContent extends StatelessWidget {
         if (thread.lastActivity != null) ...[
           const SizedBox(width: UxnanSpacing.sm),
           Text(
-            _relativeTime(thread.lastActivity!),
+            activityTimeLabel(thread.lastActivity!),
             style: textTheme.bodySmall?.copyWith(
               color: colors.onSurfaceVariant,
             ),
@@ -531,7 +531,9 @@ Future<bool> _confirmDeleteThread(
   return confirmed ?? false;
 }
 
-String _relativeTime(DateTime time) {
+/// When something last happened, the way the lists show it: the time today,
+/// the date before that.
+String activityTimeLabel(DateTime time) {
   final now = DateTime.now();
   final isSameDay =
       now.year == time.year && now.month == time.month && now.day == time.day;

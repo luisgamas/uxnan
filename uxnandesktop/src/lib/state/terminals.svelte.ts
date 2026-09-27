@@ -904,6 +904,12 @@ class TerminalStore {
       // `pending` here, and from now on the tab resumes rather than re-claims.
       capturedAt: session.capturedAt,
     };
+    // Nudge the tree, as `noteAgentLiveness` does: what watches the layout
+    // (its persist effect, and the terminals' session holds —
+    // `terminalSessions`) tracks the tree, not this nested field, so without
+    // it a session reported after the tab opened reached neither the saved
+    // layout nor the bridge.
+    this.workspaces = { ...this.workspaces };
   }
 
   /** Record whether the agent that owns this tab's captured session is running

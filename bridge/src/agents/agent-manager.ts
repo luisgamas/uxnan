@@ -25,6 +25,7 @@ import {
   type ApprovalDecision,
   type ApprovalRequestBlock,
   type IAgentAdapter,
+  type NativeSessionInfo,
   type QueuePausedReason,
   type QueueStateResult,
   type TurnAttachment,
@@ -421,6 +422,45 @@ export class AgentManager {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Every available agent's own sessions in a folder, each read through its
+   * CLI (`IAgentAdapter.listNativeSessions`), all at once and each bounded by
+   * {@link SESSION_LIST_TIMEOUT_MS} so one slow CLI never holds the others.
+   * An agent whose CLI cannot list its sessions is named in `unlisted`; one
+   * that fails to answer simply lists nothing.
+   */
+  async listAgentSessions(
+    cwd: string,
+    only?: AgentId,
+  ): Promise<{
+    lists: { agentId: AgentId; sessions: NativeSessionInfo[] }[];
+    unlisted: AgentId[];
+  }> {
+    const unlisted: AgentId[] = [];
+    const pending: Promise<{ agentId: AgentId; sessions: NativeSessionInfo[] }>[] = [];
+    for (const adapter of this.#adapters.values()) {
+      const { agentId } = adapter;
+      if (only !== undefined && agentId !== only) continue;
+      if (agentId === 'echo' || !this.isAvailable(agentId) || this.isDeprecated(agentId)) continue;
+      if (!adapter.listNativeSessions) {
+        unlisted.push(agentId);
+        continue;
+      }
+      const list = adapter.listNativeSessions(cwd);
+      pending.push(
+        withTimeout(list, SESSION_LIST_TIMEOUT_MS)
+          .then((sessions) => ({ agentId, sessions: sessions ?? [] }))
+          .catch((err: unknown) => {
+            this.#options.logger.warn(
+              `listing ${agentId} sessions failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return { agentId, sessions: [] };
+          }),
+      );
+    }
+    return { lists: await Promise.all(pending), unlisted };
   }
 
   /**
@@ -910,7 +950,7 @@ export class AgentManager {
       // rather than untitled (Codex today). After the notification, never
       // before it: this can spawn a process, and the phone should not wait for
       // that to see the new name. Optional adapter capability, read through a
-      // structural type like `nativeSessionId`, and never fatal.
+      // structural type, and never fatal.
       const nameable = adapter as unknown as {
         setNativeTitle?(threadId: string, title: string): Promise<void>;
       };
@@ -1213,8 +1253,8 @@ export class AgentManager {
    * Let go of everything the bridge holds for a thread that is being archived or
    * deleted: cancel its running turn, drop its queue, and tell every adapter to
    * tear down the resident process it may keep for the thread (pi, Antigravity
-   * — `closeSession`, an optional adapter capability read structurally like
-   * `nativeSessionId`). Best-effort throughout: the thread's own removal must
+   * — `closeSession`, an optional adapter capability read structurally).
+   * Best-effort throughout: the thread's own removal must
    * not fail because a process was already gone.
    *
    * Every adapter is asked, not just the thread's current one: a thread that
@@ -1248,6 +1288,29 @@ export class AgentManager {
     }
     this.#agentByThread.delete(threadId);
     this.#cwdByThread.delete(threadId);
+  }
+
+  /**
+   * A desktop terminal took the thread's agent session (`agent/hold`):
+   * let go of the process this bridge keeps for it (pi and Antigravity keep
+   * one resident per thread), so the terminal is the only writer. Nothing is
+   * cancelled — a turn in flight finishes (the desktop only hands a session to
+   * a terminal between turns) — and the next turn here, once the terminal lets
+   * go, resumes the session as usual.
+   */
+  async releaseThreadProcess(threadId: string): Promise<void> {
+    if (this.#activeTurnByThread.has(threadId)) return;
+    for (const adapter of this.#adapters.values()) {
+      const closable = adapter as unknown as { closeSession?(threadId: string): Promise<void> };
+      if (!closable.closeSession) continue;
+      try {
+        await closable.closeSession(threadId);
+      } catch (err) {
+        this.#options.logger.warn(
+          `release session failed for '${adapter.agentId}': ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -1788,12 +1851,7 @@ export class AgentManager {
   async #persistAgentSession(threadId: string, now: number): Promise<void> {
     const agentId = this.#agentByThread.get(threadId);
     if (!agentId) return;
-    // `nativeSessionId` is an optional adapter capability (not in the shared
-    // interface), so read it through a structural type rather than a hard dep.
-    const adapter = this.#adapters.get(agentId) as
-      | { nativeSessionId?(threadId: string): string | undefined }
-      | undefined;
-    const sessionId = adapter?.nativeSessionId?.(threadId);
+    const sessionId = this.#adapters.get(agentId)?.nativeSessionId(threadId);
     if (!sessionId) return;
     try {
       await this.#options.store.setAgentSession(threadId, sessionId, now);
@@ -1811,26 +1869,21 @@ export class AgentManager {
    * silently starting a new one (the phone would keep its history — read off
    * the agent's own transcript — while the agent had lost the context).
    *
-   * Optional adapter capability (`adoptNativeSession`), read structurally like
-   * `nativeSessionId`; an adapter that already knows the thread ignores it. The
-   * id is only offered when the stored session belongs to the SAME agent — a
-   * thread switched to another agent must not inherit the previous one's id.
+   * Every adapter adopts (`IAgentAdapter.adoptNativeSession`); one that
+   * already holds a session for the thread keeps it. The id is only offered
+   * when the stored session belongs to the SAME agent — a thread switched to
+   * another agent must not inherit the previous one's id.
    */
   async #restoreAgentSession(
     threadId: string,
     agentId: AgentId,
     adapter: IAgentAdapter,
   ): Promise<void> {
-    const adoptable = adapter as unknown as {
-      adoptNativeSession?(threadId: string, sessionId: string): void;
-      nativeSessionId?(threadId: string): string | undefined;
-    };
-    if (!adoptable.adoptNativeSession) return;
-    if (adoptable.nativeSessionId?.(threadId)) return; // already live in this process
+    if (adapter.nativeSessionId(threadId)) return; // already live in this process
     try {
       const source = await this.#options.store.getHistorySource(threadId);
       if (!source.agentSessionId || source.agentId !== agentId) return;
-      adoptable.adoptNativeSession(threadId, source.agentSessionId);
+      adapter.adoptNativeSession(threadId, source.agentSessionId);
     } catch (err) {
       // Best-effort: without it the turn simply starts a new agent session.
       this.#options.logger.warn(
@@ -1936,4 +1989,24 @@ function readUsage(data: unknown): { tokens: number; contextWindow?: number } | 
     tokens,
     ...(typeof window === 'number' ? { contextWindow: window } : {}),
   };
+}
+
+/** How long one agent's CLI may take to list its sessions. */
+export const SESSION_LIST_TIMEOUT_MS = 10_000;
+
+/** [promise]'s value, or `undefined` once [ms] have passed. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
 }

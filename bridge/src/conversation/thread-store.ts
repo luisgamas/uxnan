@@ -208,6 +208,14 @@ export interface StartThreadInput {
   model?: string;
   cwd?: string;
   origin?: ThreadOrigin;
+  /**
+   * The agent session the conversation continues (`thread/start` with
+   * `agentSessionId`): stored from the start, so the first turn resumes it and
+   * `turn/list` imports its history.
+   */
+  agentSessionId?: string;
+  /** Who named it, when a name comes with it: the agent's own session title. */
+  titleSource?: ThreadTitleSource;
 }
 
 /** Runtime config the AgentManager needs to drive a thread's turns. */
@@ -500,7 +508,9 @@ export class ThreadStore {
         id: randomUUID(),
         projectId: input.projectId,
         title: input.title ?? PLACEHOLDER_THREAD_TITLE,
-        ...(input.title !== undefined ? { titleSource: 'user' as const } : {}),
+        ...(input.title !== undefined
+          ? { titleSource: input.titleSource ?? ('user' as const) }
+          : {}),
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -509,6 +519,7 @@ export class ThreadStore {
         ...(input.model !== undefined ? { model: input.model } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         ...(input.origin !== undefined ? { origin: { ...input.origin } } : {}),
+        ...(input.agentSessionId !== undefined ? { agentSessionId: input.agentSessionId } : {}),
       };
       threads.push(created);
       this.#ledger.revive('thread', created.id);
@@ -517,6 +528,29 @@ export class ThreadStore {
     });
     await this.#captureMetrics(created);
     return toThread(created);
+  }
+
+  /**
+   * The conversation that continues an agent session, when one does — so a
+   * session is never continued by two conversations (`thread/start` returns
+   * this one instead) and the session catalog can point at it.
+   */
+  async threadForSession(agentId: string, sessionId: string): Promise<Thread | undefined> {
+    const thread = (await this.#read()).find(
+      (t) => t.agentId === agentId && t.agentSessionId === sessionId,
+    );
+    return thread ? toThread(thread) : undefined;
+  }
+
+  /** Every conversation's agent session, keyed `agentId:sessionId` → thread id. */
+  async sessionLinks(): Promise<Map<string, string>> {
+    const links = new Map<string, string>();
+    for (const thread of await this.#read()) {
+      if (thread.agentId !== undefined && thread.agentSessionId !== undefined) {
+        links.set(sessionKey(thread.agentId, thread.agentSessionId), thread.id);
+      }
+    }
+    return links;
   }
 
   /** Agent/model/cwd a thread's turns run with (used by `turn/send`). */
@@ -740,6 +774,14 @@ export class ThreadStore {
         createdAt: now,
         updatedAt: now,
       };
+      // The fork is a conversation of its own: it must never continue the
+      // original's native session, or both would write into one transcript
+      // (and every agent now resumes the session a thread stores). Its first
+      // turn opens a session of its own.
+      // FOR-DEV: fork the native session instead, so the fork keeps the agent's
+      // memory of the copied history (bridge/FOR-DEV.md → "A fork keeps its
+      // agent's memory"); needs each CLI's fork measured on the driven surface.
+      delete copy.agentSessionId;
       threads.push(copy);
       this.#bump(copy);
       return { result: structuredCloneThread(copy), write: [copy.id] };
@@ -1895,4 +1937,9 @@ function settleRunningSteps(turn: StoredTurn, ok: boolean): void {
     list?.map((b) => (isRunning(b) ? settleBlock(b as Record<string, unknown>, ok) : b));
   if (assistant.blocks) assistant.blocks = settle(assistant.blocks)!;
   if (assistant.segments) assistant.segments = settle(assistant.segments)!;
+}
+
+/** The key a session is known by across agents: `agentId:sessionId`. */
+export function sessionKey(agentId: string, sessionId: string): string {
+  return `${agentId}:${sessionId}`;
 }

@@ -12,6 +12,7 @@ import { registerThreadHandlers } from './thread-context-handler.js';
 import { registerProjectHandlers } from './project-handler.js';
 import { registerSyncHandlers } from './sync-handler.js';
 import { registerAgentHandlers } from './agent-handler.js';
+import { registerAgentSessionHandlers } from './agent-session-handler.js';
 import { registerAccountHandlers } from './account-handler.js';
 import { registerUsageHandlers } from './usage-handler.js';
 import { registerMetricsHandlers } from './metrics-handler.js';
@@ -26,6 +27,7 @@ export function registerAllHandlers(router: HandlerRouter): void {
   registerProjectHandlers(router);
   registerSyncHandlers(router);
   registerAgentHandlers(router);
+  registerAgentSessionHandlers(router);
   registerAccountHandlers(router);
   registerUsageHandlers(router);
   registerMetricsHandlers(router);

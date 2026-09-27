@@ -8,6 +8,7 @@
 mod agent_hooks;
 mod agentcli;
 pub mod agentrun;
+mod agentstop;
 mod aicommit;
 // Public so the binary's headless runner mode (`main.rs`) can reach it without
 // starting Tauri — an automation must run with the app closed.
@@ -560,6 +561,7 @@ pub fn run() {
             commands::pty_paste_submit,
             commands::pty_resize,
             commands::pty_close,
+            commands::pty_stop_agent,
             commands::repo_add,
             commands::repo_remove,
             commands::repo_list,

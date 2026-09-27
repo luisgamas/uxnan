@@ -10,6 +10,7 @@ import type {
   AgentCommand,
   AgentId,
   AgentModel,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { StreamNotification } from '@uxnan/shared';
@@ -898,13 +899,9 @@ baseTest('a terminal event that throws ends the turn instead of hanging it', asy
 baseTest('a turn hands the persisted native session id back to its adapter', async () => {
   class AdoptingAdapter extends ControlledAdapter {
     readonly adopted: [string, string][] = [];
-    readonly #sessions = new Map<string, string>();
-    adoptNativeSession(threadId: string, sessionId: string): void {
+    override adoptNativeSession(threadId: string, sessionId: string): void {
       this.adopted.push([threadId, sessionId]);
-      this.#sessions.set(threadId, sessionId);
-    }
-    nativeSessionId(threadId: string): string | undefined {
-      return this.#sessions.get(threadId);
+      super.adoptNativeSession(threadId, sessionId);
     }
   }
 
@@ -939,8 +936,9 @@ baseTest('a turn hands the persisted native session id back to its adapter', asy
 baseTest('the persisted session id is not offered to a different agent', async () => {
   class AdoptingAdapter extends ControlledAdapter {
     readonly adopted: [string, string][] = [];
-    adoptNativeSession(threadId: string, sessionId: string): void {
+    override adoptNativeSession(threadId: string, sessionId: string): void {
       this.adopted.push([threadId, sessionId]);
+      super.adoptNativeSession(threadId, sessionId);
     }
   }
 
@@ -1154,4 +1152,88 @@ test('a turn runs at the default a model advertises when nobody picked one', asy
   } finally {
     await rmrf(baseDir);
   }
+});
+
+// The session list asks every available agent at once, each bounded: a CLI
+// that fails lists nothing, one that cannot list is named, the dev agent and
+// unavailable ones are left out.
+baseTest(
+  'listing sessions asks each available agent, and one failing never holds the rest',
+  async () => {
+    class Lister extends ControlledAdapter {
+      constructor(
+        override readonly agentId: AgentId,
+        readonly answer: () => Promise<NativeSessionInfo[]>,
+      ) {
+        super();
+      }
+      listNativeSessions(): Promise<NativeSessionInfo[]> {
+        return this.answer();
+      }
+    }
+    class NoList extends ControlledAdapter {
+      override readonly agentId: AgentId = 'antigravity-cli';
+    }
+    const manager = new AgentManager({
+      store: new ThreadStore(new DaemonState(join(tmpdir(), `uxnan-am-list-${randomUUID()}`))),
+      notify: () => {},
+      now: () => 1000,
+      logger: createLogger('test', 'error'),
+      defaultAgent: 'echo',
+    });
+    const one: NativeSessionInfo = { sessionId: 's', cwd: '/p', updatedAt: 1, interactive: true };
+    manager.register(new Lister('claude-code', () => Promise.resolve([one])));
+    manager.register(new Lister('codex', () => Promise.reject(new Error('app-server down'))));
+    manager.register(new Lister('pi-agent', () => Promise.resolve([one])), { available: false });
+    manager.register(new NoList());
+    manager.register(new Lister('echo', () => Promise.resolve([one])));
+
+    const { lists, unlisted } = await manager.listAgentSessions('/p');
+    assert.deepEqual(
+      lists.map((l) => [l.agentId, l.sessions.length]),
+      [
+        ['claude-code', 1],
+        ['codex', 0],
+      ],
+    );
+    assert.deepEqual(unlisted, ['antigravity-cli']);
+    const only = await manager.listAgentSessions('/p', 'codex');
+    assert.deepEqual(
+      only.lists.map((l) => l.agentId),
+      ['codex'],
+    );
+    assert.deepEqual(only.unlisted, []);
+  },
+);
+
+// A terminal taking a conversation's session: the bridge lets go of the
+// process it keeps for it, but never under a running turn.
+baseTest('releasing a conversation’s process waits for no turn and cancels none', async () => {
+  class Resident extends ControlledAdapter {
+    readonly closed: string[] = [];
+    closeSession(threadId: string): Promise<void> {
+      this.closed.push(threadId);
+      return Promise.resolve();
+    }
+  }
+  const baseDir = join(tmpdir(), `uxnan-am-release-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new Resident();
+  manager.register(adapter);
+  const thread = await store.startThread({ projectId: 'p', agentId: 'echo' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'working');
+  await manager.releaseThreadProcess(thread.id);
+  assert.deepEqual(adapter.closed, []);
+  adapter.complete(thread.id, turnId, 'done');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  await manager.releaseThreadProcess(thread.id);
+  assert.deepEqual(adapter.closed, [thread.id]);
+  await rmrf(baseDir);
 });

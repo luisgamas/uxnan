@@ -954,6 +954,27 @@ pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), Com
     state.pty.close(&id).map_err(CommandError::from)
 }
 
+/// Close the agent a terminal runs, and only it: the shell and the tab stay.
+/// Used when the terminal hands its agent's session over to a chat — here or
+/// on the phone (architecture/02a §5.8.19). Returns once the agent is gone.
+#[tauri::command]
+pub async fn pty_stop_agent(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<crate::agentstop::StopOutcome, CommandError> {
+    let Some(shell_pid) = state.pty.pid_of(&id) else {
+        return Err(CommandError::from(AppError::NotFound(format!(
+            "terminal {id}"
+        ))));
+    };
+    let commands = state.agent_commands.read().await.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::agentstop::stop_agent(shell_pid, &commands, crate::agentstop::EXIT_GRACE)
+    })
+    .await
+    .map_err(|e| CommandError::new("INTERNAL", e.to_string()))
+}
+
 // --- Remote hosts (SSH) ----------------------------------------------------
 
 /// List the `Host` aliases in the user's own OpenSSH configuration, so adding a

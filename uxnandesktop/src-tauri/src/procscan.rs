@@ -207,7 +207,7 @@ fn detect_in_tree(
     procs: &HashMap<u32, ProcInfo>,
     root_pid: u32,
     commands: &[String],
-) -> Option<String> {
+) -> Option<(String, u32)> {
     if commands.is_empty() {
         return None;
     }
@@ -220,7 +220,8 @@ fn detect_in_tree(
     let mut level = vec![root_pid];
     let mut seen: HashSet<u32> = HashSet::new();
     while !level.is_empty() {
-        let mut best: Option<(String, u32)> = None;
+        // (command, score, pid) of the best match on this level.
+        let mut best: Option<(String, u32, u32)> = None;
         let mut next: Vec<u32> = Vec::new();
         for &pid in &level {
             if !seen.insert(pid) {
@@ -238,8 +239,8 @@ fn detect_in_tree(
                 for &kid in kids {
                     if let Some(info) = procs.get(&kid) {
                         if let Some((cmd, score)) = recognize(info, commands) {
-                            if best.as_ref().map(|(_, s)| score > *s).unwrap_or(true) {
-                                best = Some((cmd, score));
+                            if best.as_ref().map(|(_, s, _)| score > *s).unwrap_or(true) {
+                                best = Some((cmd, score, kid));
                             }
                         }
                     }
@@ -247,8 +248,8 @@ fn detect_in_tree(
                 }
             }
         }
-        if let Some((cmd, _)) = best {
-            return Some(cmd); // shallowest matching level wins (the launched agent)
+        if let Some((cmd, _, pid)) = best {
+            return Some((cmd, pid)); // shallowest matching level wins (the launched agent)
         }
         level = next;
     }
@@ -258,6 +259,16 @@ fn detect_in_tree(
 /// The agent command running as the foreground job of `root_pid`, or `None` when
 /// the shell is idle / running a non-agent command. See [`detect_in_tree`].
 pub fn detect_agent(sys: &System, root_pid: u32, commands: &[String]) -> Option<String> {
+    detect_agent_process(sys, root_pid, commands).map(|(cmd, _)| cmd)
+}
+
+/// Like [`detect_agent`], with the agent's own pid — the process to close when
+/// the terminal hands its session over (`agentstop`).
+pub fn detect_agent_process(
+    sys: &System,
+    root_pid: u32,
+    commands: &[String],
+) -> Option<(String, u32)> {
     if commands.is_empty() {
         return None;
     }
@@ -424,7 +435,10 @@ mod tests {
                 Some(200),
             ),
         );
-        assert_eq!(detect_in_tree(&procs, 100, &catalog()), None);
+        assert_eq!(
+            detect_in_tree(&procs, 100, &catalog()).map(|(c, _)| c),
+            None
+        );
     }
 
     #[test]
@@ -440,7 +454,9 @@ mod tests {
             ),
         );
         assert_eq!(
-            detect_in_tree(&procs, 100, &catalog()).as_deref(),
+            detect_in_tree(&procs, 100, &catalog())
+                .map(|(c, _)| c)
+                .as_deref(),
             Some("codex")
         );
     }
@@ -463,7 +479,9 @@ mod tests {
             ),
         );
         assert_eq!(
-            detect_in_tree(&procs, 100, &catalog()).as_deref(),
+            detect_in_tree(&procs, 100, &catalog())
+                .map(|(c, _)| c)
+                .as_deref(),
             Some("claude")
         );
     }
@@ -482,7 +500,9 @@ mod tests {
             ),
         );
         assert_eq!(
-            detect_in_tree(&procs, 100, &catalog()).as_deref(),
+            detect_in_tree(&procs, 100, &catalog())
+                .map(|(c, _)| c)
+                .as_deref(),
             Some("zero")
         );
     }
@@ -492,7 +512,10 @@ mod tests {
         let mut procs = HashMap::new();
         procs.insert(100, proc("cmd", &["cmd.exe"], None));
         procs.insert(200, proc("git", &["git", "status"], Some(100)));
-        assert_eq!(detect_in_tree(&procs, 100, &catalog()), None);
+        assert_eq!(
+            detect_in_tree(&procs, 100, &catalog()).map(|(c, _)| c),
+            None
+        );
     }
 
     #[test]
@@ -519,7 +542,9 @@ mod tests {
             ),
         );
         assert_eq!(
-            detect_in_tree(&procs, 100, &catalog()).as_deref(),
+            detect_in_tree(&procs, 100, &catalog())
+                .map(|(c, _)| c)
+                .as_deref(),
             Some("claude")
         );
     }

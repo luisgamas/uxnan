@@ -67,6 +67,14 @@ fn title_effort_args(agent_id: &str) -> Vec<String> {
     }
 }
 
+/// Everything a title run adds before the prompt: the cheap effort tier, and
+/// keeping the errand out of the CLI's session history.
+fn title_run_args(agent_id: &str) -> Vec<String> {
+    let mut args = title_effort_args(agent_id);
+    args.extend(agentcli::no_session_args(agent_id));
+    args
+}
+
 /// Build the instruction from what the session's terminal shows.
 ///
 /// The transcript is the material because it is the only source EVERY agent
@@ -157,7 +165,7 @@ pub async fn generate(agent_id: &str, transcript: &str, cwd: &str) -> Result<Str
         Some(TITLE_TIMEOUT.as_millis() as u64),
         // A title is read-only work: never let it act on the workspace.
         false,
-        &title_effort_args(agent_id),
+        &title_run_args(agent_id),
         None,
         0,
     )
@@ -354,6 +362,19 @@ agent: the token expired",
         for id in ["claude", "agy", "opencode", "grok", "zero", "pi", "unknown"] {
             assert!(title_effort_args(id).is_empty(), "{id}");
         }
+    }
+
+    #[test]
+    fn a_title_run_keeps_no_session_and_opens_like_a_one_shot() {
+        assert!(title_run_args("claude").contains(&"--no-session-persistence".to_string()));
+        assert!(title_run_args("codex").contains(&"--ephemeral".to_string()));
+        let prompt = build_title_prompt("$ claude\n> fix the login");
+        assert!(
+            crate::agentcli::one_shot_openers()
+                .iter()
+                .any(|o| prompt.starts_with(o.as_str())),
+            "the title prompt must open like shared/src/agents/one-shot.ts says"
+        );
     }
 
     #[test]

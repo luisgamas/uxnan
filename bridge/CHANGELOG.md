@@ -4,6 +4,51 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Pick up any agent session.** `agent/sessions` lists every agent's own
+  sessions in a folder — ones started in a terminal, in the agent's app, or by
+  the bridge — each read through the agent's CLI (Codex's app-server, OpenCode's
+  server, Zero's ACP `session/list`, and Claude Code's, pi's and Grok's session
+  stores, head and tail only). `thread/start` with `agentSessionId` continues
+  one as a conversation: its history comes in and its first turn resumes it.
+  Verified against all seven CLIs with a session each made on its own (every
+  one recalled a word from before; Antigravity has no listing and no readable
+  history, so its sessions are continued from the terminal that holds them).
+- **A session open in a terminal has one writer.** Uxnan Desktop tells the
+  bridge which sessions its terminals hold (`agent/hold` / `release`,
+  local channel only); the bridge refuses turns in a held session (`-32010`),
+  lets go of the process it kept for the conversation, and announces every
+  change (`stream/agent/held`). Any client can ask for a held session
+  (`agent/requestHandoff`): the holding desktop is asked and answers.
+- **Naming a chat on Claude Code leaves no session** in Claude's own history
+  (`--no-session-persistence`).
+
+### Changed
+
+- The thread → native session map lives once, in `BaseAgentAdapter`, instead of
+  one copy per adapter (`setNativeSession` / `refuseNativeSession`), and
+  `nativeSessionId` / `adoptNativeSession` are part of `IAgentAdapter`.
+
+### Fixed
+
+- **A Claude Code turn no longer says its background work was interrupted when
+  it was not.** A background command that exited with an error (`failed`), or
+  one the model stopped itself while the run went on, was reported as "left
+  running, and interrupted when the turn ended". Only work the CLI stops after
+  its input closes, or that is still running when it exits, is reported now.
+- **A conversation keeps its agent's memory after the bridge restarts or
+  updates itself.** Only Codex continued the native session a conversation had
+  stored; Claude Code, OpenCode, pi, Grok, Zero and Antigravity opened a new one
+  on the first turn after a restart, so the agent had forgotten everything the
+  phone still showed. Every adapter now continues the stored session (verified
+  against all seven CLIs). One that no longer exists — deleted meanwhile — is
+  refused once and the turn runs in a fresh session instead of failing: Claude
+  Code's `No conversation found` is caught before anything ran, and OpenCode
+  asks its server first.
+- **A fork no longer writes into the original's agent session.** It copied the
+  native session id, so a Codex fork's turns landed in the original thread.
+  A fork now opens a session of its own on its first turn.
 
 ## [0.0.35-alpha.20260927] - 20260927
 ### Fixed

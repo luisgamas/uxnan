@@ -101,6 +101,27 @@ export interface GenerateTitleOptions {
   cwd?: string;
 }
 
+/**
+ * One of the agent's own sessions in a folder, as its CLI keeps it — the raw
+ * material of `agent/sessions` (the bridge turns the time into an age and
+ * links the conversation that continues it).
+ */
+export interface NativeSessionInfo {
+  sessionId: string;
+  cwd: string;
+  /** The CLI's own title for it, else the first thing the person asked. */
+  title?: string;
+  /** When it last changed, on this PC's clock (epoch ms). */
+  updatedAt: number;
+  /**
+   * Started by a person in the agent's own interface (its terminal UI or
+   * app), rather than run headless by a program — the bridge's own runs, or
+   * one-shots like naming a conversation. A headless session is listed only
+   * when a conversation continues it.
+   */
+  interactive: boolean;
+}
+
 export interface IAgentAdapter {
   readonly agentId: AgentId;
   readonly capabilities: AgentCapabilities;
@@ -116,6 +137,36 @@ export interface IAgentAdapter {
 
   /** Cancel an in-flight turn. */
   cancelTurn(threadId: string, turnId: string): Promise<void>;
+
+  /**
+   * The agent's own session id for a conversation — the id its CLI resumes
+   * (`claude --resume`, Codex `thread/resume`, ACP `session/load`, …) and the
+   * one its transcript on disk is named after. `undefined` until the agent
+   * has one for the thread.
+   */
+  nativeSessionId(threadId: string): string | undefined;
+
+  /**
+   * Continue a conversation in a native session this process did not open:
+   * the id the bridge stored before it restarted, or a session started
+   * elsewhere (a terminal) that the conversation now takes over. The next
+   * turn resumes it instead of opening a new one, so the agent keeps the
+   * context the user can see.
+   *
+   * Never replaces a session the adapter already holds for the thread, and
+   * never takes back an id the CLI already refused to resume for it: that
+   * conversation continues in the fresh session that replaced it.
+   */
+  adoptNativeSession(threadId: string, sessionId: string): void;
+
+  /**
+   * The agent's sessions in a folder, most recent first, read the way this
+   * CLI exposes them (its app-server, its server, ACP `session/list`, or its
+   * own session store — head and tail only, never whole transcripts).
+   * Optional: an agent whose CLI cannot list its sessions (Antigravity) omits
+   * it, and its sessions are continued only from the terminal they run in.
+   */
+  listNativeSessions?(cwd: string): Promise<NativeSessionInfo[]>;
 
   /**
    * Name a conversation from its opening exchange — a handful of words, no

@@ -150,6 +150,16 @@ export type OpenCodeEvent =
   /** The turn failed. `sessionId` is absent when the server did not say whose. */
   | { kind: 'error'; sessionId?: string; message: string };
 
+/** One session, as the server lists it. */
+export interface OpenCodeListedSession {
+  id: string;
+  /** The folder it runs in. */
+  directory?: string;
+  title?: string;
+  /** Last change, epoch ms. */
+  updated?: number;
+}
+
 /** The surface the adapter drives (faked in tests via `serverFactory`). */
 export interface IOpenCodeServer {
   /** Which protocol this server speaks. */
@@ -163,6 +173,14 @@ export interface IOpenCodeServer {
     model?: OpenCodeModelRef;
     variant?: string;
   }): Promise<string>;
+  /**
+   * Whether the server knows a session — the store it serves is the CLI's own,
+   * so a session started in a terminal is known too. False only when the
+   * server says it does not exist; throws when it cannot say.
+   */
+  hasSession(sessionId: string): Promise<boolean>;
+  /** The sessions the server holds in [directory], newest change first. */
+  listSessions(directory: string, limit: number): Promise<OpenCodeListedSession[]>;
   /** Start a turn (returns once accepted; results arrive via `onEvent`). */
   prompt(sessionId: string, prompt: OpenCodePrompt): Promise<void>;
   /**

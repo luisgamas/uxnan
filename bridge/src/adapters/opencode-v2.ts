@@ -35,6 +35,7 @@ import {
   reconcileSuffix,
   str,
   type IOpenCodeServer,
+  type OpenCodeListedSession,
   type OpenCodeCommand,
   type OpenCodeCommandRun,
   type OpenCodeEvent,
@@ -413,6 +414,40 @@ export class OpenCodeV2Server implements IOpenCodeServer {
 
   start(): Promise<void> {
     return this.#serve.start();
+  }
+
+  /** `GET /api/session/:id`: 200, or 404 for an unknown id (verified against
+   *  opencode 2.0.16). */
+  async hasSession(sessionId: string): Promise<boolean> {
+    await this.start();
+    return this.#serve.exists(`/api/session/${encodeURIComponent(sessionId)}`);
+  }
+
+  /**
+   * `GET /api/session?directory=…&limit=…`: newest change first (verified
+   * against opencode 2.0.16; untitled sessions carry no `title`).
+   */
+  async listSessions(directory: string, limit: number): Promise<OpenCodeListedSession[]> {
+    await this.start();
+    const query = `?directory=${encodeURIComponent(directory)}&limit=${limit}`;
+    const res = await this.#serve.request<{ data?: unknown[] }>('GET', `/api/session${query}`);
+    return (res.data ?? []).flatMap((raw) => {
+      const s = raw as {
+        id?: unknown;
+        title?: unknown;
+        location?: { directory?: unknown };
+        time?: { updated?: unknown };
+      };
+      if (typeof s.id !== 'string') return [];
+      return [
+        {
+          id: s.id,
+          ...(typeof s.location?.directory === 'string' ? { directory: s.location.directory } : {}),
+          ...(typeof s.title === 'string' ? { title: s.title } : {}),
+          ...(typeof s.time?.updated === 'number' ? { updated: s.time.updated } : {}),
+        },
+      ];
+    });
   }
 
   async createSession(opts: {

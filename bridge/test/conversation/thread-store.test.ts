@@ -1163,6 +1163,19 @@ test('a position is never handed out twice, even after its turn was dropped', as
   await rmrf(baseDir);
 });
 
+// A fork is a conversation of its own: resuming the original's native session
+// would write both conversations into one transcript.
+test('a fork never continues the original native session', async () => {
+  const baseDir = join(tmpdir(), `uxnan-fork-session-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  await store.setAgentSession(thread.id, 'native-1', 2);
+  const fork = await store.forkThread(thread.id, 3);
+  assert.equal((await store.getHistorySource(fork.id)).agentSessionId, undefined);
+  assert.equal((await store.getHistorySource(thread.id)).agentSessionId, 'native-1');
+  await rmrf(baseDir);
+});
+
 test('a user message keeps its images: served back, carried by a fork, gone with the thread', async () => {
   const { store, baseDir } = newStore();
   try {

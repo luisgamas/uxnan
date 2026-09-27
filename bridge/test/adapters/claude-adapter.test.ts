@@ -327,6 +327,60 @@ test('ClaudeCodeAdapter reuses the captured session id on the next turn', async 
   assert.equal(argsForSecond[idx + 1], 'sess_42');
 });
 
+// After a restart (or when a conversation takes over a terminal's session) the
+// bridge hands the stored id back: the very first turn resumes it.
+test('ClaudeCodeAdapter resumes an adopted session on its first turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  adapter.adoptNativeSession('t1', 'sess_stored');
+
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go on' });
+  const args = last().args;
+  last().feed(['{"type":"result","subtype":"success","result":"ok","session_id":"sess_stored"}']);
+  await done;
+
+  assert.equal(args[args.indexOf('--resume') + 1], 'sess_stored');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess_stored');
+});
+
+// The CLI's own answer for a session that no longer exists (verified against
+// claude 2.1.283). Nothing ran, so the same turn runs again in a new session
+// instead of failing — and the gone id is never adopted again.
+test('ClaudeCodeAdapter runs the turn in a fresh session when the stored one is gone', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  adapter.adoptNativeSession('t1', 'sess_gone');
+
+  const { events, done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'still there?' });
+  const refused = last();
+  assert.equal(refused.args[refused.args.indexOf('--resume') + 1], 'sess_gone');
+  refused.feed([
+    '{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"session_id":"sess_gone","errors":["No conversation found with session ID: sess_gone"]}',
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const retried = last();
+  assert.notEqual(retried, refused);
+  assert.equal(retried.args.includes('--resume'), false);
+  await flush();
+  assert.deepEqual(retried.sent, ['still there?']);
+  retried.feed(['{"type":"result","subtype":"success","result":"yes","session_id":"sess_new"}']);
+  await done;
+
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  assert.equal(events.at(-1)?.type, 'turn_completed');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess_new');
+  // The store still holds the gone id until the new one is persisted: offering
+  // it again changes nothing.
+  adapter.adoptNativeSession('t1', 'sess_gone');
+  assert.equal(adapter.nativeSessionId('t1'), 'sess_new');
+});
+
 test('ClaudeCodeAdapter surfaces an error result as turn_error', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
@@ -868,10 +922,12 @@ test('ClaudeCodeAdapter never folds subagent text or usage into the main message
 //
 // The shapes below are the ones a real `claude -p --output-format stream-json`
 // emits when the model starts a background task (`Bash` with
-// `run_in_background`) and then ends its turn: the CLI keeps running, and if
-// that work finishes within its few seconds of grace it WAKES THE MODEL and a
-// second complete turn follows on the same process. If it does not finish in
-// time the CLI kills the task (`status:"stopped"`) and exits.
+// `run_in_background`) and then ends its turn: while its input stays open the
+// CLI keeps running for as long as that work takes, and when it finishes it
+// WAKES THE MODEL and a second complete turn follows on the same process. A
+// task ends `completed` (exit 0), `failed` (exit ≠ 0 — its work did finish) or
+// `stopped`: by the model or the user while the run goes on, or by the CLI
+// itself once its input is closed — the only case where work is lost.
 
 /** Collect a whole run, settling only after a terminal event has had time to be
  *  followed by another one — the duplicate completion is the bug under test. */
@@ -931,7 +987,7 @@ test('a turn is not completed while a background task the model started is still
   assert.equal(warnings(events).length, 0, 'nothing was interrupted, so nothing is reported');
 });
 
-test('background work the CLI kills is reported instead of passing as a clean turn', async () => {
+test('background work the CLI stops as it comes down is reported instead of passing as a clean turn', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collectRun(adapter);
@@ -939,18 +995,54 @@ test('background work the CLI kills is reported instead of passing as a clean tu
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'start something long' });
   last().feed([
     '{"type":"system","subtype":"init","session_id":"s"}',
-    '{"type":"system","subtype":"task_started","task_id":"bnc","session_id":"s"}',
-    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Running in the background."}]}}',
+    '{"type":"system","subtype":"task_started","task_id":"a","session_id":"s"}',
     '{"type":"result","subtype":"success","is_error":false,"result":"Running in the background.","session_id":"s"}',
-    // The work outlived the CLI's grace period, so it was killed, not finished.
-    '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"bnc","session_id":"s"}',
+    // The first task finishes: the input closes, and the wake-up turn starts
+    // another one the CLI no longer waits for.
+    '{"type":"system","subtype":"task_notification","status":"completed","task_id":"a","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"b","session_id":"s"}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Started the next step.","session_id":"s"}',
+    '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"b","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  assert.equal(last().stdinEnded, true);
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  const found = warnings(events);
+  assert.equal(found.length, 1, 'the user is told the background work did not finish');
+  assert.match(
+    (found[0]?.data as { content: { text: string } }).content.text,
+    /left a background task/i,
+  );
+});
+
+test('a background task that failed, or that the model stopped, is not reported as interrupted', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collectRun(adapter);
+
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'run the tests, and start the server then stop it',
+  });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"tests","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"server","session_id":"s"}',
+    // The model stops the server itself, while the run goes on.
+    '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"server","session_id":"s"}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Waiting for the tests.","session_id":"s"}',
+    // The tests exit 1: finished, with a result the model reads.
+    '{"type":"system","subtype":"task_notification","status":"failed","task_id":"tests","session_id":"s"}',
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Two tests fail."}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Two tests fail.","session_id":"s"}',
   ]);
 
   const events = await done;
   assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
-  const warning = warnings(events)[0];
-  assert.ok(warning, 'the user is told the background work did not finish');
-  assert.match((warning?.data as { content: { text: string } }).content.text, /interrupted/i);
+  assert.equal(warnings(events).length, 0, 'nothing the run left behind was cut off');
 });
 
 test('a background task still open when the CLI exits counts as interrupted', async () => {
@@ -1009,6 +1101,12 @@ test('parseClaudeLine tells background-task lines apart from an init', () => {
       '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"x","session_id":"s"}',
     ),
     { kind: 'task_ended', sessionId: 's', taskId: 'x', taskStatus: 'stopped' },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
+      '{"type":"system","subtype":"task_notification","status":"failed","task_id":"x","session_id":"s"}',
+    ),
+    { kind: 'task_ended', sessionId: 's', taskId: 'x', taskStatus: 'failed' },
   );
   // A system line we do not act on must not masquerade as an init.
   assert.deepEqual(

@@ -428,6 +428,43 @@ pub fn resolve(agent_id: &str) -> Option<Resolved> {
     locate(agent_id)
 }
 
+/// The flag that keeps a headless one-shot — naming a conversation, writing a
+/// commit message or a PR body — out of the CLI's own session history, for the
+/// CLIs that have one. Without it every such errand is kept like a real
+/// conversation: it shows up in the CLI's own resume picker and in Uxnan's
+/// session list. Verified 2026-09-27: `claude -p --no-session-persistence`
+/// (2.1.283) writes no transcript, `codex exec --ephemeral` (0.157.1) no
+/// rollout, `pi -p --no-session` (0.85.1) no session file. OpenCode, Grok, Zero
+/// and Antigravity have no such flag; their errands are recognized by how the
+/// prompt opens instead (`shared/src/agents/one-shot.ts`).
+pub fn no_session_args(agent_id: &str) -> Vec<String> {
+    match agent_id {
+        "claude" => vec!["--no-session-persistence".to_string()],
+        "codex" => vec!["--ephemeral".to_string()],
+        "pi" => vec!["--no-session".to_string()],
+        _ => vec![],
+    }
+}
+
+/// How Uxnan's own one-shot prompts open, as `shared/src/agents/one-shot.ts`
+/// lists them — the list the bridge leaves those errands out of its session
+/// catalog by. Read from that file so a reworded prompt here fails a test
+/// instead of leaking its runs back into the list.
+#[cfg(test)]
+pub(crate) fn one_shot_openers() -> Vec<String> {
+    const SOURCE: &str = include_str!("../../../shared/src/agents/one-shot.ts");
+    let list = SOURCE
+        .split("ONE_SHOT_PROMPT_OPENERS = [")
+        .nth(1)
+        .and_then(|rest| rest.split("] as const").next())
+        .expect("the openers list in shared/src/agents/one-shot.ts");
+    list.lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with('\''))
+        .map(|line| line.trim_end_matches(',').trim_matches('\'').to_string())
+        .collect()
+}
+
 /// The non-interactive (print-mode) args for `agent_id`, with an optional
 /// `model` (empty → the CLI's default). `None` for an unknown agent.
 ///
@@ -807,6 +844,36 @@ pub fn parse_codex_models(data: &serde_json::Value) -> Vec<AgentModel> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_one_shot_keeps_no_session_where_the_cli_allows_it() {
+        assert_eq!(no_session_args("claude"), vec!["--no-session-persistence"]);
+        assert_eq!(no_session_args("codex"), vec!["--ephemeral"]);
+        assert_eq!(no_session_args("pi"), vec!["--no-session"]);
+        for id in ["opencode", "grok", "zero", "agy"] {
+            assert!(no_session_args(id).is_empty(), "{id}");
+        }
+        // Placed with the options, before the prompt.
+        for id in ["claude", "codex", "pi"] {
+            let args = build_args(
+                id,
+                "",
+                PromptSource::Argv("go"),
+                false,
+                &no_session_args(id),
+            )
+            .unwrap();
+            assert_eq!(args.last().unwrap(), "go", "{id}");
+            assert!(args.contains(&no_session_args(id)[0]), "{id}");
+        }
+    }
+
+    #[test]
+    fn the_one_shot_openers_are_read_from_shared() {
+        let openers = one_shot_openers();
+        assert!(openers.len() >= 4, "{openers:?}");
+        assert!(openers.iter().all(|o| !o.is_empty() && !o.contains('\'')));
+    }
 
     #[test]
     fn every_supported_agent_is_in_the_table_shared_with_the_bridge() {

@@ -29,6 +29,13 @@ export interface FakeOpenCodeScript {
   v1Commands?: Record<string, unknown>[];
   /** A command request is refused with this status (an unknown command). */
   commandStatus?: number;
+  /** Session ids `GET /session/:id` (V1) / `GET /api/session/:id` (V2) finds;
+   *  any other is answered 404, as the real server does. */
+  knownSessions?: string[];
+  /** Answer those lookups with this status instead (a server that cannot say). */
+  sessionLookupStatus?: number;
+  /** Sessions `GET /api/session` (V2, filtered by `directory`) / `GET /session` (V1) list. */
+  listedSessions?: Record<string, unknown>[];
 }
 
 /** One request the fake received. */
@@ -83,6 +90,17 @@ http.createServer((req, res) => {
       streams.add(res);
       res.on('close', () => streams.delete(res));
       return;
+    }
+    if (req.method === 'GET' && path === '/api/session' && version === '2') {
+      const dir = new URL(req.url, 'http://x').searchParams.get('directory');
+      return json({ data: (script.listedSessions || []).filter((s) => !dir || (s.location && s.location.directory === dir)), cursor: {} });
+    }
+    if (req.method === 'GET' && path === '/session' && version !== '2') return json(script.listedSessions || []);
+    const lookup = req.method === 'GET' && path.match(version === '2' ? /^\/api\/session\/([^/]+)$/ : /^\/session\/([^/]+)$/);
+    if (lookup) {
+      if (script.sessionLookupStatus) { res.writeHead(script.sessionLookupStatus); res.end(); return; }
+      if ((script.knownSessions || []).includes(decodeURIComponent(lookup[1]))) return json({ id: lookup[1] });
+      res.writeHead(404); res.end(); return;
     }
     if (path.endsWith('/command') && req.method === 'POST') {
       if (script.commandStatus) { res.writeHead(script.commandStatus); res.end(); return; }

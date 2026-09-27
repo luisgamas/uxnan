@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { repairedSession, resumeCommand } from "./agentResume";
+import { repairedSession, resumeCommand, resumeInvocation } from "./agentResume";
 
 const at = 1;
 
@@ -133,5 +133,26 @@ describe("resumeCommand", () => {
         capturedAt: at,
       }),
     ).toBe("pi --session ok1");
+  });
+});
+
+describe("resumeInvocation", () => {
+  it("names the CLI and the arguments after it, which the command line joins", () => {
+    const at = { capturedAt: 1 };
+    expect(resumeInvocation({ agent: "codex", id: "abc", ...at })).toEqual({
+      command: "codex",
+      args: ["resume", "abc"],
+    });
+    expect(resumeInvocation({ agent: "antigravity", id: "c-1", ...at })).toEqual({
+      command: "agy",
+      args: ["--conversation", "c-1"],
+    });
+    expect(resumeInvocation({ agent: "pi", id: "p", file: "/s/a b.jsonl", ...at })).toEqual({
+      command: "pi",
+      args: ["--session", "/s/a b.jsonl"],
+      file: "/s/a b.jsonl",
+    });
+    expect(resumeInvocation({ agent: "zero", id: "z", ...at })).toBeNull();
+    expect(resumeInvocation({ agent: "claude", id: "bad id", ...at })).toBeNull();
   });
 });

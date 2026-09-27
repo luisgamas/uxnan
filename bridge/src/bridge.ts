@@ -28,6 +28,8 @@ import {
   type ProjectRemovedParams,
   type ProjectUpdatedParams,
   type SettingsUpdatedParams,
+  type AgentSessionHeldParams,
+  type AgentSessionHandoffRequestedParams,
   type ThreadDeletedParams,
   type ThreadUpdatedParams,
 } from '@uxnan/shared';
@@ -75,6 +77,7 @@ import { UsageScanner } from './usage/usage-scan.js';
 import { MetricsService } from './metrics/metrics-service.js';
 import { MetricsStore } from './metrics/metrics-store.js';
 import { AgentManager } from './agents/agent-manager.js';
+import { SessionHolds } from './agents/session-holds.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
@@ -298,6 +301,24 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // its sync revision — the one place these notifications come from (§5.8.17).
   const broadcast = (method: string, params: unknown): void =>
     sessionRegistry.broadcast(makeNotification(method, params));
+  // Which agent sessions a desktop terminal holds (§5.8.19). Live only: every
+  // client follows the change, and a hand-off request goes to the holder alone.
+  const sessionHolds = new SessionHolds({
+    now,
+    holderName: () => settings.get().name,
+    onChange: (key, hold) =>
+      broadcast(StreamNotification.AgentSessionHeld, {
+        ...key,
+        ...(hold !== undefined ? { hold } : {}),
+      } satisfies AgentSessionHeldParams),
+    askHolder: (clientId, request) =>
+      sessionRegistry.notify(
+        localReceiverId(clientId),
+        makeNotification(StreamNotification.AgentSessionHandoffRequested, {
+          ...request,
+        } satisfies AgentSessionHandoffRequestedParams),
+      ),
+  });
   threadStore.onChange((change) => {
     if (change.type === 'deleted') {
       broadcast(StreamNotification.ThreadDeleted, {
@@ -605,6 +626,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     usage,
     sessionHistory,
     agentManager,
+    sessionHolds,
     agentInstalls,
     projects,
     ledger,
@@ -889,6 +911,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           presence.disconnected(localReceiverId(clientId));
           // Its tools' token dies with it (the desktop mints a new one).
           agentManager.clearDesktopTools(clientId);
+          // So do its terminals' holds: the terminals close with the app, and a
+          // desktop that reconnects says again what it holds.
+          sessionHolds.releaseAll(clientId);
           logger.info(`local client disconnected: ${clientId}`);
         },
       });

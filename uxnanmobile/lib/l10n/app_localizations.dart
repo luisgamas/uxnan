@@ -2384,6 +2384,96 @@ abstract class AppLocalizations {
   /// **'Couldn\'t start the conversation'**
   String get newThreadFailed;
 
+  /// No description provided for @sessionsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Or continue a session in this folder'**
+  String get sessionsSection;
+
+  /// No description provided for @sessionsSectionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations your agents had here outside Uxnan — in a terminal on the PC or their own app. Pick one to continue it here.'**
+  String get sessionsSectionHint;
+
+  /// No description provided for @sessionsPickHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue this session as a conversation'**
+  String get sessionsPickHint;
+
+  /// No description provided for @sessionsUntitled.
+  ///
+  /// In en, this message translates to:
+  /// **'Untitled session'**
+  String get sessionsUntitled;
+
+  /// No description provided for @sessionsShowFewer.
+  ///
+  /// In en, this message translates to:
+  /// **'Show fewer'**
+  String get sessionsShowFewer;
+
+  /// No description provided for @sessionsShowAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all {count}'**
+  String sessionsShowAll(int count);
+
+  /// No description provided for @sessionsUnlisted.
+  ///
+  /// In en, this message translates to:
+  /// **'{agents} can\'t list its sessions: continue one from the terminal it runs in.'**
+  String sessionsUnlisted(String agents);
+
+  /// No description provided for @sessionsInTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'In a terminal on {name}'**
+  String sessionsInTerminal(String name);
+
+  /// No description provided for @sessionsWorkingInTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Working in a terminal on {name}'**
+  String sessionsWorkingInTerminal(String name);
+
+  /// No description provided for @sessionHandoffBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent is working in its terminal. Try again when it\'s done.'**
+  String get sessionHandoffBusy;
+
+  /// No description provided for @sessionHandoffDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'The terminal kept the session.'**
+  String get sessionHandoffDeclined;
+
+  /// No description provided for @sessionHandoffUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach the PC\'s desktop holding the session.'**
+  String get sessionHandoffUnreachable;
+
+  /// No description provided for @sessionHeldBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation is open in a terminal on {name}.'**
+  String sessionHeldBanner(String name);
+
+  /// No description provided for @sessionHeldBannerWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation is working in a terminal on {name}.'**
+  String sessionHeldBannerWorking(String name);
+
+  /// No description provided for @sessionContinueHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue here'**
+  String get sessionContinueHere;
+
   /// No description provided for @newThreadLoadFailed.
   ///
   /// In en, this message translates to:

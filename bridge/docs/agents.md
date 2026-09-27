@@ -178,7 +178,7 @@ timeout leaves the provisional title in place and never disturbs the thread.
 one.** Codex does (`thread/name/set`), so a conversation started on the phone
 shows the same title in Codex Desktop and `codex resume` instead of appearing
 untitled. It is an optional adapter capability (`setNativeTitle`, read
-structurally by the `AgentManager` like `nativeSessionId`), so agents without a
+structurally by the `AgentManager`), so agents without a
 name concept are unaffected, and it needs no loaded thread — verified against
 codex-cli 0.147.0 from a process that never resumed it: the name lands in
 `~/.codex/session_index.jsonl`, which is the list those clients read.
@@ -426,6 +426,34 @@ deduplicated, while divergent final text becomes another response instead of
 replacing content already streamed. Mobile excludes boundary metadata from
 copy/previews and uses it only to collapse earlier responses after completion.
 
+### Listing an agent's sessions
+
+`agent/sessions` (architecture/02a §5.8.19) asks each adapter for its CLI's
+sessions in a folder (`listNativeSessions`), through what that CLI offers —
+measured 2026-09-27 against the installed CLIs:
+
+| Agent | Listed from | A person's session vs. a program's |
+|---|---|---|
+| Claude Code | `~/.claude/projects/<cwd, non-alphanumerics → '-'>/*.jsonl`, 64 KB from each end (`cwd`, `entrypoint`, first prompt, latest `ai-title`) | `entrypoint: 'cli'` is its terminal UI, `'sdk-cli'` a headless `-p` run |
+| Codex | app-server `thread/list { cwd, limit: 30, sortKey: 'updated_at' }` (`name`, else `preview`) | the `originator` of a thread the bridge started is its client name, `uxnan-bridge` |
+| OpenCode | its server: `GET /api/session?directory=&limit=` (2.x), `GET /session` filtered here (1.x) | a session the bridge opens is titled with the conversation's id |
+| pi | `<$PI_CODING_AGENT_DIR or ~/.pi/agent>/sessions/--<cwd, '/' → '-'>--/*.jsonl` (header `{type:'session', id, cwd}`, first user message) | not recorded: every session counts |
+| Grok | `~/.grok/sessions/<cwd, URL-encoded>/<id>/updates.jsonl` (first `user_message_chunk`s); its ACP `session/list` carries no title and lists empty sessions too | every session with a prompt counts |
+| Zero | ACP `session/list { cwd }` (Zero 0.9.0 announces `sessionCapabilities.list`) | a session opened over ACP keeps the title `ACP session` |
+| Antigravity | — (`agy` has no listing) | continued from the terminal that holds it |
+
+The bridge lists a program's session only when a conversation continues it,
+never Uxnan's own one-shots (how their prompt opens:
+`shared/src/agents/one-shot.ts`), each CLI bounded to 10 s. Where a CLI can run
+a one-shot without keeping a session, Uxnan does: Claude Code
+`--no-session-persistence`, Codex `exec --ephemeral`, pi `--no-session`.
+
+`thread/start` with `agentSessionId` stores the session on the new thread, so
+the first turn adopts it (below) and `turn/list` imports its history. Verified
+2026-09-27 for all seven agents with a session each CLI made on its own: every
+continued conversation recalled a word from the session (Antigravity included,
+though its history cannot be read).
+
 ### Native-session history convergence
 
 `turn/list` is more than a bridge-store read. When the bridge is not currently
@@ -456,6 +484,28 @@ adapter before a turn** (`adoptNativeSession`, offered only when the stored
 session belongs to the same agent). Both halves matter: without the second one a
 restarted bridge opens a new agent session under a conversation whose history
 the phone still shows, so the agent has lost the context the user can see.
+
+Both live once, in `BaseAgentAdapter` — the one thread → session map every
+adapter reads and writes (`setNativeSession` when the CLI announces or the
+adapter opens a session, `refuseNativeSession` when the CLI cannot resume one).
+How each CLI continues an adopted session, and what it does with one it no
+longer has — verified 2026-09-27 by stopping each adapter mid-conversation and
+asking a fresh one for a word given before the stop:
+
+| Agent | Continues an adopted session with | A session the CLI no longer has |
+|---|---|---|
+| Claude Code | `claude -p --resume <id>` | the CLI answers `No conversation found with session ID: <id>` before running anything; the same turn runs again without `--resume` |
+| Codex | app-server `thread/resume` | `thread/resume` fails; the turn starts a new thread (a thread *held* by another Codex client is not refused: the turn says so and stops) |
+| OpenCode | the same `ses_…` id on `opencode serve` | asked once per process (`GET /api/session/:id` → 404, `GET /session/:id` on 1.x); a fresh session is created |
+| pi | `--session-id <id>` on the resident process | pi creates the session under that id |
+| Grok | ACP `session/load` | `session/load` fails; `session/new` |
+| Zero | ACP `session/load` | `session/load` fails; `session/new` |
+| Antigravity | `--conversation <id>` | `agy` answers with a new conversation on `init`, which the thread takes |
+
+A refused id is never adopted again for that thread (the store still holds it
+until the fresh session's first turn is persisted). A fork does not inherit
+the original's session — `thread/fork` drops `agentSessionId` — so two
+conversations never write into one transcript.
 
 Bridge-created turns keep their public UUID and richer ordered segments, queue
 state and usage. A deterministic native-history id is stored only as a private
@@ -537,11 +587,14 @@ An adapter must decide when the agent is done. There are two kinds:
 
 That distinction matters because **Claude Code really does come back**. When the
 model starts a background task (`Bash` with `run_in_background`) and ends its
-turn, the CLI emits its `result` and keeps running; if the work finishes within
-its grace period the CLI **wakes the model** and a second, complete turn follows
-on the same process. Timed against the real CLI, the grace period is about
-**4–6 seconds**, after which the CLI **kills** the task (`status:"stopped"`) and
-exits with that work unfinished.
+turn, the CLI emits its `result` and keeps running; when the work finishes the
+CLI **wakes the model** and a second, complete turn follows on the same process.
+How long it waits depends on its input, which the bridge controls: **while the
+input is open it waits for as long as the work takes** (a `sleep 240` left
+running after the turn was waited for in full), and **once the input closes**
+it gives the work about **4–6 seconds** and then **stops** it
+(`status:"stopped"`), exiting with that work unfinished. The bridge keeps the
+input open while any task is live, so the work gets its time.
 
 #### A long wait is not the same thing (and is not limited)
 
@@ -563,13 +616,23 @@ So the two cases split cleanly:
 | The agent… | Turn state | Bounded? |
 |---|---|---|
 | **waits** for long work (CI, build, tests) | still running; deltas and tool progress keep flowing | **No limit** |
-| **leaves** work running and ends its turn | held open by the adapter until the CLI's follow-up turn or its exit | ~4–6 s, then the CLI kills the work and the turn reports it |
+| **leaves** work running and ends its turn | held open by the adapter (input open) until the work ends and the CLI's follow-up turn completes | **No limit** while the input is open |
 
 So `claude-adapter.ts` tracks live background tasks (`system` lines with
 `subtype:"task_started"` / `"task_notification"` — the reason `system` is no
 longer parsed as one event kind) and **holds the completion** while any is live,
 emitting exactly one `turn_completed` carrying both replies. Work the CLI killed
 is reported to the user as a warning block rather than passing as a clean turn.
+
+How a task ended decides whether that is so. The CLI reports `completed` (exit
+0), `failed` (exit ≠ 0 — its work finished, and the model reads the result like
+any other) or `stopped`, which means two different things: the model or the
+user ended it while the run went on (a server the model starts and then stops
+itself), or the CLI ended it because its input had closed. Only the last is
+lost work, so only a `stopped` after the adapter closed the input — or a task
+still live when the process exits — is reported. Counting every non-`completed`
+end, as the adapter once did, put "interrupted when the turn ended" on turns
+whose tests had simply failed.
 
 Two guards make this safe for **every** adapter, present and future, since the
 first table row is where the hazard lives:
@@ -586,7 +649,7 @@ way — asked to leave a shell command running and end its turn — and timed:
 
 | Agent | Wakes the model after its turn? | What happens to the deferred work |
 |---|---|---|
-| **Claude Code** | **Yes** | ~4–6 s of grace. Finishes in time → the CLI wakes the model and a second turn reports it. Otherwise **killed** (`status:"stopped"`), work lost |
+| **Claude Code** | **Yes** | Waited for while its input is open (the bridge keeps it open while tasks run) → the CLI wakes the model and a second turn reports it. Once the input closes, ~4–6 s and then **stopped**, work lost |
 | **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
 | Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
 | Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |

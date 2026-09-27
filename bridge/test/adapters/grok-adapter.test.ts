@@ -90,13 +90,22 @@ class FakeAcp {
             },
           ],
         });
-      else if (m.method === 'session/load') this.reply(m.id, {});
-      else if (m.method === 'session/set_config_option') this.reply(m.id, { configOptions: [] });
+      else if (m.method === 'session/load') {
+        if (this.loadFails)
+          this.feed({
+            jsonrpc: '2.0',
+            id: m.id,
+            error: { code: -32602, message: 'Session not found' },
+          });
+        else this.reply(m.id, {});
+      } else if (m.method === 'session/set_config_option') this.reply(m.id, { configOptions: [] });
       else if (m.method === 'session/set_model')
         this.reply(m.id, { _meta: { model: { Ok: m.params?.modelId } } });
     });
   }
 
+  /** Answer `session/load` with an error, as for a session the CLI no longer has. */
+  loadFails = false;
   handle(h: (m: any) => void): void {
     this.handlers.push(h);
   }
@@ -489,6 +498,46 @@ test('GrokAdapter reuses the session id across turns and cancels', async () => {
   await second;
   // session/new is called once (turn 2 reuses via session/load).
   assert.equal(newCalls, 1);
+  assert.equal(adapter.nativeSessionId('t1'), 'grok_sess_1');
+});
+
+// After a restart (or when a conversation takes over a terminal's session)
+// the bridge hands the stored id back: the first turn re-attaches it with
+// `session/load` instead of opening a new session.
+test('GrokAdapter loads an adopted session instead of opening a new one', async () => {
+  const { adapter, server } = setup();
+  server.handle((m) => {
+    if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  adapter.adoptNativeSession('t1', 'stored_sess');
+  const done = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go on' });
+  await done;
+  const load = server.sent.find((m) => m.method === 'session/load');
+  assert.equal(load?.params.sessionId, 'stored_sess');
+  assert.equal(
+    server.sent.some((m) => m.method === 'session/new'),
+    false,
+  );
+  const prompt = server.sent.find((m) => m.method === 'session/prompt');
+  assert.equal(prompt?.params.sessionId, 'stored_sess');
+  assert.equal(adapter.nativeSessionId('t1'), 'stored_sess');
+});
+
+test('GrokAdapter opens a fresh session when the adopted one cannot be loaded', async () => {
+  const { adapter, server } = setup();
+  server.loadFails = true;
+  server.handle((m) => {
+    if (m.method === 'session/prompt') server.reply(m.id, { stopReason: 'end_turn' });
+  });
+  adapter.adoptNativeSession('t1', 'gone_sess');
+  const events = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'still there?' });
+  const done = await events;
+  assert.equal(
+    done.some((e) => e.type === 'turn_error'),
+    false,
+  );
   assert.equal(adapter.nativeSessionId('t1'), 'grok_sess_1');
 });
 

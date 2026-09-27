@@ -16,6 +16,7 @@ import {
   openCodeV2Models,
   type OpenCodeEvent,
 } from '../../src/index.js';
+import { OpenCodeV1Server } from '../../src/adapters/opencode-v1.js';
 import { fakeOpenCode, waitUntil } from '../helpers/fake-opencode.js';
 
 const S = 'ses_1';
@@ -326,6 +327,110 @@ test('OpenCodeV2Server speaks /api behind the password it set, and translates th
       { kind: 'usage', sessionId: S, tokens: 120 },
       { kind: 'idle', sessionId: S },
     ]);
+  } finally {
+    await server.close();
+  }
+});
+
+// Whether the server still has a session, before a conversation resumes one
+// this process did not open. 404 is "no"; any other failure is "cannot say",
+// never read as "no" (verified against opencode 2.0.16: 200 / 404).
+test('OpenCodeV2Server asks the server whether it has a session', async () => {
+  const fake = fakeOpenCode(2, { knownSessions: ['ses_terminal'] });
+  const server = new OpenCodeV2Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.equal(await server.hasSession('ses_terminal'), true);
+    assert.equal(await server.hasSession('ses_gone'), false);
+    const lookups = fake
+      .requests()
+      .filter((r) => r.method === 'GET' && r.url.startsWith('/api/session/'));
+    assert.deepEqual(
+      lookups.map((r) => r.url),
+      ['/api/session/ses_terminal', '/api/session/ses_gone'],
+    );
+    assert.ok(lookups.every((r) => r.auth?.startsWith('Basic ')));
+  } finally {
+    await server.close();
+  }
+
+  const failing = fakeOpenCode(2, { sessionLookupStatus: 500 });
+  const broken = new OpenCodeV2Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: failing.spawnFn,
+  });
+  try {
+    await assert.rejects(broken.hasSession('ses_x'), /500/);
+  } finally {
+    await broken.close();
+  }
+});
+
+test('OpenCodeV1Server asks the server whether it has a session', async () => {
+  const fake = fakeOpenCode(1, { knownSessions: ['ses_terminal'] });
+  const server = new OpenCodeV1Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.equal(await server.hasSession('ses_terminal'), true);
+    assert.equal(await server.hasSession('ses_gone'), false);
+  } finally {
+    await server.close();
+  }
+});
+
+// Listing a folder's sessions. 2.x filters by `directory` itself and answers
+// newest first (verified against opencode 2.0.16); 1.x lists the project's
+// sessions, filtered and ordered here.
+test('OpenCodeV2Server lists a folder’s sessions', async () => {
+  const fake = fakeOpenCode(2, {
+    listedSessions: [
+      { id: 'ses_a', title: 'Dark theme', location: { directory: '/p' }, time: { updated: 20 } },
+      { id: 'ses_b', location: { directory: '/p' }, time: { updated: 10 } },
+      { id: 'ses_c', title: 'x', location: { directory: '/q' }, time: { updated: 30 } },
+    ],
+  });
+  const server = new OpenCodeV2Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.deepEqual(await server.listSessions('/p', 5), [
+      { id: 'ses_a', directory: '/p', title: 'Dark theme', updated: 20 },
+      { id: 'ses_b', directory: '/p', updated: 10 },
+    ]);
+    const request = fake.requests().find((r) => r.url.startsWith('/api/session?'));
+    assert.equal(request?.url, '/api/session?directory=%2Fp&limit=5');
+  } finally {
+    await server.close();
+  }
+});
+
+test('OpenCodeV1Server lists a folder’s sessions, newest first', async () => {
+  const fake = fakeOpenCode(1, {
+    listedSessions: [
+      { id: 'ses_old', title: 'Old', directory: '/p', time: { updated: 10 } },
+      { id: 'ses_new', title: 'New', directory: '/p', time: { updated: 30 } },
+      { id: 'ses_else', title: 'x', directory: '/q', time: { updated: 40 } },
+    ],
+  });
+  const server = new OpenCodeV1Server({
+    binaryPath: 'opencode',
+    cwd: process.cwd(),
+    spawnFn: fake.spawnFn,
+  });
+  try {
+    assert.deepEqual(
+      (await server.listSessions('/p', 1)).map((s) => s.id),
+      ['ses_new'],
+    );
   } finally {
     await server.close();
   }

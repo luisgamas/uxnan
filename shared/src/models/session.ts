@@ -239,4 +239,12 @@ export interface BridgeFeatures {
    * `Turn.seq`. Absent/false → a client keeps its older `thread/list` flow.
    */
   sync?: boolean;
+  /**
+   * The bridge lists every agent's sessions in a folder (`agent/sessions`),
+   * starts a conversation that continues one (`thread/start` with
+   * `agentSessionId`) and knows which ones a desktop terminal holds
+   * (`agent/holds`, `agent/hold`, …, `stream/agent/held`). Absent/false → a client
+   * offers none of it.
+   */
+  agentSessions?: boolean;
 }

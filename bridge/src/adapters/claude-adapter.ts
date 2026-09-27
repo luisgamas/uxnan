@@ -25,6 +25,7 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
+import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import type {
   AgentCapabilities,
@@ -35,11 +36,13 @@ import type {
   AgentModelOption,
   CompactionReason,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { listClaudeSessions } from './native-sessions.js';
 import {
   extractToolResults,
   extractToolUses,
@@ -204,6 +207,8 @@ export interface ClaudeModelSpec {
 }
 
 export interface ClaudeCodeAdapterOptions {
+  /** Home directory its session store is listed from (tests); the user's by default. */
+  homeDir?: string;
   /** Executable to spawn (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[cli.js]` when running via node). */
@@ -270,12 +275,14 @@ export interface ClaudeEvent {
    */
   taskId?: string;
   /**
-   * Only for `task_ended`: how the background task finished. `completed` means
-   * its work is done (and the CLI then wakes the model for another turn);
-   * `stopped` means the CLI **killed** it as the process came down, so that work
-   * was lost.
+   * Only for `task_ended`: how the background task finished, as the CLI says
+   * it (verified on `claude -p --output-format stream-json`). `completed`: it
+   * exited 0. `failed`: it exited with an error — its work did finish, and the
+   * model is told the result like any other. `stopped`: something ended it —
+   * the model or the user while the run goes on, or the CLI itself as it comes
+   * down once its input is closed; only the last is work lost.
    */
-  taskStatus?: 'completed' | 'stopped';
+  taskStatus?: 'completed' | 'failed' | 'stopped';
   /**
    * The `parent_tool_use_id` of the line, set when the event belongs to a
    * SUBAGENT (Task-tool) turn running in parallel with the main loop rather
@@ -304,6 +311,9 @@ export interface ClaudeEvent {
   terminalCommands?: string[];
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
+  /** Only set for `result`: the CLI's error messages, when it failed before
+   *  running the turn (e.g. `No conversation found with session ID: …`). */
+  errors?: string[];
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
   /** Only set for `system/compact_boundary`. */
@@ -376,7 +386,9 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       // The CLI reports the outcome twice — `task_updated` then
       // `task_notification` — and only the notification carries the status.
       if (subtype === 'task_notification' && taskId) {
-        const status = parsed['status'] === 'completed' ? 'completed' : 'stopped';
+        const reported = parsed['status'];
+        const status =
+          reported === 'completed' ? 'completed' : reported === 'failed' ? 'failed' : 'stopped';
         return { kind: 'task_ended', ...base, taskId, taskStatus: status };
       }
       if (subtype === 'compact_boundary') {
@@ -478,17 +490,28 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
     case 'result': {
       const isError = parsed['is_error'] === true || parsed['subtype'] !== 'success';
       const text = typeof parsed['result'] === 'string' ? parsed['result'] : undefined;
+      const errors = Array.isArray(parsed['errors'])
+        ? parsed['errors'].filter((e): e is string => typeof e === 'string')
+        : [];
       return {
         kind: 'result',
         ...base,
         text,
         isError,
+        ...(errors.length > 0 ? { errors } : {}),
         ...(parsed['usage'] !== undefined ? { usage: parsed['usage'] } : {}),
       };
     }
     default:
       return { kind: 'other', ...base };
   }
+}
+
+/** Whether a failed `result` says the resumed session does not exist — the
+ *  CLI's words for it, verified against claude 2.1.283: `No conversation found
+ *  with session ID: <id>`, before any turn ran. */
+function isMissingSession(errors: string[] | undefined): boolean {
+  return (errors ?? []).some((e) => e.startsWith('No conversation found with session ID'));
 }
 
 /** The environment variables a run's desktop MCP config expands: the bearer
@@ -529,14 +552,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     | { token: string; scriptPath: string; url: () => string | undefined }
     | undefined;
   readonly #spawn: SpawnFn;
-  /** threadId → Claude session id, for `--resume` continuity. */
-  readonly #sessionByThread = new Map<string, string>();
   /** What the CLI last said only works in its terminal (see listCommands). */
   #terminalCommands: string[] = CLAUDE_TERMINAL_COMMANDS;
   /** The CLI's command list per folder, briefly reused (see listCommands). */
   readonly #commandsByCwd = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
+  readonly #homeDir: string;
   #defaultCwd = process.cwd();
 
   /**
@@ -548,15 +570,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
-  /** Native Claude session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
+  /** Claude Code's sessions in a folder, from its own session store (`native-sessions.ts`). */
+  listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    return listClaudeSessions(this.#homeDir, cwd);
   }
 
   constructor(options: ClaudeCodeAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'claude';
     this.#prependArgs = options.prependArgs ?? [];
+    this.#homeDir = options.homeDir ?? homedir();
     this.#defaultModel = options.defaultModel;
     this.#pinnedModels = options.pinnedModels ?? [];
     this.#permissionMode = options.permissionMode ?? 'acceptEdits';
@@ -586,7 +609,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const { threadId, turnId, text } = options;
     const cwd = options.cwd ?? this.#defaultCwd;
     const model = options.service ?? this.#defaultModel;
-    const sessionId = this.#sessionByThread.get(threadId);
+    const sessionId = this.nativeSessionId(threadId);
 
     // The thread's persisted access mode (chosen on the phone) overrides the
     // adapter's configured posture for THIS turn. Absent → unchanged behaviour.
@@ -720,6 +743,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       }
     };
 
+    // Once the input is closed the CLI comes down, and it stops whatever
+    // background work is still running as it goes.
+    let inputClosed = false;
     /**
      * Tell the CLI no more input is coming. REQUIRED to end the run: with
      * `--input-format stream-json` the process keeps waiting for another message
@@ -727,6 +753,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
      * the turn forever.
      */
     const endInput = (): void => {
+      inputClosed = true;
       try {
         child.stdin?.end();
       } catch {
@@ -782,9 +809,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // turn's completion is held until the tasks resolve and the CLI either
     // produces its follow-up turn or exits.
     let deferredCompletion = false;
-    // Background tasks the CLI killed on its way out (`stopped`). That work was
-    // started on the user's behalf and did NOT finish — staying silent about it
-    // is what let the phone report a clean success over lost work.
+    // Background tasks the CLI killed on its way out. That work was started on
+    // the user's behalf and did NOT finish — staying silent about it is what
+    // let the phone report a clean success over lost work. Only a task that
+    // ends BECAUSE the run is ending counts: one that failed on its own, or
+    // that the model stopped while the run went on, is an outcome the model
+    // was told about, not an interruption.
     let interruptedTasks = 0;
     // The completion payload observed at the last `result`, replayed if the run
     // ends without another one.
@@ -804,9 +834,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // the pipe — close it so the process can exit.
       endInput();
       if (interruptedTasks > 0) {
-        // Say it in the turn itself. The CLI gives background work only a few
-        // seconds' grace after the turn ends and then kills it, so this is a
-        // real, silent loss the user would otherwise never learn about.
+        // Say it in the turn itself. The CLI stops what is still running once
+        // its input closes, so this is a real, silent loss the user would
+        // otherwise never learn about.
         this.emit({
           type: 'block',
           threadId,
@@ -839,7 +869,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       // their tool blocks still feed the work log, but their text/usage must
       // never fold into the main message or close the main text run.
       const subagent = event.parentToolUseId !== undefined;
-      if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
+      if (event.sessionId) this.setNativeSession(threadId, event.sessionId);
       // The CLI's own word on which commands only work in its terminal.
       if (event.terminalCommands) this.#terminalCommands = event.terminalCommands;
       // Register tool invocations (with their inputs) so the result can pair.
@@ -947,15 +977,26 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
         currentAssistantText = '';
       } else if (event.kind === 'result') {
-        if (event.isError) {
+        if (event.isError && sessionId && isMissingSession(event.errors)) {
+          // The session this conversation continues is gone (its transcript
+          // was deleted, or it belongs to another folder). Nothing ran yet:
+          // run the same turn again in a fresh session rather than failing it.
           errored = true;
           run.finished = true;
           endInput();
+          this.refuseNativeSession(threadId);
+          child.on('close', () => void this.sendTurn(options));
+        } else if (event.isError) {
+          errored = true;
+          run.finished = true;
+          endInput();
+          const reason =
+            event.text && event.text.length > 0 ? event.text : event.errors?.join('\n');
           this.emit({
             type: 'turn_error',
             threadId,
             turnId,
-            data: { text: event.text && event.text.length > 0 ? event.text : 'claude error' },
+            data: { text: reason && reason.length > 0 ? reason : 'claude error' },
           });
         } else {
           // Prefer the accumulated assistant envelopes (`full`) — they are the
@@ -990,7 +1031,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         liveBackgroundTasks.add(event.taskId);
       } else if (event.kind === 'task_ended' && event.taskId) {
         liveBackgroundTasks.delete(event.taskId);
-        if (event.taskStatus === 'stopped') interruptedTasks += 1;
+        // While the input is open the CLI waits for background work however
+        // long it takes, so a task `stopped` then was ended on purpose (the
+        // model or the user did it). After it closes, the CLI is the one
+        // ending it.
+        if (event.taskStatus === 'stopped' && inputClosed) interruptedTasks += 1;
         // Deliberately NOT completing here even when the last task resolves: a
         // `completed` task is exactly when the CLI wakes the model, so the run
         // is finished by its follow-up `result` or by the process exiting.
@@ -1060,14 +1105,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /**
    * Name a conversation with `haiku`, the cheapest tier — a side errand, not a
    * turn: a fresh one-shot with **no `--resume`**, so it neither joins the
-   * thread's session nor shows up in its history.
+   * thread's session nor shows up in its history — and with
+   * `--no-session-persistence`, so it leaves no session in Claude's own
+   * history either (verified against claude 2.1.283: no transcript is written).
    *
    * Text in, text out (`--output-format text`): there is nothing to stream, and
    * parsing one line beats decoding a JSON event stream for it.
    */
   async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
-    const args = ['-p', '--output-format', 'text', '--model', TITLE_MODEL, prompt];
+    const args = [
+      '-p',
+      '--no-session-persistence',
+      '--output-format',
+      'text',
+      '--model',
+      TITLE_MODEL,
+      prompt,
+    ];
     try {
       const cwd = options.cwd ?? this.#defaultCwd;
       const raw = await runTitleOneShot(() =>

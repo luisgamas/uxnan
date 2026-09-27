@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { mountWithProviders, until } from "../../../test/render";
 import { chat } from "$lib/bridge/chat.svelte";
+import { bridge } from "$lib/bridge/client.svelte";
 import type { ChatTab } from "$lib/state/terminals.svelte";
 import ChatStart from "./ChatStart.svelte";
 
@@ -76,5 +77,53 @@ describe("ChatStart", () => {
     await user.keyboard("{Enter}");
     await until(() => tab.draft === "fix it");
     await until(() => box.value === "fix it");
+  });
+
+  // The agents' own sessions here that no conversation continues yet can be
+  // picked up as this tab's chat; one open in a terminal asks it first.
+  it("lists the folder's agent sessions and continues one as the chat", async () => {
+    withAgent();
+    bridge.status = { state: "connected" } as typeof bridge.status;
+    const tab = chatTab();
+    const held = {
+      agentId: "codex",
+      sessionId: "c-2",
+      holder: { kind: "terminal", name: "Studio" },
+      heldAgoMs: 0,
+      busy: false,
+    };
+    const { screen, user, backend } = mountWithProviders(ChatStart, {
+      props: { tab, active: true },
+      commands: {
+        bridge_call: (args: Record<string, unknown>) => {
+          if (args.method === "agent/sessions") {
+            return {
+              sessions: [
+                { agentId: "codex", sessionId: "c-1", cwd: "/repo", title: "Fix the login", updatedAgoMs: 60_000 },
+                { agentId: "codex", sessionId: "c-2", cwd: "/repo", title: "Held one", updatedAgoMs: 1_000, hold: held },
+                { agentId: "codex", sessionId: "c-3", cwd: "/repo", title: "In a chat", updatedAgoMs: 1, threadId: "th-9" },
+              ],
+              unlisted: ["antigravity-cli"],
+            };
+          }
+          if (args.method === "agent/requestHandoff") return { outcome: "released" };
+          if (args.method === "thread/start") return { ...started, id: "th-c1" };
+          return {};
+        },
+      },
+    });
+    await until(() => screen.queryByText("Fix the login") !== null);
+    // One a conversation already continues is not offered again.
+    expect(screen.queryByText("In a chat")).toBeNull();
+    expect(screen.getByText("In a terminal")).toBeTruthy();
+    expect(screen.getByText(/can't list its sessions/)).toBeTruthy();
+
+    await user.click(screen.getByText("Held one"));
+    await until(() => backend.callsTo("bridge_call").some((c) => c.args.method === "thread/start"));
+    const methods = backend.callsTo("bridge_call").map((c) => c.args.method);
+    expect(methods.indexOf("agent/requestHandoff")).toBeLessThan(methods.indexOf("thread/start"));
+    const start = backend.callsTo("bridge_call").find((c) => c.args.method === "thread/start");
+    expect(start?.args.params).toMatchObject({ agentId: "codex", agentSessionId: "c-2", title: "Held one" });
+    bridge.status = { state: "off" } as typeof bridge.status;
   });
 });

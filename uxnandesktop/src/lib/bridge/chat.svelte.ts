@@ -30,6 +30,15 @@ import type { Project } from '$shared/models/project';
 import type { BridgeSettings, ClientPresence, SyncChanges } from '$shared/models/sync';
 import type { TrustedDevice } from '$shared/models/session';
 import type {
+  AgentSessionHandoffOutcome,
+  AgentSessionHandoffResult,
+  AgentSessionHeldParams,
+  AgentSessionHold,
+  AgentSessionHoldsResult,
+  AgentSessionKey,
+  AgentSessionListResult,
+} from '$shared/models/agent-session';
+import type {
   AgentsUpdatedParams,
   DevicesUpdatedParams,
   PresenceUpdatedParams,
@@ -44,6 +53,11 @@ import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelt
 import { isUserFacingAgent } from './agents';
 import { writeOutbox, type SendRequest } from './outbox';
 import { ThreadActivity, type ChatActivity } from './activity.svelte';
+
+/** How a session is known across agents: `agentId:sessionId`. */
+export function sessionKey(agentId: string, sessionId: string): string {
+  return `${agentId}:${sessionId}`;
+}
 
 /** One spelling for comparing directories: forward slashes, no trailing slash. */
 export function normalizeCwd(path: string): string {
@@ -85,6 +99,10 @@ export class ChatStore {
   /** Every phone paired to this PC, as the bridge names them. */
   devices = $state<TrustedDevice[]>([]);
   agents = $state<AgentDescriptor[]>([]);
+  /** The agent sessions a desktop terminal holds, by `agentId:sessionId`
+   *  (architecture/02a §5.8.19): no turn runs in one of those here until its
+   *  terminal lets it go. Live, not revisioned: reloaded on every reconnect. */
+  holds = new SvelteMap<string, AgentSessionHold>();
   /** The last sync revision applied, and the store it belongs to. */
   #rev: number | undefined;
   #storeId: string | undefined;
@@ -128,6 +146,7 @@ export class ChatStore {
     await Promise.allSettled([
       this.sync(),
       this.loadAgents(),
+      this.loadHolds(),
       ...[...this.#conversations.values()].map((c) => c.load()),
     ]);
   }
@@ -378,10 +397,46 @@ export class ChatStore {
     this.#conversations.delete(threadId);
   }
 
+  /** Every session a terminal holds now — after a reconnect, when some
+   *  `stream/agent/held` may have been missed. */
+  async loadHolds(): Promise<void> {
+    const { holds } = await this.#client.call<AgentSessionHoldsResult>('agent/holds', {});
+    this.holds.clear();
+    for (const hold of holds) this.holds.set(sessionKey(hold.agentId, hold.sessionId), hold);
+  }
+
+  /** The terminal holding a conversation's session, if one does. */
+  holdOf(thread: Pick<Thread, 'agentId' | 'agentSessionId'> | undefined): AgentSessionHold | undefined {
+    if (!thread?.agentId || !thread.agentSessionId) return undefined;
+    return this.holds.get(sessionKey(thread.agentId, thread.agentSessionId));
+  }
+
+  /** Every agent's own sessions in a folder, as the bridge lists them. */
+  listAgentSessions(cwd: string): Promise<AgentSessionListResult> {
+    return this.#client.call<AgentSessionListResult>('agent/sessions', { cwd });
+  }
+
+  /** Ask the terminal holding a session to let it go. */
+  async requestHandoff(key: AgentSessionKey): Promise<AgentSessionHandoffOutcome> {
+    const { outcome } = await this.#client.call<AgentSessionHandoffResult>(
+      'agent/requestHandoff',
+      key,
+    );
+    return outcome;
+  }
+
   /** Route one bridge notification. */
   apply(notification: BridgeNotification): void {
     this.activity.apply(notification);
     switch (notification.method) {
+      case 'stream/agent/held': {
+        const params = notification.params as AgentSessionHeldParams | undefined;
+        if (typeof params?.agentId !== 'string' || typeof params.sessionId !== 'string') return;
+        const key = sessionKey(params.agentId, params.sessionId);
+        if (params.hold) this.holds.set(key, params.hold);
+        else this.holds.delete(key);
+        return;
+      }
       case 'stream/thread/updated': {
         const thread = (notification.params as ThreadUpdatedParams | undefined)?.thread;
         if (thread && typeof thread.id === 'string' && this.#admit(thread.rev)) {
@@ -459,6 +514,10 @@ export class ChatStore {
     agentId: string;
     model?: string;
     title?: string;
+    /** Continue this session of the agent (`agent/sessions`, or a
+     *  terminal's): the bridge returns the conversation that already
+     *  continues it, when one does. */
+    agentSessionId?: string;
   }): Promise<Thread> {
     const title = input.title?.trim();
     const thread = await this.#client.call<Thread>('thread/start', {
@@ -466,6 +525,7 @@ export class ChatStore {
       cwd: input.cwd,
       ...(input.model ? { model: input.model } : {}),
       ...(title ? { title } : {}),
+      ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
     });
     this.threads.set(thread.id, thread);
     // Same starting posture as a thread started on the phone, so a

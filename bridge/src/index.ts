@@ -178,6 +178,7 @@ export {
   type OpenCodeCommandRun,
   type OpenCodeEvent,
   type OpenCodeHistoryMessage,
+  type OpenCodeListedSession,
   type OpenCodeModel,
   type OpenCodeModelRef,
   type OpenCodePermissionPolicy,

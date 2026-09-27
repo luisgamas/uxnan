@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 863, shared 40, relay
+standalone). It builds clean and the suite is green (bridge 923, shared 43, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -350,6 +350,17 @@ push validation (FOR-HUMAN).
       parts are read in file order) and
       attach them to each `RawMessage`. See the `FOR-DEV:` marker in
       `session-history.ts`.
+
+- [ ] **A fork keeps its agent's memory.** `thread/fork` copies the messages but
+      drops the native session (two conversations must never write into one
+      transcript), so the fork's first turn opens a session that has not seen
+      the history the fork shows. Fork the native session instead, per CLI:
+      `claude --resume <id> --fork-session`, Codex app-server `thread/fork`,
+      OpenCode's session fork route, ACP `session/fork` where Grok/Zero offer
+      it, and whatever pi and `agy` have — each measured on the surface the
+      bridge drives before it is wired. Where: `ThreadStore.forkThread` records
+      the source session, and a new optional adapter step forks it on the
+      fork's first turn. See the `FOR-DEV:` marker in `thread-store.ts`.
 
 ## Agent adapters
 

@@ -18,6 +18,8 @@
   import FileTabView from "./FileTabView.svelte";
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
+  import { terminalSessions } from "$lib/state/terminalSessions.svelte";
+  import { toastError } from "$lib/toast";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
   import { divider, focus, icon, iconButton, overlay, shell, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
@@ -233,6 +235,22 @@
     };
   }
 
+  // "Continue as chat": the agent's session in this terminal goes on as a
+  // conversation the bridge drives — here and on the phone. Offered while the
+  // agent's session is known here; waits for an agent that is working.
+  function continueAsChatItems(tab: GroupTab): MenuItem[] {
+    const state = terminalSessions.continueAsChatState(tab);
+    if (state === "unavailable") return [];
+    return [
+      {
+        label: state === "busy" ? i18n.t("sessions.continueAsChatWait") : i18n.t("sessions.continueAsChat"),
+        action: () => void terminalSessions.continueAsChat(tab.id).catch(toastError),
+        disabled: state === "busy",
+      },
+      { separator: true },
+    ];
+  }
+
   function terminalMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
     terminals.setActiveTab(groupId, tab.id);
     const ctrl = terminals.controller(tab.id);
@@ -245,6 +263,7 @@
       },
       { label: i18n.t("terminal.paste"), action: () => void ctrl?.paste(), chord: "Mod+V" },
       { separator: true },
+      ...continueAsChatItems(tab),
       renameItem(tab),
       { separator: true },
       ...splitItems(groupId),
@@ -260,7 +279,7 @@
   // right-clicking a background tab to close it never first flips to it. Selecting a
   // tab is left-click only, uniformly across Windows/Linux/macOS.
   function tabMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
-    const items: MenuItem[] = [renameItem(tab), { separator: true }];
+    const items: MenuItem[] = [...continueAsChatItems(tab), renameItem(tab), { separator: true }];
     if (tab.kind === "terminal") items.push(...splitItems(groupId), { separator: true });
     items.push(
       {
@@ -786,6 +805,16 @@
                                   <Icon icon={RotateCcwIcon} class="size-3" />
                                   {i18n.t("terminal.restart")}
                                 </Button>
+                                {#if terminalSessions.continueAsChatState(t) === "ready"}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    class="shrink-0 px-2"
+                                    onclick={() => void terminalSessions.continueAsChat(t.id).catch(toastError)}
+                                  >
+                                    {i18n.t("sessions.continueAsChat")}
+                                  </Button>
+                                {/if}
                                 <Button
                                   variant="ghost"
                                   size="sm"

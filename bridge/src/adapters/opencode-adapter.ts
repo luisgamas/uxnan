@@ -42,11 +42,13 @@ import type {
   QuestionItem,
   DesktopTools,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { DESKTOP_CWD_HEADER, DESKTOP_MCP_SERVER_NAME, encodeCwdHeader } from '@uxnan/shared';
 import { createHash } from 'node:crypto';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { mergePlanSteps, opencodeToolBlock, opencodeToolStartBlock } from './opencode-tools.js';
 import { compactionBlock, planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
@@ -201,10 +203,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #wantedTools = new Map<string, DesktopTools | undefined>();
   /** cwd → fingerprint of the desktop tools its server was started with. */
   readonly #toolsByCwd = new Map<string, string>();
-  /** threadId → OpenCode session id, for continuity + the history fallback. */
-  readonly #sessionByThread = new Map<string, string>();
   /** OpenCode session id → in-flight run, to route session-scoped events. */
   readonly #runBySession = new Map<string, ActiveRun>();
+  /** Sessions the server is known to hold: opened here, or confirmed with it
+   *  before this process first resumed them. */
+  readonly #confirmedSessions = new Set<string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** cwd → the server's commands there, briefly reused (see `listCommands`). */
@@ -236,11 +239,6 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    */
   defaultCwd(): string {
     return this.#defaultCwd;
-  }
-
-  /** Native OpenCode session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
   }
 
   /**
@@ -310,7 +308,19 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       return;
     }
 
-    let sessionId = this.#sessionByThread.get(threadId);
+    let sessionId = this.nativeSessionId(threadId);
+    if (sessionId && !this.#confirmedSessions.has(sessionId)) {
+      // A session this process did not open (the bridge restarted, or the
+      // conversation took over a terminal's): ask the server before resuming
+      // it, so a deleted one opens a fresh session instead of failing the turn.
+      const known = await server.hasSession(sessionId).catch(() => true);
+      if (known) {
+        this.#confirmedSessions.add(sessionId);
+      } else {
+        this.refuseNativeSession(threadId);
+        sessionId = undefined;
+      }
+    }
     if (!sessionId) {
       try {
         sessionId = await server.createSession({
@@ -319,7 +329,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
           ...(modelRef ? { model: modelRef } : {}),
           ...(variant ? { variant } : {}),
         });
-        this.#sessionByThread.set(threadId, sessionId);
+        this.setNativeSession(threadId, sessionId);
+        this.#confirmedSessions.add(sessionId);
       } catch (err) {
         this.emit({
           type: 'turn_error',
@@ -385,7 +396,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       run.finished = true;
       // Drop the stored session so the next turn recreates it (a restarted
       // server may no longer know this id).
-      this.#sessionByThread.delete(threadId);
+      this.refuseNativeSession(threadId);
       this.emit({
         type: 'turn_error',
         threadId,
@@ -835,6 +846,28 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     }
   }
 
+  /**
+   * OpenCode's sessions in a folder, from its server — the store OpenCode's
+   * own clients share, so a session started in its terminal UI is there. A
+   * session this bridge opened is titled with the conversation's id (see
+   * `sendTurn`), which is what tells it from a person's.
+   */
+  async listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    const server = await this.#ensureServer(cwd);
+    const sessions = await server.listSessions(cwd, MAX_LISTED);
+    return sessions.map((s) => {
+      const bridgeOwned = s.title !== undefined && UUID.test(s.title);
+      const title = bridgeOwned ? undefined : cleanTitle(s.title);
+      return {
+        sessionId: s.id,
+        cwd,
+        ...(title !== undefined ? { title } : {}),
+        updatedAt: s.updated ?? 0,
+        interactive: !bridgeOwned,
+      };
+    });
+  }
+
   /** A folder's commands, from the cache or its server. */
   async #commandsFor(cwd: string): Promise<OpenCodeCommand[]> {
     const cached = this.#commandsByCwd.get(cwd);
@@ -845,6 +878,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return commands;
   }
 }
+
+/** A conversation id, as the bridge titles the OpenCode sessions it opens. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

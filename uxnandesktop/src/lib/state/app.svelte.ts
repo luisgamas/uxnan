@@ -42,6 +42,7 @@ import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind, type ShellKind } from "$lib/shell";
 import { loadMcpLaunch, syncMcpLaunchSettings } from "$lib/mcpLaunch";
 import { ownedSession } from "$lib/agentSessionId";
+import { resumeInvocation, type CapturedAgentSession } from "$lib/agentResume";
 import { modelFromArgs } from "$lib/agentModel";
 import { currentOS } from "$lib/platform";
 import { hosts } from "$lib/state/hosts.svelte";
@@ -744,6 +745,10 @@ class AppStore {
       extraEnv?: Readonly<Record<string, string>>;
       /** `control` when the control surface launches (a collectable tab). */
       origin?: "control";
+      /** Reopen this session instead of starting one: a conversation handed
+       *  back from a chat (`terminalSessions.openInTerminal`). Its resume
+       *  arguments follow the profile's, and the tab carries the session. */
+      resume?: CapturedAgentSession;
     },
   ): string | null {
     const command = agent.command.trim();
@@ -783,11 +788,15 @@ class AppStore {
     // session once the agent has actually done something, which left a
     // conversation you opened and never used with nothing to come back to.
     // Opt-out: Settings → Agents.
+    // A resumed session is already named, by the CLI that made it.
+    const resumed = opts.resume ? resumeInvocation(opts.resume) : null;
     const owned =
-      this.settings.pinAgentSessions === false ? null : ownedSession(command, agent.args);
+      resumed || this.settings.pinAgentSessions === false
+        ? null
+        : ownedSession(command, agent.args);
     const runCommand = buildRunCommand(
       command,
-      [...agent.args, ...(opts.extraArgs ?? []), ...(owned?.args ?? [])],
+      [...agent.args, ...(opts.extraArgs ?? []), ...(resumed?.args ?? owned?.args ?? [])],
       kind,
     );
     // Per-agent env vars → real environment on the spawned shell (inherited by
@@ -822,7 +831,9 @@ class AppStore {
       // Stamp the session we just named on the tab, in the same breath as the
       // launch: nothing else has to happen for this tab to be restorable. A hook
       // report later overwrites it with the provider's own view (same id).
-      agentSession: owned
+      agentSession: resumed && opts.resume
+        ? { ...opts.resume, live: true, pending: false }
+        : owned
         ? {
             agent: owned.agent,
             id: owned.id,

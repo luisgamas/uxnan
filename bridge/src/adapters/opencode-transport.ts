@@ -141,6 +141,23 @@ export class ServeProcess {
   }
 
   /**
+   * Whether a GET of `path` finds something: `false` on a 404, `true` on any
+   * 2xx. Throws on every other status, so an unreachable server is never read
+   * as "it does not exist".
+   */
+  async exists(path: string): Promise<boolean> {
+    if (!this.#baseUrl) throw new Error('opencode server not started');
+    const res = await fetch(`${this.#baseUrl}${path}`, {
+      method: 'GET',
+      headers: { accept: 'application/json', ...this.#authHeader() },
+    });
+    await res.body?.cancel();
+    if (res.status === 404) return false;
+    if (!res.ok) throw new Error(`opencode GET ${path} -> ${res.status}`);
+    return true;
+  }
+
+  /**
    * Send a JSON request and return the parsed body (`{}` when empty). Throws on a
    * non-2xx status, naming the path and status.
    */

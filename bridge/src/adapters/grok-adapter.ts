@@ -58,9 +58,11 @@ import type {
   AgentModelOptionValue,
   ApprovalDecision,
   GenerateTitleOptions,
+  NativeSessionInfo,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { listGrokSessions } from './native-sessions.js';
 import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
@@ -102,6 +104,8 @@ const GROK_CAPABILITIES: AgentCapabilities = {
 type PermissionPosture = 'interactive' | 'approveAll' | 'approveSession';
 
 export interface GrokAdapterOptions {
+  /** Home directory its session store is listed from (tests); the user's by default. */
+  homeDir?: string;
   /** Resolved `grok` executable path (found by `locateAgent`, `agents/agent-installs.ts`). */
   binaryPath?: string;
   /** Args prepended before the adapter args (e.g. `[grok.js]` when run via node). */
@@ -362,8 +366,6 @@ export class GrokAdapter extends BaseAgentAdapter {
   #killAcp: (() => void) | undefined;
   /** One-shot spawner for side errands that must not touch the ACP session. */
   readonly #spawnOneShot: SpawnFn = defaultSpawn;
-  /** threadId → ACP sessionId, for continuity + history fallback. */
-  readonly #sessionByThread = new Map<string, string>();
   /** sessionId → in-flight run, to route session-scoped updates/permissions. */
   readonly #runBySession = new Map<string, ActiveRun>();
   /** turnId → in-flight run, for cancellation. */
@@ -386,6 +388,7 @@ export class GrokAdapter extends BaseAgentAdapter {
   /** Model list, captured from the `initialize` handshake (cached for the process). */
   #modelsCache: AgentModel[] | null = null;
   #rpc: NdjsonRpc | null = null;
+  readonly #homeDir: string;
   /** The ACP process advertised HTTP MCP servers (`initialize`) — Uxnan Desktop's tools are offered only then. */
   #mcpHttp = false;
   #init: Promise<NdjsonRpc> | null = null;
@@ -400,15 +403,16 @@ export class GrokAdapter extends BaseAgentAdapter {
     return this.#defaultCwd;
   }
 
-  /** Native Grok session id for a thread (on-disk history-fallback locator). */
-  nativeSessionId(threadId: string): string | undefined {
-    return this.#sessionByThread.get(threadId);
+  /** Grok's sessions in a folder, from its own session store (`native-sessions.ts`). */
+  listNativeSessions(cwd: string): Promise<NativeSessionInfo[]> {
+    return listGrokSessions(this.#homeDir, cwd);
   }
 
   constructor(options: GrokAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'grok';
     this.#prependArgs = options.prependArgs ?? [];
+    this.#homeDir = options.homeDir ?? homedir();
     this.#defaultModel = options.defaultModel;
     this.#onApprovalRequest = options.onApprovalRequest;
     this.#spawnAcp =
@@ -605,7 +609,7 @@ export class GrokAdapter extends BaseAgentAdapter {
     cwd: string,
     mcpServers: AcpMcpServerHttp[] = [],
   ): Promise<string> {
-    const known = this.#sessionByThread.get(threadId);
+    const known = this.nativeSessionId(threadId);
     if (known) {
       // The same process still holds it (common case); a restarted process needs
       // session/load to re-attach. Try load; fall through to new on failure.
@@ -614,7 +618,7 @@ export class GrokAdapter extends BaseAgentAdapter {
         this.#cwdBySession.set(known, cwd);
         return known;
       } catch {
-        this.#sessionByThread.delete(threadId);
+        this.refuseNativeSession(threadId);
         this.#modelBySession.delete(known);
         this.#effortBySession.delete(known);
       }
@@ -623,7 +627,7 @@ export class GrokAdapter extends BaseAgentAdapter {
       cwd,
       mcpServers,
     });
-    this.#sessionByThread.set(threadId, res.sessionId);
+    this.setNativeSession(threadId, res.sessionId);
     this.#cwdBySession.set(res.sessionId, cwd);
     const effortOption = effortOptionId(res.configOptions);
     if (effortOption) this.#effortOptionBySession.set(res.sessionId, effortOption);
