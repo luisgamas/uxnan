@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Images sent from another device show in the message.** A message's images
+  came only from this phone's own copy, so one sent from the desktop — or any
+  message read back from history — showed without them. The bridge now keeps
+  them with the message (`Message.attachments`); the timeline and the viewer
+  fetch each with `turn/attachment` when it is shown and keep recent ones.
+
 ### Fixed
 
 - **Old bubbles the bridge had dropped stay gone.** A turn the bridge removed at

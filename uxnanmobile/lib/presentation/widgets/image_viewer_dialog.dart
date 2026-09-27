@@ -1,9 +1,9 @@
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/message_image_bytes.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 import 'package:uxnan/presentation/widgets/zoomable_media.dart';
 
@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/widgets/zoomable_media.dart';
 Future<void> showImageViewerDialog(
   BuildContext context, {
   required List<ImageContent> images,
+  String? threadId,
   int initialIndex = 0,
 }) {
   if (images.isEmpty) return Future<void>.value();
@@ -23,15 +24,21 @@ Future<void> showImageViewerDialog(
     barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.9),
     builder: (context) => _ImageViewerDialog(
       images: images,
+      threadId: threadId,
       initialIndex: initialIndex.clamp(0, images.length - 1),
     ),
   );
 }
 
 class _ImageViewerDialog extends StatefulWidget {
-  const _ImageViewerDialog({required this.images, required this.initialIndex});
+  const _ImageViewerDialog({
+    required this.images,
+    required this.initialIndex,
+    this.threadId,
+  });
 
   final List<ImageContent> images;
+  final String? threadId;
   final int initialIndex;
 
   @override
@@ -49,16 +56,6 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
     super.dispose();
   }
 
-  Uint8List? _bytesOf(ImageContent image) {
-    final data = image.base64Data;
-    if (data == null) return null;
-    try {
-      return base64Decode(data);
-    } on FormatException {
-      return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -74,19 +71,22 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
             controller: _controller,
             itemCount: widget.images.length,
             onPageChanged: (value) => setState(() => _index = value),
-            itemBuilder: (context, index) {
-              final bytes = _bytesOf(widget.images[index]);
-              return ZoomableMedia(
-                child: Center(
-                  child: bytes == null
-                      ? UxIcon(
-                          UxIcons.brokenImage,
-                          color: colors.onSurfaceVariant,
-                        )
+            itemBuilder: (context, index) => ZoomableMedia(
+              child: Center(
+                child: MessageImageBytes(
+                  image: widget.images[index],
+                  threadId: widget.threadId,
+                  builder: (context, bytes, {required loading}) => bytes == null
+                      ? (loading
+                          ? const PolygonLoader(size: 32)
+                          : UxIcon(
+                              UxIcons.brokenImage,
+                              color: colors.onSurfaceVariant,
+                            ))
                       : Image.memory(bytes, fit: BoxFit.contain),
                 ),
-              );
-            },
+              ),
+            ),
           ),
           Positioned(
             top: UxnanSpacing.sm,

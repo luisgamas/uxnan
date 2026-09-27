@@ -1,13 +1,13 @@
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/message_image_bytes.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// A horizontally scrolling strip of inline-base64 image thumbnails.
+/// A horizontally scrolling strip of image thumbnails — inline ones, or ones
+/// the bridge keeps with a message ([threadId] names where to ask).
 ///
 /// One widget serves both ends of an image turn, so an attachment reads the
 /// same before and after it is sent:
@@ -25,10 +25,14 @@ class ImageThumbStrip extends StatelessWidget {
   const ImageThumbStrip({
     required this.images,
     required this.size,
+    this.threadId,
     this.onRemove,
     this.onTap,
     super.key,
   });
+
+  /// The conversation of the message, for images the bridge keeps.
+  final String? threadId;
 
   /// The images to show, in order.
   final List<ImageContent> images;
@@ -58,6 +62,7 @@ class ImageThumbStrip extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: UxnanSpacing.xs),
         itemBuilder: (context, index) => _Thumb(
           image: images[index],
+          threadId: threadId,
           size: size,
           onRemove: onRemove == null ? null : () => onRemove!(index),
           onTap: onTap == null ? null : () => onTap!(index),
@@ -67,89 +72,64 @@ class ImageThumbStrip extends StatelessWidget {
   }
 }
 
-/// A single square thumbnail. The base64 payload is decoded once per image
-/// (not on every rebuild) because the strip lives in a scrolling timeline.
-class _Thumb extends StatefulWidget {
+/// A single square thumbnail.
+class _Thumb extends StatelessWidget {
   const _Thumb({
     required this.image,
     required this.size,
+    this.threadId,
     this.onRemove,
     this.onTap,
   });
 
   final ImageContent image;
+  final String? threadId;
   final double size;
   final VoidCallback? onRemove;
   final VoidCallback? onTap;
 
   @override
-  State<_Thumb> createState() => _ThumbState();
-}
-
-class _ThumbState extends State<_Thumb> {
-  Uint8List? _bytes;
-
-  @override
-  void initState() {
-    super.initState();
-    _decode();
-  }
-
-  @override
-  void didUpdateWidget(_Thumb oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.image.base64Data != widget.image.base64Data) _decode();
-  }
-
-  void _decode() {
-    final data = widget.image.base64Data;
-    if (data == null) {
-      _bytes = null;
-      return;
-    }
-    try {
-      _bytes = base64Decode(data);
-    } on FormatException {
-      _bytes = null;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
-    final bytes = _bytes;
     const radius = BorderRadius.all(UxnanRadius.md);
 
     Widget thumb = ClipRRect(
       borderRadius: radius,
       child: Container(
-        width: widget.size,
-        height: widget.size,
+        width: size,
+        height: size,
         color: colors.surfaceContainerHighest,
         alignment: Alignment.center,
-        child: bytes == null
-            ? UxIcon(UxIcons.image, color: colors.onSurfaceVariant)
-            : Image.memory(
-                bytes,
-                width: widget.size,
-                height: widget.size,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                errorBuilder: (context, _, __) => UxIcon(
-                  UxIcons.brokenImage,
+        child: MessageImageBytes(
+          image: image,
+          threadId: threadId,
+          builder: (context, bytes, {required loading}) => bytes == null
+              ? UxIcon(
+                  loading ? UxIcons.image : UxIcons.brokenImage,
                   color: colors.onSurfaceVariant,
+                )
+              : Image.memory(
+                  bytes,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (context, _, __) => UxIcon(
+                    UxIcons.brokenImage,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
-              ),
+        ),
       ),
     );
 
-    if (widget.onTap != null) {
+    if (onTap != null) {
       thumb = Semantics(
         button: true,
         label: l10n.attachmentImage,
         child: InkWell(
-          onTap: widget.onTap,
+          onTap: onTap,
           borderRadius: radius,
           child: thumb,
         ),
@@ -158,7 +138,7 @@ class _ThumbState extends State<_Thumb> {
       thumb = Semantics(image: true, label: l10n.attachmentImage, child: thumb);
     }
 
-    if (widget.onRemove == null) return thumb;
+    if (onRemove == null) return thumb;
 
     return Stack(
       children: [
@@ -171,7 +151,7 @@ class _ThumbState extends State<_Thumb> {
             // A solid surface chip rather than a translucent scrim: it stays
             // legible over any photo in both light and dark themes.
             child: InkResponse(
-              onTap: widget.onRemove,
+              onTap: onRemove,
               radius: UxnanSpacing.lg,
               child: DecoratedBox(
                 decoration: BoxDecoration(

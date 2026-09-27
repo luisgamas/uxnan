@@ -287,6 +287,7 @@ class ImageContent extends MessageContent with EquatableMixin {
     required this.mimeType,
     this.path,
     this.base64Data,
+    this.attachmentId,
     this.width,
     this.height,
   });
@@ -296,6 +297,7 @@ class ImageContent extends MessageContent with EquatableMixin {
         mimeType: json['mimeType'] as String? ?? 'application/octet-stream',
         path: json['path'] as String?,
         base64Data: json['base64Data'] as String?,
+        attachmentId: json['attachmentId'] as String?,
         width: json['width'] as int?,
         height: json['height'] as int?,
       );
@@ -305,6 +307,11 @@ class ImageContent extends MessageContent with EquatableMixin {
 
   /// Inline base64 data, if any.
   final String? base64Data;
+
+  /// The id the bridge keeps this image under with its message
+  /// (`Message.attachments`), when the bytes are not here: they are fetched
+  /// with `turn/attachment` when the image is shown.
+  final String? attachmentId;
 
   /// MIME type.
   final String mimeType;
@@ -330,12 +337,14 @@ class ImageContent extends MessageContent with EquatableMixin {
         'mimeType': mimeType,
         if (path != null) 'path': path,
         if (base64Data != null) 'base64Data': base64Data,
+        if (attachmentId != null) 'attachmentId': attachmentId,
         if (width != null) 'width': width,
         if (height != null) 'height': height,
       };
 
   @override
-  List<Object?> get props => [path, base64Data, mimeType, width, height];
+  List<Object?> get props =>
+      [path, base64Data, attachmentId, mimeType, width, height];
 }
 
 /// What a tool call did, as the bridge classifies every agent's tools
