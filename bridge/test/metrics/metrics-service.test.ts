@@ -92,18 +92,14 @@ test('snapshot aggregates conversations, messages, agents, sessions and git acti
   }
 });
 
-test('snapshot byAgentDay splits conversations/messages/tokens per agent', async () => {
+test('snapshot byAgentDay splits conversations and messages per agent', async () => {
   const h = newHarness();
   try {
     const t = await h.threadStore.startThread({ projectId: 'p', agentId: 'claude-code' }, 1000);
     const turn1 = await h.threadStore.startTurn(t.id, 'hi', 1000);
-    await h.threadStore.setUsage(t.id, turn1.turnId, { tokens: 500 }, 1000);
     await h.threadStore.completeTurn(t.id, turn1.turnId, 'a', 1100);
     const turn2 = await h.threadStore.startTurn(t.id, 'again', 2000);
-    await h.threadStore.setUsage(t.id, turn2.turnId, { tokens: 800 }, 2000);
     await h.threadStore.completeTurn(t.id, turn2.turnId, 'b', 2100);
-    // A second agent whose turns report NO usage → appears with tokens 0 but
-    // real conversation/message counts.
     const t2 = await h.threadStore.startThread({ projectId: 'p', agentId: 'zero' }, 3000);
     const zt = await h.threadStore.startTurn(t2.id, 'x', 3000);
     await h.threadStore.completeTurn(t2.id, zt.turnId, 'y', 3100);
@@ -112,12 +108,7 @@ test('snapshot byAgentDay splits conversations/messages/tokens per agent', async
     const claude = snap.byAgentDay
       .flatMap((d) => d.byAgent)
       .filter((a) => a.agentId === 'claude-code');
-    // 500 + 800 across the (same-UTC-day) turns; 1 conversation; 4 messages
-    // (2 turns × user+assistant).
-    assert.equal(
-      claude.reduce((acc, a) => acc + a.tokens, 0),
-      1300,
-    );
+    // 1 conversation; 4 messages (2 turns × user+assistant).
     assert.equal(
       claude.reduce((acc, a) => acc + a.conversations, 0),
       1,
@@ -126,19 +117,43 @@ test('snapshot byAgentDay splits conversations/messages/tokens per agent', async
       claude.reduce((acc, a) => acc + a.messages, 0),
       4,
     );
-    // Zero appears (a conversation + messages) with 0 tokens.
     const zero = snap.byAgentDay.flatMap((d) => d.byAgent).filter((a) => a.agentId === 'zero');
-    assert.ok(zero.length > 0);
-    assert.equal(
-      zero.reduce((acc, a) => acc + a.tokens, 0),
-      0,
-    );
     assert.ok(zero.reduce((acc, a) => acc + a.conversations, 0) >= 1);
+    // What the agents spent is not the ledger's: no token figure is served.
+    assert.ok(snap.byAgentDay.flatMap((d) => d.byAgent).every((a) => !('tokens' in a)));
     // Day keys are UTC midnight (a whole-day multiple; `=== 0` treats -0 as 0
     // for pre-epoch days, which `assert.equal` would not).
     for (const d of snap.byAgentDay) {
       assert.ok(d.day % 86_400_000 === 0, 'day key is UTC midnight');
     }
+  } finally {
+    await rmrf(h.baseDir);
+  }
+});
+
+test('the development echo agent is never counted', async () => {
+  const h = newHarness();
+  try {
+    const echo = await h.threadStore.startThread({ projectId: 'p', agentId: 'echo' }, 1000);
+    const turn = await h.threadStore.startTurn(echo.id, 'ping', 1000);
+    await h.threadStore.completeTurn(echo.id, turn.turnId, 'pong', 1100);
+    const real = await h.threadStore.startThread({ projectId: 'p', agentId: 'codex' }, 2000);
+    const t = await h.threadStore.startTurn(real.id, 'hi', 2000);
+    await h.threadStore.completeTurn(real.id, t.turnId, 'hello', 2100);
+
+    const snap = await h.service.getSnapshot();
+    assert.equal(snap.conversations, 1);
+    assert.equal(snap.messages, 2);
+    assert.equal(snap.agentsUsed, 1);
+    assert.deepEqual(
+      snap.byAgent.map((a) => a.agentId),
+      ['codex'],
+    );
+    assert.ok(snap.byAgentDay.flatMap((d) => d.byAgent).every((a) => a.agentId !== 'echo'));
+    assert.equal(
+      snap.activity.reduce((sum, d) => sum + d.conversations, 0),
+      1,
+    );
   } finally {
     await rmrf(h.baseDir);
   }
@@ -152,7 +167,7 @@ test('deleting conversation history never subtracts its activity from the ledger
       1000,
     );
     const turn = await h.threadStore.startTurn(thread.id, 'keep the metric', 1100);
-    await h.threadStore.setUsage(thread.id, turn.turnId, { tokens: 321 }, 1200);
+    await h.threadStore.completeTurn(thread.id, turn.turnId, 'kept', 1200);
 
     const before = await h.service.getSnapshot();
     await h.threadStore.deleteThread(thread.id);
@@ -161,8 +176,8 @@ test('deleting conversation history never subtracts its activity from the ledger
     assert.equal(after.conversations, before.conversations);
     assert.equal(after.messages, before.messages);
     assert.equal(
-      after.byAgentDay.flatMap((day) => day.byAgent).reduce((sum, row) => sum + row.tokens, 0),
-      321,
+      after.byAgentDay.flatMap((day) => day.byAgent).reduce((sum, row) => sum + row.messages, 0),
+      2,
     );
   } finally {
     await rmrf(h.baseDir);
@@ -179,7 +194,7 @@ test('initialize backfills pre-ledger threads idempotently', async () => {
       1000,
     );
     const turn = await legacyThreadStore.startTurn(thread.id, 'migrate me', 1100);
-    await legacyThreadStore.setUsage(thread.id, turn.turnId, { tokens: 77 }, 1200);
+    await legacyThreadStore.completeTurn(thread.id, turn.turnId, 'done', 1200);
 
     const metricsStore = new MetricsStore(state);
     const threadStore = new ThreadStore(state, metricsStore);
@@ -197,7 +212,7 @@ test('initialize backfills pre-ledger threads idempotently', async () => {
     const events = await metricsStore.readEvents();
     assert.equal(events.conversations.length, 1);
     assert.equal(events.turns.length, 1);
-    assert.equal(events.turns[0]?.tokens, 77);
+    assert.equal(events.turns[0]?.messageDays[0]?.messages, 2);
   } finally {
     await rmrf(baseDir);
   }
@@ -301,7 +316,7 @@ test('imports legacy version-1 backups with session and Git rows only', async ()
   }
 });
 
-test('a complete same-PC backup restores conversation, token, session and git history', async () => {
+test('a complete same-PC backup restores conversation, message, session and git history', async () => {
   // Simulate restoring a backup made earlier on THIS PC (same deviceId + key).
   const secret = new InMemorySecretStore();
   const first = newHarness('pc-1', secret);
@@ -311,7 +326,7 @@ test('a complete same-PC backup restores conversation, token, session and git hi
       500,
     );
     const turn = await first.threadStore.startTurn(thread.id, 'restore me', 600);
-    await first.threadStore.setUsage(thread.id, turn.turnId, { tokens: 456 }, 700);
+    await first.threadStore.completeTurn(thread.id, turn.turnId, 'restored', 700);
     const s = await first.service.startSession('phone', 'relay');
     await first.service.endSession(s);
     await first.service.recordGitAction('git/commit', thread.id, true);
@@ -334,8 +349,8 @@ test('a complete same-PC backup restores conversation, token, session and git hi
       assert.equal(
         result.snapshot.byAgentDay
           .flatMap((day) => day.byAgent)
-          .reduce((sum, row) => sum + row.tokens, 0),
-        456,
+          .reduce((sum, row) => sum + row.messages, 0),
+        2,
       );
     } finally {
       await rmrf(restored.baseDir);

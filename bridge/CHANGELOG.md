@@ -18,6 +18,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **The metrics ledger counts activity, not tokens, and never the echo agent.**
+  Turn rows lose `tokens`/`tokenDay` and `metrics/get` serves no per-agent token
+  figure: `usage/summary` is the one count of what the agents spent. The
+  development echo agent's conversations and turns are left out of every
+  metrics figure.
+
 - **Plan limits are asked of Claude Code and Codex themselves.** Each CLI
   answers for the account it is signed in to (`get_usage` / `account/rateLimits/read`),
   so the bridge reads no credential file and no Keychain item — and Claude's

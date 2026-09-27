@@ -7,7 +7,7 @@
  * were derived on the phone from local storage and so were lost on an app
  * uninstall (the app has no cloud login). To make them durable, the **bridge**
  * becomes the source of truth: it persists a complete activity ledger
- * (conversations, turns/messages, reported tokens, sessions and Git actions)
+ * (conversations, turns/messages, sessions and Git actions)
  * and serves it over `metrics/get`. Deleting mutable conversation history does
  * not subtract activity. The phone renders one snapshot per PC and sums PCs.
  *
@@ -16,8 +16,10 @@
  * keychain), so users cannot fabricate or edit their stats; `metrics/import`
  * feeds one back and merges its events by id (idempotent).
  *
- * Provider usage/credits are deliberately NOT part of this — those are read live
- * via `agent/usageStats` and never persisted.
+ * What the agents spent (tokens, cost) and provider limits are deliberately NOT
+ * part of this: `usage/summary` reads spend from each CLI's own history (every
+ * session, not only the bridge's) and `agent/usageStats` asks for limits live.
+ * The development `echo` agent is never counted.
  *
  * Source: architecture/02a-system-architecture.md §5.8.11 and
  * 02b-contracts-and-requirements.md.
@@ -42,20 +44,13 @@ export interface MetricsAgentDay {
   conversations: number;
   /** Messages exchanged that day in this agent's threads. */
   messages: number;
-  /**
-   * Tokens processed that day — the sum of each turn's reported usage (input
-   * incl. the re-sent context + output). **Throughput, not billed cost**: caching
-   * and input/output pricing differ (use `agent/usageStats` for money). 0 for
-   * agents that don't report usage (e.g. Zero).
-   */
-  tokens: number;
 }
 
 /** One calendar day's activity split per agent. */
 export interface MetricsDayBreakdown {
   /** UTC-midnight epoch ms of the calendar date (same encoding as `activity`). */
   day: number;
-  /** Per-agent activity that day (agents with any conversation/message/token). */
+  /** Per-agent activity that day (agents with any conversation or message). */
   byAgent: MetricsAgentDay[];
 }
 
@@ -118,7 +113,7 @@ export interface MetricsSnapshot {
   /** Per-day activity buckets for the contribution heatmap. */
   activity: MetricsActivityDay[];
   /**
-   * Per-day activity split per agent (conversations, messages, tokens), for the
+   * Per-day activity split per agent (conversations, messages), for the
    * unified agent-activity view: the per-agent bars show all-time totals, or a
    * single day's totals when a heatmap cell is selected. See
    * {@link MetricsAgentDay}.

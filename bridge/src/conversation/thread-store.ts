@@ -1295,16 +1295,9 @@ function metricProjection(thread: StoredThread): {
   };
   const turns = thread.turns.map((turn): TurnMetricEvent => {
     const messageDays = new Map<number, number>();
-    let tokens = 0;
-    let tokenDay = utcDayKey(turn.createdAt);
     for (const message of turn.messages) {
       const day = utcDayKey(message.createdAt);
       messageDays.set(day, (messageDays.get(day) ?? 0) + 1);
-      if (message.role === 'assistant') {
-        tokenDay = day;
-        const reported = message.usage?.tokens;
-        if (typeof reported === 'number' && reported > 0) tokens += reported;
-      }
     }
     return {
       id: `${thread.id}:${turn.id}`,
@@ -1312,8 +1305,6 @@ function metricProjection(thread: StoredThread): {
       ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
       ...(thread.model !== undefined ? { model: thread.model } : {}),
       messageDays: [...messageDays].map(([day, messages]) => ({ day, messages })),
-      tokens,
-      tokenDay,
       updatedAt: thread.updatedAt,
     };
   });

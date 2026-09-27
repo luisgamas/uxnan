@@ -18,6 +18,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - `UsageSource` gains `cli` (asked of the CLI itself); `UsageStatus` loses
   `accessRequired` — no reader opens an OS credential store any more.
 
+### Removed
+
+- **`MetricsAgentDay.tokens`.** The metrics ledger counts activity only; what the
+  agents spent is `usage/summary`'s, read from every session each CLI recorded
+  rather than only the bridge's turns — one count, not two that disagree.
+
 ## [0.0.21-alpha.20260927] - 20260927
 ### Added — a message keeps its images
 

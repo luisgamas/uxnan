@@ -53,8 +53,9 @@
 > payloads reconcile additively and mobile collapses completed progress replies
 > without discarding them. Profile activity is owned by a complete,
 > global-per-PC bridge ledger. Conversation deletion never subtracts historical
-> metrics; export/import includes conversations, messages, reported tokens,
-> sessions and Git actions. Phone transport identity remains installation-local
+> metrics; export/import includes conversations, messages, sessions and Git
+> actions (what the agents spent is read from each CLI's history by
+> `usage/summary`, never kept in the ledger). Phone transport identity remains installation-local
 > and is not used as an activity-profile identity. LAN discovery is an
 > unauthenticated host hint, emitted explicitly on every eligible IPv4 interface;
 > it never carries the pairing code and never bypasses the operator-gated E2EE
@@ -2228,11 +2229,15 @@ copia a otro archivo se cuentan una vez. Nada crudo sale del bridge: solo sumas.
 #### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
 
 Mobile profile metrics (conversations, messages, agents/models used, connected
-time, sessions, Git actions, reported tokens and activity heatmaps) are owned by
+time, sessions, Git actions and activity heatmaps) are owned by
 the **bridge** and served through `metrics/*` (`MetricsSnapshot` in
 `shared/src/models/metrics.ts`; see 02b §1.2). The phone caches/renders one
-snapshot per PC and sums PCs. Provider quota/credit usage is a separate live
-surface (`agent/usageStats`) and is never written to this ledger.
+snapshot per PC and sums PCs. The development `echo` agent is never counted.
+Tokens and cost are **not** in this ledger: `usage/summary` (§5.8.10) reads them
+from each CLI's own history, which covers every session on the PC — one source
+for what the agents spent, not a second count of the bridge's turns. Provider
+quota/credit usage is a separate live surface (`agent/usageStats`) and is never
+written to this ledger either.
 
 `metrics/metrics-store.ts` persists a version-2 ledger in
 `~/.uxnan/metrics.json`:
