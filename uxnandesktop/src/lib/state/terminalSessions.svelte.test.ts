@@ -90,18 +90,18 @@ describe('telling the bridge', () => {
     const tab = terminal();
     sessions.start();
     await settle();
-    expect(calls.map((c) => c.method)).toEqual(['agentSession/hold']);
+    expect(calls.map((c) => c.method)).toEqual(['agent/hold']);
     expect(calls[0]!.params).toMatchObject({ agentId: 'claude-code', sessionId: 's-1', cwd: '/repo', busy: false });
 
     tab.working = true;
     terminals.workspaces = { ...terminals.workspaces };
     await settle();
-    expect(calls.at(-1)).toMatchObject({ method: 'agentSession/hold', params: { busy: true } });
+    expect(calls.at(-1)).toMatchObject({ method: 'agent/hold', params: { busy: true } });
 
     terminals.noteAgentLiveness(tab.id, false);
     await settle();
     expect(calls.at(-1)).toMatchObject({
-      method: 'agentSession/release',
+      method: 'agent/release',
       params: { agentId: 'claude-code', sessionId: 's-1' },
     });
   });
@@ -114,7 +114,7 @@ describe('telling the bridge', () => {
     client.status = { state: 'connecting' } as BridgeClientStore['status'];
     client.applyStatus({ state: 'connected' } as BridgeClientStore['status']);
     await settle();
-    expect(calls.filter((c) => c.method === 'agentSession/hold')).toHaveLength(2);
+    expect(calls.filter((c) => c.method === 'agent/hold')).toHaveLength(2);
   });
 });
 
@@ -125,7 +125,7 @@ describe('letting a session go', () => {
     sessions.start();
     await settle();
     client.dispatch({
-      method: 'stream/agentSession/handoffRequested',
+      method: 'stream/agent/handoffRequested',
       params: { agentId: 'claude-code', sessionId: 's-1', requestId: 'r-1', from: 'Pixel' },
     });
     await settle();
@@ -133,9 +133,9 @@ describe('letting a session go', () => {
     expect(stopped).toEqual([tab.id]);
     expect(tab.agentSession?.live).toBe(false);
     const methods = calls.map((c) => c.method);
-    expect(methods).toContain('agentSession/release');
+    expect(methods).toContain('agent/release');
     expect(calls.at(-1)).toMatchObject({
-      method: 'agentSession/handoffAnswer',
+      method: 'agent/handoffAnswer',
       params: { requestId: 'r-1', outcome: 'released' },
     });
   });
@@ -146,7 +146,7 @@ describe('letting a session go', () => {
     sessions.start();
     await settle();
     client.dispatch({
-      method: 'stream/agentSession/handoffRequested',
+      method: 'stream/agent/handoffRequested',
       params: { agentId: 'claude-code', sessionId: 's-1', requestId: 'r-2', from: 'Pixel' },
     });
     await settle();
@@ -205,7 +205,7 @@ describe('terminal ⇄ chat', () => {
     expect(sessions.openInTerminalState(thread({ agentId: 'zero' }))).toBe('unavailable');
     expect(sessions.openInTerminalState(thread({ agentSessionId: undefined }))).toBe('unavailable');
     chatStore.apply({
-      method: 'stream/agentSession/held',
+      method: 'stream/agent/held',
       params: {
         agentId: 'claude-code',
         sessionId: 's-9',

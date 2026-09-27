@@ -240,10 +240,10 @@ export interface BridgeFeatures {
    */
   sync?: boolean;
   /**
-   * The bridge lists every agent's sessions in a folder (`agentSession/list`),
+   * The bridge lists every agent's sessions in a folder (`agent/sessions`),
    * starts a conversation that continues one (`thread/start` with
    * `agentSessionId`) and knows which ones a desktop terminal holds
-   * (`agentSession/*`, `stream/agentSession/*`). Absent/false → a client
+   * (`agent/holds`, `agent/hold`, …, `stream/agent/held`). Absent/false → a client
    * offers none of it.
    */
   agentSessions?: boolean;

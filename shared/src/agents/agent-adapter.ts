@@ -103,7 +103,7 @@ export interface GenerateTitleOptions {
 
 /**
  * One of the agent's own sessions in a folder, as its CLI keeps it — the raw
- * material of `agentSession/list` (the bridge turns the time into an age and
+ * material of `agent/sessions` (the bridge turns the time into an age and
  * links the conversation that continues it).
  */
 export interface NativeSessionInfo {

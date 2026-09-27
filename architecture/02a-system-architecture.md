@@ -2870,7 +2870,7 @@ en una terminal del desktop, o en su propia terminal, y mas tarde quiere
 seguirla como chat — en el desktop o en el telefono. El bridge es el **dueño** de
 las dos cosas que eso necesita, y todo cliente se las pregunta a el:
 
-**El catalogo (`agentSession/list { cwd, agentId? }`).** Cada adaptador lista
+**El catalogo (`agent/sessions { cwd, agentId? }`).** Cada adaptador lista
 las sesiones de su CLI en una carpeta por la superficie que el CLI ofrece
 (`IAgentAdapter.listNativeSessions`), medido el 2026-09-27:
 
@@ -2900,23 +2900,23 @@ guardando la sesion (`agentSessionId`): su primer turno la continua (adopcion,
 sesion tiene una sola conversacion: si ya hay una que la continua, `thread/start`
 devuelve esa. El titulo que traiga es provisional (`titleSource: prompt`).
 
-**La terminal como escritor (`agentSession/hold` / `release`).** Una sesion de
+**La terminal como escritor (`agent/hold` / `release`).** Una sesion de
 un CLI tiene un solo escritor. Cuando una terminal del desktop tiene el agente
 abierto, el desktop lo dice (solo por el canal local, §5.8.15; `busy` cuando el
 agente trabaja) y el bridge: no corre turnos en ella (`turn/send` → `-32010
 SessionHeld` con la retencion en `data`), suelta el proceso residente que
 guardaba para la conversacion (pi, Antigravity; nunca cancela un turno) y avisa
-a todos (`stream/agentSession/held`). Las retenciones viven solo en memoria y
+a todos (`stream/agent/held`). Las retenciones viven solo en memoria y
 pertenecen a la conexion del desktop: se van con ella (las terminales se cierran
 con la app) y el desktop que reconecta las declara de nuevo. Un cliente que se
-perdio avisos pregunta `agentSession/holds`.
+perdio avisos pregunta `agent/holds`.
 
-**El relevo (`agentSession/requestHandoff`).** Cualquier cliente pide una sesion
+**El relevo (`agent/requestHandoff`).** Cualquier cliente pide una sesion
 retenida: si esta libre → `notHeld`; si el agente trabaja → `busy`; si no, el
 bridge le pregunta **solo** al desktop que la retiene
-(`stream/agentSession/handoffRequested { requestId, from }`), que cierra el
+(`stream/agent/handoffRequested { requestId, from }`), que cierra el
 agente en su terminal, suelta la retencion y responde
-(`agentSession/handoffAnswer`: `released` | `busy` | `declined`); sin respuesta
+(`agent/handoffAnswer`: `released` | `busy` | `declined`); sin respuesta
 en 20 s → `unreachable`. Nunca se simulan teclas en la terminal.
 
 **Clientes.** Uxnan Desktop reporta las retenciones desde sus pestanas de

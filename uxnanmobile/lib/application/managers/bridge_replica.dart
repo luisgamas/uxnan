@@ -138,22 +138,22 @@ class BridgeReplica {
   Stream<Map<String, AgentSessionHold>> get holdsStream => _holds.stream;
 
   /// Every agent's own sessions in [cwd], as the bridge lists them
-  /// (`agentSession/list`). Throws the bridge's [RpcError].
+  /// (`agent/sessions`). Throws the bridge's [RpcError].
   Future<AgentSessionList> listAgentSessions(String cwd) async {
-    final response = await _sendRequest('agentSession/list', {'cwd': cwd});
+    final response = await _sendRequest('agent/sessions', {'cwd': cwd});
     final error = response.error;
     if (error != null) throw error;
     return AgentSessionList.fromJson(response.result);
   }
 
   /// Asks the terminal holding a session to let it go
-  /// (`agentSession/requestHandoff`). Throws the bridge's [RpcError].
+  /// (`agent/requestHandoff`). Throws the bridge's [RpcError].
   Future<AgentSessionHandoffOutcome> requestHandoff({
     required String agentId,
     required String sessionId,
   }) async {
     final response = await _sendRequest(
-      'agentSession/requestHandoff',
+      'agent/requestHandoff',
       {'agentId': agentId, 'sessionId': sessionId},
     );
     final error = response.error;
@@ -166,7 +166,7 @@ class BridgeReplica {
 
   Future<void> _loadHolds() async {
     try {
-      final response = await _sendRequest('agentSession/holds', null);
+      final response = await _sendRequest('agent/holds', null);
       final result = response.result;
       if (response.error != null || result is! Map) return;
       final holds = result['holds'];
@@ -178,7 +178,7 @@ class BridgeReplica {
       });
     } on Object catch (error, stackTrace) {
       // An older bridge has no holds to tell; nothing is held then.
-      AppLogger.warn('agentSession/holds failed', error, stackTrace);
+      AppLogger.warn('agent/holds failed', error, stackTrace);
     }
   }
 

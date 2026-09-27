@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Added
 
-- **Pick up any agent session.** `agentSession/list` lists every agent's own
+- **Pick up any agent session.** `agent/sessions` lists every agent's own
   sessions in a folder — ones started in a terminal, in the agent's app, or by
   the bridge — each read through the agent's CLI (Codex's app-server, OpenCode's
   server, Zero's ACP `session/list`, and Claude Code's, pi's and Grok's session
@@ -16,11 +16,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   one recalled a word from before; Antigravity has no listing and no readable
   history, so its sessions are continued from the terminal that holds them).
 - **A session open in a terminal has one writer.** Uxnan Desktop tells the
-  bridge which sessions its terminals hold (`agentSession/hold` / `release`,
+  bridge which sessions its terminals hold (`agent/hold` / `release`,
   local channel only); the bridge refuses turns in a held session (`-32010`),
   lets go of the process it kept for the conversation, and announces every
-  change (`stream/agentSession/held`). Any client can ask for a held session
-  (`agentSession/requestHandoff`): the holding desktop is asked and answers.
+  change (`stream/agent/held`). Any client can ask for a held session
+  (`agent/requestHandoff`): the holding desktop is asked and answers.
 - **Naming a chat on Claude Code leaves no session** in Claude's own history
   (`--no-session-persistence`).
 

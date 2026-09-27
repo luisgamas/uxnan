@@ -1026,7 +1026,7 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       hand-off is built (holds, Continue as chat, Continue here, Open in
       terminal); what a terminal does shows in the chat once its turns complete
       (native-history convergence). Following it turn by turn from the phone
-      needs a watch of the transcript (`agentSession/watch`), measured per CLI
+      needs a watch of the transcript (`agent/watch`), measured per CLI
       for how soon each one writes. Where: the bridge's catalog handler +
       `session-history.ts`.
 - [ ] **A supervised run of the hand-off on the installed app.** Verified by

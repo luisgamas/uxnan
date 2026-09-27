@@ -4,8 +4,8 @@
  * is open in a terminal right now (architecture/02a §5.8.19).
  *
  * The bridge owns both: it lists each agent's sessions through that agent's
- * own surface (`agentSession/list`), and it knows which ones a desktop
- * terminal holds (`agentSession/hold`), so every client — phone, desktop — can
+ * own surface (`agent/sessions`), and it knows which ones a desktop
+ * terminal holds (`agent/hold`), so every client — phone, desktop — can
  * pick a session up, and none of them ever writes into a session a terminal is
  * running.
  *
@@ -13,7 +13,7 @@
  */
 import type { AgentId } from '../agents/agent-capabilities.js';
 
-/** One of an agent's sessions in a folder, as `agentSession/list` returns it. */
+/** One of an agent's sessions in a folder, as `agent/sessions` returns it. */
 export interface AgentSessionSummary {
   agentId: AgentId;
   /** The agent's own session id — the one its CLI resumes. */
@@ -81,7 +81,7 @@ export interface AgentSessionListResult {
 }
 
 /**
- * `agentSession/hold` — Uxnan Desktop says one of its terminals has this
+ * `agent/hold` — Uxnan Desktop says one of its terminals has this
  * session open (or that its agent started or stopped working). Idempotent:
  * the latest call wins. Accepted only over the local control channel, and
  * dropped when that connection closes (the terminals close with the app).
@@ -114,24 +114,24 @@ export interface AgentSessionHandoffResult {
   outcome: AgentSessionHandoffOutcome;
 }
 
-/** `stream/agentSession/handoffRequested` — sent only to the holding desktop. */
+/** `stream/agent/handoffRequested` — sent only to the holding desktop. */
 export interface AgentSessionHandoffRequestedParams extends AgentSessionKey {
-  /** Answer with `agentSession/handoffAnswer` quoting this id. */
+  /** Answer with `agent/handoffAnswer` quoting this id. */
   requestId: string;
   /** Who asks: the client's name (a phone's, or the PC's). */
   from: string;
 }
 
-/** `agentSession/handoffAnswer` — the holding desktop's answer. */
+/** `agent/handoffAnswer` — the holding desktop's answer. */
 export interface AgentSessionHandoffAnswerParams {
   requestId: string;
   outcome: Extract<AgentSessionHandoffOutcome, 'released' | 'busy' | 'declined'>;
 }
 
 /**
- * `stream/agentSession/held` — a session's hold changed: taken, busy or idle,
+ * `stream/agent/held` — a session's hold changed: taken, busy or idle,
  * or let go (`hold` absent). Every client follows it; one that missed some
- * asks `agentSession/holds`.
+ * asks `agent/holds`.
  */
 export interface AgentSessionHeldParams extends AgentSessionKey {
   hold?: AgentSessionHold;

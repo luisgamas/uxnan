@@ -5,9 +5,9 @@
  * A CLI's session has one writer. When Uxnan Desktop runs an agent in one of
  * its terminals, that terminal is the writer, so the bridge must not run a
  * turn in the same session until the terminal lets it go. The desktop tells
- * the bridge (`agentSession/hold` / `release`); the bridge keeps it here,
+ * the bridge (`agent/hold` / `release`); the bridge keeps it here,
  * refuses turns on a held session, and asks the desktop to let one go when
- * someone else wants it (`agentSession/requestHandoff`).
+ * someone else wants it (`agent/requestHandoff`).
  *
  * Live only, never on disk: a hold belongs to the desktop connection that took
  * it and ends when that connection closes — the terminals, and the agents in

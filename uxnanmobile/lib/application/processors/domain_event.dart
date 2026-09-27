@@ -351,7 +351,7 @@ class BridgeUpdatedEvent extends DomainEvent {
   List<Object?> get props => [update];
 }
 
-/// A session's hold changed (`stream/agentSession/held`): a desktop terminal
+/// A session's hold changed (`stream/agent/held`): a desktop terminal
 /// took it, its agent started or stopped working, or the terminal let it go
 /// (`hold` null) — architecture/02a §5.8.19.
 class AgentSessionHeldEvent extends DomainEvent {

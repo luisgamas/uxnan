@@ -122,7 +122,7 @@ class AgentSessionSummary extends Equatable {
       [agentId, sessionId, cwd, updatedAgo, title, threadId, hold];
 }
 
-/// A folder's sessions, as `agentSession/list` answers.
+/// A folder's sessions, as `agent/sessions` answers.
 class AgentSessionList extends Equatable {
   /// Creates an [AgentSessionList].
   const AgentSessionList({required this.sessions, required this.unlisted});
@@ -159,7 +159,7 @@ class AgentSessionList extends Equatable {
 }
 
 /// How asking a terminal to let a session go ended
-/// (`agentSession/requestHandoff`).
+/// (`agent/requestHandoff`).
 enum AgentSessionHandoffOutcome {
   /// The agent was closed in its terminal; the session is free.
   released,

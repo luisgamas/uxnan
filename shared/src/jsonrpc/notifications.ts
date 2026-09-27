@@ -72,12 +72,12 @@ export const StreamNotification = {
    * A session's hold changed: a desktop terminal took it, its agent started or
    * stopped working, or the terminal let it go (`hold` absent).
    */
-  AgentSessionHeld: 'stream/agentSession/held',
+  AgentSessionHeld: 'stream/agent/held',
   /**
    * Someone asked the holding desktop to let a session go (sent to that
-   * desktop only); it answers with `agentSession/handoffAnswer`.
+   * desktop only); it answers with `agent/handoffAnswer`.
    */
-  AgentSessionHandoffRequested: 'stream/agentSession/handoffRequested',
+  AgentSessionHandoffRequested: 'stream/agent/handoffRequested',
 } as const;
 
 export type StreamNotification = (typeof StreamNotification)[keyof typeof StreamNotification];

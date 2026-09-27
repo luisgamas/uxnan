@@ -1,5 +1,5 @@
 /**
- * `agentSession/*` on a real bridge: the folder's sessions with what the
+ * The agent-session methods on a real bridge: the folder's sessions with what the
  * bridge knows about each, conversations that continue one, and the holds a
  * desktop terminal takes — which keep every other client from writing into
  * the session until the terminal lets it go.
@@ -130,12 +130,12 @@ test('the folder’s sessions: a person’s, the continued ones, never errands o
     // Antigravity cannot list, but a terminal holds one of its sessions here.
     await call(
       bridge,
-      'agentSession/hold',
+      'agent/hold',
       { agentId: 'antigravity-cli', sessionId: 'agy-1', cwd: CWD },
       LOCAL,
     );
 
-    const res = await call<AgentSessionListResult>(bridge, 'agentSession/list', { cwd: CWD });
+    const res = await call<AgentSessionListResult>(bridge, 'agent/sessions', { cwd: CWD });
     const list = res.result!;
     assert.deepEqual(
       list.sessions.map((s) => [
@@ -154,7 +154,7 @@ test('the folder’s sessions: a person’s, the continued ones, never errands o
     assert.equal(list.sessions.find((s) => s.sessionId === 's-tui')?.title, 'Payment refactor');
     assert.deepEqual(list.unlisted, ['antigravity-cli']);
 
-    const onlyClaude = await call<AgentSessionListResult>(bridge, 'agentSession/list', {
+    const onlyClaude = await call<AgentSessionListResult>(bridge, 'agent/sessions', {
       cwd: CWD,
       agentId: 'claude-code',
     });
@@ -204,7 +204,7 @@ test('a held session takes no turn here; every client hears of the hold and its 
     ).result!;
 
     // Only the desktop, over its local channel, may hold, release or answer.
-    const fromPhone = await call(bridge, 'agentSession/hold', {
+    const fromPhone = await call(bridge, 'agent/hold', {
       agentId: 'claude-code',
       sessionId: 's-1',
     });
@@ -212,7 +212,7 @@ test('a held session takes no turn here; every client hears of the hold and its 
 
     const held = await call<AgentSessionHold>(
       bridge,
-      'agentSession/hold',
+      'agent/hold',
       { agentId: 'claude-code', sessionId: 's-1', cwd: CWD, busy: false },
       LOCAL,
     );
@@ -224,10 +224,10 @@ test('a held session takes no turn here; every client hears of the hold and its 
     assert.equal((refused.error?.data as AgentSessionHold).sessionId, 's-1');
     assert.deepEqual(claude.sent, []);
 
-    const holds = await call<{ holds: AgentSessionHold[] }>(bridge, 'agentSession/holds', {});
+    const holds = await call<{ holds: AgentSessionHold[] }>(bridge, 'agent/holds', {});
     assert.equal(holds.result?.holds.length, 1);
 
-    await call(bridge, 'agentSession/release', { agentId: 'claude-code', sessionId: 's-1' }, LOCAL);
+    await call(bridge, 'agent/release', { agentId: 'claude-code', sessionId: 's-1' }, LOCAL);
     const sent = await call(bridge, 'turn/send', { threadId: thread.id, text: 'hello' });
     assert.equal(sent.error, undefined);
 
@@ -252,15 +252,15 @@ test('asking for a held session reaches the desktop that holds it, and its answe
   });
   try {
     const key = { agentId: 'claude-code', sessionId: 's-2' };
-    const free = await call<{ outcome: string }>(bridge, 'agentSession/requestHandoff', key);
+    const free = await call<{ outcome: string }>(bridge, 'agent/requestHandoff', key);
     assert.equal(free.result?.outcome, 'notHeld');
 
-    await call(bridge, 'agentSession/hold', { ...key, busy: true }, LOCAL);
-    const busy = await call<{ outcome: string }>(bridge, 'agentSession/requestHandoff', key);
+    await call(bridge, 'agent/hold', { ...key, busy: true }, LOCAL);
+    const busy = await call<{ outcome: string }>(bridge, 'agent/requestHandoff', key);
     assert.equal(busy.result?.outcome, 'busy');
 
-    await call(bridge, 'agentSession/hold', { ...key, busy: false }, LOCAL);
-    const pending = call<{ outcome: string }>(bridge, 'agentSession/requestHandoff', key);
+    await call(bridge, 'agent/hold', { ...key, busy: false }, LOCAL);
+    const pending = call<{ outcome: string }>(bridge, 'agent/requestHandoff', key);
     await new Promise((resolve) => setImmediate(resolve));
     const request = toDesktop.find(
       (m) => m.method === StreamNotification.AgentSessionHandoffRequested,
@@ -270,7 +270,7 @@ test('asking for a held session reaches the desktop that holds it, and its answe
 
     const badAnswer = await call(
       bridge,
-      'agentSession/handoffAnswer',
+      'agent/handoffAnswer',
       {
         requestId: request!.params.requestId,
         outcome: 'maybe',
@@ -280,7 +280,7 @@ test('asking for a held session reaches the desktop that holds it, and its answe
     assert.equal(badAnswer.error?.code, -32602);
     await call(
       bridge,
-      'agentSession/handoffAnswer',
+      'agent/handoffAnswer',
       { requestId: request!.params.requestId, outcome: 'released' },
       LOCAL,
     );

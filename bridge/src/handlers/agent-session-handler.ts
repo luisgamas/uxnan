@@ -2,7 +2,7 @@
  * Agent sessions (architecture/02a §5.8.19): every agent's own sessions in a
  * folder, and which of them a desktop terminal holds.
  *
- * `agentSession/list` asks each agent's CLI through the adapter
+ * `agent/sessions` asks each agent's CLI through the adapter
  * (`AgentManager.listAgentSessions`) and adds what the bridge knows: the
  * conversation that continues a session and the terminal that holds one.
  * A session counts only when a person had it — one a program ran headless is
@@ -49,7 +49,7 @@ function askerName(ctx: BridgeContext, session: RequestSession | undefined): str
 
 export function registerAgentSessionHandlers(router: HandlerRouter): void {
   router.register(
-    'agentSession/list',
+    'agent/sessions',
     async (p, ctx: BridgeContext): Promise<AgentSessionListResult> => {
       const cwd = requireString(p, 'cwd');
       const only = optionalString(p, 'agentId') as AgentId | undefined;
@@ -101,14 +101,14 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
   );
 
   router.register(
-    'agentSession/holds',
+    'agent/holds',
     (_p, ctx: BridgeContext): AgentSessionHoldsResult => ({ holds: ctx.sessionHolds.list() }),
   );
 
   router.register(
-    'agentSession/hold',
+    'agent/hold',
     async (p, ctx: BridgeContext, session): Promise<AgentSessionHold> => {
-      const clientId = requireLocal(session, 'agentSession/hold');
+      const clientId = requireLocal(session, 'agent/hold');
       const agentId = requireString(p, 'agentId') as AgentId;
       const sessionId = requireString(p, 'sessionId');
       const cwd = optionalString(p, 'cwd');
@@ -128,8 +128,8 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
     },
   );
 
-  router.register('agentSession/release', (p, ctx: BridgeContext, session) => {
-    const clientId = requireLocal(session, 'agentSession/release');
+  router.register('agent/release', (p, ctx: BridgeContext, session) => {
+    const clientId = requireLocal(session, 'agent/release');
     ctx.sessionHolds.release(clientId, {
       agentId: requireString(p, 'agentId') as AgentId,
       sessionId: requireString(p, 'sessionId'),
@@ -137,7 +137,7 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
   });
 
   router.register(
-    'agentSession/requestHandoff',
+    'agent/requestHandoff',
     async (p, ctx: BridgeContext, session): Promise<AgentSessionHandoffResult> => ({
       outcome: await ctx.sessionHolds.requestHandoff(
         {
@@ -149,8 +149,8 @@ export function registerAgentSessionHandlers(router: HandlerRouter): void {
     }),
   );
 
-  router.register('agentSession/handoffAnswer', (p, ctx: BridgeContext, session) => {
-    const clientId = requireLocal(session, 'agentSession/handoffAnswer');
+  router.register('agent/handoffAnswer', (p, ctx: BridgeContext, session) => {
+    const clientId = requireLocal(session, 'agent/handoffAnswer');
     const outcome = requireString(p, 'outcome');
     if (!HANDOFF_ANSWERS.has(outcome)) {
       throw RpcError.invalidParams('outcome must be released, busy or declined');

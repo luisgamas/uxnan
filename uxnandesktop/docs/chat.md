@@ -207,7 +207,7 @@ Below it, **Continue a conversation** lists every conversation the bridge holds
 for this folder, whichever app started it, and **Sessions in this folder**
 lists the agents' own sessions there that no conversation continues yet — ones
 started in a terminal, here or elsewhere, or in the agent's own app
-(`agentSession/list`, architecture/02a §5.8.19). Picking one continues it as
+(`agent/list`, architecture/02a §5.8.19). Picking one continues it as
 this chat: its history comes in and its first message resumes it. One that a
 terminal of this window holds says *In a terminal*; picking it asks that
 terminal to let it go first. An agent whose CLI cannot list its sessions
@@ -216,7 +216,7 @@ terminal to let it go first. An agent whose CLI cannot list its sessions
 ## From a terminal to a chat, and back
 
 A terminal running an agent the bridge drives tells the bridge which session it
-holds (`agentSession/hold`, and whether the agent is working). While it does,
+holds (`agent/hold`, and whether the agent is working). While it does,
 the session has one writer — the terminal: a chat of it shows *This
 conversation is open in a terminal on <PC>*, its composer waits, and the phone
 shows the same.

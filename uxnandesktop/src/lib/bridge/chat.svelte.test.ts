@@ -377,25 +377,25 @@ describe('agent sessions (architecture/02a §5.8.19)', () => {
   };
 
   it('mirrors the holds the bridge announces, and reloads them after a reconnect', async () => {
-    const { store } = harness({ 'agentSession/holds': { holds: [hold] } });
+    const { store } = harness({ 'agent/holds': { holds: [hold] } });
     await store.loadHolds();
     expect(store.holds.get(sessionKey('claude-code', 's-1'))).toEqual(hold);
     expect(store.holdOf(thread('t', '/r', 1, { agentSessionId: 's-1' }))).toEqual(hold);
     expect(store.holdOf(thread('t', '/r', 1))).toBeUndefined();
 
-    store.apply({ method: 'stream/agentSession/held', params: { agentId: 'claude-code', sessionId: 's-1' } });
+    store.apply({ method: 'stream/agent/held', params: { agentId: 'claude-code', sessionId: 's-1' } });
     expect(store.holds.size).toBe(0);
-    store.apply({ method: 'stream/agentSession/held', params: { agentId: 'codex', sessionId: 'c', hold: { ...hold, agentId: 'codex', sessionId: 'c' } } });
+    store.apply({ method: 'stream/agent/held', params: { agentId: 'codex', sessionId: 'c', hold: { ...hold, agentId: 'codex', sessionId: 'c' } } });
     expect(store.holds.get('codex:c')?.agentId).toBe('codex');
     // Malformed: ignored.
-    store.apply({ method: 'stream/agentSession/held', params: { sessionId: 'x' } });
+    store.apply({ method: 'stream/agent/held', params: { sessionId: 'x' } });
     expect(store.holds.size).toBe(1);
   });
 
   it('lists a folder’s sessions, continues one, and asks a terminal to let one go', async () => {
     const { store, calls } = harness({
-      'agentSession/list': { sessions: [], unlisted: ['antigravity-cli'] },
-      'agentSession/requestHandoff': { outcome: 'released' },
+      'agent/sessions': { sessions: [], unlisted: ['antigravity-cli'] },
+      'agent/requestHandoff': { outcome: 'released' },
       'thread/start': thread('th-1', '/r', 1, { agentSessionId: 's-1' }),
     });
     expect((await store.listAgentSessions('/r')).unlisted).toEqual(['antigravity-cli']);
@@ -407,7 +407,7 @@ describe('agent sessions (architecture/02a §5.8.19)', () => {
       title: 'Old work',
       agentSessionId: 's-1',
     });
-    expect(calls.find((c) => c.method === 'agentSession/list')?.params).toEqual({ cwd: '/r' });
+    expect(calls.find((c) => c.method === 'agent/sessions')?.params).toEqual({ cwd: '/r' });
   });
 });
 

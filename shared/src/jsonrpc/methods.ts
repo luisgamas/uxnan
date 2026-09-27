@@ -121,7 +121,7 @@ export interface StartThreadParams {
   /** Working directory override; defaults to the project's cwd. */
   cwd?: string;
   /**
-   * Continue this existing session of the agent (`agentSession/list`) instead
+   * Continue this existing session of the agent (`agent/sessions`) instead
    * of opening a new one: its turns become the conversation's history and the
    * first turn resumes it. Requires `agentId`. When a conversation already
    * continues the session, that conversation is returned instead of a second one.
@@ -575,12 +575,12 @@ export interface JsonRpcMethodRegistry {
   'usage/summary': { params: UsageSummaryParams; result: UsageSummary };
   // Agent sessions (§5.8.19): every agent's sessions in a folder, and which
   // ones a desktop terminal holds. hold/release/handoffAnswer: local channel only.
-  'agentSession/list': { params: AgentSessionListParams; result: AgentSessionListResult };
-  'agentSession/holds': { params: void; result: AgentSessionHoldsResult };
-  'agentSession/hold': { params: AgentSessionHoldParams; result: AgentSessionHold };
-  'agentSession/release': { params: AgentSessionKey; result: void };
-  'agentSession/requestHandoff': { params: AgentSessionKey; result: AgentSessionHandoffResult };
-  'agentSession/handoffAnswer': { params: AgentSessionHandoffAnswerParams; result: void };
+  'agent/sessions': { params: AgentSessionListParams; result: AgentSessionListResult };
+  'agent/holds': { params: void; result: AgentSessionHoldsResult };
+  'agent/hold': { params: AgentSessionHoldParams; result: AgentSessionHold };
+  'agent/release': { params: AgentSessionKey; result: void };
+  'agent/requestHandoff': { params: AgentSessionKey; result: AgentSessionHandoffResult };
+  'agent/handoffAnswer': { params: AgentSessionHandoffAnswerParams; result: void };
   // Where the bridge looked for each agent's CLI and what it found
   'agent/doctor': { params: void; result: { agents: AgentDiagnosis[] } };
 

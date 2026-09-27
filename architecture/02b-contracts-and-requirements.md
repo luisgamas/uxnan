@@ -260,12 +260,12 @@ usage/summary           -> gasto por dia local de la PC, agente y modelo, de las
 
 **Sesiones de agente (6):** (`02a` §5.8.19)
 ```
-agentSession/list           -> las sesiones de cada agente en una carpeta. Params { cwd, agentId? }. Result { sessions: AgentSessionSummary[{ agentId, sessionId, cwd, title?, updatedAgoMs, threadId?, hold? }], unlisted: AgentId[] }. Cada CLI se lista por su propia superficie; solo sesiones de una persona (o que una conversacion continua), nunca los encargos de un solo uso de Uxnan. La mas reciente primero
-agentSession/holds          -> { holds: AgentSessionHold[] } — las sesiones que una terminal del desktop tiene abiertas ahora (para converger tras perder avisos)
-agentSession/hold           -> (solo canal local) una terminal del desktop tiene abierta la sesion. Params { agentId, sessionId, cwd?, busy? }; idempotente, la ultima llamada gana. Result AgentSessionHold { holder: { kind: terminal, name }, heldAgoMs, busy, threadId? }. Mientras dure, `turn/send` sobre esa sesion → -32010
-agentSession/release        -> (solo canal local) la terminal solto la sesion. Params { agentId, sessionId }
-agentSession/requestHandoff -> pedir una sesion retenida. Params { agentId, sessionId }. Result { outcome: released | busy | declined | unreachable | notHeld }; pregunta solo al desktop que la retiene (20 s)
-agentSession/handoffAnswer  -> (solo canal local) la respuesta del desktop. Params { requestId, outcome: released | busy | declined }
+agent/sessions           -> las sesiones de cada agente en una carpeta. Params { cwd, agentId? }. Result { sessions: AgentSessionSummary[{ agentId, sessionId, cwd, title?, updatedAgoMs, threadId?, hold? }], unlisted: AgentId[] }. Cada CLI se lista por su propia superficie; solo sesiones de una persona (o que una conversacion continua), nunca los encargos de un solo uso de Uxnan. La mas reciente primero
+agent/holds          -> { holds: AgentSessionHold[] } — las sesiones que una terminal del desktop tiene abiertas ahora (para converger tras perder avisos)
+agent/hold           -> (solo canal local) una terminal del desktop tiene abierta la sesion. Params { agentId, sessionId, cwd?, busy? }; idempotente, la ultima llamada gana. Result AgentSessionHold { holder: { kind: terminal, name }, heldAgoMs, busy, threadId? }. Mientras dure, `turn/send` sobre esa sesion → -32010
+agent/release        -> (solo canal local) la terminal solto la sesion. Params { agentId, sessionId }
+agent/requestHandoff -> pedir una sesion retenida. Params { agentId, sessionId }. Result { outcome: released | busy | declined | unreachable | notHeld }; pregunta solo al desktop que la retiene (20 s)
+agent/handoffAnswer  -> (solo canal local) la respuesta del desktop. Params { requestId, outcome: released | busy | declined }
 ```
 
 **Metricas de perfil (3):**
@@ -406,7 +406,7 @@ desktop/detach                     -> { attached }  quitar las herramientas
 | `-32007` | Confirmation required | (Reservado; el flujo de approval usa `approval` content block, no este codigo) |
 | `-32008` | Resource not found | `threadId` / `turnId` / `checkpointId` desconocido |
 | `-32009` | Agent busy | Ya hay un turno en vuelo en el thread y el llamante pidio NO encolar (`turn/send` con `queue:false`), o la cola del thread esta llena (10). Solo se emite ante un opt-out explicito: el default es encolar. Tambien lo devuelve `bridge/update` (data.reason `busy`) mientras algun cliente tiene un turno en curso: el bridge nunca se reinicia bajo uno |
-| `-32010` | Session held | La sesion del agente de la conversacion esta abierta en una terminal del desktop (`agentSession/hold`); `data` lleva la `AgentSessionHold`. El cliente muestra quien la tiene y puede pedirla (`agentSession/requestHandoff`) |
+| `-32010` | Session held | La sesion del agente de la conversacion esta abierta en una terminal del desktop (`agent/hold`); `data` lleva la `AgentSessionHold`. El cliente muestra quien la tiene y puede pedirla (`agent/requestHandoff`) |
 | `missing_transport` (en `PairingPayload`) | - | El payload no tiene ni `relay` ni `hosts` (validacion pairing) |
 
 ---
@@ -442,8 +442,8 @@ stream/presence/updated     -> PresenceUpdatedParams { clients }                
 stream/devices/updated      -> DevicesUpdatedParams { devices }                             (NUEVO 2026-09; lista completa al emparejar, describir, renombrar o quitar un telefono)
 stream/agents/updated       -> AgentsUpdatedParams  { agents }                              (NUEVO 2026-09; un agente se instalo o desaparecio)
 stream/bridge/updated       -> BridgeUpdatedParams  { update: BridgeUpdate }                (NUEVO 2026-09; la actualizacion del propio bridge: se publico una version, empezo o fallo — 02a §5.8.18)
-stream/agentSession/held    -> AgentSessionHeldParams { agentId, sessionId, hold? }        (NUEVO 2026-09; una terminal tomo, actualizo o solto una sesion; `hold` ausente = libre — 02a §5.8.19)
-stream/agentSession/handoffRequested -> AgentSessionHandoffRequestedParams { agentId, sessionId, requestId, from } (NUEVO 2026-09; solo al desktop que retiene la sesion; responde con agentSession/handoffAnswer)
+stream/agent/held    -> AgentSessionHeldParams { agentId, sessionId, hold? }        (NUEVO 2026-09; una terminal tomo, actualizo o solto una sesion; `hold` ausente = libre — 02a §5.8.19)
+stream/agent/handoffRequested -> AgentSessionHandoffRequestedParams { agentId, sessionId, requestId, from } (NUEVO 2026-09; solo al desktop que retiene la sesion; responde con agent/handoffAnswer)
 ```
 
 **Revisiones (2026-09, `02a` §5.8.17).** `stream/thread/updated` (via

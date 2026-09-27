@@ -4,7 +4,7 @@
  * request body. They are errands, not conversations — but a CLI that cannot
  * run without keeping a session (OpenCode, Grok, Zero, Antigravity; Claude
  * Code, Codex and pi run them without one) keeps them in its history like any
- * other session. The session catalog (`agentSession/list`) leaves them out by
+ * other session. The session catalog (`agent/sessions`) leaves them out by
  * how they open.
  *
  * Every producer's test checks its prompt opens with one of these, so a

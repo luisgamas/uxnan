@@ -22,9 +22,9 @@ void main() {
       expect(event.threadId, 'th1');
     });
 
-    test('stream/agentSession/held: a hold, and a let-go without one', () {
+    test('stream/agent/held: a hold, and a let-go without one', () {
       final held = processor.classify(
-        note('stream/agentSession/held', {
+        note('stream/agent/held', {
           'agentId': 'codex',
           'sessionId': 'c-1',
           'hold': {'agentId': 'codex'},
@@ -34,11 +34,13 @@ void main() {
       expect((held as AgentSessionHeldEvent).hold, isNotNull);
       final free = processor.classify(
         note(
-            'stream/agentSession/held', {'agentId': 'codex', 'sessionId': 'c'},),
+          'stream/agent/held',
+          {'agentId': 'codex', 'sessionId': 'c'},
+        ),
       ) as AgentSessionHeldEvent;
       expect(free.hold, isNull);
       expect(
-        processor.classify(note('stream/agentSession/held', {'sessionId': 1})),
+        processor.classify(note('stream/agent/held', {'sessionId': 1})),
         isA<UnknownDomainEvent>(),
       );
     });

@@ -110,7 +110,7 @@ void main() {
             'phase': 'updating',
             'targetVersion': '0.0.29',
           },
-        'agentSession/holds' => {
+        'agent/holds' => {
             'holds': [
               {
                 'agentId': 'claude-code',
@@ -122,7 +122,7 @@ void main() {
               },
             ],
           },
-        'agentSession/list' => {
+        'agent/sessions' => {
             'sessions': [
               {
                 'agentId': 'codex',
@@ -135,7 +135,7 @@ void main() {
             ],
             'unlisted': ['antigravity-cli'],
           },
-        'agentSession/requestHandoff' => {'outcome': 'busy'},
+        'agent/requestHandoff' => {'outcome': 'busy'},
         'bridge/checkForUpdate' => {
             'version': '0.0.28',
             'latestVersion': '0.0.30',
@@ -468,7 +468,7 @@ void main() {
         () async {
       phases.add(ConnectionPhase.connected);
       await _settle();
-      expect(calls.map((c) => c.$1), contains('agentSession/holds'));
+      expect(calls.map((c) => c.$1), contains('agent/holds'));
       var holds = await replica.holdsStream.first;
       expect(holds['claude-code:s-1']?.holderName, 'Studio');
       expect(holds['claude-code:s-1']?.threadId, 'th-1');

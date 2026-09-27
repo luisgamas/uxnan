@@ -76,8 +76,8 @@ describe("ChatConversation", () => {
     const box = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(box.disabled).toBe(true);
     await user.click(screen.getByRole("button", { name: "Continue here" }));
-    await until(() => calls.some((c) => c.method === "agentSession/requestHandoff"));
-    expect(calls.find((c) => c.method === "agentSession/requestHandoff")?.params).toMatchObject({
+    await until(() => calls.some((c) => c.method === "agent/requestHandoff"));
+    expect(calls.find((c) => c.method === "agent/requestHandoff")?.params).toMatchObject({
       agentId: "codex",
       sessionId: "c-1",
     });

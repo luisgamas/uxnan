@@ -398,9 +398,9 @@ export class ChatStore {
   }
 
   /** Every session a terminal holds now — after a reconnect, when some
-   *  `stream/agentSession/held` may have been missed. */
+   *  `stream/agent/held` may have been missed. */
   async loadHolds(): Promise<void> {
-    const { holds } = await this.#client.call<AgentSessionHoldsResult>('agentSession/holds', {});
+    const { holds } = await this.#client.call<AgentSessionHoldsResult>('agent/holds', {});
     this.holds.clear();
     for (const hold of holds) this.holds.set(sessionKey(hold.agentId, hold.sessionId), hold);
   }
@@ -413,13 +413,13 @@ export class ChatStore {
 
   /** Every agent's own sessions in a folder, as the bridge lists them. */
   listAgentSessions(cwd: string): Promise<AgentSessionListResult> {
-    return this.#client.call<AgentSessionListResult>('agentSession/list', { cwd });
+    return this.#client.call<AgentSessionListResult>('agent/sessions', { cwd });
   }
 
   /** Ask the terminal holding a session to let it go. */
   async requestHandoff(key: AgentSessionKey): Promise<AgentSessionHandoffOutcome> {
     const { outcome } = await this.#client.call<AgentSessionHandoffResult>(
-      'agentSession/requestHandoff',
+      'agent/requestHandoff',
       key,
     );
     return outcome;
@@ -429,7 +429,7 @@ export class ChatStore {
   apply(notification: BridgeNotification): void {
     this.activity.apply(notification);
     switch (notification.method) {
-      case 'stream/agentSession/held': {
+      case 'stream/agent/held': {
         const params = notification.params as AgentSessionHeldParams | undefined;
         if (typeof params?.agentId !== 'string' || typeof params.sessionId !== 'string') return;
         const key = sessionKey(params.agentId, params.sessionId);
@@ -514,7 +514,7 @@ export class ChatStore {
     agentId: string;
     model?: string;
     title?: string;
-    /** Continue this session of the agent (`agentSession/list`, or a
+    /** Continue this session of the agent (`agent/sessions`, or a
      *  terminal's): the bridge returns the conversation that already
      *  continues it, when one does. */
     agentSessionId?: string;

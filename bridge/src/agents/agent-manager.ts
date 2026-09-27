@@ -1291,7 +1291,7 @@ export class AgentManager {
   }
 
   /**
-   * A desktop terminal took the thread's agent session (`agentSession/hold`):
+   * A desktop terminal took the thread's agent session (`agent/hold`):
    * let go of the process this bridge keeps for it (pi and Antigravity keep
    * one resident per thread), so the terminal is the only writer. Nothing is
    * cancelled — a turn in flight finishes (the desktop only hands a session to

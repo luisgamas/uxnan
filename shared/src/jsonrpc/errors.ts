@@ -29,7 +29,7 @@ export const JsonRpcErrorCode = {
   AgentBusy: -32009,
   /**
    * The conversation's agent session is open in a desktop terminal
-   * (`agentSession/hold`): the bridge runs no turn in it until the terminal
+   * (`agent/hold`): the bridge runs no turn in it until the terminal
    * lets it go. `data` carries the {@link AgentSessionHold}.
    */
   SessionHeld: -32010,

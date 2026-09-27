@@ -10,14 +10,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **Pick up a session from the PC.** A new conversation lists, under *Or
   continue a session in this folder*, the agents' own sessions in the chosen
   folder that no conversation continues yet — started in a terminal on the PC or
-  in the agent's app (`agentSession/list`). Picking one continues it here, with
+  in the agent's app (`agent/sessions`). Picking one continues it here, with
   its history; one open in a terminal on the PC says so, and picking it asks the
   PC to let it go first.
 - **A conversation open in a terminal on the PC says so.** While a desktop
   terminal holds the conversation's session the composer waits and a banner
   offers *Continue here*: the PC closes the agent there once it is idle and the
-  conversation continues on the phone (`agentSession/requestHandoff`). The phone
-  follows every hold live (`stream/agentSession/held`) and reloads them on each
+  conversation continues on the phone (`agent/requestHandoff`). The phone
+  follows every hold live (`stream/agent/held`) and reloads them on each
   connection.
 
 ## [0.0.29-alpha.20260927+20260931] - 20260927

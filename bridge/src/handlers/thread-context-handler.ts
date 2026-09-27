@@ -81,7 +81,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     }
     const explicitModel = optionalString(p, 'model');
     const model = explicitModel ?? (pin && agentId === pin.agentId ? pin.model : undefined);
-    // Continuing one of the agent's own sessions (`agentSession/list`): one
+    // Continuing one of the agent's own sessions (`agent/sessions`): one
     // conversation per session, so the one that already continues it is
     // returned rather than a second writer being made.
     const agentSessionId = optionalString(p, 'agentSessionId');
@@ -253,7 +253,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     const runtime = await ctx.threadStore.getThreadRuntime(threadId);
     // A CLI's session has one writer: while a desktop terminal holds this
     // conversation's session, no turn runs in it here (§5.8.19). The client
-    // shows who holds it and can ask for it (`agentSession/requestHandoff`).
+    // shows who holds it and can ask for it (`agent/requestHandoff`).
     const source = await ctx.threadStore.getHistorySource(threadId);
     if (source.agentId !== undefined && source.agentSessionId !== undefined) {
       const hold = ctx.sessionHolds.find(source.agentId, source.agentSessionId);

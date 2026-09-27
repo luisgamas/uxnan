@@ -8,7 +8,7 @@
 // changes hands:
 //
 // - **Terminal → chat.** "Continue as chat" on a tab, or someone asking for the
-//   session from elsewhere (`stream/agentSession/handoffRequested`): the agent
+//   session from elsewhere (`stream/agent/handoffRequested`): the agent
 //   is closed in its terminal — never while it works, never by typing into it
 //   (`pty_stop_agent`) — the hold is let go, and a conversation continues the
 //   session (the bridge resumes it and brings its history in).
@@ -119,7 +119,7 @@ export class TerminalSessions {
       void this.#report(this.held());
     });
     this.#client.onNotification((n) => {
-      if (n.method === 'stream/agentSession/handoffRequested') {
+      if (n.method === 'stream/agent/handoffRequested') {
         void this.#onHandoffRequested(n.params as AgentSessionHandoffRequestedParams);
       }
     });
@@ -143,7 +143,7 @@ export class TerminalSessions {
       if (sent && signature(sent) === signature(held)) continue;
       this.#sent.set(key, held);
       try {
-        await this.#client.call('agentSession/hold', {
+        await this.#client.call('agent/hold', {
           agentId: held.agentId,
           sessionId: held.sessionId,
           ...(held.cwd ? { cwd: held.cwd } : {}),
@@ -163,7 +163,7 @@ export class TerminalSessions {
 
   async #release(held: HeldSession): Promise<void> {
     try {
-      await this.#client.call('agentSession/release', {
+      await this.#client.call('agent/release', {
         agentId: held.agentId,
         sessionId: held.sessionId,
       });
@@ -233,7 +233,7 @@ export class TerminalSessions {
     const held = untrack(() => this.held()).get(sessionKey(request.agentId, request.sessionId));
     const answer = async (outcome: AgentSessionHandoffAnswerParams['outcome']): Promise<void> => {
       await this.#client
-        .call('agentSession/handoffAnswer', { requestId: request.requestId, outcome })
+        .call('agent/handoffAnswer', { requestId: request.requestId, outcome })
         .catch(() => undefined);
     };
     // Not held here any more: it is free, which is what was asked.

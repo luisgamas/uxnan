@@ -428,7 +428,7 @@ copy/previews and uses it only to collapse earlier responses after completion.
 
 ### Listing an agent's sessions
 
-`agentSession/list` (architecture/02a §5.8.19) asks each adapter for its CLI's
+`agent/sessions` (architecture/02a §5.8.19) asks each adapter for its CLI's
 sessions in a folder (`listNativeSessions`), through what that CLI offers —
 measured 2026-09-27 against the installed CLIs:
 
