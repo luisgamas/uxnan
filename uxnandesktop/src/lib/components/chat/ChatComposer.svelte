@@ -28,6 +28,7 @@
   import StopIcon from "@hugeicons/core-free-icons/StopIcon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import CancelIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import File01Icon from "@hugeicons/core-free-icons/File01Icon";
   import { untrack, type Snippet } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import type { AgentCommand, AgentCommandInvocation } from "$shared/agents/agent-capabilities";
@@ -48,6 +49,15 @@
     type ComposerImage,
   } from "$lib/bridge/imageAttachment";
   import { mentionEntries } from "$lib/bridge/mentions";
+  import {
+    MAX_FILES,
+    fileFromBlob,
+    fileFromRead,
+    formatBytes,
+    isImageName,
+    type ComposerFile,
+    type ReadFile,
+  } from "$lib/bridge/fileAttachment";
   import { bridge } from "$lib/bridge/client.svelte";
   import { toast, toastError } from "$lib/toast";
   import { i18n } from "$lib/i18n";
@@ -100,7 +110,8 @@
 
   let ref = $state<HTMLTextAreaElement | null>(null);
   let images = $state<ComposerImage[]>([]);
-  const empty = $derived(value.trim().length === 0 && images.length === 0);
+  let attachedFiles = $state<ComposerFile[]>([]);
+  const empty = $derived(value.trim().length === 0 && images.length === 0 && attachedFiles.length === 0);
 
   // ---- the suggestion panel: `/command` or `@file` under the caret ----
   let token = $state<ComposerToken | undefined>(undefined);
@@ -240,11 +251,19 @@
     images = [...images, ...list.slice(0, room)];
   }
 
-  /** Images of a message coming back to be edited (a send that failed). */
-  export function restoreImages(attachments: TurnAttachment[]) {
+  async function addFiles(list: ComposerFile[]) {
+    const room = Math.max(0, MAX_FILES - attachedFiles.length);
+    if (list.length > room) toast(i18n.t("chat.filesLimit", { count: MAX_FILES }));
+    if (room === 0) return;
+    attachedFiles = [...attachedFiles, ...list.slice(0, room)];
+  }
+
+  /** What a message coming back to be edited (a send that failed) carried. */
+  export function restoreAttachments(attachments: TurnAttachment[]) {
+    const inline = attachments.filter((a) => a.base64Data);
     void addImages(
-      attachments
-        .filter((a) => a.base64Data)
+      inline
+        .filter((a) => a.type !== "file")
         .map((attachment) => ({
           id: crypto.randomUUID(),
           name: attachment.path?.split(/[\\/]/).pop() || "image",
@@ -252,41 +271,69 @@
           attachment,
         })),
     );
+    void addFiles(
+      inline
+        .filter((a) => a.type === "file")
+        .map((attachment) => ({
+          id: crypto.randomUUID(),
+          name: attachment.name ?? "file",
+          bytes: Math.floor(((attachment.base64Data ?? "").length * 3) / 4),
+          attachment,
+        })),
+    );
   }
 
-  async function chooseImages() {
+  /** "+": any file. An image goes as an image (scaled, a thumbnail) when the
+   *  agent takes images; everything else — and an image for an agent that
+   *  takes none — goes as a file, which every agent opens with its tools. */
+  async function chooseAttachments() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const picked = await open({
-        multiple: true,
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }],
-      });
+      const picked = await open({ multiple: true });
       const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
-      const ready: ComposerImage[] = [];
+      const readyImages: ComposerImage[] = [];
+      const readyFiles: ComposerFile[] = [];
       for (const path of paths) {
-        const dataUrl = await invoke<string>("fs_read_data_url", { path });
-        ready.push(await imageFromDataUrl(dataUrl, path.split(/[\\/]/).pop() ?? "image"));
+        const name = path.split(/[\\/]/).pop() ?? "file";
+        if (acceptsImages && isImageName(name)) {
+          const dataUrl = await invoke<string>("fs_read_data_url", { path });
+          readyImages.push(await imageFromDataUrl(dataUrl, name));
+        } else {
+          readyFiles.push(fileFromRead(await invoke<ReadFile>("fs_read_attachment", { path })));
+        }
       }
-      await addImages(ready);
+      await addImages(readyImages);
+      await addFiles(readyFiles);
       ref?.focus();
     } catch (err) {
       toastError(err);
     }
   }
 
-  /** Images dropped on the composer, like pasted ones. */
+  /** Dropped or pasted files: images as images when the agent takes them,
+   *  everything else as files. */
+  async function takeBlobs(blobs: File[]) {
+    const asImage = (f: File) => acceptsImages && f.type.startsWith("image/");
+    await addImages(
+      await Promise.all(blobs.filter(asImage).map((f) => imageFromBlob(f, f.name || "image"))),
+    );
+    await addFiles(
+      await Promise.all(blobs.filter((f) => !asImage(f)).map((f) => fileFromBlob(f, f.name || "file"))),
+    );
+  }
+
   let dragging = $state(false);
   function carriesFiles(e: DragEvent): boolean {
-    return acceptsImages && !disabled && [...(e.dataTransfer?.types ?? [])].includes("Files");
+    return !disabled && [...(e.dataTransfer?.types ?? [])].includes("Files");
   }
   async function ondrop(e: DragEvent) {
     dragging = false;
     if (!carriesFiles(e)) return;
     e.preventDefault();
-    const dropped = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    const dropped = [...(e.dataTransfer?.files ?? [])];
     if (dropped.length === 0) return;
     try {
-      await addImages(await Promise.all(dropped.map((f) => imageFromBlob(f, f.name || "image"))));
+      await takeBlobs(dropped);
       ref?.focus();
     } catch (err) {
       toastError(err);
@@ -294,12 +341,11 @@
   }
 
   async function onpaste(e: ClipboardEvent) {
-    if (!acceptsImages) return;
-    const pasted = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    const pasted = [...(e.clipboardData?.files ?? [])];
     if (pasted.length === 0) return;
     e.preventDefault();
     try {
-      await addImages(await Promise.all(pasted.map((f) => imageFromBlob(f, f.name || "image"))));
+      await takeBlobs(pasted);
     } catch (err) {
       toastError(err);
     }
@@ -315,9 +361,10 @@
     const command = message.trimStart().startsWith("/")
       ? asCommand(message, await ensureCommands())
       : undefined;
-    const attachments = images.map((i) => i.attachment);
+    const attachments = [...images.map((i) => i.attachment), ...attachedFiles.map((f) => f.attachment)];
     value = "";
     images = [];
+    attachedFiles = [];
     token = undefined;
     await onsend(message, {
       ...(command ? { command } : {}),
@@ -395,8 +442,27 @@
     ondragleave={() => (dragging = false)}
     {ondrop}
   >
-    {#if images.length > 0}
+    {#if images.length > 0 || attachedFiles.length > 0}
       <InputGroup.Addon align="block-start" class="flex-wrap gap-1.5">
+        {#each attachedFiles as file (file.id)}
+          <span
+            class="group/file flex h-12 max-w-56 items-center gap-2 rounded-md bg-muted/60 pl-2 pr-1 ring-1 ring-border/60"
+          >
+            <Icon icon={File01Icon} class={cn(icon.action, "shrink-0 text-muted-foreground")} />
+            <span class="flex min-w-0 flex-col text-left">
+              <span class={cn(text.body, "truncate")} title={file.name}>{file.name}</span>
+              <span class={text.meta}>{formatBytes(file.bytes)}</span>
+            </span>
+            <button
+              type="button"
+              class="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+              aria-label={i18n.t("chat.removeImage", { name: file.name })}
+              onclick={() => (attachedFiles = attachedFiles.filter((f) => f.id !== file.id))}
+            >
+              <Icon icon={CancelIcon} class="size-3" />
+            </button>
+          </span>
+        {/each}
         {#each images as image (image.id)}
           <span class="group/thumb relative size-12 overflow-hidden rounded-md ring-1 ring-border/60">
             <img src={image.previewUrl} alt={image.name} class="size-full object-cover" />
@@ -430,19 +496,17 @@
       class={cn("max-h-60 min-h-11 px-3 leading-5", text.body)}
     />
     <InputGroup.Addon align="block-end" class="gap-0.5">
-      {#if acceptsImages}
-        <InputGroup.Button
-          size="icon-sm"
-          variant="ghost"
-          class="rounded-full text-muted-foreground"
-          aria-label={i18n.t("chat.addImages")}
-          title={i18n.t("chat.addImages")}
-          disabled={disabled || images.length >= MAX_IMAGES}
-          onclick={() => void chooseImages()}
-        >
-          <Icon icon={PlusIcon} class={icon.action} />
-        </InputGroup.Button>
-      {/if}
+      <InputGroup.Button
+        size="icon-sm"
+        variant="ghost"
+        class="rounded-full text-muted-foreground"
+        aria-label={i18n.t("chat.attach")}
+        title={i18n.t("chat.attach")}
+        disabled={disabled || (images.length >= MAX_IMAGES && attachedFiles.length >= MAX_FILES)}
+        onclick={() => void chooseAttachments()}
+      >
+        <Icon icon={PlusIcon} class={icon.action} />
+      </InputGroup.Button>
       {#if leading}{@render leading()}{/if}
       {#if trailing}{@render trailing()}{/if}
       <span class="flex-1"></span>

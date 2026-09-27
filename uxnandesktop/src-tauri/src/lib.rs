@@ -636,6 +636,7 @@ pub fn run() {
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::fs_read_data_url,
+            commands::fs_read_attachment,
             commands::fs_write_file,
             commands::fs_path_exists,
             commands::term_buffers_get,

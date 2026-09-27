@@ -294,11 +294,16 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   bare `@` (or `@dir/`) lists that folder (`workspace/list`), a name searches
   the whole project (`workspace/searchFiles`, `.gitignore` honoured); a picked
   folder drills in and a picked file is inserted as its relative path.
-  **Images** come from **+**, a paste or a drop onto the composer, shown as
-  thumbnails; they are scaled to 2048 px on the long edge (JPEG 85 % when
-  larger, as on the phone), up to 10 per message (the phone's limit — past it
-  a toast says so), and sent as `attachments` — offered only to an agent that
-  takes images (`capabilities.images`).
+  **Images and files** come from **+**, a paste or a drop onto the composer.
+  Images show as thumbnails; they are scaled to 2048 px on the long edge (JPEG
+  85 % when larger, as on the phone), up to 10 per message (the phone's limit —
+  past it a toast says so), and go as images only to an agent that takes them
+  (`capabilities.images`). Anything else — and an image for an agent that takes
+  none — goes as a **file** (`type: 'file'` with its name, up to 20 MB and 10
+  per message; `fs_read_attachment` reads a picked one), shown as a chip with
+  its name and size in the composer and in the message: the bridge writes it
+  under its name in the agent's folder, so every agent opens it with its own
+  tools.
 
 ## For developers
 

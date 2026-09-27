@@ -3458,6 +3458,14 @@ pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
         .map_err(CommandError::from)
 }
 
+/// Read any file to attach it to a chat message (name, MIME type, base64).
+#[tauri::command]
+pub async fn fs_read_attachment(path: String) -> Result<crate::fs::FileAttachment, CommandError> {
+    crate::fs::read_attachment(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Overwrite a file with the editor's content (atomic temp-write + rename).
 #[tauri::command]
 pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {

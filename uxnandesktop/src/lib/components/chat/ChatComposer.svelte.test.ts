@@ -2,10 +2,11 @@
  * The chat composer's keys: Enter sends, and on an empty composer ↑ / ↓ walk
  * the thread's earlier messages (the recall the phone and a terminal offer).
  * `/` completes the agent's commands (sent as a command), `@` the project's
- * files, and "+" is there only for an agent that takes images.
+ * files, and "+" attaches files for any agent (images for one that takes them).
  */
 
 import { describe, expect, it } from "vitest";
+import { fireEvent } from "@testing-library/svelte";
 import { mountWithProviders, until } from "../../../test/render";
 import type { AgentCommand } from "$shared/agents/agent-capabilities";
 import ChatComposer from "./ChatComposer.svelte";
@@ -150,12 +151,25 @@ describe("ChatComposer", () => {
     expect(sent).toEqual([["/compact now", { command: { name: "compact", args: "now" } }]]);
   });
 
-  it("offers images only to an agent that takes them", () => {
-    const without = mountWithProviders(ChatComposer, { props: { onsend: () => undefined } });
-    expect(without.screen.queryByRole("button", { name: "Add images" })).toBeNull();
-    const withImages = mountWithProviders(ChatComposer, {
-      props: { onsend: () => undefined, acceptsImages: true },
+  it("offers attaching to every agent, and a pasted file travels by its name", async () => {
+    const sent: { text: string; extras: unknown }[] = [];
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { onsend: (text: string, extras: unknown) => void sent.push({ text, extras }) },
     });
-    expect(withImages.screen.getByRole("button", { name: "Add images" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Attach images or files" })).toBeTruthy();
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const file = new File(["id\n1\n"], "people.csv", { type: "text/csv" });
+    await fireEvent.paste(box, { clipboardData: { files: [file] } });
+    expect(await screen.findByText("people.csv")).toBeTruthy();
+    expect(screen.getByText("5 B")).toBeTruthy();
+    await user.click(box);
+    await user.keyboard("read it{Enter}");
+    await until(() => sent.length > 0);
+    expect(sent[0]).toEqual({
+      text: "read it",
+      extras: {
+        attachments: [{ type: "file", name: "people.csv", mimeType: "text/csv", base64Data: "aWQKMQo=" }],
+      },
+    });
   });
 });

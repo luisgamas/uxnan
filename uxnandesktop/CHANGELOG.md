@@ -11,6 +11,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   under a fade, with *Show more* / *Show less*.
 - **Back where you were.** Returning to a conversation read earlier in the
   session opens it where you left it, not at the bottom.
+- **Attach any file.** "+", a paste or a drop attaches files of any kind (up
+  to 20 MB each), for every agent: they travel by their name and the agent
+  opens them with its own tools. They show as chips in the composer and in
+  the message; images still go as images to an agent that takes them.
 - **Send a queued message now.** A message waiting behind the running turn
   can go now — into that turn, for an agent that takes a message while it
   works, or as the next turn at once when nothing runs.

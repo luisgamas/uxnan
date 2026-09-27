@@ -31,6 +31,7 @@
   import ChatAccessMenu from "./ChatAccessMenu.svelte";
   import ChatComposer from "./ChatComposer.svelte";
   import ChatImages from "./ChatImages.svelte";
+  import ChatFiles from "./ChatFiles.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
@@ -109,7 +110,7 @@
   function editFailed(p: PendingSend) {
     conversation.dropPending(p.clientTurnId);
     putBack(p.request.command ? p.text : (p.request.text ?? ""));
-    if (p.request.attachments?.length) composer?.restoreImages(p.request.attachments);
+    if (p.request.attachments?.length) composer?.restoreAttachments(p.request.attachments);
   }
 
   /** Withdraws a queued message into the composer — only once the bridge has
@@ -362,14 +363,24 @@
 
           {#each conversation.pending as p (p.clientTurnId)}
             {@const failed = p.error !== undefined}
-            {@const images = (p.request.attachments ?? []).map((a, i) => ({
-              id: `${p.clientTurnId}-${i}`,
-              load: () => Promise.resolve(`data:${a.mimeType};base64,${a.base64Data ?? ""}`),
-            }))}
+            {@const images = (p.request.attachments ?? [])
+              .filter((a) => a.type !== "file")
+              .map((a, i) => ({
+                id: `${p.clientTurnId}-${i}`,
+                load: () => Promise.resolve(`data:${a.mimeType};base64,${a.base64Data ?? ""}`),
+              }))}
+            {@const sentFiles = (p.request.attachments ?? [])
+              .filter((a) => a.type === "file")
+              .map((a, i) => ({
+                id: `${p.clientTurnId}-f${i}`,
+                name: a.name ?? "file",
+                bytes: Math.floor(((a.base64Data ?? "").length * 3) / 4),
+              }))}
             <div class="flex flex-col items-end gap-1">
               {#if images.length > 0}
                 <ChatImages {images} class={cn("max-w-[85%]", !failed && "opacity-70")} />
               {/if}
+              <ChatFiles files={sentFiles} class={cn(!failed && "opacity-70")} />
               {#if p.text}
                 <ChatUserText text={p.text} class={cn(!failed && "opacity-70")} />
               {/if}
