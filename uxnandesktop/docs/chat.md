@@ -207,7 +207,7 @@ Below it, **Continue a conversation** lists every conversation the bridge holds
 for this folder, whichever app started it, and **Sessions in this folder**
 lists the agents' own sessions there that no conversation continues yet — ones
 started in a terminal, here or elsewhere, or in the agent's own app
-(`agent/list`, architecture/02a §5.8.19). Picking one continues it as
+(`agent/sessions`, architecture/02a §5.8.19). Picking one continues it as
 this chat: its history comes in and its first message resumes it. One that a
 terminal of this window holds says *In a terminal*; picking it asks that
 terminal to let it go first. An agent whose CLI cannot list its sessions
@@ -219,14 +219,19 @@ A terminal running an agent the bridge drives tells the bridge which session it
 holds (`agent/hold`, and whether the agent is working). While it does,
 the session has one writer — the terminal: a chat of it shows *This
 conversation is open in a terminal on <PC>*, its composer waits, and the phone
-shows the same.
+shows the same. Only a tab whose shell runs holds: one restored from the saved
+layout keeps its session but runs nothing until its workspace is shown, and
+holds it again when its agent is back and reports it. On start the desktop also
+lets go of any hold the bridge still keeps for it that no tab holds — the
+bridge's connection outlives a reload of the window.
 
 - **Continue as chat** (the terminal tab's menu, or the pane's): once the agent
   is not working, Uxnan closes it in that terminal — a signal to the agent's
   process (`pty_stop_agent`), never keystrokes; the shell and the tab stay —
   and opens the conversation that continues its session. The same happens on
   its own when the phone (or a chat) asks for the session with *Continue here*.
-  An agent that already exited offers it too.
+  An agent nothing runs any more (it exited, or its restored tab's shell has
+  not started) offers it too; one that left its shell is closed as a no-op.
 - **Open in terminal** (the chat's menu): the agent reopens the session in a new
   terminal, with its own profile (`app.launchAgent` with `resume`, the command
   `agentResume.ts` knows). Not while the agent is working, and not for Zero,

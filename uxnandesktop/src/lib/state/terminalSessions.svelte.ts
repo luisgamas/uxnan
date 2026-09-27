@@ -24,6 +24,7 @@ import type { Thread } from '$shared/models/thread';
 import type {
   AgentSessionHandoffAnswerParams,
   AgentSessionHandoffRequestedParams,
+  AgentSessionHoldsResult,
 } from '$shared/models/agent-session';
 import { bridge, type BridgeClientStore } from '$lib/bridge/client.svelte';
 import { chat, sessionKey, type ChatStore } from '$lib/bridge/chat.svelte';
@@ -33,6 +34,7 @@ import { toast } from '$lib/toast';
 import { i18n } from '$lib/i18n';
 import { terminals, type GroupTab, type TerminalTab } from './terminals.svelte';
 import { resolveAgentDisplay } from './agentDisplay';
+import { ptyRunning } from '$lib/terminal/instances';
 import { app } from './app.svelte';
 import { sshHostId, type TargetId } from '$lib/target';
 
@@ -50,13 +52,20 @@ export interface HeldSession {
 type StopOutcome = 'notRunning' | 'exited' | 'killed';
 
 /**
- * The session a tab holds, or `null`: a live local terminal whose agent — one
- * the bridge drives — reported a session it has written (a `pending` id is one
- * nothing was said to yet, so there is nothing to protect). A remote terminal
- * runs on another machine, whose sessions this bridge does not see.
+ * The session a tab holds, or `null`: a live local terminal, its shell
+ * running, whose agent — one the bridge drives — reported a session it has
+ * written (a `pending` id is one nothing was said to yet, so there is nothing
+ * to protect). A tab restored from the saved layout keeps its session's `live`
+ * flag but runs nothing until its workspace is shown, so it holds nothing
+ * until then. A remote terminal runs on another machine, whose sessions this
+ * bridge does not see.
  */
-export function heldSessionOf(tab: GroupTab): HeldSession | null {
+export function heldSessionOf(
+  tab: GroupTab,
+  running: (tabId: string) => boolean = ptyRunning,
+): HeldSession | null {
   if (tab.kind !== 'terminal' || tab.exited || tab.asleep || isRemote(tab)) return null;
+  if (!running(tab.id)) return null;
   const session = tab.agentSession;
   if (!session || session.pending || session.live === false) return null;
   const agentId = bridgeAgentForCommand(session.agent);
@@ -88,6 +97,8 @@ export interface TerminalSessionsDeps {
   chatStore?: ChatStore;
   /** Close the agent a terminal runs (`pty_stop_agent`). */
   stopAgent?: (tabId: string) => Promise<unknown>;
+  /** Whether a terminal's shell is running. */
+  ptyRunning?: (tabId: string) => boolean;
 }
 
 export class TerminalSessions {
@@ -96,12 +107,14 @@ export class TerminalSessions {
   readonly #client: BridgeClientStore;
   readonly #chat: ChatStore;
   readonly #stopAgent: (tabId: string) => Promise<unknown>;
+  readonly #ptyRunning: (tabId: string) => boolean;
   #started = false;
 
   constructor(deps: TerminalSessionsDeps = {}) {
     this.#client = deps.client ?? bridge;
     this.#chat = deps.chatStore ?? chat;
     this.#stopAgent = deps.stopAgent ?? ((id) => invoke<StopOutcome>('pty_stop_agent', { id }));
+    this.#ptyRunning = deps.ptyRunning ?? ptyRunning;
   }
 
   start(): void {
@@ -117,7 +130,9 @@ export class TerminalSessions {
     this.#client.onConnected(() => {
       this.#sent.clear();
       void this.#report(this.held());
+      void this.#converge();
     });
+    void this.#converge();
     this.#client.onNotification((n) => {
       if (n.method === 'stream/agent/handoffRequested') {
         void this.#onHandoffRequested(n.params as AgentSessionHandoffRequestedParams);
@@ -129,7 +144,7 @@ export class TerminalSessions {
   held(): Map<string, HeldSession> {
     const out = new Map<string, HeldSession>();
     for (const { tab } of terminals.tabsWithWorkspace()) {
-      const held = heldSessionOf(tab);
+      const held = heldSessionOf(tab, this.#ptyRunning);
       if (held) out.set(sessionKey(held.agentId, held.sessionId), held);
     }
     return out;
@@ -161,7 +176,30 @@ export class TerminalSessions {
     }
   }
 
-  async #release(held: HeldSession): Promise<void> {
+  /**
+   * Let go of what the bridge still keeps for this desktop that no tab holds
+   * now. The bridge keeps a desktop's holds for as long as its connection
+   * lives, and that connection outlives a reload of this window, which forgets
+   * what it had said. A release only ever ends the caller's own hold, so the
+   * holds of another desktop are left alone.
+   */
+  async #converge(): Promise<void> {
+    if (!this.#client.connected) return;
+    let holds: AgentSessionHoldsResult['holds'];
+    try {
+      ({ holds } = await this.#client.call<AgentSessionHoldsResult>('agent/holds', {}));
+    } catch {
+      return;
+    }
+    const wanted = untrack(() => this.held());
+    for (const hold of holds) {
+      const key = sessionKey(hold.agentId, hold.sessionId);
+      if (hold.holder.kind !== 'terminal' || wanted.has(key) || this.#sent.has(key)) continue;
+      await this.#release(hold);
+    }
+  }
+
+  async #release(held: { agentId: string; sessionId: string }): Promise<void> {
     try {
       await this.#client.call('agent/release', {
         agentId: held.agentId,
@@ -184,17 +222,19 @@ export class TerminalSessions {
   /** Whether "Continue as chat" is on offer for a tab, and why not otherwise. */
   continueAsChatState(tab: GroupTab): 'ready' | 'busy' | 'unavailable' {
     if (!this.#client.connected) return 'unavailable';
-    const held = heldSessionOf(tab);
+    const held = heldSessionOf(tab, this.#ptyRunning);
     if (held) return held.busy ? 'busy' : 'ready';
-    // An agent that already exited still left its session to continue.
+    // An agent nothing runs any more still left its session to continue.
     return this.#exitedSession(tab) ? 'ready' : 'unavailable';
   }
 
-  /** The session an agent that has exited left on its tab. */
+  /** The session a tab's agent left there, when nothing runs it: the agent
+   *  exited, or the tab was restored and its shell is not running yet. */
   #exitedSession(tab: GroupTab): { agentId: string; sessionId: string; cwd: string } | null {
     if (tab.kind !== 'terminal' || isRemote(tab) || !tab.cwd) return null;
     const session = tab.agentSession;
-    if (!session || session.pending || session.live !== false) return null;
+    if (!session || session.pending) return null;
+    if (session.live !== false && this.#ptyRunning(tab.id)) return null;
     const agentId = bridgeAgentForCommand(session.agent);
     return agentId ? { agentId, sessionId: session.id, cwd: tab.cwd } : null;
   }
@@ -207,7 +247,7 @@ export class TerminalSessions {
   async continueAsChat(tabId: string): Promise<void> {
     const tab = terminals.findTab(tabId);
     if (!tab || tab.kind !== 'terminal') return;
-    const held = heldSessionOf(tab);
+    const held = heldSessionOf(tab, this.#ptyRunning);
     const session = held ?? this.#exitedSession(tab);
     if (!session || !tab.cwd) return;
     if (held?.busy) {
@@ -242,6 +282,8 @@ export class TerminalSessions {
     try {
       await this.#letGo(held);
     } catch {
+      // The agent could not be closed and still runs there: the terminal keeps
+      // the session, and the asker may try again.
       return answer('busy');
     }
     await answer('released');

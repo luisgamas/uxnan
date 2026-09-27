@@ -6,7 +6,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
+import { SvelteSet } from 'svelte/reactivity';
 import type { Thread } from '$shared/models/thread';
+import type { AgentSessionHold } from '$shared/models/agent-session';
 import { installFakeBackend } from '../../test/tauri';
 import { BridgeClientStore } from '$lib/bridge/client.svelte';
 import { ChatStore } from '$lib/bridge/chat.svelte';
@@ -31,11 +33,22 @@ function terminal(extra: Partial<TerminalTab> = {}): TerminalTab {
   return tab;
 }
 
+/** Every terminal's shell runs. */
+const running = () => true;
+
+/** What the bridge still keeps as held when the harness starts. */
+let bridgeHolds: AgentSessionHold[] = [];
+
+function hold(sessionId: string, kind: AgentSessionHold['holder']['kind'] = 'terminal'): AgentSessionHold {
+  return { agentId: 'claude-code', sessionId, holder: { kind, name: 'Mac' }, heldAgoMs: 0, busy: false };
+}
+
 function harness() {
   const client = new BridgeClientStore();
   client.status = { state: 'connected' } as BridgeClientStore['status'];
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   client.call = vi.fn(async (method: string, params?: unknown) => {
+    if (method === 'agent/holds') return { holds: bridgeHolds } as never;
     calls.push({ method, params: params as Record<string, unknown> });
     if (method === 'thread/start') {
       return { id: 'th-1', projectId: 'p', title: 't', status: 'active', turnCount: 0, createdAt: 1, updatedAt: 1 } as never;
@@ -50,11 +63,13 @@ function harness() {
     stopAgent: async (tabId) => {
       stopped.push(tabId);
     },
+    ptyRunning: running,
   });
   return { client, chatStore, calls, stopped, sessions };
 }
 
 beforeEach(() => {
+  bridgeHolds = [];
   installFakeBackend();
   terminals.root = null;
   terminals.setWorkspace(GLOBAL_WORKSPACE);
@@ -63,7 +78,7 @@ beforeEach(() => {
 describe('which sessions the terminals hold', () => {
   it('a live local terminal whose agent the bridge drives, with a session it wrote', () => {
     const tab = terminal();
-    expect(heldSessionOf(tab)).toEqual({
+    expect(heldSessionOf(tab, running)).toEqual({
       agentId: 'claude-code',
       sessionId: 's-1',
       cwd: '/repo',
@@ -71,16 +86,24 @@ describe('which sessions the terminals hold', () => {
       tabId: tab.id,
     });
     tab.working = true;
-    expect(heldSessionOf(tab)?.busy).toBe(true);
+    expect(heldSessionOf(tab, running)?.busy).toBe(true);
   });
 
   it('not a session nothing was said to, an exited agent, a remote or sleeping tab, or another CLI', () => {
-    expect(heldSessionOf(terminal({ agentSession: session({ pending: true }) }))).toBeNull();
-    expect(heldSessionOf(terminal({ agentSession: session({ live: false }) }))).toBeNull();
-    expect(heldSessionOf(terminal({ target: 'ssh:box' }))).toBeNull();
-    expect(heldSessionOf(terminal({ asleep: true }))).toBeNull();
-    expect(heldSessionOf(terminal({ exited: true }))).toBeNull();
-    expect(heldSessionOf(terminal({ agentSession: session({ agent: 'goose' }) }))).toBeNull();
+    expect(heldSessionOf(terminal({ agentSession: session({ pending: true }) }), running)).toBeNull();
+    expect(heldSessionOf(terminal({ agentSession: session({ live: false }) }), running)).toBeNull();
+    expect(heldSessionOf(terminal({ target: 'ssh:box' }), running)).toBeNull();
+    expect(heldSessionOf(terminal({ asleep: true }), running)).toBeNull();
+    expect(heldSessionOf(terminal({ exited: true }), running)).toBeNull();
+    expect(heldSessionOf(terminal({ agentSession: session({ agent: 'goose' }) }), running)).toBeNull();
+  });
+
+  // A tab restored from the saved layout keeps its session's `live` flag, but
+  // nothing runs in it until its workspace is shown: it holds nothing yet.
+  it('not a restored tab whose shell is not running', () => {
+    const tab = terminal();
+    expect(heldSessionOf(tab, () => false)).toBeNull();
+    expect(heldSessionOf(tab)).toBeNull();
   });
 });
 
@@ -104,6 +127,64 @@ describe('telling the bridge', () => {
       method: 'agent/release',
       params: { agentId: 'claude-code', sessionId: 's-1' },
     });
+  });
+
+  // The real order: the agent is launched with an id we named (`pending`),
+  // and its hook reports the session afterwards.
+  it('holds a session its hook reports after the tab opened', async () => {
+    const { calls, sessions } = harness();
+    const tab = terminal({ agentSession: session({ pending: true }) });
+    sessions.start();
+    await settle();
+    expect(calls).toEqual([]);
+    terminals.recordAgentSession(tab.id, 'claude', { id: 's-7', capturedAt: 2 });
+    await settle();
+    expect(calls.at(-1)).toMatchObject({
+      method: 'agent/hold',
+      params: { agentId: 'claude-code', sessionId: 's-7' },
+    });
+  });
+
+  // A restored tab's shell starts when its workspace is shown; after a reload
+  // of the window, the tab re-attaches to its running shell.
+  it('holds a restored tab’s session once its shell runs', async () => {
+    const shells = new SvelteSet<string>();
+    const client = new BridgeClientStore();
+    client.status = { state: 'connected' } as BridgeClientStore['status'];
+    const calls: string[] = [];
+    client.call = vi.fn(async (method: string) => {
+      if (method === 'agent/holds') return { holds: [] } as never;
+      calls.push(method);
+      return {} as never;
+    }) as BridgeClientStore['call'];
+    const sessions = new TerminalSessions({
+      client,
+      chatStore: new ChatStore(client),
+      stopAgent: async () => undefined,
+      ptyRunning: (id) => shells.has(id),
+    });
+    const tab = terminal();
+    sessions.start();
+    await settle();
+    expect(calls).toEqual([]);
+    expect(sessions.continueAsChatState(tab)).toBe('ready');
+    shells.add(tab.id);
+    await settle();
+    expect(calls).toEqual(['agent/hold']);
+  });
+
+  // The bridge keeps a desktop's holds for its connection, which outlives a
+  // reload of the window: what no tab holds any more is let go on start.
+  it('lets go of what the bridge still keeps that no tab holds', async () => {
+    terminal();
+    bridgeHolds = [hold('s-1'), hold('s-stale')];
+    const { calls, sessions } = harness();
+    sessions.start();
+    await settle();
+    await settle();
+    expect(calls.filter((c) => c.method === 'agent/release').map((c) => c.params.sessionId)).toEqual([
+      's-stale',
+    ]);
   });
 
   it('says everything again after a reconnect (the bridge dropped it)', async () => {
@@ -181,6 +262,7 @@ describe('terminal ⇄ chat', () => {
     expect(stopped).toEqual([]);
     const exited = terminal({ agentSession: session({ live: false }) });
     expect(sessions.continueAsChatState(exited)).toBe('ready');
+    expect(sessions.continueAsChatState(terminal({ agentSession: session({ pending: true }) }))).toBe('unavailable');
     expect(sessions.continueAsChatState(terminal({ agentSession: session({ agent: 'goose' }) }))).toBe(
       'unavailable',
     );

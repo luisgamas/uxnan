@@ -34,7 +34,7 @@ the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridg
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,680 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,684 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1026,14 +1026,17 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       hand-off is built (holds, Continue as chat, Continue here, Open in
       terminal); what a terminal does shows in the chat once its turns complete
       (native-history convergence). Following it turn by turn from the phone
-      needs a watch of the transcript (`agent/watch`), measured per CLI
+      needs a watch of the transcript (`agent/watchSession`), measured per CLI
       for how soon each one writes. Where: the bridge's catalog handler +
       `session-history.ts`.
-- [ ] **A supervised run of the hand-off on the installed app.** Verified by
-      unit and component tests, `agentstop.rs` against real processes, and the
-      bridge side live against all seven CLIs; the whole loop — a real agent in
-      a desktop terminal, *Continue here* on the phone, back to the terminal —
-      needs the branch bridge installed as the service.
+- [ ] **A supervised click-through of the hand-off with a paired phone.**
+      Verified live with the branch bridge as the service and `tauri dev`: a
+      real Claude Code in a desktop terminal holds its session, a turn on it is
+      refused (`-32010`), a second client asking for it gets `released` (the
+      agent closed, the shell kept), and the chat continues it with its history
+      — the agent recalls what it was told in the terminal. Still to click
+      through by hand: *Continue as chat* on the tab, *Open in terminal* on the
+      chat, and *Continue here* on a real phone.
 
 
 ### Backend (Rust)
@@ -1687,7 +1690,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,001 Rust + 1,680 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,001 Rust + 1,684 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

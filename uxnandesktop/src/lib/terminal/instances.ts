@@ -25,6 +25,7 @@
 // handle lives on the instance only so a remount can find it.
 
 import { invoke } from '@tauri-apps/api/core';
+import { SvelteSet } from 'svelte/reactivity';
 import { listen } from '@tauri-apps/api/event';
 import { Terminal, type ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -132,8 +133,6 @@ export interface TerminalInstance {
    *  names overwriting long ones). 0 = no fit has produced a grid yet. */
   desiredCols: number;
   desiredRows: number;
-  /** The PTY accepts writes (spawn finished). */
-  ptyReady: boolean;
   /** The backend rejected the spawn (missing shell / bad profile). */
   spawnFailed: boolean;
   /** The agent `runCommand` was already typed (never re-type into a live agent). */
@@ -174,6 +173,16 @@ const pending = new Map<string, Promise<TerminalInstance>>();
 
 export function getInstance(id: string): TerminalInstance | undefined {
   return registry.get(id);
+}
+
+/** Terminals whose PTY accepts writes (spawn finished, or re-attached after a
+ *  reload of the window). Reactive, so what follows a terminal's shell — the
+ *  sessions its agent holds — updates when one starts or goes. */
+const readyPtys = new SvelteSet<string>();
+
+/** Whether a terminal's shell is running. Reactive. */
+export function ptyRunning(id: string): boolean {
+  return readyPtys.has(id);
 }
 
 /** Serialize a live instance's parsed screen + last `scrollback` lines as ANSI
@@ -285,6 +294,7 @@ export function disposeInstance(id: string): void {
   const inst = registry.get(id);
   if (!inst) return;
   registry.delete(id);
+  readyPtys.delete(id);
   forgetJunctionBlock(id);
   if (inst.launchTimer) clearTimeout(inst.launchTimer);
   for (const dispose of inst.disposables.splice(0)) {
@@ -321,7 +331,7 @@ export function requestPtyResize(inst: TerminalInstance, cols: number, rows: num
   if (cols <= 0 || rows <= 0) return;
   inst.desiredCols = cols;
   inst.desiredRows = rows;
-  if (!inst.ptyReady) return; // stashed — spawnPty flushes it
+  if (!readyPtys.has(inst.id)) return; // stashed — spawnPty flushes it
   if (cols === inst.lastCols && rows === inst.lastRows) return;
   inst.lastCols = cols;
   inst.lastRows = rows;
@@ -368,7 +378,7 @@ export async function spawnPty(
     // the shell and xterm can never disagree about the grid.
     inst.lastCols = cols;
     inst.lastRows = rows;
-    inst.ptyReady = true;
+    readyPtys.add(inst.id);
     if (inst.desiredCols > 0 && inst.desiredRows > 0) {
       requestPtyResize(inst, inst.desiredCols, inst.desiredRows);
     }
@@ -416,7 +426,7 @@ export async function respawnPty(
   }
   // Back to the pre-spawn state: a fresh PTY knows nothing of the old grid, and
   // the one-shot launch has to be allowed to fire again for the new shell.
-  inst.ptyReady = false;
+  readyPtys.delete(inst.id);
   inst.spawnFailed = false;
   inst.launched = false;
   inst.lastCols = 0;
@@ -459,7 +469,7 @@ async function nudgeRepaint(inst: TerminalInstance, cols: number, rows: number):
  *  every non-agent command untouched. */
 export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_QUIET_MS): void {
   const { runCommand, runCommandExecute = true } = inst.spec;
-  if (!runCommand || !inst.ptyReady || inst.spawnFailed || inst.launched) return;
+  if (!runCommand || !readyPtys.has(inst.id) || inst.spawnFailed || inst.launched) return;
   if (inst.launchTimer) clearTimeout(inst.launchTimer);
   const wait = launchDelayMs({
     target: inst.spec.target,
@@ -554,7 +564,6 @@ async function createInstance(
     lastRows: 0,
     desiredCols: 0,
     desiredRows: 0,
-    ptyReady: false,
     spawnFailed: false,
     launched: false,
     sawOutput: false,

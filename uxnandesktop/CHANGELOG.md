@@ -13,7 +13,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   agent there once it is idle (a signal to its process, never keystrokes) and
   opens the conversation that continues its session, with its history; the
   phone asking for it does the same. *Open in terminal* in a chat reopens its
-  session in a new terminal with the agent's own profile.
+  session in a new terminal with the agent's own profile. Only a terminal whose
+  shell runs holds a session: a tab restored from the saved layout holds it
+  again once its agent is back.
 - **Sessions in this folder.** A new chat lists the agents' own sessions in its
   folder that no conversation continues yet — from a terminal, here or
   elsewhere, or the agent's app — to pick up as the chat.
