@@ -2299,8 +2299,15 @@ Reglas (no negociables, verificadas contra los CLIs reales):
   temp del SO queda solo como ultimo recurso para un adaptador que no reporte
   ninguno.
 - El directorio se borra al terminar el turno.
-- El mensaje que se persiste en el historial no filtra rutas temporales: un
-  turno solo-imagen guarda `[N image attachments]`.
+- El mensaje que se persiste en el historial no filtra rutas temporales: guarda
+  el texto del usuario tal cual (vacio en un turno solo-imagen) y **las imagenes
+  junto al mensaje**. El bridge es su dueno: las escribe en
+  `~/.uxnan/attachments/<threadId>/<turnId>-<n>.<ext>`, las nombra en
+  `Message.attachments` (`{ id, mimeType, bytes, width?, height? }`, solo en el
+  mensaje del usuario) y entrega los bytes con `turn/attachment { threadId,
+  attachmentId }`. `turn/list` solo las nombra — una pagina de historial sigue
+  siendo ligera — y cada cliente (telefono, desktop) pide la que muestra y la
+  guarda en memoria. Un fork copia las imagenes; borrar el hilo las borra.
 - `capabilities.images` declara si el agente puede recibirlos; el telefono
   oculta el "+" cuando es `false`. Que el modelo *vea* los pixeles o razone
   sobre los bytes con herramientas es cosa del modelo — un modelo no multimodal

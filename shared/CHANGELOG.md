@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a message keeps its images
+
+- **`Message.attachments`** (`MessageAttachment { id, mimeType, bytes, width?,
+  height? }`): the images a user message carries, named on its user message.
+- **`turn/attachment`** (`TurnAttachmentParams { threadId, attachmentId }` →
+  `TurnAttachmentData { mimeType, base64Data }`): the bytes of one of them.
+  84 methods.
+
 ## [0.0.20-alpha.20260926] - 20260926
 ### Added — check for a newer bridge now
 

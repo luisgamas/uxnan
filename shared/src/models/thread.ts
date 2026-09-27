@@ -73,7 +73,28 @@ export interface Message {
   segments?: unknown[];
   /** Token usage for this turn, so the phone restores the context meter on re-sync. */
   usage?: { tokens: number; contextWindow?: number };
+  /**
+   * The images the user attached to this message, kept by the bridge with the
+   * turn (user messages only). They are named here, not inlined — a page of
+   * history stays small — and each client fetches the bytes it shows with
+   * `turn/attachment`.
+   */
+  attachments?: MessageAttachment[];
   createdAt: number;
+}
+
+/** An image attached to a user message, as `turn/list` names it. */
+export interface MessageAttachment {
+  /** Opaque id, unique in its thread; the key for `turn/attachment`. */
+  id: string;
+  /** MIME type, e.g. `image/png`. */
+  mimeType: string;
+  /** Size of the stored image in bytes. */
+  bytes: number;
+  /** Pixel width, when the sender knew it. */
+  width?: number;
+  /** Pixel height, when the sender knew it. */
+  height?: number;
 }
 
 /**

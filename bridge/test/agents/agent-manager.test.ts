@@ -209,8 +209,12 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
   await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
   const turn = await store.getTurn(turnId);
 
-  // The persisted user message is a faithful placeholder — no temp path leaks.
-  assert.equal(turn.messages.find((m) => m.role === 'user')?.content, '[1 image attachment]');
+  // The persisted user message is the user's own: no text, no temp path — its
+  // image is kept with it, for every client to show.
+  const user = turn.messages.find((m) => m.role === 'user');
+  assert.equal(user?.content, '');
+  assert.equal(user?.attachments?.length, 1);
+  assert.equal(user?.attachments?.[0]?.mimeType, 'image/png');
   // The echo agent echoes the prompt it received: the note references a
   // cwd-relative path (inside the workspace), not an absolute temp path.
   const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');

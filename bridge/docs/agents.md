@@ -713,8 +713,11 @@ Two rules make the file-path delivery work, both verified against the real CLIs:
    OS temp dir, Claude answers *"the read was blocked by a permission prompt"*.
    A turn without its own `cwd` therefore falls back to the adapter's
    (`IAgentAdapter.defaultCwd()`), never to the temp dir.
-2. **The directory is removed when the turn ends**, and the persisted history
-   shows `[N image attachments]` — no temp path leaks into the conversation.
+2. **The directory is removed when the turn ends**; no temp path leaks into the
+   conversation. The images themselves are kept **with the message**: the
+   thread store writes them to `~/.uxnan/attachments/<threadId>/`, names them in
+   `Message.attachments`, and serves each with `turn/attachment`, so every
+   client shows them in the user's bubble.
 
 `capabilities.images` decides whether the phone offers the "+" attach action:
 
