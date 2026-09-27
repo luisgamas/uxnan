@@ -9,6 +9,7 @@ import {
   parseGrokLine,
   parseOpenCodeMessage,
   parsePiLine,
+  parseZeroLine,
   type CodexParseState,
 } from '../../src/usage/transcript-usage.js';
 import { estimateCost } from '../../src/usage/usage-prices.js';
@@ -167,6 +168,37 @@ test('pi, Grok and OpenCode: the cost they recorded, a free model at $0', () => 
   );
 });
 
+test('Zero: a provider_usage event, at the session model, never priced', () => {
+  const r = parseZeroLine(
+    JSON.stringify({
+      id: 's:2',
+      sessionId: 's',
+      sequence: 2,
+      type: 'provider_usage',
+      createdAt: '2026-09-25T05:40:59Z',
+      payload: {
+        completionTokens: 106,
+        promptTokens: 14069,
+        reasoningTokens: 106,
+        totalTokens: 14175,
+      },
+    }),
+    'openrouter/free',
+  );
+  assert.deepEqual(r, {
+    agentId: 'zero',
+    model: 'openrouter/free',
+    at: Date.parse('2026-09-25T05:40:59Z'),
+    inputTokens: 14069,
+    cachedInputTokens: 0,
+    cacheWriteTokens: 0,
+    outputTokens: 106,
+    reasoningTokens: 106,
+  });
+  assert.equal(estimateCost(r!), undefined);
+  assert.equal(parseZeroLine(JSON.stringify({ type: 'message', payload: {} }), 'm'), undefined);
+});
+
 test('the scan counts each Claude response once across files and reads only what was appended', async () => {
   const root = await mkdtemp(join(tmpdir(), 'uxnan-usage-'));
   const locations: UsageLocations = {
@@ -174,6 +206,7 @@ test('the scan counts each Claude response once across files and reads only what
     codex: [join(root, 'codex')],
     pi: join(root, 'pi'),
     grok: join(root, 'grok'),
+    zero: join(root, 'zero'),
     openCodeDb: join(root, 'none.db'),
   };
   try {
@@ -210,6 +243,48 @@ test('the scan counts each Claude response once across files and reads only what
     // Out of the period asked for: not listed.
     const later = new UsageScanner({ state, locations, now: () => now + 30 * 86_400_000 });
     assert.deepEqual((await later.summary(7)).days, []);
+  } finally {
+    await rmrf(root);
+  }
+});
+
+test('the scan reads a Zero session with the model its metadata names', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'uxnan-usage-zero-'));
+  const locations: UsageLocations = {
+    claude: join(root, 'claude'),
+    codex: [join(root, 'codex')],
+    pi: join(root, 'pi'),
+    grok: join(root, 'grok'),
+    zero: join(root, 'zero'),
+    openCodeDb: join(root, 'none.db'),
+  };
+  try {
+    const session = join(root, 'zero', 'zero_1');
+    await mkdir(session, { recursive: true });
+    await writeFile(join(session, 'metadata.json'), JSON.stringify({ modelId: 'openrouter/free' }));
+    await writeFile(
+      join(session, 'events.jsonl'),
+      [
+        JSON.stringify({ type: 'message', createdAt: '2026-09-25T05:40:58Z', payload: {} }),
+        JSON.stringify({
+          type: 'provider_usage',
+          createdAt: '2026-09-25T05:40:59Z',
+          payload: { completionTokens: 10, promptTokens: 90, reasoningTokens: 0 },
+        }),
+      ].join('\n') + '\n',
+    );
+    const scanner = new UsageScanner({
+      state: new DaemonState(join(root, 'state')),
+      locations,
+      now: () => Date.parse('2026-09-26T12:00:00Z'),
+    });
+    const summary = await scanner.summary(7);
+    const bucket = summary.days[0]!.buckets[0]!;
+    assert.equal(bucket.agentId, 'zero');
+    assert.equal(bucket.model, 'openrouter/free');
+    assert.equal(bucket.inputTokens + bucket.outputTokens, 100);
+    assert.equal(bucket.unpricedTokens, 100, 'no price is known, and none is guessed');
+    assert.deepEqual(summary.agents, [{ agentId: 'zero', sessions: 1, status: 'ok' }]);
   } finally {
     await rmrf(root);
   }

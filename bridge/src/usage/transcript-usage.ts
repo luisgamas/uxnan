@@ -18,9 +18,14 @@
  * | pi | `$PI_CODING_AGENT_DIR|~/.pi/agent/sessions/<cwd>/<session>.jsonl` | `type:"message"` assistant with `message.usage` and its `cost.total` |
  * | Grok | `$GROK_HOME|~/.grok/sessions/<cwd>/<session>/updates.jsonl` | `turn_completed` `usage.modelUsage` per model, `costUsdTicks` (1 USD = 1e10) |
  * | OpenCode 2 | `$XDG_DATA_HOME|~/.local/share/opencode/opencode.db` (SQLite `message.data`) | an assistant message with `tokens` and `cost` |
+ * | Zero | `$XDG_DATA_HOME|~/.local/share/zero/sessions/<session>/events.jsonl` | a `provider_usage` event (the model from the session's `metadata.json`) |
+ *
+ * Antigravity is the one wired agent missing: its transcript
+ * (`~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`)
+ * records no token counts at all.
  *
  * Verified against the CLIs on the maintainer's machine (Claude Code 2.1.283,
- * Codex 0.13x, pi 0.85, Grok 4.7, OpenCode 2.0.16), 2026-09-27.
+ * Codex 0.13x, pi 0.85, Grok 4.7, OpenCode 2.0.16, Zero), 2026-09-27.
  */
 
 /** One model response's spend, as its transcript states it. */
@@ -262,6 +267,31 @@ export function parseOpenCodeMessage(data: string): UsageRecord | undefined {
     outputTokens: num(tokens['output']) + num(tokens['reasoning']),
     reasoningTokens: num(tokens['reasoning']),
     ...(cost !== undefined ? { costUsd: cost } : {}),
+  };
+  return spent(record_) ? record_ : undefined;
+}
+
+/**
+ * A Zero `events.jsonl` line → a response's usage. Zero records no model per
+ * event: [model] is the session's (`metadata.json` `modelId`). It records no
+ * cache split and no cost either.
+ */
+export function parseZeroLine(line: string, model: string): UsageRecord | undefined {
+  if (!line.includes('"provider_usage"')) return undefined;
+  const row = parse(line);
+  if (row?.['type'] !== 'provider_usage') return undefined;
+  const payload = record(row['payload']);
+  const at = time(row['createdAt']);
+  if (!payload || at === undefined) return undefined;
+  const record_: UsageRecord = {
+    agentId: 'zero',
+    model,
+    at,
+    inputTokens: num(payload['promptTokens']),
+    cachedInputTokens: 0,
+    cacheWriteTokens: 0,
+    outputTokens: num(payload['completionTokens']),
+    reasoningTokens: num(payload['reasoningTokens']),
   };
   return spent(record_) ? record_ : undefined;
 }

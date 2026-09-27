@@ -17,9 +17,9 @@
  */
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type {
   UsageAgentSource,
@@ -36,6 +36,7 @@ import {
   parseGrokLine,
   parseOpenCodeMessage,
   parsePiLine,
+  parseZeroLine,
   type CodexParseState,
   type UsageRecord,
 } from './transcript-usage.js';
@@ -51,7 +52,7 @@ const RESCAN_AFTER_MS = 30_000;
 const MAX_AGE_MS = 400 * 24 * 60 * 60 * 1000;
 
 /** The kinds of transcript file, each with its parser. */
-type FileKind = 'claude' | 'codex' | 'pi' | 'grok';
+type FileKind = 'claude' | 'codex' | 'pi' | 'grok' | 'zero';
 
 /** Where each CLI keeps its transcripts on this machine. */
 export interface UsageLocations {
@@ -59,6 +60,7 @@ export interface UsageLocations {
   codex: string[];
   pi: string;
   grok: string;
+  zero: string;
   openCodeDb: string;
 }
 
@@ -74,6 +76,7 @@ export function usageLocations(
     codex: [join(codexHome, 'sessions'), join(codexHome, 'archived_sessions')],
     pi: join(env['PI_CODING_AGENT_DIR'] || join(home, '.pi', 'agent'), 'sessions'),
     grok: join(env['GROK_HOME'] || join(home, '.grok'), 'sessions'),
+    zero: join(xdgData, 'zero', 'sessions'),
     openCodeDb: join(xdgData, 'opencode', 'opencode.db'),
   };
 }
@@ -83,6 +86,7 @@ const AGENT_OF: Record<FileKind, string> = {
   codex: 'codex',
   pi: 'pi-agent',
   grok: 'grok',
+  zero: 'zero',
 };
 
 /** A day's spend per `agent\tmodel`. */
@@ -288,6 +292,7 @@ export class UsageScanner {
     }
     await collect(this.#locations.pi, 'pi', (n) => n.endsWith('.jsonl'));
     await collect(this.#locations.grok, 'grok', (n) => n === 'updates.jsonl');
+    await collect(this.#locations.zero, 'zero', (n) => n === 'events.jsonl');
 
     let changed = false;
     // Gone from disk: its spend is gone from the summary too.
@@ -328,6 +333,7 @@ export class UsageScanner {
     // usage: within one read, it counts once.
     const seenThisRead = new Set<string>();
     const codexState: CodexParseState = current.codex ?? {};
+    const zeroModel = kind === 'zero' ? await zeroSessionModel(path) : 'unknown';
     let offset = current.offset;
     const stream = createReadStream(path, { start: current.offset, encoding: 'utf-8' });
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
@@ -338,7 +344,7 @@ export class UsageScanner {
       const bytes = Buffer.byteLength(line, 'utf-8') + 1;
       if (offset + bytes > info.size) break;
       offset += bytes;
-      for (const r of parseLine(kind, line, codexState)) {
+      for (const r of parseLine(kind, line, codexState, zeroModel)) {
         if (r.dedupeKey) {
           const key = shortKey(r.dedupeKey);
           const owner = cache.claudeOwner[key];
@@ -390,7 +396,12 @@ export class UsageScanner {
   }
 }
 
-function parseLine(kind: FileKind, line: string, codex: CodexParseState): UsageRecord[] {
+function parseLine(
+  kind: FileKind,
+  line: string,
+  codex: CodexParseState,
+  zeroModel: string,
+): UsageRecord[] {
   switch (kind) {
     case 'claude': {
       const r = parseClaudeLine(line);
@@ -406,6 +417,20 @@ function parseLine(kind: FileKind, line: string, codex: CodexParseState): UsageR
     }
     case 'grok':
       return parseGrokLine(line);
+    case 'zero': {
+      const r = parseZeroLine(line, zeroModel);
+      return r ? [r] : [];
+    }
+  }
+}
+
+/** The model a Zero session ran, from the `metadata.json` beside its events. */
+async function zeroSessionModel(eventsPath: string): Promise<string> {
+  try {
+    const meta = JSON.parse(await readFile(join(dirname(eventsPath), 'metadata.json'), 'utf-8'));
+    return typeof meta?.modelId === 'string' && meta.modelId ? meta.modelId : 'unknown';
+  } catch {
+    return 'unknown';
   }
 }
 

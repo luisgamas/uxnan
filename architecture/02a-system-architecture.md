@@ -2215,9 +2215,10 @@ proveedores que el usuario **activo** (nunca de todos). Postura:
 **Gasto — `usage/summary { days }`.** Tokens y costo por dia local de la PC, agente
 y modelo, leidos de las **transcripciones que cada CLI guarda en disco** (Claude
 Code `~/.claude/projects`, Codex `~/.codex/sessions`, pi `~/.pi/agent/sessions`,
-Grok `~/.grok/sessions`, OpenCode 2 `opencode.db`): cuenta **todo** lo que el agente
-gasto en esa PC, los turnos del bridge y las sesiones que la persona corrio en una
-terminal. El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
+Grok `~/.grok/sessions`, OpenCode 2 `opencode.db`, Zero `~/.local/share/zero/sessions`):
+cuenta **todo** lo que el agente gasto en esa PC, los turnos del bridge y las sesiones
+que la persona corrio en una terminal. Antigravity queda fuera: su transcripcion no
+registra tokens (`bridge/FOR-DEV.md`). El costo es el facturado donde el CLI lo registra (pi, Grok, OpenCode) o
 una estimacion a precios de API (Claude, con la tabla de precios del propio CLI);
 un modelo sin precio conocido se muestra como tal (`unpricedTokens`), nunca se
 adivina. Escaneo incremental con cache en `~/.uxnan/usage-scan.json` (lo leido de

@@ -9,7 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 - **What the agents spent, from their own transcripts** — `usage/summary`:
   tokens and cost per local day, agent and model for every model response the
-  agent CLIs on this PC recorded (Claude Code, Codex, pi, Grok, OpenCode 2),
+  agent CLIs on this PC recorded (Claude Code, Codex, pi, Grok, OpenCode 2,
+  Zero — Antigravity records no token counts),
   the bridge's turns and a person's own terminal sessions alike. Billed cost
   where the CLI records it, Claude priced from the CLI's own rates, anything
   else shown as unpriced. Incremental, cached in `~/.uxnan/usage-scan.json`.
