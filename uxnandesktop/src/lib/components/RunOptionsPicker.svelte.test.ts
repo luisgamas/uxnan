@@ -38,7 +38,17 @@ function sent(view: { getByTestId: (id: string) => HTMLElement }): Record<string
 async function choose(user: Keys, rows: HTMLElement[], label: string) {
   const row = rows.find((r) => r.textContent?.trim().startsWith(label));
   if (!row) throw new Error(`no row ${label}`);
-  row.focus();
+  // On a slow runner the menu can move focus after it opened (to its first
+  // row) once the test already focused this one: Enter would then pick that
+  // row. Press it only once focus has stayed here for a moment.
+  await vi.waitFor(
+    async () => {
+      row.focus();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(document.activeElement).toBe(row);
+    },
+    { timeout: 5000 },
+  );
   await user.keyboard("{Enter}");
   await vi.waitFor(() => expect(screen.queryAllByRole("menuitemradio", { hidden: true })).toHaveLength(0), {
     timeout: 5000,
