@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.36-alpha.20260927] - 20260927
 ### Added
 
 - **Pick up any agent session.** `agent/sessions` lists every agent's own
