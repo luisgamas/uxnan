@@ -92,5 +92,18 @@ describe("ProviderUsageEditor — account", () => {
     await user.click(screen.getByRole("button", { name: "Show account" }));
     expect(org.className).not.toContain("blur");
   });
+
+  it("says the limits were asked of the CLI itself", () => {
+    const { screen } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: config(),
+        snapshot: snapshot({ source: "cli", windows: [{ id: "w", label: "Weekly", usedPercent: 10 }] }),
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    expect(screen.getByText("Asked of Claude Code itself")).toBeTruthy();
+  });
 });
 

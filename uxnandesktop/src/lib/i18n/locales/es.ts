@@ -990,6 +990,7 @@ export const es: Record<MessageKey, string> = {
   "providers.refreshNow": "Actualizar ahora",
   "providers.credit": "Crédito",
   "providers.updated": "Actualizado",
+  "providers.sourceCli": "Preguntado al propio {cli}",
   "providers.sourceToken": "Desde el token con sesión del CLI",
   "providers.sourceNone": "Sin fuente de datos",
   "providers.removeProvider": "Quitar proveedor",

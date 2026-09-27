@@ -986,6 +986,7 @@ export const en = {
   "providers.refreshNow": "Refresh now",
   "providers.credit": "Credit",
   "providers.updated": "Updated",
+  "providers.sourceCli": "Asked of {cli} itself",
   "providers.sourceToken": "From the CLI's signed-in token",
   "providers.sourceNone": "No data source",
   "providers.removeProvider": "Remove provider",

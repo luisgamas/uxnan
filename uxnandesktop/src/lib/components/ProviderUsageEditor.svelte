@@ -435,7 +435,8 @@
   <!-- Provenance + last update -->
   <div class="flex items-center justify-between {text.meta}">
     <span>
-      {#if snapshot?.source === "token"}{i18n.t("providers.sourceToken")}
+      {#if snapshot?.source === "cli"}{i18n.t("providers.sourceCli", { cli: config.provider === "codex" ? "Codex" : "Claude Code" })}
+      {:else if snapshot?.source === "token"}{i18n.t("providers.sourceToken")}
       {:else}{i18n.t("providers.sourceNone")}{/if}
     </span>
     {#if updatedAt}<span>{i18n.t("providers.updated")} {updatedAt}</span>{/if}

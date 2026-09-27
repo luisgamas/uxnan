@@ -10,6 +10,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **A provider's organization hides with the account.** Claude names an
   organization after its owner's email, which showed in full beside the
   blurred email; it now blurs and shows with it.
+- **A provider asked directly says so.** Claude Code's and Codex's limits read
+  *Asked of Claude Code itself* (or Codex) instead of *No data source*.
 
 ### Added
 
