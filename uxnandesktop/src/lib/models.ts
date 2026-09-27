@@ -53,23 +53,3 @@ export function groupModels<M extends PickerModel>(models: readonly M[]): ModelG
   const named = [...groups.entries()].filter(([p]) => p !== null) as [string, M[]][];
   return [...(bare ? [{ provider: null, models: bare }] : []), ...named.map(([provider, list]) => ({ provider, models: list }))];
 }
-
-/** What the picker's trigger shows after the model name: the chosen value of
- *  each enum option ("High", falling back to its default) and the label of each
- *  toggle that is on. */
-export function optionSummary(
-  options: readonly AgentModelOption[],
-  values: Record<string, string | boolean>,
-): string[] {
-  const parts: string[] = [];
-  for (const option of options) {
-    const chosen = values[option.key] ?? option.default;
-    if (option.kind === 'enum') {
-      const label = option.values?.find((v) => v.value === chosen)?.label;
-      if (label) parts.push(label);
-    } else if (option.kind === 'toggle' && chosen === true) {
-      parts.push(option.label);
-    }
-  }
-  return parts;
-}

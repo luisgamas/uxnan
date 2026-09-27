@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **One effort picker for every agent, showing the level that really runs.**
+  The model's knobs left the model menu for a picker of their own beside it:
+  rising bars and the level's name, and a menu of the model's own levels with
+  its default marked. Untouched, a turn runs at that default (the bridge sends
+  it), so the pill never shows a level that is not used; an agent that names no
+  default offers "Model default" first. A thread without a model yet shows its
+  agent's default model's levels.
 - **The access mode says itself in colour.** The composer's access pill takes
   the phone's colours — amber when the agent asks first, green when it approves
   edits on its own, red with full access — so the mode reads at a glance, and

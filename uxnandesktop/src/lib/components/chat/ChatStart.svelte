@@ -19,6 +19,7 @@
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
+  import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "$lib/components/Combobox.svelte";
   import ChatComposer from "./ChatComposer.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
@@ -226,11 +227,10 @@
             {models}
             value={model}
             loading={modelsLoading}
-            options={runOptions}
-            bind:optionValues
             disabled={!agentId}
             onSelect={(id) => (model = id)}
           />
+          <RunOptionsPicker options={runOptions} bind:values={optionValues} disabled={!agentId} />
         {/snippet}
       </ChatComposer>
       <p class={cn(text.meta, "px-1")}>{i18n.t("chat.agentFixedHint")}</p>

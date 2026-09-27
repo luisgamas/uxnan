@@ -6,7 +6,7 @@
   //
   // A pane like a file or commit tab (`pane.root` / `pane.header`). The header
   // names the conversation and its fixed agent. What can change mid-chat lives
-  // in the composer's toolbar: the model and its run options (`ModelPicker`)
+  // in the composer's toolbar: the model (`ModelPicker`) and its run options (`RunOptionsPicker`)
   // and the access mode (`ChatAccessMenu`). Anything waiting on the user — an open approval or
   // question, follow-ups queued behind the running turn — is pinned above the
   // composer (the dock) until it is answered, here or on the phone.
@@ -32,6 +32,7 @@
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
+  import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
   import ChatTurnView from "./ChatTurnView.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
@@ -132,7 +133,12 @@
   const missing = $derived(chat.threadsLoaded && !thread);
   const agent = $derived(chat.agent(thread?.agentId));
   const models = $derived(chat.cachedModels(thread?.agentId));
-  const model = $derived(models.find((m) => m.id === thread?.model));
+  /** The thread's model; before it has one, the agent's default — the one
+   *  its turns run on (the phone reads the same). */
+  const model = $derived(
+    models.find((m) => m.id === thread?.model) ??
+      (thread?.model ? undefined : models.find((m) => m.isDefault)),
+  );
   let optionValues = $state<Record<string, string | boolean>>({});
   let modelsLoading = $state(false);
 
@@ -529,10 +535,9 @@
             value={thread?.model ?? ""}
             loading={modelsLoading}
             allowDefault={false}
-            options={model?.options ?? []}
-            bind:optionValues
             onSelect={(id) => void setModel(id)}
           />
+          <RunOptionsPicker options={model?.options ?? []} bind:values={optionValues} />
         {/snippet}
         {#snippet trailing()}
           <ChatAccessMenu value={accessMode} onChange={(mode) => void setAccess(mode)} />

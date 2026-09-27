@@ -30,31 +30,15 @@ describe("ModelPicker", () => {
     expect(picked).toEqual(["openai/gpt-6"]);
   });
 
-  it("offers the default first, and the run options above the list", async () => {
+  it("offers the default first and names only the model — run options have their own picker", async () => {
+    const chosen: string[] = [];
     const { screen, user } = mountWithProviders(ModelPicker, {
-      props: {
-        models: MODELS,
-        value: "",
-        options: [
-          {
-            key: "reasoning",
-            kind: "enum",
-            label: "Reasoning",
-            values: [
-              { value: "low", label: "Low" },
-              { value: "high", label: "High" },
-            ],
-            default: "low",
-          },
-        ],
-        onSelect: () => undefined,
-      },
+      props: { models: MODELS, value: "", onSelect: (id: string) => chosen.push(id) },
     });
     const trigger = screen.getByRole("combobox", { name: "Model" });
-    expect(trigger.textContent).toContain("Default model · Low");
+    expect(trigger.textContent?.trim()).toBe("Default model");
     await user.click(trigger);
-    await user.click(await screen.findByText("High"));
-    await until(() => trigger.textContent?.includes("Default model · High") ?? false);
+    expect(await screen.findByText("Default model", { selector: "[role=option] *" })).toBeTruthy();
   });
 });
 
