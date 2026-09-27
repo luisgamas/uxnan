@@ -308,32 +308,75 @@ test('reconcileNativeHistory still imports a contained reply written outside the
   await rmrf(baseDir);
 });
 
-test('reconcileNativeHistory drops a duplicate turn imported before it could be recognized', async () => {
+test('reconcileNativeHistory never imports what the transcript holds of a run the bridge drove', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
   const local = await store.startTurn(thread.id, 'how many folders?', 10);
 
-  // Read before the turn produced any prose: there is no reply to match yet, so
-  // the native turn is imported — which is exactly the duplicate already sitting
-  // in stores written before this fix.
+  // Read before the turn produced any prose: there is no reply to match yet,
+  // but the bridge was running this session then — it is that run, not an
+  // exchange written elsewhere.
   const native = nativeTurn(thread.id, 'ses_ghi#t0', 12, [
     { role: 'user', content: 'how many folders?' },
     { role: 'assistant', content: '', blocks: [{ type: 'command_execution' }] },
     { role: 'assistant', content: '24 folders.' },
   ]);
   assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 13), {
-    changed: true,
-    importedTurnIds: ['ses_ghi#t0'],
+    changed: false,
+    importedTurnIds: [],
   });
-  assert.equal((await store.listTurns(thread.id)).total, 2);
+  assert.equal((await store.listTurns(thread.id)).total, 1);
 
   await store.appendDelta(thread.id, local.turnId, '24 folders.', 14);
   await store.completeTurn(thread.id, local.turnId, undefined, 15);
 
-  assert.equal((await store.reconcileNativeHistory(thread.id, [native], 16)).changed, true);
+  await store.reconcileNativeHistory(thread.id, [native], 16);
   const turns = await store.listTurns(thread.id);
-  assert.equal(turns.total, 1, 'the stray import is gone');
+  assert.equal(turns.total, 1);
   assert.equal(turns.turns[0]?.id, local.turnId, 'the bridge copy is the one kept');
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory drops rows an older read imported from a run the bridge drove', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  // What an older reader left behind: pieces of one run, each read as its own
+  // turn (a transcript's `isMeta` lines taken for prompts) and imported.
+  const pieces = [
+    nativeTurn(thread.id, 'ses_meta#t1', 20, [
+      { role: 'user', content: '[Image: original 2048x1013, displayed at 2000x989.]' },
+      { role: 'assistant', content: 'Looking at it.' },
+    ]),
+    nativeTurn(thread.id, 'ses_meta#t2', 30, [
+      { role: 'user', content: 'Base directory for this skill: /skills/x' },
+      { role: 'assistant', content: 'Done.' },
+    ]),
+  ];
+  assert.deepEqual((await store.reconcileNativeHistory(thread.id, pieces, 40)).importedTurnIds, [
+    'ses_meta#t1',
+    'ses_meta#t2',
+  ]);
+  // ...while the bridge's own record of that run spans them.
+  const local = await store.startTurn(thread.id, 'fix the dialog', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Looking at it. Done.', 35);
+  await store.completeTurn(thread.id, local.turnId, undefined, 36);
+
+  // The fixed reader no longer produces those pieces; the next read heals.
+  const whole = nativeTurn(thread.id, 'ses_meta#t0', 10, [
+    { role: 'user', content: 'fix the dialog' },
+    { role: 'assistant', content: 'Looking at it. Done.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [whole], 50), {
+    changed: true,
+    importedTurnIds: [],
+  });
+  const turns = await store.listTurns(thread.id);
+  assert.deepEqual(
+    turns.turns.map((t) => t.id),
+    [local.turnId],
+  );
+  // A second read changes nothing: reconciling is idempotent.
+  assert.equal((await store.reconcileNativeHistory(thread.id, [whole], 60)).changed, false);
   await rmrf(baseDir);
 });
 
