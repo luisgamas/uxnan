@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **The access mode says itself in colour.** The composer's access pill takes
+  the phone's colours — amber when the agent asks first, green when it approves
+  edits on its own, red with full access — so the mode reads at a glance, and
+  each mode in its menu shows its icon in the same colour.
+
 ## [0.0.62] - 20260927
 ### Added
 
