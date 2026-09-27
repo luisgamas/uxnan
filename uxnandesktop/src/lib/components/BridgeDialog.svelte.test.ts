@@ -1,7 +1,7 @@
 /**
- * "Connect a phone": turn the bridge on when it is off, show its QR at once,
- * notice the phone arrive — and keep the dialog's own layout, so the action
- * band spans it.
+ * The Bridge window: its state and update, the devices on it, and "Connect a
+ * phone" — turn the bridge on when it is off, show its QR at once, notice the
+ * phone arrive — keeping the dialog's own layout, so the action band spans it.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,7 +9,8 @@ import { mountWithProviders, until } from "../../test/render";
 import { bridge } from "$lib/bridge/client.svelte";
 import { chat } from "$lib/bridge/chat.svelte";
 import { app } from "$lib/state/app.svelte";
-import BridgePairDialog from "./BridgePairDialog.svelte";
+import { bridgeInstall } from "$lib/bridge/install.svelte";
+import BridgeDialog from "./BridgeDialog.svelte";
 
 const QR = '<svg viewBox="0 0 1 1"><rect width="1" height="1"/></svg>';
 const qr = () => ({ svg: QR, expiresAt: Date.now() + 120_000 });
@@ -20,12 +21,13 @@ afterEach(() => {
   bridge.applyStatus({ state: "off" });
   chat.devices = [];
   chat.clients = [];
+  bridgeInstall.status = null;
 });
 
-describe("BridgePairDialog", () => {
+describe("BridgeDialog", () => {
   it("draws the running bridge's QR at once", async () => {
     on();
-    const { screen } = mountWithProviders(BridgePairDialog, {
+    const { screen } = mountWithProviders(BridgeDialog, {
       props: { open: true },
       commands: { bridge_pairing_qr: qr },
     });
@@ -36,7 +38,7 @@ describe("BridgePairDialog", () => {
 
   it("says why when there is no QR to show", async () => {
     on();
-    const { screen } = mountWithProviders(BridgePairDialog, {
+    const { screen } = mountWithProviders(BridgeDialog, {
       props: { open: true },
       commands: {
         bridge_pairing_qr: () => {
@@ -50,7 +52,7 @@ describe("BridgePairDialog", () => {
 
   it("turns the bridge on as a service when it is off", async () => {
     app.settings.bridge = { mode: "off" };
-    const { screen, user, backend } = mountWithProviders(BridgePairDialog, {
+    const { screen, user, backend } = mountWithProviders(BridgeDialog, {
       props: { open: true },
       commands: {
         bridge_pairing_qr: qr,
@@ -68,7 +70,7 @@ describe("BridgePairDialog", () => {
   it("notices a newly paired phone and names it", async () => {
     on();
     chat.devices = [{ deviceId: "old", displayName: "Old phone", publicKey: "k", pairedAt: 1 }];
-    const { screen } = mountWithProviders(BridgePairDialog, {
+    const { screen } = mountWithProviders(BridgeDialog, {
       props: { open: true },
       commands: { bridge_pairing_qr: qr },
     });
@@ -86,14 +88,69 @@ describe("BridgePairDialog", () => {
       },
     ];
     await until(() => screen.queryByText("Phone connected") !== null);
-    expect(screen.getByText("A55 de Luis")).toBeTruthy();
-    expect(screen.getByText("samsung SM-A556E · Android 16")).toBeTruthy();
+    // Named in the success card, and listed with the other devices.
+    expect(screen.getAllByText("A55 de Luis").length).toBe(2);
+    expect(screen.getAllByText("samsung SM-A556E · Android 16").length).toBe(2);
     expect(screen.getByRole("button", { name: "Pair another" })).toBeTruthy();
+  });
+
+  it("lists the devices on the bridge and whether each is connected", async () => {
+    on();
+    chat.devices = [
+      { deviceId: "a", displayName: "A55 de Luis", publicKey: "k", pairedAt: 1 },
+      { deviceId: "b", displayName: "Old phone", publicKey: "k", pairedAt: 2 },
+    ];
+    chat.clients = [
+      { id: "a", kind: "phone", name: "A55 de Luis", since: 1 },
+      { id: "local:desktop-x", kind: "desktop", name: "MacBook", since: 1 },
+    ];
+    const { screen } = mountWithProviders(BridgeDialog, {
+      props: { open: true },
+      commands: { bridge_pairing_qr: qr },
+    });
+    await until(() => screen.queryByText("Devices") !== null);
+    const row = (name: string) => screen.getByText(name).closest("li")!;
+    expect(row("A55 de Luis").textContent).toContain("Connected");
+    expect(row("Old phone").textContent).toContain("Not connected");
+    expect(row("MacBook").textContent).toContain("Connected");
+  });
+
+  it("offers a newer bridge and asks the bridge to update itself", async () => {
+    on();
+    bridgeInstall.status = {
+      version: "0.0.32",
+      relayConnected: false,
+      lanEnabled: true,
+      activeSessions: 0,
+      platform: "darwin",
+      uptimeMs: 1,
+      update: {
+        version: "0.0.32",
+        latestVersion: "0.0.33",
+        available: true,
+        canApply: true,
+        phase: "idle",
+      },
+    };
+    const calls: string[] = [];
+    const { screen, user } = mountWithProviders(BridgeDialog, {
+      props: { open: true },
+      commands: {
+        bridge_pairing_qr: qr,
+        bridge_call: (args) => {
+          calls.push(String(args.method));
+          return { version: "0.0.32", available: true, canApply: true, phase: "updating", targetVersion: "0.0.33" };
+        },
+      },
+    });
+    expect(screen.getByText("Bridge 0.0.33 is available")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Update" }));
+    await until(() => calls.includes("bridge/update"));
   });
 
   it("keeps the dialog's own layout, so the action band spans it", async () => {
     on();
-    mountWithProviders(BridgePairDialog, {
+    mountWithProviders(BridgeDialog, {
       props: { open: true },
       commands: { bridge_pairing_qr: qr },
     });

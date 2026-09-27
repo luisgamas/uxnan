@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **One Bridge row in the sidebar.** "Connect a phone" and the row that appeared
+  under it for a new bridge are one **Bridge** row: a coloured badge is its
+  state — green online, amber starting or needing a look, red stopped or
+  failed, blue a new version or an update under way — and a
+  small counter says how many phones are connected now. It opens the **Bridge**
+  window — the bridge's state and version with its update, every paired phone
+  and connected desktop and whether each is connected, and the QR that
+  connects a phone.
+
 ## [0.0.61] - 20260926
 ### Changed
 

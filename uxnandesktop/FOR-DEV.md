@@ -50,9 +50,9 @@ channel (modes off / attach / managed — `managed` keeps the bridge running as
 the user's service, `docs/chat.md`); chat tabs show and drive the bridge's
 threads live alongside the phone, as a revisioned **replica** of the bridge's
 threads, projects, shared settings and presence; the desktop's projects and the
-phone's are **one mirrored registry**; a phone is **paired from Settings** with
-the running bridge's own QR; and agent detection follows the table shared with
-the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
+phone's are **one mirrored registry**; a phone is **paired from the Bridge window**
+(the sidebar's Bridge row, or Settings) with the running bridge's own QR; and
+agent detection follows the table shared with the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
 review** of the chat and Bridge & mobile UI; still left: packaging the bridge
 without Node (`02e` §3.1–§3.4, plan 007), trusted-device management from the
 desktop (revoke), and the mirror / hand-off of terminal-launched sessions

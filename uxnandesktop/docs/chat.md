@@ -28,12 +28,14 @@ Architecture: [`architecture/02a-system-architecture.md`](../../architecture/02a
 `PATH`, a chat tab says so and offers **Install** right there, with the command
 underneath for whoever prefers a terminal; Settings → Bridge & mobile has the
 same **Install** / **Update** next to the installed and newest versions, plus
-**Check again** (re-reads what is installed and retries the connection).
+**Check again** (re-reads what is installed, asks the running bridge for the
+newest version right now — `bridge/checkForUpdate` — and retries the
+connection).
 
 **The bridge updates itself** (architecture/02a §5.8.18). It checks for a newer
-version every hour and says so; the sidebar then shows **Update the bridge to
-…** under the phone row (only while there is one), and Settings → Bridge &
-mobile shows the newest version with **Update**. Either asks the bridge
+version every hour and says so; the sidebar's **Bridge** row then turns its
+badge blue (**New version**), the Bridge window offers the new version, and Settings →
+Bridge & mobile shows it with **Update**. Either asks the bridge
 (`bridge/update`): it stops, installs the published version and its service
 brings it back — the connection drops for a moment and the app says when it is
 on the new version, or what failed and the command to run by hand. It never
@@ -72,9 +74,12 @@ every client names it (`sync/changes.devices`, `stream/devices/updated`), with
 its model, OS and app version and whether it is connected now (presence,
 `stream/presence/updated`). A phone is renamed in place (`device/rename`; the
 latest rename wins, even one made on the phone offline) or unpaired
-(`bridge/removeTrustedDevice`). **Connect a phone** — also one click away in
-the left sidebar, under Search, where the paired phone shows by name with its
-connection — shows a QR drawn from the running bridge's own payload (its LAN hosts, its session, the pairing window
+(`bridge/removeTrustedDevice`). **Connect a phone** — also in the **Bridge**
+window, one click away from the left sidebar's **Bridge** row under Search
+(its badge's own colour is the state: green *Online*, amber *Starting* or
+*Attention*, red *Stopped* or *Failed*, blue *New version* or *Updating*; beside it, how many phones are connected now; the window
+holds the bridge's state and update, every paired phone and connected desktop
+with whether each is connected, and this QR) — shows a QR drawn from the running bridge's own payload (its LAN hosts, its session, the pairing window
 armed — the one `uxnan-bridge start` prints), with its countdown and *New
 code*; with the bridge off it offers to run it as your service first, and it
 notices the phone arrive (a new entry in the bridge's list, or a paired phone

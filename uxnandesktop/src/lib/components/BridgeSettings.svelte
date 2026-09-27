@@ -33,7 +33,7 @@
   import { app } from "$lib/state/app.svelte";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
-  import { connectPhone } from "$lib/bridge/connectPhone.svelte";
+  import { bridgePanel } from "$lib/bridge/bridgePanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { Input } from "$lib/components/ui/input";
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
@@ -463,7 +463,7 @@
         {/each}
         <SettingsRow>
           {#snippet control()}
-            <Button variant="outline" size="sm" onclick={() => connectPhone.show()}>
+            <Button variant="outline" size="sm" onclick={() => bridgePanel.show()}>
               <Icon icon={QrCodeIcon} data-icon="inline-start" />
               {i18n.t("bridge.pairAction")}
             </Button>

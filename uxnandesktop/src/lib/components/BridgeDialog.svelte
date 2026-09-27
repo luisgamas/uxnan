@@ -1,7 +1,11 @@
 <script lang="ts">
-  // "Connect a phone", from anywhere it is offered (the sidebar, Settings →
-  // Bridge & mobile, the welcome tour): the QR shows at once, and the dialog
-  // notices the phone arrive.
+  // The Bridge window, from anywhere it is offered (the sidebar's Bridge row,
+  // Settings → Bridge & mobile, the welcome tour). Top to bottom: the bridge's
+  // state and version, with its update when a newer one is out (the same
+  // `bridgeInstall` owner Settings uses); the devices — each paired phone and
+  // whether it is connected now, and any other desktop on the bridge; and
+  // "Connect a phone", whose QR shows at once and which notices the phone
+  // arrive.
   //
   // - Bridge off: one button turns it on as the user's service (`managed`),
   //   then the QR follows.
@@ -23,6 +27,11 @@
   import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
   import CheckCircleIcon from "@hugeicons/core-free-icons/CheckmarkCircle01Icon";
   import SmartphoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+  import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+  import StatusDot from "$lib/components/StatusDot.svelte";
+  import { bridgeInstall } from "$lib/bridge/install.svelte";
+  import { toastError } from "$lib/toast";
   import { bridge } from "$lib/bridge/client.svelte";
   import { chat } from "$lib/bridge/chat.svelte";
   import { app } from "$lib/state/app.svelte";
@@ -108,6 +117,47 @@
     }
   });
 
+  // ---- the bridge's state and update ----
+  const version = $derived(
+    bridge.status.state === "connected" ? bridge.status.bridgeVersion : null,
+  );
+  const offer = $derived(bridgeOn ? bridgeInstall.offer : null);
+  const updating = $derived(bridgeInstall.updating || bridgeInstall.installing);
+  const failure = $derived(bridgeInstall.status?.update?.failure ?? null);
+  const stateLine = $derived(
+    updating
+      ? i18n.t("bridge.panelUpdating")
+      : bridgeOn
+        ? i18n.t("bridge.panelOnline", { version: version ?? "" })
+        : bridgeStarting
+          ? i18n.t("bridge.pairStarting")
+          : i18n.t("bridge.panelOffline"),
+  );
+
+  async function update() {
+    try {
+      await bridgeInstall.update();
+    } catch (err) {
+      toastError(err);
+    }
+  }
+
+  // ---- the devices ----
+  const phonesOnline = $derived(connectedPhoneIds());
+  const desktops = $derived(bridgeOn ? chat.clients.filter((c) => c.kind === "desktop") : []);
+
+  /** What a phone is, in one quiet line. */
+  function aboutPhone(device: (typeof chat.devices)[number]): string {
+    return [
+      device.model,
+      device.osVersion && device.platform
+        ? `${device.platform === "ios" ? "iOS" : "Android"} ${device.osVersion}`
+        : null,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(" · ");
+  }
+
   /** What the paired phone is, in one quiet line. */
   const pairedAbout = $derived(
     paired
@@ -124,23 +174,100 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content size="small">
+  <Dialog.Content size="medium">
     <Dialog.Header>
-      <Dialog.Title class={text.title}>
-        {paired ? i18n.t("bridge.pairDoneTitle") : i18n.t("bridge.pairTitle")}
-      </Dialog.Title>
-      <Dialog.Description class={text.body}>
-        {#if paired}
-          {i18n.t("bridge.pairDoneDesc")}
-        {:else if bridgeOn}
-          {i18n.t("bridge.pairDesc")}
-        {:else}
-          {i18n.t("bridge.pairOffDesc")}
-        {/if}
+      <Dialog.Title class={text.title}>{i18n.t("bridge.panelTitle")}</Dialog.Title>
+      <Dialog.Description class={cn(text.body, "flex items-center gap-2")}>
+        <StatusDot tone={updating ? "busy" : bridgeOn ? "ok" : bridgeStarting ? "busy" : "off"} />
+        {stateLine}
       </Dialog.Description>
     </Dialog.Header>
 
-    <Dialog.Body class="flex flex-col items-center gap-3 py-0">
+    <Dialog.Body class="flex flex-col gap-5 py-0">
+      {#if offer || updating || failure}
+        <section class="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/30 p-3">
+          <span class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            {#if updating}
+              <Spinner class={icon.button} aria-hidden="true" />
+            {:else}
+              <Icon icon={DownloadIcon} class={icon.button} />
+            {/if}
+          </span>
+          <span class="flex min-w-0 flex-1 flex-col">
+            <span class={cn(text.bodyStrong, "truncate")}>
+              {#if updating}
+                {i18n.t("bridge.panelUpdating")}
+              {:else if offer?.version}
+                {i18n.t("bridge.panelUpdateTo", { version: offer.version })}
+              {:else if offer}
+                {i18n.t("bridge.panelOlder")}
+              {:else}
+                {i18n.t("bridge.updateFailed")}
+              {/if}
+            </span>
+            {#if failure && !updating}
+              <span class={cn(text.meta, "line-clamp-2")}>{failure.message}</span>
+            {:else}
+              <span class={text.meta}>{i18n.t("sidebar.bridgeUpdateHint")}</span>
+            {/if}
+          </span>
+          {#if offer && !updating}
+            <Button size="sm" onclick={() => void update()}>{i18n.t("bridge.updateAction")}</Button>
+          {/if}
+        </section>
+      {/if}
+
+      <section class="flex flex-col gap-1.5">
+        <h3 class={text.section}>{i18n.t("bridge.panelDevices")}</h3>
+        {#if chat.devices.length === 0 && desktops.length === 0}
+          <p class={text.meta}>{i18n.t("bridge.panelNoDevices")}</p>
+        {:else}
+          <ul class="flex flex-col">
+            {#each chat.devices as device (device.deviceId)}
+              {@const online = bridgeOn && phonesOnline.has(device.deviceId)}
+              <li class="flex items-center gap-2.5 rounded-md px-1 py-1.5">
+                <Icon icon={SmartphoneIcon} class={cn(icon.action, "shrink-0 text-muted-foreground")} />
+                <span class="flex min-w-0 flex-1 flex-col">
+                  <span class={cn(text.body, "truncate")}>{device.displayName}</span>
+                  {#if aboutPhone(device)}
+                    <span class={cn(text.meta, "truncate")}>{aboutPhone(device)}</span>
+                  {/if}
+                </span>
+                <span class={cn(text.meta, "flex shrink-0 items-center gap-1.5")}>
+                  <StatusDot tone={online ? "ok" : "off"} />
+                  {online ? i18n.t("bridge.panelDeviceOnline") : i18n.t("bridge.panelDeviceOffline")}
+                </span>
+              </li>
+            {/each}
+            {#each desktops as desktop (desktop.id)}
+              <li class="flex items-center gap-2.5 rounded-md px-1 py-1.5">
+                <Icon icon={ComputerIcon} class={cn(icon.action, "shrink-0 text-muted-foreground")} />
+                <span class={cn(text.body, "min-w-0 flex-1 truncate")}>{desktop.name}</span>
+                <span class={cn(text.meta, "flex shrink-0 items-center gap-1.5")}>
+                  <StatusDot tone="ok" />
+                  {i18n.t("bridge.panelDeviceOnline")}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+
+      <section class="flex flex-col items-center gap-3">
+        <div class="flex w-full flex-col gap-0.5">
+          <h3 class={text.section}>
+            {paired ? i18n.t("bridge.pairDoneTitle") : i18n.t("bridge.pairTitle")}
+          </h3>
+          <p class={text.meta}>
+            {#if paired}
+              {i18n.t("bridge.pairDoneDesc")}
+            {:else if bridgeOn}
+              {i18n.t("bridge.pairDesc")}
+            {:else}
+              {i18n.t("bridge.pairOffDesc")}
+            {/if}
+          </p>
+        </div>
       {#if paired}
         <div class="flex w-full items-center gap-3 rounded-lg border border-border/60 bg-muted/30 p-3">
           <span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -192,6 +319,7 @@
           {/if}
         </div>
       {/if}
+      </section>
     </Dialog.Body>
 
     <Dialog.Footer>
