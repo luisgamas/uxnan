@@ -2693,7 +2693,7 @@ abstract class AppLocalizations {
   /// Run-option value meaning 'send nothing: the agent's own default applies' — offered only when the agent names no default.
   ///
   /// In en, this message translates to:
-  /// **'Model default'**
+  /// **'Default'**
   String get runOptionModelDefault;
 
   /// Tag beside the run-option level the model runs at when nobody picks one.

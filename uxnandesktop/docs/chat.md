@@ -278,8 +278,8 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   phone uses for effort and the level's name, a menu of the model's own levels
   (one per line) with the one it runs at by
   default marked (untouched, the bridge sends that default, so what the pill
-  shows is what the turn uses; an agent that names no default offers "Model
-  default") — and the access mode (*Ask first* / *Auto-approve edits* /
+  shows is what the turn uses; an agent that names no default offers
+  "Default") — and the access mode (*Ask first* / *Auto-approve edits* /
   *Full access*; new chats start at *Full access*, like new chats on the phone)
   — and a ring showing how full the context window is, when the agent reports
   it (amber past 75%, red past 90%; the figures are in its tooltip).

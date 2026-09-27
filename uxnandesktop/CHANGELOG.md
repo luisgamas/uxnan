@@ -43,7 +43,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the brain mark the phone uses for effort and the level's name, and a menu of
   the model's own levels, one per line, with its default marked. Untouched, a turn runs at that default (the bridge sends
   it), so the pill never shows a level that is not used; an agent that names no
-  default offers "Model default" first. A thread without a model yet shows its
+  default offers "Default" first. A thread without a model yet shows its
   agent's default model's levels.
 - **Plan limits come from the bridge, and macOS no longer asks for the
   Keychain.** Providers asks the bridge (`agent/usageStats`), which asks Claude

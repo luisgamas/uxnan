@@ -778,7 +778,7 @@
   "@conversationAgentResponding": {
     "description": "Low-emphasis status beside the composer while the active agent turn is running."
   },
-  "runOptionModelDefault": "Model default",
+  "runOptionModelDefault": "Default",
   "@runOptionModelDefault": {
     "description": "Run-option value meaning 'send nothing: the agent's own default applies' — offered only when the agent names no default."
   },

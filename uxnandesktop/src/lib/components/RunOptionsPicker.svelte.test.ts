@@ -85,11 +85,11 @@ describe("RunOptionsPicker", () => {
 
   it("offers the model's own default first when the agent names none", async () => {
     const { screen, user } = mountWithProviders(RunOptionsHost, { props: { options: [effort()] } });
-    const rows = await open(user, screen.getByRole("button", { name: "Reasoning effort: Model default" }));
-    expect(rows.map((r) => r.textContent?.trim())).toEqual(["Model default", "Low", "Medium", "High"]);
+    const rows = await open(user, screen.getByRole("button", { name: "Reasoning effort: Default" }));
+    expect(rows.map((r) => r.textContent?.trim())).toEqual(["Default", "Low", "Medium", "High"]);
     await choose(user, rows, "High");
     await expectSent(screen, { reasoning: "high" });
-    await choose(user, await open(user, screen.getByRole("button", { name: /Reasoning effort/ })), "Model default");
+    await choose(user, await open(user, screen.getByRole("button", { name: /Reasoning effort/ })), "Default");
     await expectSent(screen, {});
   });
 

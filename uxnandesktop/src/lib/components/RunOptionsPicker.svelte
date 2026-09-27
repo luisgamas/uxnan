@@ -8,7 +8,7 @@
   // levels, lowest first, with the one it runs at by default marked. Leaving
   // it untouched runs that default: the bridge sends it (`agent/models`
   // `default`), so what the pill shows is what the turn uses. A knob whose
-  // agent names no default offers "Model default" first, which sends nothing.
+  // agent names no default offers "Default" first, which sends nothing.
   // On/off knobs gather in one "Options" pill of checkboxes.
   //
   // Built on the menu primitives (`DropdownMenu` radio and checkbox items) and
@@ -111,7 +111,7 @@
         </Button>
       {/snippet}
     </DropdownMenu.Trigger>
-    <DropdownMenu.Content width="simple" align="start" side="top">
+    <DropdownMenu.Content width="standard" align="start" side="top">
       <DropdownMenu.Label class={text.menuLabel}>{knobLabel(option)}</DropdownMenu.Label>
       <DropdownMenu.RadioGroup
         value={typeof values[option.key] === "string"
@@ -120,12 +120,12 @@
         onValueChange={(v) => v && pick(option, v)}
       >
         {#if option.default === undefined}
-          <DropdownMenu.RadioItem value={UNSET} class={cn(text.menu, "whitespace-nowrap pr-8")}>
+          <DropdownMenu.RadioItem value={UNSET} class={cn(text.menu, "pr-8")}>
             <span class="flex-1">{i18n.t("runOptions.modelDefault")}</span>
           </DropdownMenu.RadioItem>
         {/if}
         {#each levels as level (level.value)}
-          <DropdownMenu.RadioItem value={level.value} class={cn(text.menu, "whitespace-nowrap pr-8")}>
+          <DropdownMenu.RadioItem value={level.value} class={cn(text.menu, "pr-8")}>
             <span class="flex-1">{levelLabel(level.value, level.label)}</span>
             {#if level.value === option.default}
               <span class={cn(text.meta, "shrink-0")}>{i18n.t("runOptions.default")}</span>

@@ -64,7 +64,7 @@ export const en = {
   "common.copy": "Copy",
   "runOptions.reasoning": "Reasoning effort",
   "runOptions.default": "Default",
-  "runOptions.modelDefault": "Model default",
+  "runOptions.modelDefault": "Default",
   "runOptions.options": "Options",
   "runOptions.level.none": "None",
   "runOptions.level.off": "Off",

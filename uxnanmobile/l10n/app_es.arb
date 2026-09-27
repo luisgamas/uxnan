@@ -512,7 +512,7 @@
   "questionFailed": "No se pudo enviar tu respuesta; reintenta",
   "turnFailed": "El turno del agente falló",
   "conversationAgentResponding": "Agente respondiendo…",
-  "runOptionModelDefault": "Predeterminado del modelo",
+  "runOptionModelDefault": "Predeterminado",
   "runOptionDefaultTag": "Predeterminado",
 
   "authRequiresLoginTitle": "Agente sin sesión iniciada",

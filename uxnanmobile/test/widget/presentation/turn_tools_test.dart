@@ -310,7 +310,7 @@ void main() {
 
   testWidgets(
       'the effort menu marks the level the model runs at by default, '
-      'and offers "Model default" only when there is none', (tester) async {
+      'and offers "Default" only when there is none', (tester) async {
     Future<void> show(AgentModelOption option) async {
       await tester.pumpWidget(
         _wrap(
@@ -344,8 +344,8 @@ void main() {
     expect(find.byTooltip('Reasoning effort: High'), findsOneWidget);
     await tester.tap(findUxIcon(UxIcons.psychologyAlt));
     await tester.pumpAndSettle();
+    // The tag on the level it runs at; no separate "Default" entry.
     expect(find.text('Default'), findsOneWidget);
-    expect(find.text('Model default'), findsNothing);
     await tester.tapAt(Offset.zero);
     await tester.pumpAndSettle();
 
@@ -357,10 +357,10 @@ void main() {
         values: levels,
       ),
     );
-    expect(find.byTooltip('Reasoning effort: Model default'), findsOneWidget);
+    expect(find.byTooltip('Reasoning effort: Default'), findsOneWidget);
     await tester.tap(findUxIcon(UxIcons.psychologyAlt));
     await tester.pumpAndSettle();
-    expect(find.text('Model default'), findsWidgets);
-    expect(find.text('Default'), findsNothing);
+    // Its own entry: no level is marked as a default.
+    expect(find.text('Default'), findsWidgets);
   });
 }

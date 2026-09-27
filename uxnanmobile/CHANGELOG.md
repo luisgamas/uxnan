@@ -10,7 +10,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The effort control names the level that really runs.** Untouched, it shows
   the model's default (the bridge sends it) instead of "Auto", and marks it in
-  the menu; "Model default" is offered only for an agent that names none.
+  the menu; "Default" is offered only for an agent that names none.
 - **The profile, redesigned.** It opens on who you are — the picture and the
   one name — then **what your agents spent**: every model response the agents
   on your PCs recorded, chats and terminal sessions alike, over 7, 30 or 90

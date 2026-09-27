@@ -61,7 +61,7 @@ export const es: Record<MessageKey, string> = {
   "common.copy": "Copiar",
   "runOptions.reasoning": "Esfuerzo de razonamiento",
   "runOptions.default": "Predeterminado",
-  "runOptions.modelDefault": "Predeterminado del modelo",
+  "runOptions.modelDefault": "Predeterminado",
   "runOptions.options": "Opciones",
   "runOptions.level.none": "Ninguno",
   "runOptions.level.off": "Apagado",

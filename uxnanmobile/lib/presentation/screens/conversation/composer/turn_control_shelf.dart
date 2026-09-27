@@ -118,7 +118,7 @@ class _EnumControl extends ConsumerWidget {
   final AgentModelOption option;
   final Object? selected;
 
-  /// Sentinel value for the "Model default" (cleared) menu entry, so a
+  /// Sentinel value for the "Default" (cleared) menu entry, so a
   /// dismissed menu (`showMenu` returns null) is distinguishable from it.
   static const String _unsetValue = '__uxnan_run_option_unset__';
 
