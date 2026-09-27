@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.63] - 20260927
 ### Fixed
 
 - **A provider's organization hides with the account.** Claude names an
