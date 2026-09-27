@@ -7,9 +7,8 @@ import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 import SmartPhoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import WifiConnectedIcon from "@hugeicons/core-free-icons/WifiConnected01Icon";
-import AddIcon from "@hugeicons/core-free-icons/Add01Icon";
 import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import CheckCircleIcon from "@hugeicons/core-free-icons/CheckmarkCircle01Icon";
+import ArrowDownIcon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import CircleDashedIcon from "@hugeicons/core-free-icons/CircleDashedIcon";
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
@@ -684,57 +683,34 @@ export function PhoneNewConversation() {
       </div>
 
       <div className="px-[10px]">
-        {/* The PC's project registry — the same list Uxnan Desktop shows —
-            one card group, the chosen project filled, and adding one last. */}
+        {/* One folder card: the project the dialog was opened from (or the
+            PC's start folder); its round button unfolds the other projects,
+            the start folder and "Add a project" underneath. */}
         <div className="mb-[6px] px-[2px] text-[8px]">Project</div>
-        <div className="mb-[13px] flex flex-col gap-[2px]">
-          {[
-            { name: "uxnan", path: "C:\\Users\\dev\\GitHub\\uxnan", on: true },
-            { name: "website", path: "C:\\Users\\dev\\GitHub\\website", on: false },
-          ].map((p, i) => (
-            <div
-              key={p.name}
-              className="flex items-center gap-[8px] px-[9px] py-[7px]"
-              style={{
-                background: p.on ? M3.periwinkle : M3.container,
-                borderRadius: i === 0 ? "15px 15px 5px 5px" : "5px",
-              }}
-            >
-              <HugeiconsIcon icon={FolderIcon}
-                className="size-[12px] shrink-0"
-                style={{ color: p.on ? M3.onPeriwinkle : M3.onSurface }}
-              />
-              <div className="min-w-0">
-                <div className="text-[9px]" style={{ color: p.on ? M3.onPeriwinkle : undefined }}>
-                  {p.name}
-                </div>
-                <div
-                  className="truncate font-mono text-[6.5px]"
-                  style={{ color: p.on ? M3.onPeriwinkle : M3.onSurfaceVar, opacity: p.on ? 0.75 : 1 }}
-                >
-                  {p.path}
-                </div>
-              </div>
-              {p.on ? (
-                <HugeiconsIcon icon={CheckCircleIcon}
-                  className="ml-auto size-[11px] shrink-0"
-                  style={{ color: M3.onPeriwinkle }}
-                />
-              ) : null}
-            </div>
-          ))}
-          <div
-            className="flex items-center gap-[8px] px-[9px] py-[7px]"
-            style={{ background: M3.container, borderRadius: "5px 5px 15px 15px" }}
+        <div
+          className="mb-[13px] flex items-center gap-[8px] rounded-[15px] px-[9px] py-[8px]"
+          style={{ background: M3.periwinkle }}
+        >
+          <span
+            className="grid size-[23px] shrink-0 place-items-center rounded-[6px]"
+            style={{ background: M3.onPeriwinkle }}
           >
-            <HugeiconsIcon icon={AddIcon} className="size-[12px] shrink-0" style={{ color: M3.onPeriwinkle }} />
-            <div className="min-w-0">
-              <div className="text-[9px]" style={{ color: M3.onPeriwinkle }}>Add a project</div>
-              <div className="truncate text-[6.5px]" style={{ color: M3.onSurfaceVar }}>
-                Pick a folder on your PC. It shows in Uxnan Desktop too.
-              </div>
+            <HugeiconsIcon icon={FolderIcon} className="size-[11px]" style={{ color: M3.periwinkle }} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px]" style={{ color: M3.onPeriwinkle }}>
+              uxnan
+            </div>
+            <div
+              className="truncate font-mono text-[6.5px]"
+              style={{ color: M3.onPeriwinkle, opacity: 0.75 }}
+            >
+              {"C:\\Users\\dev\\GitHub\\uxnan"}
             </div>
           </div>
+          <RoundBtn>
+            <HugeiconsIcon icon={ArrowDownIcon} className="size-[11px]" />
+          </RoundBtn>
         </div>
 
         <div className="mb-[6px] px-[2px] text-[8px]">Agent</div>
