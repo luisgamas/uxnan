@@ -6,6 +6,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **This phone's name lives on the profile.** The card with the phone's name
+  (the one every paired PC shows, renamed from here) moved from the home
+  screen to the top of the profile.
+
 ## [0.0.27-alpha.20260927+20260929] - 20260927
 ### Added
 

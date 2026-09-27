@@ -9,6 +9,7 @@ import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
 import 'package:uxnan/presentation/screens/profile/profile_backup_actions.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
+import 'package:uxnan/presentation/screens/profile/this_phone_card.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -111,8 +112,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const NeEntranceRow(index: 0, child: ThisPhoneCard()),
+              const SizedBox(height: UxnanSpacing.xl),
               NeEntranceRow(
-                index: 0,
+                index: 1,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -124,7 +127,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: UxnanSpacing.xl),
               NeEntranceRow(
-                index: 1,
+                index: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -135,7 +138,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: UxnanSpacing.xl),
-              const NeEntranceRow(index: 2, child: UsageSection()),
+              const NeEntranceRow(index: 3, child: UsageSection()),
             ],
           ),
         ),
