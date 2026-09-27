@@ -1,15 +1,28 @@
-// Usage-stats store: polls the providers the user activated (Settings →
-// Providers) and exposes the latest per-provider snapshot to the settings cards
-// and the status-bar popover. Only activated providers are ever read — the poll
-// is a no-op when the list is empty, so an idle feature costs nothing.
+// Usage store: the plan limits of the providers the user activated (Settings →
+// Providers, the status-bar popover) and what the agents on this PC spent.
+// Both come from the bridge — the one reader, which asks Claude Code and Codex
+// themselves and reads every agent CLI's transcripts (`agent/usageStats`,
+// `usage/summary`) — so this app reads no credential and needs no OS grant.
+// Only activated providers are ever polled; with the bridge off there is
+// nothing to read, and the last snapshots stay as they were.
 
-import { usageRead } from "$lib/api";
+import { bridge } from "$lib/bridge/client.svelte";
 import { effectiveUsageRefreshMinutes } from "$lib/resources/policy";
 import {
   configuredUsageMinutes,
   usageSnapshotIsStale,
 } from "$lib/usageSchedule";
-import type { ProviderUsage, UsageProvider, UsageProviderConfig } from "$lib/types";
+import type {
+  ProviderUsage,
+  UsageProvider,
+  UsageProviderConfig,
+  UsageSummary,
+} from "$lib/types";
+import type { UsageStatsResult } from "$shared/models/usage";
+
+/** The spend periods Providers offers, in days. */
+export const SPEND_PERIODS = [7, 30, 90] as const;
+export type SpendPeriod = (typeof SPEND_PERIODS)[number];
 import { app } from "./app.svelte";
 import { resourceMode } from "./resourceMode.svelte";
 
@@ -20,6 +33,12 @@ class UsageStore {
   loading = $state(false);
   /** Epoch ms of the last successful full refresh. */
   lastRefresh = $state(0);
+  /** What the agents on this PC spent in the last `spendDays` days. */
+  spend = $state<UsageSummary | null>(null);
+  spendDays = $state<SpendPeriod>(30);
+  spendLoading = $state(false);
+  /** Why the last spend read failed, when it did. */
+  spendError = $state<string | null>(null);
 
   #timers = new Map<UsageProvider, ReturnType<typeof setInterval>>();
   #inFlight = new Set<UsageProvider>();
@@ -129,7 +148,10 @@ class UsageStore {
     this.#requestCount += 1;
     this.loading = true;
     try {
-      const results = await usageRead(providers);
+      if (bridge.status.state !== "connected") return;
+      const { usage: results } = await bridge.call<UsageStatsResult>("agent/usageStats", {
+        providers,
+      });
       const next = { ...this.byProvider };
       for (const result of results) next[result.provider] = result;
       this.byProvider = next;
@@ -141,6 +163,37 @@ class UsageStore {
       this.#requestCount -= 1;
       this.loading = this.#requestCount > 0;
     }
+  }
+
+  /** Read what the agents spent over [days] (the current period by default). */
+  async loadSpend(days: SpendPeriod = this.spendDays): Promise<void> {
+    this.spendDays = days;
+    if (bridge.status.state !== "connected") return;
+    this.spendLoading = true;
+    try {
+      const summary = await bridge.call<UsageSummary>("usage/summary", { days });
+      // A slower answer for another period must not overwrite this one.
+      if (days === this.spendDays) {
+        this.spend = summary;
+        this.spendError = null;
+      }
+    } catch (err) {
+      if (days === this.spendDays) this.spendError = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (days === this.spendDays) this.spendLoading = false;
+    }
+  }
+
+  /** Redeem one of a provider's rate-limit resets (Codex) and keep the fresh
+   *  snapshot the bridge answers with. [attempt] names this redemption, so a
+   *  retry after a lost answer never spends a second one. */
+  async redeemReset(provider: UsageProvider, attempt: string, creditId?: string): Promise<void> {
+    const fresh = await bridge.call<ProviderUsage>("usage/redeemReset", {
+      provider,
+      idempotencyKey: attempt,
+      ...(creditId ? { creditId } : {}),
+    });
+    this.byProvider = { ...this.byProvider, [provider]: fresh };
   }
 }
 

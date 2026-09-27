@@ -19,7 +19,6 @@ pub mod budget;
 mod codex_trust;
 mod commands;
 mod convtitle;
-mod credstore;
 // Public so the headless runner (`main.rs` → `automations::store`) resolves the
 // data directory through exactly the same override the app does.
 pub mod datadir;
@@ -65,7 +64,6 @@ mod state;
 // a mutation prepared for one machine from running on another.
 mod target;
 mod updater;
-mod usage;
 mod which;
 mod winproc;
 mod worktreeclean;
@@ -556,10 +554,6 @@ pub fn run() {
             commands::resources_unsubscribe,
             commands::resources_set_policy,
             commands::resources_export,
-            commands::usage_read,
-            commands::usage_detect,
-            commands::usage_codex_redeem_reset,
-            commands::usage_grant_access,
             commands::mcp_info,
             commands::pty_create,
             commands::pty_write,

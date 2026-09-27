@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **What your agents spent, in Settings → Providers.** Every model response the
+  agents on this PC recorded — chats, bridge turns and terminal sessions alike —
+  per day, agent and model, over 7, 30 or 90 days, in cost or tokens: the
+  headline total, a column per day stacked by agent (each agent keeps its own
+  colour; hover a day for its figures), each agent's share, and the models
+  behind it. Click an agent to focus the chart, the total and the models on it.
+  Cost is what the provider billed where the CLI records it, else an estimate at
+  API prices (said so); a model with no known price reads *No price*, never $0.
+
 ### Changed
 
 - **One effort picker for every agent, showing the level that really runs.**
@@ -14,10 +25,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   it), so the pill never shows a level that is not used; an agent that names no
   default offers "Model default" first. A thread without a model yet shows its
   agent's default model's levels.
+- **Plan limits come from the bridge, and macOS no longer asks for the
+  Keychain.** Providers asks the bridge (`agent/usageStats`), which asks Claude
+  Code and Codex themselves for their limits — the app reads no credential, so
+  the *Access required* / *Grant access* step and its re-grant after every
+  update are gone, Codex in keyring mode works, and the phone sees the same
+  numbers. A Codex reset is redeemed through the bridge too.
 - **The access mode says itself in colour.** The composer's access pill takes
   the phone's colours — amber when the agent asks first, green when it approves
   edits on its own, red with full access — so the mode reads at a glance, and
   each mode in its menu shows its icon in the same colour.
+
+### Removed
+
+- The native usage reader (`usage.rs`), the OS credential-store reader
+  (`credstore.rs`) and their commands (`usage_read`, `usage_detect`,
+  `usage_grant_access`, `usage_codex_redeem_reset`), with the `zeroize` and
+  `security-framework` dependencies: the bridge is the one reader.
 
 ## [0.0.62] - 20260927
 ### Added

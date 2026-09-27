@@ -103,76 +103,27 @@ export interface QuickCommand {
   confirm: boolean;
 }
 
-// --- AI-provider usage statistics (Settings → Providers) --------------------
-// Mirror of `shared/src/models/usage.ts` (the bridge serves the same shape to
-// the phone later). Read natively in Rust here via the `usage_read` command.
+// --- AI-provider usage (Settings → Providers) --------------------------------
+// The bridge reads it (`agent/usageStats`, `usage/summary`); these are the
+// shared contract's types, re-exported under the names the app uses.
 
-/** A coding CLI whose usage we read from its own stored token. */
-export type UsageProvider = "codex" | "claude" | "copilot" | "grok";
-
-/** Outcome of reading one provider's usage. */
-export type UsageStatus = "ok" | "authRequired" | "accessRequired" | "notInstalled" | "error";
-
-/** How the data was obtained, for the provenance label. */
-export type UsageSource = "token";
-
-/** The kind of billing relationship (mirror of Rust `AccountType`). Derived per
- *  provider so the UI can label the account beyond its plan name. */
-export type AccountType =
-  | "subscription"
-  | "payAsYouGo"
-  | "free"
-  | "team"
-  | "enterprise";
-
-/** A single quota/rate window, expressed as a used-percentage with a reset. */
-export interface UsageWindow {
-  id: string;
-  label: string;
-  usedPercent: number;
-  windowMinutes?: number;
-  resetsAt?: number;
-}
-
-/** A monetary / credit balance, separate from the percentage windows. */
-export interface CreditBalance {
-  used: number;
-  limit?: number;
-  currency: string;
-  period: string;
-  resetsAt?: number;
-  /** Amount still available this period (e.g. Grok on-demand / prepaid). */
-  available?: number;
-}
-
-/** One redeemable reset (which one, when it expires) — per-credit detail. */
-export interface ResetCreditEntry {
-  title?: string;
-  expiresAt?: number;
-}
-
-/** Redeemable rate-limit resets a provider grants (Codex). Distinct from money
- *  `credit`: these are reset tokens that roll a hit limit back early. */
-export interface ResetCredits {
-  available: number;
-  totalEarned?: number;
-  nextExpiresAt?: number;
-  /** The individual available resets, soonest-expiring first, when detailed. */
-  entries?: ResetCreditEntry[];
-}
-
-/** One provider's usage snapshot (result of `usage_read`). */
-export interface ProviderUsage {
-  provider: UsageProvider;
-  status: UsageStatus;
-  source?: UsageSource;
-  account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
-  windows: UsageWindow[];
-  credit?: CreditBalance;
-  resetCredits?: ResetCredits;
-  updatedAt: number;
-  message?: string;
-}
+export type {
+  AccountType,
+  CreditBalance,
+  ProviderUsage,
+  ResetCreditEntry,
+  ResetCredits,
+  UsageAgentSource,
+  UsageBucket,
+  UsageDay,
+  UsageProvider,
+  UsageSource,
+  UsageSpend,
+  UsageStatus,
+  UsageSummary,
+  UsageWindow,
+} from "$shared/models/usage";
+import type { UsageProvider } from "$shared/models/usage";
 
 /** What of a provider surfaces in the bottom status-bar popover. `windows` are
  *  the window ids to show; the primary %-bar is opted-in by default when a

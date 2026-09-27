@@ -6738,7 +6738,6 @@ dependencies = [
  "reqwest",
  "russh",
  "russh-sftp",
- "security-framework",
  "serde",
  "serde_json",
  "sha1 0.10.7",
@@ -6765,7 +6764,6 @@ dependencies = [
  "windows 0.61.3",
  "windows-sys 0.59.0",
  "winreg 0.55.0",
- "zeroize",
 ]
 
 [[package]]

@@ -21,7 +21,7 @@
   } from "$lib/usageFormat";
   import type { ProviderUsage, UsageProviderConfig } from "$lib/types";
   import type { MessageKey } from "$lib/i18n/locales/en";
-  import { usageCodexRedeemReset, usageGrantAccess } from "$lib/api";
+  import { usage } from "$lib/state/usage.svelte";
   import { toast, toastError } from "$lib/toast";
   import UsageMeter from "./UsageMeter.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -81,29 +81,11 @@
       tone:
         s === "error"
           ? "border-destructive/40 bg-destructive/10 text-destructive"
-          : s === "authRequired" || s === "accessRequired"
+          : s === "authRequired"
             ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
             : "border-border/60 bg-muted/40 text-muted-foreground",
     };
   });
-
-  // The provider's token sits in the OS credential store and the OS has not
-  // authorized Uxnan to read it yet. Polls never prompt; this button is the one
-  // place the OS dialog is allowed to appear, and only because the user asked.
-  const needsGrant = $derived(snapshot?.status === "accessRequired");
-  let granting = $state(false);
-  async function grantAccess() {
-    granting = true;
-    try {
-      await usageGrantAccess(config.provider);
-      toast.success(i18n.t("providers.grantAccessDone"));
-      onrefresh();
-    } catch (e) {
-      toastError(e);
-    } finally {
-      granting = false;
-    }
-  }
 
   const updatedAt = $derived(
     snapshot?.updatedAt ? new Date(snapshot.updatedAt).toLocaleTimeString() : null,
@@ -164,27 +146,11 @@
   // Redeem a Codex rate-limit reset (behind a confirmation), then refresh so the
   // count + windows update.
   let confirmRedeemOpen = $state(false);
-  function redeemMessageKey(code: string): MessageKey {
-    switch (code) {
-      case "reset":
-        return "providers.redeemOk";
-      case "nothing_to_reset":
-        return "providers.redeemNothing";
-      case "no_credit":
-        return "providers.redeemNoCredit";
-      case "already_redeemed":
-        return "providers.redeemAlready";
-      default:
-        return "providers.redeemDone";
-    }
-  }
   async function redeemReset() {
     try {
-      const code = await usageCodexRedeemReset();
-      const msg = i18n.t(redeemMessageKey(code));
-      if (code === "reset") toast.success(msg);
-      else toast.info(msg);
-      onrefresh();
+      // The soonest-expiring reset; one attempt per confirmation.
+      await usage.redeemReset(config.provider, crypto.randomUUID(), resetEntries[0]?.id);
+      toast.success(i18n.t("providers.redeemOk"));
     } catch (e) {
       toastError(e);
     }
@@ -245,7 +211,7 @@
   </div>
 
   <!-- Live data (windows / credit / account) grouped on a single soft surface. -->
-  {#if snapshot && (snapshot.windows.length > 0 || snapshot.credit || snapshot.account?.email || snapshot.account?.plan || snapshot.account?.organization)}
+  {#if snapshot && (snapshot.windows.length > 0 || snapshot.credit || snapshot.resetCredits || snapshot.account?.email || snapshot.account?.plan || snapshot.account?.organization)}
     <div class="flex flex-col gap-3.5 rounded-lg bg-muted/40 px-3.5 py-3">
       {#if snapshot.windows.length > 0}
         <div class="flex flex-col gap-3">
@@ -349,22 +315,7 @@
   {#if hint}
     <div class={cn("rounded-md border px-2.5 py-1.5", text.meta, hint.tone)}>
       <div>{hint.message}</div>
-      {#if needsGrant}
-        <!-- Consent lives in the OS: the dialog it shows is the grant, and
-             "Always Allow" is what keeps later polls silent. -->
-        <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-          <span class="text-muted-foreground">{i18n.t("providers.grantAccessHint")}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            class="px-2 text-xs"
-            disabled={granting || loading}
-            onclick={grantAccess}
-          >
-            {i18n.t("providers.grantAccess")}
-          </Button>
-        </div>
-      {/if}
+
     </div>
   {/if}
 

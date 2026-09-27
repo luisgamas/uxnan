@@ -71,7 +71,6 @@ import type {
   RemoveOutcome,
   RepoContext,
   RunListItem,
-  ProviderUsage,
   QuickCommand,
   RepoData,
   ResourceConsumerKind,
@@ -82,7 +81,6 @@ import type {
   SearchFilters,
   TimelineEvent,
   UpdateInfo,
-  UsageProvider,
   WorktreeEntry,
   WorktreeStatus,
   ZeroSession,
@@ -193,31 +191,6 @@ export function setAgentCommands(commands: string[]): Promise<void> {
   return invoke('set_agent_commands', { commands });
 }
 
-/** Read usage stats (quota windows / credit / local token tally) for the given
- *  providers — only the ones the user activated. Each provider carries its own
- *  status, so a slow/broken one never sinks the rest. */
-export function usageRead(providers: UsageProvider[]): Promise<ProviderUsage[]> {
-  return invoke<ProviderUsage[]>('usage_read', { providers });
-}
-
-/** The subset of `providers` whose CLI / config is present on this machine, so
- *  the Providers catalog can enable only the available ones. */
-export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]> {
-  return invoke<UsageProvider[]>('usage_detect', { providers });
-}
-
-/** Let the OS ask the user to authorize Uxnan to read a provider's token from
- *  the OS credential store (Claude Code on macOS) — the one interactive read,
- *  after a poll reported `accessRequired`. Re-read usage on success. */
-export function usageGrantAccess(provider: UsageProvider): Promise<void> {
-  return invoke<void>('usage_grant_access', { provider });
-}
-
-/** Redeem one Codex rate-limit reset ("reinicio"). Returns the outcome code
- *  (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`). */
-export function usageCodexRedeemReset(): Promise<string> {
-  return invoke<string>('usage_codex_redeem_reset');
-}
 
 // --- Resource observability --------------------------------------------------
 

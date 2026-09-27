@@ -289,24 +289,18 @@ desktop (revoke), and the mirror / hand-off of terminal-launched sessions
   waits for the safe window or explicit consent), banner UI, EN/ES i18n. Endpoint
   per channel + signing/CI in [`docs/updates.md`](docs/updates.md); signing key is
   a `FOR-HUMAN.md` item.
-- **AI-provider usage statistics (Settings → Providers)** — native Rust reader
-  (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`/`usage_grant_access`)
-  for **Codex, Claude, Copilot, Grok**, reading each CLI's own stored token → the
-  provider's official usage API (never cookies / pasted keys / refresh tokens).
-  On **macOS, Claude Code's token comes from the login Keychain** through
-  `credstore.rs`: polls run with OS interaction disabled and can never pop a
-  dialog; the one interactive read is the *Grant access* button
-  (`accessRequired` status), and the grant is macOS's own, revocable in Keychain
-  Access — unit-tested, and the lived flow (grant → *Always Allow* → *Live*,
-  silent polls and restart, revocation) walked on real Apple Silicon by the
-  maintainer on 2026-09-19 (PR #240). Tabbed UI with per-provider quota
-  windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
-  blur), credit, per-provider refresh interval + status-bar visibility, and a
-  status-bar gauge popover. Polling starts at boot, catches up on focus, honors
-  each provider's interval, and preserves Codex percentage-point semantics around
-  resets. Contract-first (`shared` `agent/usageStats`); the
-  bridge/mobile side is Phase 6 (see below). **Antigravity** is researched but not
-  wired (its keyring item names are unverified — see *Providers* below).
+- **AI-provider usage statistics (Settings → Providers)** — from the bridge, the
+  one reader every client asks: **what the agents spent** (`usage/summary` — per
+  day, agent and model, cost or tokens, a stacked chart with agent focus and a
+  models table; `ProviderSpend.svelte`) and **plan limits** (`agent/usageStats`
+  for **Codex, Claude, Copilot, Grok**; Claude Code and Codex are asked
+  themselves, so there is no Keychain grant on macOS and the app has no Rust
+  usage reader or credential code), with Codex resets redeemed through
+  `usage/redeemReset`. Tabbed UI with per-provider quota windows ("% used"),
+  plan/account ("Authenticated as …" with click-to-reveal blur), credit,
+  per-provider refresh interval + status-bar visibility, and a status-bar gauge
+  popover. Polling starts at boot, catches up on focus, honors each provider's
+  interval. **Antigravity** is not a provider yet (`bridge/FOR-DEV.md`).
 - **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
   slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
   Quick commands editor. Commands are persisted flat in `AppData.quickCommands`
@@ -585,8 +579,8 @@ leaving it alone.
   a per-step schema field, UI to author it, and an honest answer for the agents that
   support neither.
 - ☐ **Tokens and cost per run.** Runs already record duration, exit codes and full
-  output; this would add what each one *spent*. `usage.rs` reads each provider's own
-  usage API, but tying a specific run to specific tokens means matching it to a
+  output; this would add what each one *spent*. The bridge's `usage/summary` reads
+  what each agent spent per day, but tying a specific run to specific tokens means matching it to a
   provider session by time window — an inference that quietly produces wrong numbers
   when two things overlap. Worth doing only with a visible "couldn't attribute this"
   state instead of a confident guess.
@@ -1061,14 +1055,6 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       pinned Node bridge version it ships — so the bridge's own check still
       matters. Unblocks with the sidecar above.
 
-- [ ] **Provider usage over the bridge (`agent/usageStats`).** The desktop already
-      reads AI-provider usage natively (`src-tauri/src/usage.rs`) and the `shared`
-      contract (`agent/usageStats` + `ProviderUsage`) exists. For the paired phone,
-      the embedded bridge must implement the same reader in TS and serve it — the
-      phone can't see the PC's disk directly (dual-reader, same contract; see
-      `architecture/02a` §5.8.10). Owed on the bridge (`bridge/FOR-DEV.md`) and the
-      mobile UI (`uxnanmobile/FOR-DEV.md`).
-
 ### Frontend (Svelte)
 - [ ] Settings → Bridge & mobile: trusted-device management (list and revoke,
       reusing the bridge's `bridge/trustedDevices` / `bridge/removeTrustedDevice`).
@@ -1526,48 +1512,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       build, sign and ship for one agent. Do **not** "solve" it by putting the token
       in the `serverUrl`.
 
-**Providers (usage statistics)**
-- [ ] **OS credential store on Windows / Linux** — `credstore.rs` returns
-      `Unsupported` there today because no wired CLI keeps its token in
-      Credential Manager / Secret Service by default. Two CLIs need it:
-      **Codex in `cli_auth_credentials_store = "keyring" | "auto"`** (service
-      `Codex Auth`, account `cli|<sha256(canonical CODEX_HOME)[..16]>`, value =
-      the `auth.json` JSON; its newer "encrypted auth storage" backend — a key in
-      the store + a local blob — is a moving format and must **not** be
-      reversed) and Antigravity (below). Windows via `windows-sys`
-      `Win32_Security_Credentials` `CredReadW` (no prompt, DPAPI user scope);
-      Linux via Secret Service over `zbus` (already in the lock tree; no prompt
-      while the collection is unlocked; headless → an honest status). Same
-      never-prompt / grant-once contract; verify on real hardware before
-      announcing. Sites: `src-tauri/src/credstore.rs` (`platform` modules),
-      `usage.rs` (`read_codex` fallback), `docs/providers.md`.
-- [ ] **Antigravity (`agy`) as a usage provider — deferred on the item names, not
-      on the data or the posture.** Researched against a real install; nothing
-      implemented. The data and the API are within reach: `agy` talks to Google's
-      Code Assist backend (its own logs under `~/.gemini/antigravity-cli/log/` show
-      `daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` /
-      `:fetchAvailableModels` plus a `quota_manager.go` refresh loop), and the Gemini
-      reader in `usage.rs` already calls the sibling `…/v1internal:retrieveUserQuota`
-      and parses its `buckets[]` — that half is reusable as-is. Upstream documents
-      `/usage`, `/quota` and `/credits`, but they are **interactive-only** slash
-      commands (`agy --help` exposes no usage subcommand), so shelling out is not an
-      option. `agy` keeps its OAuth token in the **OS keyring** (the log line
-      `keyring.go: keyringAuth: loaded token, expiry=…` with neither
-      `~/.gemini/antigravity-cli/credentials.enc` nor `…/antigravity-oauth-token`
-      on disk; the plain-file token
-      `{auth_method, token:{access_token, refresh_token, expiry}}` is written
-      **only** in a container/headless environment). `credstore.rs` is now the
-      door to that store, so **what remains is the item's service/account names**
-      — undocumented, `agy`-version-fragile, and to be verified per platform on a
-      real install (the macOS item seen so far is "Antigravity Safe Storage",
-      which may be an Electron-style *encryption key* rather than the token
-      itself — check before parsing) — plus the Windows / Linux store halves
-      above. **Do not** fall back to `~/.gemini/oauth_creds.json` (the Gemini
-      CLI's token): Antigravity bills a **separate** quota pool + AI credits, so
-      those numbers would be Gemini's wearing Antigravity's name. Sites when
-      picked up: `src-tauri/src/usage.rs` (`UsageProvider`, `read_one`,
-      `is_present`), `src/lib/usageCatalog.ts`, `shared/src/models/usage.ts`
-      (contract → bridge + mobile), `docs/providers.md`.
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
 - [ ] Multi-worktree external-change watching (the watcher follows the active

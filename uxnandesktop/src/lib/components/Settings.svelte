@@ -32,10 +32,11 @@
   } from "$lib/agentCatalog";
   import { activatableUsageProviders, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
   import { statusMeta } from "$lib/usageFormat";
-  import { detectAgents, usageDetect, revealPath } from "$lib/api";
+  import { detectAgents, revealPath } from "$lib/api";
   import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { clearRemoteLogoCache } from "$lib/agentLogoCache";
   import { usage } from "$lib/state/usage.svelte";
+  import { chat } from "$lib/bridge/chat.svelte";
   import type { UsageProvider } from "$lib/types";
   import * as Tabs from "$lib/components/ui/tabs";
   import ProviderUsageEditor from "./ProviderUsageEditor.svelte";
@@ -59,6 +60,7 @@
   import ModelPicker from "./ModelPicker.svelte";
   import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import ProviderSpend from "./ProviderSpend.svelte";
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
@@ -356,29 +358,22 @@
   });
 
   // --- Providers (usage statistics) -----------------------------------------
-  // Which catalog providers are present on the machine (null = not checked yet).
-  // Only the activatable ones are probed: presence solely drives the "not
-  // detected" hint in the picker, and a deprecated provider never appears there.
-  let usagePresent = $state<Set<UsageProvider> | null>(null);
-  async function detectProviders() {
-    try {
-      usagePresent = new Set(await usageDetect(activatableUsageProviders().map((p) => p.id)));
-    } catch {
-      usagePresent = new Set(); // backend unreachable (e.g. web preview)
-    }
-  }
-  // On opening the Providers pane: detect presence once, then load fresh usage.
+  // On opening the Providers pane: fresh limits, and the spend of the period.
   $effect(() => {
     if (app.settingsOpen && app.settingsSection === "providers") {
-      if (usagePresent === null) void detectProviders();
       void usage.ensureFresh();
+      void usage.loadSpend();
     }
   });
 
   const usageConfigs = $derived(app.settings.usageProviders ?? []);
   const isProviderActive = (id: UsageProvider) =>
     usageConfigs.some((c) => c.provider === id);
-  const providerPresent = (id: UsageProvider) => usagePresent?.has(id) ?? false;
+  /** Installed, as the bridge's agent list says (drives the picker's hint). */
+  const providerPresent = (id: UsageProvider) => {
+    const agentId = usageProvider(id)?.agentId;
+    return agentId === undefined || chat.agents.some((a) => a.agentId === agentId && a.available);
+  };
 
   // The provider tab currently shown. Kept valid as the list changes.
   let activeProviderTab = $state<string>("");
@@ -1245,6 +1240,8 @@
               </div>
             </SettingsSection>
 
+            <ProviderSpend />
+
             <!-- Your providers: a section label OUTSIDE the container, then one
                  coherent container holding the add-header (title · desc ·
                  combobox), a subtle divider, and a tab per activated provider.
@@ -1271,9 +1268,7 @@
                   />
                 </div>
                 <div class="mt-5 border-t border-border/60 pt-5">
-                  {#if usagePresent === null && usageConfigs.length === 0}
-                    <p class={cn("py-2 text-center", text.meta)}>{i18n.t("settings.detecting")}</p>
-                  {:else if usageConfigs.length === 0}
+                  {#if usageConfigs.length === 0}
                     <p class={cn("py-2 text-center", text.meta)}>{i18n.t("providers.empty")}</p>
                   {:else}
                     <Tabs.Root bind:value={activeProviderTab} class="flex flex-col gap-5">

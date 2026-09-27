@@ -356,11 +356,15 @@ instead of quietly agreeing with a mock nobody updated.
   still type-checks and renders an empty `<svg>`. Each assertion is about painted
   geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
   it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
-- `ProviderUsageEditor.svelte.test.ts` — the OS credential-store consent flow
-  (`docs/providers.md` → *How Uxnan reaches a token*): an `accessRequired`
-  snapshot renders **Grant access**, clicking it issues `usage_grant_access` for
-  that provider and re-reads usage; the other non-live states never show the
-  button, so the OS dialog can only ever appear because the user asked.
+- `ProviderUsageEditor.svelte.test.ts` — a Codex reset is redeemed through the
+  bridge (`usage/redeemReset`, the soonest-expiring credit, a key per attempt),
+  and no provider state ever offers an OS grant: the bridge asks each CLI
+  itself (`docs/providers.md`).
+- `ProviderSpend.svelte.test.ts` — the spend panel: with the bridge stopped it
+  offers the Bridge window; a priced agent shows its cost and an unpriced one
+  reads *No price* (never $0); clicking an agent in the legend focuses the
+  chart, headline and models on it, and clicking again returns to every agent;
+  the tokens measure. `usageSpend.test.ts` covers the view data under it.
 
 - `state/pets.svelte.test.ts` — the library the Pets screen renders: every
   bundled pet loads (they are static assets, faked at `fetch`, not a command),
