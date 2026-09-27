@@ -20,6 +20,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   follows every hold live (`stream/agentSession/held`) and reloads them on each
   connection.
 
+## [0.0.29-alpha.20260927+20260931] - 20260927
 ### Changed
 
 - **New conversation shows one folder, not every folder.** It opens on the

@@ -44,6 +44,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **A fork no longer writes into the original's agent session.** It copied the
   native session id, so a Codex fork's turns landed in the original thread.
   A fork now opens a session of its own on its first turn.
+
+## [0.0.35-alpha.20260927] - 20260927
+### Fixed
+
 - **A Claude Code conversation no longer grows stray and duplicate turns.**
   The transcript reader took every "user" line Claude Code writes on its own —
   an image's size note, a loaded skill, a hook's context (`isMeta`), a
