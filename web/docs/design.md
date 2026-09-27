@@ -44,7 +44,7 @@ same software a visitor is about to download.
 1. **Copy the shipped UI, not an idealized one.** The title bar says
    `Uxnan Desktop` with the `ALPHA` chip because that is what the app shows;
    the tabs (one per chat or agent terminal), the `Ctrl P` search hint, the
-   paired phone under Search, the worktree's agent view listing chats and
+   Bridge row under Search (its phone count and state badge), the worktree's agent view listing chats and
    terminal agents together, the chat's step rows (`Read`, `Searched`,
    `Edited`, `Running`), the composer's model and `Full access` pickers and the
    dock's surface selector are all lifted from the real window. The phone screens follow the

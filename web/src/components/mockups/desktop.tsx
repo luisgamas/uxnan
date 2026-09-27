@@ -24,6 +24,7 @@ import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
 import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
 import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
 import SmartPhoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import ServerStackIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
 import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
 import StopIcon from "@hugeicons/core-free-icons/StopIcon";
 import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
@@ -37,7 +38,7 @@ import { AGENT_ICON, INVERT_ON_DARK } from "@/lib/site";
    A DOM recreation of Uxnan Desktop — not a screenshot.
 
    Chrome, panel order and wording follow the real app: one tab per open
-   conversation or agent terminal, the sidebar with the paired phone above the
+   conversation or agent terminal, the sidebar with the Bridge row above the
    projects and the open worktree's agent view (terminal agents and chats in
    one list), a chat in the centre streaming its steps as they run, and the
    right dock on its Files surface (its selector switches to Git, GitHub or
@@ -271,7 +272,7 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
       </div>
 
       <div className="flex h-[340px] text-[11px] sm:h-[440px] lg:h-[560px]">
-        {/* ── Sidebar: the paired phone, then the projects ─────────────── */}
+        {/* ── Sidebar: the Bridge row, then the projects ───────────────── */}
         <aside className="hidden w-[212px] shrink-0 flex-col border-r border-line bg-panel/60 md:flex">
           <div className="flex min-h-0 flex-1 flex-col p-2">
             <div className="flex items-center gap-2 rounded-md border border-line bg-ink px-2 py-1.5 text-[10.5px] text-faint">
@@ -282,11 +283,16 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
               </kbd>
             </div>
 
-            {/* the phone this desktop is linked with, and whether it is online */}
+            {/* the bridge: how many phones are connected, and its state */}
             <div className="mt-1.5 flex items-center gap-2 px-2 py-1 text-[10.5px] text-muted">
-              <HugeiconsIcon icon={SmartPhoneIcon} className="size-3 text-dim" />
-              <span className="truncate">Pixel 9</span>
-              <span className="ml-auto size-[6px] rounded-full bg-live" />
+              <HugeiconsIcon icon={ServerStackIcon} className="size-3 text-dim" />
+              <span className="min-w-0 flex-1 truncate">Bridge</span>
+              <span className="inline-flex shrink-0 items-center gap-0.5 text-[9.5px] text-faint tabular-nums">
+                <HugeiconsIcon icon={SmartPhoneIcon} className="size-2.5" />1
+              </span>
+              <span className="inline-flex shrink-0 items-center rounded-full border border-live/40 bg-live/15 px-2 py-px text-[9px] font-medium text-live">
+                Online
+              </span>
             </div>
 
             <div className="mt-2.5 mb-1 flex items-center px-1">
