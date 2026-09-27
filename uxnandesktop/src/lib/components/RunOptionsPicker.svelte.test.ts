@@ -5,7 +5,7 @@
  * the model's own first.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/svelte";
 import { mountWithProviders } from "../../test/render";
 import type { AgentModelOption } from "$shared/agents/agent-capabilities";
@@ -21,7 +21,11 @@ type Keys = { keyboard: (k: string) => Promise<void> };
 async function open(user: Keys, pill: HTMLElement): Promise<HTMLElement[]> {
   pill.focus();
   await user.keyboard("{ArrowDown}");
-  return screen.findAllByRole("menuitemradio", { hidden: true }, { timeout: 5000 });
+  const rows = await screen.findAllByRole("menuitemradio", { hidden: true }, { timeout: 5000 });
+  // The menu focuses its first row once it has opened; wait for that, or it
+  // lands after a row the test focused and Enter picks the wrong one.
+  await vi.waitFor(() => expect(rows).toContain(document.activeElement), { timeout: 5000 });
+  return rows;
 }
 
 /** What the picker would send: the host's bound values. */
@@ -29,12 +33,21 @@ function sent(view: { getByTestId: (id: string) => HTMLElement }): Record<string
   return JSON.parse(view.getByTestId("values").textContent ?? "{}");
 }
 
-/** Pick the row whose text starts with [label], from the keyboard. */
+/** Pick the row whose text starts with [label], from the keyboard, and wait
+ *  for the menu to close (so the next `open` never finds the closing one's rows). */
 async function choose(user: Keys, rows: HTMLElement[], label: string) {
   const row = rows.find((r) => r.textContent?.trim().startsWith(label));
   if (!row) throw new Error(`no row ${label}`);
   row.focus();
   await user.keyboard("{Enter}");
+  await vi.waitFor(() => expect(screen.queryAllByRole("menuitemradio", { hidden: true })).toHaveLength(0), {
+    timeout: 5000,
+  });
+}
+
+/** Wait for what the picker would send to become [expected]. */
+async function expectSent(view: { getByTestId: (id: string) => HTMLElement }, expected: Record<string, unknown>) {
+  await vi.waitFor(() => expect(sent(view)).toEqual(expected), { timeout: 5000 });
 }
 
 const levels = [
@@ -64,10 +77,10 @@ describe("RunOptionsPicker", () => {
   it("keeps a pick, and forgets it when the default is picked again", async () => {
     const { screen, user } = mountWithProviders(RunOptionsHost, { props: { options: [effort("high")] } });
     await choose(user, await open(user, screen.getByRole("button", { name: /Reasoning effort/ })), "Low");
-    expect(sent(screen)).toEqual({ reasoning: "low" });
+    await expectSent(screen, { reasoning: "low" });
     expect(screen.getByRole("button", { name: "Reasoning effort: Low" })).toBeTruthy();
     await choose(user, await open(user, screen.getByRole("button", { name: /Reasoning effort/ })), "High");
-    expect(sent(screen)).toEqual({});
+    await expectSent(screen, {});
   });
 
   it("offers the model's own default first when the agent names none", async () => {
@@ -75,9 +88,9 @@ describe("RunOptionsPicker", () => {
     const rows = await open(user, screen.getByRole("button", { name: "Reasoning effort: Model default" }));
     expect(rows.map((r) => r.textContent?.trim())).toEqual(["Model default", "Low", "Medium", "High"]);
     await choose(user, rows, "High");
-    expect(sent(screen)).toEqual({ reasoning: "high" });
+    await expectSent(screen, { reasoning: "high" });
     await choose(user, await open(user, screen.getByRole("button", { name: /Reasoning effort/ })), "Model default");
-    expect(sent(screen)).toEqual({});
+    await expectSent(screen, {});
   });
 
   it("draws nothing for a model without knobs", () => {
