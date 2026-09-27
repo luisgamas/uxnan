@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.64] - 20260927
 ### Added
 
 - **A scroll rail for the conversation.** A short mark per message you sent

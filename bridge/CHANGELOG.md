@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.35-alpha.20260927] - 20260927
 ### Fixed
 
 - **A Claude Code conversation no longer grows stray and duplicate turns.**
