@@ -5,7 +5,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import type { AgentCapabilities, AgentCommand, AgentId, SendTurnOptions } from '@uxnan/shared';
+import type {
+  AgentCapabilities,
+  AgentCommand,
+  AgentId,
+  AgentModel,
+  SendTurnOptions,
+} from '@uxnan/shared';
 import { StreamNotification } from '@uxnan/shared';
 import {
   AgentManager,
@@ -1094,4 +1100,58 @@ baseTest('stopAll stops every adapter, including one that never ran a turn', asy
   await manager.stopAll();
   assert.equal(stopped, 1);
   await rmrf(baseDir);
+});
+
+test('a turn runs at the default a model advertises when nobody picked one', async () => {
+  class ModelledAdapter extends ControlledAdapter {
+    readonly sent: SendTurnOptions[] = [];
+    override sendTurn(options: SendTurnOptions): Promise<void> {
+      this.sent.push(options);
+      return super.sendTurn(options);
+    }
+    listModels(): Promise<AgentModel[]> {
+      const reasoning = {
+        key: 'reasoning',
+        kind: 'enum' as const,
+        label: 'Reasoning effort',
+        values: [
+          { value: 'low', label: 'Low' },
+          { value: 'high', label: 'High' },
+        ],
+        default: 'high',
+      };
+      return Promise.resolve([
+        { id: 'deep', displayName: 'Deep', isDefault: true, options: [reasoning] },
+        { id: 'plain', displayName: 'Plain', options: [{ ...reasoning, default: undefined }] },
+      ]);
+    }
+  }
+  const baseDir = join(tmpdir(), `uxnan-am-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new ModelledAdapter();
+  manager.register(adapter);
+  try {
+    const run = async (options: Parameters<AgentManager['sendTurn']>[2]) => {
+      const thread = await store.startThread({ projectId: 'p' }, 1);
+      const { turnId } = await manager.sendTurn(thread.id, 'go', options);
+      adapter.complete(thread.id, turnId, 'done');
+      return adapter.sent.at(-1)?.options;
+    };
+    // The thread's default model, untouched: its advertised default is sent.
+    assert.deepEqual(await run({}), { reasoning: 'high' });
+    // A pick wins, and so does the legacy flat `effort`.
+    assert.deepEqual(await run({ options: { reasoning: 'low' } }), { reasoning: 'low' });
+    assert.equal(await run({ effort: 'low' }), undefined);
+    // A model that names no default runs at the agent's own.
+    assert.equal(await run({ service: 'plain' }), undefined);
+  } finally {
+    await rmrf(baseDir);
+  }
 });

@@ -75,6 +75,12 @@ export interface OpenCodeModel {
   /** `provider/model`. */
   id: string;
   contextWindow?: number;
+  /**
+   * The reasoning variants the model offers (OpenCode 2's `variants[].id`:
+   * `low`, `high`, `max`…), sent as the turn's `variant`. None names a
+   * default: without one the model runs at its provider's own.
+   */
+  variants?: string[];
 }
 
 /**

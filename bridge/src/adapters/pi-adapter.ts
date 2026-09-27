@@ -63,6 +63,9 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/agents.md.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -233,11 +236,54 @@ const PI_CAPABILITIES: AgentCapabilities = {
   steering: true,
 };
 
-/** Reasoning-effort levels pi's `--thinking` flag accepts (verified via `pi --help`). */
-const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+/** Reasoning-effort levels pi's `--thinking` flag accepts (verified via `pi --help`, 0.85). */
+const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-/** The `reasoning` knob advertised on pi models that support thinking. */
-const PI_REASONING_OPTION: AgentModelOption = reasoningOption(effortValues(PI_THINKING_LEVELS));
+/** pi's built-in thinking level when its settings name none (`DEFAULT_THINKING_LEVEL`). */
+const PI_DEFAULT_THINKING = 'medium';
+
+/**
+ * How pi picks a model's thinking level when none is passed, from its own
+ * `settings.json` (in `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`): the level
+ * saved for that model (`modelThinkingLevels["provider/model"]`), then
+ * `defaultThinkingLevel`, then `medium` — the order pi's model resolver uses.
+ */
+export interface PiThinkingDefaults {
+  byModel: Record<string, string>;
+  fallback: string;
+}
+
+/** pi's thinking defaults as its settings file states them. */
+export function readPiThinkingDefaults(
+  env: NodeJS.ProcessEnv = process.env,
+  readFile: (path: string) => string = (path) => readFileSync(path, 'utf-8'),
+): PiThinkingDefaults {
+  const dir = env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent');
+  try {
+    const settings = JSON.parse(readFile(join(dir, 'settings.json'))) as Record<string, unknown>;
+    const levels = new Set<string>(PI_THINKING_LEVELS);
+    const byModel: Record<string, string> = {};
+    const saved = settings['modelThinkingLevels'];
+    if (saved && typeof saved === 'object') {
+      for (const [model, level] of Object.entries(saved as Record<string, unknown>)) {
+        if (typeof level === 'string' && levels.has(level)) byModel[model] = level;
+      }
+    }
+    const fallback = settings['defaultThinkingLevel'];
+    return {
+      byModel,
+      fallback:
+        typeof fallback === 'string' && levels.has(fallback) ? fallback : PI_DEFAULT_THINKING,
+    };
+  } catch {
+    return { byModel: {}, fallback: PI_DEFAULT_THINKING };
+  }
+}
+
+/** The `reasoning` knob of a pi model that thinks, with the level it runs at by default. */
+function piReasoningOption(defaultLevel: string): AgentModelOption {
+  return reasoningOption(effortValues(PI_THINKING_LEVELS), defaultLevel);
+}
 
 /**
  * Tool posture passed to pi:
@@ -530,7 +576,11 @@ export function parsePiLine(line: string): PiEvent | null {
  * field contains spaces). `id` is `provider/model` (the `--model` routing key);
  * models whose `thinking` column is `yes` advertise the reasoning knob.
  */
-export function parsePiModelList(output: string, defaultModel?: string): AgentModel[] {
+export function parsePiModelList(
+  output: string,
+  defaultModel?: string,
+  thinking: PiThinkingDefaults = { byModel: {}, fallback: PI_DEFAULT_THINKING },
+): AgentModel[] {
   const out: AgentModel[] = [];
   const seen = new Set<string>();
   for (const raw of output.split(/\r?\n/)) {
@@ -541,7 +591,7 @@ export function parsePiModelList(output: string, defaultModel?: string): AgentMo
     const provider = cols[0]!;
     const model = cols[1]!;
     const context = cols[2]!;
-    const thinking = cols[4]!;
+    const thinks = cols[4]!;
     if (provider === 'provider') continue; // header row
     const id = `${provider}/${model}`;
     if (seen.has(id)) continue;
@@ -552,7 +602,9 @@ export function parsePiModelList(output: string, defaultModel?: string): AgentMo
       displayName: model,
       description: provider,
       isDefault: id === defaultModel,
-      ...(thinking === 'yes' ? { options: [PI_REASONING_OPTION] } : {}),
+      ...(thinks === 'yes'
+        ? { options: [piReasoningOption(thinking.byModel[id] ?? thinking.fallback)] }
+        : {}),
       ...(contextWindow !== undefined ? { contextWindow } : {}),
     });
   }
@@ -715,7 +767,7 @@ export class PiAdapter extends BaseAgentAdapter {
     const sessionId = this.#sessionByThread.get(threadId);
     const args = ['--mode', 'rpc', ...piPostureArgs(permissionMode)];
     if (model) args.push('--model', model);
-    // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
+    // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh|max>`.
     if (effort) args.push('--thinking', effort);
     if (sessionId) args.push('--session-id', sessionId);
     args.push(...desktop.args);
@@ -1124,7 +1176,7 @@ export class PiAdapter extends BaseAgentAdapter {
       child.stderr?.on('data', collect);
       child.on('error', () => finish([]));
       child.on('close', () => {
-        const models = parsePiModelList(output, this.#defaultModel);
+        const models = parsePiModelList(output, this.#defaultModel, readPiThinkingDefaults());
         // Cache each model's context window so `sendTurn` can emit `usage`
         // with a window (→ percentage on the phone) without re-listing.
         for (const m of models) {

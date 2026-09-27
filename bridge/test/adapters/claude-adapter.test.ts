@@ -407,14 +407,20 @@ test('ClaudeCodeAdapter maps the reasoning knob (options) to --effort', async ()
   assert.equal(args[args.indexOf('--effort') + 1], 'max');
 });
 
-test('ClaudeCodeAdapter advertises the reasoning knob on every model', async () => {
+test('ClaudeCodeAdapter advertises effort, with the default it sends, on every model that takes it', async () => {
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
   const models = await adapter.listModels();
   assert.ok(models.length > 0);
   for (const model of models) {
     const opt = model.options?.find((o) => o.key === 'reasoning');
+    if (model.id === 'haiku') {
+      // Haiku takes no `--effort` (no `supportsEffort` in Claude's initialize).
+      assert.equal(opt, undefined);
+      continue;
+    }
     assert.ok(opt, `model ${model.id} advertises the reasoning knob`);
     assert.equal(opt?.kind, 'enum');
+    assert.equal(opt?.default, 'high');
     assert.deepEqual(
       opt?.values?.map((v) => v.value),
       ['low', 'medium', 'high', 'xhigh', 'max'],

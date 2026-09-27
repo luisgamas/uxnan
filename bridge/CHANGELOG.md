@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **The effort a picker shows as the default is the effort the turn runs at.**
+  Every reasoning knob now names the level its model runs at when nobody picks
+  one, and the bridge sends that level itself instead of leaving it to the CLI's
+  configuration: Claude Code models default to `high` (Haiku has no effort
+  knob), pi models to the level pi's own settings give them (and pi's `max` is
+  offered), Codex and Grok keep the default they report. OpenCode 2 models now
+  offer their reasoning variants.
+
 ## [0.0.33-alpha.20260927] - 20260927
 ### Added
 

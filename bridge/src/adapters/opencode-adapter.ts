@@ -50,7 +50,7 @@ import { BaseAgentAdapter } from './base-adapter.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { mergePlanSteps, opencodeToolBlock, opencodeToolStartBlock } from './opencode-tools.js';
 import { compactionBlock, planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
-import { reasoningValue } from './run-options.js';
+import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn } from './spawn.js';
 import {
   permissionPolicyFor,
@@ -794,7 +794,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     try {
       const models = await this.#models();
       return models.map(
-        (m) => ({ id: m.id, displayName: m.id, isDefault: def === m.id }) satisfies AgentModel,
+        (m) =>
+          ({
+            id: m.id,
+            displayName: m.id,
+            isDefault: def === m.id,
+            // Its reasoning variants, sent as the turn's `variant`; no default is
+            // named, so an untouched turn runs at the provider's own.
+            ...(m.variants ? { options: [reasoningOption(effortValues(m.variants))] } : {}),
+          }) satisfies AgentModel,
       );
     } catch {
       return [];

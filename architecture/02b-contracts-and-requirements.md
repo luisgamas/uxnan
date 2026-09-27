@@ -689,6 +689,10 @@ type AgentModelOption =
   | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }
   | { key: string; kind: 'toggle'; label: string; default?: boolean };
 // El telefono IGNORA kinds desconocidos (forward-compatible).
+// `default` es el valor con el que corre el turno si nadie elige: el bridge lo
+// ENVIA el mismo (AgentManager rellena cada knob sin elegir antes del turno), asi
+// que el predeterminado que muestra un selector es el que se usa. Sin `default`,
+// el knob queda sin enviar y aplica el propio del agente.
 ```
 
 **`AgentCapabilities`** (de `agent/list`):

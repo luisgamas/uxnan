@@ -607,8 +607,21 @@ availability/capabilities; `agent/models` lists models (`AgentModel[]` with
 `thread/setModel` repoints a thread's model mid-conversation. The id the phone
 sends back is passed verbatim to the CLI's `--model`/`-m` flag. Per-model
 **run-option knobs** (reasoning effort) are advertised in `AgentModel.options` and
-the phone renders them generically — Codex discovers them from the app-server
-`model/list` (`supportedReasoningEfforts`), Claude/pi from their own flag sets.
+both apps render them generically. Each knob carries the level the model runs at
+when nobody picks one (`default`), and **the bridge sends that default itself**
+(`AgentManager` fills every unpicked knob before the turn starts), so the level a
+picker shows as the default is the level the turn runs at, whatever the CLI's own
+configuration would choose:
+
+| Agent | Levels | Default |
+|---|---|---|
+| **Codex** | the app-server `model/list` (`supportedReasoningEfforts`) | the model's `defaultReasoningEffort` |
+| **Claude Code** | `--effort` low…max, on every model but Haiku (Claude's `initialize` lists Haiku without `supportsEffort`) | `high` — Claude decides its own at run time (remote configuration, then the model's capabilities) and no headless surface reports it, so the bridge names one and sends it |
+| **pi** | `--thinking` off…max, on models whose `thinking` column is `yes` | what pi itself would use: `settings.json` `modelThinkingLevels["provider/model"]`, then `defaultThinkingLevel`, then `medium` |
+| **Grok** | ACP `_meta.reasoningEfforts` | the entry flagged `default` |
+| **OpenCode** 2 | the model's `variants` (sent as `variant`) | none named: an untouched turn runs at the provider's own |
+| **Antigravity** | none (the tier is part of the model id) | — |
+| **Zero** | none | — |
 
 **Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
 Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`, both versions),

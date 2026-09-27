@@ -136,6 +136,7 @@ export {
   PiAdapter,
   parsePiLine,
   parsePiModelList,
+  readPiThinkingDefaults,
   parsePiUsageTokens,
   parsePiContextWindow,
   DEFAULT_PI_IDLE_TIMEOUT_MS,

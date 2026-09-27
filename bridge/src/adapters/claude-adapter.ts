@@ -49,7 +49,7 @@ import {
   type ClaudeToolUse,
 } from './claude-tools.js';
 import { warningBlock, withBlockId } from './content-blocks.js';
-import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
@@ -161,10 +161,29 @@ const CLAUDE_ALIAS_LABELS: Record<string, string> = {
  */
 const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-/** Reasoning-effort knob advertised on every Claude model. */
+/**
+ * The effort a Claude turn runs at when nobody picked one. Claude Code's own
+ * default is decided per model at run time (remote configuration, then the
+ * model's capabilities, then `high`), and no headless surface reports it —
+ * neither `system/init` nor the `initialize` / `get_status` control requests
+ * (verified on 2.1.283). So the bridge names one and sends it: the level the
+ * picker shows as the default is the level the turn runs at.
+ */
+const CLAUDE_DEFAULT_EFFORT = 'high';
+
+/** Reasoning-effort knob advertised on the Claude models that take one. */
 const CLAUDE_REASONING_OPTION: AgentModelOption = reasoningOption(
   effortValues(CLAUDE_EFFORT_LEVELS),
+  CLAUDE_DEFAULT_EFFORT,
 );
+
+/**
+ * Whether a model takes `--effort`: every one but Haiku, which Claude Code's
+ * `initialize` lists without `supportsEffort` (verified on 2.1.283).
+ */
+export function claudeTakesEffort(modelId: string): boolean {
+  return !/haiku/i.test(modelId);
+}
 
 /**
  * Headless permission posture passed to the CLI:
@@ -1123,10 +1142,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       });
     }
 
-    // Every Claude model accepts the same `--effort` levels, so advertise the
-    // reasoning knob on each.
+    // The same `--effort` levels on every model that takes one.
     return Promise.resolve(
-      withOptions([...aliasModels, ...pinnedModels], [CLAUDE_REASONING_OPTION]),
+      [...aliasModels, ...pinnedModels].map((model) =>
+        claudeTakesEffort(model.id) ? { ...model, options: [CLAUDE_REASONING_OPTION] } : model,
+      ),
     );
   }
 
