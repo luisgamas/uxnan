@@ -300,7 +300,25 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   bare `@` (or `@dir/`) lists that folder (`workspace/list`), a name searches
   the whole project (`workspace/searchFiles`, `.gitignore` honoured); a picked
   folder drills in and a picked file is inserted as its relative path.
-  **Images and files** come from **+**, a paste or a drop onto the composer.
+  **Images and files** come from **+**, a paste or a drop onto the composer —
+  from Finder / Explorer or a row of the file tree. A dropped file of the
+  conversation's project is **mentioned** instead (`@path`, as if picked from
+  `@`: the agent opens it itself); an image is attached when the agent takes
+  images, and anything from outside the project is attached like **+** does.
+  Drops go through one router, `src/lib/fileDrop.ts`: Tauri's native
+  drag-drop owns the OS gesture (HTML5 file drops never reach the WebView), so
+  the router hit-tests where the files land — the composer, a terminal pane
+  (the path is typed at its cursor), or, for an OS drop anywhere else, the
+  active terminal. The `/` and `@` panel opens above the composer while it
+  fits and below it when a new chat's mid-pane composer has more room there,
+  never taller than the room it has (`src/lib/floatingFit.ts`).
+- **The scroll rail** — the phone's, for a mouse. A faint mark per message the
+  user sent sits on the conversation's right edge (`ChatScrollRail.svelte`,
+  anchors from `src/lib/bridge/railAnchors.ts`); the message on screen has a
+  longer mark. Pointing at the strip grows the nearest mark and its two
+  neighbours and shows that message with the last paragraph of its reply; a
+  click, or ↑ ↓ then Enter once it has the focus, scrolls to it. It needs at
+  least two messages.
   Images show as thumbnails; they are scaled to 2048 px on the long edge (JPEG
   85 % when larger, as on the phone), up to 10 per message (the phone's limit —
   past it a toast says so), and go as images only to an agent that takes them

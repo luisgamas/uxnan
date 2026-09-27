@@ -178,7 +178,11 @@ class _AgentRank extends StatelessWidget {
         ),
         child: Row(
           children: [
-            AgentLogo(agent: id, size: 20, color: colors.onSurface),
+            AgentLogo(
+              agent: id,
+              size: UxnanSize.iconContent,
+              color: colors.onSurface,
+            ),
             const SizedBox(width: UxnanSpacing.md),
             Expanded(
               child: Column(
@@ -240,6 +244,7 @@ class _YearSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return Align(
@@ -254,9 +259,8 @@ class _YearSelector extends StatelessWidget {
           children: [
             IconButton(
               icon: const UxIcon(UxIcons.chevronLeft),
-              tooltip: MaterialLocalizations.of(context).previousMonthTooltip,
+              tooltip: l10n.previousYearTooltip,
               onPressed: canGoBack ? () => onChange(-1) : null,
-              visualDensity: VisualDensity.compact,
             ),
             SizedBox(
               width: 52,
@@ -268,9 +272,8 @@ class _YearSelector extends StatelessWidget {
             ),
             IconButton(
               icon: const UxIcon(UxIcons.chevronRight),
-              tooltip: MaterialLocalizations.of(context).nextMonthTooltip,
+              tooltip: l10n.nextYearTooltip,
               onPressed: canGoForward ? () => onChange(1) : null,
-              visualDensity: VisualDensity.compact,
             ),
           ],
         ),

@@ -2710,6 +2710,8 @@ export const en = {
   "chat.edit": "Edit",
   "chat.editQueued": "Edit (take it off the queue)",
   "chat.jumpToEnd": "Jump to the latest message",
+  "chat.railLabel": "Messages in this conversation",
+  "chat.railImage": "Image",
   "chat.queuePausedStopped": "The queue is paused because the agent was stopped.",
   "chat.queuePausedError": "The queue is paused because the last turn failed.",
   "chat.queueResume": "Resume",

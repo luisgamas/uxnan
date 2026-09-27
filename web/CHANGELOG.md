@@ -7,6 +7,9 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The phone's new-conversation mockup shows one folder card** — the chosen
+  project with its round unfold button — as the app now does, instead of the
+  whole project list.
 - **The desktop mockup's sidebar shows the Bridge row** the app now has under
   Search — the bridge, how many phones are connected and an *Online* badge —
   instead of the paired phone's name.

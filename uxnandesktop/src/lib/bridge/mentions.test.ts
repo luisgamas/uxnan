@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mentionEntries, MENTION_LIMIT } from './mentions';
+import { mentionEntries, mentionFor, MENTION_LIMIT } from './mentions';
 
 function fake(answers: Record<string, unknown>) {
   const calls: { method: string; params: unknown }[] = [];
@@ -61,5 +61,22 @@ describe('mentionEntries', () => {
         params: { cwd: '/work/app', query: 'src/ap', limit: MENTION_LIMIT },
       },
     ]);
+  });
+});
+
+describe('mentionFor', () => {
+  it('mentions a file inside the project by its relative path', () => {
+    expect(mentionFor('/Users/me/app', '/Users/me/app/src/main.ts')).toBe('@src/main.ts');
+    expect(mentionFor('/Users/me/app/', '/Users/me/app/README.md')).toBe('@README.md');
+  });
+
+  it('leaves anything outside the project (or the folder itself) to be attached', () => {
+    expect(mentionFor('/Users/me/app', '/Users/me/other/a.ts')).toBeNull();
+    expect(mentionFor('/Users/me/app', '/Users/me/app-old/a.ts')).toBeNull();
+    expect(mentionFor('/Users/me/app', '/Users/me/app')).toBeNull();
+  });
+
+  it('writes a Windows path with forward slashes and matches its drive case-insensitively', () => {
+    expect(mentionFor('C:\\Code\\app', 'c:\\code\\app\\src\\Main.ts')).toBe('@src/Main.ts');
   });
 });

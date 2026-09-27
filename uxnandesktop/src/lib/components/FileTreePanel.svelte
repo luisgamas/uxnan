@@ -29,7 +29,7 @@
   import { sessions } from "$lib/state/sessions.svelte";
   import { sshHostId } from "$lib/target";
   import { revealPath } from "$lib/api";
-  import { dropPathsIntoTerminal } from "$lib/terminal/terminalDrop";
+  import { dropPathsAt, hoverPathsAt } from "$lib/fileDrop";
   import { cn } from "$lib/utils";
   import { deferModalOpen } from "$lib/utils/pointerLock";
   import { field, focus, icon, iconButton, row, text } from "$lib/design";
@@ -219,10 +219,12 @@
     if (root) void revealPath(root);
   }
 
-  // --- Drag a row onto a terminal (pointer-based; Tauri suppresses HTML5 dnd) ---
+  // --- Drag a row onto a terminal or the chat composer (pointer-based; Tauri
+  // suppresses HTML5 dnd) ---
   // Mirrors the tab-drag gesture in TerminalArea: a press promotes to a drag only
-  // past a small threshold (so taps still open/expand); on release we hit-test the
-  // element under the pointer for a terminal pane and write the path to its PTY.
+  // past a small threshold (so taps still open/expand); on release `$lib/fileDrop`
+  // hands the path to what is under the pointer (a terminal types it, the
+  // composer mentions it).
   const DRAG_THRESHOLD_PX = 5;
   let fileDrag = $state<{
     entry: FsEntry;
@@ -256,6 +258,7 @@
       fileDrag.dragging = true;
       (e.currentTarget as HTMLElement).setPointerCapture(fileDrag.pointerId);
     }
+    hoverPathsAt({ x: e.clientX, y: e.clientY });
   }
   function endDrag(e: PointerEvent): boolean {
     if (!fileDrag || e.pointerId !== fileDrag.pointerId) return false;
@@ -265,7 +268,7 @@
     const { x, y } = fileDrag;
     fileDrag = null;
     if (wasDragging) {
-      dropPathsIntoTerminal([path], x, y); // no-op unless dropped on a terminal
+      dropPathsAt([path], x, y, "tree"); // a terminal or the chat composer; else a no-op
       return true; // suppress the click that follows a drag
     }
     return false;

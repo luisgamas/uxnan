@@ -9,6 +9,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
+  import { icon } from "$lib/design";
   import { formatReset } from "$lib/usageFormat";
   import type { UsageWindow } from "$lib/types";
   import type { WindowPace } from "$lib/usagePace";
@@ -46,7 +47,7 @@
   const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
   const percent = $derived(limit > 0 ? Math.min(100, Math.round((tokens / limit) * 100)) : 0);
   const tone = $derived(
-    percent >= 90 ? "text-destructive" : percent >= 75 ? "text-amber-500" : "text-muted-foreground",
+    percent >= 90 ? "text-destructive" : percent >= 75 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
   );
   const compact = (n: number) =>
     new Intl.NumberFormat(i18n.locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
@@ -75,7 +76,7 @@
           aria-hidden="true"
         ></span>
       {/if}
-      <svg viewBox="0 0 16 16" class="size-4 -rotate-90">
+      <svg viewBox="0 0 16 16" class={cn(icon.button, "-rotate-90")}>
         <circle cx="8" cy="8" r={RADIUS} fill="none" stroke="currentColor" stroke-width="2" opacity="0.2" />
         <circle
           cx="8"

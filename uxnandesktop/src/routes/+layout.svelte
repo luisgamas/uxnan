@@ -21,6 +21,7 @@
   import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { ports } from "$lib/state/ports.svelte";
   import { startControlBridge } from "$lib/control/bridge";
+  import { listenForOsDrops } from "$lib/fileDrop";
   import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { installErrorReporter } from "$lib/utils/errorReporter";
@@ -90,6 +91,15 @@
     // Answer the control surface's questions about what this window holds
     // (terminal tabs, open files, runs) — for `uxnan-cli` and the agents' tools.
     void startControlBridge();
+    // Files dropped from the OS go to whatever is under the pointer — the chat
+    // composer, a terminal — through the one router in `$lib/fileDrop`.
+    let unlistenDrops: (() => void) | null = null;
+    let unmounted = false;
+    listenForOsDrops()
+      .then((unlisten) => (unmounted ? unlisten() : (unlistenDrops = unlisten)))
+      .catch(() => {
+        // Not running inside Tauri (web preview) — no native file drop.
+      });
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);
@@ -106,6 +116,8 @@
       ),
     );
     return () => {
+      unmounted = true;
+      unlistenDrops?.();
       window.removeEventListener("focus", onFocus);
       uninstallPointerLockGuard();
       uninstallErrorReporter();

@@ -79,10 +79,16 @@ describe("meterFill", () => {
 });
 
 describe("statusMeta", () => {
-  it("maps every status to a dot + label key", () => {
-    for (const s of ["ok", "authRequired", "notInstalled", "error"] as const) {
+  it("maps every status to a StatusDot tone + label key", () => {
+    const tones = {
+      ok: "ok",
+      authRequired: "warn",
+      notInstalled: "off",
+      error: "error",
+    } as const;
+    for (const [s, tone] of Object.entries(tones) as [keyof typeof tones, string][]) {
       const m = statusMeta(s);
-      expect(m.dot).toBeTruthy();
+      expect(m.tone).toBe(tone);
       expect(m.labelKey.startsWith("providers.status")).toBe(true);
     }
   });

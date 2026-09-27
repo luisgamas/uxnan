@@ -22,6 +22,7 @@
     active = 0,
     loading = false,
     emptyLabel,
+    maxHeight,
     onpick,
     onhover,
   }: {
@@ -29,6 +30,9 @@
     active?: number;
     loading?: boolean;
     emptyLabel: string;
+    /** The tallest the list may be, when the room beside the composer is less
+     *  than the menu's own cap (`$lib/floatingFit`). */
+    maxHeight?: number;
     onpick: (item: Suggestion) => void;
     onhover?: (index: number) => void;
   } = $props();
@@ -73,7 +77,11 @@
   role="listbox"
   aria-label={i18n.t("chat.suggestionsLabel")}
 >
-  <div bind:this={list} class={overlay.menuCompactViewport}>
+  <div
+    bind:this={list}
+    class={overlay.menuCompactViewport}
+    style:max-height={maxHeight === undefined ? undefined : `${maxHeight}px`}
+  >
     {#if loading && items.length === 0}
       <div class={cn(overlay.item, "flex items-center gap-2 text-muted-foreground")}>
         <Spinner aria-label={i18n.t("common.loading")} />

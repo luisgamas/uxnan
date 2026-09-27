@@ -29,9 +29,9 @@ enum NeBadgeTone {
 /// a device card and an "online" badge in a header cannot drift into two
 /// different shapes.
 ///
-/// Type comes from `bodySmall` — one of the five styles the app's `TextTheme`
-/// actually defines; anything else falls through to Flutter's default font
-/// (see `docs/conventions.md`).
+/// Type comes from `bodySmall`, the app's small body role on its one type
+/// ladder (see `docs/conventions.md` → *Every text style comes from the one
+/// ladder*).
 class NeBadge extends StatelessWidget {
   /// Creates a [NeBadge].
   const NeBadge({

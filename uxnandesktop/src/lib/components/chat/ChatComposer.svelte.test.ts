@@ -3,13 +3,21 @@
  * the thread's earlier messages (the recall the phone and a terminal offer).
  * `/` completes the agent's commands (sent as a command), `@` the project's
  * files, and "+" attaches files for any agent (images for one that takes them).
+ * A file dropped on it is mentioned when it is the project's, attached if not.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@testing-library/svelte";
 import { mountWithProviders, until } from "../../../test/render";
 import type { AgentCommand } from "$shared/agents/agent-capabilities";
+import { dropPathsAt } from "$lib/fileDrop";
 import ChatComposer from "./ChatComposer.svelte";
+
+// jsdom lays nothing out, so it has no `elementFromPoint`; each test says
+// what is under the pointer.
+document.elementFromPoint ??= () => null;
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("ChatComposer", () => {
   it("recalls earlier messages with ↑ and walks back with ↓", async () => {
@@ -171,5 +179,24 @@ describe("ChatComposer", () => {
         attachments: [{ type: "file", name: "people.csv", mimeType: "text/csv", base64Data: "aWQKMQo=" }],
       },
     });
+  });
+
+  it("mentions a dropped file of the project and attaches one from elsewhere", async () => {
+    const read: unknown[] = [];
+    const { screen } = mountWithProviders(ChatComposer, {
+      props: { value: "look at", mentionRoot: "/repo", onsend: () => undefined },
+      commands: {
+        fs_read_attachment: (args) => {
+          read.push(args.path);
+          return { name: "notes.txt", mimeType: "text/plain", base64Data: "aGk=", bytes: 2 };
+        },
+      },
+    });
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(box);
+    expect(dropPathsAt(["/repo/src/app.ts", "/tmp/notes.txt"], 10, 10, "os")).toBe(true);
+    await until(() => box.value === "look at @src/app.ts ");
+    expect(await screen.findByText("notes.txt")).toBeTruthy();
+    expect(read).toEqual(["/tmp/notes.txt"]);
   });
 });

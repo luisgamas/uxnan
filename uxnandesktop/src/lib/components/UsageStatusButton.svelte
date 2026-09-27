@@ -5,13 +5,14 @@
   // popover). Hidden entirely when the feature is off or nothing is pinned.
   import * as Popover from "$lib/components/ui/popover";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { app } from "$lib/state/app.svelte";
   import { usage } from "$lib/state/usage.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import FreshnessHint from "./FreshnessHint.svelte";
   import { cn } from "$lib/utils";
-  import { icon as iconSize, overlay, shell, text } from "$lib/design";
+  import { divider, icon as iconSize, overlay, shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { usageProvider } from "$lib/usageCatalog";
   import { formatCredit } from "$lib/usageFormat";
@@ -144,7 +145,7 @@
     >
       <div class="flex items-start justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div class="min-w-0 space-y-0.5">
-          <div class="text-sm font-medium leading-tight text-foreground">{i18n.t("providers.usageTitle")}</div>
+          <div class={cn(text.subheading, "leading-tight text-foreground")}>{i18n.t("providers.usageTitle")}</div>
           <div class={text.meta}>{i18n.t("providers.usedCaption")}</div>
         </div>
         <span class="flex items-center gap-0.5">
@@ -164,7 +165,11 @@
                 aria-label={i18n.t("providers.refreshNow")}
                 onclick={() => void usage.refresh()}
               >
-                <Icon icon={RefreshCwIcon} class={cn("size-3.5", usage.loading && "animate-spin")} />
+                {#if usage.loading}
+                  <Spinner class={iconSize.action} />
+                {:else}
+                  <Icon icon={RefreshCwIcon} class={iconSize.action} />
+                {/if}
               </Button>
             {/snippet}
           </TooltipSimple>
@@ -179,11 +184,11 @@
           <div class="flex flex-col gap-1.5 py-2.5">
             <div class={overlay.dataRow}>
               <span class="flex min-w-0 items-center gap-1.5">
-                <AgentLogo logo={meta?.logo ?? config.provider} class="size-3.5 shrink-0" />
+                <AgentLogo logo={meta?.logo ?? config.provider} class={cn(iconSize.decorative, "shrink-0")} />
                 <span class={cn("min-w-0 truncate text-foreground", text.body)}>{meta?.name ?? config.provider}</span>
               </span>
               {#if config.statusBar.showPlan && snap?.account?.plan}
-                <span class="min-w-0 max-w-[40%] truncate whitespace-nowrap text-right text-[11px] text-muted-foreground">{snap.account.plan}</span>
+                <span class={cn("min-w-0 max-w-[40%] truncate whitespace-nowrap text-right text-muted-foreground", text.indicator)}>{snap.account.plan}</span>
               {/if}
             </div>
             {#if windows.length > 0}
@@ -194,7 +199,7 @@
               <span class={text.meta}>{i18n.t("providers.noData")}</span>
             {/if}
             {#if config.statusBar.showCredit && snap?.credit}
-              <span class="font-mono text-[11px] text-muted-foreground">
+              <span class={cn("font-mono text-muted-foreground", text.indicator)}>
                 {#if snap.credit.limit == null && snap.credit.available != null}
                   {formatCredit(snap.credit.available, snap.credit.currency)}&nbsp;{i18n.t("providers.available")}
                 {:else}
@@ -204,7 +209,7 @@
               </span>
             {/if}
             {#if config.statusBar.showResetCredits && snap?.resetCredits}
-              <span class="text-[11px] text-muted-foreground">
+              <span class={cn("text-muted-foreground", text.indicator)}>
                 {i18n.t("providers.resets")}: {i18n.t("providers.resetsCount", { count: snap.resetCredits.available })}
               </span>
             {/if}
@@ -212,18 +217,25 @@
         {/each}
       </div>
 
-      <button
-        type="button"
-        class="flex w-full items-center gap-1.5 border-t border-border/60 px-3 py-2 text-muted-foreground hover:text-foreground {text.meta}"
+      <Button
+        variant="ghost"
+        class={cn(
+          // Full-bleed band at the popover's foot: its top hairline replaces
+          // the button's own border, and only its bottom corners follow the
+          // popover's radius so the hover fill stays inside the surface.
+          "h-auto w-full justify-start gap-1.5 rounded-t-none border-0 px-3 py-2 font-normal",
+          divider.top,
+          text.meta,
+        )}
         onclick={() => {
           closeReason = "navigation";
           open = false;
           app.openSettings("providers");
         }}
       >
-        <Icon icon={SettingsIcon} class="size-3.5" />
+        <Icon icon={SettingsIcon} class={iconSize.decorative} />
         {i18n.t("providers.manage")}
-      </button>
+      </Button>
     </Popover.Content>
   </Popover.Root>
 {/if}

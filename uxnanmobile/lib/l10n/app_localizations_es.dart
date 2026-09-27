@@ -494,6 +494,29 @@ class AppLocalizationsEs extends AppLocalizations {
   String get profilePickIcon => 'O elige un icono';
 
   @override
+  String profileAvatarIconLabel(String icon) {
+    String _temp0 = intl.Intl.selectLogic(
+      icon,
+      {
+        'person': 'Persona',
+        'face': 'Cara',
+        'astro': 'Cohete',
+        'bolt': 'Rayo',
+        'star': 'Estrella',
+        'robot': 'Robot',
+        'code': 'Código',
+        'terminal': 'Terminal',
+        'pets': 'Mascota',
+        'bug': 'Bicho',
+        'memory': 'Chip',
+        'public': 'Globo',
+        'other': 'Icono',
+      },
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get profileAgentConversationsLabel => 'conversaciones';
 
   @override
@@ -561,6 +584,12 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get profileAgentScopeAll => 'Histórico';
+
+  @override
+  String get previousYearTooltip => 'Año anterior';
+
+  @override
+  String get nextYearTooltip => 'Año siguiente';
 
   @override
   String get usageNotSignedIn => 'Sin sesión';
@@ -1224,6 +1253,12 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get newThreadWorkingDir => 'Directorio de trabajo';
+
+  @override
+  String get newThreadChangeProject => 'Elegir otra carpeta';
+
+  @override
+  String get newThreadHideProjects => 'Ocultar las otras carpetas';
 
   @override
   String get newThreadAddProject => 'Agregar un proyecto';
