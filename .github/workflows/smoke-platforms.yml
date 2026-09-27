@@ -27,7 +27,7 @@ on:
         required: false
         default: ""
       desktop_tag:
-        description: "Desktop release tag to install (empty: the latest stable)"
+        description: "Desktop release tag to install, 'branch' (built from this ref), or empty for the latest stable"
         required: false
         default: ""
 
@@ -81,7 +81,7 @@ jobs:
         if: steps.v.outputs.from == '0.0.0-smoke'
         run: |
           npm ci --no-audit --no-fund
-          npm run build -w @uxnan/shared -w uxnan-bridge
+          npm run build -w @uxnan/shared -w uxnan-relay -w uxnan-bridge
           cd bridge
           npm pkg set version=0.0.0-smoke
           npm pack --pack-destination "$RUNNER_TEMP"
@@ -150,7 +150,7 @@ jobs:
   desktop-capture:
     name: desktop capture (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -171,12 +171,46 @@ jobs:
         id: tag
         run: |
           tag="${{ github.event.inputs.desktop_tag }}"
+          [ "${{ github.event_name }}" = "push" ] && tag=branch
           [ -n "$tag" ] || tag=$(gh release view --json tagName --jq .tagName)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "installing $tag"
 
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.tag.outputs.tag == 'branch'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.tag.outputs.tag == 'branch'
+        with:
+          workspaces: uxnandesktop/src-tauri
+
+      # `tauri build --no-bundle`: a release binary with its frontend embedded,
+      # the same one the E2E layer drives.
+      - name: Build this checkout's app
+        if: steps.tag.outputs.tag == 'branch'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 > /dev/null
+          fi
+          cd uxnandesktop
+          npm ci --no-audit --no-fund
+          npm run bench:build
+          bin=$(ls src-tauri/target/release/uxnan-desktop src-tauri/target/release/uxnan-desktop.exe 2>/dev/null | head -1)
+          echo "APP_BIN=$PWD/$bin" >> "$GITHUB_ENV"
+          echo "built $bin"
+
+      - name: Start the built app
+        if: steps.tag.outputs.tag == 'branch'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            nohup xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- "$APP_BIN" > app.log 2>&1 &
+          else
+            nohup "$APP_BIN" > app.log 2>&1 &
+          fi
+
       - name: Install and start the app (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.tag.outputs.tag != 'branch'
         run: |
           gh release download "${{ steps.tag.outputs.tag }}" -p '*_amd64.deb' -D pkg
           sudo apt-get update -qq
@@ -186,7 +220,7 @@ jobs:
           nohup xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- "$bin" > app.log 2>&1 &
 
       - name: Install and start the app (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.tag.outputs.tag != 'branch'
         shell: pwsh
         run: |
           gh release download "${{ steps.tag.outputs.tag }}" -p '*_x64-setup.exe' -D pkg
