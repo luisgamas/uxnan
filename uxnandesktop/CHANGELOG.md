@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.62] - 20260927
 ### Added
 
 - **A message shows the images sent with it.** The bubble of a sent message
