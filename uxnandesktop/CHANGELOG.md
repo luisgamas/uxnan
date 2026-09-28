@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.66] - 20260928
 ### Changed
 
 - **The welcome tour teaches the terminal ⇄ chat hand-off.** Its *Terminal or
