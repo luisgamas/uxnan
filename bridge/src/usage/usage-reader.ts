@@ -28,6 +28,7 @@ import {
   type CodexUsageAnswer,
 } from './cli-usage.js';
 import type {
+  AccountType,
   CreditBalance,
   ProviderUsage,
   UsageProvider,
@@ -123,6 +124,7 @@ async function readCodex(deps: ResolvedDeps): Promise<ProviderUsage> {
   const account = makeAccount({
     email: str(signedIn?.email),
     plan: plan ? prettifyPlan(plan) : undefined,
+    accountType: plan ? classifyPlan(plan) : undefined,
   });
   if (!signedIn) {
     return withMessage(base('codex', 'authRequired', now), 'Codex is not signed in on this PC');
@@ -206,6 +208,7 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
     email: str(identity?.email),
     organization: str(identity?.organization),
     plan: plan ? prettifyPlan(plan) : undefined,
+    accountType: plan ? classifyPlan(plan) : undefined,
   });
   const usage = answer.usage;
   if (!usage) {
@@ -323,7 +326,11 @@ async function readCopilot(deps: ResolvedDeps): Promise<ProviderUsage> {
 
   const plan = str(body.copilot_plan);
   const login = await githubLogin(token, deps);
-  const account = makeAccount({ email: login, plan: plan ? prettifyPlan(plan) : undefined });
+  const account = makeAccount({
+    email: login,
+    plan: plan ? prettifyPlan(plan) : undefined,
+    accountType: plan ? classifyPlan(plan) : undefined,
+  });
   const reset = epochMs(body.quota_reset_date);
 
   const windows: UsageWindow[] = [];
@@ -363,6 +370,12 @@ async function githubLogin(token: string, deps: ResolvedDeps): Promise<string | 
 
 // ── Grok ─────────────────────────────────────────────────────────────────────
 
+/** Grok's CLI API: `/billing?format=credits` and `/user?include=subscription`. */
+const GROK_API = 'https://cli-chat-proxy.grok.com/v1';
+
+/** The plan is a label: never let its request hold the whole read up. */
+const GROK_USER_TIMEOUT_MS = 5_000;
+
 async function readGrok(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();
   const auth = await readJson(join(deps.homeDir, '.grok', 'auth.json'), deps);
@@ -391,14 +404,23 @@ async function readGrok(deps: ResolvedDeps): Promise<ProviderUsage> {
     );
   }
   const account = makeAccount({ email });
+  const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
 
-  const res = await fetchJson(
-    {
-      url: 'https://cli-chat-proxy.grok.com/v1/billing?format=credits',
-      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-    },
-    deps,
-  );
+  // The billing answer carries the quota window and the money; the plan is not
+  // in it — the Grok CLI takes its tier from the signed-in user, so the bridge
+  // asks that too (same host, same credential, a short timeout: a failure only
+  // costs the plan label).
+  const [res, user] = await Promise.all([
+    fetchJson({ url: `${GROK_API}/billing?format=credits`, headers }, deps),
+    fetchJson(
+      {
+        url: `${GROK_API}/user?include=subscription`,
+        headers,
+        timeoutMs: Math.min(GROK_USER_TIMEOUT_MS, deps.timeoutMs),
+      },
+      deps,
+    ),
+  ]);
   if (!res.ok) {
     if (res.unauthorized) {
       return withAccount(
@@ -414,14 +436,17 @@ async function readGrok(deps: ResolvedDeps): Promise<ProviderUsage> {
   const body = asObj(res.body) ?? {};
   const config = asObj(body.config) ?? body;
 
-  const plan = str(config.subscriptionTier ?? config.subscription_tier);
-  const withPlan = makeAccount({ email, plan: plan ? prettifyPlan(plan) : undefined });
+  const plan = user.ok ? grokPlan(asObj(user.body)) : undefined;
+  const credit = grokCredit(config);
+  // No plan but money on the account: it is billed by use.
+  const accountType = plan ? classifyPlan(plan) : credit ? 'payAsYouGo' : undefined;
+  const withPlan = makeAccount({ email, plan, accountType });
 
   const windows: UsageWindow[] = [];
   const pct = num(config.creditUsagePercent ?? config.credit_usage_percent);
   if (pct !== undefined) {
     const period = asObj(config.currentPeriod);
-    const periodType = str(period?.type);
+    const periodType = grokPeriodType(str(period?.type));
     const resetsAt = epochMs(period?.end) ?? epochMs(config.billingPeriodEnd);
     windows.push({
       id: 'credits',
@@ -431,18 +456,84 @@ async function readGrok(deps: ResolvedDeps): Promise<ProviderUsage> {
       ...spreadResets(resetsAt),
     });
   }
-  return finish('grok', now, windows, withPlan, undefined, {
+  return finish('grok', now, windows, withPlan, credit, {
     empty: 'signed in, but the Grok billing API returned no quota window',
   });
 }
 
+/**
+ * The plan from `GET /user?include=subscription`: its `subscriptionTier`, or
+ * `Free` when the tier is `null` on a personal account — what the Grok CLI
+ * itself calls such an account. A team or organization member with no tier of
+ * their own is billed by that team, so no plan is claimed for them.
+ */
+function grokPlan(user: Record<string, unknown> | undefined): string | undefined {
+  if (!user) return undefined;
+  const tier = str(user.subscriptionTier ?? user.subscription_tier);
+  if (tier) return GROK_TIER_LABELS[tier.toLowerCase()] ?? prettifyPlan(tier);
+  const personal = user.subscriptionTier === null && !user.teamId && !user.organizationId;
+  return personal ? 'Free' : undefined;
+}
+
+/** How xAI writes its own tiers; anything else is prettified as it comes. */
+const GROK_TIER_LABELS: Record<string, string> = {
+  supergrok: 'SuperGrok',
+  supergrok_lite: 'SuperGrok Lite',
+  supergrok_plus: 'SuperGrok Plus',
+  supergrok_heavy: 'SuperGrok Heavy',
+  x_premium: 'X Premium',
+  x_premium_plus: 'X Premium+',
+};
+
+/**
+ * The money Grok reports, as a `CreditBalance` in USD. Its billing answer
+ * wraps each amount as `{val}`: `onDemandUsed` of an `onDemandCap` (pay as you
+ * go, for the billing period) and a `prepaidBalance`. The zero rule is the one
+ * every provider follows — a balance is shown once the account has one
+ * (Claude's extra usage once it is enabled, Codex's credits once it has them):
+ * on-demand when a cap is set or anything was spent, else a prepaid balance
+ * above zero, else nothing. A free account answers all three as 0 and shows no
+ * credit. When both exist, on-demand is shown: it is what the account is
+ * spending now, and the contract carries one balance.
+ */
+function grokCredit(config: Record<string, unknown>): CreditBalance | undefined {
+  const used = grokMoney(config.onDemandUsed ?? config.on_demand_used) ?? 0;
+  const cap = grokMoney(config.onDemandCap ?? config.on_demand_cap) ?? 0;
+  if (used > 0 || cap > 0) {
+    const resetsAt = epochMs(config.billingPeriodEnd);
+    return {
+      used,
+      currency: 'USD',
+      period: 'On-demand',
+      ...(cap > 0 ? { limit: cap, available: Math.max(0, cap - used) } : {}),
+      ...spreadResets(resetsAt),
+    };
+  }
+  const prepaid = grokMoney(config.prepaidBalance ?? config.prepaid_balance) ?? 0;
+  if (prepaid > 0) {
+    return { used: 0, available: prepaid, currency: 'USD', period: 'Prepaid' };
+  }
+  return undefined;
+}
+
+/** An amount as Grok sends it: `{val}` (also a bare number, `{value}`, `{amount}`). */
+function grokMoney(value: unknown): number | undefined {
+  const wrapped = asObj(value);
+  return wrapped ? num(wrapped.val ?? wrapped.value ?? wrapped.amount) : num(value);
+}
+
+/** `USAGE_PERIOD_TYPE_WEEKLY` and `WEEKLY` name the same period. */
+function grokPeriodType(period: string | undefined): string | undefined {
+  return period?.replace(/^USAGE_PERIOD_TYPE_/, '');
+}
+
 function grokPeriodLabel(period: string | undefined): string {
   switch (period) {
-    case 'USAGE_PERIOD_TYPE_DAILY':
+    case 'DAILY':
       return 'Daily';
-    case 'USAGE_PERIOD_TYPE_WEEKLY':
+    case 'WEEKLY':
       return 'Weekly';
-    case 'USAGE_PERIOD_TYPE_MONTHLY':
+    case 'MONTHLY':
       return 'Monthly';
     default:
       return 'Usage';
@@ -451,11 +542,11 @@ function grokPeriodLabel(period: string | undefined): string {
 
 function grokPeriodMinutes(period: string | undefined): number | undefined {
   switch (period) {
-    case 'USAGE_PERIOD_TYPE_DAILY':
+    case 'DAILY':
       return 1440;
-    case 'USAGE_PERIOD_TYPE_WEEKLY':
+    case 'WEEKLY':
       return 10_080;
-    case 'USAGE_PERIOD_TYPE_MONTHLY':
+    case 'MONTHLY':
       return 43_200;
     default:
       return undefined;
@@ -469,11 +560,18 @@ type HttpResult =
   | { ok: false; unauthorized: boolean; message: string };
 
 async function fetchJson(
-  req: { url: string; method?: string; headers: Record<string, string>; body?: string },
+  req: {
+    url: string;
+    method?: string;
+    headers: Record<string, string>;
+    body?: string;
+    /** This request's own timeout, when shorter than the reader's. */
+    timeoutMs?: number;
+  },
   deps: ResolvedDeps,
 ): Promise<HttpResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), req.timeoutMs ?? deps.timeoutMs);
   try {
     const res = await deps.fetchImpl(req.url, {
       method: req.method ?? 'GET',
@@ -582,12 +680,30 @@ function makeAccount(fields: {
   email?: string;
   organization?: string;
   plan?: string;
+  accountType?: AccountType;
 }): ProviderUsage['account'] {
-  const account: { email?: string; organization?: string; plan?: string } = {};
+  const account: NonNullable<ProviderUsage['account']> = {};
   if (fields.email) account.email = fields.email;
   if (fields.organization) account.organization = fields.organization;
   if (fields.plan) account.plan = fields.plan;
-  return account.email || account.organization || account.plan ? account : undefined;
+  if (fields.accountType) account.accountType = fields.accountType;
+  return account.email || account.organization || account.plan || account.accountType
+    ? account
+    : undefined;
+}
+
+/**
+ * What kind of account a provider's plan slug names, by keyword: enterprise,
+ * team (or business), free, and otherwise a paid subscription — the common
+ * case for a CLI signed in with a personal plan. The same rule the desktop's
+ * reader used before usage moved to the bridge.
+ */
+export function classifyPlan(slug: string): AccountType {
+  const s = slug.toLowerCase();
+  if (s.includes('enterprise')) return 'enterprise';
+  if (s.includes('team') || s.includes('business')) return 'team';
+  if (s.includes('free')) return 'free';
+  return 'subscription';
 }
 
 function labelForMinutes(minutes: number | undefined): string {

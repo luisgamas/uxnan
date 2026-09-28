@@ -2276,6 +2276,13 @@ proveedores que el usuario **activo** (nunca de todos). Postura:
 - **Copilot y Grok** no tienen esa superficie: solo se lee el token que cada CLI
   guardo (`gh auth token`, `~/.grok/auth.json`) y se llama a la API oficial de uso
   del proveedor. Nunca cookies del navegador, API keys pegadas ni refresh tokens.
+  - Grok: `cli-chat-proxy.grok.com/v1/billing?format=credits` gives the
+    `creditUsagePercent` window (when the account has one) and the `{val}` USD
+    amounts → `credit`: on-demand spend of its cap once a cap is set or anything
+    was spent, else a prepaid balance above zero, else none (a free account's
+    are all 0). The plan comes from `/v1/user?include=subscription`
+    (`subscriptionTier`; `null` on a personal account reads `Free`), the call
+    the Grok CLI itself takes it from; its failure only drops the plan.
 - Cada proveedor degrada a un `status` (`ok`/`authRequired`/`notInstalled`/`error`);
   uno lento o roto no tumba a los demas.
 - **`usage/redeemReset { provider, idempotencyKey, creditId? }`** canjea un reinicio
