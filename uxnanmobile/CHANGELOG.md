@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.31-alpha.20260928+20260933] - 20260928
 ### Changed
 
 - **Onboarding says what the phone is now.** The welcome page says the phone

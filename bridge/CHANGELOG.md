@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.37-alpha.20260928] - 20260928
 ### Fixed
 
 - **OpenCode no longer shows "context compacted" on a brand-new conversation.**
