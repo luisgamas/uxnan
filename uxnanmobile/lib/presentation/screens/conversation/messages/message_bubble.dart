@@ -35,9 +35,20 @@ const double _sentThumbSize = 72;
 ///
 /// Dropping the bubble for agent output matches the design references and makes
 /// the whole answer one clean selectable surface instead of many fragments.
+///
+/// A message that reached the agent while it was still answering (steering)
+/// reads as such from both sides: the reply it interrupted ends with a
+/// "continues below" line ([Message.continuedIn]) — it is the answer so far,
+/// not a closing one — and the user's message says it reached the agent while
+/// it worked ([steered]).
 class MessageBubble extends StatelessWidget {
   /// Creates a [MessageBubble].
-  const MessageBubble({required this.message, this.onTapLink, super.key});
+  const MessageBubble({
+    required this.message,
+    this.onTapLink,
+    this.steered = false,
+    super.key,
+  });
 
   /// The message to render.
   final Message message;
@@ -45,10 +56,22 @@ class MessageBubble extends StatelessWidget {
   /// Handles links rendered in assistant prose.
   final ValueChanged<String>? onTapLink;
 
+  /// Whether this user message reached the agent while it was answering an
+  /// earlier one: some turn's [Message.continuedIn] names this message's turn.
+  /// Ignored for other roles.
+  final bool steered;
+
   @override
   Widget build(BuildContext context) {
     return switch (message.role) {
-      MessageRole.user => _UserBubble(message: message),
+      MessageRole.user => _UserBubble(message: message, steered: steered),
+      MessageRole.assistant when message.continuedIn != null => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AssistantTurnView(message: message, onTapLink: onTapLink),
+            const _ContinuesBelowNote(),
+          ],
+        ),
       MessageRole.assistant => AssistantTurnView(
           message: message,
           onTapLink: onTapLink,
@@ -69,17 +92,24 @@ class MessageBubble extends StatelessWidget {
 /// when there are several — instead of blowing the bubble open from the inside.
 /// Tapping one opens it full size.
 ///
-/// Two delivery states change how it reads:
-/// - **queued** — sent while the agent was busy and still waiting its turn. It
-///   is drawn as a muted "ghost" with a cancel button in its corner, and says
-///   where it sits in line. When the queue reaches it the bubble settles into
-///   its normal tone, so the queue is seen moving rather than just reported.
+/// Its state changes how it reads:
+/// - **queued** — sent while the agent was busy and still waiting its turn. The
+///   timeline pins it below the conversation, in queue order, for as long as
+///   it waits. It keeps the user's own tone and its whole text; only a dashed
+///   outline says "not handed over yet". Its top-right corner carries **send
+///   now** (when the agent can take it now), **edit** and **cancel**, and a
+///   line under it says where it sits in line. When the queue reaches it the
+///   dashes and the actions fade and it drops into place where it was
+///   delivered, so the queue is seen moving rather than just reported.
 /// - **cancelled** — taken off the queue before the agent saw it. The bubble
 ///   returns to normal with a warning-toned note under it: the message is part
 ///   of the record even though it was never sent.
+/// - **steered** — it reached the agent while it was still answering the
+///   previous message, which was cut there. A note under it says so.
 class _UserBubble extends ConsumerStatefulWidget {
-  const _UserBubble({required this.message});
+  const _UserBubble({required this.message, required this.steered});
   final Message message;
+  final bool steered;
 
   @override
   ConsumerState<_UserBubble> createState() => _UserBubbleState();
@@ -125,21 +155,34 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
       ..showSnackBar(SnackBar(content: Text(l10n.conversationMessageCopied)));
   }
 
-  /// **Edit** — withdraws the message from the queue and puts its text back in
-  /// the composer to be rewritten. It leaves no trace in the timeline: the
-  /// message is about to be re-typed, so a husk beside it would be noise.
+  /// **Edit** — withdraws the message from the queue and puts it back in the
+  /// composer to be rewritten: its text and its images and files. It leaves no
+  /// trace in the timeline: the message is about to be re-typed, so a husk
+  /// beside it would be noise.
   Future<void> _editQueued() async {
     if (_busy) return;
     setState(() => _busy = true);
-    // No snackbar on the way out: it would cover the composer at exactly the
+    // Read before the await: a successful edit removes this bubble.
+    final messenger = ScaffoldMessenger.of(context);
+    final failedText = AppLocalizations.of(context).queuedMessageRecoverFailed;
+    // No snackbar on success: it would cover the composer at exactly the
     // moment the user is meant to look at it, hiding the very text the action
     // just put there. The text appearing in the pill IS the confirmation, and
     // the Drafts pill appearing says the old draft was kept.
-    await ref.read(composerHandoffsProvider.notifier).edit(
+    final outcome = await ref.read(composerHandoffsProvider.notifier).edit(
           threadId: widget.message.threadId,
           turnId: widget.message.turnId,
           text: _text,
+          images: _images,
+          files: _files,
         );
+    if (outcome == RecoverOutcome.failed) {
+      // Nothing visibly happened, so the refusal needs saying: the message is
+      // still queued and nothing moved to the composer.
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(failedText)));
+    }
     // The bubble is gone on success, so guard before touching state.
     if (mounted) setState(() => _busy = false);
   }
@@ -179,10 +222,19 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
   Future<void> _cancelQueued() async {
     if (_busy) return;
     setState(() => _busy = true);
-    await ref.read(threadManagerProvider).cancelQueuedTurn(
+    final messenger = ScaffoldMessenger.of(context);
+    final failedText = AppLocalizations.of(context).queuedMessageCancelFailed;
+    final cancelled = await ref.read(threadManagerProvider).cancelQueuedTurn(
           widget.message.threadId,
           widget.message.turnId,
         );
+    if (!cancelled) {
+      // The message is still queued and will run: say so, or the tap looks
+      // like it did nothing.
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(failedText)));
+    }
     if (mounted) setState(() => _busy = false);
   }
 
@@ -291,10 +343,19 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                     padding: EdgeInsets.fromLTRB(
                       UxnanSpacing.md,
                       UxnanSpacing.sm,
-                      // Room for the edit + cancel pair so neither ever sits
-                      // on the text (2 × 28 dp + the gap between and after).
-                      queued ? _queuedActionsWidth : UxnanSpacing.md,
+                      // Room for every corner action shown (send now, edit,
+                      // cancel), so none of them ever sits on the text.
+                      queued
+                          ? _queuedActionsWidth(canSendNow ? 3 : 2)
+                          : UxnanSpacing.md,
                       UxnanSpacing.sm,
+                    ),
+                    // Never shorter than the corner actions plus their inset
+                    // (they sit [UxnanSpacing.xs] inside the top edge), so a
+                    // small text scale cannot push them past the bottom edge.
+                    constraints: BoxConstraints(
+                      minHeight:
+                          queued ? _queuedActionSize + UxnanSpacing.xs * 2 : 0,
                     ),
                     decoration: ShapeDecoration(
                       color: colors.primaryContainer,
@@ -380,7 +441,9 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
               ? _QueuedMessageNote(message: message)
               : cancelled
                   ? const _CancelledMessageNote()
-                  : const SizedBox.shrink(),
+                  : widget.steered
+                      ? const _SteeredMessageNote()
+                      : const SizedBox.shrink(),
         ),
         if (!queued && _showCopy && _text.isNotEmpty)
           _CopyMessageAction(onCopy: _copy),
@@ -389,7 +452,6 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
   }
 }
 
-/// Diameter of a queued bubble's corner action.
 /// The user bubble's shape, shared by its fill and its queued dashed outline so
 /// the dashes trace the bubble exactly.
 const BorderRadius _bubbleRadius = BorderRadius.only(
@@ -399,16 +461,20 @@ const BorderRadius _bubbleRadius = BorderRadius.only(
   bottomRight: Radius.circular(4),
 );
 
+/// Diameter of a queued bubble's corner action.
 const double _queuedActionSize = 28;
 
-/// Horizontal room the pair of corner actions needs inside the bubble, so the
-/// preview text is padded away from them rather than running underneath.
-const double _queuedActionsWidth =
-    _queuedActionSize * 2 + UxnanSpacing.xs + UxnanSpacing.sm * 2;
+/// Horizontal room [count] corner actions need inside the bubble — the buttons,
+/// the gaps between them, their inset from the edge and a gap before the text —
+/// so the text is padded away from them rather than running underneath.
+double _queuedActionsWidth(int count) =>
+    _queuedActionSize * count +
+    UxnanSpacing.xs * (count - 1) +
+    UxnanSpacing.sm * 2;
 
-/// One of a queued bubble's corner actions (edit / cancel). Both share the
-/// shape so the pair reads as a single control group; the busy state is shown
-/// on whichever was tapped, and disables both.
+/// One of a queued bubble's corner actions (send now / edit / cancel). They
+/// share the shape so the row reads as a single control group; the busy state
+/// is shown on every one, and disables them all.
 class _QueuedActionButton extends StatelessWidget {
   const _QueuedActionButton({
     required this.icon,
@@ -530,6 +596,88 @@ class _CancelledMessageNote extends StatelessWidget {
   }
 }
 
+/// Marks a user message that reached the agent while it was still answering
+/// the previous one: the agent took it into its running answer instead of
+/// waiting for the end (steering).
+class _SteeredMessageNote extends StatelessWidget {
+  const _SteeredMessageNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return _MessageNote(
+      key: const ValueKey('steered-note'),
+      icon: UxIcons.bolt,
+      label: l10n.steeredMessage,
+      alignment: MainAxisAlignment.end,
+    );
+  }
+}
+
+/// Closes a reply the user's next message interrupted: what it says is the
+/// answer so far, and the agent went on answering below that message.
+class _ContinuesBelowNote extends StatelessWidget {
+  const _ContinuesBelowNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return _MessageNote(
+      key: const ValueKey('continues-below-note'),
+      icon: UxIcons.arrowDownward,
+      label: l10n.turnContinuesBelow,
+      alignment: MainAxisAlignment.start,
+    );
+  }
+}
+
+/// A muted status line under a message: a small glyph and a label, in the
+/// same tone and size as the queued and cancelled notes.
+class _MessageNote extends StatelessWidget {
+  const _MessageNote({
+    required this.icon,
+    required this.label,
+    required this.alignment,
+    super.key,
+  });
+
+  final UxIconData icon;
+  final String label;
+
+  /// `end` under a user bubble (right-aligned), `start` under a reply.
+  final MainAxisAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final end = alignment == MainAxisAlignment.end;
+    return Padding(
+      padding: EdgeInsets.only(
+        // Under a reply, in line with the glyph of its "Copy response".
+        left: end ? 0 : UxnanSpacing.sm,
+        right: end ? UxnanSpacing.xs : 0,
+        bottom: UxnanSpacing.xs,
+      ),
+      child: Row(
+        mainAxisAlignment: alignment,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          UxIcon(icon, size: 13, color: colors.onSurfaceVariant),
+          const SizedBox(width: UxnanSpacing.xs),
+          Flexible(
+            child: Text(
+              label,
+              style:
+                  textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// User-message content with a responsive text preview. Only textual content
 /// is clipped; the remaining blocks stay fully visible (images are lifted out
 /// of the bubble by [_UserBubble]). The full source stays mounted and is always
@@ -551,7 +699,7 @@ class _UserMessageBody extends StatelessWidget {
   final String text;
 
   /// The bubble's own background — the clipped-preview gradient fades into it,
-  /// so a ghost bubble must not fade into the normal bubble's tone.
+  /// so it must be the tone the bubble is actually drawn in.
   final Color surface;
 
   /// Foreground used by the bubble's own controls (show more / show less).

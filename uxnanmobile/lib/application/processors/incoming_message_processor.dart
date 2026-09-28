@@ -46,6 +46,7 @@ class IncomingMessageProcessor {
           text: params['text'] is String ? params['text'] as String : null,
           tokens: _usageInt(params['usage'], 'tokens'),
           contextWindow: _usageInt(params['usage'], 'contextWindow'),
+          continuedIn: _nonEmptyString(params['continuedIn']),
         ),
       'stream/turn/error' => TurnErrorEvent(
           turnId: turnId,
@@ -232,6 +233,10 @@ class IncomingMessageProcessor {
     final value = usage[key];
     return value is int ? value : (value is num ? value.toInt() : null);
   }
+
+  /// A wire id field, or null when it is absent, empty or not a string.
+  static String? _nonEmptyString(Object? value) =>
+      value is String && value.isNotEmpty ? value : null;
 
   static GitActionPhaseStatus _phaseStatus(String? name) {
     for (final value in GitActionPhaseStatus.values) {

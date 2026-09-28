@@ -8,7 +8,16 @@
   import { chat } from "$lib/design";
   import { cn } from "$lib/utils";
 
-  let { text, class: className }: { text: string; class?: string } = $props();
+  let {
+    text,
+    queued = false,
+    class: className,
+  }: {
+    text: string;
+    /** Waiting in the queue: the same bubble, outlined instead of filled. */
+    queued?: boolean;
+    class?: string;
+  } = $props();
 
   /** Lines a long message shows folded (20 px each, `leading-5`). */
   const FOLDED_LINES = 10;
@@ -41,7 +50,7 @@
     bind:this={body}
     data-folded={folded ? "" : undefined}
     class={cn(
-      chat.userBubble,
+      queued ? chat.queuedBubble : chat.userBubble,
       "relative max-w-full overflow-hidden",
       folded && "[mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
     )}

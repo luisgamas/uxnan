@@ -121,6 +121,7 @@ class TurnCompletedEvent extends DomainEvent {
     this.text,
     this.tokens,
     this.contextWindow,
+    this.continuedIn,
   });
 
   /// The completed turn.
@@ -142,8 +143,14 @@ class TurnCompletedEvent extends DomainEvent {
   /// The model's context window, when known (Claude tiers); null otherwise.
   final int? contextWindow;
 
+  /// The turn the agent's run went on in (`TurnCompletedParams.continuedIn`):
+  /// this turn ended because a message reached the agent mid-answer, not
+  /// because the agent was done. That turn's `turn/started` follows at once.
+  final String? continuedIn;
+
   @override
-  List<Object?> get props => [turnId, threadId, text, tokens, contextWindow];
+  List<Object?> get props =>
+      [turnId, threadId, text, tokens, contextWindow, continuedIn];
 }
 
 /// A turn ended in an error.

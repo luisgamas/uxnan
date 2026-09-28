@@ -280,6 +280,13 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (another tab, another chat) opens it where you left it; one left at its end,
   or not read yet, opens at the end (`src/lib/bridge/readingPosition.ts`,
   in memory — a restart opens every conversation at its end, as on the phone).
+  The place is settled whenever the timeline changes size
+  (`src/lib/components/chat/chatScroll.ts`): a chat tab or workspace that is
+  not on screen is hidden and has no height, so one that loaded there reaches
+  its end — or its kept place — the moment it is shown, and a reply streaming
+  in or an image loading late keeps a reader at the end there. Scrolling up
+  stops following; scrolling back to the end, sending, or the jump-to-end
+  button resumes it.
 - **Messages**: a long message you sent folds to its first ten lines under a
   fade, with *Show more* / *Show less* (copying always takes the whole text).
   Hovering one shows when it was sent and a copy button. The
@@ -295,13 +302,23 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   settles here too; one from a turn that already ended never offers its buttons
   again.
 - **Queue**: a message sent while the agent works is queued behind the running
-  turn (or handed to it, on agents that take input mid-turn); queued messages
-  are listed in the dock, each with **Send now** (`queue/sendNow`: into the
-  running turn on an agent that takes input mid-turn, or — nothing running —
-  as the next turn at once; offered only when one of the two can happen),
-  **Edit** (takes it off the queue and puts it back in the composer — only
-  once the bridge confirms) and cancel. A
-  stopped or failed turn pauses the queue: *Resume* or *Discard*.
+  turn, or handed to it on agents that take input mid-turn — and the composer
+  says which before it is sent (*it takes this message now, at its next step*
+  only when the agent steers and nothing is queued, paused or waiting on an
+  answer; otherwise *it waits in the queue*); **Stop** stays next to Send while
+  a message is being written. Queued messages show **in place**, below
+  everything and in the queue's order, as the outlined bubble
+  (`chat.queuedBubble`) with their position (*Next in the queue*, *2 in the
+  queue*) and **Send now** (`queue/sendNow`: into the running turn on an agent
+  that takes input mid-turn and is not waiting on an approval or a question, or
+  — nothing running — as the next turn at once), **Edit** (takes it off the
+  queue and puts it back in the composer with its images and files — only once
+  the bridge confirms — and leaves no cancelled bubble behind) and cancel. A
+  stopped or failed turn pauses the queue: *Resume* or *Discard*, in the dock.
+- **A message taken mid-answer**: the turn it interrupted (`Turn.continuedIn`)
+  stays whole — its prose is the answer so far, not folded into *Worked for* —
+  and ends with *Continues below, with your next message*; the message it
+  continued in is marked *Reached the agent while it was working*.
 - **Drafts and recall**: the composer's unsent text is the tab's draft, saved
   with the layout, so it survives switching tabs and restarting. On an empty
   composer **↑** recalls the thread's earlier messages (newest first) and **↓**
@@ -316,9 +333,9 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   queued or failed one) never merges with what is being written: that text is
   set aside, whole, in a *saved drafts* card in the dock, kept with the tab.
   Clicking one puts it back — setting aside whatever the composer holds then —
-  and the bin throws it away. A failed message brings its images back too; a
-  queued one only its text, since the bridge keeps a queued message's images
-  only as a count.
+  and the bin throws it away. A failed or queued message brings its images
+  and files back too (a queued one's are read back from the bridge,
+  `turn/attachment`).
 - **Composer**: Enter sends, Shift+Enter breaks the line; while the agent works
   the round button stops it. Its toolbar holds what can change mid-chat — the
   model (every client sees the change), the model's knobs beside it when it has

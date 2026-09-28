@@ -428,7 +428,7 @@ stream/turn/started         -> TurnStartedParams  { threadId, turnId }
 stream/message/delta        -> MessageDeltaParams { threadId, turnId, messageId, delta }
 stream/thinking/delta       -> ThinkingDeltaParams { threadId, turnId, messageId, delta }   (NUEVO 2026-06)
 stream/content/block        -> ContentBlockParams { threadId, turnId, messageId, content, beforeText? }  (NUEVO 2026-06; beforeText 2026-07)
-stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId, text, usage? }  (usage es TurnUsage)
+stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId, text, usage?, continuedIn? }  (usage es TurnUsage; continuedIn: el turno donde siguio la ejecucion)
 stream/turn/error           -> TurnErrorParams     { threadId, turnId, error: { code, message } }
 stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
 stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }                     (NUEVO 2026-07)
@@ -505,7 +505,8 @@ decision del usuario.
   cambia la burbuja del usuario, que se conserva marcada como cancelada.
 - Entrega en pleno turno (2026-08, rehecha 2026-09): un turno encolado que el
   agente toma **sin esperar** no tiene notificacion propia. El turno en curso
-  termina (`stream/turn/completed`, con lo dicho hasta ese momento) y el nuevo
+  termina (`stream/turn/completed`, con lo dicho hasta ese momento y
+  `continuedIn` = el nuevo; `Turn.continuedIn` lo guarda para cualquier relectura) y el nuevo
   empieza (`stream/turn/started`) y lleva el resto de la ejecucion, asi que la
   respuesta aparece debajo del mensaje que contesta. `turn/send` responde
   `{ turnId }`, como un turno que arranca. Solo ocurre en agentes que anuncian

@@ -59,6 +59,16 @@ void main() {
       expect((m.contents[1] as CodeContent).language, 'dart');
     });
 
+    test("keeps the turn a message's turn went on in", () async {
+      await repo.saveMessages([
+        _msg('handed-off', order: 1).copyWith(continuedIn: 't2'),
+        _msg('plain', order: 2),
+      ]);
+      final messages = await repo.getMessages('th1');
+      expect(messages.first.continuedIn, 't2');
+      expect(messages.last.continuedIn, isNull);
+    });
+
     test('returns messages ascending by order', () async {
       await repo.saveMessages([
         _msg('b', order: 2),

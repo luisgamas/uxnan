@@ -146,6 +146,12 @@ export interface TurnCompletedParams {
   text: string;
   /** Token usage for this turn, when the agent reported it. */
   usage?: TurnUsage;
+  /**
+   * The turn the agent's run went on in ({@link Turn.continuedIn}): this one
+   * ended because a message reached the agent mid-answer, not because it was
+   * done. Its `turn/started` follows at once.
+   */
+  continuedIn?: string;
 }
 
 export interface TurnErrorParams {

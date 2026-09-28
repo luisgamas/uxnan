@@ -59,6 +59,7 @@ class ComposerBar extends ConsumerStatefulWidget {
     this.onStop,
     this.onAttach,
     this.onRemoveAttachment,
+    this.onRecoveredAttachments,
     this.onDraftChanged,
     this.submitController,
     this.threadId,
@@ -119,6 +120,14 @@ class ComposerBar extends ConsumerStatefulWidget {
 
   /// Drops the attachment at the given index (the ✕ on its thumbnail).
   final ValueChanged<int>? onRemoveAttachment;
+
+  /// Receives the images and files of a queued message handed back to be
+  /// edited ([ComposerIncoming]). The screen owns the pending attachments, so
+  /// it adds them; the composer only places the text.
+  final void Function(
+    List<ImageContent> images,
+    List<AttachedFileContent> files,
+  )? onRecoveredAttachments;
 
   @override
   ConsumerState<ComposerBar> createState() => _ComposerBarState();
@@ -256,13 +265,18 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     _refreshTrigger();
   }
 
-  /// Places text handed back from the queue (or a rescued draft) into the
-  /// field, putting the caret at the end so the user can keep typing.
-  void _acceptIncoming(String text) {
+  /// Places a message handed back from the queue (or a rescued draft) into
+  /// the composer: its text in the field, caret at the end so the user can
+  /// keep typing, and its attachments back beside it.
+  void _acceptIncoming(ComposerIncoming incoming) {
+    final text = incoming.text;
     _controller.value = TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
+    if (incoming.images.isNotEmpty || incoming.files.isNotEmpty) {
+      widget.onRecoveredAttachments?.call(incoming.images, incoming.files);
+    }
     _focusNode.requestFocus();
   }
 
@@ -537,7 +551,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     // the built-in file hand-off + the user's templates.
     final templates = ref.watch(promptTemplatesLibraryProvider);
 
-    // Text handed back from the queue (a cancelled message, or a rescued
+    // A message handed back from the queue (an edited one, or a rescued
     // draft). Applied after this frame — setting a TextEditingController
     // during build would mutate state the field is currently laying out.
     final threadId = widget.threadId;

@@ -4,6 +4,41 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A Claude Code turn no longer ends on a result that is not its answer.**
+  The adapter now writes each message with a uuid and asks the CLI to echo it
+  as it reads it (`--replay-user-messages`); a `result` ends the turn only once
+  every message was read. A wake-up the CLI runs on its own — a resumed
+  session's owed `<task-notification>`, background work that finished — or the
+  model turn a late message missed no longer closes the user's turn: seen live,
+  one closed in a second while the agent worked on for 13 minutes, unseen.
+- **A turn that did not finish no longer reads as completed.** A Claude Code
+  process that exits without answering, before reading a message, or because
+  the bridge is stopping fails the turn, with the tail of its stderr (now read,
+  so a full pipe can no longer stall it). A cancelled turn reports only that it
+  was stopped.
+- **A message is never sent to the agent twice, nor left stranded.** A run's
+  end waits for a mid-turn delivery in flight, so a message the agent accepted
+  just as it finished is answered in its turn instead of being queued again; a
+  message queued while its turn was ending still runs.
+- **pi and OpenCode report a mid-turn message as taken only when it is.** pi's
+  adapter waits for pi's answer to the `steer` (a refusal keeps it queued);
+  OpenCode's holds the turn open when the session went idle during the
+  hand-over, until the run the server started for it ends.
+- **Stopping and archiving leave nothing behind.** Cancelling by the id of a
+  turn that already handed its run on no longer stops the new one; archiving a
+  thread cancels what was waiting in its queue; a stopped turn keeps the
+  agent's session; a Claude session that is gone is refused by the id it was
+  resumed with.
+- **An exchange is not imported twice from a transcript.** A row imported
+  under an older reader's id — or while the agent was still answering — is
+  recognised by its prompt and start time, refreshed and kept once.
+
+### Added
+
+- **`continuedIn`** on a turn that handed its run on to a later message
+  (`Turn.continuedIn`, and on its `stream/turn/completed`).
 
 ## [0.0.38-alpha.20260928] - 20260928
 ### Fixed

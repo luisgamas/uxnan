@@ -88,6 +88,7 @@ class DriftMessageRepository implements IMessageRepository {
       orderIndex: Value(message.orderIndex),
       fingerprint: Value(message.fingerprint),
       createdAtMs: Value(message.createdAt.millisecondsSinceEpoch),
+      continuedIn: Value(message.continuedIn),
     );
   }
 
@@ -114,6 +115,7 @@ class DriftMessageRepository implements IMessageRepository {
       orderIndex: row.orderIndex,
       fingerprint: row.fingerprint,
       createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAtMs),
+      continuedIn: row.continuedIn,
     );
   }
 }

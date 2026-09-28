@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
@@ -21,7 +22,10 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.da
 /// The unit tests cover the state machine; this covers the wiring between it
 /// and the widget, which is where "the draft was saved but the message never
 /// appeared" lives.
-Widget _wrap(ProviderContainer container) {
+Widget _wrap(
+  ProviderContainer container, {
+  void Function(List<ImageContent>, List<AttachedFileContent>)? onRecovered,
+}) {
   return UncontrolledProviderScope(
     container: container,
     child: MaterialApp(
@@ -30,7 +34,11 @@ Widget _wrap(ProviderContainer container) {
       home: Scaffold(
         body: Align(
           alignment: Alignment.bottomCenter,
-          child: ComposerBar(onSend: (_) {}, threadId: 'th1'),
+          child: ComposerBar(
+            onSend: (_) {},
+            threadId: 'th1',
+            onRecoveredAttachments: onRecovered,
+          ),
         ),
       ),
     ),
@@ -49,7 +57,9 @@ void main() {
 
     // What `ComposerHandoff.edit` does once the bridge confirms.
     container.read(composerHandoffsProvider.notifier).state = {
-      'th1': const ComposerHandoffState(incoming: 'the queued wording'),
+      'th1': const ComposerHandoffState(
+        incoming: ComposerIncoming(text: 'the queued wording'),
+      ),
     };
     await tester.pumpAndSettle();
 
@@ -79,13 +89,54 @@ void main() {
 
     container.read(composerHandoffsProvider.notifier).state = {
       'th1': const ComposerHandoffState(
-        incoming: 'the queued wording',
+        incoming: ComposerIncoming(text: 'the queued wording'),
         draft: 'half-written',
       ),
     };
     await tester.pumpAndSettle();
 
     expect(_composerText(tester), 'the queued wording');
+  });
+
+  testWidgets('an edited message brings its attachments back too',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    List<ImageContent>? images;
+    List<AttachedFileContent>? files;
+    await tester.pumpWidget(
+      _wrap(
+        container,
+        onRecovered: (i, f) {
+          images = i;
+          files = f;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    const image = ImageContent(mimeType: 'image/png', base64Data: 'iVBO');
+    const file = AttachedFileContent(
+      name: 'notes.md',
+      mimeType: 'text/markdown',
+      bytes: 3,
+      base64Data: 'AAEC',
+    );
+    container.read(composerHandoffsProvider.notifier).state = {
+      'th1': const ComposerHandoffState(
+        incoming: ComposerIncoming(
+          text: 'look at these',
+          images: [image],
+          files: [file],
+        ),
+      ),
+    };
+    await tester.pumpAndSettle();
+
+    expect(_composerText(tester), 'look at these');
+    // The screen owns the pending attachments; the composer hands them over.
+    expect(images, [image]);
+    expect(files, [file]);
   });
 
   testWidgets('the composer reports its draft as the user types',

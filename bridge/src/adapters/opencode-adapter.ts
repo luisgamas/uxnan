@@ -197,6 +197,16 @@ interface ActiveRun {
   tokens?: number;
   /** True once completed/errored/aborted, so a late event is ignored. */
   finished: boolean;
+  /** Mid-turn messages being handed to the server right now. */
+  steering: number;
+  /**
+   * The session went idle while a mid-turn message was still being handed
+   * over. The run's end waits for that answer: a server that accepts a
+   * message after going idle runs it as another run (verified on OpenCode
+   * 2.0.16: accepted after `idle`, then its own reply and a second `idle`),
+   * and that reply is this turn's.
+   */
+  idleDuringSteer: boolean;
 }
 
 export class OpenCodeAdapter extends BaseAgentAdapter {
@@ -382,6 +392,8 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       full: '',
       planSteps: [],
       finished: false,
+      steering: 0,
+      idleDuringSteer: false,
     };
     this.#active.set(turnId, run);
     this.#runBySession.set(sessionId, run);
@@ -458,20 +470,28 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const run = this.#active.get(options.activeTurnId);
     if (!run || run.finished) return false;
     if (run.threadId !== options.threadId) return false;
-    const server = await this.#existingServer(run.cwd);
-    if (!server) return false;
-    // The running turn's model stays in force — this is a message inside it.
+    // Counted from the first moment: an idle that lands while the server is
+    // being looked up is as much "during the hand-over" as one mid-request.
+    run.steering += 1;
+    let accepted = false;
     try {
+      const server = await this.#existingServer(run.cwd);
+      if (!server) throw new Error('its server is gone');
+      // The running turn's model stays in force — this is a message inside it.
       await server.steer(run.sessionId, options.text);
+      accepted = true;
     } catch (err) {
       this.#log(`turn ${run.turnId} mid-turn message refused: ${errorMessage(err)}`);
-      return false;
+    } finally {
+      run.steering -= 1;
     }
-    // The turn may have ended while the request was in flight. Report it
-    // delivered anyway: the server ACCEPTED it, and answering "not taken" would
-    // make the bridge send the same text a second time.
-    if (run.finished) this.#log(`turn ${run.turnId} ended as a mid-turn message was accepted`);
-    return true;
+    if (run.idleDuringSteer && run.steering === 0 && !run.finished) {
+      run.idleDuringSteer = false;
+      // Taken after the session went idle: the server runs it now, and the
+      // idle that follows ends the turn. Refused: the idle already seen does.
+      if (!accepted) this.#complete(run);
+    }
+    return accepted;
   }
 
   async cancelTurn(threadId: string, turnId: string): Promise<void> {
@@ -674,6 +694,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         });
         return;
       case 'idle':
+        if (run.steering > 0) {
+          run.idleDuringSteer = true;
+          return;
+        }
         return this.#complete(run);
       case 'interrupted':
         // Stopped from somewhere else (another client); a cancel from the phone

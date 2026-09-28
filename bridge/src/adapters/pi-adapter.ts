@@ -365,6 +365,13 @@ interface ActiveSession {
   exited: boolean;
   /** Write one RPC command as a JSON line. False when the pipe is gone. */
   send: (command: Record<string, unknown>) => boolean;
+  /**
+   * `steer` commands waiting for pi's answer, oldest first. pi acknowledges
+   * every RPC command in order (`{type:'response', command, success}`,
+   * verified against pi 0.85.1: a steer is answered in ~20 ms, running or
+   * idle); only its answer says whether the message landed.
+   */
+  steerAcks: ((accepted: boolean) => void)[];
 }
 
 /** A normalized pi event extracted from one RPC/`--mode json` line. */
@@ -385,6 +392,8 @@ export interface PiEvent {
     | 'settled'
     /** An RPC command pi rejected (`{ type:'response', success:false }`). */
     | 'command_failed'
+    /** An RPC `steer` pi accepted. */
+    | 'steer_accepted'
     /** An extension asked the user something (`extension_ui_request`, a dialog). */
     | 'dialog'
     | 'other';
@@ -553,6 +562,7 @@ export function parsePiLine(line: string): PiEvent | null {
     // would otherwise leave the turn waiting for events that never come.
     case 'response': {
       if (parsed['success'] !== false) {
+        if (parsed['command'] === 'steer') return { kind: 'steer_accepted' };
         if (parsed['command'] !== 'get_state') return { kind: 'other' };
         const data = isRecord(parsed['data']) ? parsed['data'] : undefined;
         const sessionId = typeof data?.['sessionId'] === 'string' ? data['sessionId'] : undefined;
@@ -808,6 +818,7 @@ export class PiAdapter extends BaseAgentAdapter {
       desktopKey: desktop.key,
       exited: false,
       send,
+      steerAcks: [],
     };
 
     const reader = createInterface({ input: child.stdout as unknown as Readable });
@@ -825,6 +836,15 @@ export class PiAdapter extends BaseAgentAdapter {
       // answer pi takes for a dismissed dialog (`cancelled: true`).
       if (event.kind === 'dialog' && event.dialogId) {
         send({ type: 'extension_ui_response', id: event.dialogId, cancelled: true });
+        return;
+      }
+      // A steer's answer settles the offer, whatever the turn is doing.
+      if (event.kind === 'steer_accepted') {
+        session.steerAcks.shift()?.(true);
+        return;
+      }
+      if (event.kind === 'command_failed' && event.commandName === 'steer') {
+        session.steerAcks.shift()?.(false);
         return;
       }
       if (event.kind === 'state' || event.kind === 'session') {
@@ -935,9 +955,14 @@ export class PiAdapter extends BaseAgentAdapter {
       }
     });
 
+    // A process that is gone answers no steer: none of them landed.
+    const dropSteerAcks = (): void => {
+      for (const ack of session.steerAcks.splice(0)) ack(false);
+    };
     child.on('error', (err: Error) => {
       reader.close();
       session.exited = true;
+      dropSteerAcks();
       this.#sessions.delete(threadId);
       const active = session.activeTurn;
       if (active && !active.completed) {
@@ -953,6 +978,7 @@ export class PiAdapter extends BaseAgentAdapter {
     });
 
     child.on('close', () => {
+      dropSteerAcks();
       reader.close();
       session.exited = true;
       this.#sessions.delete(threadId);
@@ -1120,7 +1146,15 @@ export class PiAdapter extends BaseAgentAdapter {
     if (session.activeTurn.turnId !== options.activeTurnId) {
       return Promise.resolve(false);
     }
-    return Promise.resolve(session.send({ type: 'steer', message: options.text }));
+    // Taken only once pi says so: a steer it rejects would otherwise pass as
+    // delivered, the message handed off and never answered.
+    return new Promise((resolve) => {
+      session.steerAcks.push(resolve);
+      if (!session.send({ type: 'steer', message: options.text })) {
+        session.steerAcks.pop();
+        resolve(false);
+      }
+    });
   }
 
   /**

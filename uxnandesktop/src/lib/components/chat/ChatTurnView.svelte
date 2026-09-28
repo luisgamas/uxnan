@@ -16,7 +16,9 @@
   import { untrack } from "svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Icon } from "$lib/components/ui/icon";
+  import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
   import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+  import CornerDownRightIcon from "@hugeicons/core-free-icons/CornerDownRightIcon";
   import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
   import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
   import type { Turn } from "$shared/models/thread";
@@ -52,11 +54,15 @@
     threadId,
     cwd,
     conversation,
+    joinedRun = false,
   }: {
     turn: Turn;
     threadId: string;
     cwd: string;
     conversation: Conversation;
+    /** This message reached the agent while it was answering an earlier one
+     *  (that turn's `continuedIn` is this one): its run went on here. */
+    joinedRun?: boolean;
   } = $props();
 
   const prompt = $derived(userText(turn));
@@ -75,6 +81,9 @@
   const assistant = $derived(assistantOf(turn));
   const streaming = $derived(conversation.activeTurnId === turn.id);
   const answered = $derived(turn.status !== "queued" && turn.status !== "cancelled");
+  /** The run went on in a later turn: what this one holds is the answer so
+   *  far, shown as it was written — never folded away as finished work. */
+  const continued = $derived(!streaming && turn.continuedIn !== undefined);
   let thinkingOpen = $state(false);
   let workOpen = $state(false);
 
@@ -177,6 +186,12 @@
         <ChatUserText text={prompt} class={cn(turn.status === "cancelled" && "opacity-60")} />
       {/if}
       <ChatMessageMeta text={prompt} at={turn.createdAt} align="end" />
+      {#if joinedRun}
+        <p class={cn(text.meta, "flex items-center gap-1")}>
+          <Icon icon={CornerDownRightIcon} class={cn(icon.status, "shrink-0")} />
+          {i18n.t("chat.joinedRun")}
+        </p>
+      {/if}
     </div>
     {#if turn.status === "cancelled"}
       <p class={cn(text.meta, "-mt-1 text-right")}>{i18n.t("chat.cancelled")}</p>
@@ -191,6 +206,16 @@
         <div class={cn(text.meta, "flex items-center gap-2 px-2 py-1")}>
           <span class={chat.runningDot}></span>
           <span class="tabular-nums">{i18n.t("chat.workingFor", { time: elapsed ?? "" })}</span>
+        </div>
+      {:else if continued}
+        {@render thinking()}
+        {@render timeline(items, false)}
+        <div class="flex items-center gap-2 px-0.5">
+          <span class={cn(text.meta, "flex shrink-0 items-center gap-1")}>
+            <Icon icon={ArrowDown01Icon} class={cn(icon.status, "shrink-0")} />
+            {i18n.t("chat.continuesBelow")}
+          </span>
+          <span class={chat.foldRule} aria-hidden="true"></span>
         </div>
       {:else}
         {#if split.work.length > 0 || assistant?.thinking}

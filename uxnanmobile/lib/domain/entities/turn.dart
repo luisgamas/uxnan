@@ -15,6 +15,7 @@ class Turn extends Equatable {
     required this.startedAt,
     this.messages = const [],
     this.completedAt,
+    this.continuedIn,
   });
 
   /// Unique turn id.
@@ -35,11 +36,18 @@ class Turn extends Equatable {
   /// When the turn completed, if it has.
   final DateTime? completedAt;
 
+  /// The later turn this one's agent run went on in, when a message reached
+  /// the agent while it was still answering here (`Turn.continuedIn` in the
+  /// shared contract). What this turn holds is then the answer so far, not a
+  /// closing one. Null otherwise, and from an older bridge.
+  final String? continuedIn;
+
   /// Returns a copy with the given fields replaced.
   Turn copyWith({
     TurnStatus? status,
     List<Message>? messages,
     DateTime? completedAt,
+    String? continuedIn,
   }) {
     return Turn(
       id: id,
@@ -48,6 +56,7 @@ class Turn extends Equatable {
       startedAt: startedAt,
       messages: messages ?? this.messages,
       completedAt: completedAt ?? this.completedAt,
+      continuedIn: continuedIn ?? this.continuedIn,
     );
   }
 
@@ -59,5 +68,6 @@ class Turn extends Equatable {
         messages,
         startedAt,
         completedAt,
+        continuedIn,
       ];
 }

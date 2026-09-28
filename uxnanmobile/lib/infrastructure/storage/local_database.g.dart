@@ -778,6 +778,12 @@ class $MessagesTableTable extends MessagesTable
   late final GeneratedColumn<int> createdAtMs = GeneratedColumn<int>(
       'created_at_ms', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _continuedInMeta =
+      const VerificationMeta('continuedIn');
+  @override
+  late final GeneratedColumn<String> continuedIn = GeneratedColumn<String>(
+      'continued_in', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -788,7 +794,8 @@ class $MessagesTableTable extends MessagesTable
         deliveryState,
         orderIndex,
         fingerprint,
-        createdAtMs
+        createdAtMs,
+        continuedIn
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -861,6 +868,12 @@ class $MessagesTableTable extends MessagesTable
     } else if (isInserting) {
       context.missing(_createdAtMsMeta);
     }
+    if (data.containsKey('continued_in')) {
+      context.handle(
+          _continuedInMeta,
+          continuedIn.isAcceptableOrUnknown(
+              data['continued_in']!, _continuedInMeta));
+    }
     return context;
   }
 
@@ -888,6 +901,8 @@ class $MessagesTableTable extends MessagesTable
           .read(DriftSqlType.string, data['${effectivePrefix}fingerprint']),
       createdAtMs: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}created_at_ms'])!,
+      continuedIn: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}continued_in']),
     );
   }
 
@@ -924,6 +939,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
 
   /// Creation timestamp in epoch milliseconds.
   final int createdAtMs;
+
+  /// The later turn this message's turn went on in (`Turn.continuedIn`), if
+  /// a message reached the agent while it was still answering this one.
+  final String? continuedIn;
   const MessageRow(
       {required this.id,
       required this.threadId,
@@ -933,7 +952,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       required this.deliveryState,
       required this.orderIndex,
       this.fingerprint,
-      required this.createdAtMs});
+      required this.createdAtMs,
+      this.continuedIn});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -948,6 +968,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       map['fingerprint'] = Variable<String>(fingerprint);
     }
     map['created_at_ms'] = Variable<int>(createdAtMs);
+    if (!nullToAbsent || continuedIn != null) {
+      map['continued_in'] = Variable<String>(continuedIn);
+    }
     return map;
   }
 
@@ -964,6 +987,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           ? const Value.absent()
           : Value(fingerprint),
       createdAtMs: Value(createdAtMs),
+      continuedIn: continuedIn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(continuedIn),
     );
   }
 
@@ -980,6 +1006,7 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       orderIndex: serializer.fromJson<int>(json['orderIndex']),
       fingerprint: serializer.fromJson<String?>(json['fingerprint']),
       createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
+      continuedIn: serializer.fromJson<String?>(json['continuedIn']),
     );
   }
   @override
@@ -995,6 +1022,7 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       'orderIndex': serializer.toJson<int>(orderIndex),
       'fingerprint': serializer.toJson<String?>(fingerprint),
       'createdAtMs': serializer.toJson<int>(createdAtMs),
+      'continuedIn': serializer.toJson<String?>(continuedIn),
     };
   }
 
@@ -1007,7 +1035,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           String? deliveryState,
           int? orderIndex,
           Value<String?> fingerprint = const Value.absent(),
-          int? createdAtMs}) =>
+          int? createdAtMs,
+          Value<String?> continuedIn = const Value.absent()}) =>
       MessageRow(
         id: id ?? this.id,
         threadId: threadId ?? this.threadId,
@@ -1018,6 +1047,7 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
         orderIndex: orderIndex ?? this.orderIndex,
         fingerprint: fingerprint.present ? fingerprint.value : this.fingerprint,
         createdAtMs: createdAtMs ?? this.createdAtMs,
+        continuedIn: continuedIn.present ? continuedIn.value : this.continuedIn,
       );
   MessageRow copyWithCompanion(MessagesTableCompanion data) {
     return MessageRow(
@@ -1037,6 +1067,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           data.fingerprint.present ? data.fingerprint.value : this.fingerprint,
       createdAtMs:
           data.createdAtMs.present ? data.createdAtMs.value : this.createdAtMs,
+      continuedIn:
+          data.continuedIn.present ? data.continuedIn.value : this.continuedIn,
     );
   }
 
@@ -1051,14 +1083,15 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           ..write('deliveryState: $deliveryState, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('fingerprint: $fingerprint, ')
-          ..write('createdAtMs: $createdAtMs')
+          ..write('createdAtMs: $createdAtMs, ')
+          ..write('continuedIn: $continuedIn')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, threadId, turnId, role, contentsJson,
-      deliveryState, orderIndex, fingerprint, createdAtMs);
+      deliveryState, orderIndex, fingerprint, createdAtMs, continuedIn);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1071,7 +1104,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           other.deliveryState == this.deliveryState &&
           other.orderIndex == this.orderIndex &&
           other.fingerprint == this.fingerprint &&
-          other.createdAtMs == this.createdAtMs);
+          other.createdAtMs == this.createdAtMs &&
+          other.continuedIn == this.continuedIn);
 }
 
 class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
@@ -1084,6 +1118,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
   final Value<int> orderIndex;
   final Value<String?> fingerprint;
   final Value<int> createdAtMs;
+  final Value<String?> continuedIn;
   final Value<int> rowid;
   const MessagesTableCompanion({
     this.id = const Value.absent(),
@@ -1095,6 +1130,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     this.orderIndex = const Value.absent(),
     this.fingerprint = const Value.absent(),
     this.createdAtMs = const Value.absent(),
+    this.continuedIn = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessagesTableCompanion.insert({
@@ -1107,6 +1143,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     required int orderIndex,
     this.fingerprint = const Value.absent(),
     required int createdAtMs,
+    this.continuedIn = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         threadId = Value(threadId),
@@ -1126,6 +1163,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     Expression<int>? orderIndex,
     Expression<String>? fingerprint,
     Expression<int>? createdAtMs,
+    Expression<String>? continuedIn,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1138,6 +1176,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
       if (orderIndex != null) 'order_index': orderIndex,
       if (fingerprint != null) 'fingerprint': fingerprint,
       if (createdAtMs != null) 'created_at_ms': createdAtMs,
+      if (continuedIn != null) 'continued_in': continuedIn,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1152,6 +1191,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
       Value<int>? orderIndex,
       Value<String?>? fingerprint,
       Value<int>? createdAtMs,
+      Value<String?>? continuedIn,
       Value<int>? rowid}) {
     return MessagesTableCompanion(
       id: id ?? this.id,
@@ -1163,6 +1203,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
       orderIndex: orderIndex ?? this.orderIndex,
       fingerprint: fingerprint ?? this.fingerprint,
       createdAtMs: createdAtMs ?? this.createdAtMs,
+      continuedIn: continuedIn ?? this.continuedIn,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1197,6 +1238,9 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     if (createdAtMs.present) {
       map['created_at_ms'] = Variable<int>(createdAtMs.value);
     }
+    if (continuedIn.present) {
+      map['continued_in'] = Variable<String>(continuedIn.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1215,6 +1259,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
           ..write('orderIndex: $orderIndex, ')
           ..write('fingerprint: $fingerprint, ')
           ..write('createdAtMs: $createdAtMs, ')
+          ..write('continuedIn: $continuedIn, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4679,6 +4724,7 @@ typedef $$MessagesTableTableCreateCompanionBuilder = MessagesTableCompanion
   required int orderIndex,
   Value<String?> fingerprint,
   required int createdAtMs,
+  Value<String?> continuedIn,
   Value<int> rowid,
 });
 typedef $$MessagesTableTableUpdateCompanionBuilder = MessagesTableCompanion
@@ -4692,6 +4738,7 @@ typedef $$MessagesTableTableUpdateCompanionBuilder = MessagesTableCompanion
   Value<int> orderIndex,
   Value<String?> fingerprint,
   Value<int> createdAtMs,
+  Value<String?> continuedIn,
   Value<int> rowid,
 });
 
@@ -4730,6 +4777,9 @@ class $$MessagesTableTableFilterComposer
 
   ColumnFilters<int> get createdAtMs => $composableBuilder(
       column: $table.createdAtMs, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get continuedIn => $composableBuilder(
+      column: $table.continuedIn, builder: (column) => ColumnFilters(column));
 }
 
 class $$MessagesTableTableOrderingComposer
@@ -4769,6 +4819,9 @@ class $$MessagesTableTableOrderingComposer
 
   ColumnOrderings<int> get createdAtMs => $composableBuilder(
       column: $table.createdAtMs, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get continuedIn => $composableBuilder(
+      column: $table.continuedIn, builder: (column) => ColumnOrderings(column));
 }
 
 class $$MessagesTableTableAnnotationComposer
@@ -4806,6 +4859,9 @@ class $$MessagesTableTableAnnotationComposer
 
   GeneratedColumn<int> get createdAtMs => $composableBuilder(
       column: $table.createdAtMs, builder: (column) => column);
+
+  GeneratedColumn<String> get continuedIn => $composableBuilder(
+      column: $table.continuedIn, builder: (column) => column);
 }
 
 class $$MessagesTableTableTableManager extends RootTableManager<
@@ -4844,6 +4900,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             Value<int> orderIndex = const Value.absent(),
             Value<String?> fingerprint = const Value.absent(),
             Value<int> createdAtMs = const Value.absent(),
+            Value<String?> continuedIn = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               MessagesTableCompanion(
@@ -4856,6 +4913,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             orderIndex: orderIndex,
             fingerprint: fingerprint,
             createdAtMs: createdAtMs,
+            continuedIn: continuedIn,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -4868,6 +4926,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             required int orderIndex,
             Value<String?> fingerprint = const Value.absent(),
             required int createdAtMs,
+            Value<String?> continuedIn = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               MessagesTableCompanion.insert(
@@ -4880,6 +4939,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             orderIndex: orderIndex,
             fingerprint: fingerprint,
             createdAtMs: createdAtMs,
+            continuedIn: continuedIn,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

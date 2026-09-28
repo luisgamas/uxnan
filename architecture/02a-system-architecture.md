@@ -27,7 +27,9 @@
 > turn (steering, §5.8.13) now ends that turn there and carries the rest of the
 > agent's run as its own turn, so the answer shows under the message it
 > answers on every client (the `delivered` status and `stream/turn/delivered`
-> are gone). And every Uxnan Desktop profile is its own client
+> are gone). The turn it ended names that one (`Turn.continuedIn`), so a client
+> shows its reply as the answer so far — not a closing one folded away — and
+> an adapter reports a message as taken only when that run will answer it. And every Uxnan Desktop profile is its own client
 > on the local control channel (`desktop-<profile>`, §5.8.15): the installed app
 > and a development build running at once no longer share one name, so neither
 > supersedes the other, and each keeps its own replay log, presence and the
@@ -2454,9 +2456,40 @@ bridge hace lo mismo donde la CLI del agente realmente lo permite.
 
 **El mensaje queda donde el agente lo tomo.** Lo que el agente dice despues de
 recibirlo contesta a ese mensaje, asi que se muestra debajo de el: para cada
-cliente es exactamente una cola que avanzo antes de tiempo (el turno anterior
-termina, el nuevo empieza), sin logica propia de "entregado" en telefono,
-desktop ni CLI. El adaptador sigue nombrando la ejecucion por el id con el que
+cliente es una cola que avanzo antes de tiempo (el turno anterior termina, el
+nuevo empieza). El turno que termino asi lo dice: `Turn.continuedIn` (y
+`continuedIn` en su `stream/turn/completed`) nombra el turno donde siguio la
+ejecucion, de modo que el telefono y el desktop muestran su respuesta como "lo
+dicho hasta ahi" — completa, con un "continua abajo" — y no como una respuesta
+final plegada, y marcan el mensaje que llego a mitad de ejecucion.
+
+**"Tomado" significa contestado en esa ejecucion.** `steerTurn` devuelve `true`
+solo cuando la ejecucion en curso va a responder el mensaje, y cada adaptador
+lo garantiza con lo que su CLI dice de verdad (verificado contra las CLI
+reales, 2026-09-28):
+
+- **Claude Code**: cada mensaje se escribe con un `uuid` y la CLI lo devuelve al
+  leerlo (`--replay-user-messages`, `isReplay: true`); un `result` cierra el
+  turno solo si ya se leyeron todos los mensajes escritos. Un `result` de un
+  despertar propio de la CLI (una tarea en segundo plano que termino, o un
+  `<task-notification>` que una sesion reanudada debia) o del turno del modelo
+  que un mensaje tardio no alcanzo ya no cierra el turno. Una CLI que sale sin
+  `result`, con un mensaje sin leer, o porque el bridge se detiene, falla el
+  turno (con lo ultimo de su stderr) en vez de darlo por completado.
+- **pi**: espera la respuesta RPC del `steer` (`success`), que pi da en ~20 ms
+  este ocupado o no; un rechazo deja el mensaje en la cola.
+- **OpenCode**: un `idle` que llega mientras se entrega un mensaje espera esa
+  entrega; si el servidor lo acepto (tras el `idle` lo corre como otra
+  ejecucion y termina con otro `idle`), el turno sigue abierto hasta ese
+  segundo `idle`.
+- **Codex**: `turn/steer` con `expectedTurnId` solo acepta sobre el turno
+  activo.
+- **AgentManager**: el fin de una ejecucion (`turn_completed`/`error`/`aborted`)
+  espera a una entrega en curso, asi que un mensaje aceptado justo al terminar
+  se contesta en su turno y nunca se envia dos veces; un mensaje encolado
+  mientras el turno terminaba se ejecuta en vez de quedar varado; cancelar por
+  el id de un turno ya relevado no detiene al nuevo; archivar cancela lo que
+  esperaba en la cola; un turno detenido conserva la sesion del agente. El adaptador sigue nombrando la ejecucion por el id con el que
 empezo; el `AgentManager` mapea ese id de ejecucion al turno que muestra su
 salida (`#turnOfRun` / `#runOfTurn`), y lo usa tambien para `cancelTurn` y para
 la siguiente entrega. Un paso que empezo antes del relevo y termina despues se

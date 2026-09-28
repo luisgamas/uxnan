@@ -87,9 +87,16 @@ class FakeServer implements IOpenCodeServer {
     this.prompts.push({ sessionId, body });
     return Promise.resolve();
   }
+  /** When set, `steer` waits for the test to answer (accept or refuse). */
+  holdSteer = false;
+  answerSteer?: (accepted: boolean) => void;
   steer(sessionId: string, text: string): Promise<void> {
     this.steered.push({ sessionId, text });
-    return Promise.resolve();
+    if (!this.holdSteer) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      this.answerSteer = (accepted) =>
+        accepted ? resolve() : reject(new Error('session is not accepting messages'));
+    });
   }
   commands(): Promise<OpenCodeCommand[]> {
     this.commandLists++;
@@ -978,6 +985,67 @@ test('steerTurn prompts the same session without opening a second run', async ()
   assert.equal(completions.length, 1);
   assert.equal(completions[0]?.turnId, 'u1');
   assert.match(String((completions[0]?.data as { text: string }).text), /BANANA/);
+});
+
+// Verified live against OpenCode 2.0.16: a steer accepted just after the
+// session went idle runs as another run — its own reply, then a second idle.
+test('a message accepted as the session goes idle keeps the turn open for its answer', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  server.holdSteer = true;
+  const taken = adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'and this',
+  });
+  // The session goes idle while the message is still being handed over...
+  server.emit('session.idle', { sessionID: 'ses_1' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+  );
+  // ...the server takes it, and runs it.
+  server.answerSteer!(true);
+  assert.equal(await taken, true);
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+  );
+  server.emit('message.updated', { info: { id: 'm2', sessionID: 'ses_1', role: 'assistant' } });
+  server.emit('message.part.updated', {
+    part: { id: 'p2', sessionID: 'ses_1', messageID: 'm2', type: 'text', text: 'LATE ANSWER' },
+  });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+  const all = await done;
+  const completions = all.filter((e) => e.type === 'turn_completed');
+  assert.equal(completions.length, 1);
+  assert.match(String((completions[0]?.data as { text: string }).text), /LATE ANSWER/);
+});
+
+test('a message refused as the session goes idle lets the turn end at that idle', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  server.holdSteer = true;
+  const taken = adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'and this',
+  });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+  await new Promise((resolve) => setImmediate(resolve));
+  server.answerSteer!(false);
+  assert.equal(await taken, false);
+  const all = await done;
+  assert.equal(all.filter((e) => e.type === 'turn_completed').length, 1);
 });
 
 test('steerTurn keeps the running turn model, not a new one', async () => {

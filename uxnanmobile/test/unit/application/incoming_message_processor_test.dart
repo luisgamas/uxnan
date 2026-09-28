@@ -163,6 +163,30 @@ void main() {
       ) as TurnCompletedEvent;
       expect(event.tokens, isNull);
       expect(event.contextWindow, isNull);
+      expect(event.continuedIn, isNull);
+    });
+
+    test('stream/turn/completed carries the turn a hand-off went on in', () {
+      // The bridge's hand-off (TurnCompletedParams.continuedIn): the agent
+      // took a later message mid-answer.
+      final event = processor.classify(
+        note('stream/turn/completed', {
+          'threadId': 'th1',
+          'turnId': 'tA',
+          'messageId': 'a-tA',
+          'text': 'Reading the files',
+          'continuedIn': 'tB',
+        }),
+      ) as TurnCompletedEvent;
+      expect(event.continuedIn, 'tB');
+      expect(event.text, 'Reading the files');
+    });
+
+    test('stream/turn/completed ignores an empty continuedIn', () {
+      final event = processor.classify(
+        note('stream/turn/completed', {'turnId': 't1', 'continuedIn': ''}),
+      ) as TurnCompletedEvent;
+      expect(event.continuedIn, isNull);
     });
 
     test('stream/turn/error carries the message (flat, back-compat)', () {

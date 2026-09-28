@@ -4,8 +4,33 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Queued messages show where they will run.** Below everything, in the
+  queue's order, as the outlined bubble with their position and *Send now*,
+  *Edit* and cancel — instead of a list in the dock. *Edit* brings a queued
+  message's images and files back too and leaves no cancelled bubble behind.
+- **The composer says what happens to a message sent while the agent works**:
+  *it takes this message now* on an agent that takes input mid-turn with
+  nothing waiting, *it waits in the queue* otherwise. **Stop** stays next to
+  Send while a message is being written.
+- **A turn a message interrupted stays whole.** What the agent said before
+  your message reached it is shown as written — not folded into *Worked for* —
+  and ends with *Continues below*; the message is marked *Reached the agent
+  while it was working*.
+
 ### Fixed
 
+- **A message handed to the running agent no longer disappears** for a moment
+  before its turn starts.
+- **Send now is not offered while the agent waits on an approval or a
+  question**, when the bridge would refuse it.
+- **A conversation opens at its end.** A chat that loaded in a tab or
+  workspace not on screen — every tab restored at start-up, a chat opened in
+  the background — showed its first turn instead of its last until you
+  scrolled, and a place kept in one was lost the same way. The timeline now
+  settles whenever it changes size, so it reaches its end (or where you left
+  it) when shown, and stays at the end as late images load.
 - **The spend chart's columns keep one shape.** Only a column's top segment was
   rounded, by at most its own height, so a day whose top agent spent little
   ended flat while the next was round; and the gap between agents came out of

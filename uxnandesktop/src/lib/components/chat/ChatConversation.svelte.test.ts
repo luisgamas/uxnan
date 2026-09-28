@@ -202,4 +202,110 @@ describe("ChatConversation", () => {
     expect(tab.rescued).toBeUndefined();
     expect(screen.queryByText("1 saved draft")).toBeNull();
   });
+
+  it("shows the queue in place, below everything, each message with its position", async () => {
+    const { screen } = mount(chatTab());
+    chat.conversation(THREAD).adoptPage({
+      turns: [queuedTurn("q1", "first"), queuedTurn("q2", "second")],
+      total: 2,
+      queuedTurnIds: ["q1", "q2"],
+    });
+    expect(await screen.findByText("Next in the queue")).toBeTruthy();
+    expect(screen.getByText("2 in the queue")).toBeTruthy();
+    // The dock no longer lists them a second time.
+    expect(screen.queryByText("2 messages queued")).toBeNull();
+  });
+
+  it("offers no send now while the running agent waits on an answer", async () => {
+    chat.agents = [
+      { agentId: "codex", displayName: "Codex", available: true, capabilities: { steering: true } },
+    ] as never;
+    const { screen } = mount(chatTab());
+    const conversation = chat.conversation(THREAD);
+    conversation.adoptPage({
+      turns: [
+        { id: "run", threadId: THREAD, status: "streaming", createdAt: 1, messages: [] },
+        queuedTurn("q1", "later"),
+      ],
+      total: 2,
+      activeTurnId: "run",
+      queuedTurnIds: ["q1"],
+    });
+    expect(await screen.findByRole("button", { name: "Send now" })).toBeTruthy();
+    conversation.apply({
+      method: "stream/content/block",
+      params: {
+        threadId: THREAD,
+        turnId: "run",
+        messageId: "run-a",
+        content: { type: "approval", approvalId: "ap", action: "Allow Bash" },
+      },
+    });
+    await until(() => screen.queryByRole("button", { name: "Send now" }) === null);
+  });
+
+  it("takes a message withdrawn for editing out of the timeline", async () => {
+    const { screen, user } = mount(chatTab());
+    const conversation = chat.conversation(THREAD);
+    conversation.adoptPage({
+      turns: [queuedTurn("q1", "then update the docs")],
+      total: 1,
+      queuedTurnIds: ["q1"],
+    });
+    await user.click(await screen.findByRole("button", { name: "Edit (take it off the queue)" }));
+    // The bridge answers with the cancel and the emptied queue.
+    conversation.apply({ method: "stream/turn/cancelled", params: { threadId: THREAD, turnId: "q1" } });
+    conversation.apply({
+      method: "stream/queue/updated",
+      params: { threadId: THREAD, queuedTurnIds: [], paused: false },
+    });
+    await until(() => screen.queryByText("Next in the queue") === null);
+    expect(screen.queryByText("Cancelled before it ran")).toBeNull();
+  });
+
+  it("shows a turn whose run went on in a later message whole, and marks that message", async () => {
+    const { screen } = mount(chatTab());
+    chat.conversation(THREAD).adoptPage({
+      turns: [
+        {
+          id: "a",
+          threadId: THREAD,
+          status: "completed",
+          createdAt: 1,
+          completedAt: 5,
+          continuedIn: "b",
+          messages: [
+            { id: "a-u", turnId: "a", role: "user", content: "fix the tests", createdAt: 1 },
+            {
+              id: "a-a",
+              turnId: "a",
+              role: "assistant",
+              content: "",
+              createdAt: 2,
+              segments: [
+                { type: "text", text: "Looking at the failures first." },
+                { type: "command_execution", command: "npm test", status: "completed", exitCode: 1 },
+              ],
+            },
+          ],
+        } as Turn,
+        {
+          id: "b",
+          threadId: THREAD,
+          status: "completed",
+          createdAt: 5,
+          completedAt: 9,
+          messages: [
+            { id: "b-u", turnId: "b", role: "user", content: "only the unit ones", createdAt: 5 },
+            { id: "b-a", turnId: "b", role: "assistant", content: "Done, unit tests pass.", createdAt: 6 },
+          ],
+        } as Turn,
+      ],
+      total: 2,
+    });
+    // Its prose is not folded away as finished work: it is the answer so far.
+    expect(await screen.findByText("Looking at the failures first.")).toBeTruthy();
+    expect(screen.getByText("Continues below, with your next message")).toBeTruthy();
+    expect(screen.getByText("Reached the agent while it was working")).toBeTruthy();
+  });
 });

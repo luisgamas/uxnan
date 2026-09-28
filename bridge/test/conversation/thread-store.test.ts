@@ -1207,3 +1207,95 @@ test('a user message keeps its images: served back, carried by a fork, gone with
     await rmrf(baseDir);
   }
 });
+
+test('reconcileNativeHistory does not import again an exchange a reader renumbered', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const exchange = (id: string) =>
+    nativeTurn(thread.id, id, 500, [
+      { role: 'user', content: 'wrap it up' },
+      { role: 'assistant', content: 'Done.' },
+    ]);
+  assert.deepEqual(
+    (await store.reconcileNativeHistory(thread.id, [exchange('ses#t13')], 600)).importedTurnIds,
+    ['ses#t13'],
+  );
+  // A newer reader numbers the same exchange #t3: the row takes that id, and
+  // nothing is imported next to it.
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [exchange('ses#t3')], 700), {
+    changed: true,
+    importedTurnIds: [],
+  });
+  assert.deepEqual(
+    (await store.listTurns(thread.id)).turns.map((t) => t.id),
+    ['ses#t3'],
+  );
+  assert.equal(
+    (await store.reconcileNativeHistory(thread.id, [exchange('ses#t3')], 800)).changed,
+    false,
+  );
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory drops a copy an older reader imported under a stale id', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const exchange = (id: string) =>
+    nativeTurn(thread.id, id, 500, [
+      { role: 'user', content: 'wrap it up' },
+      { role: 'assistant', content: 'Done.' },
+    ]);
+  // Two rows of one exchange, as two readers left them.
+  await store.reconcileNativeHistory(thread.id, [exchange('ses#t13'), exchange('ses#t3')], 600);
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+
+  const healed = await store.reconcileNativeHistory(thread.id, [exchange('ses#t3')], 700);
+  assert.equal(healed.changed, true);
+  assert.deepEqual(
+    (await store.listTurns(thread.id)).turns.map((t) => t.id),
+    ['ses#t3'],
+  );
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory keeps two real, identical exchanges', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const exchange = (id: string, at: number) =>
+    nativeTurn(thread.id, id, at, [
+      { role: 'user', content: 'continue' },
+      { role: 'assistant', content: 'Done.' },
+    ]);
+  const both = [exchange('ses#t0', 500), exchange('ses#t1', 900)];
+  await store.reconcileNativeHistory(thread.id, both, 1000);
+  await store.reconcileNativeHistory(thread.id, both, 1100);
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory drops an early, partial import of an exchange it now holds whole', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  // Imported while the agent was still answering, under an older reader's id...
+  await store.reconcileNativeHistory(
+    thread.id,
+    [
+      nativeTurn(thread.id, 'ses#t13', 500, [
+        { role: 'user', content: 'wrap it up' },
+        { role: 'assistant', content: 'Checking the' },
+      ]),
+    ],
+    600,
+  );
+  // ...then the whole exchange, under today's id.
+  const whole = nativeTurn(thread.id, 'ses#t3', 500, [
+    { role: 'user', content: 'wrap it up' },
+    { role: 'assistant', content: 'Checking the release. Done.' },
+  ]);
+  await store.reconcileNativeHistory(thread.id, [whole], 700);
+  await store.reconcileNativeHistory(thread.id, [whole], 800);
+  const turns = (await store.listTurns(thread.id)).turns;
+  assert.equal(turns.length, 1);
+  assert.match(String(turns[0]?.messages.find((m) => m.role === 'assistant')?.content), /Done\./);
+  await rmrf(baseDir);
+});

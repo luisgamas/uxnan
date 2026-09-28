@@ -40,7 +40,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -114,6 +114,12 @@ class UxnanDatabase extends _$UxnanDatabase {
               ''');
               await m.deleteTable('pending_thread_actions_table');
             }
+          }
+          // v10: a message remembers the later turn its turn's agent run went
+          // on in (`Turn.continuedIn`, nullable) — set when a message reached
+          // the agent mid-answer, so the timeline can say so.
+          if (from < 10) {
+            await m.addColumn(messagesTable, messagesTable.continuedIn);
           }
         },
         beforeOpen: (details) async {

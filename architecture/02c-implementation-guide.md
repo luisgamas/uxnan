@@ -2333,7 +2333,7 @@ class GitErrorMapper {
 
 ## 10. Modelos de base de datos (Drift)
 
-> ✅ **Implementado** (rama `uxnanmobile`): esquema completo (hoy 10 tablas y `schemaVersion` 9; pragmas WAL/foreign_keys), `UxnanDatabase` con constructor `forTesting`, y `DriftThreadRepository` + `DriftComposerDraftRepository` con tests in-memory. Ajuste vs. spec: los índices usan la anotación real de drift `@TableIndex(...)` en lugar del `List<Index> get indexes` mostrado abajo (que es pseudocódigo de referencia). `DriftMessageRepository` se implementa con el módulo de conversación, junto con la jerarquía sellada `MessageContent`.
+> ✅ **Implementado** (rama `uxnanmobile`): esquema completo (hoy 10 tablas y `schemaVersion` 10; pragmas WAL/foreign_keys), `UxnanDatabase` con constructor `forTesting`, y `DriftThreadRepository` + `DriftComposerDraftRepository` con tests in-memory. Ajuste vs. spec: los índices usan la anotación real de drift `@TableIndex(...)` en lugar del `List<Index> get indexes` mostrado abajo (que es pseudocódigo de referencia). `DriftMessageRepository` se implementa con el módulo de conversación, junto con la jerarquía sellada `MessageContent`.
 
 ### 10.1 Definicion completa de tablas
 

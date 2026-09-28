@@ -62,6 +62,8 @@ void main() {
   Object? agentListResult;
   // When set, `turn/send` waits for it — to deliver a notification first.
   Completer<void>? turnSendGate;
+  // Test-settable `turn/send` result (null → empty).
+  Object? turnSendResult;
   // Runs while `turn/list` is on the wire — what happens in flight.
   Future<void> Function()? duringTurnList;
   late ThreadManager manager;
@@ -77,6 +79,7 @@ void main() {
     turnReadResult = null;
     agentListResult = null;
     turnSendGate = null;
+    turnSendResult = null;
     duringTurnList = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
@@ -90,6 +93,7 @@ void main() {
         }
         if (method == 'turn/list') await duringTurnList?.call();
         final result = switch (method) {
+          'turn/send' => turnSendResult ?? <String, dynamic>{},
           'turn/list' => turnListResult ?? <String, dynamic>{},
           'turn/read' => turnReadResult ?? <String, dynamic>{},
           'thread/list' => {
@@ -2374,6 +2378,215 @@ void main() {
         ),
       ]);
       await sub.cancel();
+    });
+  });
+
+  // A message that reached the agent while it was answering (steering): the
+  // bridge ends the turn it was answering with `continuedIn` naming the turn
+  // the run went on in (shared `Turn.continuedIn`, `TurnCompletedParams`).
+  group('a message the agent took mid-answer', () {
+    Map<String, dynamic> wireTurn(
+      String id,
+      int seq,
+      String user, {
+      String answer = '',
+      String status = 'completed',
+      String? continuedIn,
+    }) =>
+        {
+          'id': id,
+          'threadId': 'th1',
+          'status': status,
+          'seq': seq,
+          'createdAt': 5000 + seq,
+          if (continuedIn != null) 'continuedIn': continuedIn,
+          'messages': [
+            {'id': 'u-$id', 'role': 'user', 'content': user, 'createdAt': 5000},
+            {
+              'id': 'a-$id',
+              'role': 'assistant',
+              'content': answer,
+              'createdAt': 5001,
+            },
+          ],
+        };
+
+    test('turn/list stores the hand-off on every message of the earlier turn',
+        () async {
+      turnListResult = {
+        'turns': [
+          wireTurn(
+            'tA',
+            1,
+            'refactor the parser',
+            answer: 'Reading the files',
+            continuedIn: 'tB',
+          ),
+          wireTurn('tB', 2, 'also keep the tests', answer: 'Done'),
+        ],
+        'total': 2,
+      };
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      final ofA = stored.where((m) => m.turnId == 'tA').toList();
+      expect(ofA, hasLength(2));
+      expect(ofA.map((m) => m.continuedIn), everyElement('tB'));
+      expect(
+        stored.where((m) => m.turnId == 'tB').map((m) => m.continuedIn),
+        everyElement(isNull),
+      );
+    });
+
+    test('a re-read adds the hand-off to messages stored before it', () async {
+      await messageRepo.saveMessages([
+        _msg('mine', order: 1000, role: MessageRole.user, turnId: 'tA')
+            .copyWith(contents: const [TextContent('refactor the parser')]),
+        _msg(
+          'stream-tA',
+          order: 1001,
+          role: MessageRole.assistant,
+          turnId: 'tA',
+          text: 'Reading the files',
+        ),
+      ]);
+      turnListResult = {
+        'turns': [
+          wireTurn(
+            'tA',
+            1,
+            'refactor the parser',
+            answer: 'Reading the files',
+            continuedIn: 'tB',
+          ),
+        ],
+        'total': 1,
+      };
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(stored.firstWhere((m) => m.id == 'mine').continuedIn, 'tB');
+      expect(stored.firstWhere((m) => m.id == 'stream-tA').continuedIn, 'tB');
+    });
+
+    test('turn/completed with continuedIn marks the answer so far', () async {
+      await manager.selectThread('th1');
+      await messageRepo.saveMessage(
+        _msg('mine', order: 1000, role: MessageRole.user, turnId: 'tA')
+            .copyWith(contents: const [TextContent('refactor the parser')]),
+      );
+      events
+        ..add(const TurnStartedEvent(turnId: 'tA', threadId: 'th1'))
+        ..add(
+          const MessageDeltaEvent(
+            turnId: 'tA',
+            threadId: 'th1',
+            delta: 'Reading the files',
+          ),
+        )
+        ..add(
+          const TurnCompletedEvent(
+            turnId: 'tA',
+            threadId: 'th1',
+            text: 'Reading the files',
+            continuedIn: 'tB',
+          ),
+        )
+        ..add(const TurnStartedEvent(turnId: 'tB', threadId: 'th1'));
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      final answer = stored.firstWhere((m) => m.id == 'stream-tA');
+      // The prose so far is kept whole: it is the answer up to the hand-off.
+      expect(_text(answer), 'Reading the files');
+      expect(answer.continuedIn, 'tB');
+      expect(stored.firstWhere((m) => m.id == 'mine').continuedIn, 'tB');
+      // The run goes on as the later turn.
+      expect(
+        (await manager.activityStream.first)['th1'],
+        ThreadActivity.running,
+      );
+    });
+
+    test('a plain turn/completed leaves no hand-off behind', () async {
+      await manager.selectThread('th1');
+      events
+        ..add(const TurnStartedEvent(turnId: 'tA', threadId: 'th1'))
+        ..add(
+          const MessageDeltaEvent(turnId: 'tA', threadId: 'th1', delta: 'Hi'),
+        )
+        ..add(
+          const TurnCompletedEvent(turnId: 'tA', threadId: 'th1', text: 'Hi'),
+        );
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(stored.single.continuedIn, isNull);
+    });
+
+    test(
+        'the turn/send reply keeps the position the bridge gave a steered '
+        'message', () async {
+      // Turn A is running when the user sends B; the agent takes B mid-answer.
+      turnListResult = {
+        'turns': [wireTurn('tA', 1, 'refactor the parser', status: 'pending')],
+        'total': 1,
+        'activeTurnId': 'tA',
+      };
+      await manager.selectThread('th1');
+      await _settle();
+      turnSendGate = Completer<void>();
+      // The agent took it: the reply carries the turn, not `queued`.
+      turnSendResult = {'turnId': 'tB'};
+      final sending = manager.sendUserMessage('th1', 'also keep the tests');
+      await _settle();
+      final clientTurnId = turnSendParams?['clientTurnId'] as String?;
+      expect(clientTurnId, isNotNull);
+
+      // What the bridge sends before it answers `turn/send` (agent-manager
+      // #enqueueTurn → #handOff): the turn, the hand-off, the new turn.
+      events
+        ..add(
+          TurnCreatedEvent(
+            threadId: 'th1',
+            clientTurnId: clientTurnId,
+            turn: wireTurn('tB', 2, 'also keep the tests', status: 'queued'),
+          ),
+        )
+        ..add(
+          const MessageDeltaEvent(
+            turnId: 'tA',
+            threadId: 'th1',
+            delta: 'Reading the files',
+          ),
+        )
+        ..add(
+          const TurnCompletedEvent(
+            turnId: 'tA',
+            threadId: 'th1',
+            text: 'Reading the files',
+            continuedIn: 'tB',
+          ),
+        )
+        ..add(const TurnStartedEvent(turnId: 'tB', threadId: 'th1'));
+      await _settle();
+      turnSendGate!.complete();
+      await sending;
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      final answerA = stored.firstWhere((m) => m.id == 'stream-tA');
+      final userB = stored.firstWhere((m) => m.id == clientTurnId);
+      expect(userB.turnId, 'tB');
+      expect(userB.deliveryState, MessageDeliveryState.sent);
+      // B sits where the bridge put it — after A's answer so far.
+      expect(userB.orderIndex, greaterThan(answerA.orderIndex));
+      expect(
+        stored.map((m) => m.id).toList(),
+        ['stream-user-tA', 'stream-tA', clientTurnId],
+      );
     });
   });
 }

@@ -267,6 +267,14 @@ export class AgentManager {
    * it and the agent would wait forever. The follow-up queues instead.
    */
   readonly #awaitingInput = new Map<string, Set<string>>();
+  /**
+   * A mid-turn delivery in flight per thread. The run's own end waits for it
+   * (see {@link #onEvent}): an agent that ACCEPTS the message just as its run
+   * finishes answers it inside that run, so the hand-off has to land before
+   * the end is booked — otherwise the message is queued as never taken and
+   * the agent runs it a second time.
+   */
+  readonly #steerInFlight = new Map<string, Promise<unknown>>();
   /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
    * hook round-trip AND the Codex app-server approval elicitations; the pending
    * map is shared so a single `respondApproval` call resolves both). The
@@ -677,6 +685,10 @@ export class AgentManager {
 
     queue.push(entry);
     this.#notifyQueue(threadId);
+    // The turn it was queued behind may have ended while this message was
+    // being stored and offered to it — its end found the queue empty. Nothing
+    // else would ever start it.
+    if (!this.#activeTurnByThread.has(threadId)) void this.#drainQueue(threadId);
     return { turnId: queued.turnId, queued: true, queuePosition: queue.length };
   }
 
@@ -711,6 +723,20 @@ export class AgentManager {
    * refusal leaves the caller to keep it queued.
    */
   async #steer(threadId: string, adapter: IAgentAdapter, entry: QueuedTurn): Promise<boolean> {
+    const attempt = this.#attemptSteer(threadId, adapter, entry);
+    this.#steerInFlight.set(threadId, attempt);
+    try {
+      return await attempt;
+    } finally {
+      if (this.#steerInFlight.get(threadId) === attempt) this.#steerInFlight.delete(threadId);
+    }
+  }
+
+  async #attemptSteer(
+    threadId: string,
+    adapter: IAgentAdapter,
+    entry: QueuedTurn,
+  ): Promise<boolean> {
     if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
     if (this.#awaitingInput.has(threadId)) return false;
     const activeTurnId = this.#activeTurnByThread.get(threadId);
@@ -789,6 +815,7 @@ export class AgentManager {
         turnId: from,
         messageId,
         text,
+        continuedIn: to,
       }),
     );
     this.#options.notify(
@@ -1235,6 +1262,11 @@ export class AgentManager {
     // user's message stays visible with its mark). Checked first — routing it to
     // an adapter would be a no-op that leaves the turn queued forever.
     if (await this.#cancelQueuedTurn(threadId, turnId)) return;
+    // Only the turn running now can be stopped. A turn that already ended —
+    // one that handed its run on to a later message — shares its run id with
+    // the turn running now: cancelling it by that id would stop the new one.
+    const active = this.#activeTurnByThread.get(threadId);
+    if (active !== undefined && active !== turnId) return;
     // Whatever this turn had produced is already persisted; send it before the
     // cancel so the phone's live view is not left missing its last words.
     this.#flushText(turnId);
@@ -1265,6 +1297,15 @@ export class AgentManager {
     if (activeTurnId) {
       try {
         await this.cancelTurn(threadId, activeTurnId);
+      } catch {
+        /* best-effort */
+      }
+    }
+    // What was waiting will never run now: settle each as cancelled, as a
+    // cancel would, instead of leaving it `queued` until the next restart.
+    for (const entry of [...(this.#queueByThread.get(threadId) ?? [])]) {
+      try {
+        await this.#cancelQueuedTurn(threadId, entry.turnId);
       } catch {
         /* best-effort */
       }
@@ -1570,6 +1611,17 @@ export class AgentManager {
 
   async #onEvent(event: AgentStreamEvent): Promise<void> {
     const { threadId } = event;
+    // A run's end waits for a mid-turn delivery still being offered to it: if
+    // the agent took the message, the run now carries that later turn.
+    const steering = this.#steerInFlight.get(threadId);
+    if (
+      steering &&
+      (event.type === 'turn_completed' ||
+        event.type === 'turn_error' ||
+        event.type === 'turn_aborted')
+    ) {
+      await steering.catch(() => undefined);
+    }
     // Adapters name the run; after a hand-off its output is a later turn's.
     const runId = event.turnId;
     const turnId = this.#turnOfRun.get(runId) ?? runId;
@@ -1770,6 +1822,9 @@ export class AgentManager {
           this.#assistantByTurn.delete(turnId);
           this.#forgetRun(runId, turnId, threadId);
           void this.#cleanupAttachments(runId);
+          // A stopped turn still opened (or continued) the agent's session: keep
+          // it, or the next message would start the conversation over.
+          await this.#persistAgentSession(threadId, now);
           // The user stopped this turn. They stopped it for a reason, so the
           // follow-ups they queued earlier wait for an explicit resume.
           this.#pauseQueue(threadId, 'turnAborted');

@@ -119,6 +119,14 @@ export interface Turn {
   messages: Message[];
   createdAt: number;
   completedAt?: number;
+  /**
+   * The later turn this one's agent run went on in. Set when a message reached
+   * the agent while it was still answering here (a mid-turn delivery,
+   * `AgentCapabilities.steering`): this turn ends where the message arrived —
+   * what it holds is the answer so far, not a closing one — and everything the
+   * agent did after it is that turn's. Absent otherwise, and on an older bridge.
+   */
+  continuedIn?: string;
 }
 
 /**
