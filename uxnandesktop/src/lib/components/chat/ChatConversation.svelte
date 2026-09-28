@@ -45,6 +45,7 @@
   import { usageProviderForAgent } from "$lib/usageCatalog";
   import { pressingWindow } from "$lib/usagePace";
   import { readingPosition, saveReadingPosition } from "$lib/bridge/readingPosition";
+  import { settleScroll } from "./chatScroll";
   import { chatActionUi, chatActionsFor } from "$lib/bridge/chatActions.svelte";
   import { bridgeAgentLogo } from "$lib/bridge/agents";
   import { userText, type PendingSend } from "$lib/bridge/conversation.svelte";
@@ -276,18 +277,29 @@
   // otherwise (or when it was left at its end) at the end.
   const saved = readingPosition(untrack(() => threadId));
   let following = $state(saved?.atEnd ?? true);
-  let restored = saved === undefined || saved.atEnd;
+  /** A place still to be put back (the saved one, or the one kept while the
+   *  chat was hidden); `null` once the reader is where they belong. */
+  let pending: number | null = saved && !saved.atEnd ? saved.top : null;
+  let lastTop = 0;
 
-  // Put the reader back once the saved stretch of the timeline is there.
+  /** Put the timeline where it belongs for its current size (see chatScroll). */
+  function settle() {
+    if (!scroller) return;
+    const next = settleScroll(scroller, { following, pending, lastTop }, conversation.turns.length > 0);
+    pending = next.pending;
+    if (next.top !== null) scroller.scrollTop = next.top;
+  }
+
+  // Settle whenever the pane or its content changes size: being shown after
+  // loading hidden, the turns arriving, a reply streaming in, an image loading.
   $effect(() => {
-    void conversation.turns.length;
-    if (restored || !scroller || conversation.turns.length === 0) return;
     const el = scroller;
-    void tick().then(() => {
-      if (restored || !saved) return;
-      el.scrollTop = saved.top;
-      restored = true;
-    });
+    const content = el?.firstElementChild;
+    if (!el || !content) return;
+    const ro = new ResizeObserver(settle);
+    ro.observe(el);
+    ro.observe(content);
+    return () => ro.disconnect();
   });
 
   // --- the scroll rail: a mark per message sent -----------------------------
@@ -319,13 +331,13 @@
   }
 
   function onScroll() {
-    if (!scroller) return;
+    // A hidden pane has no height: nothing it reports says where the reader is.
+    if (!scroller || scroller.clientHeight === 0 || pending !== null) return;
     measureRail();
     const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
     following = distance < 80;
-    if (restored) {
-      saveReadingPosition(threadId, { top: scroller.scrollTop, atEnd: following });
-    }
+    lastTop = scroller.scrollTop;
+    saveReadingPosition(threadId, { top: scroller.scrollTop, atEnd: following });
     if (scroller.scrollTop < 40 && conversation.hasOlder && !conversation.loadingOlder) {
       const before = scroller.scrollHeight;
       void conversation.loadOlder().then(async () => {
@@ -335,24 +347,9 @@
     }
   }
 
-  // Follow the conversation while the reader is at the bottom; never yank
-  // them down while they are reading older turns.
-  $effect(() => {
-    void conversation.turns.length;
-    void conversation.pending.length;
-    void conversation.openRequests.length;
-    void queued.length;
-    const last = conversation.turns[conversation.turns.length - 1];
-    void last?.messages.map((m) => (typeof m.content === "string" ? m.content.length : 0));
-    if (!following || !scroller) return;
-    void tick().then(() => {
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    });
-  });
-
   function jumpToEnd() {
     following = true;
-    restored = true;
+    pending = null;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }
 

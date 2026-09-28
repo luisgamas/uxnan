@@ -280,6 +280,13 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   (another tab, another chat) opens it where you left it; one left at its end,
   or not read yet, opens at the end (`src/lib/bridge/readingPosition.ts`,
   in memory — a restart opens every conversation at its end, as on the phone).
+  The place is settled whenever the timeline changes size
+  (`src/lib/components/chat/chatScroll.ts`): a chat tab or workspace that is
+  not on screen is hidden and has no height, so one that loaded there reaches
+  its end — or its kept place — the moment it is shown, and a reply streaming
+  in or an image loading late keeps a reader at the end there. Scrolling up
+  stops following; scrolling back to the end, sending, or the jump-to-end
+  button resumes it.
 - **Messages**: a long message you sent folds to its first ten lines under a
   fade, with *Show more* / *Show less* (copying always takes the whole text).
   Hovering one shows when it was sent and a copy button. The

@@ -25,6 +25,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   before its turn starts.
 - **Send now is not offered while the agent waits on an approval or a
   question**, when the bridge would refuse it.
+- **A conversation opens at its end.** A chat that loaded in a tab or
+  workspace not on screen — every tab restored at start-up, a chat opened in
+  the background — showed its first turn instead of its last until you
+  scrolled, and a place kept in one was lost the same way. The timeline now
+  settles whenever it changes size, so it reaches its end (or where you left
+  it) when shown, and stays at the end as late images load.
 - **The spend chart's columns keep one shape.** Only a column's top segment was
   rounded, by at most its own height, so a day whose top agent spent little
   ended flat while the next was round; and the gap between agents came out of
