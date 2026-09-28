@@ -79,6 +79,30 @@ export function mountWithProviders(
 }
 
 /**
+ * Wait until an open dialog has taken focus, before a test clicks into it.
+ *
+ * `bits-ui` moves focus into a dialog one animation frame after it mounts
+ * (its focus scope's open auto-focus runs in `requestAnimationFrame`). jsdom
+ * finds nothing tabbable without a layout engine, so that frame focuses the
+ * dialog content itself. A test that clicks a field and then pastes or types
+ * before the frame has its focus taken away in between, and the text lands on
+ * the dialog instead of the field — only on a machine fast enough to click
+ * inside the first 16 ms, which is why such a test fails on a fast laptop and
+ * passes on a slower CI runner. A user cannot click before the dialog is drawn;
+ * waiting for its focus is the same order.
+ */
+export async function dialogFocusSettled(
+  screen: RenderResult<AnyComponent>,
+  { timeoutMs = 2000 }: { timeoutMs?: number } = {},
+): Promise<void> {
+  const dialog = screen.getByRole("dialog");
+  await until(() => document.activeElement !== null && dialog.contains(document.activeElement), {
+    timeoutMs,
+    label: "the dialog to take focus",
+  });
+}
+
+/**
  * Wait for a condition that has no DOM signal — a call reaching the backend, a
  * store settling. Polls the microtask queue rather than sleeping, so it costs
  * nothing when the condition is already true and never adds fixed delay.
