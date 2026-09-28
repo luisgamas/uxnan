@@ -476,6 +476,18 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 
 ## Daemon lifecycle & ops
 
+- [ ] **Agent processes outlive a bridge that is killed hard.** A graceful stop
+      (`SIGTERM`/`SIGINT` → `bridge.stop()` → `agentManager.stopAll()`) closes
+      every resident child, but a `SIGKILL` (`launchctl kickstart -k`, a crash,
+      an OOM kill) leaves them re-parented to init: seen 2026-09-27 as nine
+      `opencode serve` processes with ppid 1 after forced service restarts.
+      Nothing on disk records what the bridge spawned, so a new bridge cannot
+      reap them. Where: `adapters/spawn.ts` (record long-lived children, with
+      the command they were started with, in the daemon state dir) and bridge
+      startup (reap recorded pids that are alive, orphaned and still run that
+      command; every platform, Windows included). Deferred: it needs a
+      per-platform process check done carefully so it never kills a process the
+      bridge did not start.
 - [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
       secret redaction; add size-based rotation + pruning of old log files.
 - [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).
