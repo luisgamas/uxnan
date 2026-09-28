@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The spend chart's columns keep one shape.** A day's column is one rounded
+  shape whether it holds one agent or several, and every agent's part of it
+  stays visible, apart from the next — a small share no longer turns the top
+  flat or disappears.
 
 ## [0.0.31-alpha.20260928+20260933] - 20260928
 ### Changed
