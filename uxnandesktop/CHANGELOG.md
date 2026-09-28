@@ -4,6 +4,16 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A chat you haven't looked at stays in the sidebar after the app
+  restarts.** A conversation that finished — or failed — while its tab was not
+  in view used to drop off its folder's list the moment the app restarted (an
+  update included), as if you had seen it, although the phone still listed it.
+  The desktop now remembers which chats you have opened, by the bridge's
+  clock, so one that finished while the app was closed or before an update is
+  still listed as done (or failed) until you open it. The first run after
+  updating counts every chat already there as seen.
 
 ## [0.0.66] - 20260928
 ### Changed

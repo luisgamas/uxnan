@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { Thread } from '$shared/models/thread';
+import type { Thread, TurnList } from '$shared/models/thread';
+import type { SeenMarks, SeenStore } from './activity.svelte';
 import { BridgeClientStore } from './client.svelte';
 import { ChatStore, normalizeCwd, sessionKey, type ReplicaChange } from './chat.svelte';
 import type { SyncChanges } from '$shared/models/sync';
@@ -31,7 +32,7 @@ function thread(id: string, cwd: string, updatedAt: number, extra: Partial<Threa
 }
 
 /** A chat store over a client whose `call` is a scripted fake. */
-function harness(responses: Record<string, unknown> = {}) {
+function harness(responses: Record<string, unknown> = {}, seen: SeenStore = memorySeenStore()) {
   const client = new BridgeClientStore();
   const calls: { method: string; params: unknown }[] = [];
   client.call = vi.fn(async (method: string, params?: unknown) => {
@@ -42,8 +43,20 @@ function harness(responses: Record<string, unknown> = {}) {
     }
     return {} as never;
   }) as BridgeClientStore['call'];
-  const store = new ChatStore(client);
+  const store = new ChatStore(client, seen);
   return { client, store, calls };
+}
+
+/** What the desktop has seen, kept in memory instead of the window's storage. */
+function memorySeenStore(initial: SeenMarks | null = null): SeenStore & { marks: () => SeenMarks | null } {
+  let saved = initial;
+  return {
+    load: () => (saved ? structuredClone(saved) : null),
+    save: (marks) => {
+      saved = structuredClone(marks);
+    },
+    marks: () => saved,
+  };
 }
 
 function changes(extra: Partial<SyncChanges> = {}): SyncChanges {
@@ -356,6 +369,46 @@ describe('ChatStore', () => {
     });
     await store.loadAgents();
     expect(store.agents.map((a) => a.agentId)).toEqual(['codex']);
+  });
+
+  it('keeps a finished chat nobody opened as done after a restart, asking the bridge only for its last turn', async () => {
+    const seen = memorySeenStore({ baseline: 100, threads: {} });
+    const lastPage: TurnList = {
+      turns: [
+        {
+          id: 'u2',
+          threadId: 'u',
+          seq: 2,
+          status: 'completed',
+          messages: [{ id: 'm', turnId: 'u2', role: 'assistant', content: 'done', createdAt: 170 }],
+          createdAt: 160,
+          completedAt: 175,
+        },
+      ],
+      total: 2,
+    };
+    const { store, calls } = harness(
+      {
+        'sync/changes': changes({
+          threads: [thread('u', '/r', 180, { turnCount: 2 }), thread('s', '/r', 90, { turnCount: 1 })],
+        }),
+        'turn/list': lastPage,
+      },
+      seen,
+    );
+    await store.sync();
+    await vi.waitFor(() => expect(store.activity.of('u')).toBe('done'));
+    expect(store.activity.of('s')).toBe('idle');
+    expect(calls.filter((c) => c.method === 'turn/list')).toEqual([
+      { method: 'turn/list', params: { threadId: 'u', limit: 1, fromEnd: true } },
+    ]);
+    expect(store.statusesAt('/r')).toEqual([{ status: 'done', at: 180 }]);
+
+    store.markSeen('u');
+    expect(store.activity.of('u')).toBe('idle');
+    expect(seen.marks()?.threads.u).toBe(180);
+    store.markSeen('missing');
+    expect(Object.keys(seen.marks()?.threads ?? {})).toEqual(['u']);
   });
 
   it('caches models per agent', async () => {

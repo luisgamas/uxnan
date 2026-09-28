@@ -2,9 +2,10 @@
   // The agents running in a workspace (a project's main worktree, or a worktree) —
   // uxnan's "agent view". Each agent is a two-line row (conversation title + preview
   // + status) that jumps to its terminal on click. Bridge conversations for the
-  // folder are listed in the same view (`ChatRow`) — the ones open in a tab or
-  // doing something, then the most recent (`sidebarChats`), a chat started on
-  // the phone included — and open in a chat tab on click. Collapsible: when
+  // folder are listed in the same view (`ChatRow`) — only the ones open in a tab
+  // or needing attention (working, waiting on you, failed, finished and not yet
+  // seen — even across a restart), newest first (`sidebarChats`), a chat started
+  // on the phone included — and open in a chat tab on click. Collapsible: when
   // collapsed the header shows a compact strip of each one's logo ringed by its
   // status color. Only renders when there's at least one.
   import { projects } from "$lib/state/projects.svelte";

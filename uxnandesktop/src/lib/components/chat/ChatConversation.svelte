@@ -131,12 +131,14 @@
   }
 
   // While this conversation is in view, a finished or failed turn is not
-  // news: the tab chip and the sidebar row go back to idle.
+  // news: the tab chip and the sidebar row go back to idle, and what was seen
+  // is remembered (as of the thread's latest change) across restarts.
   $effect(() => {
     if (!active) return;
-    if (chat.activity.of(threadId) === "done" || chat.activity.of(threadId) === "blocked") {
-      chat.activity.seen(threadId);
-    }
+    // Re-run when a turn ends or the thread moves while it is in view.
+    void chat.activity.of(threadId);
+    void chat.threads.get(threadId)?.updatedAt;
+    chat.markSeen(threadId);
   });
   const thread = $derived(chat.threads.get(threadId));
   /** Deleted on another client (or the bridge lost it): nothing to show. */
