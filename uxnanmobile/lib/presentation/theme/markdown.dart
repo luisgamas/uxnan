@@ -46,7 +46,10 @@ MarkdownStyleSheet uxnanMarkdownStyleSheet(BuildContext context) {
       color: colors.onSurfaceVariant,
       fontWeight: FontWeight.w600,
     ),
-    a: textTheme.bodyMedium?.copyWith(
+    // Only what makes a link a link: the renderer merges this over the text
+    // the link sits in, so a link keeps that text's font — a heading's size,
+    // a table cell's, or inline code's monospace for a code-span path.
+    a: TextStyle(
       color: colors.primary,
       decoration: TextDecoration.underline,
       decorationColor: colors.primary,

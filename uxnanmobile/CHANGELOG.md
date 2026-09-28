@@ -15,6 +15,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Inline code in an answer wraps with the text.** A file path in backticks
+  (`` `uxnandesktop/src-tauri/src/worktreeloc.rs` ``) no longer jumps to a line
+  of its own and pushes the rest of the sentence, starting with its comma, to
+  the next one; it flows like any other word, wraps inside itself when it is
+  long, and is drawn as the link it is (code look, link color, underline).
+  Links also keep the size of the text they sit in, such as a heading or a
+  table cell.
 - **A PC renamed on the desktop no longer comes back under its old name.**
   The connection wrote the PC's whole record back from an older copy each
   time it stamped "last seen" or advanced its catch-up cursor, so a rename

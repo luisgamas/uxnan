@@ -1546,10 +1546,9 @@ class _TextBlock extends StatelessWidget {
       data: content.text.isEmpty ? '…' : content.text,
       selectable: selectable,
       styleSheet: uxnanMarkdownStyleSheet(context),
-      inlineSyntaxes: onTapLink == null ? null : [WorkspacePathSyntax()],
-      builders: onTapLink == null
-          ? const {}
-          : {'code': WorkspaceCodeLinkBuilder(onTap: onTapLink!)},
+      inlineSyntaxes: onTapLink == null
+          ? null
+          : [WorkspaceCodePathSyntax(), WorkspacePathSyntax()],
       onTapLink: (_, href, __) {
         if (href != null && href.isNotEmpty) onTapLink?.call(href);
       },
