@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.33-alpha.20260928+20260935] - 20260928
 ### Fixed
 
 - **Money reads the same as on the desktop.** Spend and cost followed the

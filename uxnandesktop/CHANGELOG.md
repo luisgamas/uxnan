@@ -4,6 +4,8 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.69] - 20260928
 ### Added
 
 - **The pairing code, next to the QR.** The Bridge window's *Connect a phone*
