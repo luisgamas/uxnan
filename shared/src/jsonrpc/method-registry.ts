@@ -102,6 +102,7 @@ export const METHOD_NAMES = [
   // Bridge control
   'bridge/status',
   'bridge/generatePairingQr',
+  'bridge/pairingCode',
   'bridge/connectedPhones',
   'bridge/disconnectPhone',
   'bridge/trustedDevices',

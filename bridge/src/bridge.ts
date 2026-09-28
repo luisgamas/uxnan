@@ -611,7 +611,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   let localControlToken: string | undefined;
 
   // Live relay-connection state, mutated by the relay serve loop below and read
-  // by both the CLI `status()` and the `bridge/status` handler (via the context).
+  // by both `Bridge.status()` and the `bridge/status` handler (via the context).
   const relayState = { connected: false };
 
   // The bridge's own update (`self-update.ts`): seeded from the on-disk cache,
@@ -686,6 +686,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     pairingPayload: () => {
       pairingCodeService.arm();
       return buildPairingPayload();
+    },
+    pairingCode: () => {
+      pairingCodeService.arm();
+      return pairingCodeService.issue();
     },
     now,
   };

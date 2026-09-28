@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/validation-Ajv-000000?style=for-the-badge&logo=json&logoColor=white)
-![Contracts](https://img.shields.io/badge/93_methods_%7C_24_notifications-blue?style=for-the-badge)
+![Contracts](https://img.shields.io/badge/94_methods_%7C_24_notifications-blue?style=for-the-badge)
 
 Shared JSON-RPC and E2EE contracts for the [Uxnan](../README.md) ecosystem — the
 single source of truth every component agrees on. Consumed as a local workspace
@@ -15,7 +15,7 @@ equivalents (see
 [`architecture/02b-contracts-and-requirements.md`](../architecture/02b-contracts-and-requirements.md)
 §1 for the canonical contract list).
 
-> **Status:** implemented and stable — **93 JSON-RPC methods** + **24 streaming
+> **Status:** implemented and stable — **94 JSON-RPC methods** + **24 streaming
 > notifications**, kept lock-step at build time with the `METHOD_NAMES` array and
 > the `StreamNotification` enum (a compile-time assertion in
 > `src/jsonrpc/method-registry.ts` fails the build on any drift). Changes are

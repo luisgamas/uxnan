@@ -79,7 +79,7 @@ import type {
   DeviceRenameParams,
   TrustedDevice,
 } from '../models/session.js';
-import type { PairingPayload } from '../e2ee/pairing-payload.js';
+import type { PairingCode, PairingPayload } from '../e2ee/pairing-payload.js';
 import type {
   AgentCommand,
   AgentCommandInvocation,
@@ -605,6 +605,9 @@ export interface JsonRpcMethodRegistry {
   // Bridge control (desktop → bridge)
   'bridge/status': { params: void; result: BridgeStatus };
   'bridge/generatePairingQr': { params: void; result: PairingPayload };
+  // The current manual-pairing code, window armed — what `uxnan-bridge code`
+  // prints. Local control channel only: a phone is refused.
+  'bridge/pairingCode': { params: void; result: PairingCode };
   'bridge/connectedPhones': { params: void; result: ConnectedPhone[] };
   'bridge/disconnectPhone': { params: { deviceId: string }; result: void };
   'bridge/trustedDevices': { params: void; result: TrustedDevice[] };

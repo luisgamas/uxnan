@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-93_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-94_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -165,9 +165,9 @@ npm install -g uxnan-bridge
 
 ```bash
 uxnan-bridge start            # start the daemon: LAN server + (optional) relay pairing session
-uxnan-bridge status           # print current status as JSON
+uxnan-bridge status           # the running bridge's status as JSON (asks it; starts nothing)
 uxnan-bridge qr               # print the pairing QR — the running bridge's (the service's) when one runs
-uxnan-bridge code             # print just the current pairing code
+uxnan-bridge code             # print just the pairing code — the running bridge's when one runs
 uxnan-bridge stop             # stop the running daemon (via the lock file)
 uxnan-bridge install-service  # run as your user's service (Task Scheduler / LaunchAgent / systemd --user)
 uxnan-bridge uninstall-service
@@ -181,17 +181,19 @@ uxnan-bridge version          # print the installed version (starts nothing)
 **Pairing is time-boxed.** A first-time enrollment is only accepted while a
 pairing window is open, so a device that never saw your screen can't enroll
 itself over the LAN. The window opens for 5 minutes whenever you show the QR or
-the code — and also when a phone successfully looks up the code, which is how
-pairing works against a daemon started by `install-service` (there `uxnan-bridge
-qr`/`code` run in a *separate* process, so **use the manual code**: a scanned QR
-never contacts the daemon before the handshake). Already-paired devices
-reconnect at any time and are never affected.
+the code — and also when a phone successfully looks up the code. Against a
+daemon started by `install-service`, `uxnan-bridge qr` and `uxnan-bridge code`
+ask that running bridge over its local control channel for its own QR or code,
+which opens *its* window, so a scan or a typed code pairs with the service.
+With no bridge answering, `code` prints the code every bridge shares
+(`~/.uxnan/pairing-code.json`), which the next one started accepts.
+Already-paired devices reconnect at any time and are never affected.
 
 Logs are written to `~/.uxnan/logs/bridge-YYYY-MM-DD.log` (daily rotation, with a
 secret-redaction pass) and to stderr. Autostart at login is configured by the
 platform scripts under `scripts/`.
 
-The bridge is the ecosystem's core engine, so `start`/`status`/`qr`/`code` also
+The bridge is the ecosystem's core engine, so `start`/`qr`/`code` also
 print a one-line **"a newer bridge is available"** notice to stderr when the
 running version is behind the latest published to npm (`latest` dist-tag). The
 check is best-effort; the short commands keep a 24h cache
@@ -221,7 +223,7 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **93 JSON-RPC methods +
+  E2EE types and runtime validators. The bridge exposes **94 JSON-RPC methods +
   24 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —

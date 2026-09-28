@@ -547,7 +547,7 @@ Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: Valid
 invocar y que el bridge (standalone o embebido) debe implementar.
 
 > **Fuente de verdad:** `shared/src/jsonrpc/methods.ts`
-> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **93
+> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **94
 > entradas**, bloqueadas entre si en build). El bloque de abajo es una copia de
 > lectura: si discrepa del paquete compartido, manda el paquete. La semantica de
 > cada metodo vive en
@@ -646,6 +646,7 @@ export interface JsonRpcMethodRegistry {
   // concurrente y corrompe la sesion del agente.
   'bridge/status':              { params: void;                 result: BridgeStatus };
   'bridge/generatePairingQr':   { params: void;                 result: PairingPayload };
+  'bridge/pairingCode':         { params: void;                 result: PairingCode };   // solo canal local
   'bridge/connectedPhones':     { params: void;                 result: ConnectedPhone[] };
   'bridge/disconnectPhone':     { params: { deviceId: string }; result: void };
   'bridge/trustedDevices':      { params: void;                 result: TrustedDevice[] };

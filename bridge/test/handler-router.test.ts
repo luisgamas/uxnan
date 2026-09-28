@@ -35,6 +35,9 @@ function fakeContext(): BridgeContext {
     pairingPayload: () => {
       throw new Error('not used');
     },
+    pairingCode: () => {
+      throw new Error('not used');
+    },
     now: () => 1000,
   };
 }

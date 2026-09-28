@@ -44,6 +44,30 @@ test('startBridge generates a valid pairing payload via the router', async () =>
   await rmrf(baseDir);
 });
 
+test('bridge/pairingCode answers a local client with its code and refuses a phone', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  try {
+    const phone = await bridge.router.dispatch(makeRequest('p', 'bridge/pairingCode'), {
+      sessionId: 'phone',
+      deviceId: 'phone',
+    });
+    assert.ok('error' in phone && phone.error.code === JsonRpcErrorCode.AuthenticationRequired);
+    const local = await bridge.router.dispatch(makeRequest('l', 'bridge/pairingCode'), {
+      sessionId: 'local:cli',
+      deviceId: 'local:cli',
+      local: 'cli',
+    });
+    assert.ok('result' in local);
+    const answer = local.result as { code: string; expiresInMs: number };
+    // The code THIS process's `/pair/resolve` accepts.
+    assert.equal(answer.code, bridge.currentPairingCode());
+    assert.ok(answer.expiresInMs > 0);
+  } finally {
+    await bridge.stop();
+    await rmrf(baseDir);
+  }
+});
+
 test('stubbed domain methods return a bridge error, not a crash', async () => {
   const { bridge, baseDir } = await bootBridge();
   const res = await bridge.router.dispatch(makeRequest('3', 'auth/login', { provider: 'x' }));

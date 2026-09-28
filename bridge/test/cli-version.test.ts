@@ -37,3 +37,24 @@ test('`update` with no bridge running says how to update, and fails', async () =
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test('`status` with no bridge running prints "not running" and stands none up', async () => {
+  const { access, mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const home = await mkdtemp(join(tmpdir(), 'uxnan-cli-status-'));
+  try {
+    const { stdout, stderr } = await run(process.execPath, [cli, 'status'], {
+      timeout: 10_000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+    const report = JSON.parse(stdout) as { running: boolean; version: string };
+    assert.equal(report.running, false);
+    assert.equal(report.version, BRIDGE_VERSION);
+    // No in-process bridge: no startup/shutdown log lines, no state written.
+    assert.doesNotMatch(stderr, /bridge ready|bridge stopping/);
+    await assert.rejects(access(join(home, '.uxnan')));
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});

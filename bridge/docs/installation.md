@@ -40,7 +40,7 @@ uxnan-bridge start
 ```bash
 uxnan-bridge start     # boot the daemon: LAN server + relay + print the pairing QR
 uxnan-bridge qr        # print the pairing QR (the running bridge's, when one runs)
-uxnan-bridge status    # print status as JSON
+uxnan-bridge status    # the running bridge's status as JSON (starts nothing)
 uxnan-bridge stop      # signal the running daemon to stop
 ```
 
@@ -58,8 +58,9 @@ reconnects to the trusted device without re-scanning.
 > it asks the running bridge for its own payload over the local control
 > channel and opens that bridge's pairing window, so the scan pairs with the
 > service. Uxnan Desktop's **Pair a phone** does the same. The manual code
-> (`uxnan-bridge code`) keeps working too. Re-pairing an already-trusted phone
-> is never gated.
+> works the same way: `uxnan-bridge code` asks the running bridge for its code
+> (`bridge/pairingCode`) and opens its window. Re-pairing an already-trusted
+> phone is never gated.
 
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
   no hosting. (Primary plug-and-play path.)
@@ -73,7 +74,7 @@ See [`connectivity.md`](./connectivity.md) for the three modes.
 
 The bridge is the ecosystem's core engine, so it checks whether a newer build
 has been published to npm (under the `latest` dist-tag) and nudges you to update.
-`start`, `status`, `qr` and `code` print a one-line notice to **stderr** when the
+`start`, `qr` and `code` print a one-line notice to **stderr** when the
 running version is behind:
 
 ```
@@ -82,7 +83,7 @@ Update with: npm install -g uxnan-bridge@latest
 ```
 
 The check is best-effort (silent when offline / up to date). The short-lived
-`status`/`qr`/`code` commands use a cache in `~/.uxnan/update-check.json` (24h)
+`qr`/`code` commands use a cache in `~/.uxnan/update-check.json` (24h)
 so they stay fast; `start` re-checks. **The running bridge asks the registry
 itself every hour**, and tells every connected client the moment a newer version
 appears (`stream/bridge/updated`; `bridge/status` → `update`).

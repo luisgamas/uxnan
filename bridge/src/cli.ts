@@ -10,7 +10,8 @@
  *   install-service  configure autostart on this platform
  *
  * `start` boots the daemon with the live LAN (and optional relay) transport and
- * prints the pairing QR + manual code; `stop`, `status`, `code`, `qr` and
+ * prints the pairing QR + manual code; `status` asks the running daemon for its
+ * own status and `code` for its pairing code; `stop`, `qr` and
  * `install-service`/`uninstall-service` manage the running daemon;
  * `service-status`/`service-start` let Uxnan Desktop run it as the user's
  * service; `config` reads and changes the settings shared with every client;
@@ -42,6 +43,8 @@ import {
 } from './service-installer.js';
 import { BRIDGE_HOST_ENV } from './presence/host-info.js';
 import { callRunningBridge, runningBridgePairing } from './local-control-client.js';
+import { bridgeStatusReport } from './status-report.js';
+import { pairingCodeForCli } from './pairing/cli-pairing-code.js';
 import { enrichProcessPath } from './login-path.js';
 import { runMcpProxy } from './adapters/mcp-proxy.js';
 import { removeGlobalEntry } from './agents/global-mcp-entry.js';
@@ -58,9 +61,9 @@ Usage: uxnan-bridge <command>
 
 Commands:
   start              Start the bridge daemon (LAN/relay transport + pairing)
-  status             Print the current bridge status
+  status             Print the running bridge's status (JSON; starts nothing)
   qr                 Print the pairing QR code in the terminal
-  code               Print the current manual-pairing code (matches the daemon)
+  code               Print the running bridge's manual-pairing code
   stop               Stop the running daemon
   install-service    Run the bridge as your user's service (starts at logon, now too)
   uninstall-service  Remove the service
@@ -78,7 +81,7 @@ Commands:
 
 /**
  * Best-effort "a newer bridge is available" notice, printed to stderr (so it
- * never corrupts the stdout of commands like `status`/`code`). TTL-gated via the
+ * never corrupts the stdout of commands like `qr`/`code`). TTL-gated via the
  * on-disk cache, bounded by a short fetch timeout, and silent when up to date,
  * offline, or the latest version is unknown.
  */
@@ -119,25 +122,33 @@ async function cmdQr(): Promise<void> {
   await printUpdateNotice();
 }
 
+/**
+ * `uxnan-bridge code`: the manual-pairing code of the RUNNING bridge, asked
+ * over its local channel — which also opens that bridge's pairing window.
+ * With none answering it comes from the code store every bridge shares, and
+ * nothing else is started (`pairing/cli-pairing-code.ts`).
+ */
 async function cmdCode(): Promise<void> {
-  // Prints the current manual-pairing code. Shares the code with a running
-  // daemon via `~/.uxnan/pairing-code.json`, so this matches what the daemon
-  // serving `/pair/resolve` accepts — handy when the daemon runs hidden (autostart).
-  // This is the flow that works against a hidden daemon: arming is NOT
-  // cross-process, but the phone resolving this code over `/pair/resolve` arms
-  // the daemon that serves it (proving the code was read off the PC is the
-  // operator action the bootstrap gate looks for).
-  const bridge = await startBridge();
-  process.stdout.write(`${bridge.currentPairingCode()}\n`);
-  await bridge.stop();
+  const { code, source } = await pairingCodeForCli(new DaemonState());
+  process.stdout.write(`${code}\n`);
+  if (source === 'stored') {
+    process.stderr.write(
+      "No bridge answered on its local channel. A bridge accepts this code when a phone enters it; start one with 'uxnan-bridge start' if none runs.\n",
+    );
+  }
   await printUpdateNotice();
 }
 
+/**
+ * `uxnan-bridge status`: the RUNNING bridge's own `bridge/status`, asked over
+ * its local channel (`status-report.ts`) — never a second bridge stood up to
+ * describe itself. With none running it says so and starts nothing.
+ */
 async function cmdStatus(): Promise<void> {
-  const bridge = await startBridge();
-  process.stdout.write(`${JSON.stringify(bridge.status(), null, 2)}\n`);
-  await bridge.stop();
-  await printUpdateNotice();
+  const report = await bridgeStatusReport(new DaemonState(), {
+    installedVersion: BRIDGE_VERSION,
+  });
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
 async function cmdStart(): Promise<void> {

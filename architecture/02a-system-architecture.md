@@ -1353,7 +1353,11 @@ ManualCodeScreen
 
 Flujo equivalente en CLI: el bridge, al arrancar, muestra en la terminal
 tanto el QR como el código de pairing (visible via `uxnan-bridge start` y
-`uxnan-bridge code`).
+`uxnan-bridge code`). `uxnan-bridge code` pide el código al bridge en ejecución
+por el canal de control local (`bridge/pairingCode`, §5.8.15), lo que abre la
+ventana de pairing de ese bridge; si ninguno responde, imprime el código del
+almacén que comparten todos (`~/.uxnan/pairing-code.json`), que acepta el
+próximo bridge que arranque. Ninguno de los dos casos levanta otro bridge.
 
 #### 5.5.4 Estructuras de pairing
 
@@ -1915,8 +1919,9 @@ El bridge se instala como paquete npm global:
 ```bash
 npm install -g uxnan-bridge
 uxnan-bridge start          # inicia el daemon
-uxnan-bridge qr             # muestra QR de pairing en terminal
-uxnan-bridge status         # muestra estado actual
+uxnan-bridge qr             # muestra QR de pairing en terminal (el del bridge en ejecucion si hay uno)
+uxnan-bridge code           # codigo de pairing manual (bridge/pairingCode por el canal local si hay uno)
+uxnan-bridge status         # estado del daemon en ejecucion (bridge/status por el canal local, §5.8.15; no arranca otro)
 uxnan-bridge stop           # detiene el daemon
 uxnan-bridge install-service   # configura autostart en la plataforma
 ```
@@ -3004,14 +3009,15 @@ CONSTANTES:
 > as long as the `PairingPayload` it gates — a shorter window would leave a band
 > where the phone still accepts the QR and the bridge silently refuses). The window is armed by the exact
 > operator actions that surface a QR/code — `generatePairingQr()` (the `qr`
-> command, and `start`'s own printed QR) and `currentPairingCode()` (the `code`
-> command) — and by a **successful `GET /pair/resolve`**: producing the current
-> code proves the caller read it off the PC, which is the same consent signal.
-> That last one is what keeps pairing working against an autostarted,
-> console-less daemon: `qr`/`code` run in a SEPARATE short-lived process and
-> share the code through `~/.uxnan/pairing-code.json`, but arming is in-memory
-> and does not cross processes, so the daemon that actually serves the handshake
-> can only be armed by the resolve it serves itself. `server-handshake.ts`
+> command, and `start`'s own printed QR) and `currentPairingCode()` /
+> `bridge/pairingCode` (the `code` command) — and by a **successful
+> `GET /pair/resolve`**: producing the current code proves the caller read it
+> off the PC, which is the same consent signal. Arming is in-memory and does
+> not cross processes, so `qr` and `code` ask the RUNNING daemon over the local
+> control channel (`bridge/generatePairingQr`, `bridge/pairingCode`, §5.8.15),
+> which arms that daemon's own window. With no daemon answering, `code` prints
+> the code shared through `~/.uxnan/pairing-code.json`, and the resolve that
+> daemon serves later is what arms it. `server-handshake.ts`
 > rejects an unarmed `qr_bootstrap` BEFORE any
 > `trustStore` mutation and before `ready` is sent. This corrects an earlier
 > drift: the manual-pairing-code service documented itself as "the consent

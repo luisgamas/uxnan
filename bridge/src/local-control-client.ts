@@ -6,7 +6,8 @@
  * and `uxnan-bridge qr` asks it for its own pairing payload.
  *
  * Connects as the local client `cli` (not `desktop`: it is not Uxnan Desktop
- * and must not appear as one), sends one request, and closes.
+ * and must not appear as one), sends one request, and closes. `uxnan-bridge
+ * status` and `code` ask it too.
  */
 import {
   LOCAL_CONTROL_FILE,
@@ -14,6 +15,7 @@ import {
   makeRequest,
   validatePairingPayload,
   type LocalControlFrame,
+  type PairingCode,
   type PairingPayload,
 } from '@uxnan/shared';
 import WebSocket from 'ws';
@@ -92,4 +94,22 @@ export async function runningBridgePairing(
   if (!live) return undefined;
   const checked = validatePairingPayload(live.result, now);
   return checked.valid ? checked.payload : undefined;
+}
+
+/**
+ * The RUNNING bridge's manual-pairing code, asked over its local control
+ * channel (`bridge/pairingCode`), which also opens that bridge's pairing
+ * window. `undefined` when no bridge answers — none runs, it runs without the
+ * channel, or it predates the method.
+ */
+export async function runningBridgePairingCode(
+  state: DaemonState,
+): Promise<PairingCode | undefined> {
+  const live = await callRunningBridge(state, 'bridge/pairingCode', undefined).catch(
+    () => undefined,
+  );
+  const value = live?.result as Partial<PairingCode> | undefined;
+  if (!value || typeof value.code !== 'string' || value.code.length === 0) return undefined;
+  if (typeof value.expiresInMs !== 'number') return undefined;
+  return { code: value.code, expiresInMs: value.expiresInMs };
 }

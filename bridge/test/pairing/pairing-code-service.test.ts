@@ -192,3 +192,11 @@ test('two instances sharing a statePath agree on the code (cross-process)', () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('issue: the current code with how long it has left, counting down', () => {
+  const { service, advance } = svc({ codes: ['0123ABCD'], ttlMs: 60_000 });
+  assert.deepEqual(service.issue(), { code: '0123-ABCD', expiresInMs: 60_000 });
+  advance(15_000);
+  assert.deepEqual(service.issue(), { code: '0123-ABCD', expiresInMs: 45_000 });
+  assert.equal(service.currentCode(), '0123-ABCD');
+});
