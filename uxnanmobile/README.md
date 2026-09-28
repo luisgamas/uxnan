@@ -6,6 +6,10 @@ channel. It is the part of the ecosystem you carry with you: the bridge does the
 work on the PC, and this app is how you watch it, steer it, and review it from
 anywhere.
 
+It needs only the bridge on your PC, not Uxnan Desktop. When you use both, they
+converge: projects, conversations and shared settings live in the bridge, and the
+phone and the desktop are replicas of it that catch up after any gap.
+
 On a tablet or an unfolded foldable it is not the same screens made wider: past
 840 dp a permanent drawer holds your PCs and their work, and whatever you open
 fills the panel beside it. On a phone nothing changes.
@@ -84,6 +88,11 @@ this app:
   Mobile stores both the external prompt and its answer without duplicating its
   own messages. Antigravity is excluded because `agy` has no reliable readable
   transcript; cross-client token streaming is not claimed.
+- **Pick up any session, even one open in a terminal.** A new conversation lists
+  the agents' own sessions in the chosen folder under *Or continue a session in
+  this folder* (started in a terminal on the PC or in the agent's app) and
+  continues one with its history. A conversation whose session is open in a
+  terminal on the PC says so, and *Continue here* asks the PC to let it go.
 - **Your activity, at a glance.** A profile with what your agents spent (every
   session they recorded, per day, agent and model), your plan limits and their
   pace, a GitHub-style contribution heatmap and your activity highlights —
@@ -132,7 +141,7 @@ flowchart LR
 | State management | Riverpod **3.x** (manual providers, **no** code generation) |
 | Navigation | `go_router` |
 | UI | Material 3 (+ "Neural Expressive" M3 Expressive design language), adaptive light/dark, centralized design tokens |
-| Local persistence | `drift` (SQLite) — 7 tables |
+| Local persistence | `drift` (SQLite) — 10 tables |
 | Secure storage | `flutter_secure_storage` (Keychain / Keystore) |
 | Crypto | `cryptography` + `pointycastle` (X25519, Ed25519, AES-256-GCM, HKDF) |
 | Lint | `very_good_analysis` |
@@ -202,8 +211,8 @@ folder with per-folder git indicators, a full Git screen, and Android push. On
 tablets and other large screens the same routes render beside a permanent
 navigation drawer instead of as a stack of screens.
 
-The detailed, always-current feature inventory and what's left (Bug A relink
-latency, OpenCode/pi interactive approvals — a bridge-side gap — the automated
+The detailed, always-current feature inventory and what's left (OpenCode/pi
+interactive approvals — a bridge-side gap — the automated
 integration test, and all iOS work) lives in [`FOR-DEV.md`](FOR-DEV.md); pending
 iOS/Apple assets are in [`FOR-HUMAN.md`](FOR-HUMAN.md); the full history is in
 [`CHANGELOG.md`](CHANGELOG.md).

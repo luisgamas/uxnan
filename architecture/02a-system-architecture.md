@@ -866,7 +866,7 @@ class SecureStore {
 
 #### 5.3.4 Almacenamiento local (SQLite)
 
-> ✅ **Implementado** (rama `uxnanmobile`): `UxnanDatabase` y el esquema completo de 7 tablas en `lib/infrastructure/storage/`. Detalle de tablas y repositorios en 02c §10. Repositorios drift listos: `Thread`, `ComposerDraft` (los demás se implementan con su módulo).
+> ✅ **Implementado** (rama `uxnanmobile`): `UxnanDatabase` y el esquema completo (hoy 10 tablas) en `lib/infrastructure/storage/`. Detalle de tablas y repositorios en 02c §10. Repositorios drift listos: `Thread`, `ComposerDraft` (los demás se implementan con su módulo).
 
 ```dart
 // lib/infrastructure/storage/local_database.dart

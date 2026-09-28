@@ -2,12 +2,13 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-72_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-93_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
-The local control-plane daemon that connects the [Uxnan](../README.md) mobile app
-to your PC over an end-to-end-encrypted channel. It is the **heart of the
+The local control-plane daemon behind [Uxnan](../README.md). It connects Uxnan
+Mobile to your PC over an end-to-end-encrypted channel, and serves Uxnan Desktop
+on the same machine over a local control channel. It is the **heart of the
 product**: it holds the secure connection to your phone, runs Git and reads your
 workspace on request, and drives the AI coding agents on your behalf, routing
 JSON-RPC methods to per-domain handlers.
@@ -75,6 +76,7 @@ Uxnan distinct actually live:
 ```mermaid
 flowchart LR
   phone["📱 uxnanmobile"]
+  desktop["🖥️ uxnandesktop"]
 
   subgraph disc["Discovery & pairing"]
     mdns["mDNS · _uxnan._tcp.local"]
@@ -96,6 +98,7 @@ flowchart LR
   disc --> bridge
   phone -- "LAN / Tailscale (direct)" --> bridge
   phone -- "relay (optional, off-LAN)" --> bridge
+  desktop -- "local control channel (127.0.0.1)" --> bridge
   bridge --> p1
   bridge --> p2
   bridge --> p3
@@ -130,6 +133,21 @@ rather than duplicated. OpenCode is read through its official local server API;
 the others use their persisted session logs. Antigravity is the explicit gap:
 `agy` exposes neither a readable transcript nor a history export, so no history
 is inferred from its opaque database.
+
+Any agent session can also become a conversation, and a session has one writer
+at a time:
+
+- **Sessions in a folder.** `agent/sessions` lists each agent's own sessions in
+  a folder (started in a terminal, in the agent's app or by the bridge), and
+  `thread/start` with `agentSessionId` continues one. Antigravity cannot list
+  its sessions. A conversation keeps its native session across a bridge restart
+  or self-update, for all seven agents.
+- **A terminal holds its session.** Uxnan Desktop tells the bridge which
+  sessions its terminals have open (`agent/hold` / `agent/release`, local channel
+  only). The bridge refuses turns in a held session (`-32010 SessionHeld`) and
+  announces each change (`stream/agent/held`); any client can ask for a held
+  session with `agent/requestHandoff`. See
+  [`architecture/02a` §5.8.19](../architecture/02a-system-architecture.md).
 
 The standalone Gemini CLI is intentionally unsupported. Antigravity (`agy`) is
 the active Google integration.
@@ -215,11 +233,11 @@ Task-focused guides live in [`docs/`](docs/):
   deleted. The Ed25519 identity and metrics sealing key are secrets kept in a
   `SecretStore`, never written in plaintext.
 - **Routing.** `HandlerRouter.dispatchRaw()` validates the envelope and routes to
-  registered handlers; errors map to JSON-RPC error codes (`-32000..-32009` +
+  registered handlers; errors map to JSON-RPC error codes (`-32000..-32010` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
   Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
-  notifications to connected phones.
+  notifications to every connected client (phones and desktops).
 - **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
   directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay
   `/push/notify` as a fallback.

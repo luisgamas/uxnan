@@ -45,7 +45,7 @@
 | Sistema visual M3 (tokens + tema adaptativo claro/oscuro) | ✅ Hecho | 02c §3.1 |
 | **Lenguaje de diseño "Neural Expressive" (M3 Expressive)** | ✅ Hecho | `uxnanmobile/docs/neural-expressive-design.md`; Icon Surfaces, top bar transparente + scroll veil, pill input flotante, card lists con esquinas dinámicas, spring-motion tokens |
 | Arranque (`main`/`app`/router), i18n (en/es) | ✅ Hecho | — |
-| Persistencia drift (esquema completo de 7 tablas + `UxnanDatabase`) | ✅ Hecho | 02c §10 |
+| Persistencia drift (esquema completo de 10 tablas + `UxnanDatabase`) | ✅ Hecho | 02c §10 |
 | Repositorios drift: `Thread`, `ComposerDraft`, `Message`, `Turn`, `Project`, `TrustedDevice`, `git_action_log` (+ providers DI) | ✅ Hecho | — |
 | Gestión de estado | Riverpod **3.x** manual | Decisión 2026-06-05 (ver abajo); API `Notifier`/`NotifierProvider` |
 | Primitivas crypto E2EE (key gen, handshake Ed25519/X25519/HKDF, envelope AES-256-GCM, fingerprint) | ✅ Hecho | 02a §5.9; verificado con vectores RFC/NIST |

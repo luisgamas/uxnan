@@ -1,7 +1,7 @@
 /**
  * JSON-RPC 2.0 error codes used across the Uxnan ecosystem.
  *
- * Standard codes (-32700..-32603) plus Uxnan-specific codes (-32000..-32009).
+ * Standard codes (-32700..-32603) plus Uxnan-specific codes (-32000..-32010).
  * Source: architecture/02b-contracts-and-requirements.md.
  */
 export const JsonRpcErrorCode = {
