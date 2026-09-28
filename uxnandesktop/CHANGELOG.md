@@ -4,6 +4,13 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **The welcome tour teaches the terminal ⇄ chat hand-off.** Its *Terminal or
+  chat* step now says a session moves between the two (*Continue as chat*,
+  *Open in terminal*) and the phone step mentions *Continue here*. The tour
+  shows once more to everyone who saw the previous one (`WELCOME_VERSION` 2).
+
 ### Fixed
 
 - **The status bar's usage popup shows Codex again.** A Codex account that
