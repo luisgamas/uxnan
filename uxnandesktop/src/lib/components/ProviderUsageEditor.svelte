@@ -12,7 +12,7 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { divider, field, focus, icon, text } from "$lib/design";
-  import { usageProvider } from "$lib/usageCatalog";
+  import { resolveStatusBarWindows, usageProvider } from "$lib/usageCatalog";
   import {
     accountTypeLabelKey,
     formatCredit,
@@ -160,21 +160,19 @@
   }
 
   // --- Status-bar visibility ------------------------------------------------
-  // `*` is a sentinel for "the primary (first) window"; toggling resolves it to
-  // concrete window ids against the live snapshot.
-  function resolvePicks(): string[] {
-    const picks = config.statusBar.windows ?? [];
-    if (!snapshot || !picks.includes("*")) return picks;
-    const first = snapshot.windows[0]?.id;
-    const rest = picks.filter((p) => p !== "*");
-    return first ? [first, ...rest.filter((r) => r !== first)] : rest;
-  }
-  const isWindowPicked = (id: string) => resolvePicks().includes(id);
+  // The ticked checkboxes are exactly what the status bar shows
+  // (`resolveStatusBarWindows`: the `*` sentinel, and picks that no longer match
+  // any window, both mean the first one). A toggle writes back concrete ids of
+  // the current windows only, so stale ids from an older reader drop out.
+  const pickedIds = $derived(
+    resolveStatusBarWindows(config.statusBar.windows, snapshot?.windows).map((w) => w.id),
+  );
+  const isWindowPicked = (id: string) => pickedIds.includes(id);
   function toggleWindow(id: string, on: boolean) {
-    const cur = new Set(resolvePicks());
+    const cur = new Set(pickedIds);
     if (on) cur.add(id);
     else cur.delete(id);
-    config.statusBar.windows = [...cur];
+    config.statusBar.windows = (snapshot?.windows ?? []).map((w) => w.id).filter((w) => cur.has(w));
     onchange();
   }
 </script>

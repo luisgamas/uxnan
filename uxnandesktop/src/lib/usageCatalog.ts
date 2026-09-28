@@ -8,7 +8,7 @@
 // Logos reuse the bundled agent SVGs (see `agentIconSources`), falling back to
 // a product favicon. Posture: never cookies, never pasted keys.
 
-import type { UsageProvider, UsageStatusBarPick } from "./types";
+import type { UsageProvider, UsageStatusBarPick, UsageWindow } from "./types";
 
 export interface UsageCatalogProvider {
   /** Stable id (the wire contract's `UsageProvider`). */
@@ -54,7 +54,30 @@ export function activatableUsageProviders(): UsageCatalogProvider[] {
 
 /** Status-bar defaults when a provider first activates: surface its primary
  *  %-bar. The `windows: ["*"]` sentinel means "the first window", resolved to a
- *  concrete id once real data arrives. */
+ *  concrete id once real data arrives (see `resolveStatusBarWindows`). */
 export function defaultStatusBarPick(): UsageStatusBarPick {
   return { show: true, windows: ["*"], showPlan: false };
+}
+
+/** The windows a provider's saved status-bar picks surface, resolved against
+ *  the windows its latest snapshot reports, in snapshot order. The one place
+ *  picks are interpreted — the status-bar popup (what it shows and the icon's
+ *  tint) and Settings → Providers (which checkboxes are ticked) both ask here.
+ *
+ *  - `"*"` means "the first window"; any other pick is a window id.
+ *  - Ids that match a current window are kept; ids that do not are ignored.
+ *  - Picks that match **no** current window fall back to the first window, as
+ *    if `"*"`. Window ids follow what the provider reports (Codex names them by
+ *    length), so they change when the plan or the reader does — a config saved
+ *    against the old ids (`primary_window`, …) must not leave the row empty.
+ *  - No picks at all is a deliberate "none": nothing is surfaced.
+ *  - No snapshot, or one without windows, surfaces nothing. */
+export function resolveStatusBarWindows(
+  picks: readonly string[] | undefined,
+  windows: readonly UsageWindow[] | undefined,
+): UsageWindow[] {
+  if (!windows || windows.length === 0 || !picks || picks.length === 0) return [];
+  const wantsFirst = picks.includes("*");
+  const shown = windows.filter((w, i) => (wantsFirst && i === 0) || picks.includes(w.id));
+  return shown.length > 0 ? shown : [windows[0]];
 }

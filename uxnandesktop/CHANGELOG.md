@@ -4,6 +4,15 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The status bar's usage popup shows Codex again.** A Codex account that
+  now reports its limits under different names (a single monthly window, say)
+  showed "No data" in the popup while Settings → Providers had its meters, and
+  no longer counted toward the gauge's colour. When the windows you chose to
+  show no longer exist, the popup and the checkboxes in Settings fall back to
+  the provider's first window, and the next change you make there keeps only
+  windows that still exist.
 
 ## [0.0.65] - 20260927
 ### Added

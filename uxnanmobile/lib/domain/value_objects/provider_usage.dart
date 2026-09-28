@@ -55,7 +55,9 @@ class UsageWindow extends Equatable {
         resetsAt: _epoch(json['resetsAt']),
       );
 
-  /// Stable id (e.g. `session5h`, `weekly`).
+  /// Window id (e.g. `session5h`, `weekly`, `monthly`): what the provider
+  /// reports, so it can change with the plan or the reader (see the shared
+  /// `UsageWindow`).
   final String id;
 
   /// Human label (English; the UI shows it verbatim).
