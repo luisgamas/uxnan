@@ -35,7 +35,7 @@ const BASE_CAPS: AgentCapabilities = {
 };
 
 /** What the adapter should do when the manager offers it a mid-turn message. */
-type SteerBehaviour = 'accept' | 'decline' | 'throw';
+type SteerBehaviour = 'accept' | 'decline' | 'throw' | 'hold' | 'decline-after-end';
 
 /**
  * Opens a turn and never ends it on its own, so the test owns the timing. Its
@@ -51,6 +51,8 @@ class SteerableAdapter extends BaseAgentAdapter {
   readonly steered: { turnId: string; activeTurnId: string; text: string }[] = [];
   readonly cancelled: string[] = [];
   behaviour: SteerBehaviour = 'accept';
+  /** Under `hold`: settles the pending `steerTurn` (taken or not). */
+  release?: (taken: boolean) => void;
 
   constructor(steering: boolean) {
     super();
@@ -75,6 +77,25 @@ class SteerableAdapter extends BaseAgentAdapter {
   steerTurn(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean> {
     if (this.behaviour === 'throw') return Promise.reject(new Error('transport died'));
     if (this.behaviour === 'decline') return Promise.resolve(false);
+    if (this.behaviour === 'decline-after-end') {
+      // The run ends while the offer is being made, and the agent says no.
+      this.complete(options.threadId, options.activeTurnId);
+      return new Promise((resolve) => setTimeout(() => resolve(false), 20));
+    }
+    if (this.behaviour === 'hold') {
+      return new Promise((resolve) => {
+        this.release = (taken) => {
+          if (taken) {
+            this.steered.push({
+              turnId: options.turnId,
+              activeTurnId: options.activeTurnId,
+              text: options.text,
+            });
+          }
+          resolve(taken);
+        };
+      });
+    }
     this.steered.push({
       turnId: options.turnId,
       activeTurnId: options.activeTurnId,
@@ -93,6 +114,10 @@ class SteerableAdapter extends BaseAgentAdapter {
   }
   abort(threadId: string, turnId: string): void {
     this.emit({ type: 'turn_aborted', threadId, turnId });
+  }
+  /** The agent announced its session for the thread. */
+  session(threadId: string, sessionId: string): void {
+    this.setNativeSession(threadId, sessionId);
   }
 }
 
@@ -195,6 +220,11 @@ test('a follow-up reaches a steering agent and carries the rest of its run', asy
       (n) => n.method === StreamNotification.TurnCompleted && n.params?.['turnId'] === first.turnId,
     );
     assert.equal(firstDone?.params?.['text'], 'Before. ');
+    // Both tell a client the first turn's reply is the answer so far: the
+    // notification that ends it, and the turn as any later read serves it.
+    assert.equal(firstDone?.params?.['continuedIn'], second.turnId);
+    assert.equal((await h.store.getTurn(first.turnId)).continuedIn, second.turnId);
+    assert.equal((await h.store.getTurn(second.turnId)).continuedIn, undefined);
   } finally {
     await h.cleanup();
   }
@@ -493,6 +523,108 @@ test('send now: with nothing running, it starts at once, through a pause', async
       ['first', 'third'],
     );
     assert.equal(h.manager.activeTurnId(h.threadId), third.turnId);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+// --- races around the end of the running turn --------------------------------
+
+test('a run that ends while a message is being offered to it answers it once', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === first.turnId);
+    h.adapter.behaviour = 'hold';
+    const sending = h.manager.sendTurn(h.threadId, 'second');
+    await waitFor(() => h.adapter.release !== undefined);
+    // The agent's run ends while the offer is still out...
+    h.adapter.complete(h.threadId, first.turnId, 'the whole run');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // ...and it took the message: the end belongs to the turn it joined.
+    h.adapter.release!(true);
+    const second = await sending;
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'completed');
+
+    assert.equal(second.queued, undefined);
+    assert.deepEqual(
+      h.adapter.ran.map((r) => r.text),
+      ['first'],
+      'never sent to the agent a second time',
+    );
+    assert.equal((await h.store.getTurn(first.turnId)).status, 'completed');
+    assert.deepEqual(h.manager.queueState(h.threadId).queuedTurnIds, []);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('a message queued just as its turn ended still runs', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === first.turnId);
+    h.adapter.behaviour = 'decline-after-end';
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    await waitFor(() => h.adapter.ran.length === 2);
+    assert.deepEqual(
+      h.adapter.ran.map((r) => r.text),
+      ['first', 'second'],
+    );
+    assert.equal((await h.store.getTurn(second.turnId)).status, 'streaming');
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('stopping a turn that already handed its run on leaves the new turn running', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === first.turnId);
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    assert.equal(h.manager.activeTurnId(h.threadId), second.turnId);
+
+    await h.manager.cancelTurn(h.threadId, first.turnId);
+    assert.deepEqual(h.adapter.cancelled, [], 'the stale cancel reached nothing');
+    assert.equal(h.manager.activeTurnId(h.threadId), second.turnId);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('archiving a thread settles what was waiting in its queue as cancelled', async () => {
+  const h = await harness(false);
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === first.turnId);
+    const second = await h.manager.sendTurn(h.threadId, 'second');
+    assert.equal(second.queued, true);
+
+    await h.manager.closeThreadSession(h.threadId);
+    assert.equal((await h.store.getTurn(second.turnId)).status, 'cancelled');
+    assert.ok(
+      h.notifications.some(
+        (n) =>
+          n.method === StreamNotification.TurnCancelled && n.params?.['turnId'] === second.turnId,
+      ),
+    );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test('a stopped turn keeps the session it opened', async () => {
+  const h = await harness();
+  try {
+    const first = await h.manager.sendTurn(h.threadId, 'first');
+    await waitFor(() => h.manager.activeTurnId(h.threadId) === first.turnId);
+    h.adapter.session(h.threadId, 'sess-1');
+    h.adapter.abort(h.threadId, first.turnId);
+    await waitFor(async () => (await h.store.getTurn(first.turnId)).status === 'aborted');
+    await waitFor(
+      async () => (await h.store.getHistorySource(h.threadId)).agentSessionId === 'sess-1',
+    );
   } finally {
     await h.cleanup();
   }

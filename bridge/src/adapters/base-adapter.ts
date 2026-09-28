@@ -62,9 +62,13 @@ export abstract class BaseAgentAdapter implements IAgentAdapter {
 
   /** The CLI could not resume the conversation's session (it was deleted, or
    *  a server no longer knows it): forget it, and never adopt it again for
-   *  this thread. The next run opens a fresh session. */
-  protected refuseNativeSession(threadId: string): void {
-    const sessionId = this.#sessionByThread.get(threadId);
+   *  this thread. The next run opens a fresh session. [sessionId] is the one
+   *  that failed — by default the thread's current one; a CLI that announced a
+   *  fresh id on its way to failing passes the id it tried to resume. */
+  protected refuseNativeSession(
+    threadId: string,
+    sessionId: string | undefined = this.#sessionByThread.get(threadId),
+  ): void {
     this.#sessionByThread.delete(threadId);
     if (sessionId) this.#refusedByThread.set(threadId, sessionId);
   }

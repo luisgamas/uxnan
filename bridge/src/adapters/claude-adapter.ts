@@ -25,6 +25,7 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import type {
@@ -251,6 +252,12 @@ interface ActiveRun {
   finished: boolean;
   /** Write one more user message into the running turn (see {@link ClaudeAdapter.steerTurn}). */
   send: (text: string) => boolean;
+  /**
+   * Why the process is being ended from here, if it is: the user stopped the
+   * turn (`cancelTurn`, which reports it itself), or the bridge is shutting
+   * down (`stop`) — the turn did not finish, and must not read as if it had.
+   */
+  ending?: 'cancelled' | 'stopping';
 }
 
 /** A normalized Claude Code event extracted from one stream-json line. */
@@ -262,12 +269,18 @@ export interface ClaudeEvent {
     | 'thinking'
     | 'assistant_text'
     | 'tool_result'
+    | 'replay'
     | 'result'
     | 'task_started'
     | 'task_ended'
     | 'other';
   sessionId?: string;
   text?: string;
+  /**
+   * Only for `replay`: the `uuid` the adapter gave a message it wrote to stdin,
+   * echoed back by `--replay-user-messages` the moment the CLI reads it.
+   */
+  uuid?: string;
   /**
    * Only for `task_started` / `task_ended`: the CLI's own id for a **background
    * task** the model started (`Bash` with `run_in_background`). The turn is not
@@ -483,6 +496,12 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       };
     }
     case 'user': {
+      // A message the adapter wrote, echoed back as the CLI takes it in
+      // (`--replay-user-messages`, verified against claude 2.1.283: the line
+      // carries the `uuid` it was written with and `isReplay: true`).
+      if (parsed['isReplay'] === true && typeof parsed['uuid'] === 'string') {
+        return { kind: 'replay', ...base, uuid: parsed['uuid'] };
+      }
       const message = isRecord(parsed['message']) ? parsed['message'] : undefined;
       const toolResults = extractToolResults(message ? message['content'] : undefined);
       return { kind: 'tool_result', ...base, ...(toolResults.length > 0 ? { toolResults } : {}) };
@@ -599,6 +618,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
   stop(): Promise<void> {
     for (const run of this.#active.values()) {
+      run.ending = 'stopping';
       run.child.kill();
     }
     this.#active.clear();
@@ -645,6 +665,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       'stream-json',
       '--verbose',
       '--include-partial-messages',
+      // Echo each message written to stdin as the CLI takes it in, with the
+      // uuid it was written with. The only way to tell which `result` answers
+      // our messages: a steer joins the running model turn (one `result`),
+      // but one read after that turn ended runs as another, and the CLI also
+      // runs turns of its own — waking the model when background work ends,
+      // or for a `<task-notification>` a resumed session still owed. A
+      // `result` ends this turn only once every message we wrote was read.
+      '--replay-user-messages',
     ];
     if (interactive) {
       const settings = JSON.stringify({
@@ -725,23 +753,37 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return Promise.resolve();
     }
 
+    // Messages written to the CLI that it has not echoed back yet (by uuid).
+    // While one is unread the turn is not over, whatever `result` arrives.
+    const unread = new Set<string>();
     // One stream-json user message per line. Returns false when the pipe is
     // already gone, so a caller can report "not taken" instead of pretending.
     const writeUserMessage = (message: string): boolean => {
       const stdin = child.stdin;
       if (!stdin || !stdin.writable) return false;
+      const uuid = randomUUID();
+      unread.add(uuid);
       try {
         stdin.write(
           `${JSON.stringify({
             type: 'user',
+            uuid,
             message: { role: 'user', content: [{ type: 'text', text: message }] },
           })}\n`,
         );
         return true;
       } catch {
+        unread.delete(uuid);
         return false;
       }
     };
+    // The last lines the CLI wrote to stderr: the only account of why it came
+    // down without answering. Read as it arrives, which also keeps the pipe
+    // from filling and stalling the CLI.
+    let stderrTail = '';
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      stderrTail = `${stderrTail}${chunk.toString()}`.slice(-2000);
+    });
 
     // Once the input is closed the CLI comes down, and it stops whatever
     // background work is still running as it goes.
@@ -809,6 +851,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // turn's completion is held until the tasks resolve and the CLI either
     // produces its follow-up turn or exits.
     let deferredCompletion = false;
+    // Whether any `result` arrived at all: a CLI that exits without one did
+    // not answer, however cleanly it exited.
+    let sawResult = false;
     // Background tasks the CLI killed on its way out. That work was started on
     // the user's behalf and did NOT finish — staying silent about it is what
     // let the phone report a clean success over lost work. Only a task that
@@ -976,6 +1021,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           });
         }
         currentAssistantText = '';
+      } else if (event.kind === 'replay' && event.uuid) {
+        unread.delete(event.uuid);
       } else if (event.kind === 'result') {
         if (event.isError && sessionId && isMissingSession(event.errors)) {
           // The session this conversation continues is gone (its transcript
@@ -984,7 +1031,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           errored = true;
           run.finished = true;
           endInput();
-          this.refuseNativeSession(threadId);
+          // The session to refuse is the one this run tried to resume — not the
+          // fresh id the CLI announced on its way to failing.
+          this.refuseNativeSession(threadId, sessionId);
           child.on('close', () => void this.sendTurn(options));
         } else if (event.isError) {
           errored = true;
@@ -1014,7 +1063,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
               ? { tokens, ...(window !== undefined ? { contextWindow: window } : {}) }
               : undefined;
           pendingCompletion = { text: finalText, ...(usage !== undefined ? { usage } : {}) };
-          if (liveBackgroundTasks.size > 0) {
+          sawResult = true;
+          if (unread.size > 0) {
+            // The CLI answered something that is not (all of) ours: a wake-up
+            // it ran on its own, or the model turn a steer arrived too late to
+            // join. Our message is still to be read and answered — this turn
+            // goes on, and its own `result` ends it.
+          } else if (liveBackgroundTasks.size > 0) {
             // The model ended its turn but left work running, and the CLI keeps
             // running to wait for it — when that work finishes in time the CLI
             // wakes the model and a SECOND turn follows on this same process.
@@ -1064,15 +1119,46 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       }
     });
 
-    child.on('close', () => {
+    child.on('close', (code) => {
       reader.close();
       run.finished = true;
       this.#active.delete(turnId);
       if (completed || errored) return;
+      // `cancelTurn` already reported the turn as stopped.
+      if (run.ending === 'cancelled') return;
       // A background task still open at exit was killed with the process, even
       // if its `task_notification` never arrived.
       interruptedTasks += liveBackgroundTasks.size;
       liveBackgroundTasks.clear();
+      const failWith = (text: string): void => {
+        errored = true;
+        const detail = stderrTail.trim().split('\n').slice(-3).join('\n');
+        this.emit({
+          type: 'turn_error',
+          threadId,
+          turnId,
+          data: { text: detail ? `${text}\n${detail}` : text },
+        });
+      };
+      if (run.ending === 'stopping') {
+        failWith('The bridge stopped while the agent was working; the turn did not finish.');
+        return;
+      }
+      if (unread.size > 0) {
+        // A message we wrote was never read: the CLI came down before it got
+        // to it. The turn did not answer it — say so rather than pass off
+        // whatever came before as its reply.
+        failWith('Claude Code ended before it read the message.');
+        return;
+      }
+      if (!sawResult) {
+        failWith(
+          code === 0
+            ? 'Claude Code exited without answering.'
+            : `Claude Code exited without answering (exit code ${code ?? 'unknown'}).`,
+        );
+        return;
+      }
       if (deferredCompletion) {
         // The turn was held for background work and the CLI exited without a
         // follow-up turn: complete it now — with the streamed text, which by
@@ -1084,8 +1170,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         });
         return;
       }
-      // No terminal `result` line arrived (e.g. killed): complete with what we have.
-      completeOnce({ text: full });
+      // Every message was read and answered, and the CLI came down on its
+      // own: complete with what it said.
+      completeOnce({ ...pendingCompletion, text: full.length > 0 ? full : pendingCompletion.text });
     });
 
     return Promise.resolve();
@@ -1095,6 +1182,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const run = this.#active.get(turnId);
     if (run) {
       run.finished = true;
+      run.ending = 'cancelled';
       run.child.kill();
       this.#active.delete(turnId);
       this.emit({ type: 'turn_aborted', threadId, turnId });

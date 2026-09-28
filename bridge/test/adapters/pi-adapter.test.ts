@@ -36,6 +36,12 @@ interface FakeSpawn {
   feedOpen(lines: string[]): void;
   /** Write lines to STDERR (where `pi --list-models` prints its table), then close. */
   feedStderr(lines: string[]): void;
+  /**
+   * How the fake answers a `steer`, as pi does every RPC command
+   * (`{type:'response', command, success}`): accept it, reject it, or stay
+   * silent (a process about to die).
+   */
+  steerReply: 'accept' | 'reject' | 'silent';
 }
 
 function fakeSpawner(): {
@@ -77,6 +83,7 @@ function fakeSpawner(): {
         stderr.end();
         stdout.end();
       },
+      steerReply: 'accept',
     };
     // Mirrors the real pipe: one RPC command per line, and `end()` is what lets
     // pi shut down (it waits for the next command otherwise).
@@ -84,7 +91,17 @@ function fakeSpawner(): {
     stdin.on('data', (chunk: Buffer) => {
       for (const line of chunk.toString('utf8').split('\n')) {
         if (!line.trim()) continue;
-        record.sent.push(JSON.parse(line) as { type: string; message?: string });
+        const command = JSON.parse(line) as { type: string; message?: string };
+        record.sent.push(command);
+        if (command.type === 'steer' && record.steerReply !== 'silent' && !stdout.writableEnded) {
+          stdout.write(
+            `${JSON.stringify(
+              record.steerReply === 'accept'
+                ? { type: 'response', command: 'steer', success: true }
+                : { type: 'response', command: 'steer', success: false, error: 'not now' },
+            )}\n`,
+          );
+        }
       }
     });
     stdin.on('finish', () => {
@@ -737,16 +754,12 @@ test('a rejected prompt fails the turn, but a rejected steer does not', async ()
   const { done } = collect(adapter);
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
-  // A refused follow-up is not the turn's problem: the manager already treats
-  // it as "leave it queued", so the running turn must survive it.
-  last().feedOpen([
-    '{"type":"response","command":"steer","success":false,"error":"nothing to steer"}',
-  ]);
-  await flush();
+  // A refused follow-up did not land: it is reported as not taken (the manager
+  // keeps it queued), and the running turn survives it.
+  last().steerReply = 'reject';
   assert.equal(
     await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
-    true,
-    'the turn is still live, so the write itself succeeds',
+    false,
   );
 
   // A refused PROMPT means the agent never started — nothing else will arrive.
@@ -756,6 +769,18 @@ test('a rejected prompt fails the turn, but a rejected steer does not', async ()
   const events = await done;
   const err = events.find((e) => e.type === 'turn_error');
   assert.match(String((err?.data as { text: string }).text), /no API key found/);
+});
+
+test('a steer pi never answers before it exits did not land', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  last().steerReply = 'silent';
+  const taken = adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'x' });
+  await flush();
+  last().feed([]);
+  assert.equal(await taken, false);
 });
 
 test('parsePiLine maps agent_end (with willRetry) and agent_settled', () => {

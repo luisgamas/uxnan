@@ -106,6 +106,33 @@ Which agents can, and why — verified against the real CLIs:
 Zero is the instructive case: it **already behaves like the bridge's queue**, so
 there is no native behaviour to match there.
 
+**"Taken" means the running run will answer it.** `steerTurn` returns `true`
+only then, and each adapter holds to it with what its CLI really says (all
+verified live on 2026-09-28):
+
+- **Claude Code** writes every stdin message with a `uuid` and runs with
+  `--replay-user-messages`: the CLI echoes each one (`isReplay: true`) as it
+  reads it. A `result` ends the turn only once every message written was read,
+  so a wake-up the CLI runs on its own (background work that finished, or a
+  `<task-notification>` a resumed session still owed) or the model turn a late
+  message missed never closes it — the case that closed a real turn in a second
+  while the agent worked on for 13 minutes. A CLI that exits without a
+  `result`, with a message unread, or because the bridge is stopping fails the
+  turn with the tail of its stderr instead of completing it.
+- **pi** waits for its RPC `response` to the `steer` (pi 0.85.1 answers
+  `success` in ~20 ms, busy or idle); a refusal leaves the message queued.
+- **OpenCode**: an `idle` that lands while a message is being handed over waits
+  for the answer; one the server accepted runs as another run (OpenCode 2.0.16:
+  its reply, then a second `idle`), and the turn stays open until that `idle`.
+- **Codex**: `turn/steer` with `expectedTurnId` only lands on the active turn.
+- The **manager** holds a run's end while a hand-over is in flight, so a message
+  accepted just as the run finished is answered in its turn and never sent
+  twice.
+
+The turn a hand-off ended names the next one (`Turn.continuedIn`, and
+`continuedIn` on its `stream/turn/completed`), so clients show its reply as the
+answer so far rather than a closing one.
+
 The phone must read *both* signals before promising anything: `bridge/status`
 → `features.midTurnDelivery` (this bridge can) and `agent/list` →
 `capabilities.steering` (this agent allows it).

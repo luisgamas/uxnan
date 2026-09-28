@@ -114,10 +114,11 @@ interface StoredTurn {
   nativeHistoryTurnId?: string;
   /**
    * The turn that carried the rest of this one's agent run, when the agent
-   * took a message mid-turn ({@link ThreadStore.handOffTurn}). Private: the
-   * agent's own transcript may record that whole run as this single exchange
-   * (Claude Code does), so matching it against native history reads the reply
-   * across the chain.
+   * took a message mid-turn ({@link ThreadStore.handOffTurn}). Served as
+   * `Turn.continuedIn`, so a client shows this turn's reply as the answer so
+   * far rather than a closing one. Also read here: the agent's own transcript
+   * may record that whole run as this single exchange (Claude Code does), so
+   * matching it against native history reads the reply across the chain.
    */
   handedOffTo?: string;
 }
@@ -474,12 +475,48 @@ export class ThreadStore {
         // run, not a turn of its own, even when no twin matched it.
         if (insideBridgeRun(thread.turns, native.createdAt)) continue;
 
+        // Already imported under another id: a reader's ids are positions in
+        // the transcript, and a fix to what counts as a prompt renumbers them.
+        // The exchange is the row that holds it, not a second one.
+        const known = sameExchange(thread.turns, native, claimed);
+        if (known) {
+          // The row may hold an earlier, shorter reading of it (imported while
+          // the agent was still answering): take today's, in the same place.
+          const replacement = storedTurnFromNative(native);
+          replacement.nativeHistoryTurnId = native.id;
+          if (known.seq !== undefined) replacement.seq = known.seq;
+          if (JSON.stringify(toTurn(known)) !== JSON.stringify(toTurn(replacement))) {
+            thread.turns[thread.turns.indexOf(known)] = replacement;
+            claimed.add(replacement);
+            refreshed = true;
+          } else {
+            claimed.add(known);
+          }
+          continue;
+        }
+
         const imported = storedTurnFromNative(native);
         imported.nativeHistoryTurnId = native.id;
         imported.seq = nextSeq(thread);
         thread.turns.push(imported);
         claimed.add(imported);
         importedTurnIds.push(imported.id);
+      }
+
+      // A row imported twice under different ids (before the rule above) is
+      // a copy of one this read matched: keep that one.
+      for (const turn of [...thread.turns]) {
+        if (!isImportedTurn(turn) || claimed.has(turn)) continue;
+        const row = { identity: storedTurnIdentity(turn), createdAt: turn.createdAt };
+        const copyOf = [...claimed].some(
+          (other) =>
+            isImportedTurn(other) &&
+            oneExchange({ identity: storedTurnIdentity(other), createdAt: other.createdAt }, row),
+        );
+        if (copyOf) {
+          thread.turns.splice(thread.turns.indexOf(turn), 1);
+          pruned = true;
+        }
       }
 
       const changed = importedTurnIds.length > 0 || refreshed || pruned;
@@ -1572,6 +1609,7 @@ function toTurn(turn: StoredTurn): Turn {
     createdAt: turn.createdAt,
   };
   if (turn.completedAt !== undefined) result.completedAt = turn.completedAt;
+  if (turn.handedOffTo !== undefined) result.continuedIn = turn.handedOffTo;
   return result;
 }
 
@@ -1649,6 +1687,38 @@ function storedTurnFromNative(turn: Turn): StoredTurn {
 }
 
 /** Native history is imported only once a meaningful assistant result exists. */
+/**
+ * Whether two rows hold one exchange: the same prompt, started at the same
+ * moment. The reply is no part of it — a row imported while the agent was
+ * still answering holds an earlier, shorter copy of the same reply.
+ */
+function oneExchange(
+  a: { identity: TurnIdentity; createdAt: number },
+  b: { identity: TurnIdentity; createdAt: number },
+): boolean {
+  if (a.identity.user !== b.identity.user) return false;
+  return (
+    a.createdAt === b.createdAt ||
+    (a.identity.assistant.length > 0 && a.identity.assistant === b.identity.assistant)
+  );
+}
+
+/** An unclaimed row already imported from the transcript that holds the same
+ *  exchange as [native] ({@link oneExchange}) under another id. */
+function sameExchange(
+  turns: readonly StoredTurn[],
+  native: Turn,
+  claimed: ReadonlySet<StoredTurn>,
+): StoredTurn | undefined {
+  const wanted = { identity: nativeTurnIdentity(native), createdAt: native.createdAt };
+  return turns.find(
+    (turn) =>
+      isImportedTurn(turn) &&
+      !claimed.has(turn) &&
+      oneExchange({ identity: storedTurnIdentity(turn), createdAt: turn.createdAt }, wanted),
+  );
+}
+
 /** A row imported from the agent's own transcript (its id IS the native id),
  *  as opposed to a turn the bridge ran and recorded itself. */
 function isImportedTurn(turn: StoredTurn): boolean {

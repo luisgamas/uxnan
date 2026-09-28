@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import { Writable } from 'node:stream';
 import {
   ClaudeCodeAdapter,
   claudeContextWindow,
@@ -25,9 +26,16 @@ interface FakeSpawn {
   feed(lines: string[]): void;
   /** Feed lines WITHOUT ending stdout, so the turn stays open (steering tests). */
   feedOpen(lines: string[]): void;
+  /**
+   * Stop echoing messages as they are written (the real CLI echoes each one
+   * when it READS it, which can be after a `result` it was running already).
+   */
+  holdEcho(): void;
+  /** Echo every held message now, in order. */
+  releaseEcho(): void;
 }
 
-function fakeSpawner(): {
+function fakeSpawner(options: { holdEcho?: boolean } = {}): {
   spawnFn: (
     command: string,
     args: string[],
@@ -46,6 +54,15 @@ function fakeSpawner(): {
     const stdout = new PassThrough();
     const emitter = new EventEmitter();
     stdout.on('end', () => emitter.emit('close', 0));
+    // Like `claude --replay-user-messages`: each message written to stdin comes
+    // back on stdout with its uuid and `isReplay: true` once the CLI reads it.
+    let holding = options.holdEcho === true;
+    const held: string[] = [];
+    const echo = (uuid: string) => {
+      const line = JSON.stringify({ type: 'user', uuid, isReplay: true, session_id: 's' });
+      if (holding) held.push(line);
+      else if (!stdout.writableEnded) stdout.write(`${line}\n`);
+    };
     const record: FakeSpawn = {
       args,
       ...(extra?.env ? { env: extra.env } : {}),
@@ -59,25 +76,38 @@ function fakeSpawner(): {
       feedOpen: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
       },
+      holdEcho: () => {
+        holding = true;
+      },
+      releaseEcho: () => {
+        holding = false;
+        for (const line of held.splice(0)) stdout.write(`${line}\n`);
+      },
     };
     // Mirrors the real pipe: each line is one stream-json user message, and
     // `end()` is what lets the CLI finish (it waits for more input otherwise).
-    const stdin = new PassThrough();
-    stdin.on('data', (chunk: Buffer) => {
-      for (const line of chunk.toString('utf8').split('\n')) {
-        if (!line.trim()) continue;
-        const parsed = JSON.parse(line) as {
-          message?: { content?: { type: string; text?: string }[] };
-        };
-        const text = (parsed.message?.content ?? [])
-          .filter((c) => c.type === 'text')
-          .map((c) => c.text ?? '')
-          .join('');
-        record.sent.push(text);
-      }
-    });
-    stdin.on('finish', () => {
-      record.stdinEnded = true;
+    // Read synchronously, so the echo lands before any line a test feeds next.
+    const stdin = new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        for (const line of chunk.toString('utf8').split('\n')) {
+          if (!line.trim()) continue;
+          const parsed = JSON.parse(line) as {
+            uuid?: string;
+            message?: { content?: { type: string; text?: string }[] };
+          };
+          const text = (parsed.message?.content ?? [])
+            .filter((c) => c.type === 'text')
+            .map((c) => c.text ?? '')
+            .join('');
+          record.sent.push(text);
+          if (parsed.uuid) echo(parsed.uuid);
+        }
+        callback();
+      },
+      final(callback) {
+        record.stdinEnded = true;
+        callback();
+      },
     });
     const proc: SpawnedProcess = {
       stdout,
@@ -1368,4 +1398,180 @@ test('parseInitializeCommands reads only the initialize answer', () => {
     ),
     [{ name: 'x', builtin: true }],
   );
+});
+
+// --- A `result` ends the turn only once every message we wrote was read -----
+
+const RESULT = (text: string) =>
+  `{"type":"result","subtype":"success","is_error":false,"result":"${text}"}`;
+const DELTA = (text: string) =>
+  `{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"${text}"}}}`;
+
+test('parseClaudeLine reads a message the CLI echoes back as it takes it in', () => {
+  assert.deepEqual(
+    parseClaudeLine('{"type":"user","uuid":"m-1","isReplay":true,"session_id":"s"}'),
+    { kind: 'replay', sessionId: 's', uuid: 'm-1' },
+  );
+  // A tool result is a user line too, but never a replay.
+  assert.equal(
+    parseClaudeLine('{"type":"user","uuid":"m-2","message":{"content":[]}}')?.kind,
+    'tool_result',
+  );
+});
+
+test('every message goes out with a uuid, and the CLI is asked to echo it', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  assert.ok(last().args.includes('--replay-user-messages'));
+  last().feed([RESULT('hello')]);
+  assert.equal((await done).at(-1)?.type, 'turn_completed');
+});
+
+// Seen live (2026-09-27): a resumed session first answered a
+// `<task-notification>` it still owed; that `result` closed the user's turn
+// within a second while the real answer ran on for 13 minutes, unseen.
+test('a wake-up the CLI answers before reading our message does not end the turn', async () => {
+  const { spawnFn, last } = fakeSpawner({ holdEcho: true });
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'finish up please' });
+  const run = last();
+  run.feedOpen([RESULT('Background tasks stopped.')]);
+  await flush();
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+  );
+
+  // Now the CLI reads our message and answers it.
+  run.releaseEcho();
+  run.feed([DELTA('All done.'), RESULT('All done.')]);
+  const settled = await done;
+  const completions = settled.filter((e) => e.type === 'turn_completed');
+  assert.equal(completions.length, 1);
+  assert.equal((completions[0]!.data as { text: string }).text, 'All done.');
+});
+
+test('a steer read after the model turn ended keeps the turn open for its answer', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const run = last();
+  run.holdEcho();
+  // Written just as the model finishes: the CLI will read it after its result.
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'and this' }),
+    true,
+  );
+  run.feedOpen([DELTA('First answer. '), RESULT('First answer.')]);
+  await flush();
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+  );
+  assert.equal(run.stdinEnded, false, 'the pipe stays open until the steer is answered');
+
+  run.releaseEcho();
+  run.feed([DELTA('Second answer.'), RESULT('Second answer.')]);
+  const settled = await done;
+  assert.equal(settled.filter((e) => e.type === 'turn_completed').length, 1);
+  assert.equal(
+    (settled.find((e) => e.type === 'turn_completed')!.data as { text: string }).text,
+    'First answer. Second answer.',
+  );
+});
+
+test('a CLI that exits without answering fails the turn, with what it said on stderr', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({
+    binaryPath: 'claude',
+    spawnFn: (...args) => {
+      const proc = spawnFn(...args);
+      const stderr = new PassThrough();
+      setImmediate(() => stderr.write('Error: session is locked by another process\n'));
+      return { ...proc, stderr } as SpawnedProcess;
+    },
+  });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await flush();
+  last().feed([]);
+  const events = await done;
+  const error = events.at(-1)!;
+  assert.equal(error.type, 'turn_error');
+  assert.match((error.data as { text: string }).text, /exited without answering/);
+  assert.match((error.data as { text: string }).text, /locked by another process/);
+});
+
+test('a message the CLI never read fails the turn instead of passing as answered', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const run = last();
+  run.holdEcho();
+  await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'lost?' });
+  run.feed([RESULT('First answer.')]);
+  const events = await done;
+  assert.equal(events.at(-1)?.type, 'turn_error');
+  assert.match((events.at(-1)!.data as { text: string }).text, /before it read the message/);
+});
+
+test('stopping the bridge mid-turn fails the turn rather than completing it', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'long job' });
+  last().feedOpen([DELTA('Working on it')]);
+  await flush();
+  await adapter.stop();
+  const events = await done;
+  assert.equal(
+    events.some((e) => e.type === 'turn_completed'),
+    false,
+  );
+  assert.match((events.at(-1)!.data as { text: string }).text, /bridge stopped/);
+});
+
+test('a cancelled turn reports only that it was stopped', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const events: AgentStreamEvent[] = [];
+  adapter.onEvent((e) => events.push(e));
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'long job' });
+  last().feedOpen([DELTA('Working on it')]);
+  await flush();
+  await adapter.cancelTurn('t1', 'u1');
+  await flush();
+  assert.deepEqual(
+    events
+      .filter((e) => e.type.startsWith('turn_') && e.type !== 'turn_started')
+      .map((e) => e.type),
+    ['turn_aborted'],
+  );
+});
+
+test('a gone session is refused by the id it was resumed with, not the fresh one announced', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  adapter.adoptNativeSession('t1', 'sess_gone');
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'still there?' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"sess_fresh"}',
+    '{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"session_id":"sess_fresh","errors":["No conversation found with session ID: sess_gone"]}',
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+  await flush();
+  last().feed([RESULT('yes')]);
+  await done;
+  // The gone id stays refused: offering it again (the store still holds it
+  // until the new one is persisted) never brings it back.
+  adapter.adoptNativeSession('t1', 'sess_gone');
+  assert.notEqual(adapter.nativeSessionId('t1'), 'sess_gone');
 });
