@@ -15,7 +15,7 @@
   import { resolveStatusBarWindows, usageProvider } from "$lib/usageCatalog";
   import {
     accountTypeLabelKey,
-    formatCredit,
+    formatMoney,
     formatReset,
     formatResetAbsolute,
     statusMeta,
@@ -234,11 +234,11 @@
           <span class={cn("text-foreground", text.body)}>{i18n.t("providers.credit")}</span>
           <span class="font-mono text-xs text-muted-foreground">
             {#if creditIsBalance}
-              {formatCredit(snapshot.credit.available ?? 0, snapshot.credit.currency)}&nbsp;{i18n.t("providers.available")}
+              {formatMoney(snapshot.credit.available ?? 0, snapshot.credit.currency)}&nbsp;{i18n.t("providers.available")}
             {:else}
-              {formatCredit(snapshot.credit.used, snapshot.credit.currency)}
+              {formatMoney(snapshot.credit.used, snapshot.credit.currency)}
               {#if snapshot.credit.limit != null}
-                &nbsp;/&nbsp;{formatCredit(snapshot.credit.limit, snapshot.credit.currency)}
+                &nbsp;/&nbsp;{formatMoney(snapshot.credit.limit, snapshot.credit.currency)}
               {/if}
             {/if}
             {#if creditResetLine}&nbsp;· {creditResetLine}{/if}

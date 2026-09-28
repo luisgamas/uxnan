@@ -196,13 +196,3 @@ export function formatTokens(n: number): string {
   return String(Math.round(n));
 }
 
-/** US dollars for a total: cents under $100, whole dollars past it. */
-export function formatUsd(n: number): string {
-  if (n > 0 && n < 0.01) return "<$0.01";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: n >= 100 ? 0 : 2,
-    minimumFractionDigits: n >= 100 ? 0 : 2,
-  }).format(n);
-}

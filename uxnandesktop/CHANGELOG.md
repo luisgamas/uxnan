@@ -14,6 +14,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **Money is written one way everywhere.** Spend, cost and credit went
+  through two formatters with different rules: totals followed the system
+  locale, credit always showed cents. One formatter (`formatMoney`) now writes
+  every amount as its currency is written, US dollars as `$1,234.56` in every
+  UI language, with cents under 100 and whole units from 100 on, the same rule
+  the phone uses.
+
 - **The usage popup says when an account has nothing to meter.** A provider
   that answers fine but reports no quota window (a free Grok account, say) now
   reads "No quota to meter for this account", as Settings does, instead of

@@ -54,14 +54,36 @@ export function accountTypeLabelKey(type: AccountType): MessageKey {
   }
 }
 
-/** A currency/credit amount (e.g. `$4.20`, `120 credits`). */
-export function formatCredit(amount: number, currency: string): string {
-  if (currency.toLowerCase() === "credits") {
-    return `${Math.round(amount)} credits`;
+/**
+ * Every amount of money the app shows, in one place (spend, cost, credit):
+ * `$4.20`, `$9,559`, `<$0.01`, `€4.20`, `120 credits`. The same rule as the
+ * phone's `fmtMoney`: amounts are written the way their currency is (US
+ * dollars as `$1,234.56` in every UI language — providers bill in them), with
+ * cents under 100 and whole units from 100 on, and a trace as `<$0.01`.
+ * `credits` is a count, not a currency.
+ */
+export function formatMoney(amount: number, currency = "USD"): string {
+  if (currency.toLowerCase() === "credits") return `${Math.round(amount)} credits`;
+  const code = currency.toUpperCase();
+  if (amount > 0 && amount < 0.01) return `<${moneyFormat(code, 2).format(0.01)}`;
+  const digits = Math.abs(amount) >= 100 ? 0 : 2;
+  return moneyFormat(code, digits).format(amount);
+}
+
+function moneyFormat(currency: string, digits: number): Intl.NumberFormat {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  } catch {
+    // Not an ISO-4217 code: plain number and the unit after it.
+    return {
+      format: (n: number) => `${n.toFixed(digits)} ${currency}`,
+    } as Intl.NumberFormat;
   }
-  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : "";
-  const value = amount.toFixed(2);
-  return symbol ? `${symbol}${value}` : `${value} ${currency}`;
 }
 
 /** Tailwind fill class for a used-percentage: calm under 70, amber 70–90, red

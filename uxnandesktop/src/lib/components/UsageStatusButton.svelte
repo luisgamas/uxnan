@@ -15,7 +15,7 @@
   import { divider, icon as iconSize, overlay, shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { resolveStatusBarWindows, usageProvider } from "$lib/usageCatalog";
-  import { formatCredit } from "$lib/usageFormat";
+  import { formatMoney } from "$lib/usageFormat";
   import type { ProviderUsage, UsageProviderConfig, UsageWindow } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
   import UsageMeter from "./UsageMeter.svelte";
@@ -197,10 +197,10 @@
             {#if config.statusBar.showCredit && snap?.credit}
               <span class={cn("font-mono text-muted-foreground", text.indicator)}>
                 {#if snap.credit.limit == null && snap.credit.available != null}
-                  {formatCredit(snap.credit.available, snap.credit.currency)}&nbsp;{i18n.t("providers.available")}
+                  {formatMoney(snap.credit.available, snap.credit.currency)}&nbsp;{i18n.t("providers.available")}
                 {:else}
-                  {formatCredit(snap.credit.used, snap.credit.currency)}
-                  {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatCredit(snap.credit.limit, snap.credit.currency)}{/if}
+                  {formatMoney(snap.credit.used, snap.credit.currency)}
+                  {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatMoney(snap.credit.limit, snap.credit.currency)}{/if}
                 {/if}
               </span>
             {/if}
