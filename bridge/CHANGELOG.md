@@ -4,6 +4,24 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Agent processes no longer outlive a bridge that is killed hard.** A bridge
+  stopped with `SIGKILL` (`launchctl kickstart -k`), a crash or an OOM kill
+  could not close its children, and their `opencode serve`, resident `pi` /
+  `agy`, Codex app-server and ACP servers kept running with no parent —
+  nine `opencode serve` were found after a few forced restarts. The bridge now
+  records every agent process it starts in `~/.uxnan/agent-processes.json`
+  (pid, the exact command and arguments, cwd, when it started, and which bridge
+  started it) and forgets it when it exits; `uxnan-bridge start` first ends
+  what a previous bridge left behind. It ends only a recorded process that is
+  still running, no longer that bridge's child, and still the recorded command
+  started at the recorded moment — a pid the system has handed to another
+  program is left alone, and nothing the bridge did not record is looked at.
+  `SIGTERM`, then `SIGKILL` after 3 seconds on macOS and Linux (`ps`);
+  `taskkill /T /F` on Windows (PowerShell `Get-CimInstance`). The log says how
+  many and which agents, never a command line. Zero's model and skill listings
+  now start through the same spawn path as every other agent process.
 
 ## [0.0.37-alpha.20260928] - 20260928
 ### Fixed

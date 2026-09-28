@@ -1,10 +1,17 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.0
-> **Fecha:** 2026-09-26
+> **Version:** 1.5.1
+> **Fecha:** 2026-09-28
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.1):** no agent process outlives a bridge that is
+> killed hard (§5.8.3). The daemon records every agent process it starts in
+> `~/.uxnan/agent-processes.json` and, when it starts after a `SIGKILL` or a
+> crash, ends only the recorded processes that are still running, orphaned and
+> still the recorded command started at the recorded time — on macOS, Linux and
+> Windows, with no native module. Internal to the bridge: no contract changes.
 
 > **Executive summary (1.5.0):** the bridge owns its own update (§5.8.18). It
 > checks the npm registry itself every hour while it runs (a daemon that learned
@@ -1809,7 +1816,7 @@ bridge/
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
 │   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/antigravity/zero(+acp,approval)/grok(+acp,approval),
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
-│   │                               #   resolve-<agente>, spawn
+│   │                               #   resolve-<agente>, spawn (+ child-ledger, orphan-reaper)
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
 │   ├── agents/attachments.ts       # imagenes inline → archivos en el cwd
 │   ├── conversation/               # thread-store, native-session history convergence
@@ -1846,6 +1853,7 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── metrics.json.bak1..bak5        # generaciones locales del ledger
 ├── checkpoints.json               # metadata de checkpoints
 ├── update-check.json              # cache de actualizaciones
+├── agent-processes.json           # procesos de agente que el daemon en marcha arranco
 └── logs/
     └── bridge-YYYY-MM-DD.log
 ```
@@ -1871,6 +1879,28 @@ resolves**, so nothing is deferred and no window of loss is opened. A legacy
 `threads.json` is split into per-conversation files on first read and kept as
 `threads.json.migrated` (a backup, not a deletion — it is the user's only copy
 of that history until the new files are proven).
+
+**No agent process outlives a bridge that is killed hard.** A graceful stop
+closes every child (`AgentManager.stopAll`); a `SIGKILL`, a crash or an OOM kill
+cannot, and the long-lived children (`opencode serve`, a resident `pi` / `agy`,
+Codex's app-server, the ACP servers) are re-parented and keep running. So every
+agent process starts through one place (`adapters/spawn.ts`), which records it
+in `agent-processes.json` — `{ version: 1, processes: [{ pid, command, args,
+cwd, startedAt, ownerPid, ownerStartedAt }] }` — and removes it on exit
+(`adapters/child-ledger.ts`, one writer, atomic writes). Only the long-running
+daemon keeps the record, after it holds the single-instance lock. Before it
+serves anything, it ends each recorded process that is **still running**,
+**orphaned** (its parent is no longer the recording bridge — on Windows, which
+keeps a dead parent's pid, that bridge must also be gone) and **still the same
+process** (its command line ends with the recorded arguments after the recorded
+executable, and it started within seconds of the recorded time), then starts a
+fresh record (`adapters/orphan-reaper.ts`). Inspection needs no native module:
+`ps -ww -o ppid=,etime=,command=` on macOS / Linux, PowerShell `Get-CimInstance
+Win32_Process` on Windows; the end is `SIGTERM`, then `SIGKILL` after 3 s
+(re-checked first) on POSIX, `taskkill /PID <pid> /T /F` on Windows. Any doubt
+leaves the process running: nothing unrecorded is looked at, and a reused pid
+fails the command and start-time checks. The log carries counts and agent
+names, never a command line.
 
 #### 5.8.4 Autostart del bridge
 

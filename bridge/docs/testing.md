@@ -31,7 +31,10 @@ Covered: JSON-RPC contracts + validators; E2EE crypto/handshake/replay; pairing
 payload; mDNS wire encoding/query handling plus explicit per-IPv4
 membership/announcements for multi-homed hosts; relay forwarding/rate-limit/health;
 daemon state, identity (keychain via a
-fake backend), lock file; the **autostart** plan per platform; git + workspace +
+fake backend), lock file; the **agent-process record and orphan reap**
+(`child-ledger.test.ts`, `orphan-reaper.test.ts` — a real harmless `node` child
+for the record, and an injected inspector / signaller / command runner for every
+platform's reap, so no test inspects or signals a real process); the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
 the durable metrics ledger (legacy backfill, deletion retention, rotating-file
 recovery, complete same-PC export/import and idempotent merge);

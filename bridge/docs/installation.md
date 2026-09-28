@@ -150,7 +150,10 @@ commands above supersede them.
 `~/.uxnan/` holds the daemon config, pairing session, trusted-phones list, thread
 store, the project registry (`projects.json`), the sync revision ledger
 (`sync.json`), checkpoints metadata, the update-check cache
-(`update-check.json`), the single-instance lock, and daily-rotated logs.
+(`update-check.json`), the single-instance lock, the record of the agent
+processes the running bridge started (`agent-processes.json` — a bridge that
+starts after one was killed hard ends what it left running), and daily-rotated
+logs.
 
 ## The start folder
 

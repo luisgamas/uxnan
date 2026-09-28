@@ -99,6 +99,9 @@ import { BrowseService } from './workspace/browse-service.js';
 import { PushService } from './push/push-service.js';
 import { createBridgePushSender } from './push/push-sender.js';
 import { SessionHistoryReader } from './conversation/session-history.js';
+import { ChildLedger } from './adapters/child-ledger.js';
+import { reapOrphanedChildren, type ReapDeps } from './adapters/orphan-reaper.js';
+import { recordChildrenIn } from './adapters/spawn.js';
 
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
@@ -115,6 +118,17 @@ export interface StartBridgeOptions {
    * which must not touch the user's agent configs.
    */
   manageGlobalEntries?: boolean;
+  /**
+   * Record every agent process this bridge starts in `agent-processes.json`,
+   * and first end the ones a previous bridge killed hard left running
+   * (adapters/child-ledger.ts, adapters/orphan-reaper.ts). Only the
+   * long-running daemon sets it, after it holds the single-instance lock —
+   * never a short-lived command (it would overwrite the daemon's record) or a
+   * test.
+   */
+  recordChildProcesses?: boolean;
+  /** Process inspection / signalling for the reap (tests). */
+  reapDeps?: ReapDeps;
 }
 
 export interface Bridge {
@@ -168,6 +182,13 @@ export function nextRelayBackoff(
   return Math.min(currentBackoffMs * 2, opts.maxMs);
 }
 
+/** `opencode ×2, pi` — names and counts only, never a command line. */
+function summarizeLabels(labels: string[]): string {
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  return [...counts].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(', ');
+}
+
 export async function startBridge(options: StartBridgeOptions = {}): Promise<Bridge> {
   const now = options.now ?? (() => Date.now());
   const state = new DaemonState(options.baseDir);
@@ -177,6 +198,29 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     logDir: state.logsDir,
   });
   const config = await state.initConfig();
+
+  // Before anything can start an agent: end what a killed bridge left behind,
+  // then record what this one starts.
+  let childLedger: ChildLedger | undefined;
+  if (options.recordChildProcesses === true) {
+    const reap = await reapOrphanedChildren(state, options.reapDeps);
+    if (reap.reaped.length > 0) {
+      logger.info(
+        `ended ${reap.reaped.length} agent process(es) a previous bridge left running: ${summarizeLabels(reap.reaped)}`,
+      );
+    }
+    if (reap.skipped > 0) {
+      logger.info(
+        `left ${reap.skipped} recorded process(es) running: not orphaned, or no longer the recorded command`,
+      );
+    }
+    childLedger = new ChildLedger(state, {
+      now,
+      onError: (err) => logger.warn(`could not record agent processes: ${String(err)}`),
+    });
+    await childLedger.reset();
+    recordChildrenIn(childLedger);
+  }
 
   // Persist the pairing sessionId so it is STABLE across bridge restarts. The
   // relay pairs phone↔bridge by sessionId; if we regenerated it every start,
@@ -946,6 +990,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       stopping = true;
       clearInterval(updateTimer);
       await agentManager.stopAll();
+      if (childLedger) {
+        recordChildrenIn(undefined);
+        await childLedger.flush();
+      }
       for (const connection of relayConnections) {
         connection.ws.close();
       }

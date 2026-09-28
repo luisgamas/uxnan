@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 928, shared 43, relay
+standalone). It builds clean and the suite is green (bridge 960, shared 43, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -75,6 +75,19 @@ push validation (FOR-HUMAN).
   or the manual code arms it, so a reachable LAN/Tailscale device cannot
   self-enroll as trusted outside that window; `trusted_reconnect` is unaffected.
 - **OS-keychain identity persistence** + single-instance lock.
+- **No agent process outlives a bridge killed hard.** Every agent process
+  starts through `adapters/spawn.ts`, which records it in
+  `~/.uxnan/agent-processes.json` (`adapters/child-ledger.ts`: pid, the exact
+  executable + arguments, cwd, start time, the owning bridge's pid and start)
+  and forgets it on exit. The daemon (`start`, after it holds the lock, before
+  it serves) ends what a `SIGKILL`ed / crashed bridge left behind
+  (`adapters/orphan-reaper.ts`): only recorded pids that are still running,
+  orphaned (no longer the owner's child) and still running the recorded command
+  since the recorded moment — `SIGTERM`, then `SIGKILL` after 3 s on POSIX;
+  `taskkill /T /F` on Windows. It logs counts and agent names only. Verified
+  live on macOS (2026-09-28): a scratch bridge killed with `kill -9` left two
+  `opencode serve` with ppid 1; the next start ended exactly those two and left
+  every other `opencode serve` on the machine running.
 - **Real Git + Workspace handlers** — path-traversal-safe; working-tree
   checkpoints with **true restore** + retention pruning; `git/revert`,
   `git/deleteBranch`, `git/removeWorktree`, `workspace/exists`,
@@ -476,18 +489,13 @@ stdio) or `opencode-adapter.ts` (HTTP/SSE over `opencode serve`).
 
 ## Daemon lifecycle & ops
 
-- [ ] **Agent processes outlive a bridge that is killed hard.** A graceful stop
-      (`SIGTERM`/`SIGINT` → `bridge.stop()` → `agentManager.stopAll()`) closes
-      every resident child, but a `SIGKILL` (`launchctl kickstart -k`, a crash,
-      an OOM kill) leaves them re-parented to init: seen 2026-09-27 as nine
-      `opencode serve` processes with ppid 1 after forced service restarts.
-      Nothing on disk records what the bridge spawned, so a new bridge cannot
-      reap them. Where: `adapters/spawn.ts` (record long-lived children, with
-      the command they were started with, in the daemon state dir) and bridge
-      startup (reap recorded pids that are alive, orphaned and still run that
-      command; every platform, Windows included). Deferred: it needs a
-      per-platform process check done carefully so it never kills a process the
-      bridge did not start.
+- [ ] **The orphan reap, live on Linux and Windows.** Recording and reaping
+      (`adapters/child-ledger.ts`, `adapters/orphan-reaper.ts`) are covered by
+      unit tests on every platform's parser and kill path, and run live on
+      macOS only. Still owed: a hard-killed bridge on Linux (`ps` from procps;
+      a systemd `--user` service may make the orphan's parent a subreaper, not
+      init) and on Windows (PowerShell `Get-CimInstance`, `taskkill /T /F`),
+      ideally from the *Smoke — platforms* workflow. Marker: `inspectProcess`.
 - [ ] **Log size-rotation + retention** — `createFileLogger` does daily rotation +
       secret redaction; add size-based rotation + pruning of old log files.
 - [ ] **Relay autostart** — only needed for remote/off-LAN (LAN-only needs no relay).

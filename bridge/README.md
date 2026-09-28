@@ -228,7 +228,8 @@ Task-focused guides live in [`docs/`](docs/):
   `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,
   `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
-  `logs/`. `metrics.json` is the complete historical activity ledger; it keeps
+  `agent-processes.json` (the agent processes the running bridge started, so the
+  next one can end those a hard-killed bridge left behind), `logs/`. `metrics.json` is the complete historical activity ledger; it keeps
   five rotating `.bak1` … `.bak5` generations and is not pruned when a thread is
   deleted. The Ed25519 identity and metrics sealing key are secrets kept in a
   `SecretStore`, never written in plaintext.

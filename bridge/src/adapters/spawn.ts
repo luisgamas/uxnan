@@ -6,8 +6,15 @@
  * stdin EOF. An adapter whose CLI reads a real input stream opts in with
  * {@link SpawnExtra.stdin} — see the Claude adapter, which needs the pipe to
  * hand the agent a follow-up mid-turn.
+ *
+ * Every agent process starts here, and that is what lets the bridge find the
+ * ones a killed bridge left behind: with a {@link ChildLedger} installed
+ * ({@link recordChildrenIn} — only the long-running daemon does), each child is
+ * recorded as it starts and forgotten when it exits (`child-ledger.ts`,
+ * `orphan-reaper.ts`).
  */
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildLedger } from './child-ledger.js';
 
 /**
  * Environment keys the **desktop ADE** injects into one terminal of one launch:
@@ -86,6 +93,11 @@ export interface SpawnExtra {
    * `'ignore'` remains the default.
    */
   stdin?: 'pipe' | 'ignore';
+  /**
+   * `'ignore'` discards stderr instead of piping it — for a one-shot whose
+   * stderr nobody reads (an unread pipe that fills up stalls the child).
+   */
+  stderr?: 'pipe' | 'ignore';
 }
 
 export type SpawnFn = (
@@ -112,6 +124,34 @@ export function guardChild(child: ChildProcess): void {
   });
 }
 
+/** The record every started child goes into, when the running daemon keeps one. */
+let ledger: ChildLedger | undefined;
+
+/**
+ * Installs (or, with `undefined`, removes) the record of started children.
+ * Only the long-running daemon calls this, after it holds the single-instance
+ * lock (`startBridge`'s `recordChildProcesses`); short commands and tests never
+ * do, so they never write it.
+ */
+export function recordChildrenIn(next: ChildLedger | undefined): void {
+  ledger = next;
+}
+
+/** Records [child] in the installed ledger until it exits. */
+function track(
+  child: ChildProcess,
+  command: string,
+  args: string[],
+  cwd: string | undefined,
+): void {
+  const current = ledger;
+  const pid = child.pid;
+  // No pid: the spawn failed (`error` follows) and there is nothing to record.
+  if (!current || pid === undefined) return;
+  current.add({ pid, command, args, cwd: cwd ?? process.cwd() });
+  child.once('exit', () => current.remove(pid));
+}
+
 /**
  * A long-lived CLI speaking a protocol on all three pipes (Codex `app-server`,
  * the ACP agents, a line-protocol agent) — spawned with the agent environment
@@ -130,6 +170,7 @@ export function spawnPiped(
     env: agentEnv(options.env),
   });
   guardChild(child);
+  track(child, command, args, options.cwd);
   return child;
 }
 
@@ -138,7 +179,11 @@ export const defaultSpawn: SpawnFn = (command, args, cwd, extra) => {
     cwd,
     // stdin IGNORED unless asked for: the one-shot agent CLIs hang waiting for
     // stdin EOF otherwise.
-    stdio: [extra?.stdin === 'pipe' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+    stdio: [
+      extra?.stdin === 'pipe' ? 'pipe' : 'ignore',
+      'pipe',
+      extra?.stderr === 'ignore' ? 'ignore' : 'pipe',
+    ],
     windowsHide: true,
     shell: false,
     // Always an explicit environment, never the implicit inherited one: that is
@@ -146,9 +191,10 @@ export const defaultSpawn: SpawnFn = (command, args, cwd, extra) => {
     env: agentEnv(extra?.env),
   });
   guardChild(child);
+  track(child, command, args, cwd);
   // `stdio` is computed, so TypeScript widens the streams to `| null` even
-  // though 'pipe' guarantees stdout/stderr. The cast is the narrowing the
-  // literal tuple used to give for free; `stdin` stays optional on
-  // {@link SpawnedProcess} because it really is absent when not piped.
+  // though 'pipe' guarantees stdout. The cast is the narrowing the literal
+  // tuple used to give for free; `stdin` and `stderr` stay optional on
+  // {@link SpawnedProcess} because they really are absent when not piped.
   return child as unknown as SpawnedProcess;
 };

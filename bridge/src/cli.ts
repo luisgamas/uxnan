@@ -161,7 +161,7 @@ async function cmdStart(): Promise<void> {
   // A service or a GUI launch gets a minimal PATH: take the user's own first,
   // so installed agents (and `node` for their launchers) are found.
   await enrichProcessPath().catch(() => undefined);
-  const bridge = await startBridge({ manageGlobalEntries: true });
+  const bridge = await startBridge({ manageGlobalEntries: true, recordChildProcesses: true });
 
   if (bridge.context.config.lanEnabled) {
     try {
