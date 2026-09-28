@@ -84,6 +84,7 @@
     loadCommands,
     mentionRoot,
     acceptsImages = false,
+    deliversNow = false,
   }: {
     /** The text being written (the view persists it as the tab's draft). */
     value?: string;
@@ -113,6 +114,13 @@
     mentionRoot?: string;
     /** Whether the agent takes images (`capabilities.images`). */
     acceptsImages?: boolean;
+    /**
+     * While the agent works, whether a message sent now reaches it at its next
+     * step (it takes input mid-turn, and nothing is queued, paused or waiting
+     * on an answer) rather than waiting in the queue — so the composer says
+     * which will happen.
+     */
+    deliversNow?: boolean;
   } = $props();
 
   let ref = $state<HTMLTextAreaElement | null>(null);
@@ -575,7 +583,9 @@
       {#if context && context.limit > 0}
         <ChatContextRing tokens={context.tokens} limit={context.limit} {plan} />
       {/if}
-      {#if running && empty && onstop}
+      {#if running && onstop}
+        <!-- Stopping the agent stays one click away while a message is being
+             written, not only on an empty composer. -->
         <InputGroup.Button
           size="icon-sm"
           variant="secondary"
@@ -586,14 +596,15 @@
         >
           <Icon icon={StopIcon} class={icon.action} />
         </InputGroup.Button>
-      {:else}
+      {/if}
+      {#if !running || !empty || !onstop}
         <InputGroup.Button
           size="icon-sm"
           variant="default"
           class="rounded-full"
           disabled={empty || disabled}
-          aria-label={running ? i18n.t("chat.queue") : i18n.t("chat.send")}
-          title={running ? i18n.t("chat.queue") : i18n.t("chat.send")}
+          aria-label={running && !deliversNow ? i18n.t("chat.queue") : i18n.t("chat.send")}
+          title={running && !deliversNow ? i18n.t("chat.queue") : i18n.t("chat.send")}
           onclick={() => void submit()}
         >
           <Icon icon={ArrowUp02Icon} class={icon.action} />
@@ -602,6 +613,8 @@
     </InputGroup.Addon>
   </InputGroup.Root>
   {#if running && !empty}
-    <p class={cn(text.meta, "px-1")}>{i18n.t("chat.queueHint")}</p>
+    <p class={cn(text.meta, "px-1")}>
+      {i18n.t(deliversNow ? "chat.steerHint" : "chat.queueHint")}
+    </p>
   {/if}
 </div>

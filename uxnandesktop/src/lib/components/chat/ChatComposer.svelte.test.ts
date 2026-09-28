@@ -199,4 +199,26 @@ describe("ChatComposer", () => {
     expect(await screen.findByText("notes.txt")).toBeTruthy();
     expect(read).toEqual(["/tmp/notes.txt"]);
   });
+
+  it("says whether a message sent while the agent works goes in now or waits, and keeps Stop at hand", async () => {
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { running: true, deliversNow: true, onstop: () => undefined, onsend: () => undefined },
+    });
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    await user.click(box);
+    await user.keyboard("also check the docs");
+    expect(screen.getByText(/takes this message now/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+  });
+
+  it("says a message waits in the queue when the agent cannot take it now", async () => {
+    const { screen, user } = mountWithProviders(ChatComposer, {
+      props: { running: true, deliversNow: false, onstop: () => undefined, onsend: () => undefined },
+    });
+    await user.click(screen.getByRole("textbox"));
+    await user.keyboard("later");
+    expect(screen.getByText(/waits in the queue/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Queue" })).toBeTruthy();
+  });
 });

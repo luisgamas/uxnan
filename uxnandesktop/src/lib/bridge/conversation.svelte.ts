@@ -329,6 +329,12 @@ export class Conversation {
         const params = p as unknown as TurnCompletedParams;
         if (params.usage) this.usage = params.usage;
         this.#settle(params.turnId, 'completed');
+        // It ended because a message reached the agent mid-answer: its reply
+        // is the answer so far, and the run goes on in that message's turn.
+        if (params.continuedIn) {
+          const turn = this.#find(params.turnId);
+          if (turn) turn.continuedIn = params.continuedIn;
+        }
         return;
       }
       case 'stream/turn/error':

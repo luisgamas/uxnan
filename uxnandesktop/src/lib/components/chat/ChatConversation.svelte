@@ -34,6 +34,7 @@
   import ChatFiles from "./ChatFiles.svelte";
   import type { AgentCommandInvocation } from "$shared/agents/agent-capabilities";
   import type { TurnAttachment } from "$shared/models/workspace";
+  import type { Turn } from "$shared/models/thread";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
   import RunOptionsPicker from "$lib/components/RunOptionsPicker.svelte";
   import ChatRequest from "./ChatRequest.svelte";
@@ -119,12 +120,31 @@
     if (p.request.attachments?.length) composer?.restoreAttachments(p.request.attachments);
   }
 
-  /** Withdraws a queued message into the composer — only once the bridge has
-   *  taken it off the queue, so it is never both queued and in the draft. */
-  async function editQueued(turnId: string, text: string) {
+  /** Queued messages withdrawn into the composer here: the bridge keeps them
+   *  as cancelled turns, but this timeline does not — the words are back in
+   *  the draft, not gone. */
+  let withdrawn = $state<Set<string>>(new Set());
+
+  /** Withdraws a queued message into the composer, its attachments too — only
+   *  once the bridge has taken it off the queue, so it is never both queued
+   *  and in the draft. */
+  async function editQueued(turn: Turn) {
+    const user = turn.messages.find((m) => m.role === "user");
+    const text = String(user?.content ?? "");
     try {
-      await chat.cancel(threadId, turnId);
+      const attachments = await Promise.all(
+        (user?.attachments ?? []).map(async (a): Promise<TurnAttachment> => {
+          const dataUrl = await chat.attachment(threadId, a.id);
+          const base64Data = dataUrl.slice(dataUrl.indexOf(",") + 1);
+          return a.name !== undefined || !a.mimeType.startsWith("image/")
+            ? { type: "file", name: a.name ?? a.id, mimeType: a.mimeType, base64Data }
+            : { type: "image", mimeType: a.mimeType, base64Data };
+        }),
+      );
+      await chat.cancel(threadId, turn.id);
+      withdrawn = new Set([...withdrawn, turn.id]);
       putBack(text);
+      if (attachments.length > 0) composer?.restoreAttachments(attachments);
     } catch (err) {
       toastError(err);
     }
@@ -212,18 +232,42 @@
 
   const accessMode = $derived<AccessMode>(thread?.accessMode ?? "fullAccess");
 
+  /** The agent takes a message while it works (`capabilities.steering`). */
+  const steers = $derived(chat.agent(thread?.agentId)?.capabilities?.steering === true);
+
   /** A queued message can go now: into the running turn when the agent takes
-   *  input mid-turn, or — nothing running (a paused queue) — as the next turn. */
+   *  input mid-turn and is not waiting on an answer (the bridge refuses it
+   *  then), or — nothing running (a paused queue) — as the next turn. */
   const canSendNow = $derived(
-    !conversation.running || chat.agent(thread?.agentId)?.capabilities?.steering === true,
+    !conversation.running || (steers && conversation.openRequests.length === 0),
   );
 
-  /** Turns shown in the timeline; queued ones wait below, as ghosts. */
-  const shown = $derived(conversation.turns.filter((t) => t.status !== "queued"));
+  /** A message sent now reaches the running agent at its next step instead of
+   *  waiting in the queue — exactly when the bridge would hand it over. */
+  const deliversNow = $derived(
+    conversation.running &&
+      steers &&
+      conversation.queue.turnIds.length === 0 &&
+      !conversation.queue.paused &&
+      conversation.openRequests.length === 0,
+  );
+
+  /** Messages waiting in the queue, in its order: shown below everything. */
   const queued = $derived(
     conversation.queue.turnIds
       .map((id) => conversation.turns.find((t) => t.id === id))
       .filter((t) => t !== undefined),
+  );
+  /** The timeline: every turn except those still waiting in the queue (a
+   *  message announced `queued` that never entered it is being handed to the
+   *  running agent, and shows in its place) and those withdrawn for editing. */
+  const shown = $derived.by(() => {
+    const waiting = new Set(conversation.queue.turnIds);
+    return conversation.turns.filter((t) => !waiting.has(t.id) && !withdrawn.has(t.id));
+  });
+  /** Turns whose message reached the agent while it was answering another. */
+  const joined = $derived(
+    new Set(conversation.turns.map((t) => t.continuedIn).filter((id) => id !== undefined)),
   );
 
   // --- scrolling -----------------------------------------------------------
@@ -455,7 +499,7 @@
 
           {#each shown as turn (turn.id)}
             <div data-turn-id={turn.id}>
-              <ChatTurnView {turn} {threadId} {cwd} {conversation} />
+              <ChatTurnView {turn} {threadId} {cwd} {conversation} joinedRun={joined.has(turn.id)} />
             </div>
           {/each}
 
@@ -510,6 +554,51 @@
               {/if}
             </div>
           {/each}
+
+          <!-- The queue, where it will run: below everything, in order. -->
+          {#each queued as turn, qi (turn.id)}
+            {@const user = turn.messages.find((m) => m.role === "user")}
+            <div class="flex flex-col items-end gap-0.5">
+              <ChatUserText text={String(user?.content ?? "")} queued />
+              <div class={cn(text.meta, "flex items-center gap-1")}>
+                <Icon icon={Clock01Icon} class={cn(icon.status, "shrink-0")} />
+                <span class="mr-1">
+                  {qi === 0
+                    ? i18n.t("chat.queuedNext")
+                    : i18n.t("chat.queuedPosition", { n: qi + 1 })}
+                </span>
+                {#if canSendNow}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={i18n.t("chat.sendQueuedNow")}
+                    title={i18n.t("chat.sendQueuedNow")}
+                    onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
+                  >
+                    <Icon icon={ArrowUp02Icon} class={icon.status} />
+                  </Button>
+                {/if}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={i18n.t("chat.editQueued")}
+                  title={i18n.t("chat.editQueued")}
+                  onclick={() => void editQueued(turn)}
+                >
+                  <Icon icon={PencilEdit02Icon} class={icon.status} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={i18n.t("chat.cancelQueued")}
+                  title={i18n.t("chat.cancelQueued")}
+                  onclick={() => void chat.cancel(threadId, turn.id).catch(toastError)}
+                >
+                  <Icon icon={Cancel01Icon} class={icon.status} />
+                </Button>
+              </div>
+            </div>
+          {/each}
         </div>
       </div>
       <ChatScrollRail {anchors} current={railCurrent} onselect={jumpToAnchor} />
@@ -559,7 +648,7 @@
           </Button>
         </div>
       {/if}
-      {#if conversation.openRequests.length > 0 || queued.length > 0 || conversation.queue.paused || rescued.length > 0}
+      {#if conversation.openRequests.length > 0 || conversation.queue.paused || rescued.length > 0}
         <div class={chatTokens.dock}>
           {#each conversation.openRequests as request, ri (requestIdOf(request))}
             <ChatRequest block={request} {threadId} {conversation} keys={ri === 0} />
@@ -590,52 +679,6 @@
               >
                 {i18n.t("chat.queueClear")}
               </Button>
-            </div>
-          {/if}
-
-          {#if queued.length > 0}
-            <div class={cn(chatTokens.card, "flex flex-col gap-0.5 p-1.5")}>
-              <span class={cn(text.menuLabel, "px-1.5 pb-1 pt-0.5")}>
-                {i18n.plural(queued.length, "chat.queuedCountOne", "chat.queuedCount")}
-              </span>
-              {#each queued as turn (turn.id)}
-                <div class="flex min-h-7 items-center gap-2 rounded-md px-1.5 text-xs">
-                  <Icon icon={Clock01Icon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
-                  <span class="min-w-0 flex-1 truncate">
-                    {turn.messages.find((m) => m.role === "user")?.content ?? ""}
-                  </span>
-                  {#if canSendNow}
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={i18n.t("chat.sendQueuedNow")}
-                      title={i18n.t("chat.sendQueuedNow")}
-                      onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
-                    >
-                      <Icon icon={ArrowUp02Icon} class={icon.status} />
-                    </Button>
-                  {/if}
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={i18n.t("chat.editQueued")}
-                    title={i18n.t("chat.editQueued")}
-                    onclick={() =>
-                      void editQueued(turn.id, String(turn.messages.find((m) => m.role === "user")?.content ?? ""))}
-                  >
-                    <Icon icon={PencilEdit02Icon} class={icon.status} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={i18n.t("chat.cancelQueued")}
-                    title={i18n.t("chat.cancelQueued")}
-                    onclick={() => void chat.cancel(threadId, turn.id).catch(toastError)}
-                  >
-                    <Icon icon={Cancel01Icon} class={icon.status} />
-                  </Button>
-                </div>
-              {/each}
             </div>
           {/if}
 
@@ -696,6 +739,7 @@
         {loadCommands}
         mentionRoot={cwd}
         acceptsImages={agent?.capabilities?.images === true}
+        {deliversNow}
       >
         {#snippet leading()}
           <ModelPicker
