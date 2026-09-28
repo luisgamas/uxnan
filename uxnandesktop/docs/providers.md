@@ -32,7 +32,11 @@ The panel (`src/lib/components/ProviderSpend.svelte`, view data from
   (or the share read from cache).
 - **A column per day, stacked by agent.** Each agent keeps its colour on every
   surface and in every period (the colour belongs to the agent, never to its
-  rank). Hover a day for its figures.
+  rank). Hover a day for its figures. A column is one shape with a rounded top,
+  however many agents it holds; every agent's segment is at least 2 px with a
+  2 px gap to the next, so a small share never vanishes — what it gains comes
+  from the largest segments, and only a column too short for its agents grows
+  (`src/lib/spendColumn.ts`; the phone lays its chart out by the same rule).
 - **The legend is the agent list**: share and total per agent. Click an agent
   to **focus** it — the chart rescales to it and the headline and the models
   table follow; click again for every agent.

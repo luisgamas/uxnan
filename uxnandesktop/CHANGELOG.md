@@ -4,6 +4,14 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The spend chart's columns keep one shape.** Only a column's top segment was
+  rounded, by at most its own height, so a day whose top agent spent little
+  ended flat while the next was round; and the gap between agents came out of
+  each segment, so a small share could vanish. A column is now one rounded
+  shape whatever it holds, and every agent's segment stays visible, apart from
+  the next.
 
 ## [0.0.67] - 20260928
 ### Fixed
