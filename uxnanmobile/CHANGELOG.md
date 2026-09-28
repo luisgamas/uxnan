@@ -5,8 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **A message the agent took while it was working says so.** On agents that
+  read your message mid-answer (Claude Code, Codex, OpenCode, pi), the answer
+  it interrupted stays whole and ends with *Continues below*, and your message
+  carries *Reached the agent while it was working* — so a message that went in
+  mid-answer no longer looks like one that waited in the queue, and the
+  interrupted answer no longer reads as a finished one. The phone learns this
+  from the bridge (`Turn.continuedIn`, `turn/completed.continuedIn`) and keeps
+  it with the conversation (local database schema 10).
+
 ### Fixed
 
+- **Editing a queued message brings back its images and files**, not only its
+  text. An attachment the phone holds only by reference is fetched first; if
+  it cannot be, the message stays queued instead of losing part of itself.
+- **A queued message's text no longer runs under its buttons.** With *Send now*
+  added, the bubble still left room for two buttons; it now leaves room for
+  exactly the ones it shows.
+- **Edit and cancel on a queued message say when they fail.** A refused edit
+  or cancel used to do nothing visible while the message stayed queued; a
+  snackbar now says the message could not be taken back or cancelled.
+- **A message the agent took mid-answer keeps its place.** The reply to the
+  send could put the message back where it was typed, above the answer it
+  interrupted, instead of where the bridge placed it.
 - **The spend chart's columns keep one shape.** A day's column is one rounded
   shape whether it holds one agent or several, and every agent's part of it
   stays visible, apart from the next — a small share no longer turns the top

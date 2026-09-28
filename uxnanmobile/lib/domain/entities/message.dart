@@ -16,6 +16,7 @@ class Message extends Equatable {
     required this.orderIndex,
     required this.createdAt,
     this.fingerprint,
+    this.continuedIn,
   });
 
   /// Unique message id.
@@ -45,6 +46,15 @@ class Message extends Equatable {
   /// Creation timestamp.
   final DateTime createdAt;
 
+  /// The later turn this message's turn went on in (`Turn.continuedIn`), or
+  /// null. Set when a message reached the agent while it was still answering
+  /// this turn: the turn ended there, so its reply is the answer so far, and
+  /// everything the agent did after it belongs to that later turn.
+  ///
+  /// A property of the turn, carried by each of its messages because the
+  /// phone stores messages, not turns.
+  final String? continuedIn;
+
   /// Concatenated plain-text projection of all content blocks.
   String get plainText => contents.map((c) => c.asPlainText).join('\n');
 
@@ -64,6 +74,7 @@ class Message extends Equatable {
     MessageDeliveryState? deliveryState,
     int? orderIndex,
     String? fingerprint,
+    String? continuedIn,
   }) {
     return Message(
       id: id,
@@ -75,6 +86,7 @@ class Message extends Equatable {
       orderIndex: orderIndex ?? this.orderIndex,
       createdAt: createdAt,
       fingerprint: fingerprint ?? this.fingerprint,
+      continuedIn: continuedIn ?? this.continuedIn,
     );
   }
 
@@ -89,5 +101,6 @@ class Message extends Equatable {
         orderIndex,
         fingerprint,
         createdAt,
+        continuedIn,
       ];
 }

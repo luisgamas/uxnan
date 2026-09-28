@@ -167,18 +167,25 @@ connected to live bridge data, validated on-device against a real bridge.
   a time, and the composer's own Send/Stop button and Enter-inserts-a-newline
   behaviour are unchanged. A waiting message is **pinned to the bottom** of the
   timeline (below the streaming reply) as an ordinary user bubble wearing a
-  **dashed outline** (`NeDashedOutline`), with **edit + cancel** in its corner:
-  it keeps the user's own tone and its whole message, and only that edge says
-  "not sent yet". On delivery the dashes dissolve in place, so the bubble never
-  moves or changes colour — it just stops being provisional. On agents whose CLI
-  has an input channel mid-turn (Claude Code, OpenCode, Codex, pi) that moment comes
-  **without waiting for the turn to end**: the bridge ends the running turn
-  there and starts this one at once (`turn/completed`, then `turn/started`),
-  so the phone settles it exactly as a drained queue — and the answer streams
-  under it. On every other agent it
-  settles when the queue drains, exactly as before.
-  **Edit** withdraws it to the composer leaving no trace; **cancel** leaves the
-  bubble marked. Editing over a busy composer saves that text as a draft, behind
+  **dashed outline** (`NeDashedBorder`), with **send now** (when the agent can
+  take it now) + **edit** + **cancel** in its corner — the text is padded for
+  exactly the buttons shown — and a line under it saying where it sits in
+  line: it keeps the user's own tone and its whole message, and only that edge
+  says "not sent yet". On delivery the dashes dissolve in place, so the bubble
+  never changes colour — it just stops being provisional. On agents whose CLI
+  has an input channel mid-turn (Claude Code, OpenCode, Codex, pi) that moment
+  comes **without waiting for the turn to end**: the bridge ends the running
+  turn there with `turn/completed { continuedIn }` and starts this one at once
+  (`turn/started`), and `turn/list` keeps `Turn.continuedIn` on the earlier
+  turn. The phone stores it on that turn's messages (`messages_table.continued_in`,
+  schema v10): the interrupted reply stays whole and ends with **"Continues
+  below"**, and the message the agent took says **"Reached the agent while it
+  was working"**. On every other agent it settles when the queue drains,
+  exactly as before.
+  **Edit** withdraws it to the composer — text, images and files (an
+  attachment held only by reference is fetched first; if it cannot be, the
+  message stays queued) — leaving no trace; **cancel** leaves the bubble
+  marked. A refused edit or cancel says so in a snackbar. Editing over a busy composer saves that text as a draft, behind
   a **Drafts** pill beside the queue button that opens the shared
   `ComposerPaletteCard` (two lines each, restore/delete/clear-all) and restores
   **only into an empty composer**. A banner
@@ -186,7 +193,7 @@ connected to live bridge data, validated on-device against a real bridge.
   a failure. Gated on `bridge/status` → `features.messageQueue`, so an older
   bridge keeps the pre-queue behaviour. Resync re-reads
   `queuedTurnIds`/`queuePaused` and settles every waiting bubble against the
-  bridge's view, so a message whose fate we missed never stays a ghost.
+  bridge's view, so a message whose fate we missed never stays waiting.
 - **Message scroll rail** — a reusable, dependency-free right-edge minimap
   (`message_scroll_rail.dart`, one faint tick per user message) that is hidden
   while the timeline sits at the bottom and slides in from the right edge when

@@ -13,8 +13,9 @@ enum MessageDeliveryState {
   failed,
 
   /// Accepted by the bridge but **waiting** for the in-flight turn to end — the
-  /// agent has not seen it yet. Rendered as a "ghost" bubble the user can still
-  /// take back.
+  /// agent has not seen it yet. Rendered as a waiting bubble (dashed outline,
+  /// pinned below the conversation) the user can still send now, edit or take
+  /// back.
   queued,
 
   /// Was queued and taken off the queue before the agent ever saw it. The

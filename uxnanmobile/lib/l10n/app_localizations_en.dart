@@ -1093,6 +1093,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get queuedMessageRecoverFailed => 'Couldn\'t take that message back';
 
   @override
+  String get queuedMessageCancelFailed => 'Couldn\'t cancel that message';
+
+  @override
+  String get steeredMessage => 'Reached the agent while it was working';
+
+  @override
+  String get turnContinuesBelow => 'Continues below, with your next message';
+
+  @override
   String get rescuedDraftsTitle => 'Saved drafts';
 
   @override

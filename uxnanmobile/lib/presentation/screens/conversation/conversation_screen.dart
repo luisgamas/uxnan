@@ -732,6 +732,31 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
+  /// Puts the images and files of a queued message taken back to be edited
+  /// beside whatever is already pending, up to [_maxAttachments] of each; the
+  /// snackbar says so when the limit leaves one out.
+  void _addRecoveredAttachments(
+    List<ImageContent> images,
+    List<AttachedFileContent> files,
+  ) {
+    final freeImages = _maxAttachments - _attachments.length;
+    final freeFiles = _maxAttachments - _files.length;
+    setState(() {
+      _attachments.addAll(images.take(freeImages.clamp(0, images.length)));
+      _files.addAll(files.take(freeFiles.clamp(0, files.length)));
+    });
+    final l10n = AppLocalizations.of(context);
+    final message = images.length > freeImages
+        ? l10n.composerAttachLimit(_maxAttachments)
+        : files.length > freeFiles
+            ? l10n.composerFilesLimit(_maxAttachments)
+            : null;
+    if (message == null) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   void _removeFile(int index) {
     if (index < 0 || index >= _files.length) return;
     setState(() => _files.removeAt(index));
@@ -952,6 +977,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 .value ??
             const <AgentCommand>[];
     final snapshot = timelineAsync.value;
+    // User messages the agent took while it was still answering, so their
+    // bubble can say so.
+    final steeredTurnIds = snapshot?.steeredTurnIds ?? const <String>{};
     // If the timeline already has content at first build (no later emission to
     // drive the listener below), restore the saved scroll position now. Guarded
     // + idempotent via [_restoredScroll].
@@ -1139,6 +1167,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                             child: MessageBubble(
                               key: key,
                               message: message,
+                              steered: message.role == MessageRole.user &&
+                                  steeredTurnIds.contains(message.turnId),
                               onTapLink: (href) =>
                                   unawaited(_openMessageLink(href, cwd)),
                             ),
@@ -1360,6 +1390,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       onRemoveAttachment: _removeAttachment,
                       files: _files,
                       onRemoveFile: _removeFile,
+                      // An edited queued message brings its attachments back.
+                      onRecoveredAttachments: _addRecoveredAttachments,
                       acceptsImages: showImages,
                       // A drafted message during a live turn is what reveals
                       // the floating "queue message" action above the pill.

@@ -1277,8 +1277,8 @@ class ThreadManager {
   ///
   /// A message we left waiting can have three fates while the app was away: it
   /// is still queued, it ran, or it was cancelled. Without this the bubble
-  /// would stay a ghost forever — the queue notification that resolved it
-  /// arrived while nothing was listening.
+  /// would stay a waiting one forever — the queue notification that resolved
+  /// it arrived while nothing was listening.
   Future<void> _reconcileQueuedMessages(
     String threadId,
     List<String> queuedTurnIds,
@@ -1365,6 +1365,13 @@ class ThreadManager {
       _noteSeq(turnId, rawTurn['seq']);
       final userOrder = _seqOrder(rawTurn['seq'], MessageRole.user);
       final assistantOrder = _seqOrder(rawTurn['seq'], MessageRole.assistant);
+      // The turn the agent's run went on in, when a message reached it
+      // mid-answer (`Turn.continuedIn`). Stamped on every message of this
+      // turn: the phone keeps messages, not turns.
+      final rawContinuedIn = rawTurn['continuedIn'];
+      final continuedIn = rawContinuedIn is String && rawContinuedIn.isNotEmpty
+          ? rawContinuedIn
+          : null;
       for (final rawMsg in messages) {
         if (rawMsg is! Map) continue;
         final role = rawMsg['role'];
@@ -1381,9 +1388,18 @@ class ThreadManager {
           final known = userByTurn[turnId];
           if (known != null) {
             // Put it where the bridge says it belongs (repairs a message
-            // placed by arrival before positions existed).
-            if (userOrder != null && known.orderIndex != userOrder) {
-              toSave.add(known.copyWith(orderIndex: userOrder));
+            // placed by arrival before positions existed), and learn a
+            // hand-off it did not know about yet.
+            final moved = userOrder != null && known.orderIndex != userOrder;
+            final handedOff =
+                continuedIn != null && known.continuedIn != continuedIn;
+            if (moved || handedOff) {
+              toSave.add(
+                known.copyWith(
+                  orderIndex: moved ? userOrder : null,
+                  continuedIn: continuedIn,
+                ),
+              );
             }
             continue;
           }
@@ -1391,9 +1407,11 @@ class ThreadManager {
           // stamped with the turn it turned out to belong to.
           final orphans = content.isEmpty ? null : orphanUsers[content];
           if (orphans != null && orphans.isNotEmpty) {
-            final adopted = orphans
-                .removeAt(0)
-                .copyWith(turnId: turnId, orderIndex: userOrder);
+            final adopted = orphans.removeAt(0).copyWith(
+                  turnId: turnId,
+                  orderIndex: userOrder,
+                  continuedIn: continuedIn,
+                );
             toSave.add(adopted);
             userByTurn[turnId] = adopted;
             continue;
@@ -1409,6 +1427,7 @@ class ThreadManager {
                 : MessageDeliveryState.sent,
             orderIndex: userOrder ?? 0,
             createdAt: _millisToDate(rawMsg['createdAt']),
+            continuedIn: continuedIn,
           );
           // Placed by the bridge's position when it sent one; otherwise
           // relative to the window below.
@@ -1470,12 +1489,15 @@ class ThreadManager {
           }
           final moved =
               assistantOrder != null && present.orderIndex != assistantOrder;
-          if (changed || moved) {
+          final handedOff =
+              continuedIn != null && present.continuedIn != continuedIn;
+          if (changed || moved || handedOff) {
             toSave.add(
               present.copyWith(
                 contents: changed ? contents : null,
                 deliveryState: changed ? MessageDeliveryState.delivered : null,
                 orderIndex: assistantOrder,
+                continuedIn: continuedIn,
               ),
             );
           }
@@ -1491,6 +1513,7 @@ class ThreadManager {
           // The bridge's position, or assigned below relative to the window.
           orderIndex: assistantOrder ?? 0,
           createdAt: _millisToDate(rawMsg['createdAt']),
+          continuedIn: continuedIn,
         );
         if (assistantOrder != null) {
           toSave.add(answer);
@@ -1660,16 +1683,16 @@ class ThreadManager {
       // The bridge queues a message sent while a turn is in flight and answers
       // `{ turnId, queued: true }`. Record BOTH: the turn id is what lets the
       // user take this message back (`turn/cancel`), and the queued state is
-      // what renders it as a waiting "ghost" bubble instead of a sent one.
+      // what renders it as a waiting bubble (dashed outline, pinned below the
+      // conversation) instead of a sent one.
       final result = res.result;
       final resultTurnId = result is Map ? result['turnId'] : null;
       final queued = result is Map && result['queued'] == true;
-      await _messageRepository.saveMessage(
-        message.copyWith(
-          turnId: resultTurnId is String ? resultTurnId : null,
-          deliveryState:
-              queued ? MessageDeliveryState.queued : MessageDeliveryState.sent,
-        ),
+      await _settleSentMessage(
+        threadId,
+        message.id,
+        turnId: resultTurnId is String ? resultTurnId : null,
+        state: queued ? MessageDeliveryState.queued : MessageDeliveryState.sent,
       );
     } on Object catch (error, stackTrace) {
       await _messageRepository.saveMessage(
@@ -1677,6 +1700,37 @@ class ThreadManager {
       );
       AppLogger.warn('turn/send failed', error, stackTrace);
     }
+  }
+
+  /// Applies the `turn/send` reply to the local echo [messageId].
+  ///
+  /// The reply is the LAST word on a send, not the first: the bridge announces
+  /// the turn (`stream/turn/created`, which places the echo where the bridge
+  /// put it) and — when the agent takes the message mid-answer — ends the
+  /// running turn and starts this one, all before it answers. So the stored
+  /// message is re-read and only an echo still `sending` takes the reply's
+  /// state; writing back the copy made before the request would restore the
+  /// echo's provisional position over the bridge's, filing the message above
+  /// the answer it interrupted. Serialized with the other delivery writes.
+  Future<void> _settleSentMessage(
+    String threadId,
+    String messageId, {
+    required String? turnId,
+    required MessageDeliveryState state,
+  }) {
+    return _serializeWrite(() async {
+      final messages = await _messageRepository.getMessages(threadId);
+      final stored = messages.where((m) => m.id == messageId).firstOrNull;
+      if (stored == null) return;
+      if (stored.deliveryState == MessageDeliveryState.sending) {
+        await _messageRepository.saveMessage(
+          stored.copyWith(turnId: turnId, deliveryState: state),
+        );
+      } else if (stored.turnId.isEmpty && turnId != null) {
+        // Settled by something newer, which is kept — it only lacked the id.
+        await _messageRepository.saveMessage(stored.copyWith(turnId: turnId));
+      }
+    });
   }
 
   /// Takes a queued message off the queue and **removes it from the timeline**,
@@ -1847,7 +1901,7 @@ class ThreadManager {
 
   /// Clears the local `queued` echo of any message the bridge no longer lists
   /// as waiting — it either started or was cancelled, and either way it is no
-  /// longer a ghost. A cancelled one is already settled by
+  /// longer waiting. A cancelled one is already settled by
   /// `stream/turn/cancelled` (which lands first and is skipped here, since only
   /// a still-`queued` message is touched); anything else that left the queue
   /// ran.
@@ -1913,6 +1967,25 @@ class ThreadManager {
         );
         return;
       }
+    });
+  }
+
+  /// Stamps every stored message of [turnId] with the later turn its agent run
+  /// went on in ([continuedIn]). Serialized with the other delivery writes, so
+  /// it re-reads each message instead of overwriting a newer state.
+  Future<void> _markContinued(
+    String threadId,
+    String turnId,
+    String continuedIn,
+  ) {
+    return _serializeWrite(() async {
+      final messages = await _messageRepository.getMessages(threadId);
+      final stale = [
+        for (final message in messages)
+          if (message.turnId == turnId && message.continuedIn != continuedIn)
+            message.copyWith(continuedIn: continuedIn),
+      ];
+      if (stale.isNotEmpty) await _messageRepository.saveMessages(stale);
     });
   }
 
@@ -2051,9 +2124,11 @@ class ThreadManager {
         }
         _setActivity(threadId, ThreadActivity.running);
         _removeFromQueue(threadId, turnId);
-        // A turn the queue just drained to: its bubble stops being a ghost,
-        // becomes an ordinary sent message, and takes its place at the end of
-        // the conversation — where it was actually delivered.
+        // A turn the queue just drained to — or one the agent took mid-answer
+        // (a hand-off: the previous turn's `turn/completed` named it in
+        // `continuedIn`): its bubble stops waiting, becomes an ordinary sent
+        // message, and takes its place at the end of the conversation — where
+        // it was actually delivered.
         unawaited(
           _markUserMessage(
             threadId,
@@ -2088,6 +2163,7 @@ class ThreadManager {
           :final text,
           :final tokens,
           :final contextWindow,
+          :final continuedIn,
         ):
         if (tokens != null) {
           final next = Map<String, ({int tokens, int? contextWindow})>.from(
@@ -2103,9 +2179,22 @@ class ThreadManager {
           // message against the bridge's authoritative ordered record — the
           // live view can be imperfect (a delta in transit during a re-sync, a
           // re-attach that missed early blocks); the bridge's is not.
-          _finishTurn(threadId, turnId, failed: false, finalText: text)
-              .then((_) => _reconcileTurn(threadId, turnId)),
+          _finishTurn(
+            threadId,
+            turnId,
+            failed: false,
+            finalText: text,
+            continuedIn: continuedIn,
+          ).then((_) => _reconcileTurn(threadId, turnId)),
         );
+        // A hand-off: the agent took a later message mid-answer, so this turn
+        // ends with its answer so far and the run goes on in [continuedIn]
+        // (its `turn/started` follows). Every message of this turn says so —
+        // the user's one too, so the later message is known as taken
+        // mid-answer even when this turn has no reply text to carry it.
+        if (continuedIn != null) {
+          unawaited(_markContinued(threadId, turnId, continuedIn));
+        }
       case TurnErrorEvent(:final turnId, :final message):
         unawaited(
           _finishTurn(threadId, turnId, failed: true, errorText: message),
@@ -2136,8 +2225,8 @@ class ThreadManager {
         );
         // Clear the local "waiting" echo for anything the bridge no longer
         // holds. Without this the flag would depend entirely on catching the
-        // turn's `turn_started`, and a missed one would leave the bubble a
-        // ghost forever — the bridge's list is the authority, so settle
+        // turn's `turn_started`, and a missed one would leave the bubble
+        // waiting forever — the bridge's list is the authority, so settle
         // against it every time it changes.
         unawaited(_settleLocalQueueEchoes(threadId, queuedTurnIds));
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
@@ -2221,6 +2310,7 @@ class ThreadManager {
     required bool failed,
     String? finalText,
     String? errorText,
+    String? continuedIn,
   }) async {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
@@ -2315,6 +2405,7 @@ class ThreadManager {
       orderIndex: _seqOrder(_seqByTurn[turnId], MessageRole.assistant) ??
           await _orderIndexFor(threadId),
       createdAt: live.startedAt,
+      continuedIn: continuedIn,
     );
     if (threadId == _activeThreadId) {
       // Reflect immediately so the bubble doesn't flicker out before the repo

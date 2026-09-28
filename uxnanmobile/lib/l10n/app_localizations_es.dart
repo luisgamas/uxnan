@@ -1017,7 +1017,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String queuedMessagePosition(int position) {
-    return '$position en la cola';
+    return '$position.º en la cola';
   }
 
   @override
@@ -1094,6 +1094,15 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get queuedMessageRecoverFailed => 'No se pudo retirar ese mensaje';
+
+  @override
+  String get queuedMessageCancelFailed => 'No se pudo cancelar ese mensaje';
+
+  @override
+  String get steeredMessage => 'Le llegó al agente mientras trabajaba';
+
+  @override
+  String get turnContinuesBelow => 'Continúa abajo, con tu siguiente mensaje';
 
   @override
   String get rescuedDraftsTitle => 'Borradores guardados';

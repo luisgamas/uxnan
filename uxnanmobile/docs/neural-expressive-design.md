@@ -680,31 +680,49 @@ break its 38/48 dp rhythm.
 **Queued and cancelled user bubbles.** A message waiting in the queue is **not
 part of the conversation yet**, and the layout says so: it is pinned to the
 bottom of the timeline — below the reply still streaming — for as long as it
-waits, in queue order. It is drawn on the soft elevated surface
-(`surfaceContainerHighest` with a hairline outline) rather than the user's
-`primaryContainer` tone, shows **a single ellipsized line** (a reminder of what
-is coming, not something to read), and carries a 26 dp **X** inside its
-top-right corner. A muted line beneath says where it sits in line.
+waits, in queue order. It is otherwise an ordinary user bubble: the user's own
+`primaryContainer` tone and its **whole** text (clipped past ten lines with
+*Show more*, like any user message). Only its edge differs — a 1.5 dp **dashed
+outline** in `primary`, drawn by `NeDashedBorder` as the bubble's own shape
+border so the dashes trace exactly the shape being filled. A muted line beneath
+says where it sits in line (*Next in the queue*, *2 in the queue*).
 
-When the queue reaches it, an `AnimatedContainer` settles it into the full
-normal bubble over 220 ms and it drops into place at the point it was
-**delivered** — that motion is the confirmation it went out, so no toast is
-needed. A **cancelled** message returns to the normal bubble with a
-`UxnanColors.warning` note beneath it: it was never sent, but it stays part of
-the record.
+When the queue reaches it, the outline goes transparent over 220 ms and the
+bubble drops into place at the point it was **delivered** — it never changes
+colour, it just stops being provisional, and that is the confirmation it went
+out, so no toast is needed. A **cancelled** message returns to the normal
+bubble with a `UxnanColors.warning` note beneath it: it was never sent, but it
+stays part of the record.
 
-**The two corner actions.** A queued bubble carries a 28 dp **edit** and a 28 dp
-**cancel**, in that reading order — the recoverable action before the one that
-ends the message. They share one shape so they read as a control group, and the
-bubble reserves horizontal padding for the pair so the preview text never runs
-under them. They fade out with the queued state rather than vanishing the
-instant the message is delivered.
+**The corner actions.** A queued bubble carries up to three 28 dp circular
+actions inside its top-right corner, in reading order: **send now** (only when
+the message can go at once — nothing is running, or the agent takes a message
+while it works), **edit**, then **cancel** — the recoverable actions before the
+one that ends the message. They share one shape so they read as a control
+group, and the bubble reserves horizontal padding for **exactly the buttons
+shown** (`_queuedActionsWidth(count)`), so the text never runs under them. They
+fade out with the queued state rather than vanishing the instant the message is
+delivered.
 
-The two do different things on purpose. **Edit** withdraws the message and hands
-its text to the composer, removing the bubble entirely: it is about to be
+They do different things on purpose. **Send now** asks the bridge to deliver
+the message immediately; a refusal (the agent takes nothing mid-turn, or it is
+waiting on an answer) is said in a snackbar and the message stays queued.
+**Edit** withdraws the message and hands it to the composer — its text **and**
+its images and files — removing the bubble entirely: it is about to be
 re-typed, so a husk beside the text being rewritten is noise, not a record.
 **Cancel** leaves the bubble with the warning-toned note and touches nothing
-else — that record *is* the point of the action.
+else — that record *is* the point of the action. When the bridge refuses an
+edit or a cancel, a snackbar says so: nothing visibly happened, and the message
+will still run.
+
+**A message the agent took mid-answer.** On agents that take input while they
+work, a message can reach the agent before its answer is finished. The answer
+it interrupted ends there — it stays fully visible, followed by a muted
+**Continues below** line (`UxIcons.arrowDownward`), because it is the answer so
+far, not a closing one — and the rest of the run streams under the user's
+message, which carries a matching muted note, **Reached the agent while it was
+working** (`UxIcons.bolt`). Both notes share the queued note's type and tone
+(`bodySmall`, `onSurfaceVariant`, a 13 dp glyph): they are status, not content.
 
 **Saved drafts.** Editing a queued message while the composer holds text saves
 that text as a draft, so several queued messages can be edited in a row without

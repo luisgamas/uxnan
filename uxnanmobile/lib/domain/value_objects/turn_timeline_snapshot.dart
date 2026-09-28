@@ -36,6 +36,13 @@ class TurnTimelineSnapshot extends Equatable {
   /// Whether a turn is streaming.
   bool get isStreaming => streamingTurnId != null;
 
+  /// The turns an earlier turn's agent run went on in ([Message.continuedIn]):
+  /// their user message reached the agent while it was still answering.
+  Set<String> get steeredTurnIds => {
+        for (final message in messages)
+          if (message.continuedIn case final continuedIn?) continuedIn,
+      };
+
   /// Returns a copy with the given fields replaced. [clearStreaming] forces
   /// [streamingTurnId] to `null`.
   TurnTimelineSnapshot copyWith({

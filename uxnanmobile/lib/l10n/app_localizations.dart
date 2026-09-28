@@ -1874,6 +1874,24 @@ abstract class AppLocalizations {
   /// **'Couldn\'t take that message back'**
   String get queuedMessageRecoverFailed;
 
+  /// Snackbar when the bridge refused to cancel a queued message; it is still queued and will run.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t cancel that message'**
+  String get queuedMessageCancelFailed;
+
+  /// Note under a user message that the agent took into the answer it was still giving (instead of waiting for it to finish).
+  ///
+  /// In en, this message translates to:
+  /// **'Reached the agent while it was working'**
+  String get steeredMessage;
+
+  /// Line after an agent reply that the user's next message interrupted: the reply is the answer so far, and the agent went on answering below that message.
+  ///
+  /// In en, this message translates to:
+  /// **'Continues below, with your next message'**
+  String get turnContinuesBelow;
+
   /// Header of the palette holding drafts saved when a queued message was pulled back into the composer to be edited.
   ///
   /// In en, this message translates to:

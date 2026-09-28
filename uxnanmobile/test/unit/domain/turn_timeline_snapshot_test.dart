@@ -95,4 +95,25 @@ void main() {
       expect(_textOf(result.messages.single), 'final answer');
     });
   });
+
+  group('TurnTimelineSnapshot.steeredTurnIds', () {
+    test('names the turns an earlier run went on in', () {
+      final snapshot = const TurnTimelineSnapshot().reconcile([
+        _msg('uA', order: 1000, turnId: 'tA', role: MessageRole.user)
+            .copyWith(continuedIn: 'tB'),
+        _msg('aA', order: 1001, turnId: 'tA').copyWith(continuedIn: 'tB'),
+        _msg('uB', order: 2000, turnId: 'tB', role: MessageRole.user),
+        _msg('aB', order: 2001, turnId: 'tB'),
+      ]);
+      expect(snapshot.steeredTurnIds, {'tB'});
+    });
+
+    test('is empty when no turn was handed off', () {
+      final snapshot = const TurnTimelineSnapshot().reconcile([
+        _msg('u', role: MessageRole.user),
+        _msg('a', order: 1),
+      ]);
+      expect(snapshot.steeredTurnIds, isEmpty);
+    });
+  });
 }

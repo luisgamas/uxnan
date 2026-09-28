@@ -31,6 +31,10 @@ class MessagesTable extends Table {
   /// Creation timestamp in epoch milliseconds.
   IntColumn get createdAtMs => integer()();
 
+  /// The later turn this message's turn went on in (`Turn.continuedIn`), if
+  /// a message reached the agent while it was still answering this one.
+  TextColumn get continuedIn => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
