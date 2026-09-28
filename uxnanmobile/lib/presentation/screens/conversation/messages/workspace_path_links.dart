@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 
 /// Whether [href] can name a file on the paired PC.
@@ -86,41 +84,48 @@ String _withoutTrailingPunctuation(String value) {
   return value.substring(0, end);
 }
 
-/// Makes inline-code paths tappable while preserving their code styling.
-class WorkspaceCodeLinkBuilder extends MarkdownElementBuilder {
-  /// Creates a builder that reports local inline-code paths to [onTap].
-  WorkspaceCodeLinkBuilder({required this.onTap});
-
-  /// Called when the inline code contains a plausible local path.
-  final ValueChanged<String> onTap;
-
+/// Makes an inline-code span that names a local file a link, inside the text.
+///
+/// `` `docs/agents.md` `` is matched exactly as the stock code-span syntax
+/// matches it and, when its content reads as a file path, emitted as a `code`
+/// wrapping an `a`. The renderer then lays it out as one more run of the
+/// paragraph's text — the code look with the link's color and underline on
+/// top (the `a` style carries only those, see `uxnanMarkdownStyleSheet`), and
+/// the renderer's own link recognizer, reported through
+/// `MarkdownBody.onTapLink` — so it wraps with the prose (inside the path when
+/// the path is long) and the punctuation after it stays on its line. The
+/// nesting is deliberate: inside an `a`, the `code` style would win and paint
+/// the path as plain code, because the theme's code style sets its own color
+/// and no decoration.
+///
+/// Building the link as a widget instead cannot do that: every inline child
+/// that is not plain text becomes its own unbreakable box in the paragraph's
+/// `Wrap`, which is what put a path, and the rest of its sentence, on lines of
+/// their own.
+///
+/// Every other code span — a command, an identifier — is handed back to the
+/// stock syntax untouched. Fenced blocks never reach an inline syntax.
+class WorkspaceCodePathSyntax extends md.CodeSyntax {
   @override
-  Widget? visitElementAfterWithContext(
-    BuildContext context,
-    md.Element element,
-    TextStyle? preferredStyle,
-    TextStyle? parentStyle,
-  ) {
-    // A fenced block's content always ends in a newline, so this is what keeps
-    // a one-line ```path``` block rendering as a code block instead of a link.
-    final raw = element.textContent;
-    if (raw.contains('\n')) return null;
-    final value = raw.trim();
-    if (!_looksLikeFilePath(value)) return null;
-    return Semantics(
-      link: true,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(4),
-        onTap: () => onTap(value),
-        child: Text(
-          element.textContent,
-          style: preferredStyle?.copyWith(
-            decoration: TextDecoration.underline,
-          ),
-        ),
-      ),
-    );
+  bool onMatch(md.InlineParser parser, Match match) {
+    final path = _codeSpanContent(match[2]!).trim();
+    if (!_looksLikeFilePath(path)) return super.onMatch(parser, match);
+    final link = md.Element.text('a', path)..attributes['href'] = path;
+    parser.addNode(md.Element('code', [link]));
+    return true;
   }
+}
+
+/// A code span's content as CommonMark reads it: line endings become spaces,
+/// and one space comes off each end when both ends have one (unless the span
+/// is nothing but spaces).
+String _codeSpanContent(String raw) {
+  final code = raw.replaceAll('\n', ' ');
+  if (code.trim().isEmpty) return code;
+  if (code.length >= 2 && code.startsWith(' ') && code.endsWith(' ')) {
+    return code.substring(1, code.length - 1);
+  }
+  return code;
 }
 
 bool _looksLikeFilePath(String value) {

@@ -11,7 +11,7 @@ import { BRIDGE_INSTALL, BRIDGE_START, CRYPTO } from "@/lib/site";
 const CAPABILITIES = [
   {
     title: "It streams, live",
-    body: "Watch the answer arrive token by token and every step as the agent takes it. Leave the app, come back — it is still there, still going.",
+    body: "Watch the answer arrive token by token and every step as the agent takes it. Leave the app and come back, it is still there, still going.",
   },
   {
     title: "Queue a follow-up",
@@ -23,7 +23,7 @@ const CAPABILITIES = [
   },
   {
     title: "A push when it's done",
-    body: "The moment an agent finishes, your phone tells you — not fifteen minutes later.",
+    body: "The moment an agent finishes, your phone tells you, not fifteen minutes later.",
   },
 ];
 
@@ -48,7 +48,7 @@ export function Mobile() {
           <p className="mt-5 text-[1.0625rem] leading-relaxed text-muted">
             Uxnan Mobile is a real client, not a status page. Pick the agent and
             the model, start the conversation, and steer it from wherever you
-            are — the sofa, the bus, another country.
+            are: the sofa, the bus, another country.
           </p>
         </Reveal>
 
@@ -94,7 +94,7 @@ export function Mobile() {
                   A small daemon runs on your machine and prints a QR code. Scan
                   it once and the phone connects straight over your LAN or
                   Tailscale, falling back to an optional relay only when
-                  you&apos;re off the network — which never sees anything but
+                  you&apos;re off the network, and it never sees anything but
                   sealed envelopes.
                 </p>
 

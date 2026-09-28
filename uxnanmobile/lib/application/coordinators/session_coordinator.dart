@@ -381,26 +381,11 @@ class SessionCoordinator {
     final active = _activeMac.value;
     if (active != null && active.macDeviceId == macId) {
       if (seq <= active.lastAppliedBridgeOutboundSeq) return;
-      final updated = active.copyWith(lastAppliedBridgeOutboundSeq: seq);
-      _activeMac.add(updated);
-      unawaited(repo.saveDevice(updated));
-    } else {
-      // The connected device is not the active one (e.g. browsing another PC):
-      // update its persisted record directly without touching `_activeMac`.
-      unawaited(_persistSeqForDevice(repo, macId, seq));
+      _activeMac.add(active.copyWith(lastAppliedBridgeOutboundSeq: seq));
     }
-  }
-
-  Future<void> _persistSeqForDevice(
-    ITrustedDeviceRepository repo,
-    String macId,
-    int seq,
-  ) async {
-    final device = await repo.getDevice(macId);
-    if (device == null || seq <= device.lastAppliedBridgeOutboundSeq) return;
-    await repo.saveDevice(
-      device.copyWith(lastAppliedBridgeOutboundSeq: seq),
-    );
+    // Only this field: the in-memory copy may be older than the stored record
+    // (a rename lands in the store, not here), so it is never written back.
+    unawaited(repo.recordBridgeOutboundSeq(macId, seq));
   }
 
   /// Opens a row in the phone-local connection-session log for the freshly
@@ -457,9 +442,9 @@ class SessionCoordinator {
   void _touchLastSeen(TrustedDevice device) {
     final repo = _trustedDeviceRepository;
     if (repo == null) return;
-    final updated = device.copyWith(lastSeen: DateTime.now());
-    _activeMac.add(updated);
-    unawaited(repo.saveDevice(updated));
+    final now = DateTime.now();
+    _activeMac.add(device.copyWith(lastSeen: now));
+    unawaited(repo.recordLastSeen(device.macDeviceId, now));
   }
 
   /// Drops the (apparently dead) session and starts the reconnection loop.

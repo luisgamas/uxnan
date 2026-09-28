@@ -126,6 +126,19 @@ available today are:
   WebGL rendering with DOM fallback, and configurable scrollback (Settings →
   Terminal) that survives recreating a pane — built on `portable-pty` and
   xterm.js.
+- **Chats with the bridge's agents, next to your terminals.** With
+  `uxnan-bridge` installed, a chat tab drives any of the seven agents the bridge
+  runs (Claude Code, Codex, OpenCode, pi, Antigravity, Zero and Grok), and it is
+  the same conversation Uxnan Mobile shows, live in both. The **Bridge** window,
+  one click from the sidebar, shows the bridge's state, updates it and draws the
+  pairing QR; Settings → Bridge & mobile also installs it and lists every paired
+  phone to rename or unpair ([chat tabs & the bridge](./docs/chat.md)).
+- **From a terminal to a chat, and back.** A terminal running an agent holds its
+  session, so nothing else writes to it. *Continue as chat* on the tab closes the
+  agent there and continues its session in a chat, *Open in terminal* on a chat
+  reopens it in a terminal, and a phone can take it over with *Continue here*. A
+  new chat lists **Sessions in this folder**: the agents' own sessions, started
+  in a terminal or in the agent's app, ready to continue with their history.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
   diffs, **opt-in local/remote branch cleanup on worktree removal** (worktree-only
@@ -310,11 +323,13 @@ The full state is recorded honestly, per platform and per feature, in the
   macOS installers (or help non-technical users) are very welcome.
 
 The remaining roadmap phase is **Phase 6 (bridge integration / mobile pairing)**,
-which is *optional for standalone use*. Its first half is in: with `uxnan-bridge`
+which is *optional for standalone use*. Most of it is in: with `uxnan-bridge`
 installed, **chat tabs** run agent conversations on the bridge next to your
-terminals — the same conversations Uxnan Mobile shows, live in both
-([docs/chat.md](docs/chat.md)). Packaging the bridge inside the ADE and pairing
-phones from it are still to come.
+terminals — the same conversations Uxnan Mobile shows, live in both — phones are
+paired, renamed and unpaired from the Bridge window and Settings, and a session
+moves between a terminal and a chat ([docs/chat.md](docs/chat.md)). Still to
+come: packaging the bridge inside the ADE so it needs no Node.js install, and a
+live view on the phone of a session running in a desktop terminal.
 The detailed implementation status (phases, test counts, pre-release gaps) lives
 in [`FOR-DEV.md`](FOR-DEV.md).
 

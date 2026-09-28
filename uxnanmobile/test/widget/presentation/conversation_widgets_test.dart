@@ -23,6 +23,7 @@ import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import '../../support/ux_icon_finder.dart';
 
@@ -33,6 +34,9 @@ Widget _wrap(Widget child) => ProviderScope(
         home: Scaffold(body: child),
       ),
     );
+
+/// A link handler for tests that only look at how a link is laid out.
+void _ignoreLink(String _) {}
 
 /// A 1×1 transparent PNG, so `Image.memory` decodes a real image in tests.
 const _pngPixel =
@@ -207,6 +211,64 @@ void main() {
     await tester.tap(find.text('docs/handoff.md'));
     await tester.pump();
     expect(tapped, ['/tmp/worktree-y/resume.md', 'docs/handoff.md']);
+  });
+
+  testWidgets('an inline-code path flows with its sentence as one paragraph',
+      (tester) async {
+    const sentence = 'Based on the code in '
+        '`uxnandesktop/src-tauri/src/worktreeloc.rs`, '
+        "here's how the desktop names a new worktree folder:";
+    await tester.pumpWidget(
+      _wrap(
+        const Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 240,
+            child: MessageContentView(
+              content: TextContent(sentence),
+              onTapLink: _ignoreLink,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // One text run for the whole paragraph: a path built as a separate
+    // widget is an unbreakable box in the paragraph's Wrap, which put the
+    // path on a line of its own and started the next line with the comma.
+    final paragraphs = tester
+        .widgetList<SelectableText>(
+          find.descendant(
+            of: find.byType(MarkdownBody),
+            matching: find.byType(SelectableText),
+          ),
+        )
+        .toList();
+    expect(paragraphs, hasLength(1));
+    final span = paragraphs.single.textSpan!;
+    expect(
+      span.toPlainText(),
+      'Based on the code in uxnandesktop/src-tauri/src/worktreeloc.rs, '
+      "here's how the desktop names a new worktree folder:",
+    );
+
+    // The path keeps the code look and stays a link, as a run of that text.
+    TextSpan? code;
+    span.visitChildren((child) {
+      if (child is TextSpan &&
+          child.text ==
+              'uxnandesktop/src-tauri/src/'
+                  'worktreeloc.rs') {
+        code = child;
+        return false;
+      }
+      return true;
+    });
+    expect(code, isNotNull);
+    expect(code!.style?.fontFamily, UxnanTypography.monoFontFamily);
+    expect(code!.style?.backgroundColor, isNotNull);
+    expect(code!.style?.decoration, TextDecoration.underline);
+    expect(code!.recognizer, isNotNull);
   });
 
   testWidgets('streaming file links use the same tap path as settled prose',

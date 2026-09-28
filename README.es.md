@@ -19,17 +19,20 @@
 </p>
 
 <p align="center">
-  <b>Dos apps construidas alrededor de una idea: tus agentes de codificación no deberían<br />
-  necesitar toda tu atención, ni tu máquina más cara, para seguir avanzando.</b>
+  <b>Empiézalo en una terminal. Retómalo donde sea.</b><br />
+  Un ecosistema para los agentes de codificación que ya usas: una sesión pasa de una terminal<br />
+  a un chat y a tu teléfono sin empezar de nuevo.
 </p>
 
 <p align="center">
   <b>Uxnan Desktop</b> corre y revisa varios agentes de codificación CLI en paralelo, cada<br />
   uno en su propio git worktree, sin el costo de memoria de un IDE completo. <b>Uxnan<br />
-  Mobile</b> se empareja con un pequeño daemon cifrado en tu PC para que puedas revisar un<br />
-  agente, aprobar su siguiente paso o enviarle una nueva instrucción desde tu teléfono,<br />
-  sea desde el otro lado del cuarto o desde el otro lado del mundo. Son apps independientes: usa<br />
-  Desktop sola, Mobile sola, o ambas — y entonces un chat iniciado en una continúa en la otra.
+  Mobile</b> se empareja con el <b>bridge de Uxnan</b>, un pequeño daemon cifrado en tu PC, para que<br />
+  puedas revisar un agente, aprobar su siguiente paso o enviarle una nueva instrucción desde tu<br />
+  teléfono, sea desde el otro lado del cuarto o desde el otro lado del mundo. Cada una funciona<br />
+  sola: Desktop no necesita nada más, y Mobile solo necesita el bridge. Cuando se encuentran,<br />
+  convergen: proyectos, conversaciones y ajustes son los mismos en ambas, aunque una haya<br />
+  estado sin conexión.
 </p>
 
 <p align="center">
@@ -48,6 +51,21 @@
 ## Cómo se siente usarlo
 
 <table>
+<tr>
+<td width="46%" valign="top">
+
+### Empiézalo en una terminal, retómalo donde sea
+La sesión de un agente no está atada al lugar donde empezó. Corre Claude Code en una terminal del desktop y luego **Continuar como chat** cuando prefieras leer en vez de desplazarte: Uxnan cierra el agente ahí (una señal a su proceso, nunca teclas) y el chat sigue con su historial. **Abrir en terminal** la regresa. En tu teléfono, una sesión que sigue abierta en una terminal de la PC lo indica, y **Continuar aquí** le pide a la PC que te la pase en cuanto el agente esté libre. Un chat nuevo también lista las sesiones que tus agentes tuvieron en esa carpeta, desde una terminal, su propia app u otra superficie, para que retomes cualquiera. Un solo escritor a la vez, y el agente conserva su memoria cuando el bridge se reinicia.
+
+[Terminal ⇄ chat →](uxnandesktop/docs/chat.md#from-a-terminal-to-a-chat-and-back)
+
+</td>
+<td width="54%" valign="top">
+
+<p align="center"><img src="assets/uxnan-continue-here.png" alt="Uxnan Mobile mostrando una sesión de Claude Code iniciada en una terminal del desktop, con su historial, un registro de trabajo y el aviso: esta conversación está abierta en una terminal de la PC, Continuar aquí" width="260" /></p>
+
+</td>
+</tr>
 <tr>
 <td width="46%" valign="top">
 
@@ -293,7 +311,7 @@ preciso que no puede conocer. Apunta uno al wrapper incluido y obtienes
   Cada uno corre como el CLI local oficial de su proveedor, bajo la cuenta o suscripción<br />
   con la que ya iniciaste sesión: uxnan no llama a ninguna API de proveedor, no guarda<br />
   una key ni integra un SDK. Solo maneja la terminal, tal como lo harías tú.<br />
-  <b>Siete de ellos — Claude Code, Codex, OpenCode, Pi, Grok, Antigravity y Zero — son los que Uxnan Mobile maneja desde tu teléfono.</b>
+  <b>Siete de ellos, Claude Code, Codex, OpenCode, Pi, Grok, Antigravity y Zero, también corren como chats: en Uxnan Desktop y desde tu teléfono.</b>
 </p>
 
 ---
@@ -302,7 +320,7 @@ preciso que no puede conocer. Apunta uno al wrapper incluido y obtienes
 
 <!-- image added manually by the maintainer -->
 <p align="center">
-  <img src="assets/uxnan-mobile.png" alt="Uxnan Mobile mostrando una conversación en streaming, el selector de agente y modelo, y un diff de Git" width="960" />
+  <img src="assets/uxnan-mobile.png" alt="Uxnan Mobile: la PC con la que se empareja, las conversaciones de un proyecto, una conversación nueva que ofrece continuar una sesión de esta carpeta, una sesión retenida por una terminal de la PC con Continuar aquí, y una respuesta terminada con su registro de trabajo" width="960" />
 </p>
 
 Es un cliente real, no una página de estado: las conversaciones llevan un
@@ -313,16 +331,22 @@ seguimientos mientras un agente sigue trabajando — y le llegan *en pleno turno
 sin detenerlo, en los agentes cuya CLI lo permite —, puedes adjuntar **imágenes**,
 elegir el **agente y el modelo** por conversación, revisar y hacer stage de un
 **diff de Git**, y recibir una **notificación push** en cuanto un agente termina,
-todo sobre el mismo canal cifrado de extremo a extremo que habla el bridge.
+todo sobre el mismo canal cifrado de extremo a extremo que habla el bridge. Una
+conversación nueva también puede **continuar una sesión de su carpeta**, una que
+tus agentes tuvieron en una terminal o en su propia app, y una conversación
+abierta en una terminal de la PC ofrece **Continuar aquí**. Mobile ofrece los
+siete agentes activos de arriba.
 
 **Estado: Android está alpha-ready.** iOS ya está escrito pero aún no se publica,
 espera assets de desarrollador de Apple que el proyecto todavía no tiene.
 
 ### Cómo se conecta
 
-Uxnan Mobile **no** se empareja con Uxnan Desktop. Se empareja con
-**`uxnan-bridge`**, un pequeño daemon que corre en tu PC por su cuenta: no
-necesitas tener Desktop instalado para usar Mobile, ni viceversa:
+Uxnan Mobile se empareja con **`uxnan-bridge`**, un pequeño daemon que corre en
+tu PC por su cuenta, así que no necesitas tener Desktop instalado para usar
+Mobile, ni al revés. Si usas Uxnan Desktop, habla con el mismo bridge: su ventana
+Bridge muestra el QR de emparejamiento, lista tus teléfonos, e instala o
+actualiza el bridge por ti.
 
 ```bash
 npm install -g uxnan-bridge
@@ -375,7 +399,7 @@ que puedes compilarla y correrla tú mismo en tu propia Mac (ve
 Aviso: las notificaciones push podrían no funcionar en una compilación propia de
 iOS, porque las credenciales de firma de APNs no vienen incluidas en el repo.
 
-### El bridge (solo si quieres Mobile)
+### El bridge (para Mobile, y para los chats de Desktop)
 
 ```bash
 npm install -g uxnan-bridge
@@ -423,7 +447,7 @@ convenciones y reglas de arquitectura. Cada componente también tiene su propio
 `README.md`, `docs/` y `CHANGELOG.md`:
 [`uxnandesktop/`](uxnandesktop/README.md) ·
 [`uxnanmobile/`](uxnanmobile/README.md) · [`bridge/`](bridge/README.md) ·
-[`relay/`](relay/README.md) · [`shared/`](shared/README.md).
+[`relay/`](relay/README.md) · [`shared/`](shared/README.md) · [`web/`](web/README.md).
 
 ## Licencia
 

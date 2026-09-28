@@ -34,7 +34,7 @@ the terminals, the same ones the phone shows** (`bridgeclient/` + `src/lib/bridg
 integration), of which 49 are ignored probes that need something real to talk to
 (41 live SSH probes — 29 against a real `sshd` and 12 against a **Linux host in a
 container**, `npm run test:ssh:linux` — one pwsh preflight, 7 supervised live
-GitHub tests, 1 real-scheduler probe) + 1,684 frontend Vitest tests across two
+GitHub tests, 1 real-scheduler probe) + 1,692 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -54,12 +54,12 @@ outbox until the bridge has it (a failed one survives a restart with Retry) and
 setting the composer's text aside as a saved draft when a message comes back;
 the desktop's projects and the phone's are **one mirrored registry**; a phone
 is **paired from the Bridge window** (the sidebar's Bridge row, or Settings)
-with the running bridge's own QR; and agent detection follows the table shared
-with the bridge (`shared/agent-locations.json`). **Pending the maintainer's visual
-review** of the chat and Bridge & mobile UI; still left: packaging the bridge
-without Node (`02e` §3.1–§3.4, plan 007), trusted-device management from the
-desktop (revoke), and a live read-only view of a terminal's session on the
-phone while it runs (below, *Terminal-launched sessions*). The hand-off itself —
+with the running bridge's own QR, and renamed or unpaired from Settings; and
+agent detection follows the table shared with the bridge
+(`shared/agent-locations.json`). **Pending the maintainer's visual review** of
+the chat and Bridge & mobile UI; still left: packaging the bridge without Node
+(`02e` §3.1–§3.4, plan 007) and a live read-only view of a terminal's session on
+the phone while it runs (below, *Terminal-launched sessions*). The hand-off itself —
 Continue as chat / Open in terminal, holds and the sessions list — is built
 (`docs/chat.md` → *From a terminal to a chat, and back*).
 
@@ -1058,11 +1058,6 @@ bridge (`../bridge/`) is already implemented and is the contract reference
       pinned Node bridge version it ships — so the bridge's own check still
       matters. Unblocks with the sidecar above.
 
-### Frontend (Svelte)
-- [ ] Settings → Bridge & mobile: trusted-device management (list and revoke,
-      reusing the bridge's `bridge/trustedDevices` / `bridge/removeTrustedDevice`).
-      The QR pairing dialog and the live connected-phone list are done.
-
 ## Remote hosts over SSH ☐
 
 **Goal:** connect to a remote machine over SSH and run agents *there* — the UI
@@ -1690,7 +1685,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 1,001 Rust + 1,684 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 1,001 Rust + 1,692 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

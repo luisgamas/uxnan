@@ -3,7 +3,7 @@ import { DownloadButton } from "@/components/download-button";
 import { DesktopWindow } from "@/components/mockups/desktop";
 import { Phone, PhoneLiveChat } from "@/components/mockups/phone";
 import { getRepoStats } from "@/lib/github";
-import { LICENSE, LINKS, PLATFORM_LINE } from "@/lib/site";
+import { LICENSE, LINKS, PLATFORM_LINE, SITE } from "@/lib/site";
 
 export async function Hero() {
   const stats = await getRepoStats();
@@ -40,13 +40,14 @@ export async function Hero() {
         <RepoStatsRow initialStats={stats} />
 
         <h1 className="display mx-auto mt-7 max-w-[17ch] text-[clamp(2.4rem,6.4vw,4.5rem)]">
-          Your agents don&apos;t need you watching.
+          {SITE.tagline}
         </h1>
 
         <p className="mx-auto mt-6 max-w-[62ch] text-[clamp(1rem,1.5vw,1.175rem)] leading-relaxed text-muted">
           Uxnan Desktop runs Claude Code, Codex, OpenCode and any other CLI
-          agent side by side — each in its own worktree, as a terminal or a
-          chat. Uxnan Mobile carries the same conversations in your pocket.
+          agent side by side, each in its own worktree. Start a session in a
+          terminal, keep going in a chat, and pick it up on Uxnan Mobile: the
+          same conversation, never started over.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">

@@ -866,7 +866,7 @@ class SecureStore {
 
 #### 5.3.4 Almacenamiento local (SQLite)
 
-> ✅ **Implementado** (rama `uxnanmobile`): `UxnanDatabase` y el esquema completo de 7 tablas en `lib/infrastructure/storage/`. Detalle de tablas y repositorios en 02c §10. Repositorios drift listos: `Thread`, `ComposerDraft` (los demás se implementan con su módulo).
+> ✅ **Implementado** (rama `uxnanmobile`): `UxnanDatabase` y el esquema completo (hoy 10 tablas) en `lib/infrastructure/storage/`. Detalle de tablas y repositorios en 02c §10. Repositorios drift listos: `Thread`, `ComposerDraft` (los demás se implementan con su módulo).
 
 ```dart
 // lib/infrastructure/storage/local_database.dart
@@ -1553,8 +1553,11 @@ Reglas de streaming:
 > Las compactaciones confirmadas por el agente se insertan como hitos tonales
 > `CompactionContent` dentro del orden real de `Message.segments`; no forman
 > parte del texto copiable ni de previews. Codex (`contextCompaction`), Claude
-> (`system/compact_boundary`), OpenCode (`session.compacted`) y pi
-> (`compaction_end` exitoso) emiten la señal. Zero/Grok por ACP y Antigravity no
+> (`system/compact_boundary`), OpenCode (`session.compacted` en 1.x /
+> `session.compaction.ended` en 2.x, solo cuando la sesión ya tiene contexto:
+> tras su primera salida del modelo o al reanudar una sesión previa — la
+> compactación automática que OpenCode hace antes del primer paso de una sesión
+> nueva no genera hito) y pi (`compaction_end` exitoso) emiten la señal. Zero/Grok por ACP y Antigravity no
 > exponen una señal fiable en la integración actual, por lo que el bridge no la
 > infiere a partir del texto ni del contador de tokens.
 

@@ -34,7 +34,7 @@ describe("welcome", () => {
     });
     expect(screen.getByText("Every coding agent, in one place.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Terminal or chat — your call.")).toBeTruthy();
+    expect(screen.getByText("Terminal or chat, and back again.")).toBeTruthy();
     await user.keyboard("{ArrowRight}");
     expect(screen.getByText("Your phone, in the same conversation.")).toBeTruthy();
     await user.click(screen.getByRole("tab", { name: "Your agents." }));

@@ -58,6 +58,28 @@ void main() {
   });
 
   group('TrustedDeviceRepository', () {
+    // A PC renamed on the desktop kept coming back under its old name: the
+    // connection wrote the whole record back from an older copy each time it
+    // advanced its cursor or stamped "last seen".
+    test('each setter writes its own field, never undoing a rename', () async {
+      await repo.saveDevice(_device('mac-1', lastAppliedBridgeOutboundSeq: 4));
+      await repo.rename('mac-1', 'MacBook');
+      await repo.recordLastSeen('mac-1', DateTime(2026, 9, 27, 22));
+      await repo.recordBridgeOutboundSeq('mac-1', 9);
+
+      final loaded = await repo.getDevice('mac-1');
+      expect(loaded!.displayName, 'MacBook');
+      expect(loaded.lastSeen, DateTime(2026, 9, 27, 22));
+      expect(loaded.lastAppliedBridgeOutboundSeq, 9);
+      expect(loaded.sessionId, 'session-mac-1');
+    });
+
+    test('the bridge sequence never goes back', () async {
+      await repo.saveDevice(_device('mac-1', lastAppliedBridgeOutboundSeq: 9));
+      await repo.recordBridgeOutboundSeq('mac-1', 5);
+      expect((await repo.getDevice('mac-1'))!.lastAppliedBridgeOutboundSeq, 9);
+    });
+
     test('saves metadata in drift and the identity key in secure storage',
         () async {
       final key =

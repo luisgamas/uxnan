@@ -11,7 +11,8 @@ the [Uxnan](../README.md) mobile app and the [bridge](../bridge/README.md) when
 the two aren't on the same network. It only ever sees encrypted frames — never
 plaintext, keys, code, or diffs. The envelope-forwarding path is stateless; the
 **optional** push fallback persists a small token/dedupe file
-(`~/.uxnan/relay-state.json`).
+(`~/.uxnan/relay-state.json`). Only the phone uses it: Uxnan Desktop talks to
+the bridge on the same machine over the bridge's local control channel.
 
 > **Status:** alpha-functional — and **optional / self-hosted**. The product is
 > bridge-first (LAN-direct and Tailscale-direct need zero hosting and zero

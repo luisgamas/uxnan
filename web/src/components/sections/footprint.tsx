@@ -4,8 +4,8 @@ import { BENCH, LINKS } from "@/lib/site";
 
 const NUMBERS = [
   { value: BENCH.idleMb, label: "workspace asleep" },
-  { value: BENCH.oneTerminalMb, label: "one agent, one terminal" },
-  { value: BENCH.fourTerminalsMb, label: "four agents, four terminals" },
+  { value: BENCH.oneTerminalMb, label: "one terminal open" },
+  { value: BENCH.fourTerminalsMb, label: "four terminals in splits" },
 ];
 
 export function Footprint() {
@@ -25,7 +25,7 @@ export function Footprint() {
           <Reveal delay={80}>
             <p className="text-[1.0625rem] leading-relaxed text-muted">
               An agent needs the CPU more than your editor does. So the number
-              that matters is what the app costs while they work — and it is a
+              that matters is what the app costs while they work, and it is a
               measurement, not a marketing figure: every run records the OS,
               webview version, CPU, build profile and commit before it records a
               megabyte.

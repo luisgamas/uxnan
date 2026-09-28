@@ -40,6 +40,26 @@ class _Pcs implements ITrustedDeviceRepository {
   @override
   Stream<List<TrustedDevice>> watchDevices() =>
       Stream.value(devices.values.toList());
+
+  @override
+  Future<void> rename(String macDeviceId, String name) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.copyWith(displayName: name);
+  }
+
+  @override
+  Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.copyWith(lastSeen: at);
+  }
+
+  @override
+  Future<void> recordBridgeOutboundSeq(String macDeviceId, int seq) async {
+    final d = devices[macDeviceId];
+    if (d != null && seq > d.lastAppliedBridgeOutboundSeq) {
+      devices[macDeviceId] = d.copyWith(lastAppliedBridgeOutboundSeq: seq);
+    }
+  }
 }
 
 class _Profile implements IPhoneProfileRepository {

@@ -5,6 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Onboarding says what the phone is now.** The welcome page says the phone
+  needs only the bridge on the PC and works alongside Uxnan Desktop, the agent
+  list names all seven agents (Grok and Zero were missing), and a fourth feature,
+  *Pick up where you left off*, covers continuing a session from a PC terminal
+  or from a folder.
+
+### Fixed
+
+- **Inline code in an answer wraps with the text.** A file path in backticks
+  (`` `uxnandesktop/src-tauri/src/worktreeloc.rs` ``) no longer jumps to a line
+  of its own and pushes the rest of the sentence, starting with its comma, to
+  the next one; it flows like any other word, wraps inside itself when it is
+  long, and is drawn as the link it is (code look, link color, underline).
+  Links also keep the size of the text they sit in, such as a heading or a
+  table cell.
+- **A PC renamed on the desktop no longer comes back under its old name.**
+  The connection wrote the PC's whole record back from an older copy each
+  time it stamped "last seen" or advanced its catch-up cursor, so a rename
+  lasted only until the next message. Those writes now change only their own
+  field (`recordLastSeen`, `recordBridgeOutboundSeq`, `rename`), and only
+  pairing writes the whole record.
 
 ## [0.0.30-alpha.20260927+20260932] - 20260927
 ### Added

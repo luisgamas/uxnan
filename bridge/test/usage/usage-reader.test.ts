@@ -88,6 +88,31 @@ test('codex: its own answer — windows by length, plan, the resets it can redee
   });
 });
 
+test('codex: a single 30-day window is named `monthly`, whichever slot it arrives in', async () => {
+  // What a real account on a monthly plan answers: one window, no second one.
+  const [u] = await readUsage(
+    ['codex'],
+    deps({
+      askCodex: async () => ({
+        account: { type: 'chatgpt', email: 'a@b.com', planType: 'plus' },
+        rateLimits: {
+          rateLimitsByLimitId: {
+            codex: {
+              primary: { usedPercent: 7, windowDurationMins: 43_200, resetsAt: 1_702_000_000 },
+              secondary: null,
+            },
+          },
+        },
+      }),
+    }),
+  );
+  assert.equal(u?.status, 'ok');
+  assert.deepEqual(
+    u?.windows.map((w) => [w.id, w.label, w.usedPercent, w.windowMinutes, w.resetsAt]),
+    [['monthly', 'Monthly', 7, 43_200, 1_702_000_000_000]],
+  );
+});
+
 test('codex: not installed, not signed in, or on an API key (no plan limits)', async () => {
   const [missing] = await readUsage(['codex'], deps({ askCodex: async () => undefined }));
   assert.equal(missing?.status, 'notInstalled');

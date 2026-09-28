@@ -512,7 +512,7 @@ class BridgeReplica {
     if (pcs == null || name.isEmpty) return;
     final pc = await pcs.getDevice(deviceId);
     if (pc == null || pc.displayName == name) return;
-    await pcs.saveDevice(pc.copyWith(displayName: name));
+    await pcs.rename(deviceId, name);
   }
 
   void _applyDevices(Object? json) {

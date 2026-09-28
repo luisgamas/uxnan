@@ -4,28 +4,42 @@
 > agents a developer already uses (Claude Code, Codex, OpenCode, Pi, Grok,
 > Antigravity, Zero). It is NOT itself an agent and NOT an AI provider: every
 > agent runs as its own official local CLI under the account the user already
-> signed in with — no Uxnan API key, no SDK, no provider key handed over.
+> signed in with, with no Uxnan API key, no SDK and no provider key handed over.
 
-The two products share one ecosystem and one optional daemon (the "bridge"), and
-nothing else. Each is useful with the other uninstalled — they are not two halves
-of one product. Do not describe them as a single app or as a desktop app "with a
-companion phone app".
+The two products share one ecosystem and one daemon (the "bridge"). Each is
+useful with the other uninstalled, so they are not two halves of one product. Do
+not describe them as a single app or as a desktop app "with a companion phone
+app". When both are connected they converge: a project, a conversation or a
+setting changed on one is already on the other, even after one was offline.
+
+## Continuity: one session, every surface
+
+An agent's session is not tied to where it started. A session run in a Uxnan
+Desktop terminal can continue as a chat ("Continue as chat") and go back to a
+terminal ("Open in terminal"). The phone can take over a session a PC terminal
+has open ("Continue here"): the desktop closes the agent there once it is idle,
+and the conversation continues on the phone with its history. While a terminal
+holds a session, nothing else writes into it. A new chat lists the agents' own
+sessions in its folder, from a terminal, their own app or any surface, and
+continues any of them (Claude Code, Codex, OpenCode, Pi, Grok and Zero; an
+Antigravity session continues from the terminal it runs in). Agents keep their
+memory when the bridge restarts or updates itself.
 
 ## The two products
 
-- **Uxnan Desktop** — a terminal-native workspace (Tauri 2 + Rust + Svelte 5) that
+- **Uxnan Desktop**: a terminal-native workspace (Tauri 2 + Rust + Svelte 5) that
   runs several CLI agents in parallel on the PC, each in its own git worktree and
   pseudoterminal. Measured on Windows 11 (release build, private working memory):
-  226 MB with the workspace asleep, 252 MB with one agent in one terminal, 274 MB
-  with four agents in four terminals — the method and the full scenario matrix are
+  226 MB with the workspace asleep, 252 MB with one terminal open, 274 MB with
+  four terminals in splits; the method and the full scenario matrix are
   published in the repository. Any CLI agent runs in it unmodified. Platforms:
-  Windows (developed/tested), Linux (built in CI), macOS (experimental, unsigned —
+  Windows (developed/tested), Linux (built in CI), macOS (experimental, unsigned;
   Gatekeeper blocks the first launch until authorised once).
-- **Uxnan Mobile** — a Flutter app (Android; iOS written but not published) that
+- **Uxnan Mobile**: a Flutter app (Android; iOS written but not published) that
   drives the agents already running on the PC, from the phone, over an end-to-end
   encrypted channel (X25519 + Ed25519 + AES-256-GCM + HKDF). It reaches the PC
   directly over LAN or Tailscale first, falling back to an optional self-hosted
-  relay that only ever sees sealed envelopes. It needs only the bridge on the PC —
+  relay that only ever sees sealed envelopes. It needs only the bridge on the PC,
   NOT Uxnan Desktop.
 
 ## Key facts
@@ -35,16 +49,17 @@ companion phone app".
 - The bridge is installed once with `npm install -g uxnan-bridge` and exposes
   every project beneath it to the phone.
 - Seven agents have first-class integration on both paths: precise working /
-  waiting / done status, session resume, live model discovery and per-agent run
-  options. Any other CLI can be registered by hand and launches the same way.
+  waiting / done status, session resume and per-agent run options, and each is
+  offered as a chat on desktop and phone. Any other CLI can be registered by
+  hand and launches the same way.
   The retired Gemini CLI has no mobile surface and is not offered.
 - Status: alpha. The core loops work daily; rough edges are filed in the open.
 
 ## Pages
 
-- [Home](https://uxnan.pages.dev/): the whole site — what Uxnan is, the agents it
-  drives, parallel worktrees, the phone app, its measured footprint, and where to
-  download it. There are no other routes; installers live on GitHub Releases.
+- [Home](https://uxnan.pages.dev/): the whole site: what Uxnan is, how a session
+  moves between terminal, chat and phone, the agents it drives, parallel
+  worktrees, the phone app, its measured footprint, and where to download it. There are no other routes; installers live on GitHub Releases.
 
 ## Source and docs
 

@@ -4,6 +4,12 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Clarified — `UsageWindow.id` can change
+
+- The doc comment no longer calls it stable: ids follow what the provider
+  reports (Codex's are named by the window's length) and change with the plan
+  or the reader, so clients must tolerate saved picks that no longer match.
+  Comment-only — no wire shape, field or validator changed.
 
 ## [0.0.23-alpha.20260927] - 20260927
 ### Added

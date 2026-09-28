@@ -107,3 +107,44 @@ describe("ProviderUsageEditor — account", () => {
   });
 });
 
+
+describe("ProviderUsageEditor — status-bar windows", () => {
+  // A Codex config saved by the old native reader names windows that no longer
+  // exist; the status bar falls back to the first window, and so does the tick.
+  const monthly = { id: "monthly", label: "Monthly", usedPercent: 7, windowMinutes: 43_200 };
+  const weekly = { id: "weekly", label: "Weekly", usedPercent: 12, windowMinutes: 10_080 };
+
+  function codex(windows: string[]): UsageProviderConfig {
+    return { provider: "codex", refreshMinutes: null, statusBar: { show: true, windows } };
+  }
+
+  it("ticks the fallback window when the saved ids are stale", () => {
+    const { screen } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: codex(["primary_window", "secondary_window"]),
+        snapshot: { ...snapshot({ windows: [monthly] }), provider: "codex" },
+        onchange: () => {},
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    expect(screen.getByRole("checkbox", { name: "Monthly" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("drops stale ids when a toggle writes the choice back", async () => {
+    const cfg = codex(["primary_window", "secondary_window"]);
+    const onchange = vi.fn();
+    const { screen, user } = mountWithProviders(ProviderUsageEditor, {
+      props: {
+        config: cfg,
+        snapshot: { ...snapshot({ windows: [monthly, weekly] }), provider: "codex" },
+        onchange,
+        onremove: () => {},
+        onrefresh: () => {},
+      },
+    });
+    await user.click(screen.getByRole("checkbox", { name: "Weekly" }));
+    expect(onchange).toHaveBeenCalled();
+    expect(cfg.statusBar.windows).toEqual(["monthly", "weekly"]);
+  });
+});

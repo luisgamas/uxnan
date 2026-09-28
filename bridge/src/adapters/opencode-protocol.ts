@@ -147,8 +147,14 @@ export type OpenCodeEvent =
   | { kind: 'idle'; sessionId: string }
   /** The turn was stopped before it finished (by this bridge or another client). */
   | { kind: 'interrupted'; sessionId: string }
-  /** The turn failed. `sessionId` is absent when the server did not say whose. */
-  | { kind: 'error'; sessionId?: string; message: string };
+  /**
+   * The turn failed. `sessionId` is absent when the server did not say whose.
+   * `windowTooSmall` marks the failure OpenCode reports when its automatic
+   * compaction fires and finds nothing to compact: what it cannot shrink (its
+   * own prompt, the tools, the latest message) already exceeds the room the
+   * model's context window leaves it.
+   */
+  | { kind: 'error'; sessionId?: string; message: string; windowTooSmall?: true };
 
 /** One session, as the server lists it. */
 export interface OpenCodeListedSession {

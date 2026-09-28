@@ -14,7 +14,7 @@
   import { cn } from "$lib/utils";
   import { divider, icon as iconSize, overlay, shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { usageProvider } from "$lib/usageCatalog";
+  import { resolveStatusBarWindows, usageProvider } from "$lib/usageCatalog";
   import { formatCredit } from "$lib/usageFormat";
   import type { ProviderUsage, UsageProviderConfig, UsageWindow } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
@@ -34,17 +34,9 @@
   );
   const enabled = $derived(app.settings.usageStatusBarEnabled !== false && pinned.length > 0);
 
-  /** Resolve the windows a config chose to show against its snapshot. The `*`
-   *  sentinel means "the primary (first) window". */
+  /** The windows a config chose to show, resolved against its snapshot. */
   function shownWindows(config: UsageProviderConfig, snap: ProviderUsage | undefined): UsageWindow[] {
-    if (!snap || snap.windows.length === 0) return [];
-    const picks = config.statusBar.windows ?? [];
-    if (picks.includes("*")) {
-      const first = snap.windows[0];
-      const extras = snap.windows.filter((w) => w.id !== first.id && picks.includes(w.id));
-      return [first, ...extras];
-    }
-    return snap.windows.filter((w) => picks.includes(w.id));
+    return resolveStatusBarWindows(config.statusBar.windows, snap?.windows);
   }
 
   // Worst used-% across everything shown → the icon's tint (calm/amber/red).

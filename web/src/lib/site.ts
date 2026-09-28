@@ -16,12 +16,12 @@ export const SITE_URL =
 
 export const SITE = {
   name: "Uxnan",
-  tagline: "Your agents don't need you watching.",
+  tagline: "Start it in a terminal. Pick it up anywhere.",
   description:
-    "Run Claude Code, Codex, OpenCode and more side by side on your PC — each in its own git worktree — and steer them from your phone.",
+    "Run Claude Code, Codex, OpenCode and more side by side on your PC, each in its own git worktree. Start a session in a terminal, keep going in a chat, and pick it up on your phone.",
   /** source: README.md, right under the wordmark. */
   disclaimer:
-    "Uxnan — a name with no relation to, or derivation from, any existing product.",
+    "Uxnan is a name with no relation to, or derivation from, any existing product.",
 } as const;
 
 export const LINKS = {
@@ -188,3 +188,12 @@ export const CONTROL_CLI = {
   chatRead: "uxnan-cli chat read <chat> --turns 1",
   browser: "uxnan-cli browser open http://localhost:3100",
 } as const;
+
+/**
+ * Agents whose own sessions in a folder, from a terminal, their app or any
+ * surface, a new chat can list and continue (`agent/sessions`). Antigravity's
+ * CLI cannot list them, so its sessions continue from the terminal they run in.
+ * source: bridge/docs/agents.md; uxnandesktop/docs/chat.md → *Sessions in this folder*
+ */
+export const SESSIONS_UNLISTED = ["antigravity"];
+export const SESSION_AGENTS = CHAT_AGENTS.filter((a) => !SESSIONS_UNLISTED.includes(a.id));

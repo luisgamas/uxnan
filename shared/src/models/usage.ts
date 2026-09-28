@@ -55,8 +55,11 @@ export type AccountType =
  * weekly cap, or a model-specific window).
  */
 export interface UsageWindow {
-  /** Stable id (e.g. `session5h`, `weekly`, `opusWeekly`) — used by the
-   *  status-bar picker to remember which windows to surface. */
+  /** Window id (e.g. `session5h`, `weekly`, `monthly`, `opusWeekly`) — used by
+   *  the status-bar picker to remember which windows to surface. Ids follow
+   *  what the provider reports (Codex's are named by the window's length), so
+   *  they can change when the plan or the reader changes: clients must tolerate
+   *  saved picks that no longer match any window. */
   id: string;
   /** Human label (English; the UI localizes known ids, else shows this). */
   label: string;

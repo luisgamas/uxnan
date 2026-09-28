@@ -129,6 +129,18 @@ export interface OpenCodeAdapterOptions {
   serverFactory?: (cwd: string) => IOpenCodeServer;
 }
 
+/** Events that mean a model step ran in the session (see `#promptOnlySessions`). */
+const MODEL_OUTPUT: ReadonlySet<OpenCodeEvent['kind']> = new Set([
+  'text',
+  'reasoning',
+  'tool_started',
+  'tool',
+  'usage',
+  'plan',
+  'permission',
+  'question',
+]);
+
 /** How long a folder's command list is reused before the server is asked again. */
 const COMMANDS_TTL_MS = 60_000;
 
@@ -208,6 +220,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Sessions the server is known to hold: opened here, or confirmed with it
    *  before this process first resumed them. */
   readonly #confirmedSessions = new Set<string>();
+  /**
+   * Sessions opened here that no model step has run in yet: all they hold is
+   * the prompt just sent. OpenCode compacts such a session automatically when
+   * the model's window cannot hold its own prompt and tools (measured on
+   * 2.0.16 with a 36,864-token model: a compaction before the first step of a
+   * brand-new session) — that rewrites the prompt, it compacts no earlier
+   * context, so it gets no marker. A session leaves this set on its first
+   * model output; one resumed from an earlier turn or process is never in it.
+   */
+  readonly #promptOnlySessions = new Set<string>();
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** cwd → the server's commands there, briefly reused (see `listCommands`). */
@@ -331,6 +353,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         });
         this.setNativeSession(threadId, sessionId);
         this.#confirmedSessions.add(sessionId);
+        this.#promptOnlySessions.add(sessionId);
       } catch (err) {
         this.emit({
           type: 'turn_error',
@@ -563,6 +586,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     if (this.#debug && event.kind !== 'text' && event.kind !== 'reasoning') {
       this.#log(`event ${event.kind} session=${event.sessionId ?? '-'}`);
     }
+    if (event.sessionId && MODEL_OUTPUT.has(event.kind)) {
+      this.#promptOnlySessions.delete(event.sessionId);
+    }
     switch (event.kind) {
       case 'permission':
         return this.#onPermission(event, server);
@@ -572,7 +598,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         const run = event.sessionId
           ? this.#runBySession.get(event.sessionId)
           : this.#anyActiveRun();
-        if (run && !run.finished) this.#finish(run, { type: 'turn_error', text: event.message });
+        if (run && !run.finished) {
+          const text = event.windowTooSmall
+            ? this.#windowTooSmallText(run, event.message)
+            : event.message;
+          this.#finish(run, { type: 'turn_error', text });
+        }
         return;
       }
       default:
@@ -631,6 +662,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         run.planSteps = mergePlanSteps(run.planSteps, event.steps);
         return;
       case 'compacted':
+        if (this.#promptOnlySessions.has(run.sessionId)) {
+          this.#log(`turn ${run.turnId} compaction before any step: no earlier context, no marker`);
+          return;
+        }
         this.emit({
           type: 'block',
           threadId: run.threadId,
@@ -646,6 +681,22 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         this.#finish(run, { type: 'turn_aborted' });
         return;
     }
+  }
+
+  /**
+   * Why OpenCode stopped when its automatic compaction found nothing to
+   * compact, in words the user can act on: nothing the bridge or a retry can
+   * change — the model is too small for what OpenCode always sends.
+   */
+  #windowTooSmallText(run: ActiveRun, message: string): string {
+    const window = run.model !== undefined ? this.#contextWindowByModel.get(run.model) : undefined;
+    const size = window !== undefined ? ` (${window.toLocaleString('en-US')} tokens)` : '';
+    const model = run.model ?? 'the selected model';
+    return (
+      `OpenCode stopped: ${message}. The context window of ${model}${size} is too small ` +
+      `for OpenCode's own prompt and tools, so its automatic compaction had nothing left ` +
+      `to shrink. Choose a model with a larger context window.`
+    );
   }
 
   /** The turn ended: flush the plan and complete with its reply and usage. */

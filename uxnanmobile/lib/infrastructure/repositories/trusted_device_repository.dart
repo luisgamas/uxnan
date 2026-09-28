@@ -39,6 +39,38 @@ class TrustedDeviceRepository implements ITrustedDeviceRepository {
   }
 
   @override
+  Future<void> rename(String macDeviceId, String name) async {
+    await (_db.update(_db.trustedDevicesTable)
+          ..where((d) => d.macDeviceId.equals(macDeviceId)))
+        .write(TrustedDevicesTableCompanion(displayName: Value(name)));
+  }
+
+  @override
+  Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
+    await (_db.update(_db.trustedDevicesTable)
+          ..where((d) => d.macDeviceId.equals(macDeviceId)))
+        .write(
+      TrustedDevicesTableCompanion(
+        lastSeenMs: Value(at.millisecondsSinceEpoch),
+      ),
+    );
+  }
+
+  @override
+  Future<void> recordBridgeOutboundSeq(String macDeviceId, int seq) async {
+    await (_db.update(_db.trustedDevicesTable)
+          ..where(
+            (d) =>
+                d.macDeviceId.equals(macDeviceId) &
+                (d.lastAppliedBridgeOutboundSeq.isNull() |
+                    d.lastAppliedBridgeOutboundSeq.isSmallerThanValue(seq)),
+          ))
+        .write(
+      TrustedDevicesTableCompanion(lastAppliedBridgeOutboundSeq: Value(seq)),
+    );
+  }
+
+  @override
   Future<TrustedDevice?> getDevice(String macDeviceId) async {
     final row = await (_db.select(_db.trustedDevicesTable)
           ..where((d) => d.macDeviceId.equals(macDeviceId)))

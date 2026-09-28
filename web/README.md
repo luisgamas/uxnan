@@ -11,8 +11,8 @@ the technical detail lives in each component's `README.md` and `docs/`.
 
 ## What it is
 
-- **One page.** Hero → agents → parallel worktrees → mobile → footprint → open
-  source → download. No sub-pages, no docs site, no blog.
+- **One page.** Hero → continuity (terminal, chat, phone) → agents → parallel
+  worktrees → alone or together → mobile → footprint → open source → download. No sub-pages, no docs site, no blog.
 - **Mockups, never screenshots.** Both apps are recreated in the DOM
   (`src/components/mockups/`), so they follow the page's theme, stay sharp at any
   resolution, cost a few kB instead of a few MB, and never go stale in the way a
