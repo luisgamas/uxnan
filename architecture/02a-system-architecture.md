@@ -1,10 +1,19 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.1
+> **Version:** 1.5.2
 > **Fecha:** 2026-09-28
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.2):** a bridge turn that ended before it received
+> any of its reply — a crash, or an older bridge that ended a Claude Code turn
+> on a wake-up's `result` — takes the reply the agent went on to write in its
+> own transcript, in its own place (§5.8.8), instead of gaining it as a new turn
+> at the end of the conversation. §5.8.14 now records that every adapter ends a
+> turn on a protocol event, and that Claude Code's background work is waited for
+> in full while the bridge keeps its input open. Internal to the bridge: no
+> contract changes.
 
 > **Executive summary (1.5.1):** no agent process outlives a bridge that is
 > killed hard (§5.8.3). The daemon records every agent process it starts in
@@ -298,9 +307,9 @@ interface AgentCapabilities {
 // contrato vigente es el de arriba.
 
 // Agentes actualmente implementados (ver bridge/CHANGELOG.md):
-//   ✅ opencode  (default; `opencode serve` HTTP/SSE, OpenCode 1 y 2: un cliente de protocolo por version mayor elegido por `opencode --version`, 2.x con password por proceso y rutas `/api/*`; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; **`permission.asked` real approvals**)
-//   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
-//   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation)
+//   ✅ opencode  (default; `opencode serve` HTTP/SSE, OpenCode 1 y 2: un cliente de protocolo por version mayor elegido por `opencode --version`, 2.x con password por proceso y rutas `/api/*`; sesión de server por thread persistida para continuidad; planMode=true vía `todo.updated` nativo; steer en turno; **`permission.asked` real approvals**)
+//   ✅ claude-code (`claude -p --input-format stream-json --output-format stream-json --replay-user-messages`; --resume; `steer` en turno; **PreToolUse hook** real approvals)
+//   ✅ codex     (`codex app-server`; JSON-RPC over stdio, un proceso por turno — Codex sólo admite UN writer por thread, así que el bridge lo suelta al terminar el turno y reengancha con `thread/resume`; `thread/start`/`turn/start` + every elicitation; `turn/steer` en turno)
 //   ✅ pi-agent  (`pi --mode rpc`, UN proceso residente por thread; `--session-id` con el id leido de `get_state`; `steer` en turno; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
 //   ✅ antigravity-cli (`agy --input-format stream-json --output-format stream-json --add-dir <cwd>`, UN proceso residente por thread; `--conversation <id>` con el id que `agy` anuncia en `init` (no client-owned: 1.2.x rechaza un id desconocido); usage en `stream/turn/completed`; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
@@ -2166,6 +2175,14 @@ into one transcript. Reconciliation then follows these rules:
   (Zero drops the preamble), the same prompt plus one reply containing the other
   plus a native start inside the bridge turn's own run window identify it — all
   three together, so a turn genuinely written elsewhere still imports;
+- **a bridge turn that ended with no reply at all** — closed before the bridge
+  received a word of it (an older bridge that took an unrelated `result` for
+  its end, a crash) while the agent answered on in its own transcript — is
+  matched by the prompt and a native start inside its run window alone, and
+  the transcript's reply is **filled into that turn**, which keeps its id and
+  position. Without it the reply imported as a turn of its own at the end of
+  the conversation, below later exchanges, and the question stayed unanswered
+  where it was asked;
 - a turn imported before it could be matched is **dropped** once its
   bridge-created twin is recognized, which is what converges a store that
   already holds the same exchange twice. Its position (`Turn.seq`) is not
@@ -2202,8 +2219,14 @@ into one transcript. Reconciliation then follows these rules:
   that reply begins moves back into it (`takeBackSteeredReply`);
 - completed native-only user/assistant pairs are imported and can be refreshed
   on a later read;
-- user-only/in-progress native turns are ignored until an assistant result is
-  durable;
+- a row already imported is the same exchange as a transcript turn with the
+  same prompt and the same start (or the same reply) — also under an id an
+  older reader gave it, or read while the agent was still answering: it is
+  refreshed in place and kept once (`sameExchange`), and a leftover second
+  copy is dropped;
+- user-only native turns are ignored until an assistant result is durable (a
+  turn read mid-answer is kept as far as it went and refreshed by the rule
+  above);
 - missing or temporarily unreadable native rows never delete bridge history;
 - native history is not read while the bridge itself is streaming that thread,
   preventing a half-flushed record from being frozen as an external turn.
@@ -2571,22 +2594,25 @@ lista real de cada cuenta: un id invalido no es cosmetico, la CLI rechaza la
 ejecucion.
 #### 5.8.14 Fin de turno: trabajo diferido y llegadas tardias
 
-Un adaptador decide cuando el agente termino, y hay dos formas:
+Un adaptador decide cuando el agente termino, siempre por un evento del protocolo:
 
 | Termina por | Adaptadores | ¿La CLI puede emitir despues? |
 |---|---|---|
-| **Evento de protocolo** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle` en 1.x, `session.execution.succeeded` en 2.x), Pi (`stopReason`), Grok / Zero (respuesta ACP a `session/prompt`) | **Si** — el proceso sigue vivo cuando llega el evento |
-| **Cierre del proceso** | Antigravity | No — el turno no puede terminar antes que el proceso |
+| **Evento de protocolo** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle` en 1.x, `session.execution.succeeded` en 2.x), Pi (`agent_settled` — **no** `agent_end`, que cierra una *corrida*: pi reintenta tras un error reintentable del proveedor, `willRetry: true`, y un prompt enviado entre medias se rechaza), Grok / Zero (respuesta ACP a `session/prompt`), Antigravity (`result` del proceso residente) | **Si** — el proceso sigue vivo cuando llega el evento |
 
-La primera fila es la peligrosa, y **Claude Code lo demuestra**: cuando el modelo
+Que el proceso siga vivo es lo peligroso, y **Claude Code lo demuestra**: cuando el modelo
 lanza una tarea en segundo plano (`Bash` con `run_in_background`) y termina su
 turno, la CLI emite su `result` y **sigue corriendo**; si ese trabajo acaba
 dentro de su margen, la CLI **despierta al modelo** y produce un segundo turno
-completo sobre el mismo proceso. Medido contra la CLI real, ese margen es de
-**~4–6 s**, tras los cuales la CLI **mata** la tarea (`status:"stopped"`) y sale
-con ese trabajo sin terminar.
+completo sobre el mismo proceso. Cuanto espera depende de su entrada, que
+controla el bridge: **mientras la entrada sigue abierta espera lo que tarde el
+trabajo** (un `sleep 240` dejado corriendo tras el turno se espero completo), y
+**una vez cerrada** le da al trabajo **~4–6 s** y luego lo **detiene**
+(`status:"stopped"`), saliendo con ese trabajo sin terminar. El bridge mantiene
+la entrada abierta mientras haya una tarea viva y la cierra cuando termina la
+ultima, asi que el trabajo tiene su tiempo.
 
-**Una espera larga NO es este caso.** El margen anterior aplica solo a trabajo
+**Una espera larga NO es este caso.** Lo anterior aplica solo a trabajo
 que queda corriendo *despues* de que el modelo termina su turno. El caso comun —
 "abre el PR y espera el CI", una compilacion, una bateria de tests — es una
 llamada de herramienta que **bloquea dentro del turno**: no se ha emitido ningun
@@ -2605,7 +2631,10 @@ cambia):
    sigue las tareas vivas (lineas `system` con `subtype:"task_started"` /
    `"task_notification"`; por eso `system` dejo de mapearse a un solo tipo) y
    retiene la finalizacion hasta que la CLI produzca su turno de seguimiento o
-   salga. Se emite **un solo** `turn_completed`, con **ambas** respuestas: el
+   salga. Tampoco lo cierra mientras quede un mensaje escrito que la CLI aun no
+   leyo: cada mensaje lleva un `uuid` y la CLI lo devuelve al leerlo
+   (`--replay-user-messages`); un `result` sin mensajes pendientes es el unico
+   que termina el turno. Se emite **un solo** `turn_completed`, con **ambas** respuestas: el
    `result` de la CLI solo lleva el texto del ultimo turno.
 2. **El trabajo que la CLI mata se informa**, con un bloque `warning`
    (`SystemContent kind:'warning'`, forma que el telefono ya renderiza), en vez
@@ -2619,7 +2648,7 @@ cambia):
    sigue corriendo — justo la serializacion que §5.8.13 existe para garantizar.
 
 Las reglas 3 y 4 son deliberadamente **agnosticas del adaptador**: viven en el
-store y en el manager porque la exposicion la comparte toda la primera fila de la
+store y en el manager porque la exposicion la comparte todo adaptador de la
 tabla, hoy o tras cualquier cambio upstream.
 
 #### 5.8.15 Canal de control local (desktop ↔ bridge en la misma maquina)
