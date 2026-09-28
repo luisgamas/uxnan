@@ -14,7 +14,6 @@ import 'package:uxnan/presentation/screens/profile/profile_identity_header.dart'
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/screens/profile/spend_section.dart';
 import 'package:uxnan/presentation/screens/profile/usage_format.dart';
-import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
@@ -25,9 +24,11 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
 /// The profile, across every paired PC: who this is (the one name, this
-/// phone's), what the agents spent (`usage/summary`), the connected PC's plan
-/// limits, the activity (highlights, a year heatmap, the agents ranked) and
-/// each PC, opening its own stats. Everything comes from the bridges; the
+/// phone's), what the agents spent (`usage/summary`), the activity
+/// (highlights, a year heatmap, the agents ranked) and each PC, opening its
+/// own stats. A plan's limits are not here: they belong to one PC's
+/// accounts and cannot be added up across PCs, so they live on that PC's
+/// screen. Everything comes from the bridges; the
 /// phone caches it per PC so a PC that is off still counts.
 class ProfileScreen extends ConsumerStatefulWidget {
   /// Creates the [ProfileScreen].
@@ -120,10 +121,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: UxnanSpacing.xl),
               const NeEntranceRow(index: 1, child: SpendSection()),
               const SizedBox(height: UxnanSpacing.xl),
-              const NeEntranceRow(index: 2, child: UsageSection()),
-              const SizedBox(height: UxnanSpacing.xl),
               NeEntranceRow(
-                index: 3,
+                index: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -136,7 +135,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: UxnanSpacing.xl),
-              const NeEntranceRow(index: 4, child: _YourPcs()),
+              const NeEntranceRow(index: 3, child: _YourPcs()),
             ],
           ),
         ),
@@ -209,8 +208,7 @@ class _RefreshAction extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final loading = ref.watch(metricsSnapshotsProvider).isLoading ||
-        ref.watch(usageSummariesProvider).isLoading ||
-        ref.watch(usageStatsProvider).isLoading;
+        ref.watch(usageSummariesProvider).isLoading;
     final connected = ref.watch(connectedDeviceProvider).value != null;
     if (loading) {
       return const Padding(
@@ -226,7 +224,6 @@ class _RefreshAction extends ConsumerWidget {
           ? () {
               ref.read(metricsSnapshotsProvider.notifier).refresh();
               ref.read(usageSummariesProvider.notifier).refresh();
-              ref.read(usageStatsProvider.notifier).refresh();
             }
           : null,
     );

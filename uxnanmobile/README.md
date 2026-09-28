@@ -94,9 +94,9 @@ this app:
   continues one with its history. A conversation whose session is open in a
   terminal on the PC says so, and *Continue here* asks the PC to let it go.
 - **Your activity, at a glance.** A profile with what your agents spent (every
-  session they recorded, per day, agent and model), your plan limits and their
-  pace, a GitHub-style contribution heatmap and your activity highlights —
-  across every paired PC and per PC — under the one name your PCs know this
+  session they recorded, per day, agent and model), a GitHub-style
+  contribution heatmap and your activity highlights — across every paired PC
+  and per PC, where each PC also shows its plan limits and their pace — under the one name your PCs know this
   phone by, with a picture of your choice. Each
   bridge retains its complete activity ledger, so deleting conversations or
   restoring/reinstalling the app does not erase those statistics. Every

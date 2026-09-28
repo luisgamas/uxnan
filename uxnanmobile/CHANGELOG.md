@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **The spend chart's columns keep one shape.** A day's column is one rounded
+  shape whether it holds one agent or several, and every agent's part of it
+  stays visible, apart from the next — a small share no longer turns the top
+  flat or disappears.
+- **Plan limits are on each PC's screen, not the profile.** A plan's limits
+  belong to one PC's accounts and cannot be added up across PCs, so the
+  profile — every PC together — no longer shows them; each PC's screen does,
+  while it is connected.
 
 ## [0.0.31-alpha.20260928+20260933] - 20260928
 ### Changed

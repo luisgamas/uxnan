@@ -27,6 +27,7 @@
   // API prices (said so); a model with no known price counts in tokens only.
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
+  import { columnOutline, stackColumn } from "$lib/spendColumn";
   import { Segmented } from "$lib/components/ui/segmented";
   import { Spinner } from "$lib/components/ui/spinner";
   import RefreshIcon from "@hugeicons/core-free-icons/RefreshIcon";
@@ -117,40 +118,31 @@
   const barWidth = $derived(Math.max(2, slot - Math.max(2, slot * 0.28)));
   const y = (v: number) => PAD_TOP + plot - (v / scale.max) * plot;
 
-  /** A segment rectangle; the top one of a column gets rounded top corners. */
-  function segmentPath(x: number, top: number, bottom: number, w: number, rounded: boolean): string {
-    const h = Math.max(0, bottom - top);
-    const r = rounded ? Math.min(4, w / 2, h) : 0;
-    return [
-      `M${x},${bottom}`,
-      `V${top + r}`,
-      r ? `Q${x},${top} ${x + r},${top}` : "",
-      `H${x + w - r}`,
-      r ? `Q${x + w},${top} ${x + w},${top + r}` : "",
-      `V${bottom}`,
-      "Z",
-    ].join(" ");
-  }
+  /** The chart's own prefix for its column clips (ids are page-wide). */
+  const clipId = $props.id();
+  const baseline = $derived(PAD_TOP + plot);
 
-  /** Each day's stacked segments, bottom up in the agents' fixed order. */
+  /** Each day's column: its rounded outline (the segments' clip) and the
+   *  agents' segments stacked bottom up in their fixed order — every agent
+   *  visible and apart from the next (`$lib/spendColumn`). */
   const columns = $derived.by(() => {
     if (!view) return [];
     const order = chartAgents.map((a) => a.agentId);
     return view.days.map((day, index) => {
       const x = index * slot + (slot - barWidth) / 2;
-      let base = 0;
-      const present = order.filter((id) => (day.byAgent[id] ?? 0) > 0);
-      const segments = present.map((agentId, i) => {
-        const value = day.byAgent[agentId] ?? 0;
-        const bottom = y(base);
-        base += value;
-        // A 2px surface gap between stacked fills.
-        return {
-          agentId,
-          d: segmentPath(x, y(base), bottom - (i > 0 ? 2 : 0), barWidth, i === present.length - 1),
-        };
-      });
-      return { day, x, segments };
+      const values = order.map((id) => day.byAgent[id] ?? 0);
+      const total = values.reduce((sum, v) => sum + v, 0);
+      const layout = stackColumn(values, baseline - y(total));
+      return {
+        day,
+        x,
+        outline: layout.height > 0 ? columnOutline(x, baseline, barWidth, layout.height) : "",
+        segments: layout.segments.map((segment) => ({
+          agentId: order[segment.index]!,
+          y: baseline - segment.top,
+          height: segment.top - segment.bottom,
+        })),
+      };
     });
   });
 
@@ -283,9 +275,20 @@
               {#if hover === i}
                 <rect x={i * slot} y={PAD_TOP} width={slot} height={plot} class="fill-foreground/[0.04]" />
               {/if}
-              {#each column.segments as segment (segment.agentId)}
-                <path d={segment.d} class={colour(segment.agentId).fill} />
-              {/each}
+              {#if column.outline}
+                <clipPath id="{clipId}-{i}"><path d={column.outline} /></clipPath>
+                <g clip-path="url(#{clipId}-{i})">
+                  {#each column.segments as segment (segment.agentId)}
+                    <rect
+                      x={column.x}
+                      y={segment.y}
+                      width={barWidth}
+                      height={segment.height}
+                      class={colour(segment.agentId).fill}
+                    />
+                  {/each}
+                </g>
+              {/if}
             {/each}
             {#each axisDays as tick (tick.i)}
               <text
