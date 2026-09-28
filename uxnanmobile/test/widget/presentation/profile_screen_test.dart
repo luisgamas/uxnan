@@ -14,6 +14,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
+import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import '../../support/ux_icon_finder.dart';
 
@@ -235,6 +236,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+
+      // A plan's limits belong to one PC's accounts: they are on that PC's
+      // screen, never on the profile that adds every PC up — even while a PC
+      // is connected.
+      expect(find.byType(UsageSection), findsNothing);
 
       // `automatic` is the default, so opening the profile already fetched once
       // — that alone is the fix for stats frozen at connect time.

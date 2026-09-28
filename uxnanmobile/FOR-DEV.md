@@ -118,9 +118,11 @@ connected to live bridge data, validated on-device against a real bridge.
   sessions, agents, models, Git actions below) and the agents ranked — plus
   **what the agents spent** (`usage/summary`, per PC cached in
   `UsageSummaryCacheStore`, stacked daily chart with agent focus, top models,
-  7/30/90 days, cost or tokens), **plan limits** with pace and Codex reset
-  redeem, a **Your PCs** list and a **per-PC details** screen with the same
-  sections. The one name is this phone's (`shownPhoneNameProvider`); the
+  7/30/90 days, cost or tokens), a **Your PCs** list and a **per-PC
+  details** screen with the same sections plus that PC's **plan limits**
+  (live while it is the connected PC, with pace and Codex reset redeem — a
+  plan's limits belong to one PC's accounts, so the profile that adds every
+  PC up does not show them). The one name is this phone's (`shownPhoneNameProvider`); the
   picture stays a profile avatar.
   The metrics now come from the bridge's complete global ledger (`metrics/get`),
   so they survive app uninstall, device restore and conversation deletion. The
