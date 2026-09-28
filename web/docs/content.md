@@ -11,6 +11,9 @@ change set.**
 
 | The page says | Where it comes from |
 |---|---|
+| "Start it in a terminal. Pick it up anywhere." (the headline and `SITE.tagline`), the continuity section: *Continue as chat*, *Open in terminal*, *Continue here*, the agent closed "with a signal to its process, never with keystrokes", "one writer at a time", "the agent keeps its memory when the bridge restarts" | `uxnandesktop/docs/chat.md` → _From a terminal to a chat, and back_; `architecture/02a-system-architecture.md` §5.8.19; `bridge/CHANGELOG.md` → the session-continuity entries (every adapter continues its stored native session) |
+| "list theirs; Antigravity continues from the terminal it runs in" | `SESSION_AGENTS` / `SESSIONS_UNLISTED` ← `bridge/docs/agents.md` (`agent/sessions` per CLI); `uxnandesktop/docs/chat.md` → _Sessions in this folder_ |
+| "Each one works on its own": the desktop needs nothing else, the phone only the bridge, the bridge runs as a user service and updates itself; "whatever happened on one is already on the other, even what you did while offline" | root `README.md` → _How it connects_; `AGENTS.md` → _Every surface works on its own_ and _Converge, don't trust delivery_; `bridge/README.md` (user service, `bridge/update`) |
 | The star and download counters under the hero badge | GitHub's own API, with a build-time fallback in `src/lib/github.ts` and a live, cached refresh from `functions/api/stats.ts`. Stars are `stargazers_count`; downloads sum the `download_count` of **installer assets only** (`.exe .msi .dmg .deb .rpm .AppImage .apk .aab`) across every published release — manifests, signatures and updater bundles are not downloads, and counting them made the figure *drop* after every release because the release workflow re-uploads `latest.json` with `--clobber`. If the live call fails, the last build-time value remains visible |
 | "Windows, Linux · macOS (experimental) · Android on Google Play · iOS coming soon" | root `README.md` → _Install_ — macOS builds are unsigned, iOS is written but unshipped |
 | "22 agents report precise status" + the two agent grids | `uxnandesktop/docs/agent-hooks.md` → the reporter table and _"Nine agents in the catalog have no precise state"_; root `README.md` → _Works with any CLI agent_ |
@@ -18,9 +21,9 @@ change set.**
 | "+ any CLI agent" | `uxnandesktop/docs/agent-launch.md` — custom agents are registered by hand |
 | "runs the vendor's own official binary… never calls a provider API, holds a key, or embeds an SDK" | root `README.md` → _Works with any CLI agent_ |
 | Isolated worktree per task; terminals restore with scrollback; PR with the merge methods the repo allows; nested subagents | root `README.md` → _What it feels like to use_; `uxnandesktop/docs/github.md`; `uxnandesktop/architecture/02b-terminal-engine.md`; `uxnandesktop/docs/agent-hooks.md` |
-| **226 MB** asleep · **252 MB** one terminal · **274 MB** four terminals, and "~250 MB" in the hero badge | `uxnandesktop/docs/resource-benchmarks.md` → results table (Windows 11, release build, private working memory) |
+| **226 MB** asleep · **252 MB** one terminal open · **274 MB** four terminals in splits (bare shells: the scenarios measure the app, not the agents) | `uxnandesktop/docs/resource-benchmarks.md` → results table (Windows 11, release build, private working memory) |
 | "every run records the OS, webview version, CPU, build profile and commit" | same doc → _Preconditions_ |
-| The seven chat agents (Claude Code, Codex, OpenCode, pi, Antigravity, Zero, Grok) and "the same conversation, live, in both places" | `CHAT_AGENTS` ← `shared/src/agents/agent-capabilities.ts` → `AgentId` (minus the `echo` dev agent); `uxnandesktop/docs/chat.md` → intro |
+| The seven chat agents (Claude Code, Codex, OpenCode, pi, Antigravity, Zero, Grok) and "a chat open in Uxnan Desktop is on your phone too, live" | `CHAT_AGENTS` ← `shared/src/agents/agent-capabilities.ts` → `AgentId` (minus the `echo` dev agent); `uxnandesktop/docs/chat.md` → intro |
 | "Every read, search, edit and command shows up as the agent takes it … on both screens" | `bridge/docs/agents.md` → _What a turn's work looks like_ and _A step shows while it runs_ |
 | "A chat you start from the phone gets Uxnan's tools too, while the desktop is running" | `uxnandesktop/docs/chat.md` → _The chat's agent gets Uxnan's tools_ (Claude Code, Codex, OpenCode, pi, Grok; Zero and Antigravity not yet — the page says "a chat", not "every chat", and never names those two for it) |
 | `uxnan-cli` with nothing to install; worktree / chat start / wait / read / browser commands; "nothing it does is destructive" | `CONTROL_CLI` ← the usage lines in `uxnandesktop/src-tauri/crates/uxnan-cli/src/guide.rs`; `uxnandesktop/docs/control-api.md` → TL;DR and _Where it is_ (the sidecar on every terminal's PATH) |
@@ -45,3 +48,6 @@ change set.**
   broken promise. If it ships, add it to `PLATFORMS` and the CTA.
 - **No Gemini CLI.** It is deprecated and has no mobile surface — it must not
   appear in the agent list.
+- **No dashes in the copy.** Visible text uses commas, colons or a new sentence,
+  never an em or en dash, so the page reads the way a person talks. Code
+  comments are exempt.

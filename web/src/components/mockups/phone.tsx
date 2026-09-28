@@ -427,9 +427,9 @@ export function PhoneConversations() {
 /* ── A live conversation ───────────────────────────────────────────────── */
 
 const BULLETS = [
-  { code: "shared/", rest: "— JSON-RPC + E2EE contracts" },
-  { code: "relay/", rest: "— optional, self-hosted" },
-  { code: "bridge/", rest: "— the daemon on your PC" },
+  { code: "shared/", rest: "JSON-RPC + E2EE contracts" },
+  { code: "relay/", rest: "optional, self-hosted" },
+  { code: "bridge/", rest: "the daemon on your PC" },
 ];
 
 export function PhoneConversation() {
@@ -484,8 +484,8 @@ export function PhoneConversation() {
                   style={{ background: M3.container }}
                 >
                   {b.code}
-                </span>{" "}
-                {b.rest}
+                </span>
+                : {b.rest}
               </span>
             </li>
           ))}
@@ -913,6 +913,134 @@ export function PhoneDevices() {
           connected={false}
           threads={3}
         />
+      </div>
+    </>
+  );
+}
+
+/* ── A conversation a terminal on the PC holds ─────────────────────────── */
+
+const TOUR = [
+  { code: "uxnandesktop/", rest: "the desktop app: agents side by side, each in its own worktree and terminal." },
+  { code: "bridge/", rest: "the daemon on your PC: drives the agents and keeps every conversation." },
+  { code: "relay/", rest: "optional, only when the phone and the PC are on different networks." },
+];
+
+/** A session started in a desktop terminal, continued on the phone: its
+ *  history came along, and while the terminal still has the agent open the
+ *  composer waits under the banner the app draws (`_SessionHeldBanner`), with
+ *  the tonal *Continue here* button that asks the PC to hand it over. */
+export function PhoneHeldConversation() {
+  return (
+    <>
+      <div className="flex items-center gap-[5px] px-[9px] pt-[4px] pb-[8px]">
+        <RoundBtn>
+          <HugeiconsIcon icon={ArrowLeftIcon} className="size-[11px]" />
+        </RoundBtn>
+        <span
+          className="flex h-[23px] w-fit items-center gap-[4px] rounded-full px-[8px] text-[8.5px]"
+          style={{ background: M3.container }}
+        >
+          <HugeiconsIcon icon={SparklesIcon} className="size-[9px] shrink-0" />
+          <span className="truncate">Claude Code</span>
+          <HugeiconsIcon icon={ChevronDownIcon} className="size-[8px] shrink-0" />
+        </span>
+        <span className="flex-1" />
+        <RoundBtn>
+          <HugeiconsIcon icon={FolderIcon} className="size-[10px]" />
+        </RoundBtn>
+        <RoundBtn>
+          <HugeiconsIcon icon={GitBranchIcon} className="size-[10px]" />
+        </RoundBtn>
+        <RoundBtn>
+          <HugeiconsIcon icon={MoreVerticalIcon} className="size-[10px]" />
+        </RoundBtn>
+      </div>
+
+      <div className="px-[11px] text-[9px] leading-[1.5]">
+        <div
+          className="ml-auto w-fit max-w-[85%] rounded-[12px] px-[9px] py-[6px]"
+          style={{ background: M3.periwinkle, color: M3.onPeriwinkle }}
+        >
+          Give me a short tour of this repository&apos;s components, one line
+          each.
+        </div>
+
+        <div
+          className="mt-[9px] flex items-center gap-[5px] rounded-full px-[8px] py-[5px] text-[8px]"
+          style={{ background: M3.containerSoft, color: M3.onSurfaceVar }}
+        >
+          <HugeiconsIcon icon={TerminalIcon} className="size-[9px] shrink-0" />
+          <span className="shrink-0" style={{ color: M3.onSurface }}>
+            Work log
+          </span>
+          <span
+            className="rounded-full px-[4px] text-[7px]"
+            style={{ background: M3.container }}
+          >
+            3
+          </span>
+          <span className="truncate font-mono text-[7.5px]">$ ls uxnandesktop bridge relay</span>
+          <HugeiconsIcon icon={ChevronDownIcon} className="ml-auto size-[8px] shrink-0" />
+        </div>
+
+        <p className="mt-[9px]">Here&apos;s the tour:</p>
+        <ul className="mt-[4px] flex flex-col gap-[5px]">
+          {TOUR.map((b) => (
+            <li key={b.code} className="flex gap-[6px]">
+              <span style={{ color: M3.outline }}>•</span>
+              <span>
+                <span
+                  className="rounded-[3px] px-[3px] py-[1px] font-mono text-[8px]"
+                  style={{ background: M3.container }}
+                >
+                  {b.code}
+                </span>{" "}
+                {b.rest}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* the terminal on the PC holds the session: the composer waits */}
+      <div className="absolute inset-x-[11px] bottom-[46px]">
+        <div
+          className="flex items-center gap-[7px] rounded-[12px] py-[5px] pr-[5px] pl-[9px]"
+          style={{ background: M3.container }}
+        >
+          <HugeiconsIcon
+            icon={TerminalIcon}
+            className="size-[11px] shrink-0"
+            style={{ color: M3.onSurfaceVar }}
+          />
+          <span className="min-w-0 flex-1 text-[7.5px] leading-[1.35]" style={{ color: M3.onSurfaceVar }}>
+            This conversation is open in a terminal on MacBook.
+          </span>
+          <span
+            className="shrink-0 rounded-full px-[9px] py-[6px] text-[8px] font-medium"
+            style={{ background: M3.mint, color: M3.onMint }}
+          >
+            Continue here
+          </span>
+        </div>
+      </div>
+
+      <div className="absolute inset-x-[11px] bottom-[11px]">
+        <div
+          className="flex h-[29px] items-center gap-[8px] rounded-full px-[10px]"
+          style={{ background: M3.container }}
+        >
+          <HugeiconsIcon icon={PlusIcon} className="size-[12px] shrink-0" />
+          <span className="truncate text-[9px]" style={{ color: M3.outline }}>
+            Message…
+          </span>
+          <HugeiconsIcon
+            icon={MicIcon}
+            className="ml-auto size-[11px] shrink-0"
+            style={{ color: M3.onSurfaceVar }}
+          />
+        </div>
       </div>
     </>
   );

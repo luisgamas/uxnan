@@ -6,7 +6,7 @@ import { Reveal } from "@/components/reveal";
 import { AGENT_ICON, INVERT_ON_DARK } from "@/lib/site";
 
 const POINTS = [
-  "A new worktree in seconds — new branch, existing branch, or anywhere you like.",
+  "A new worktree in seconds, on a new branch, an existing one, or anywhere you like.",
   "Terminals that survive sleep and restore with their scrollback intact.",
   "Commit, push and open the PR with the merge methods your repo actually allows.",
   "Subagents show up nested under the agent that spawned them.",
@@ -56,7 +56,7 @@ export function Parallel() {
           </h2>
           <p className="mt-5 text-[1.0625rem] leading-relaxed text-muted">
             Every task gets its own isolated git worktree, so nothing an agent
-            touches collides with what you&apos;re doing — or with the other
+            touches collides with what you&apos;re doing, or with the other
             three. You keep one window, and each of them keeps their own copy of
             the repo.
           </p>

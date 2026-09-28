@@ -7,6 +7,23 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The page leads with continuity.** The headline is now "Start it in a
+  terminal. Pick it up anywhere.", and a new section right after the hero shows
+  one session moving from a desktop terminal (*Continue as chat*) to a chat
+  (*Open in terminal*) to the phone (*Continue here*), with picking up any
+  agent's sessions in a folder and the one-writer rule. The desktop and phone
+  section became "Alone or together": what each surface needs on its own, and
+  that they converge when they meet.
+- **A new share image (`og.png`)** made from the page's own hero: the new
+  headline over the desktop and phone mockups. The old one was a screenshot
+  that still showed the retired Gemini CLI.
+- **The copy has no dashes.** Em dashes became commas, colons or new sentences
+  across the page, its metadata and `llms.txt`.
+- **Claims tightened:** the footprint labels say what was measured ("one
+  terminal open", "four terminals in splits", not agents), the agents paragraph
+  no longer promises live model discovery for every agent, and the hero no
+  longer says any CLI agent runs as a chat.
+
 - **The phone's new-conversation mockup shows one folder card** — the chosen
   project with its round unfold button — as the app now does, instead of the
   whole project list.

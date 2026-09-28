@@ -42,9 +42,9 @@ export function Agents() {
             If it runs in your terminal, it runs in Uxnan.
           </h2>
           <p className="mt-5 text-[1.0625rem] leading-relaxed text-muted">
-            {AGENTS_PRECISE.length} agents report precise status — working,
-            waiting, blocked, done — plus session resume, live model discovery
-            and per-agent run options. Any other CLI you register launches
+            {AGENTS_PRECISE.length} agents report precise status: working,
+            waiting, blocked or done. Each one resumes its sessions and keeps
+            its own run options, and any other CLI you register launches
             exactly the same way.
           </p>
         </Reveal>
@@ -60,7 +60,7 @@ export function Agents() {
         <Reveal delay={120}>
           <p className="mx-auto mt-12 max-w-[54ch] text-center text-[14.5px] leading-relaxed text-dim">
             These launch and run the same way, and show a working/idle
-            indicator — their CLI just has no way to say a turn ended, so uxnan
+            indicator. Their CLI has no way to say a turn ended, so Uxnan
             doesn&apos;t claim a precise state it can&apos;t know.
           </p>
         </Reveal>
@@ -80,7 +80,7 @@ export function Agents() {
           <p className="mx-auto mt-12 max-w-[54ch] text-center text-[14.5px] leading-relaxed text-dim">
             Every one of them runs as that vendor&apos;s own official binary,
             under the account you already signed it in with. Uxnan never calls a
-            provider API, holds a key, or embeds an SDK — it drives the
+            provider API, holds a key, or embeds an SDK. It drives the
             terminal, exactly like you would.
           </p>
         </Reveal>

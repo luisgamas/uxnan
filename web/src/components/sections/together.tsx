@@ -4,9 +4,28 @@ import { Reveal } from "@/components/reveal";
 import { CHAT_AGENTS, CONTROL_CLI } from "@/lib/site";
 
 const POINTS = [
-  "Every read, search, edit and command shows up as the agent takes it — the same way for every agent, on both screens.",
+  "Every read, search, edit and command shows up as the agent takes it, the same way for every agent, on both screens.",
   "Send, stop, answer an approval or switch the model from either one; the other shows it as it happens.",
   "A chat you start from the phone gets Uxnan's tools too, while the desktop is running.",
+];
+
+/** Each surface on its own: what it needs, and what it does alone. */
+const ALONE = [
+  {
+    name: "Uxnan Desktop",
+    needs: "Nothing else",
+    body: "Terminals, chats, worktrees, git and a browser for your agents. No phone, no account.",
+  },
+  {
+    name: "Uxnan Mobile",
+    needs: "The bridge on your PC",
+    body: "Start, steer and review agents from your phone. The desktop app doesn't have to be installed.",
+  },
+  {
+    name: "The bridge",
+    needs: "Node on your PC",
+    body: "Runs as a user service, keeps every project and conversation, and updates itself.",
+  },
 ];
 
 const LINES: { cmd?: string; note?: string }[] = [
@@ -24,16 +43,32 @@ export function Together() {
     <section id="together" className="relative py-16 sm:py-24">
       <div className="wrap">
         <Reveal className="mx-auto max-w-[46rem] text-center">
-          <p className="eyebrow">Desktop and phone, one workspace</p>
+          <p className="eyebrow">Alone or together</p>
           <h2 className="display mt-4 text-[clamp(1.9rem,3.6vw,2.9rem)]">
-            Start it at your desk. Finish it from the sofa.
+            Each one works on its own. Together, nothing is missed.
           </h2>
           <p className="mt-5 text-[1.0625rem] leading-relaxed text-muted">
-            Open a chat in Uxnan Desktop and it is already on your phone — the
-            same conversation, live, in both places. It works with{" "}
+            Use the desktop without a phone, or the phone without the desktop.
+            When they meet, whatever happened on one is already on the other,
+            even what you did while offline. A chat open in Uxnan Desktop is on
+            your phone too, live, with{" "}
             {CHAT_AGENTS.map((a) => a.name).join(", ").replace(/, ([^,]*)$/, " and $1")}.
           </p>
         </Reveal>
+
+        <div className="mx-auto mt-10 grid max-w-[62rem] gap-3 sm:grid-cols-3">
+          {ALONE.map((s, i) => (
+            <Reveal key={s.name} delay={i * 60}>
+              <div className="tile h-full p-5">
+                <p className="font-mono text-[10.5px] tracking-[0.12em] text-faint">
+                  NEEDS · {s.needs.toUpperCase()}
+                </p>
+                <h3 className="mt-2 text-[15px] font-semibold">{s.name}</h3>
+                <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{s.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
 
         <Reveal delay={60}>
           <div className="mx-auto mt-8 flex max-w-[34rem] flex-wrap items-center justify-center gap-2">
@@ -67,7 +102,7 @@ export function Together() {
             <p className="mt-2.5 max-w-[52ch] text-[14.5px] leading-relaxed text-muted">
               Inside Uxnan every agent already has{" "}
               <code className="font-mono text-[13px] text-fg/85">{CONTROL_CLI.name}</code>{" "}
-              and Uxnan&apos;s MCP tools — nothing to install. It can open a
+              and Uxnan&apos;s MCP tools, with nothing to install. It can open a
               worktree, start a chat with another agent, wait for it and read
               what it answered, then test the app in a real browser. You see
               every step, and nothing it does is destructive.

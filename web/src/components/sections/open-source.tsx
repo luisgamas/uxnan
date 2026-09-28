@@ -27,7 +27,7 @@ export function OpenSource() {
           </h2>
           <p className="mt-5 text-[1.0625rem] leading-relaxed text-muted">
             No paid tier, no key to hand over, no API of ours in the middle.
-            Uxnan is built in the open and released under the {LICENSE} — if
+            Uxnan is built in the open and released under the {LICENSE}. If
             something is missing, the source is right there.
           </p>
         </Reveal>

@@ -2,6 +2,7 @@ import { Nav } from "@/components/nav";
 import { Agents } from "@/components/sections/agents";
 import { Cta, Footer } from "@/components/sections/cta";
 import { Footprint } from "@/components/sections/footprint";
+import { Continuity } from "@/components/sections/continuity";
 import { Hero } from "@/components/sections/hero";
 import { Mobile } from "@/components/sections/mobile";
 import { OpenSource } from "@/components/sections/open-source";
@@ -14,6 +15,7 @@ export default function Home() {
       <Nav />
       <main>
         <Hero />
+        <Continuity />
         <Agents />
         <Parallel />
         <Together />
