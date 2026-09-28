@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A PC renamed on the desktop no longer comes back under its old name.**
+  The connection wrote the PC's whole record back from an older copy each
+  time it stamped "last seen" or advanced its catch-up cursor, so a rename
+  lasted only until the next message. Those writes now change only their own
+  field (`recordLastSeen`, `recordBridgeOutboundSeq`, `rename`), and only
+  pairing writes the whole record.
 
 ## [0.0.30-alpha.20260927+20260932] - 20260927
 ### Added

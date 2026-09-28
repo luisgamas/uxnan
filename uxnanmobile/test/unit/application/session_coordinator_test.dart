@@ -288,6 +288,26 @@ class _FakeTrustedDeviceRepo implements ITrustedDeviceRepository {
   @override
   Future<void> deleteDevice(String macDeviceId) async =>
       devices.remove(macDeviceId);
+
+  @override
+  Future<void> rename(String macDeviceId, String name) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.copyWith(displayName: name);
+  }
+
+  @override
+  Future<void> recordLastSeen(String macDeviceId, DateTime at) async {
+    final d = devices[macDeviceId];
+    if (d != null) devices[macDeviceId] = d.copyWith(lastSeen: at);
+  }
+
+  @override
+  Future<void> recordBridgeOutboundSeq(String macDeviceId, int seq) async {
+    final d = devices[macDeviceId];
+    if (d != null && seq > d.lastAppliedBridgeOutboundSeq) {
+      devices[macDeviceId] = d.copyWith(lastAppliedBridgeOutboundSeq: seq);
+    }
+  }
 }
 
 void main() {
@@ -327,16 +347,17 @@ void main() {
       delay: delay ?? (_) async {}, // elide backoff in tests by default
     );
     if (setActive) {
-      coordinator.setActiveDevice(
-        TrustedDevice(
-          macDeviceId: 'mac-1',
-          displayName: 'Test Bridge',
-          macIdentityPublicKey: bridgeId.publicKey,
-          relayUrl: 'wss://relay.test',
-          sessionId: 'session-xyz',
-          pairedAt: DateTime(2026),
-        ),
+      // A PC is active only once it is paired, so its record is stored.
+      final pc = TrustedDevice(
+        macDeviceId: 'mac-1',
+        displayName: 'Test Bridge',
+        macIdentityPublicKey: bridgeId.publicKey,
+        relayUrl: 'wss://relay.test',
+        sessionId: 'session-xyz',
+        pairedAt: DateTime(2026),
       );
+      await repo.saveDevice(pc);
+      coordinator.setActiveDevice(pc);
     }
     return (
       coordinator: coordinator,
@@ -629,6 +650,29 @@ void main() {
 
     final saved = await harness.repo.getDevice('mac-1');
     expect(saved!.lastAppliedBridgeOutboundSeq, 1);
+  });
+
+  // A PC renamed while the phone was connected kept coming back under its old
+  // name: advancing the cursor wrote the whole record from an older copy.
+  test('the connection never undoes a rename of the PC it is connected to',
+      () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    await harness.repo.rename('mac-1', 'MacBook');
+
+    final received = harness.coordinator.incomingMessages.first
+        .timeout(const Duration(seconds: 5));
+    await harness.selector.currentBridge!.pushNotification(
+      RpcMessage.notification(method: 'stream/turn/started'),
+    );
+    await received;
+    await harness.coordinator.disconnect();
+    await Future<void>.delayed(Duration.zero);
+
+    final saved = await harness.repo.getDevice('mac-1');
+    expect(saved!.displayName, 'MacBook');
+    expect(saved.lastAppliedBridgeOutboundSeq, 1);
   });
 
   test('advertises resumeState on reconnect so the bridge replays the backlog',
