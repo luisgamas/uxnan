@@ -1041,6 +1041,7 @@ export const es: Record<MessageKey, string> = {
   "providers.statusBarTooltip": "Uso de proveedores de IA",
   "providers.usageTitle": "Uso de proveedores",
   "providers.noData": "Sin datos",
+  "providers.noQuota": "Esta cuenta no tiene cuota que medir",
   "providers.manage": "Administrar proveedores",
   "settings.appearance": "Apariencia",
   "settings.appearanceDesc":
@@ -2594,6 +2595,8 @@ export const es: Record<MessageKey, string> = {
   "bridge.pairTitle": "Conectar un teléfono",
   "bridge.pairDesc": "En Uxnan Mobile, agrega una computadora y escanea este código. Tu teléfono sigue trabajando con esta computadora aunque Uxnan esté cerrado.",
   "bridge.pairQrLabel": "Código QR de emparejamiento",
+  "bridge.pairCodeLabel": "O escribe este código en la app:",
+  "bridge.pairCodeCopy": "Copiar código",
   "bridge.pairExpired": "Este código caducó.",
   "bridge.pairRegenerate": "Código nuevo",
   "bridge.pairAnother": "Emparejar otro",

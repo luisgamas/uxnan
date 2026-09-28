@@ -4,6 +4,20 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **The pairing code, next to the QR.** The Bridge window's *Connect a phone*
+  shows the running bridge's manual code (`ABCD-EFGH`) under the QR, with a
+  copy button, for a phone that types it (*Enter a code instead*) rather than
+  scanning. It comes from the same bridge (`bridge/pairingCode`, what
+  `uxnan-bridge code` prints); a bridge older than that shows the QR alone.
+
+### Changed
+
+- **The usage popup says when an account has nothing to meter.** A provider
+  that answers fine but reports no quota window (a free Grok account, say) now
+  reads "No quota to meter for this account", as Settings does, instead of
+  "No data".
 
 ## [0.0.68] - 20260928
 ### Changed

@@ -188,7 +188,11 @@
                 <UsageMeter window={w} compact showReset={config.statusBar.showResetTime === true} />
               {/each}
             {:else}
-              <span class={text.meta}>{i18n.t("providers.noData")}</span>
+              <!-- Read fine, but the account has nothing to meter (a free Grok
+                   account, say): say so, as Settings does, instead of "No data". -->
+              <span class={text.meta}>
+                {snap?.status === "ok" ? i18n.t("providers.noQuota") : i18n.t("providers.noData")}
+              </span>
             {/if}
             {#if config.statusBar.showCredit && snap?.credit}
               <span class={cn("font-mono text-muted-foreground", text.indicator)}>
