@@ -37,6 +37,19 @@ export interface PairingPayload {
   displayName: string;
 }
 
+/**
+ * The bridge's current manual-pairing code (`bridge/pairingCode`, local control
+ * channel only): what a phone types to fetch the {@link PairingPayload} from
+ * `GET /pair/resolve`. Asking for it opens that bridge's pairing window, like
+ * showing the QR does.
+ */
+export interface PairingCode {
+  /** The code, grouped for reading (`ABCD-EFGH`). */
+  code: string;
+  /** How long until it rotates, in ms (an age, not a timestamp). */
+  expiresInMs: number;
+}
+
 export type PairingValidationError =
   | 'invalid_json'
   | 'not_an_object'

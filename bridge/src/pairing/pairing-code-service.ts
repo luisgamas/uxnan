@@ -147,6 +147,14 @@ export class PairingCodeService {
    * grouped (`ABCD-EFGH`) for readability; {@link resolve} accepts either form.
    */
   currentCode(): string {
+    return this.issue().code;
+  }
+
+  /**
+   * {@link currentCode} with how long it has left (ms) — what the running
+   * bridge answers `bridge/pairingCode` with.
+   */
+  issue(): { code: string; expiresInMs: number } {
     const now = this.#now();
     this.#syncFromDisk(now);
     if (!this.#code || now >= this.#expiresAt) {
@@ -154,7 +162,7 @@ export class PairingCodeService {
       this.#expiresAt = now + this.#ttlMs;
       this.#persist();
     }
-    return group(this.#code);
+    return { code: group(this.#code), expiresInMs: this.#expiresAt - now };
   }
 
   /** Force a fresh code now (e.g. the user asked to regenerate). */

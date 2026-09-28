@@ -144,7 +144,9 @@ that it is a chat and on which model. Like a terminal agent, a chat is listed
 while it is **open in a tab** or while it **needs attention** (working, waiting
 on you, failed, finished and not yet seen) — never the idle history
 (`sidebarChats`). A click opens it in a chat tab, or focuses the tab showing
-it; right-click offers its actions.
+it; right-click offers its actions. "Not yet seen" survives a restart or an
+update: a chat that finished while the app was closed, or before you opened
+it, is still listed until you open it (see the state below).
 
 ## A chat's lifecycle
 
@@ -172,6 +174,18 @@ resolved — so a chat needs no hooks; right after connecting, `thread/list`'s
 live `activeTurnId` says which conversations are already working. Chats count
 toward the worktree's leading state, its "last moved" time, the needs-you
 count and the sidebar's status order.
+
+**What you have seen is remembered.** Opening a chat (or having it in view
+when a turn ends) records the thread's `updatedAt` — the bridge's clock, never
+this machine's — in the window's storage (`uxnan.chat.seen`), next to a
+one-time `baseline`: the newest `updatedAt` there was the first time it ran,
+so an upgrade does not flag the whole history. Every thread list the replica
+adopts (at start-up, on reconnect, after a missed revision) converges on it:
+a thread with nothing running that moved since it was seen asks the bridge
+for its newest turn only (`turn/list` with `limit: 1, fromEnd: true`) and is
+**done** again when that turn completed after the mark, **blocked** when it
+failed; a rename or a stopped turn is not news, and the mark moves up instead.
+The marks of threads that no longer exist are dropped with each list.
 
 **Names.** A chat's title is its thread's, the same on every client: the bridge
 names a new conversation from its first message and then asks the agent for a

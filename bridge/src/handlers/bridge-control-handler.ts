@@ -1,13 +1,13 @@
 /**
  * Bridge-control JSON-RPC handlers (desktop → bridge, and CLI introspection):
- * bridge/status, generatePairingQr, connectedPhones, trustedDevices,
+ * bridge/status, generatePairingQr, pairingCode, connectedPhones, trustedDevices,
  * removeTrustedDevice, disconnectPhone, update. They run against the live transport and
  * trust store. (disconnectPhone removes the session but does not yet force-close
  * the live transport — see FOR-DEV.md.)
  *
  * See uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */
-import { RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import { buildBridgeStatus } from '../bridge-status.js';
@@ -39,6 +39,19 @@ export function registerBridgeControlHandlers(router: HandlerRouter): void {
   router.register('bridge/generatePairingQr', (_params, ctx: BridgeContext) =>
     ctx.pairingPayload(),
   );
+
+  // The manual code of the running process, window armed — what `uxnan-bridge
+  // code` prints. Only a client on this machine may read it: a phone that
+  // could would be handing out enrollment to whoever holds it.
+  router.register('bridge/pairingCode', (_params, ctx: BridgeContext, session) => {
+    if (!session?.local) {
+      throw new RpcError(
+        JsonRpcErrorCode.AuthenticationRequired,
+        'bridge/pairingCode is only accepted over the local control channel',
+      );
+    }
+    return ctx.pairingCode();
+  });
 
   router.register('bridge/connectedPhones', (_params, ctx: BridgeContext) => ctx.sessions.list());
 

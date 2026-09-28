@@ -21,7 +21,7 @@ import type { Logger } from './logger.js';
 import type { SyncLedger } from './sync/sync-ledger.js';
 import type { BridgeSettingsStore } from './settings/bridge-settings.js';
 import type { PresenceRegistry } from './presence/presence-registry.js';
-import type { BridgeHost, PairingPayload } from '@uxnan/shared';
+import type { BridgeHost, PairingCode, PairingPayload } from '@uxnan/shared';
 import type { AgentInstalls } from './agents/agent-installs.js';
 
 export interface BridgeContext {
@@ -81,6 +81,11 @@ export interface BridgeContext {
    * session, and an unarmed window refuses the handshake.
    */
   pairingPayload(): PairingPayload;
+  /**
+   * THIS process's manual-pairing code (the one its `/pair/resolve` accepts),
+   * with the pairing window armed — what `uxnan-bridge code` prints.
+   */
+  pairingCode(): PairingCode;
   /** Injected clock (epoch ms) for testability. */
   now(): number;
 }

@@ -1,10 +1,17 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.0
-> **Fecha:** 2026-09-26
+> **Version:** 1.5.1
+> **Fecha:** 2026-09-28
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.1):** no agent process outlives a bridge that is
+> killed hard (§5.8.3). The daemon records every agent process it starts in
+> `~/.uxnan/agent-processes.json` and, when it starts after a `SIGKILL` or a
+> crash, ends only the recorded processes that are still running, orphaned and
+> still the recorded command started at the recorded time — on macOS, Linux and
+> Windows, with no native module. Internal to the bridge: no contract changes.
 
 > **Executive summary (1.5.0):** the bridge owns its own update (§5.8.18). It
 > checks the npm registry itself every hour while it runs (a daemon that learned
@@ -1346,7 +1353,11 @@ ManualCodeScreen
 
 Flujo equivalente en CLI: el bridge, al arrancar, muestra en la terminal
 tanto el QR como el código de pairing (visible via `uxnan-bridge start` y
-`uxnan-bridge code`).
+`uxnan-bridge code`). `uxnan-bridge code` pide el código al bridge en ejecución
+por el canal de control local (`bridge/pairingCode`, §5.8.15), lo que abre la
+ventana de pairing de ese bridge; si ninguno responde, imprime el código del
+almacén que comparten todos (`~/.uxnan/pairing-code.json`), que acepta el
+próximo bridge que arranque. Ninguno de los dos casos levanta otro bridge.
 
 #### 5.5.4 Estructuras de pairing
 
@@ -1809,7 +1820,7 @@ bridge/
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
 │   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/antigravity/zero(+acp,approval)/grok(+acp,approval),
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
-│   │                               #   resolve-<agente>, spawn
+│   │                               #   resolve-<agente>, spawn (+ child-ledger, orphan-reaper)
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
 │   ├── agents/attachments.ts       # imagenes inline → archivos en el cwd
 │   ├── conversation/               # thread-store, native-session history convergence
@@ -1846,6 +1857,7 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── metrics.json.bak1..bak5        # generaciones locales del ledger
 ├── checkpoints.json               # metadata de checkpoints
 ├── update-check.json              # cache de actualizaciones
+├── agent-processes.json           # procesos de agente que el daemon en marcha arranco
 └── logs/
     └── bridge-YYYY-MM-DD.log
 ```
@@ -1872,6 +1884,28 @@ resolves**, so nothing is deferred and no window of loss is opened. A legacy
 `threads.json.migrated` (a backup, not a deletion — it is the user's only copy
 of that history until the new files are proven).
 
+**No agent process outlives a bridge that is killed hard.** A graceful stop
+closes every child (`AgentManager.stopAll`); a `SIGKILL`, a crash or an OOM kill
+cannot, and the long-lived children (`opencode serve`, a resident `pi` / `agy`,
+Codex's app-server, the ACP servers) are re-parented and keep running. So every
+agent process starts through one place (`adapters/spawn.ts`), which records it
+in `agent-processes.json` — `{ version: 1, processes: [{ pid, command, args,
+cwd, startedAt, ownerPid, ownerStartedAt }] }` — and removes it on exit
+(`adapters/child-ledger.ts`, one writer, atomic writes). Only the long-running
+daemon keeps the record, after it holds the single-instance lock. Before it
+serves anything, it ends each recorded process that is **still running**,
+**orphaned** (its parent is no longer the recording bridge — on Windows, which
+keeps a dead parent's pid, that bridge must also be gone) and **still the same
+process** (its command line ends with the recorded arguments after the recorded
+executable, and it started within seconds of the recorded time), then starts a
+fresh record (`adapters/orphan-reaper.ts`). Inspection needs no native module:
+`ps -ww -o ppid=,etime=,command=` on macOS / Linux, PowerShell `Get-CimInstance
+Win32_Process` on Windows; the end is `SIGTERM`, then `SIGKILL` after 3 s
+(re-checked first) on POSIX, `taskkill /PID <pid> /T /F` on Windows. Any doubt
+leaves the process running: nothing unrecorded is looked at, and a reused pid
+fails the command and start-time checks. The log carries counts and agent
+names, never a command line.
+
 #### 5.8.4 Autostart del bridge
 
 - **macOS:** LaunchAgent en `~/Library/LaunchAgents/dev.luisgamas.bridge.plist`
@@ -1885,8 +1919,9 @@ El bridge se instala como paquete npm global:
 ```bash
 npm install -g uxnan-bridge
 uxnan-bridge start          # inicia el daemon
-uxnan-bridge qr             # muestra QR de pairing en terminal
-uxnan-bridge status         # muestra estado actual
+uxnan-bridge qr             # muestra QR de pairing en terminal (el del bridge en ejecucion si hay uno)
+uxnan-bridge code           # codigo de pairing manual (bridge/pairingCode por el canal local si hay uno)
+uxnan-bridge status         # estado del daemon en ejecucion (bridge/status por el canal local, §5.8.15; no arranca otro)
 uxnan-bridge stop           # detiene el daemon
 uxnan-bridge install-service   # configura autostart en la plataforma
 ```
@@ -2974,14 +3009,15 @@ CONSTANTES:
 > as long as the `PairingPayload` it gates — a shorter window would leave a band
 > where the phone still accepts the QR and the bridge silently refuses). The window is armed by the exact
 > operator actions that surface a QR/code — `generatePairingQr()` (the `qr`
-> command, and `start`'s own printed QR) and `currentPairingCode()` (the `code`
-> command) — and by a **successful `GET /pair/resolve`**: producing the current
-> code proves the caller read it off the PC, which is the same consent signal.
-> That last one is what keeps pairing working against an autostarted,
-> console-less daemon: `qr`/`code` run in a SEPARATE short-lived process and
-> share the code through `~/.uxnan/pairing-code.json`, but arming is in-memory
-> and does not cross processes, so the daemon that actually serves the handshake
-> can only be armed by the resolve it serves itself. `server-handshake.ts`
+> command, and `start`'s own printed QR) and `currentPairingCode()` /
+> `bridge/pairingCode` (the `code` command) — and by a **successful
+> `GET /pair/resolve`**: producing the current code proves the caller read it
+> off the PC, which is the same consent signal. Arming is in-memory and does
+> not cross processes, so `qr` and `code` ask the RUNNING daemon over the local
+> control channel (`bridge/generatePairingQr`, `bridge/pairingCode`, §5.8.15),
+> which arms that daemon's own window. With no daemon answering, `code` prints
+> the code shared through `~/.uxnan/pairing-code.json`, and the resolve that
+> daemon serves later is what arms it. `server-handshake.ts`
 > rejects an unarmed `qr_bootstrap` BEFORE any
 > `trustStore` mutation and before `ready` is sent. This corrects an earlier
 > drift: the manual-pairing-code service documented itself as "the consent

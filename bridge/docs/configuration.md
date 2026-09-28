@@ -172,8 +172,20 @@ only write-bounded by its `permissionMode` — see
 
 `daemon-config.json`, `pairing-session.json`, `trusted-phones.json`,
 `threads/<threadId>.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
-`logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and the metrics sealing key
-live in the OS keychain, not on disk.
+`agent-processes.json`, `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and
+the metrics sealing key live in the OS keychain, not on disk.
+
+`agent-processes.json` is the running daemon's record of the agent processes it
+started — `{ "version": 1, "processes": [{ pid, command, args, cwd, startedAt,
+ownerPid, ownerStartedAt }] }` — added as each one starts and removed when it
+exits (`adapters/child-ledger.ts`). Only `uxnan-bridge start` writes it, after it
+holds `bridge.lock`. When a bridge is killed hard its children are left running;
+the next `start` reads this file before it serves anything and ends each recorded
+process that is still running, no longer that bridge's child, and still the
+recorded command started at the recorded time (`adapters/orphan-reaper.ts`),
+then starts a fresh record. A process that fails any check — a pid the system has
+since given to another program — is left alone. Like `threads/`, it can hold a
+prompt (a one-shot agent run takes it as an argument).
 
 **`~/.uxnan/` is the product's home on the machine, not the bridge's alone.**
 Uxnan Desktop writes one sibling here — `hooks/`, the agent reporters each

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mountWithProviders } from "../../test/render";
+import { dialogFocusSettled, mountWithProviders } from "../../test/render";
 import type { RepoData } from "$lib/types";
 import LauncherDialog from "./LauncherDialog.svelte";
 
@@ -95,6 +95,9 @@ describe("LauncherDialog sources", () => {
       },
     });
     const input = await screen.findByPlaceholderText("Name, PR or issue reference…");
+    // The dialog focuses itself a frame after it opens; clicking the field
+    // before that lets the focus move away before the paste lands.
+    await dialogFocusSettled(screen);
 
     await user.click(input);
     await user.paste("https://github.com/team/sample/pull/42");
@@ -133,6 +136,9 @@ describe("LauncherDialog sources", () => {
       },
     });
     const input = await screen.findByPlaceholderText("Name, PR or issue reference…");
+    // The dialog focuses itself a frame after it opens; clicking the field
+    // before that lets the focus move away before the paste lands.
+    await dialogFocusSettled(screen);
 
     await user.click(input);
     await user.paste("#42");

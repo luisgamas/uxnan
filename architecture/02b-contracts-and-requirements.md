@@ -100,14 +100,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 93 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 94 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 93 metodos request/response** + 24 notificaciones de streaming
+> **Total: 94 metodos request/response** + 24 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -293,7 +293,7 @@ notifications/update            -> actualizar preferencias de notificacion (Repl
 notifications/unregister        -> desregistrar el telefono
 ```
 
-**Control del bridge (7):**
+**Control del bridge (9):**
 ```
 bridge/status                    -> snapshot de estado del bridge (incluye relayConnected,
                                     version y `update: BridgeUpdate` — su propia actualizacion,
@@ -303,6 +303,10 @@ bridge/status                    -> snapshot de estado del bridge (incluye relay
                                     host { launchedBy: service|desktop|cli, machineName } y
                                     clients[] = quien esta conectado; features.sync)
 bridge/generatePairingQr         -> regenera y devuelve el PairingPayload vigente
+bridge/pairingCode               -> PairingCode { code, expiresInMs }  el codigo de pairing manual
+                                    vigente, con la ventana de pairing abierta (lo que imprime
+                                    `uxnan-bridge code`). Solo por el canal de control local: a un
+                                    telefono se le rechaza con AuthenticationRequired
 bridge/connectedPhones           -> lista de telefonos conectados
 bridge/disconnectPhone           -> desconectar un telefono
 bridge/trustedDevices            -> lista de dispositivos de confianza

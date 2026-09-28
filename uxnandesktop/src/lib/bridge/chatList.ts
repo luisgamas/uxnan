@@ -4,9 +4,13 @@
 // A folder can hold a long history (the phone's included), and the sidebar is
 // for what matters now — like a terminal agent, a chat is listed while it is
 // open in a tab, or while it needs attention (working, waiting on you, failed,
-// finished and not yet seen). Closing its tab takes it off the list until then;
-// the history lives in the new-chat screen's "Continue a conversation" and in
-// the launcher. Archived ones are never listed.
+// finished and not yet seen). Closing its tab takes it off the list until it
+// needs attention again; the history lives in the new-chat screen's "Continue
+// a conversation" and in the launcher. Archived ones are never listed.
+//
+// "Not yet seen" survives a restart: what this desktop looked at is remembered
+// by the bridge's clock (`ThreadActivity`), so a chat that finished while the
+// app was closed — or just before an update — stays listed until it is opened.
 
 import type { Thread } from '$shared/models/thread';
 import type { ChatActivity } from './activity.svelte';

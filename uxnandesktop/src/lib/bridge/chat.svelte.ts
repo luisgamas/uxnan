@@ -16,7 +16,7 @@
 
 import { untrack } from 'svelte';
 import { SvelteMap } from 'svelte/reactivity';
-import type { AccessMode, Thread } from '$shared/models/thread';
+import type { AccessMode, Thread, TurnList } from '$shared/models/thread';
 import type { ApprovalDecision } from '$shared/models/approval';
 import type {
   AgentCommand,
@@ -52,7 +52,7 @@ import { bridge, type BridgeClientStore, type BridgeNotification } from './clien
 import { Conversation, isTimelineMethod, threadIdOf } from './conversation.svelte';
 import { isUserFacingAgent } from './agents';
 import { writeOutbox, type SendRequest } from './outbox';
-import { ThreadActivity, type ChatActivity } from './activity.svelte';
+import { ThreadActivity, type ChatActivity, type SeenStore } from './activity.svelte';
 
 /** How a session is known across agents: `agentId:sessionId`. */
 export function sessionKey(agentId: string, sessionId: string): string {
@@ -111,7 +111,7 @@ export class ChatStore {
   readonly #replicaListeners = new Set<(change: ReplicaChange) => void>();
   readonly #commands = new Map<string, { at: number; commands: AgentCommand[] }>();
   /** What every thread is doing now (tab chips, sidebar rows). */
-  readonly activity = new ThreadActivity();
+  readonly activity: ThreadActivity;
   #models = new SvelteMap<string, AgentModel[]>();
   /** `agent/models` requests in flight, by agent. */
   readonly #modelRequests = new Map<string, Promise<AgentModel[]>>();
@@ -121,8 +121,24 @@ export class ChatStore {
   readonly #attachments = new Map<string, Promise<string>>();
   #started = false;
 
-  constructor(client: BridgeClientStore) {
+  constructor(client: BridgeClientStore, seenStore?: SeenStore) {
     this.#client = client;
+    this.activity = new ThreadActivity({
+      ...(seenStore ? { store: seenStore } : {}),
+      // Only the newest turn: whether it finished or failed, and when.
+      lastTurn: async (threadId) => {
+        const page = await client.call<TurnList>('turn/list', { threadId, limit: 1, fromEnd: true });
+        const turns = Array.isArray(page?.turns) ? page.turns : [];
+        return turns[turns.length - 1];
+      },
+    });
+  }
+
+  /** The user is looking at a thread as the bridge last described it: what
+   *  ended there is no longer news, here or after a restart. */
+  markSeen(threadId: string): void {
+    const thread = this.threads.get(threadId);
+    if (thread) this.activity.seen(threadId, thread.updatedAt);
   }
 
   /** Subscribe to the bridge (once). Safe to call before it is connected. */

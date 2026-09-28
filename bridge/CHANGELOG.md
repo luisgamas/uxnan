@@ -4,6 +4,45 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Agent processes no longer outlive a bridge that is killed hard.** A bridge
+  stopped with `SIGKILL` (`launchctl kickstart -k`), a crash or an OOM kill
+  could not close its children, and their `opencode serve`, resident `pi` /
+  `agy`, Codex app-server and ACP servers kept running with no parent —
+  nine `opencode serve` were found after a few forced restarts. The bridge now
+  records every agent process it starts in `~/.uxnan/agent-processes.json`
+  (pid, the exact command and arguments, cwd, when it started, and which bridge
+  started it) and forgets it when it exits; `uxnan-bridge start` first ends
+  what a previous bridge left behind. It ends only a recorded process that is
+  still running, no longer that bridge's child, and still the recorded command
+  started at the recorded moment — a pid the system has handed to another
+  program is left alone, and nothing the bridge did not record is looked at.
+  `SIGTERM`, then `SIGKILL` after 3 seconds on macOS and Linux (`ps`);
+  `taskkill /T /F` on Windows (PowerShell `Get-CimInstance`). The log says how
+  many and which agents, never a command line. Zero's model and skill listings
+  now start through the same spawn path as every other agent process.
+- **`uxnan-bridge status` asks the running bridge instead of starting one.** It
+  used to stand up a second, in-process bridge to describe itself — logging
+  "bridge ready" and "bridge stopping" and reporting that throwaway's one
+  millisecond of uptime, no clients, `launchedBy: "cli"` and a "started in a
+  terminal" update note, even with the service running. It now asks the running
+  bridge for its own `bridge/status` over the local control channel and prints
+  that, with `"running": true` added. With none running it prints
+  `{"running": false, "version", "platform"}` and starts nothing: no LAN server,
+  relay, keyring or state files. A bridge that holds the lock but has no local
+  channel is reported running with its `pid` and why its live status cannot be
+  read.
+- **`uxnan-bridge code` asks the running bridge for its code instead of starting
+  one.** It stood up a throwaway bridge too, whose code reached the service only
+  through the shared code file, without opening the service's pairing window.
+  It now asks the running bridge with the new `bridge/pairingCode` (local
+  control channel only; a phone is refused), which answers with its code and
+  opens its window, as `uxnan-bridge qr` already did for the QR. With no bridge
+  answering (none running, one without the channel, or one older than the
+  method) it prints the code from the store every bridge shares
+  (`~/.uxnan/pairing-code.json`), which the next bridge started accepts, says so
+  on stderr, and starts nothing.
 
 ## [0.0.37-alpha.20260928] - 20260928
 ### Fixed

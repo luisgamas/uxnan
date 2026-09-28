@@ -222,9 +222,36 @@ export {
   agentEnv,
   defaultSpawn,
   DESKTOP_TERMINAL_ENV_KEYS,
+  recordChildrenIn,
+  spawnPiped,
   type SpawnFn,
   type SpawnedProcess,
 } from './adapters/spawn.js';
+export {
+  ChildLedger,
+  CHILD_LEDGER_VERSION,
+  readChildLedger,
+  type ChildLedgerFile,
+  type ChildLedgerOptions,
+  type ChildRecord,
+  type ChildStart,
+} from './adapters/child-ledger.js';
+export {
+  childLabel,
+  commandLineMatches,
+  inspectProcess,
+  parseElapsed,
+  parsePsLine,
+  parseWindowsProcess,
+  reapOrphanedChildren,
+  windowsInspectScript,
+  REAP_GRACE_MS,
+  START_TOLERANCE_MS,
+  type CommandRunner,
+  type ProcessSnapshot,
+  type ReapDeps,
+  type ReapResult,
+} from './adapters/orphan-reaper.js';
 export {
   ClaudeCodeAdapter,
   claudeContextWindow,

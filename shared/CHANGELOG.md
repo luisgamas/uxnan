@@ -4,6 +4,12 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`bridge/pairingCode`** (no params → `PairingCode { code, expiresInMs }`):
+  the running bridge's current manual-pairing code, with its pairing window
+  opened — what `uxnan-bridge code` prints. Local control channel only (a phone
+  is refused with `AuthenticationRequired`). 94 methods, 24 notifications.
 
 ## [0.0.24-alpha.20260928] - 20260928
 ### Clarified — `UsageWindow.id` can change

@@ -41,7 +41,6 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
-import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
@@ -63,7 +62,7 @@ import { MAX_LISTED, cleanTitle } from './native-sessions.js';
 import { acpDesktopMcpServers, acpSupportsHttpMcp, type AcpMcpServerHttp } from './acp-mcp.js';
 import { proxyLaunchEnv } from './mcp-proxy.js';
 import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
-import { agentEnv, defaultSpawn, spawnPiped, type SpawnFn } from './spawn.js';
+import { defaultSpawn, spawnPiped, type SpawnFn, type SpawnedProcess } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, withBlockId, type PlanStepBlock } from './content-blocks.js';
@@ -337,58 +336,46 @@ export class ZeroAdapter extends BaseAgentAdapter {
   }
 
   /** Fallback model list from Zero's built-in registry (`zero models list`). */
-  #registryFallback(): Promise<AgentModel[]> {
+  async #registryFallback(): Promise<AgentModel[]> {
     const def = this.#defaultModel;
-    return new Promise((resolve) => {
-      let out = '';
-      let child;
-      try {
-        child = spawn(this.#binaryPath, [...this.#prependArgs, 'models', 'list'], {
-          stdio: ['ignore', 'pipe', 'ignore'],
-          windowsHide: true,
-          shell: false,
-          env: agentEnv(),
-        });
-      } catch {
-        resolve([]);
-        return;
-      }
-      child.stdout.on('data', (c: Buffer) => (out += c.toString('utf-8')));
-      child.on('error', () => resolve([]));
-      child.on('close', () =>
-        resolve(parseZeroModels(out).map((m) => ({ ...m, isDefault: def === m.id }))),
-      );
-    });
+    const out = await this.#stdout(['models', 'list']);
+    return out === null ? [] : parseZeroModels(out).map((m) => ({ ...m, isDefault: def === m.id }));
   }
 
   /** Spawn `zero <args>` (in [cwd]) and parse its stdout as JSON (null on any failure). */
-  #json<T>(args: string[], cwd?: string): Promise<T | null> {
+  async #json<T>(args: string[], cwd?: string): Promise<T | null> {
+    const trimmed = (await this.#stdout(args, cwd))?.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Runs `zero <args>` (in [cwd], else the adapter's) through the one spawn
+   * path every agent process takes, and resolves with its stdout — `null` when
+   * it could not start.
+   */
+  #stdout(args: string[], cwd?: string): Promise<string | null> {
     return new Promise((resolve) => {
       let out = '';
-      let child;
+      let child: SpawnedProcess;
       try {
-        child = spawn(this.#binaryPath, [...this.#prependArgs, ...args], {
-          ...(cwd !== undefined ? { cwd } : {}),
-          stdio: ['ignore', 'pipe', 'ignore'],
-          windowsHide: true,
-          shell: false,
-          env: agentEnv(),
-        });
+        child = this.#spawnOneShot(
+          this.#binaryPath,
+          [...this.#prependArgs, ...args],
+          cwd ?? this.#defaultCwd,
+          { stderr: 'ignore' },
+        );
       } catch {
         resolve(null);
         return;
       }
       child.stdout.on('data', (c: Buffer) => (out += c.toString('utf-8')));
       child.on('error', () => resolve(null));
-      child.on('close', () => {
-        const trimmed = out.trim();
-        if (!trimmed) return resolve(null);
-        try {
-          resolve(JSON.parse(trimmed) as T);
-        } catch {
-          resolve(null);
-        }
-      });
+      child.on('close', () => resolve(out));
     });
   }
 
