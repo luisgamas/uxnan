@@ -370,13 +370,31 @@ Compactions use the ordinary structured-content path and therefore persist in
 |---|---|---|
 | Codex | completed `contextCompaction` item | reason unknown |
 | Claude Code | `system/compact_boundary` | trigger + pre-compaction tokens |
-| OpenCode | `session.compacted` (1.x) / `session.compaction.ended` (2.x) | reason unknown |
+| OpenCode | `session.compacted` (1.x) / `session.compaction.ended` (2.x), once the session holds context (see below) | reason unknown |
 | pi | successful `compaction_end` | reason + before/estimated-after tokens |
 | Zero / Grok | ACP exposes no compaction update | no marker |
 | Antigravity | the stream-json surface exposes no compaction event | no marker |
 
 Never infer a compaction from prose, an overflow error or a token-count drop;
 that would put a false event into durable history.
+
+**OpenCode compacts on its own, sometimes before the first step.** The bridge
+never asks it to. OpenCode compacts automatically once its estimate of what it
+will send reaches the model's window minus a reserve (20,000 tokens on 2.0.16),
+and what it always sends — its prompt, the tools, the project's instructions —
+can already be past that on a small model: measured through the adapter with a
+36,864-token model and a ~23k-token prompt, a brand-new session was compacted
+before its first step (`session.compaction.started` → `.ended`, `reason:
+"auto"`, `recent: ""`). That rewrites the prompt just sent; there is no earlier
+conversation. So the adapter marks a compaction only once the session holds
+context: after the session's first model output (text, a tool, usage, …), or
+from the start on a session resumed from an earlier turn or process. When a
+later instruction update (an MCP server's tool catalog arriving mid-turn) puts
+it past the threshold again with nothing left to compact, OpenCode fails the
+execution (`session.compaction.failed` then `session.execution.failed`, both
+`{ type: "compaction.unavailable", message: "Nothing to compact yet" }`); the
+turn fails, with an error naming the model's window as too small for OpenCode.
+No retry helps — the fixed part is what does not fit.
 
 ### What a turn's work looks like, for every agent
 

@@ -4,6 +4,21 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **OpenCode no longer shows "context compacted" on a brand-new conversation.**
+  With a model whose context window is too small for OpenCode's own prompt and
+  tools (a 36,864-token model, for one), OpenCode compacts a new session before
+  its first step — it rewrites the prompt it was just given, there is no
+  earlier conversation — and the first turn used to carry a compaction marker.
+  A compaction is now marked only once the session holds something to compact:
+  after a model step, or on a conversation continued from an earlier turn.
+  When OpenCode stops because its automatic compaction found nothing to compact
+  ("Nothing to compact yet"), the turn's error now says why — the model's
+  context window, with its size, is too small for OpenCode — and to pick a
+  larger model, instead of OpenCode's bare message. The bridge never asks
+  OpenCode to compact; both come from OpenCode's own automatic compaction
+  (verified against opencode 2.0.16 through the adapter).
 
 ## [0.0.36-alpha.20260927] - 20260927
 ### Added

@@ -353,20 +353,176 @@ test('OpenCodeAdapter streams text deltas and completes on session.idle', async 
   assert.equal((completed?.data as { usage?: { tokens: number } }).usage?.tokens, 1500);
 });
 
-test('OpenCodeAdapter emits session.compacted as a compaction block', async () => {
+const compactionBlocks = (events: AgentStreamEvent[]): unknown[] =>
+  events
+    .filter((e) => e.type === 'block')
+    .map((e) => (e.data as { content: Record<string, unknown> }).content)
+    .filter((c) => c['type'] === 'compaction');
+
+test('OpenCodeAdapter emits session.compacted after a model step as a compaction block', async () => {
   const server = new FakeServer();
   const adapter = makeAdapter(server);
   const { events, done } = collect(adapter);
 
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  server.emit('message.part.updated', {
+    part: {
+      id: 'sf',
+      sessionID: 'ses_1',
+      messageID: 'm1',
+      type: 'step-finish',
+      tokens: { input: 1200, output: 300 },
+    },
+  });
   server.emit('session.compacted', { sessionID: 'ses_1' });
   server.emit('session.idle', { sessionID: 'ses_1' });
 
   await done;
-  const block = events.find((event) => event.type === 'block')?.data as
-    | { content: Record<string, unknown> }
-    | undefined;
-  assert.deepEqual(block?.content, { type: 'compaction', reason: 'unknown' });
+  assert.deepEqual(compactionBlocks(events), [{ type: 'compaction', reason: 'unknown' }]);
+});
+
+// Captured from opencode 2.0.16 driven through this adapter, on a model whose
+// context window cannot hold OpenCode's own prompt and tools: OpenCode compacts
+// a brand-new session before its first step. That rewrites the prompt just
+// sent — there is no earlier context — so the first turn carries no marker.
+test('a first turn OpenCode compacts before any step shows no compaction and completes', async () => {
+  const server = new FakeServer(2);
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/big-pickle' });
+  const { events, done } = collect(adapter);
+  const S = 'ses_1';
+  const M = 'msg_0e65b34ad001';
+  const model = { id: 'big-pickle', providerID: 'opencode', variant: 'default' };
+
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'Where is a pairing code expired?',
+  });
+  server.emitV2('session.execution.started', { sessionID: S });
+  server.emitV2('session.compaction.started', { sessionID: S, reason: 'auto', recent: '' });
+  server.emitV2('session.usage.updated', {
+    sessionID: S,
+    cost: 0,
+    tokens: { input: 6592, output: 226, reasoning: 117, cache: { read: 488, write: 0 } },
+  });
+  server.emitV2('session.compaction.ended', {
+    sessionID: S,
+    reason: 'auto',
+    model,
+    text: '## Objective\n- Answer where a pairing code is expired.',
+    recent: '',
+    tokens: { input: 6592, output: 226, reasoning: 117, cache: { read: 488, write: 0 } },
+  });
+  server.emitV2('session.step.started', {
+    sessionID: S,
+    agent: 'build',
+    model,
+    assistantMessageID: M,
+  });
+  server.emitV2('session.text.started', { sessionID: S, assistantMessageID: M, ordinal: 0 });
+  server.emitV2('session.text.delta', {
+    sessionID: S,
+    assistantMessageID: M,
+    ordinal: 0,
+    delta: 'Pairing codes expire after five minutes.',
+  });
+  server.emitV2('session.text.ended', {
+    sessionID: S,
+    assistantMessageID: M,
+    ordinal: 0,
+    text: 'Pairing codes expire after five minutes.',
+  });
+  server.emitV2('session.step.ended', {
+    sessionID: S,
+    assistantMessageID: M,
+    finish: 'stop',
+    tokens: { input: 376, output: 94, reasoning: 0, cache: { read: 6544, write: 0 } },
+  });
+  server.emitV2('session.execution.succeeded', { sessionID: S });
+
+  await done;
+  assert.deepEqual(compactionBlocks(events), []);
+  assert.equal(
+    events.some((e) => e.type === 'turn_error'),
+    false,
+  );
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.equal(
+    (completed?.data as { text: string }).text,
+    'Pairing codes expire after five minutes.',
+  );
+});
+
+test("a compaction after the first turn's step, or on a resumed session, is marked", async () => {
+  const server = new FakeServer(2);
+  server.known.add('ses_stored');
+  const adapter = makeAdapter(server);
+  const model = { id: 'big-pickle', providerID: 'opencode', variant: 'default' };
+
+  // A new session: the pre-step compaction is not marked, the one after the
+  // step (which compacts the turn's own tool output) is.
+  const first = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'look around' });
+  server.emitV2('session.compaction.ended', { sessionID: 'ses_1', reason: 'auto', model });
+  server.emitV2('session.step.ended', {
+    sessionID: 'ses_1',
+    finish: 'tool-calls',
+    tokens: { input: 280, output: 74, reasoning: 0, cache: { read: 6501, write: 0 } },
+  });
+  server.emitV2('session.compaction.ended', { sessionID: 'ses_1', reason: 'auto', model });
+  server.emitV2('session.execution.succeeded', { sessionID: 'ses_1' });
+  await first.done;
+  assert.equal(compactionBlocks(first.events).length, 1);
+
+  // A session resumed from an earlier turn holds context from the start.
+  adapter.adoptNativeSession('t2', 'ses_stored');
+  const second = collect(adapter);
+  await adapter.sendTurn({ threadId: 't2', turnId: 'u2', text: 'and then' });
+  server.emitV2('session.compaction.ended', { sessionID: 'ses_stored', reason: 'auto', model });
+  server.emitV2('session.execution.succeeded', { sessionID: 'ses_stored' });
+  await second.done;
+  assert.deepEqual(compactionBlocks(second.events), [{ type: 'compaction', reason: 'unknown' }]);
+});
+
+// Captured from opencode 2.0.16: a compaction, then an instruction update (the
+// tool catalog of an MCP server that connected mid-turn), then OpenCode's next
+// automatic compaction finds nothing to compact and the execution fails. The
+// turn fails because OpenCode stopped — but it says why, and shows no marker.
+test("OpenCode's 'Nothing to compact yet' fails the turn with a reason the user can act on", async () => {
+  const server = new FakeServer(2);
+  server.catalog = [{ id: 'openrouter/perceptron/perceptron-mk1.5', contextWindow: 36864 }];
+  const adapter = makeAdapter(server, { defaultModel: 'openrouter/perceptron/perceptron-mk1.5' });
+  await adapter.loadContextWindows();
+  const { events, done } = collect(adapter);
+  const S = 'ses_1';
+  const model = { id: 'perceptron/perceptron-mk1.5', providerID: 'openrouter' };
+  const error = { type: 'compaction.unavailable', message: 'Nothing to compact yet' };
+
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'Which tests cover the handshake?',
+  });
+  server.emitV2('session.compaction.started', { sessionID: S, reason: 'auto', recent: '' });
+  server.emitV2('session.compaction.ended', { sessionID: S, reason: 'auto', model, recent: '' });
+  server.emitV2('session.instructions.updated', {
+    sessionID: S,
+    delta: { 'core/codemode': 'b48eec48' },
+    text: 'The Code Mode tool catalog has changed.',
+  });
+  server.emitV2('session.compaction.failed', { sessionID: S, reason: 'auto', error });
+  server.emitV2('session.execution.failed', { sessionID: S, error });
+
+  await done;
+  assert.deepEqual(compactionBlocks(events), []);
+  const failed = events.find((e) => e.type === 'turn_error');
+  assert.equal(
+    (failed?.data as { text: string }).text,
+    'OpenCode stopped: Nothing to compact yet. The context window of ' +
+      'openrouter/perceptron/perceptron-mk1.5 (36,864 tokens) is too small for ' +
+      "OpenCode's own prompt and tools, so its automatic compaction had nothing left " +
+      'to shrink. Choose a model with a larger context window.',
+  );
 });
 
 test('OpenCodeAdapter reconciles a whole-part text update without double-emitting', async () => {

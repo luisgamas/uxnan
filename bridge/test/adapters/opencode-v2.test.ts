@@ -117,6 +117,27 @@ test('V2 translator: usage, compaction and the three ways a turn ends', () => {
   assert.deepEqual(t.translate('model.updated', {}), []);
 });
 
+test('V2 translator: an automatic compaction with nothing to compact marks the failure', () => {
+  const error = { type: 'compaction.unavailable', message: 'Nothing to compact yet' };
+  const t = new OpenCodeV2Translator();
+  assert.deepEqual(
+    t.translate('session.compaction.failed', { sessionID: S, reason: 'auto', error }),
+    [],
+  );
+  assert.deepEqual(t.translate('session.execution.failed', { sessionID: S, error }), [
+    { kind: 'error', sessionId: S, message: 'Nothing to compact yet', windowTooSmall: true },
+  ]);
+  // Only the failure right after it: a later one is an ordinary error.
+  assert.deepEqual(t.translate('session.execution.failed', { sessionID: S, error }), [
+    { kind: 'error', sessionId: S, message: 'Nothing to compact yet' },
+  ]);
+  // A manual compaction of an empty session says nothing about the window.
+  t.translate('session.compaction.failed', { sessionID: S, reason: 'manual', error });
+  assert.deepEqual(t.translate('session.execution.failed', { sessionID: S, error }), [
+    { kind: 'error', sessionId: S, message: 'Nothing to compact yet' },
+  ]);
+});
+
 test('V2 translator: a permission becomes an approval card, with the diff for an edit', () => {
   const t = new OpenCodeV2Translator();
   assert.deepEqual(

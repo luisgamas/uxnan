@@ -85,6 +85,8 @@ export class OpenCodeV2Translator {
   readonly #toolInputs = new Map<string, Record<string, unknown>>();
   /** form id → its fields, so an answer can be keyed the way the form asked. */
   readonly #forms = new Map<string, FormField[]>();
+  /** Sessions whose automatic compaction just found nothing to compact. */
+  readonly #autoCompactionEmpty = new Set<string>();
 
   /** The fields of a form announced earlier (undefined once answered or unknown). */
   formFields(formId: string): FormField[] | undefined {
@@ -136,6 +138,17 @@ export class OpenCodeV2Translator {
       }
       case 'session.compaction.ended':
         return sessionId ? [{ kind: 'compacted', sessionId }] : [];
+      case 'session.compaction.failed': {
+        // `{ reason: "auto", error: { type: "compaction.unavailable", message:
+        // "Nothing to compact yet" } }` — measured on 2.0.16 — is followed by
+        // the execution failing with the same error. Remembered so that failure
+        // can say why; a manual compaction of an empty session is not this.
+        const error = isRecord(d['error']) ? d['error'] : {};
+        if (sessionId && d['reason'] === 'auto' && error['type'] === 'compaction.unavailable') {
+          this.#autoCompactionEmpty.add(sessionId);
+        }
+        return [];
+      }
       case 'permission.asked':
         return this.#permission(sessionId, d);
       case 'form.created':
@@ -145,13 +158,27 @@ export class OpenCodeV2Translator {
         this.#forms.delete(str(d['id']));
         return [];
       case 'session.execution.succeeded':
+        this.#autoCompactionEmpty.delete(sessionId);
         return sessionId ? [{ kind: 'idle', sessionId }] : [];
       case 'session.execution.interrupted':
+        this.#autoCompactionEmpty.delete(sessionId);
         return sessionId ? [{ kind: 'interrupted', sessionId }] : [];
-      case 'session.execution.failed':
+      case 'session.execution.failed': {
+        const windowTooSmall =
+          this.#autoCompactionEmpty.delete(sessionId) &&
+          isRecord(d['error']) &&
+          d['error']['type'] === 'compaction.unavailable';
         return sessionId
-          ? [{ kind: 'error', sessionId, message: readErrorMessage(d['error']) }]
+          ? [
+              {
+                kind: 'error',
+                sessionId,
+                message: readErrorMessage(d['error']),
+                ...(windowTooSmall ? { windowTooSmall: true as const } : {}),
+              },
+            ]
           : [];
+      }
       default:
         // Starts, inbox moves, catalog updates, retries, … carry nothing the turn needs.
         return [];
