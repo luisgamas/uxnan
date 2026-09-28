@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.32-alpha.20260928+20260934] - 20260928
 ### Added
 
 - **A message the agent took while it was working says so.** On agents that

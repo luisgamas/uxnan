@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.39-alpha.20260928] - 20260928
 ### Fixed
 
 - **A Claude Code turn no longer ends on a result that is not its answer.**
