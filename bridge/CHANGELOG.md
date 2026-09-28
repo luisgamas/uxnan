@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Fixed
 
+- **Grok's money and plan are read again (`agent/usageStats`).** Since the
+  bridge took usage reading over from Uxnan Desktop, Grok's credit was never
+  read, so the "Show credit" option had nothing to show. The billing answer's
+  `{val}` amounts now fill `credit` in USD: on-demand spend of its cap
+  (`onDemandUsed` / `onDemandCap`, resetting with the billing period) once a cap
+  is set or anything was spent, otherwise a `prepaidBalance` above zero,
+  otherwise nothing — a free account answers all three as 0 and shows no
+  credit. The plan was read from a `subscriptionTier` the billing answer never
+  carries; it now comes from `GET /v1/user?include=subscription`, the call the
+  Grok CLI takes its tier from (same host and credential, 5 s timeout; a
+  failure only drops the plan). A personal account with no tier reads `Free`,
+  as the CLI calls it; a team member without one claims no plan.
+- **Every provider reports its account type again.** Uxnan Desktop's
+  Settings → Providers shows a badge for it (subscription, pay-as-you-go,
+  free, team, enterprise), but no reader set `account.accountType` after usage
+  moved to the bridge. Claude Code, Codex, GitHub Copilot and Grok now classify
+  their plan by keyword (`classifyPlan`: enterprise, team or business, free,
+  otherwise a subscription), the rule the desktop's own reader used; a Grok
+  account with money but no plan reads pay-as-you-go.
 - **A turn that ended before any reply gets its reply back, in its place.** A
   turn closed before the bridge received a word of its answer — by a crash, or
   by 0.0.38 ending a Claude Code turn on a wake-up's result — while the agent

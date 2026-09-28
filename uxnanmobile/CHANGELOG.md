@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **Money reads the same as on the desktop.** Spend and cost followed the
+  app's language (a comma and no dollar sign in Spanish) and the credit line
+  printed raw numbers. One formatter (`fmtMoney`) now writes every amount as
+  its currency is written, US dollars as `$1,234.56` in every language, with
+  cents under 100 and whole units from 100 on.
+- **A prepaid balance shows what is left.** A credit that reports only its
+  remaining balance (a Grok prepaid balance) read "0.00 USD"; it now reads
+  "$25.00 available". The phone now reads the contract's `available` field.
+
 
 ## [0.0.32-alpha.20260928+20260934] - 20260928
 ### Added

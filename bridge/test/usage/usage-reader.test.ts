@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readUsage, type UsageReaderDeps } from '../../src/usage/usage-reader.js';
+import { classifyPlan, readUsage, type UsageReaderDeps } from '../../src/usage/usage-reader.js';
 
 /** A minimal fetch Response the reader can consume (status / ok / json). */
 function res(status: number, body: unknown): Response {
@@ -68,7 +68,7 @@ test('codex: its own answer — windows by length, plan, the resets it can redee
     }),
   );
   assert.equal(u?.status, 'ok');
-  assert.deepEqual(u?.account, { email: 'a@b.com', plan: 'Pro' });
+  assert.deepEqual(u?.account, { email: 'a@b.com', plan: 'Pro', accountType: 'subscription' });
   assert.deepEqual(
     u?.windows.map((w) => [w.id, w.label, w.usedPercent, w.windowMinutes, w.resetsAt]),
     [
@@ -159,7 +159,12 @@ test('claude: its own answer — account from initialize, limits from get_usage'
     }),
   );
   assert.equal(u?.status, 'ok');
-  assert.deepEqual(u?.account, { email: 'me@x.io', organization: 'Acme', plan: 'Claude Max' });
+  assert.deepEqual(u?.account, {
+    email: 'me@x.io',
+    organization: 'Acme',
+    plan: 'Claude Max',
+    accountType: 'subscription',
+  });
   assert.deepEqual(
     u?.windows.map((w) => [w.id, w.label, w.usedPercent, w.windowMinutes]),
     [
@@ -184,31 +189,165 @@ test('claude: not installed, not signed in, or with no plan limits (API key)', a
   assert.deepEqual(apiKey?.windows, []);
 });
 
-test('grok picks the first keyed credential and maps a credit window', async () => {
-  let sentAuth: string | undefined;
+/** `GET /v1/user?include=subscription`, shaped like Grok's real answer. */
+function grokUser(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    userId: 'u-1',
+    email: 'g@x.ai',
+    firstName: 'G',
+    lastName: 'X',
+    profileImageAssetId: 'asset-1',
+    xUserId: null,
+    userBlockedReason: null,
+    principalType: 'User',
+    principalId: 'p-1',
+    teamId: null,
+    teamName: null,
+    teamRole: null,
+    teamBlockedReasons: [],
+    organizationId: null,
+    organizationName: null,
+    organizationRole: null,
+    organizationRbacRoleId: null,
+    organizationType: null,
+    codingDataRetentionOptOut: false,
+    hasGrokCodeAccess: true,
+    canAdministerTeam: null,
+    subscriptionTier: null,
+    ...over,
+  };
+}
+
+/** `GET /v1/billing?format=credits`, shaped like Grok's real answer. */
+function grokBilling(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    config: {
+      currentPeriod: {
+        type: 'USAGE_PERIOD_TYPE_WEEKLY',
+        start: '2026-09-22T00:00:00+00:00',
+        end: '2026-09-29T00:00:00+00:00',
+      },
+      onDemandCap: { val: 0 },
+      onDemandUsed: { val: 0 },
+      prepaidBalance: { val: 0 },
+      isUnifiedBillingUser: true,
+      billingPeriodStart: '2026-09-22T00:00:00+00:00',
+      billingPeriodEnd: '2026-09-29T00:00:00+00:00',
+      ...over,
+    },
+  };
+}
+
+/** Answers Grok's two endpoints by path; records every Authorization sent. */
+function grokApi(
+  billing: Response,
+  user: Response,
+  sent: string[] = [],
+): UsageReaderDeps['fetchImpl'] {
+  return async (url, init) => {
+    sent.push((init?.headers as Record<string, string>).authorization ?? '');
+    const path = new URL(String(url)).pathname;
+    if (path === '/v1/billing') return billing;
+    if (path === '/v1/user') return user;
+    throw new Error(`unexpected request: ${path}`);
+  };
+}
+
+const grokAuth = fileMap({ '/.grok/auth.json': { 'issuer-x': { key: 'gk', email: 'g@x.ai' } } });
+
+test('grok: a free account — no window, no credit (all zeros), plan Free', async () => {
+  const sent: string[] = [];
   const [u] = await readUsage(
     ['grok'],
     deps({
-      readFile: fileMap({ '/.grok/auth.json': { 'issuer-x': { key: 'gk', email: 'g@x.ai' } } }),
-      fetchImpl: async (_url, init) => {
-        sentAuth = (init?.headers as Record<string, string>).authorization;
-        return res(200, {
-          config: {
-            subscriptionTier: 'grok_heavy',
-            creditUsagePercent: 73,
-            currentPeriod: { type: 'USAGE_PERIOD_TYPE_MONTHLY', end: 1_700_100_000 },
-          },
-        });
-      },
+      readFile: grokAuth,
+      fetchImpl: grokApi(res(200, grokBilling()), res(200, grokUser()), sent),
     }),
   );
   assert.equal(u?.status, 'ok');
-  assert.equal(sentAuth, 'Bearer gk');
+  assert.deepEqual(sent, ['Bearer gk', 'Bearer gk']);
+  assert.deepEqual(u?.account, { email: 'g@x.ai', plan: 'Free', accountType: 'free' });
+  assert.deepEqual(u?.windows, []);
+  assert.equal(u?.credit, undefined);
+  assert.equal(u?.message, 'signed in, but the Grok billing API returned no quota window');
+});
+
+test('grok: a paid account — the credit window, on-demand spend of its cap, the tier', async () => {
+  const [u] = await readUsage(
+    ['grok'],
+    deps({
+      readFile: grokAuth,
+      fetchImpl: grokApi(
+        res(
+          200,
+          grokBilling({
+            creditUsagePercent: 73,
+            currentPeriod: { type: 'USAGE_PERIOD_TYPE_MONTHLY', end: 1_700_100_000 },
+            onDemandCap: { val: 20 },
+            onDemandUsed: { val: 4.5 },
+            prepaidBalance: { val: 10 },
+          }),
+        ),
+        res(200, grokUser({ subscriptionTier: 'supergrok_heavy' })),
+      ),
+    }),
+  );
+  assert.equal(u?.status, 'ok');
+  assert.equal(u?.account?.plan, 'SuperGrok Heavy');
+  assert.deepEqual(
+    u?.windows.map((w) => [w.id, w.label, w.usedPercent, w.windowMinutes, w.resetsAt]),
+    [['credits', 'Monthly', 73, 43_200, 1_700_100_000_000]],
+  );
+  // On-demand wins over the prepaid balance: one balance per provider.
+  assert.deepEqual(u?.credit, {
+    used: 4.5,
+    limit: 20,
+    available: 15.5,
+    currency: 'USD',
+    period: 'On-demand',
+    resetsAt: Date.parse('2026-09-29T00:00:00+00:00'),
+  });
+  assert.equal(u?.message, undefined);
+});
+
+test('grok: a prepaid balance alone is shown; a failed user request only costs the plan', async () => {
+  const [u] = await readUsage(
+    ['grok'],
+    deps({
+      readFile: grokAuth,
+      fetchImpl: grokApi(res(200, grokBilling({ prepaidBalance: { val: 25 } })), res(500, {})),
+    }),
+  );
+  assert.equal(u?.status, 'ok');
+  assert.deepEqual(u?.account, { email: 'g@x.ai', accountType: 'payAsYouGo' });
+  assert.deepEqual(u?.windows, []);
+  assert.deepEqual(u?.credit, { used: 0, available: 25, currency: 'USD', period: 'Prepaid' });
+  assert.equal(u?.message, undefined);
+});
+
+test('grok: a team member with no tier of their own claims no plan', async () => {
+  const [u] = await readUsage(
+    ['grok'],
+    deps({
+      readFile: grokAuth,
+      fetchImpl: grokApi(
+        res(200, grokBilling()),
+        res(200, grokUser({ teamId: 't-1', teamName: 'Acme' })),
+      ),
+    }),
+  );
+  assert.equal(u?.status, 'ok');
+  assert.deepEqual(u?.account, { email: 'g@x.ai' });
+});
+
+test('grok: a rejected credential is authRequired, not an error', async () => {
+  const [u] = await readUsage(
+    ['grok'],
+    deps({ readFile: grokAuth, fetchImpl: grokApi(res(401, {}), res(401, {})) }),
+  );
+  assert.equal(u?.status, 'authRequired');
   assert.equal(u?.account?.email, 'g@x.ai');
-  assert.equal(u?.account?.plan, 'Grok Heavy');
-  assert.equal(u?.windows[0]?.usedPercent, 73);
-  assert.equal(u?.windows[0]?.label, 'Monthly');
-  assert.equal(u?.windows[0]?.windowMinutes, 43_200);
+  assert.equal(u?.credit, undefined);
 });
 
 test('one failing provider does not abort the others', async () => {
@@ -226,4 +365,16 @@ test('one failing provider does not abort the others', async () => {
   assert.equal(usage[0]?.status, 'error');
   assert.equal(usage[1]?.provider, 'claude');
   assert.equal(usage[1]?.status, 'ok');
+});
+
+// The account type the desktop shows as a badge, from each provider's plan slug.
+test('classifyPlan reads the account type from a plan slug', () => {
+  assert.equal(classifyPlan('chatgpt_pro'), 'subscription');
+  assert.equal(classifyPlan('max'), 'subscription');
+  assert.equal(classifyPlan('free'), 'free');
+  assert.equal(classifyPlan('Free'), 'free');
+  assert.equal(classifyPlan('business'), 'team');
+  assert.equal(classifyPlan('team'), 'team');
+  assert.equal(classifyPlan('Enterprise'), 'enterprise');
+  assert.equal(classifyPlan('SuperGrok Heavy'), 'subscription');
 });

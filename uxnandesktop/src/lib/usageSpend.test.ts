@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UsageSummary } from "$lib/types";
-import { formatTokens, formatUsd, niceScale, periodDays, spendView, tokensOf } from "./usageSpend";
+import { formatTokens, niceScale, periodDays, spendView, tokensOf } from "./usageSpend";
 
 const spend = (over: Partial<Record<string, number>> = {}) => ({
   inputTokens: 0,
@@ -77,13 +77,10 @@ describe("scale and formats", () => {
     expect(niceScale(9_000_000).max).toBe(10_000_000);
   });
 
-  it("writes tokens and dollars compactly", () => {
+  it("writes tokens compactly", () => {
     expect(formatTokens(980)).toBe("980");
     expect(formatTokens(12_400)).toBe("12.4K");
     expect(formatTokens(12_427_029_384)).toBe("12.4B");
     expect(formatTokens(150_000_000)).toBe("150M");
-    expect(formatUsd(0.004)).toBe("<$0.01");
-    expect(formatUsd(3.5)).toBe("$3.50");
-    expect(formatUsd(9558.6)).toBe("$9,559");
   });
 });

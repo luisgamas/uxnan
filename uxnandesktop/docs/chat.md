@@ -81,7 +81,10 @@ window, one click away from the left sidebar's **Bridge** row under Search
 holds the bridge's state and update, every paired phone and connected desktop
 with whether each is connected, and this QR) — shows a QR drawn from the running bridge's own payload (its LAN hosts, its session, the pairing window
 armed — the one `uxnan-bridge start` prints), with its countdown and *New
-code*; with the bridge off it offers to run it as your service first, and it
+code*, and under it the same bridge's manual code (`bridge/pairingCode`, the
+one `uxnan-bridge code` prints) with a copy button, for a phone that types it
+instead of scanning (a bridge older than that method shows the QR alone);
+with the bridge off it offers to run it as your service first, and it
 notices the phone arrive (a new entry in the bridge's list, or a paired phone
 connecting) and names it. Several phones can be paired. **Shared with your phones** holds the
 **Computer name** every client shows for this PC and the **Start folder** the

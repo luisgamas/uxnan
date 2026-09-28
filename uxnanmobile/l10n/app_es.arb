@@ -202,6 +202,7 @@
   "usageNotSignedIn": "Sin sesión",
   "usageLoadError": "No se pudo cargar",
   "usageCreditLabel": "Crédito",
+  "usageCreditAvailable": "{amount} disponibles",
   "usageResetsIn": "Se reinicia en {duration}",
   "@usageResetsIn": {
     "description": "Relative time until a short quota window resets (e.g. 6h 30min).",

@@ -38,9 +38,9 @@
   import { chat } from "$lib/bridge/chat.svelte";
   import { bridgePanel } from "$lib/bridge/bridgePanel.svelte";
   import { usage, SPEND_PERIODS, type SpendPeriod } from "$lib/state/usage.svelte";
+  import { formatMoney } from "$lib/usageFormat";
   import {
     formatTokens,
-    formatUsd,
     niceScale,
     spendView,
     tokensOf,
@@ -93,8 +93,8 @@
   });
   /** A spend record in the measure the person picked. */
   const measure = (s: UsageSpend) =>
-    metric === "cost" ? formatUsd(s.costUsd) : formatTokens(tokensOf(s));
-  const fmt = (n: number) => (shownMetric === "cost" ? formatUsd(n) : formatTokens(n));
+    metric === "cost" ? formatMoney(s.costUsd) : formatTokens(tokensOf(s));
+  const fmt = (n: number) => (shownMetric === "cost" ? formatMoney(n) : formatTokens(n));
   const colour = (agentId: string) => AGENT_COLOURS[agentId] ?? OTHER;
   /** Spend whose cost is unknown: nothing billed, nothing priced. */
   const unpriced = (s: UsageSpend) => s.costUsd === 0 && s.unpricedTokens > 0;
@@ -386,7 +386,7 @@
                     {#if unpriced(row.spend)}
                       <span class="text-muted-foreground">{i18n.t("spend.noPrice")}</span>
                     {:else}
-                      {formatUsd(row.spend.costUsd)}
+                      {formatMoney(row.spend.costUsd)}
                     {/if}
                   </td>
                 </tr>

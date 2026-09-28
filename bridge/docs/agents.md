@@ -956,6 +956,40 @@ windows need no edit for a model in an existing tier — `claudeContextWindow()`
 (`src/adapters/claude-adapter.ts`) maps by tier (`fable`/`opus`/`sonnet` → 1M,
 `haiku` → 200K), which is what drives the phone's context-usage percentage.
 
+## Plan limits (`agent/usageStats`)
+
+The bridge is the one reader of each provider's plan limits
+(`src/usage/usage-reader.ts`, architecture `02a` §5.8.10); the phone and Uxnan
+Desktop only render what it returns (`ProviderUsage` in
+`shared/src/models/usage.ts`).
+
+| Provider | Asked | Fills |
+|---|---|---|
+| Claude Code | `claude` itself (`initialize` + `get_usage`, `src/usage/cli-usage.ts`) | windows, plan, email/organization, `credit` from `extra_usage` once it is enabled |
+| Codex | `codex app-server` itself (`account/read` + `account/rateLimits/read`) | windows, plan, email, `credit` once the account has credits, `resetCredits` |
+| GitHub Copilot | `gh auth token` → GitHub's `copilot_internal/user` | quotas, plan, login |
+| Grok | the `key` in `~/.grok/auth.json` → `cli-chat-proxy.grok.com/v1`: `billing?format=credits` and `user?include=subscription` (5 s) | the `creditUsagePercent` window when there is one; `credit` in USD from the `{val}` amounts; plan from `subscriptionTier` |
+
+**Grok's money.** On-demand spend of its cap (`onDemandUsed` / `onDemandCap`,
+`period: "On-demand"`, `limit`, `available = cap − used`, resetting at
+`billingPeriodEnd`) once a cap is set or anything was spent; otherwise a
+`prepaidBalance` above zero (`period: "Prepaid"`, `available`); otherwise no
+`credit`. A free account answers every amount as `{val: 0}` and has no
+`creditUsagePercent`, so it reads `ok` with no window, no credit and the
+"no quota window" message. The contract carries one balance, so when an account
+has both, on-demand (what it is spending now) is the one shown.
+
+**Grok's plan.** The billing answer carries no tier: the Grok CLI takes it from
+the signed-in user, and so does the bridge. A tier is labelled as xAI writes it
+(`supergrok_heavy` → `SuperGrok Heavy`); `null` on a personal account (no
+`teamId` / `organizationId`) reads `Free`, as the CLI calls it; a team or
+organization member without a tier of their own claims no plan. The user
+request failing only drops the plan — never the rest.
+
+Verified live (grok 1.0.41, a free account): `ok`, plan `Free`, no window, no
+credit. The paid shapes (`{val}` amounts above zero, a non-null tier) are taken
+from the CLI's own billing and subscription code, not yet from a paid account.
+
 ## Adding a new agent
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the

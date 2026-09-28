@@ -36,6 +36,31 @@ describe("BridgeDialog", () => {
     expect(screen.getByText(/Waiting for your phone/)).toBeTruthy();
   });
 
+  it("offers the bridge's manual code under the QR, and copies it", async () => {
+    on();
+    const { screen, user, backend } = mountWithProviders(BridgeDialog, {
+      props: { open: true },
+      commands: {
+        bridge_pairing_qr: () => ({ ...qr(), code: "ABCD-EFGH" }),
+        "plugin:clipboard-manager|write_text": () => null,
+      },
+    });
+    await until(() => screen.queryByText("ABCD-EFGH") !== null);
+    expect(screen.getByText("Or type this code in the app:")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Copy code" }));
+    await until(() => backend.called("plugin:clipboard-manager|write_text"));
+  });
+
+  it("shows the QR alone when the bridge has no code to give", async () => {
+    on();
+    const { screen } = mountWithProviders(BridgeDialog, {
+      props: { open: true },
+      commands: { bridge_pairing_qr: qr },
+    });
+    await until(() => screen.queryByRole("img") !== null);
+    expect(screen.queryByText("Or type this code in the app:")).toBeNull();
+  });
+
   it("says why when there is no QR to show", async () => {
     on();
     const { screen } = mountWithProviders(BridgeDialog, {

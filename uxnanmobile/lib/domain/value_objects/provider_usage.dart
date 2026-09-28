@@ -85,6 +85,7 @@ class CreditBalance extends Equatable {
     required this.period,
     this.limit,
     this.resetsAt,
+    this.available,
   });
 
   /// Reconstructs a [CreditBalance] from its wire map.
@@ -94,6 +95,7 @@ class CreditBalance extends Equatable {
         period: json['period'] as String? ?? '',
         limit: (json['limit'] as num?)?.toDouble(),
         resetsAt: _epoch(json['resetsAt']),
+        available: (json['available'] as num?)?.toDouble(),
       );
 
   /// Amount consumed this period, in [currency].
@@ -111,8 +113,13 @@ class CreditBalance extends Equatable {
   /// When the balance resets, when known.
   final DateTime? resetsAt;
 
+  /// Amount still available this period, in [currency], when the provider
+  /// reports a remaining balance directly (a Grok prepaid balance, say).
+  final double? available;
+
   @override
-  List<Object?> get props => [used, currency, period, limit, resetsAt];
+  List<Object?> get props =>
+      [used, currency, period, limit, resetsAt, available];
 }
 
 /// The account identity a provider reports (never a secret).

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   accountTypeLabelKey,
-  formatCredit,
+  formatMoney,
   formatReset,
   formatResetAbsolute,
   meterFill,
@@ -61,14 +61,28 @@ describe("accountTypeLabelKey", () => {
   });
 });
 
-describe("formatCredit", () => {
-  it("renders currency and credit units", () => {
-    expect(formatCredit(4.2, "USD")).toBe("$4.20");
-    expect(formatCredit(4.2, "EUR")).toBe("€4.20");
-    expect(formatCredit(120, "credits")).toBe("120 credits");
-    expect(formatCredit(4.2, "GBP")).toBe("4.20 GBP");
+describe("formatMoney", () => {
+  it("writes money the way its currency is, in every UI language", () => {
+    expect(formatMoney(4.2, "USD")).toBe("$4.20");
+    expect(formatMoney(4.2)).toBe("$4.20");
+    expect(formatMoney(4.2, "EUR")).toBe("€4.20");
+    expect(formatMoney(4.2, "GBP")).toBe("£4.20");
+    expect(formatMoney(120, "credits")).toBe("120 credits");
+  });
+
+  it("keeps cents under 100, whole units from 100, and a trace as <$0.01", () => {
+    expect(formatMoney(3.5)).toBe("$3.50");
+    expect(formatMoney(99.99)).toBe("$99.99");
+    expect(formatMoney(9558.6)).toBe("$9,559");
+    expect(formatMoney(0.004)).toBe("<$0.01");
+    expect(formatMoney(0)).toBe("$0.00");
+  });
+
+  it("falls back to the number and the unit for a code that isn't a currency", () => {
+    expect(formatMoney(4.2, "tokens")).toBe("4.20 TOKENS");
   });
 });
+
 
 describe("meterFill", () => {
   it("escalates color with usage", () => {

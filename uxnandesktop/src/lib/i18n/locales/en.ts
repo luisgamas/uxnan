@@ -1037,6 +1037,7 @@ export const en = {
   "providers.statusBarTooltip": "AI provider usage",
   "providers.usageTitle": "Provider usage",
   "providers.noData": "No data",
+  "providers.noQuota": "No quota to meter for this account",
   "providers.manage": "Manage providers",
   "settings.appearance": "Appearance",
   "settings.appearanceDesc":
@@ -2592,6 +2593,8 @@ export const en = {
   "bridge.pairTitle": "Connect a phone",
   "bridge.pairDesc": "In Uxnan Mobile, add a computer and scan this code. Your phone keeps working with this computer even while Uxnan is closed.",
   "bridge.pairQrLabel": "Pairing QR code",
+  "bridge.pairCodeLabel": "Or type this code in the app:",
+  "bridge.pairCodeCopy": "Copy code",
   "bridge.pairExpired": "This code expired.",
   "bridge.pairRegenerate": "New code",
   "bridge.pairAnother": "Pair another",

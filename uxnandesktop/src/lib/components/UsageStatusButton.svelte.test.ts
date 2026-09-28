@@ -52,6 +52,22 @@ describe("UsageStatusButton", () => {
     expect(popoverText()).not.toContain("No data");
   });
 
+  // A free Grok account is read fine but has no quota window to meter.
+  it("says an account has no quota rather than no data", async () => {
+    app.settings = {
+      ...DEFAULT_SETTINGS,
+      usageProviders: [{ provider: "grok", refreshMinutes: null, statusBar: { show: true, windows: ["*"] } }],
+    };
+    usage.byProvider = {
+      grok: { provider: "grok", status: "ok", windows: [], updatedAt: Date.now() },
+    };
+    const { screen, user } = mountWithProviders(UsageStatusButton);
+    await user.click(screen.getByRole("button", { name: "AI provider usage" }));
+    await until(() => popoverText().includes("Grok"), { label: "the Grok row" });
+    expect(popoverText()).toContain("No quota to meter for this account");
+    expect(popoverText()).not.toContain("No data");
+  });
+
   it("counts the fallback window toward the icon's tint", () => {
     const { screen } = mountWithProviders(UsageStatusButton);
     const trigger = screen.getByRole("button", { name: "AI provider usage" });

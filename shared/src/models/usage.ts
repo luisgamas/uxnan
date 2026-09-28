@@ -77,7 +77,10 @@ export interface CreditBalance {
   used: number;
   /** Spend/credit cap, when the provider exposes one. */
   limit?: number;
-  /** ISO-4217 code (`USD`, `EUR`, …) or `credits` for non-currency units. */
+  /** ISO-4217 code (`USD`, `EUR`, …) or `credits` for non-currency units.
+   *  Clients write every amount the way its currency is written — US dollars
+   *  as `$1,234.56` in every UI language — through one formatter each
+   *  (the desktop's `formatMoney`, the phone's `fmtMoney`). */
   currency: string;
   /** Period label (English; e.g. `Monthly`, `Credits`). */
   period: string;

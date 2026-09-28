@@ -12,7 +12,9 @@
   // - Bridge on: the RUNNING bridge's own payload (`bridge_pairing_qr` →
   //   `bridge/generatePairingQr`: its LAN hosts, its session, the pairing window
   //   armed) — exactly what `uxnan-bridge qr` prints. It expires; the dialog
-  //   counts down and offers a fresh one.
+  //   counts down and offers a fresh one. Under it, the same bridge's manual
+  //   code (`bridge/pairingCode`, what `uxnan-bridge code` prints) for a phone
+  //   that types it instead of scanning; an older bridge shows the QR alone.
   // - Paired: a phone that was not paired when the dialog opened appears in the
   //   bridge's list (`stream/devices/updated`), or a paired one connects
   //   (`stream/presence/updated`): the dialog says so, by the phone's name —
@@ -26,6 +28,10 @@
   import { Icon } from "$lib/components/ui/icon";
   import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
   import CheckCircleIcon from "@hugeicons/core-free-icons/CheckmarkCircle01Icon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import { clipboardWrite } from "$lib/clipboard";
   import SmartphoneIcon from "@hugeicons/core-free-icons/SmartPhone01Icon";
   import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
@@ -37,11 +43,15 @@
   import { app } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
   let svg = $state<string | null>(null);
+  /** The bridge's manual pairing code, when it has one to give. */
+  let code = $state<string | null>(null);
+  let codeCopied = $state(false);
+  let codeCopiedTimer: ReturnType<typeof setTimeout> | undefined;
   let expiresAt = $state(0);
   let now = $state(Date.now());
   let loading = $state(false);
@@ -75,17 +85,31 @@
     loading = true;
     error = null;
     try {
-      const qr = await invoke<{ svg: string; expiresAt: number }>("bridge_pairing_qr");
+      const qr = await invoke<{ svg: string; expiresAt: number; code?: string | null }>(
+        "bridge_pairing_qr",
+      );
       svg = qr.svg;
       expiresAt = qr.expiresAt;
+      code = qr.code ?? null;
       now = Date.now();
     } catch (err) {
       svg = null;
+      code = null;
       error = err && typeof err === "object" && "message" in err ? String(err.message) : String(err);
     } finally {
       loading = false;
     }
   }
+
+  async function copyCode(): Promise<void> {
+    if (!code) return;
+    await clipboardWrite(code);
+    codeCopied = true;
+    clearTimeout(codeCopiedTimer);
+    codeCopiedTimer = setTimeout(() => (codeCopied = false), 1200);
+  }
+
+  $effect(() => () => clearTimeout(codeCopiedTimer));
 
   /** Run the bridge as the user's service; the QR follows once it is up. */
   function turnBridgeOn(): void {
@@ -308,6 +332,31 @@
             {i18n.t("bridge.pairWaiting", { seconds: String(remaining) })}
           {/if}
         </p>
+
+        {#if code && svg && !expired}
+          <div class="flex items-center gap-2">
+            <span class={text.meta}>{i18n.t("bridge.pairCodeLabel")}</span>
+            <span
+              class="select-all rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 font-mono text-sm tracking-[0.18em] text-foreground"
+            >
+              {code}
+            </span>
+            <TooltipSimple title={i18n.t("bridge.pairCodeCopy")}>
+              {#snippet children(tp)}
+                <Button
+                  {...tp}
+                  variant="ghost"
+                  size="icon-sm"
+                  class={iconButton.action}
+                  aria-label={i18n.t("bridge.pairCodeCopy")}
+                  onclick={() => void copyCode()}
+                >
+                  <Icon icon={codeCopied ? CheckIcon : CopyIcon} class={icon.button} />
+                </Button>
+              {/snippet}
+            </TooltipSimple>
+          </div>
+        {/if}
       {:else}
         <div class="flex w-full flex-col items-center gap-3 rounded-lg border border-border/60 bg-muted/30 p-4">
           {#if bridgeStarting}

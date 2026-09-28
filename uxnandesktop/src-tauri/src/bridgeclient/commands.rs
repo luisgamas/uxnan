@@ -93,6 +93,21 @@ pub struct PairingQr {
     pub svg: String,
     /// When the payload stops being accepted (epoch ms).
     pub expires_at: i64,
+    /// The bridge's manual pairing code (`ABCD-EFGH`), for a phone that types
+    /// it instead of scanning. `None` from a bridge older than
+    /// `bridge/pairingCode`, which then shows the QR alone.
+    pub code: Option<String>,
+}
+
+/// The code out of a `bridge/pairingCode` answer (`{ code, expiresInMs }`);
+/// `None` for anything else.
+pub fn pairing_code_of(answer: &Value) -> Option<String> {
+    answer
+        .get("code")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+        .map(str::to_owned)
 }
 
 /// The QR's text: the payload JSON, base64 — `encodePairingQr` in `shared/`,
@@ -128,15 +143,34 @@ pub async fn bridge_pairing_qr(state: State<'_, AppState>) -> Result<PairingQr, 
         .get("expiresAt")
         .and_then(Value::as_i64)
         .unwrap_or(0);
+    // The same bridge's manual code, so the dialog can offer it next to the
+    // QR. An older bridge doesn't know the method: the QR still stands.
+    let code = state
+        .bridge
+        .call("bridge/pairingCode", Value::Null, Duration::from_secs(5))
+        .await
+        .ok()
+        .as_ref()
+        .and_then(pairing_code_of);
     Ok(PairingQr {
         svg: pairing_qr_svg(&pairing_qr_text(&payload))?,
         expires_at,
+        code,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_code_is_read_from_the_bridge_answer() {
+        let answer = serde_json::json!({ "code": "ABCD-EFGH", "expiresInMs": 60_000 });
+        assert_eq!(pairing_code_of(&answer).as_deref(), Some("ABCD-EFGH"));
+        assert_eq!(pairing_code_of(&serde_json::json!({ "code": "  " })), None);
+        assert_eq!(pairing_code_of(&serde_json::json!({})), None);
+        assert_eq!(pairing_code_of(&Value::Null), None);
+    }
 
     #[test]
     fn the_qr_carries_the_payload_the_phone_decodes() {

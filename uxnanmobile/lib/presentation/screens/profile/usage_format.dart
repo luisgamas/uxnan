@@ -15,16 +15,26 @@ String fmtTokens(num n) {
   return '${n.round()}';
 }
 
-/// US dollars for a total: cents under $100, whole dollars past it, and
-/// `<$0.01` for a trace.
-String fmtUsd(double n, {String? locale}) {
-  if (n > 0 && n < 0.01) return r'<$0.01';
-  return NumberFormat.currency(
-    locale: locale,
-    symbol: r'$',
-    decimalDigits: n >= 100 ? 0 : 2,
-  ).format(n);
+/// Every amount of money the app shows, in one place (spend, cost, credit):
+/// `$4.20`, `$9,559`, `<$0.01`, `€4.20`, `120 credits`. The same rule as the
+/// desktop's `formatMoney`: amounts are written the way their currency is (US
+/// dollars as `$1,234.56` in every UI language — providers bill in them), with
+/// cents under 100 and whole units from 100 on, and a trace as `<$0.01`.
+/// `credits` is a count, not a currency.
+String fmtMoney(double amount, [String currency = 'USD']) {
+  if (currency.toLowerCase() == 'credits') return '${amount.round()} credits';
+  final code = currency.toUpperCase();
+  if (amount > 0 && amount < 0.01) return '<${_money(code, 2).format(0.01)}';
+  return _money(code, amount.abs() >= 100 ? 0 : 2).format(amount);
 }
+
+NumberFormat _money(String code, int digits) => NumberFormat.currency(
+      locale: 'en_US',
+      name: code,
+      symbol: NumberFormat.simpleCurrency(locale: 'en_US', name: code)
+          .currencySymbol,
+      decimalDigits: digits,
+    );
 
 /// A duration, short: `45min`, `6h 30min`, `3d 4h`.
 String shortDuration(Duration d) {

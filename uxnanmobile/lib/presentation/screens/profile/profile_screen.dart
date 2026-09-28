@@ -178,7 +178,7 @@ class _YourPcs extends ConsumerWidget {
                 l10n.profilePcSpent30(
                   spent.unpriced
                       ? fmtTokens(spent.tokens)
-                      : fmtUsd(spent.costUsd),
+                      : fmtMoney(spent.costUsd),
                 ),
             ].join(' · ');
             return NeNavTile(

@@ -252,6 +252,13 @@
   "usageNotSignedIn": "Not signed in",
   "usageLoadError": "Couldn't load",
   "usageCreditLabel": "Credit",
+  "usageCreditAvailable": "{amount} available",
+  "@usageCreditAvailable": {
+    "description": "A remaining balance with no cap (e.g. a prepaid credit).",
+    "placeholders": {
+      "amount": {"type": "String"}
+    }
+  },
   "usageResetsIn": "Resets in {duration}",
   "@usageResetsIn": {
     "description": "Relative time until a short quota window resets (e.g. 6h 30min).",

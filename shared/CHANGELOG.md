@@ -4,6 +4,12 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Clarified — how clients write money
+
+- `CreditBalance.currency` now says every client writes an amount the way its
+  currency is written (US dollars as `$1,234.56` in every UI language), through
+  one formatter per client. Comment-only — no wire shape changed.
+
 
 ## [0.0.26-alpha.20260928] - 20260928
 ### Added

@@ -422,10 +422,20 @@ String _resetLabel(
 }
 
 String _creditLine(AppLocalizations l10n, CreditBalance credit) {
-  final used = credit.used.toStringAsFixed(2);
-  final amount = credit.limit != null
-      ? '$used / ${credit.limit!.toStringAsFixed(2)} ${credit.currency}'
-      : '$used ${credit.currency}';
+  // A balance with no cap that says what is left (a prepaid balance) reads as
+  // that amount available, as on the desktop; otherwise what was spent, of
+  // the cap when there is one.
+  final String amount;
+  if (credit.limit == null && credit.available != null) {
+    amount = l10n.usageCreditAvailable(
+      fmtMoney(credit.available!, credit.currency),
+    );
+  } else {
+    final used = fmtMoney(credit.used, credit.currency);
+    amount = credit.limit != null
+        ? '$used / ${fmtMoney(credit.limit!, credit.currency)}'
+        : used;
+  }
   return '${l10n.usageCreditLabel}: $amount · ${credit.period}';
 }
 

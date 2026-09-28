@@ -56,7 +56,7 @@ tokens.
 | **Claude Code** | asks `claude` itself (stream-json control requests `initialize` + `get_usage`) — no Keychain, no file | session (5h) / weekly / model-scoped windows, plan, account type, email + organization |
 | **Codex** | asks `codex app-server` itself (`account/read` + `account/rateLimits/read`) | monthly/weekly windows, plan, credit, **rate-limit resets**, account type, email |
 | **GitHub Copilot** | `gh auth token` → GitHub's usage API | premium/chat/completions quotas, plan, account type, GitHub login |
-| **Grok** | `~/.grok/auth.json` → Grok's usage API | credit-usage window, reset, **on-demand / prepaid $**, plan, account type, email |
+| **Grok** | `~/.grok/auth.json` → Grok's CLI API: `billing?format=credits` + `user?include=subscription` | credit-usage window + reset (when the account has one), **on-demand $ spent of its cap, or the prepaid $ balance** (shown once the account has either — a free account's are all 0), plan (`Free` for a personal account with no tier), account type (pay-as-you-go when it has money but no plan), email |
 
 Asking Claude Code and Codex means each answers for the account it is signed in
 to, from wherever it keeps its sign-in (the macOS Keychain, the OS keyring, a
@@ -69,8 +69,9 @@ A provider that isn't set up, isn't signed in, or errors shows a clear status
 each provider is read independently.
 
 **A live provider can still have no meter.** Quota windows are percentages of an
-allowance, so an account billed by spend has none to report — a pay-as-you-go
-Grok account returns no `creditUsagePercent`. That is not a failure: the
+allowance, so an account billed by spend has none to report — a free or
+pay-as-you-go Grok account returns no `creditUsagePercent` (pay as you go shows
+its $ instead). That is not a failure: the
 provider reads `Live`, and the status-bar section says the account reports no
 window rather than telling you to sign in again.
 
