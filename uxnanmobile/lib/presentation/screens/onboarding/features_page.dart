@@ -20,7 +20,7 @@ class FeaturesPage extends StatelessWidget {
       icon: UxIcons.autoAwesome,
       title: l10n.onboardingFeaturesTitle,
       top: const FloatingAgents(
-        assets: [AgentLogos.kimi, AgentLogos.qwen, AgentLogos.opencode],
+        assets: [AgentLogos.grok, AgentLogos.zero, AgentLogos.opencode],
         placements: FloatingAgents.layoutB,
       ),
       child: Column(
@@ -44,6 +44,13 @@ class FeaturesPage extends StatelessWidget {
             color: UxnanColors.antigravityAgent,
             title: l10n.featureLocalFirstTitle,
             body: l10n.featureLocalFirstBody,
+          ),
+          const SizedBox(height: UxnanSpacing.lg),
+          _FeatureRow(
+            icon: UxIcons.terminal,
+            color: UxnanColors.primary,
+            title: l10n.featurePickUpTitle,
+            body: l10n.featurePickUpBody,
           ),
         ],
       ),

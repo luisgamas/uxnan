@@ -209,7 +209,7 @@ abstract class AppLocalizations {
   /// No description provided for @onboardingWelcomeBody.
   ///
   /// In en, this message translates to:
-  /// **'Uxnan is a secure remote control for the AI coding agents running on your PC.'**
+  /// **'Start, steer and review the AI coding agents on your PC from your phone. It needs only the bridge on your PC, and works alongside Uxnan Desktop when you use it.'**
   String get onboardingWelcomeBody;
 
   /// No description provided for @onboardingFeaturesTitle.
@@ -227,7 +227,7 @@ abstract class AppLocalizations {
   /// No description provided for @featureMultiAgentBody.
   ///
   /// In en, this message translates to:
-  /// **'Works with Claude Code, Codex, Antigravity, OpenCode and Pi — with more agents on the way. No lock-in.'**
+  /// **'Works with Claude Code, Codex, OpenCode, Antigravity, Pi, Grok and Zero. No lock-in.'**
   String get featureMultiAgentBody;
 
   /// No description provided for @featureE2eeTitle.
@@ -253,6 +253,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your code and conversations stay on your machine, never on a third-party server.'**
   String get featureLocalFirstBody;
+
+  /// No description provided for @featurePickUpTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick up where you left off'**
+  String get featurePickUpTitle;
+
+  /// No description provided for @featurePickUpBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue a session you started in a terminal on your PC, or any your agents had in a folder, with its history.'**
+  String get featurePickUpBody;
 
   /// No description provided for @onboardingInstallTitle.
   ///

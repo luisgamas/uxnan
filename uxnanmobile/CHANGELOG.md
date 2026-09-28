@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Onboarding says what the phone is now.** The welcome page says the phone
+  needs only the bridge on the PC and works alongside Uxnan Desktop, the agent
+  list names all seven agents (Grok and Zero were missing), and a fourth feature,
+  *Pick up where you left off*, covers continuing a session from a PC terminal
+  or from a folder.
+
 ### Fixed
 
 - **A PC renamed on the desktop no longer comes back under its old name.**

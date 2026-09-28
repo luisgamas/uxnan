@@ -65,7 +65,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get onboardingWelcomeBody =>
-      'Uxnan es un control remoto seguro para los agentes de IA que corren en tu PC.';
+      'Inicia, dirige y revisa desde tu teléfono los agentes de IA de tu PC. Solo necesita el bridge en tu PC, y funciona junto a Uxnan Desktop cuando lo usas.';
 
   @override
   String get onboardingFeaturesTitle => 'Hecho para tu forma de trabajar';
@@ -75,7 +75,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get featureMultiAgentBody =>
-      'Funciona con Claude Code, Codex, Antigravity, OpenCode y Pi — y se están añadiendo más agentes. Sin lock-in.';
+      'Funciona con Claude Code, Codex, OpenCode, Antigravity, Pi, Grok y Zero. Sin lock-in.';
 
   @override
   String get featureE2eeTitle => 'Cifrado de extremo a extremo';
@@ -90,6 +90,13 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get featureLocalFirstBody =>
       'Tu código y conversaciones se quedan en tu máquina, nunca en un servidor de terceros.';
+
+  @override
+  String get featurePickUpTitle => 'Retoma donde lo dejaste';
+
+  @override
+  String get featurePickUpBody =>
+      'Continúa una sesión que empezaste en una terminal de tu PC, o cualquiera que tus agentes tuvieron en una carpeta, con su historial.';
 
   @override
   String get onboardingInstallTitle => 'Instala el bridge en tu PC';
