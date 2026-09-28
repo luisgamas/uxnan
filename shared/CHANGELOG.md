@@ -4,6 +4,12 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`Turn.continuedIn` and `TurnCompletedParams.continuedIn`.** A turn that
+  ended because a message reached the agent mid-answer names the turn its run
+  went on in, so a client shows its reply as the answer so far — not a closing
+  one — and marks the message that joined the run.
 
 ## [0.0.25-alpha.20260928] - 20260928
 ### Added
