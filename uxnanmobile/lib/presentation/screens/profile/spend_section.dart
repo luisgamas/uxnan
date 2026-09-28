@@ -159,7 +159,7 @@ class _SpendSectionState extends ConsumerState<SpendSection> {
                   selected: _day,
                   semanticLabel: l10n.spendChartLabel,
                   formatValue: (v) => shownMetric == SpendMetric.cost
-                      ? fmtUsd(v)
+                      ? fmtMoney(v)
                       : fmtTokens(v),
                   onSelect: (i) => setState(() => _day = i),
                 ),
@@ -227,7 +227,7 @@ String _agentName(String agentId) =>
 /// The figure a spend reads as in [metric]: tokens when its cost is unknown.
 String _measure(UsageSpend spend, SpendMetric metric) =>
     metric == SpendMetric.cost && !spend.unpriced
-        ? fmtUsd(spend.costUsd)
+        ? fmtMoney(spend.costUsd)
         : fmtTokens(spend.tokens);
 
 class _Headline extends StatelessWidget {
@@ -345,7 +345,7 @@ class _DayDetail extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     String fmt(double v) =>
-        metric == SpendMetric.cost ? fmtUsd(v) : fmtTokens(v);
+        metric == SpendMetric.cost ? fmtMoney(v) : fmtTokens(v);
     final present = [
       for (final id in agents)
         if ((day.byAgent[id] ?? 0) > 0) id,
@@ -584,7 +584,7 @@ class _Models extends StatelessWidget {
                     child: Text(
                       m.spend.unpriced
                           ? l10n.spendNoPrice
-                          : fmtUsd(m.spend.costUsd),
+                          : fmtMoney(m.spend.costUsd),
                       textAlign: TextAlign.end,
                       style: textTheme.bodyMedium?.copyWith(
                         color:

@@ -608,6 +608,11 @@ class AppLocalizationsEs extends AppLocalizations {
   String get usageCreditLabel => 'Crédito';
 
   @override
+  String usageCreditAvailable(String amount) {
+    return '$amount disponibles';
+  }
+
+  @override
   String usageResetsIn(String duration) {
     return 'Se reinicia en $duration';
   }

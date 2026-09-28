@@ -1040,6 +1040,12 @@ abstract class AppLocalizations {
   /// **'Credit'**
   String get usageCreditLabel;
 
+  /// A remaining balance with no cap (e.g. a prepaid credit).
+  ///
+  /// In en, this message translates to:
+  /// **'{amount} available'**
+  String usageCreditAvailable(String amount);
+
   /// Relative time until a short quota window resets (e.g. 6h 30min).
   ///
   /// In en, this message translates to:

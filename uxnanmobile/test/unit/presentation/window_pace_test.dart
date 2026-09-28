@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/window_pace.dart';
 import 'package:uxnan/presentation/screens/profile/usage_format.dart';
@@ -58,9 +59,15 @@ void main() {
     expect(fmtTokens(12400), '12K');
     expect(fmtTokens(3100000), '3.1M');
     expect(fmtTokens(12.7e9), '13B');
-    expect(fmtUsd(0.004), r'<$0.01');
-    expect(fmtUsd(12.5, locale: 'en_US'), r'$12.50');
-    expect(fmtUsd(4384.2, locale: 'en_US'), r'$4,384');
+    expect(fmtMoney(0.004), r'<$0.01');
+    expect(fmtMoney(12.5), r'$12.50');
+    expect(fmtMoney(4384.2), r'$4,384');
+    // The same in every UI language: providers bill in US dollars.
+    Intl.defaultLocale = 'es';
+    expect(fmtMoney(12.5), r'$12.50');
+    Intl.defaultLocale = null;
+    expect(fmtMoney(4.2, 'EUR'), '€4.20');
+    expect(fmtMoney(120, 'credits'), '120 credits');
   });
 
   test('the pressing window: one the pace runs out first, else the fullest',

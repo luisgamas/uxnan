@@ -85,4 +85,16 @@ void main() {
     });
     expect(u!.status, UsageStatus.error);
   });
+
+  // A prepaid balance says what is left, not what was spent (Grok's).
+  test('a credit balance carries the amount still available', () {
+    final credit = CreditBalance.fromJson(const {
+      'used': 0,
+      'available': 25,
+      'currency': 'USD',
+      'period': 'Prepaid',
+    });
+    expect(credit.available, 25);
+    expect(credit.limit, isNull);
+  });
 }
