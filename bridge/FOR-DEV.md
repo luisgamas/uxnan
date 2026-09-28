@@ -132,12 +132,19 @@ push validation (FOR-HUMAN).
   new one carries the rest of the agent's run (`#handOff`), so the answer shows
   under the message it answers. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
   and follow-ups on an open stdin), **OpenCode** (1.x: `prompt_async` on the
-  busy session; 2.x: `delivery: "steer"`) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
-  (`turn/steer`) but not yet run against a
-  real turn (see below). Antigravity, Zero and Grok have no such channel and
+  busy session; 2.x: `delivery: "steer"`; an accepted steer is waited for to
+  its second idle), **pi** (`--mode rpc`, `steer` command, taken on its ACK)
+  and **Codex** (`turn/steer`). A turn ending while a steer is in flight waits
+  for its answer first. Antigravity, Zero and Grok have no such channel and
   keep waiting — Zero's own TUI behaves that way too. Advertised as
   `features.midTurnDelivery` + per-agent `AgentCapabilities.steering`, and every
   refusal falls back to the queue, so a message is never lost.
+- **Claude Code turns end exactly** — every message is written with a `uuid`
+  and echoed as the CLI reads it (`--replay-user-messages`); a `result` ends
+  the turn only once none is unread, so a wake-up the CLI runs on its own no
+  longer closes the user's turn. An exit without an answer, before reading a
+  message, or because the bridge is stopping fails the turn with its own text
+  and the tail of the CLI's stderr.
 - **7 active real agents wired** — OpenCode (default), Claude Code, Codex, pi,
   Antigravity (Google's `agy`), Zero, and Grok. Each active integration drives
   its **official local CLI** with
@@ -211,7 +218,9 @@ push validation (FOR-HUMAN).
 - **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
   Zero and Grok. Every idle read merges completed native-only turns into the
   bridge store; OpenCode uses its official local server endpoint and the other
-  agents use their persisted transcripts.
+  agents use their persisted transcripts. A row already imported is refreshed
+  in place rather than imported again, and a turn the bridge closed before any
+  reply takes the transcript's reply in its own place (`fillEmptyReply`).
 - **Bridge control** — `bridge/status` (real `relayConnected`),
   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
   registration), `bridge/trustedDevices`, `bridge/connectedPhones`,

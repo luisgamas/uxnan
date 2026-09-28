@@ -718,7 +718,7 @@ will still run.
 **A message the agent took mid-answer.** On agents that take input while they
 work, a message can reach the agent before its answer is finished. The answer
 it interrupted ends there — it stays fully visible, followed by a muted
-**Continues below** line (`UxIcons.arrowDownward`), because it is the answer so
+**Continues below, with your next message** line (`UxIcons.arrowDownward`), because it is the answer so
 far, not a closing one — and the rest of the run streams under the user's
 message, which carries a matching muted note, **Reached the agent while it was
 working** (`UxIcons.bolt`). Both notes share the queued note's type and tone

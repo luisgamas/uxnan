@@ -179,7 +179,7 @@ connected to live bridge data, validated on-device against a real bridge.
   (`turn/started`), and `turn/list` keeps `Turn.continuedIn` on the earlier
   turn. The phone stores it on that turn's messages (`messages_table.continued_in`,
   schema v10): the interrupted reply stays whole and ends with **"Continues
-  below"**, and the message the agent took says **"Reached the agent while it
+  below, with your next message"**, and the message the agent took says **"Reached the agent while it
   was working"**. On every other agent it settles when the queue drains,
   exactly as before.
   **Edit** withdraws it to the composer — text, images and files (an
