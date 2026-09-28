@@ -1,6 +1,12 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.3 | **Fecha:** 2026-08-02 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.4 | **Fecha:** 2026-09-28 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.1.4):** a turn a message reached while the agent was
+> answering names the turn that carried the run on: `Turn.continuedIn` and
+> `turn/completed.continuedIn` (optional, additive). Clients show the
+> interrupted answer whole, ending in *Continues below*, and mark the message
+> the agent took mid-answer; an older client ignores the field.
 >
 > **Executive summary (1.1.3):** the unchanged `metrics/*` wire shapes now
 > explicitly represent a complete bridge-retained ledger. Export/import includes

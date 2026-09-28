@@ -380,6 +380,99 @@ test('reconcileNativeHistory drops rows an older read imported from a run the br
   await rmrf(baseDir);
 });
 
+test('reconcileNativeHistory fills a turn the bridge closed before any reply, in its place', async () => {
+  // The run ended before the bridge received a word of the reply (a bridge
+  // that closed it early, a crash) while the agent went on and answered in its
+  // own transcript: the reply belongs in that turn, not in a copy at the end.
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const cut = await store.startTurn(thread.id, 'what happened?', 10_000);
+  await store.completeTurn(thread.id, cut.turnId, undefined, 11_700);
+  const later = await store.startTurn(thread.id, 'go on', 60_000);
+  await store.appendDelta(thread.id, later.turnId, 'Going on.', 60_100);
+  await store.completeTurn(thread.id, later.turnId, undefined, 60_200);
+
+  const native = nativeTurn(thread.id, 'ses_cut#t4', 11_730, [
+    { role: 'user', content: 'what happened?' },
+    { role: 'assistant', content: 'The turn closed early.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 70_000), {
+    changed: true,
+    importedTurnIds: [],
+  });
+  const turns = (await store.listTurns(thread.id)).turns;
+  assert.deepEqual(
+    turns.map((t) => t.id),
+    [cut.turnId, later.turnId],
+    'the reply lands in the turn that asked, which keeps its place',
+  );
+  assert.equal(
+    turns[0]?.messages.find((m) => m.role === 'assistant')?.content,
+    'The turn closed early.',
+  );
+  assert.equal((await store.reconcileNativeHistory(thread.id, [native], 80_000)).changed, false);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory folds a copy an older read imported into the empty turn it answers', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const native = nativeTurn(thread.id, 'ses_cut#t4', 11_730, [
+    { role: 'user', content: 'what happened?' },
+    { role: 'assistant', content: 'The turn closed early.' },
+  ]);
+  // What an older bridge left behind: the turn it closed empty, and the reply
+  // imported as a turn of its own.
+  assert.deepEqual(
+    (await store.reconcileNativeHistory(thread.id, [native], 5_000)).importedTurnIds,
+    ['ses_cut#t4'],
+  );
+  const cut = await store.startTurn(thread.id, 'what happened?', 10_000);
+  await store.completeTurn(thread.id, cut.turnId, undefined, 11_700);
+
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 70_000), {
+    changed: true,
+    importedTurnIds: [],
+  });
+  const turns = (await store.listTurns(thread.id)).turns;
+  assert.deepEqual(
+    turns.map((t) => t.id),
+    [cut.turnId],
+  );
+  assert.equal(
+    turns[0]?.messages.find((m) => m.role === 'assistant')?.content,
+    'The turn closed early.',
+  );
+  assert.equal((await store.reconcileNativeHistory(thread.id, [native], 80_000)).changed, false);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory leaves an empty turn alone for an exchange outside its run', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
+  const cut = await store.startTurn(thread.id, 'what happened?', 10_000);
+  await store.completeTurn(thread.id, cut.turnId, undefined, 11_700);
+
+  // The same question asked in the CLI long after: an exchange of its own.
+  const elsewhere = nativeTurn(thread.id, 'ses_cut#t9', 900_000, [
+    { role: 'user', content: 'what happened?' },
+    { role: 'assistant', content: 'Nothing.' },
+  ]);
+  // And a different question inside the run's window is not its reply either
+  // (being inside a run the bridge drove, it is not imported on its own).
+  const other = nativeTurn(thread.id, 'ses_cut#t5', 11_000, [
+    { role: 'user', content: 'something else' },
+    { role: 'assistant', content: 'Sure.' },
+  ]);
+  assert.deepEqual(
+    (await store.reconcileNativeHistory(thread.id, [other, elsewhere], 900_100)).importedTurnIds,
+    ['ses_cut#t9'],
+  );
+  const empty = (await store.getTurn(cut.turnId)).messages.find((m) => m.role === 'assistant');
+  assert.equal(empty?.content ?? '', '');
+  await rmrf(baseDir);
+});
+
 /**
  * One file per conversation is what keeps a streamed token cheap: while every
  * thread shared one `threads.json`, each delta re-read and rewrote the whole

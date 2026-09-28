@@ -454,6 +454,7 @@ export class ThreadStore {
             linked = true;
           }
           if (takeBackSteeredReply(thread.turns, stored, native)) refreshed = true;
+          if (fillEmptyReply(thread.turns, stored, native)) refreshed = true;
           // Only native-imported rows are refreshed from native history. A
           // bridge-created row may contain richer ordered segments and usage.
           if (stored.id === native.id) {
@@ -1886,7 +1887,7 @@ function findNativeTwin(
   // it. The transcript holds that message with the reply: it is the same
   // exchange when the prompt matches, the stored turn is empty and the turn
   // before it already holds the whole reply.
-  return eligible.find((turn) => {
+  const steered = eligible.find((turn) => {
     const identity = storedTurnIdentity(turn);
     if (identity.user !== wanted.user || identity.assistant.length > 0) return false;
     if (wanted.assistant.length === 0) return false;
@@ -1895,6 +1896,57 @@ function findNativeTwin(
       before !== undefined && storedRunIdentity(turns, before).assistant.includes(wanted.assistant)
     );
   });
+  if (steered) return steered;
+  // A run that ended before the bridge received any of its reply — closed
+  // early, or cut short by a crash — while the agent went on and answered in
+  // its own transcript. Nothing of the reply is there to compare, so the
+  // prompt and the run's window alone identify it ({@link fillEmptyReply}
+  // then takes the reply in).
+  return eligible.find(
+    (turn) =>
+      turn.status !== 'streaming' &&
+      wanted.assistant.length > 0 &&
+      withoutReply(turns, turn) &&
+      storedTurnIdentity(turn).user === wanted.user &&
+      native.createdAt >= turn.createdAt - NATIVE_TWIN_CLOCK_SLACK_MS &&
+      native.createdAt <= (turn.completedAt ?? turn.createdAt) + NATIVE_TWIN_CLOCK_SLACK_MS,
+  );
+}
+
+/** Whether [turn]'s whole run holds nothing of a reply: no text, reasoning or
+ *  block in it or in any turn it handed the run on to. */
+function withoutReply(turns: readonly StoredTurn[], turn: StoredTurn): boolean {
+  if (storedRunIdentity(turns, turn).assistant.length > 0) return false;
+  return !turn.messages.some(
+    (m) =>
+      m.role === 'assistant' &&
+      ((m.thinking?.trim().length ?? 0) > 0 ||
+        (m.blocks?.length ?? 0) > 0 ||
+        (m.segments?.length ?? 0) > 0),
+  );
+}
+
+/**
+ * Take [native]'s reply into [stored], a turn the bridge ran whose whole run
+ * holds none ({@link withoutReply}) — the agent answered after the bridge
+ * stopped listening. The bridge's own turn keeps its id and place; only the
+ * reply it never received is filled in, from the agent's transcript. Returns
+ * whether anything changed.
+ */
+function fillEmptyReply(turns: StoredTurn[], stored: StoredTurn, native: Turn): boolean {
+  if (isImportedTurn(stored) || !withoutReply(turns, stored)) return false;
+  const reply = storedTurnFromNative(native).messages.filter((m) => m.role === 'assistant');
+  if (!reply.some((m) => m.text.trim().length > 0 || (m.blocks?.length ?? 0) > 0)) return false;
+  const empty = stored.messages.find((m) => m.role === 'assistant');
+  reply.forEach((message, index) => {
+    message.turnId = stored.id;
+    if (index === 0 && empty) message.id = empty.id;
+  });
+  stored.messages = [...stored.messages.filter((m) => m.role !== 'assistant'), ...reply];
+  if (native.completedAt !== undefined && native.completedAt > (stored.completedAt ?? 0)) {
+    stored.completedAt = native.completedAt;
+  }
+  return true;
 }
 
 function structuredCloneValue<T>(value: T): T {

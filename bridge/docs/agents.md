@@ -225,7 +225,7 @@ surface it does not drive.**
 | Agent | Surface the bridge drives | Transport / framing | Reports usage |
 |---|---|---|---|
 | **OpenCode** | `opencode serve` — 1.x: V1 routes, no password; 2.x: `/api/*` routes behind a per-process password (see *OpenCode 1 and OpenCode 2*) | local HTTP + SSE | yes — 1.x on `step-finish` parts / the assistant `message.updated`; 2.x on `session.step.ended`. The context window comes from `opencode models --verbose` (1.x) or `GET /api/model` (2.x) |
-| **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin | yes |
+| **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin; `--replay-user-messages` echoes each message as the CLI reads it | yes |
 | **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
 | **pi** | `pi --mode rpc`, one resident process per thread | JSON-RPC over stdio (`prompt` / `steer` / `get_state` commands in, JSON events out) | yes — `message_end` `usage.totalTokens`; the model's `contextWindow` comes from the `get_state` response |
 | **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
@@ -374,7 +374,7 @@ so a format change there is a **two-app** fix.
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE), 1.x or 2.x | persisted server session id | `accessMode` → per-session permission rules: `ask` on the side-effecting keys — 1.x `edit`/`bash`/`webfetch`/`external_directory`, 2.x `edit`/`shell`/`webfetch`/`external_directory` (a 2.x file write asks as `edit`) — with real `permission.asked` approvals / `allow` for approveForMe·fullAccess | `opencode models` (1.x) / `GET /api/model` (2.x) |
-| **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
+| **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --replay-user-messages` (prompt and uuid-tagged follow-ups on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex app-server` (JSON-RPC over stdio), **one process per turn** | persisted app-server thread id: `thread/start` once, `thread/resume` on every later turn | `accessMode` → app-server `approvalPolicy` + `sandbox`, re-applied on **every** `thread/start`/`thread/resume` (so a mid-conversation change lands on the next turn); approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` — one resident process per thread; prompt + follow-ups as RPC commands on stdin | `--session-id <id>`, the id read from `get_state` on the first process, passed on every later spawn for the thread | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | **Antigravity** | `agy [--conversation <id>] --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) --input-format stream-json --output-format stream-json --print-timeout 2h` — one resident process per thread; the turn is a `user` message on stdin | `--conversation <id>`, the id `agy` announced on the first process's `init`, passed on every later spawn for the thread (never client-minted: 1.2.x refuses an unknown id and starts a new conversation) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others), read as `<id>⟨TAB⟩<label>` — the id routes, the label is shown |
@@ -567,6 +567,20 @@ that used a tool and imported it a second time, so the phone showed the whole
 exchange twice, permanently. A store already holding such a pair converges on
 the next idle read: the imported copy is dropped once its bridge-created twin is
 recognized.
+
+**A row already imported is refreshed, not imported again.** A transcript turn
+with the same prompt and the same start as an imported row — or the same reply
+— is that row, even under an id an older reader gave it or read while the agent
+was still answering: the row is refreshed in place and kept once
+(`sameExchange`), and a second copy left by an older read is dropped.
+
+**A turn that ended with no reply gets it from the transcript.** When the
+bridge closed a turn before receiving any of its reply (a crash, or an older
+bridge that ended a Claude Code turn on a wake-up's `result`) and the agent went
+on to answer in its own log, there is nothing to compare: the same prompt and a
+native start inside that turn's run window identify it, and the reply is filled
+into the bridge's turn in place (`fillEmptyReply`, `thread-store.ts`). A copy an
+older read imported at the end of the conversation folds back into it.
 
 Each agent runs in the thread's `cwd`. Codex turns and model discovery both use
 `codex app-server` (`thread/start` / `turn/start` and `initialize` →

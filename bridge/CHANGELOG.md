@@ -25,6 +25,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   their plan by keyword (`classifyPlan`: enterprise, team or business, free,
   otherwise a subscription), the rule the desktop's own reader used; a Grok
   account with money but no plan reads pay-as-you-go.
+- **A turn that ended before any reply gets its reply back, in its place.** A
+  turn closed before the bridge received a word of its answer — by a crash, or
+  by 0.0.38 ending a Claude Code turn on a wake-up's result — while the agent
+  answered on in its own transcript used to gain that answer as a new turn at
+  the end of the conversation, below everything said since, leaving the
+  question empty where it was asked. The same prompt started inside that
+  turn's run now identifies it, and the answer is filled into it; a copy an
+  older read already added at the end folds back in.
 
 ## [0.0.39-alpha.20260928] - 20260928
 ### Fixed
