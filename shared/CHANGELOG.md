@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.26-alpha.20260928] - 20260928
 ### Added
 
 - **`Turn.continuedIn` and `TurnCompletedParams.continuedIn`.** A turn that
