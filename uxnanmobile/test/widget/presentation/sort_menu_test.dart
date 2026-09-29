@@ -3,41 +3,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
-import 'package:uxnan/presentation/widgets/ux_icon.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 
-/// The sort menu has to be the app's menu, and stay open.
+/// The sort control is a nested menu, built the way Material nests them.
 ///
-/// Two things went wrong before this shape. Seventeen entries in one list ran
-/// off the bottom of a phone. And the fix for that used `MenuAnchor` — the only
-/// Flutter widget with a built-in cascade — which put a second menu SYSTEM in
-/// the app bar: a bare overlay beside routed menus, opening and closing
-/// differently, and swallowing taps between them. These pin both: short
-/// panels, and the app's own `showMenu` underneath.
+/// The first version stepped the submenu down and in from the parent menu's
+/// corner, which laid it OVER the parent menu instead of beside the row that
+/// opened it. These pin the nesting: levels first, each opening its
+/// orderings NEXT TO its row (never on top of it), the row marked active while
+/// its submenu is open, and the parent menu staying up across choices.
 Future<void> main() async {
   late List<SortChoice> picked;
 
   Future<void> pump(
-    WidgetTester tester, {
-    ListSort? projectSort,
-    ListSort? worktreeSort = ListSort.status,
-    List<ListSort> options = kAgentSorts,
+    WidgetTester tester,
+    Map<SortLevel, ListSort> levels, {
+    double width = 1280,
   }) async {
     picked = [];
+    tester.view.physicalSize = Size(width, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           appBar: AppBar(
-            actions: [
-              ThreadSortMenu(
-                projectSort: projectSort,
-                worktreeSort: worktreeSort,
-                agentSort: ListSort.created,
-                options: options,
-                onChanged: picked.add,
-              ),
-            ],
+            actions: [ThreadSortMenu(levels: levels, onChanged: picked.add)],
           ),
         ),
       ),
@@ -46,180 +39,74 @@ Future<void> main() async {
     await tester.pumpAndSettle();
   }
 
+  const threeLevels = {
+    SortLevel.projects: ListSort.status,
+    SortLevel.worktrees: ListSort.status,
+    SortLevel.agents: ListSort.created,
+  };
+
   Finder orderings() => find.byType(CheckedPopupMenuItem<ListSort>);
 
-  testWidgets('every panel is a routed menu, like the rest of the bar',
+  testWidgets('the first menu lists levels, each with what it is sorted by',
       (tester) async {
-    await pump(tester, projectSort: ListSort.name);
+    await pump(tester, threeLevels);
 
-    // `showMenu` pushes a route; the whole asymmetry with the other app-bar
-    // menus came from a panel that was NOT one.
-    expect(find.byType(PopupMenuItem<void>), findsWidgets);
-
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-    expect(orderings(), findsWidgets);
-  });
-
-  testWidgets('the first panel lists levels, not orderings', (tester) async {
-    await pump(tester, projectSort: ListSort.name);
-
-    expect(find.text('Projects'), findsOneWidget);
-    expect(find.text('Folders'), findsOneWidget);
-    expect(find.text('Conversations'), findsOneWidget);
-    // The twelve orderings behind them are not on screen yet.
+    expect(find.byType(NeSubmenuRow<ListSort>), findsNWidgets(3));
     expect(orderings(), findsNothing);
-  });
-
-  testWidgets('each level shows what it is sorted by, unopened',
-      (tester) async {
-    await pump(tester, projectSort: ListSort.name);
-
-    // The question this menu usually gets asked, answered before any tap.
-    expect(find.text('Name'), findsOneWidget);
+    expect(find.text('Projects'), findsOneWidget);
+    expect(find.text('Needs attention'), findsNWidgets(2));
     expect(find.text('Creation date'), findsOneWidget);
   });
 
-  testWidgets('a level row carries exactly one chevron', (tester) async {
-    await pump(tester, projectSort: ListSort.name);
+  for (final width in [1280.0, 411.0]) {
+    testWidgets(
+        'a submenu opens beside its row, never on top of it '
+        '(${width.toInt()} dp)', (tester) async {
+      await pump(tester, threeLevels, width: width);
+      final row = find.byType(NeSubmenuRow<ListSort>).first;
+      final rowRect = tester.getRect(row);
 
-    // A previous build drew the app's chevron AND Material's submenu arrow on
-    // the same row, because a submenu adds its own on top of whatever you
-    // supply. Scoped to the rows: the trigger's own glyph is still on screen.
-    expect(
-      find.descendant(
-        of: find.byType(PopupMenuItem<void>).first,
-        matching: find.byType(UxIcon),
-      ),
-      findsOneWidget,
-    );
-  });
+      await tester.tap(row);
+      await tester.pumpAndSettle();
 
-  testWidgets('the submenu opens WITHOUT closing the first panel',
+      expect(orderings(), findsNWidgets(4));
+      final submenu = tester.getRect(
+        find
+            .ancestor(of: orderings().first, matching: find.byType(Material))
+            .first,
+      );
+      final beside = submenu.left >= rowRect.right - 0.5 ||
+          submenu.right <= rowRect.left + 0.5;
+      final below = submenu.top >= rowRect.bottom - 0.5;
+      expect(
+        beside || below,
+        isTrue,
+        reason: 'submenu $submenu covers its row $rowRect',
+      );
+    });
+  }
+
+  testWidgets('a choice reports its level and the parent menu stays up',
       (tester) async {
-    await pump(tester, projectSort: ListSort.name);
+    await pump(tester, threeLevels);
 
-    await tester.tap(find.text('Projects'));
+    await tester.tap(find.byType(NeSubmenuRow<ListSort>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Name'));
     await tester.pumpAndSettle();
 
-    // The second route is pushed over the first rather than replacing it —
-    // which is what makes going back, and setting a second level, possible.
-    expect(orderings(), findsWidgets);
-    expect(find.text('Folders'), findsOneWidget);
-    expect(find.text('Conversations'), findsOneWidget);
-  });
-
-  testWidgets('picking reports the level and its ordering', (tester) async {
-    await pump(tester, projectSort: ListSort.name);
-
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.ancestor(
-        of: find.text('Recent activity'),
-        matching: find.byType(CheckedPopupMenuItem<ListSort>),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(picked, hasLength(1));
     expect(picked.single.level, SortLevel.projects);
-    expect(picked.single.value, ListSort.activity);
-  });
-
-  testWidgets('a second level is reachable without reopening', (tester) async {
-    await pump(tester, projectSort: ListSort.name);
-
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.ancestor(
-        of: find.text('Recent activity'),
-        matching: find.byType(CheckedPopupMenuItem<ListSort>),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // Straight on to another level: the panel of levels never went away.
-    expect(find.text('Folders'), findsOneWidget);
-    await tester.tap(find.text('Folders'));
-    await tester.pumpAndSettle();
-    expect(orderings(), findsWidgets);
-  });
-
-  testWidgets('the level row updates the moment you pick', (tester) async {
-    await pump(tester, projectSort: ListSort.name);
+    expect(picked.single.value, ListSort.name);
+    // Back on the levels, the row already says what it is now sorted by.
+    expect(find.byType(NeSubmenuRow<ListSort>), findsNWidgets(3));
     expect(find.text('Name'), findsOneWidget);
-
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.ancestor(
-        of: find.text('Recent activity'),
-        matching: find.byType(CheckedPopupMenuItem<ListSort>),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // A `showMenu` builds its items once, so without a live source the row's
-    // subtitle stayed on the old ordering until the menu was closed and
-    // reopened — the menu contradicting the choice you just made in it.
-    expect(find.text('Recent activity'), findsOneWidget);
-    expect(find.text('Name'), findsNothing);
   });
 
-  testWidgets('reopening the submenu shows the new choice checked',
+  testWidgets('one level to order is its orderings, with nothing nested',
       (tester) async {
-    await pump(tester, projectSort: ListSort.name);
+    await pump(tester, const {SortLevel.archive: ListSort.created});
 
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.ancestor(
-        of: find.text('Recent activity'),
-        matching: find.byType(CheckedPopupMenuItem<ListSort>),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-
-    // The second panel is rebuilt from the same live source as the first, so
-    // the tick has moved with the choice rather than waiting for a full close.
-    final checked = tester
-        .widgetList<CheckedPopupMenuItem<ListSort>>(orderings())
-        .where((item) => item.checked)
-        .toList();
-    expect(checked, hasLength(1));
-    expect(checked.single.value, ListSort.activity);
-  });
-
-  testWidgets('leaving a submenu returns to the levels', (tester) async {
-    await pump(tester, projectSort: ListSort.name);
-
-    await tester.tap(find.text('Projects'));
-    await tester.pumpAndSettle();
-
-    // Dismissing the second route is "back" — it costs no widget, because a
-    // route stack already works this way.
-    Navigator.of(tester.element(orderings().first)).pop();
-    await tester.pumpAndSettle();
-
-    expect(orderings(), findsNothing);
-    expect(find.text('Folders'), findsOneWidget);
-    expect(picked, isEmpty);
-  });
-
-  testWidgets('one level to order needs no cascade at all', (tester) async {
-    // The archive has only agents. A submenu of one is a tap that buys
-    // nothing, so its orderings ARE the menu.
-    await pump(tester, worktreeSort: null, options: kArchiveSorts);
-
-    expect(find.text('Conversations'), findsNothing);
-    expect(orderings(), findsNWidgets(2));
-    // And nothing that cannot apply to finished work.
-    expect(find.text('Needs attention'), findsNothing);
-    expect(find.text('Recent activity'), findsNothing);
+    expect(find.byType(NeSubmenuRow<ListSort>), findsNothing);
+    expect(orderings(), findsNWidgets(kArchiveSorts.length));
   });
 }

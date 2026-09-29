@@ -6,8 +6,9 @@ import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/files/widgets/file_tree_tile.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_viewer_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/files/widgets/file_tree_tile.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -16,6 +17,7 @@ import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen workspace file browser for the active thread's `cwd`.
@@ -35,25 +37,13 @@ class FileBrowserScreen extends ConsumerStatefulWidget {
   /// Creates a [FileBrowserScreen].
   const FileBrowserScreen({required this.cwd, this.threadId, super.key});
 
-  /// The workspace directory the browser lists (a thread's `cwd`).
+  /// The workspace directory the browser lists — a conversation's `cwd`, or
+  /// the folder whose row opened it (`AppRoutes.workspaceFiles`).
   final String cwd;
 
-  /// Optional owning thread (for context — currently unused beyond the deep
-  /// link back to the conversation).
+  /// The conversation it was opened from, if any. Null when the folder's own
+  /// row opened it.
   final String? threadId;
-
-  /// Pushes the screen onto the navigator.
-  static Future<void> push(
-    BuildContext context, {
-    required String cwd,
-    String? threadId,
-  }) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => FileBrowserScreen(cwd: cwd, threadId: threadId),
-      ),
-    );
-  }
 
   @override
   ConsumerState<FileBrowserScreen> createState() => _FileBrowserScreenState();
@@ -235,7 +225,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               leading: IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                // Pops back to the conversation it was opened over; empties
+                // the pane when the drawer opened it there.
+                onPressed: context.closePane,
               ),
               title: Text(
                 l10n.fileBrowserTitle,
@@ -568,10 +560,8 @@ class _FileSearchResultTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Text(
+      subtitle: PathText(
         match.path,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
         style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
       ),
       onTap: onTap,
@@ -650,7 +640,7 @@ class _StatusBar extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final gitState = ref.watch(gitRepoStateProvider).value;
+    final gitState = ref.watch(gitRepoStateProvider(cwd)).value;
     return SafeArea(
       top: false,
       child: Center(
@@ -686,13 +676,11 @@ class _StatusBar extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
+                        PathText(
                           cwd,
                           style: UxnanTypography.codeSmall.copyWith(
                             color: colors.onSurface,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
                         ),
                         if (gitState != null && gitState.branch.isNotEmpty) ...[
                           const SizedBox(height: UxnanSpacing.xs),

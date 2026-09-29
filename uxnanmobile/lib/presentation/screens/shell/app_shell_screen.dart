@@ -54,15 +54,19 @@ class TwoPaneScaffold extends StatelessWidget {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Each pane is its own semantics container. A navigator's routes
+            // sit behind a modal barrier that blocks the semantics of all
+            // painted before it IN THE SAME CONTAINER — shared, the detail's
+            // navigator hid the whole drawer from TalkBack.
             SizedBox(
               width: paneWidth ?? breakpoint.sidePaneWidth,
-              child: pane,
+              child: Semantics(container: true, child: pane),
             ),
             // M3's own divider tone (`outlineVariant`) — a hairline seam, not
             // a rule: the two surfaces already differ in content, and a heavy
             // border would read as two apps side by side.
             const VerticalDivider(width: 1, thickness: 1),
-            Expanded(child: detail),
+            Expanded(child: Semantics(container: true, child: detail)),
           ],
         );
       },

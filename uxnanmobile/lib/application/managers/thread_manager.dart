@@ -998,7 +998,7 @@ class ThreadManager {
     _renderLimit = _historyPageSize; // reset the window for the new thread
     _remoteOldestOffset = 0; // reset remote paging state for the new thread
     _loadingOlder = false;
-    _timeline.add(const TurnTimelineSnapshot());
+    _timeline.add(TurnTimelineSnapshot(threadId: threadId));
     await _messagesSub?.cancel();
     _messagesSub =
         _messageRepository.watchMessages(threadId).listen((messages) {
@@ -2535,9 +2535,10 @@ class ThreadManager {
       }
     }
 
-    var snapshot = const TurnTimelineSnapshot().reconcile(settled).copyWith(
-          hasMore: hasMore,
-        );
+    var snapshot =
+        TurnTimelineSnapshot(threadId: threadId).reconcile(settled).copyWith(
+              hasMore: hasMore,
+            );
     var nextOrder = _maxOrder(settled) + 1;
     final live = _live[threadId];
     if (live != null) {

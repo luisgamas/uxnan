@@ -4,8 +4,8 @@ import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_commit_detail_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/git/widgets/commit_ref_chip.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_commit_detail_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/git/widgets/commit_ref_chip.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -237,6 +237,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     if (!mounted) return;
     final picked = await showModalBottomSheet<_RefChoice>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,

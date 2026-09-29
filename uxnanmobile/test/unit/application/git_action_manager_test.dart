@@ -92,8 +92,16 @@ void main() {
       sendRequest: (method, [params]) {
         sentMethods.add(method);
         return switch (method) {
-          'git/status' =>
-            Future.value(RpcMessage.response(id: '1', result: _statusResult)),
+          // A second folder answers on another branch, so per-folder
+          // isolation is observable.
+          'git/status' => Future.value(
+              RpcMessage.response(
+                id: '1',
+                result: params?['cwd'] == '/other'
+                    ? {..._statusResult, 'branch': 'feature'}
+                    : _statusResult,
+              ),
+            ),
           'git/commit' => Future.value(
               RpcMessage.response(
                 id: '1',
@@ -134,7 +142,25 @@ void main() {
     expect(state.diffTotals.changedFileCount, 1);
     expect(state.changedFiles.single.path, 'lib/main.dart');
     expect(state.changedFiles.single.status, GitFileStatus.modified);
-    expect(manager.repoState, equals(state));
+    expect(manager.repoStateOf('/repo'), equals(state));
+  });
+
+  test("keeps each folder's state apart", () async {
+    final seen = <String?>[];
+    final sub = manager.repoStateFor('/repo').listen(
+          (state) => seen.add(state?.branch),
+        );
+
+    await manager.refreshStatus('/repo');
+    await manager.refreshStatus('/other');
+    await _settle();
+
+    expect(manager.repoStateOf('/repo')!.branch, 'main');
+    expect(manager.repoStateOf('/other')!.branch, 'feature');
+    expect(manager.repoStateOf('/elsewhere'), isNull);
+    // Reading another folder never re-emits (let alone overwrites) this one.
+    expect(seen, [null, 'main']);
+    await sub.cancel();
   });
 
   test('commit sends git/commit, records the log and refreshes status',

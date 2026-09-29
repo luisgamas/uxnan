@@ -4,17 +4,21 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
-### Fixed
+### Added
 
-- **The Linux AppImage starts for any user.** The file that launches the app
-  inside it (`AppRun.wrapped`) was executable by its owner only, so an image
-  mounted by someone else — under firejail, which is how the AppImage catalog
-  tests every entry — stopped with *Permission denied* before drawing a
-  window. The release now builds it executable by anyone, and leaves out
-  `libwayland-client`, which AppImages must not carry.
+- **AppStream metadata on Linux.** The AppImage, `.deb` and `.rpm` install
+  `dev.luisgamas.uxnandesktop.appdata.xml`, so software centres and the
+  AppImage catalog show the app's summary, description, license and links. The
+  app now declares its category too (`bundle.category`): *Development* in the
+  Linux desktop entry, *Developer Tools* on macOS.
 
 ### Changed
 
+- **Every time reads on the 24-hour clock** (`14:30`), whatever the language —
+  chat messages, the Git history, automations, provider resets, the last
+  update check. One module (`src/lib/clock.ts`) writes them all; they used to
+  follow the system's 12-hour clock in some places and not in others. Uxnan
+  Mobile writes times the same way.
 - **The Linux packages run on older distributions.** The AppImage, `.deb` and
   `.rpm` are built on Ubuntu 22.04, so they need glibc 2.35 instead of 2.39:
   Ubuntu 22.04, Debian 12 and their derivatives can start them.
@@ -25,13 +29,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   installer an update runs now closes the open app through the Windows Restart
   Manager instead of killing it by process name.
 
-### Added
+### Fixed
 
-- **AppStream metadata on Linux.** The AppImage, `.deb` and `.rpm` install
-  `dev.luisgamas.uxnandesktop.appdata.xml`, so software centres and the
-  AppImage catalog show the app's summary, description, license and links. The
-  app now declares its category too (`bundle.category`): *Development* in the
-  Linux desktop entry, *Developer Tools* on macOS.
+- **The Linux AppImage starts for any user.** The file that launches the app
+  inside it (`AppRun.wrapped`) was executable by its owner only, so an image
+  mounted by someone else — under firejail, which is how the AppImage catalog
+  tests every entry — stopped with *Permission denied* before drawing a
+  window. The release now builds it executable by anyone, and leaves out
+  `libwayland-client`, which AppImages must not carry.
 
 ## [0.0.69] - 20260928
 ### Added

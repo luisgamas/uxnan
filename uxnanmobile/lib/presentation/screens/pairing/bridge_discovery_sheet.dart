@@ -23,6 +23,7 @@ class BridgeDiscoverySheet extends ConsumerWidget {
   static Future<String?> show(BuildContext context) {
     return showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => const BridgeDiscoverySheet(),

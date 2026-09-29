@@ -7,6 +7,7 @@
   // The live "next runs" preview is computed here, in the frontend, because the
   // frontend is where local-calendar math belongs (spec `02f` §2.1). It is
   // display-only: the OS scheduler remains the authority on when a run fires.
+  import { formatWeekdayDateClock } from "$lib/clock";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { field, text } from "$lib/design";
@@ -79,13 +80,6 @@
 
   const errors = $derived(validateSchedule(schedule));
   const preview = $derived(errors.length === 0 ? nextOccurrences(schedule, new Date(), 5) : []);
-  const fmt = new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 </script>
 
 <div class="flex flex-col gap-3">
@@ -158,7 +152,7 @@
               text.indicator,
             )}
           >
-            {fmt.format(when)}
+            {formatWeekdayDateClock(when, i18n.locale)}
           </span>
         {/each}
       </div>

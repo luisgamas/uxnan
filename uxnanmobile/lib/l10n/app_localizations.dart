@@ -488,6 +488,18 @@ abstract class AppLocalizations {
   /// **'Needs attention'**
   String get sortByAttention;
 
+  /// No description provided for @sortByActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent activity'**
+  String get sortByActivity;
+
+  /// No description provided for @threadsSortCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Creation date'**
+  String get threadsSortCreated;
+
   /// No description provided for @spacesConversationCount.
   ///
   /// In en, this message translates to:
@@ -511,6 +523,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New conversation here'**
   String get spacesNewConversationHere;
+
+  /// Tooltip of the menu holding a folder's file browser and source control, where the row is too narrow for a button each.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder tools'**
+  String get spacesFolderTools;
 
   /// No description provided for @workspaceDirty.
   ///
@@ -602,6 +620,12 @@ abstract class AppLocalizations {
   /// **'Switch PC'**
   String get drawerSwitchDevice;
 
+  /// No description provided for @drawerManageDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage PCs'**
+  String get drawerManageDevices;
+
   /// No description provided for @drawerNoDevices.
   ///
   /// In en, this message translates to:
@@ -685,12 +709,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unread'**
   String get filterStateUnread;
-
-  /// No description provided for @sortByActivity.
-  ///
-  /// In en, this message translates to:
-  /// **'Recent activity'**
-  String get sortByActivity;
 
   /// No description provided for @agentStateWorking.
   ///
@@ -1154,24 +1172,6 @@ abstract class AppLocalizations {
   /// **'Every hour'**
   String get usageInterval1h;
 
-  /// No description provided for @settingsUsageClockGroup.
-  ///
-  /// In en, this message translates to:
-  /// **'Time format'**
-  String get settingsUsageClockGroup;
-
-  /// No description provided for @usageClock24hTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'24-hour time'**
-  String get usageClock24hTitle;
-
-  /// No description provided for @usageClock24hSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Show reset times as 14:30 instead of 2:30 PM'**
-  String get usageClock24hSubtitle;
-
   /// No description provided for @deviceActive.
   ///
   /// In en, this message translates to:
@@ -1387,12 +1387,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sort by'**
   String get threadsSortBy;
-
-  /// No description provided for @threadsSortCreated.
-  ///
-  /// In en, this message translates to:
-  /// **'Creation date'**
-  String get threadsSortCreated;
 
   /// No description provided for @threadsSortName.
   ///

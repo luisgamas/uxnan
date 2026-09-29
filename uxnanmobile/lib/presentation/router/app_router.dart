@@ -7,13 +7,14 @@ import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/manual_code_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
-import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell.dart';
 import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_browser_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_screen.dart';
 
 /// Route path constants used across the app.
 ///
@@ -24,6 +25,11 @@ class AppRoutes {
 
   /// Home: the paired-devices list (empty state until a PC is paired).
   static const String home = '/';
+
+  /// The paired PCs, to manage — rename, remove, verify. On a phone this is
+  /// what [home] already shows; beside a permanent drawer home is the quiet
+  /// pane, and the drawer's PC menu opens this in the pane instead.
+  static const String devices = '/devices';
 
   /// Onboarding flow.
   static const String onboarding = '/onboarding';
@@ -52,17 +58,35 @@ class AppRoutes {
   /// Builds the archived-threads route for the PC with [deviceId].
   static String deviceArchived(String deviceId) => '/device/$deviceId/archived';
 
-  /// Per-device metrics ("statistics") screen path pattern (`:deviceId`).
-  static const String deviceStatsPattern = '/device/:deviceId/stats';
-
-  /// Builds the per-PC statistics route for the PC with [deviceId].
-  static String deviceStats(String deviceId) => '/device/$deviceId/stats';
-
   /// Conversation screen path pattern (`:threadId`).
   static const String conversationPattern = '/conversation/:threadId';
 
   /// Builds the conversation route for [threadId].
   static String conversation(String threadId) => '/conversation/$threadId';
+
+  /// A working folder's file browser. The folder travels as the `cwd` query
+  /// parameter — an absolute path is not a path segment.
+  static const String workspaceFilesPattern = '/workspace/files';
+
+  /// A working folder's source control screen, addressed like
+  /// [workspaceFilesPattern].
+  static const String workspaceGitPattern = '/workspace/git';
+
+  /// Builds the file-browser route for the folder at [cwd]. [threadId] names
+  /// the conversation it was opened from, when there is one.
+  static String workspaceFiles(String cwd, {String? threadId}) =>
+      _workspace(workspaceFilesPattern, cwd, threadId);
+
+  /// Builds the source-control route for the folder at [cwd]. [threadId]
+  /// names the conversation it was opened from, when there is one — the git
+  /// screen records its actions against it and offers removing its worktree.
+  static String workspaceGit(String cwd, {String? threadId}) =>
+      _workspace(workspaceGitPattern, cwd, threadId);
+
+  static String _workspace(String path, String cwd, String? threadId) => Uri(
+        path: path,
+        queryParameters: {'cwd': cwd, if (threadId != null) 'thread': threadId},
+      ).toString();
 }
 
 /// Provides the app's [GoRouter] instance.
@@ -87,18 +111,28 @@ class AppRoutes {
 final GlobalKey<NavigatorState> shellNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'shell');
 
+/// Tells a screen in the content pane when another is pushed over it and when
+/// it is back in front.
+///
+/// A conversation needs it: the thread manager shows ONE conversation, and a
+/// conversation left underneath another (a notification's, a fork) has to
+/// take it back when it returns to the front.
+final RouteObserver<ModalRoute<void>> paneRouteObserver =
+    RouteObserver<ModalRoute<void>>();
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.home,
     routes: [
       ShellRoute(
-        // Keyed so the pane can be EMPTIED from outside it. The conversation
-        // opens its file browser and git screens with a raw `Navigator.push`,
-        // which lands on this navigator, above the routed page — so `go` alone
-        // changes the route underneath and leaves the pushed screen covering
-        // it. Picking another conversation from the drawer then looked like
-        // nothing happened at all.
+        // Keyed so the pane can be EMPTIED from outside it. The workspace
+        // screens open their own children (a file, the commit history) with a
+        // raw `Navigator.push`, which lands on this navigator, above the routed
+        // page — so `go` alone changes the route underneath and leaves the
+        // pushed screen covering it. Picking another conversation from the
+        // drawer then looked like nothing happened at all.
         navigatorKey: shellNavigatorKey,
+        observers: [paneRouteObserver],
         builder: (context, state, child) => AppShell(child: child),
         routes: [
           GoRoute(
@@ -143,22 +177,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // screen to remember to re-do its own `initState`, and none to be
           // audited again when a new per-parameter field is added.
           GoRoute(
+            path: AppRoutes.devices,
+            builder: (context, state) => const MyDevicesScreen(managing: true),
+          ),
+          GoRoute(
             path: AppRoutes.deviceThreadsPattern,
-            builder: (context, state) => ThreadsScreen(
-              key: ValueKey(state.pathParameters['deviceId']),
-              deviceId: state.pathParameters['deviceId']!,
-            ),
+            // Like the root: beside a permanent drawer a PC's list IS the
+            // drawer — the shell focuses this PC from the route — so the pane
+            // stays quiet instead of drawing the same list a second time.
+            // Rotating a tablet from portrait (where this was the screen) to
+            // landscape showed the list twice, side by side.
+            builder: (context, state) => context.hasPermanentPane
+                ? const ShellWelcome()
+                : ThreadsScreen(
+                    key: ValueKey(state.pathParameters['deviceId']),
+                    deviceId: state.pathParameters['deviceId']!,
+                  ),
           ),
           GoRoute(
             path: AppRoutes.deviceArchivedPattern,
             builder: (context, state) => ArchivedThreadsScreen(
-              key: ValueKey(state.pathParameters['deviceId']),
-              deviceId: state.pathParameters['deviceId']!,
-            ),
-          ),
-          GoRoute(
-            path: AppRoutes.deviceStatsPattern,
-            builder: (context, state) => PcDetailsScreen(
               key: ValueKey(state.pathParameters['deviceId']),
               deviceId: state.pathParameters['deviceId']!,
             ),
@@ -181,7 +219,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.profile,
-            builder: (context, state) => const ProfileScreen(),
+            // One profile per layout. Beside a drawer, Settings already shows
+            // it as its first section — so there the profile IS that: the
+            // drawer's "Profile" opened a full-screen profile while Settings'
+            // opened a split one, two answers for the same place.
+            builder: (context, state) => context.hasPermanentPane
+                ? const SettingsScreen()
+                : const ProfileScreen(),
           ),
           GoRoute(
             path: AppRoutes.conversationPattern,
@@ -190,8 +234,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               threadId: state.pathParameters['threadId']!,
             ),
           ),
+          // A folder's files and source control are the FOLDER's, not a
+          // conversation's: a project row opens them as readily as a thread
+          // does. Routes rather than raw pushes so both callers reach them the
+          // same way — pushed over a conversation, or into the pane from the
+          // permanent drawer, where a raw push would land on the root
+          // navigator and cover the whole window. Keyed by the query for the
+          // same reason every parameterised route above is keyed.
+          GoRoute(
+            path: AppRoutes.workspaceFilesPattern,
+            redirect: _requireCwd,
+            builder: (context, state) => FileBrowserScreen(
+              key: ValueKey(state.uri.query),
+              cwd: state.uri.queryParameters['cwd']!,
+              threadId: state.uri.queryParameters['thread'],
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.workspaceGitPattern,
+            redirect: _requireCwd,
+            builder: (context, state) => GitScreen(
+              key: ValueKey(state.uri.query),
+              cwd: state.uri.queryParameters['cwd']!,
+              threadId: state.uri.queryParameters['thread'],
+            ),
+          ),
         ],
       ),
     ],
   );
 });
+
+/// Sends a folder route that names no folder back to the overview — nothing
+/// the app builds lacks one, so only a mangled link can get here.
+String? _requireCwd(BuildContext context, GoRouterState state) {
+  final cwd = state.uri.queryParameters['cwd'];
+  return cwd == null || cwd.isEmpty ? AppRoutes.home : null;
+}

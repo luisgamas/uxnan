@@ -13,6 +13,7 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 import 'package:uxnan/presentation/widgets/uxnan_splash.dart';
 
@@ -230,11 +231,19 @@ class _PushHostState extends ConsumerState<_PushHost>
     }
   }
 
+  /// Opens the conversation a notification is about, the way a tap on its row
+  /// would: over the list on a phone, as the pane's contents beside the
+  /// drawer — and not at all when it is already the one on screen.
   void _openThread(String threadId) {
     if (threadId.isEmpty) return;
-    unawaited(
-      ref.read(appRouterProvider).push(AppRoutes.conversation(threadId)),
-    );
+    final location = AppRoutes.conversation(threadId);
+    final pane = shellNavigatorKey.currentContext;
+    if (pane != null && pane.mounted) {
+      unawaited(pane.openInPane(location));
+      return;
+    }
+    // Cold start: no shell yet to open it in.
+    ref.read(appRouterProvider).go(location);
   }
 
   @override

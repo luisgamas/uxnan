@@ -4,6 +4,14 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Clarified — what `Thread.updatedAt` means
+
+- `Thread.updatedAt` is documented as when the conversation last **moved**
+  (turns, history, title, status). A setting — `model`, `accessMode`,
+  `agentSessionId` — no longer moves it on the bridge; it still reaches every
+  client as a change of its own. Opening a conversation on the phone wrote its
+  default access mode and dated the row "now", reordering every
+  activity-sorted list.
 
 ## [0.0.27-alpha.20260928] - 20260928
 ### Clarified — how clients write money

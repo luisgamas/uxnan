@@ -38,7 +38,7 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
-    final sort = ref.watch(threadSortProvider);
+    final sort = ref.watch(listSortProvider(SortLevel.archive));
     final compact = ref.watch(threadDensityCompactProvider);
     final archived = allThreads
         .where((t) => t.status == ThreadStatus.archived)
@@ -54,14 +54,15 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
           onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          // No project or worktree group: the archive is a flat list. And
-          // fewer orderings — see [kArchiveSorts]: archived work is finished by
-          // definition, so "needs attention" and "recent activity" would sort
-          // by a value that can no longer change.
-          agentSort: sort,
-          options: kArchiveSorts,
+          // A flat list with an ordering of its own, and fewer of them — see
+          // [kArchiveSorts]: archived work is finished by definition, so
+          // "needs attention" and "recent activity" would sort by a value that
+          // can no longer change.
+          levels: {SortLevel.archive: sort},
           onChanged: (choice) => unawaited(
-            ref.read(threadSortProvider.notifier).set(choice.value),
+            ref.read(listSortProvider(SortLevel.archive).notifier).set(
+                  choice.value,
+                ),
           ),
         ),
         ThreadMoreMenu(

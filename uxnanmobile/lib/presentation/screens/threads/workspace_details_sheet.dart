@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
+import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
@@ -23,6 +24,12 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// When the folder is one of the PC's registered projects and the PC is
 /// connected, [onRemoveProject] offers taking it off the list — here and in
 /// Uxnan Desktop alike; the folder and its conversations stay.
+///
+/// Sized by its content, never by the folder's history: the conversation list
+/// is capped the way every picker sheet caps its list (guide §4.9), so a folder
+/// with forty conversations opens the same half-height sheet as one with four
+/// — it used to grow into a full-screen page with its drag handle under the
+/// status bar. `useSafeArea` keeps even the tallest one below the status bar.
 Future<void> showWorkspaceDetails(
   BuildContext context,
   WorkspaceGroup group, {
@@ -32,8 +39,10 @@ Future<void> showWorkspaceDetails(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     showDragHandle: true,
     isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) => _WorkspaceDetails(
       group: group,
       fullPath: fullPath,
@@ -87,15 +96,19 @@ class _WorkspaceDetails extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final path = fullPath;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return SafeArea(
+      top: false,
+      // Scrolls as a whole only when even the capped list cannot fit — a phone
+      // held sideways — so nothing is ever cut off.
       child: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            0,
-            UxnanSpacing.lg,
-            UxnanSpacing.lg,
+          padding: EdgeInsets.only(
+            left: UxnanSpacing.lg,
+            right: UxnanSpacing.lg,
+            bottom: UxnanSpacing.lg + bottomInset,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,40 +168,73 @@ class _WorkspaceDetails extends ConsumerWidget {
               const SizedBox(height: UxnanSpacing.md),
               Text(l10n.spacesConversations, style: textTheme.bodySmall),
               const SizedBox(height: UxnanSpacing.xs),
-              for (final thread in group.threads)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: SizedBox(
-                    width: 40,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AgentStatusIndicator(
-                          status: ref.watch(agentRunStatusProvider(thread.id)),
-                          size: 12,
-                        ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                        AgentLogo(
-                          agent: AgentIdParsing.fromWireId(thread.agentId),
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                  title: Text(
-                    thread.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    onOpenThread(thread.id);
-                  },
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: ((screenHeight - bottomInset) * 0.5)
+                      .clamp(160.0, screenHeight),
                 ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: group.threads.length,
+                  itemBuilder: (context, index) => _ConversationRow(
+                    thread: group.threads[index],
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onOpenThread(group.threads[index].id);
+                    },
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One conversation in the details sheet: a dense picker row (guide §4.9) —
+/// its state, its agent, its title.
+class _ConversationRow extends ConsumerWidget {
+  const _ConversationRow({required this.thread, required this.onTap});
+
+  final Thread thread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.xs,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(UxnanRadius.md),
+      ),
+      leading: SizedBox(
+        width: 40,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AgentStatusIndicator(
+              status: ref.watch(agentRunStatusProvider(thread.id)),
+              size: 12,
+            ),
+            const SizedBox(width: UxnanSpacing.xs),
+            AgentLogo(
+              agent: AgentIdParsing.fromWireId(thread.agentId),
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+      title: Text(
+        thread.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onTap: onTap,
     );
   }
 }

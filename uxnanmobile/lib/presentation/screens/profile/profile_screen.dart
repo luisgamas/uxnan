@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/spend_view.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
+import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/screens/profile/profile_backup_actions.dart';
 import 'package:uxnan/presentation/screens/profile/profile_identity_header.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
@@ -188,8 +187,7 @@ class _YourPcs extends ConsumerWidget {
               // A PC that is off and spent nothing has nothing to say here, so
               // the row stays one line instead of holding an empty second one.
               subtitle: detail.isEmpty ? null : detail,
-              onTap: () =>
-                  context.push(AppRoutes.deviceStats(device.macDeviceId)),
+              onTap: () => PcDetailsScreen.push(context, device.macDeviceId),
             );
           },
         ),

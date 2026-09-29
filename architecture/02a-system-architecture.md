@@ -1,10 +1,27 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.2
+> **Version:** 1.5.4
 > **Fecha:** 2026-09-28
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.4):** the phone's navigation is three single
+> layers. `pane_navigation.dart` owns opening and going back — every back arrow
+> and every "open this" goes through it, it asks each screen before popping it
+> (unsaved edits) and never opens twice what is on screen; `RouteFacts` is the
+> one reader of what a location belongs to and what is one level up; and the
+> drawer's PC is the route's, else a persisted **PC in focus** checked against
+> the paired PCs. A conversation reads its own timeline, never whatever is in
+> front, and the two panes are separate semantics containers (§5.4.3).
+> App-only: no contract changes.
+
+> **Executive summary (1.5.3):** a working folder's files and source control
+> belong to the folder, not to a conversation. On the phone they are routes of
+> their own (`/workspace/files?cwd=…`, `/workspace/git?cwd=…`, §5.4.3), opened
+> from a conversation's bar and straight from a folder row in the threads list
+> (§5.4.2); the screens moved to `presentation/screens/workspace/`, and the git
+> state the app shows is kept per `cwd`. App-only: no contract changes.
 
 > **Executive summary (1.5.2):** a bridge turn that ended before it received
 > any of its reply — a crash, or an older bridge that ended a Claude Code turn
@@ -1043,9 +1060,14 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > relaciona con nada se queda donde esta; no hay cajon "otros". Con un bridge
 > anterior la tabla llega vacia y la lista es literalmente la de antes.
 >
-> **Cada nivel tiene su propio orden**: proyectos, worktrees y conversaciones,
-> los tres con las mismas cuatro opciones (`ListSort`: estado, actividad,
-> creacion, nombre). Los worktrees **dentro** de un proyecto se ordenan con el
+> **Cada nivel tiene su propio orden, guardado**: proyectos (TODO el primer
+> nivel — un proyecto de una carpeta y un repositorio con varios worktrees se
+> comparan con el mismo ajuste; mezclar dos criterios en una comparacion no es
+> un orden), worktrees dentro de un proyecto (solo cuando hay alguno) y
+> conversaciones, con las mismas cuatro opciones (`ListSort`: estado,
+> actividad, creacion, nombre); el archivo tiene el suyo. La lista de un PC usa
+> los proyectos de ESE PC (la replica guarda uno por PC), nunca los del
+> conectado. Los worktrees **dentro** de un proyecto se ordenan con el
 > mismo ajuste que los de primer nivel — `buildWorkspaceTree` recibe el
 > comparador en vez de ordenarlos por su cuenta, que es lo que antes los dejaba
 > fuera del alcance del menu. `created` de una carpeta es derivado: el bridge
@@ -1061,6 +1083,17 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > urgente de todos ellos — esa evidencia desaparece al plegar y la cabecera
 > tiene que suplirla. Es el mismo canje que hace la vista de agentes de
 > `uxnandesktop`.
+>
+> **Las herramientas de la carpeta viven en su fila.** Junto al "+" (nueva
+> conversacion aqui) la fila lleva *Explorar archivos* y *Control de
+> versiones*: las mismas pantallas que abre la barra de una conversacion, porque
+> son de la carpeta y deben alcanzarse antes de que exista conversacion alguna.
+> Ambas exigen canal vivo con ESE PC. En la columna fija de 320 dp del drawer
+> permanente las dos se pliegan en un unico menu ⋮ para que el nombre de la
+> carpeta conserve su sitio; el "+" nunca se pliega. El FAB sigue siendo la
+> nueva conversacion global. La hoja de pulsacion larga acota su lista de
+> conversaciones como cualquier hoja de seleccion y nunca pasa bajo la barra de
+> estado.
 
 > **El estado del agente en la lista es DERIVADO, no reportado.** La fila de
 > conversacion muestra los mismos cinco estados que la barra lateral de
@@ -1087,6 +1120,10 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > la fila corta a tres senales; el desglose (rama, upstream, +/−) vive en la
 > hoja de pulsacion larga. Sin respuesta la fila no dibuja nada — nunca
 > "limpio", que seria una mentira con aspecto de buena noticia.
+> `GitActionManager` guarda ese estado **por cwd**: las filas leen el de cada
+> carpeta visible mientras una pantalla de git, el navegador de archivos o la
+> rama de una conversacion muestran el de otra, y un unico hueco "repositorio
+> actual" dejaba que la ultima lectura pintara sus archivos en todas.
 
 > **La misma tabla de rutas se dibuja en dos sitios distintos.** A partir de
 > 840 dp de ancho de ventana la app deja de ser una pila de pantallas: una
@@ -1098,8 +1135,28 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > las divisiones anidadas (ajustes y su seccion) miden sus propias constraints,
 > no la ventana, y una tercera columna en una tablet no le sirve a nadie. Lo
 > que cambia con el ancho es el **significado de un toque** — abrir reemplaza
-> el panel en vez de apilar — y eso vive en `pane_navigation.dart`. El detalle
-> esta en `architecture/02c` §3.3.
+> el panel en vez de apilar — y eso vive en `pane_navigation.dart`, que es
+> tambien la unica regla de "atras" de la app: saca lo apilado (preguntando a la
+> pantalla, que puede negarse si tiene cambios sin guardar); si no queda nada,
+> en ancho cierra el panel y en telefono sube un nivel (`RouteFacts.parent`: el
+> archivo o las estadisticas de un PC → su lista; la pantalla de una carpeta →
+> la conversacion desde la que se abrio; una conversacion → la lista de su PC).
+> Los dos paneles son contenedores semanticos separados: la barrera modal de
+> cada ruta del panel oculta a la accesibilidad lo pintado antes en su mismo
+> contenedor, y compartido ocultaba el drawer entero. El detalle esta en
+> `architecture/02c` §3.3.
+>
+> **El PC del drawer** es el de la ruta (el que nombra, o el de su
+> conversacion); si la ruta no pertenece a ningun PC, el **PC en foco**
+> persistido; luego el conectado; luego cualquiera emparejado — siempre
+> validado contra los PCs emparejados. El foco tiene un solo escritor y tres
+> entradas, todas actos de ir a un PC: la ruta, el selector del drawer (que
+> ademas vacia el panel, cuyo contenido era del otro PC) y el emparejamiento.
+>
+> **Una conversacion lee SU timeline** (`threadTimelineProvider(threadId)`),
+> nunca "lo que el gestor tenga delante": dos pueden estar montadas a la vez
+> (la de una notificacion encima de la que leias), y al volver la de abajo
+> recupera su thread (`paneRouteObserver`). Si su thread se borra, se cierra.
 >
 > **`detail` es siempre el `child` del router.** No es estilo: ese `child` es
 > el `Navigator` de la `ShellRoute`, y `GoRouterDelegate.popRoute` — a donde va
@@ -1134,7 +1191,8 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 lib/presentation/
 ├── router/
 │   ├── app_router.dart                   # tabla de rutas PLANA + la unica ShellRoute
-│   └── pane_navigation.dart              # openInPane / closePane: que significa un toque
+│   ├── pane_navigation.dart              # openInPane / closePane: que significa un toque
+│   └── route_facts.dart                  # a que PC/conversacion pertenece una ruta, y su padre
 ├── screens/
 │   ├── shell/
 │   │   ├── app_shell.dart                # builder de la ShellRoute: pantalla o panel
@@ -1145,9 +1203,9 @@ lib/presentation/
 │   │   └── my_devices_screen.dart        # portada: identidad, PCs y su trabajo
 │   ├── threads/
 │   │   ├── threads_screen.dart           # Espacios: proyectos > carpetas > conversaciones
-│   │   ├── space_rows.dart               # filas de proyecto y de carpeta
+│   │   ├── space_rows.dart               # filas de proyecto y de carpeta (+ archivos, git, nueva)
 │   │   ├── thread_tile.dart              # fila de conversacion (estado derivado)
-│   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu en cascada
+│   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu anidado de orden
 │   │   ├── workspace_git_indicators.dart # sin confirmar / adelante / atras por carpeta
 │   │   ├── workspace_details_sheet.dart  # hoja de pulsacion larga: ruta, rama, upstream
 │   │   ├── workspace_browser_sheet.dart  # explorador de carpetas del bridge
@@ -1158,9 +1216,10 @@ lib/presentation/
 │   │   ├── session_environment.dart
 │   │   ├── messages/                     # render de bloques, markdown, diffs, tarjetas
 │   │   ├── composer/                     # pill flotante, cinta de opciones, adjuntos
-│   │   ├── files/                        # navegador de archivos + visor/editor
-│   │   ├── git/                          # estado, historial, detalle de commit
 │   │   └── support/                      # selector de modelo, recuperacion, errores
+│   ├── workspace/                        # lo de la CARPETA, no de una conversacion
+│   │   ├── files/                        # navegador de archivos + visor/editor
+│   │   └── git/                          # estado, historial, detalle de commit
 │   ├── onboarding/
 │   ├── pairing/                          # QR, codigo manual, descubrimiento en LAN
 │   ├── profile/
@@ -1193,23 +1252,25 @@ lib/presentation/
 
 **Paquete:** `go_router` — soportado en Android e iOS.
 
-```dart
-// lib/presentation/router/app_router.dart
-final appRouter = GoRouter(
-  routes: [
-    GoRoute(path: '/', builder: (_,__) => const AppShellScreen(), routes: [
-      GoRoute(path: 'home', builder: (_,__) => const HomeScreen()),
-      GoRoute(path: 'conversation/:threadId', builder: (_,s) => ConversationScreen(threadId: s.pathParameters['threadId']!)),
-      GoRoute(path: 'settings', builder: (_,__) => const SettingsScreen()),
-      GoRoute(path: 'devices', builder: (_,__) => const MyDevicesScreen()),
-      GoRoute(path: 'projects', builder: (_,__) => const ProjectsScreen()),
-      GoRoute(path: 'terminal', builder: (_,__) => const TerminalScreen()),
-    ]),
-    GoRoute(path: '/onboarding', builder: (_,__) => const OnboardingScreen()),
-    GoRoute(path: '/pairing', builder: (_,__) => const QrScannerScreen()),
-  ],
-);
-```
+Tabla PLANA dentro de una unica `ShellRoute` (ver arriba); cada ruta
+parametrizada lleva un `ValueKey` de su parametro.
+
+| Ruta | Pantalla |
+|---|---|
+| `/` | `MyDevicesScreen` (telefono) / `ShellWelcome` (con drawer) |
+| `/device/:deviceId/threads` · `/archived` · `/stats` | `ThreadsScreen` · `ArchivedThreadsScreen` · `PcDetailsScreen` |
+| `/conversation/:threadId` | `ConversationScreen` |
+| `/workspace/files?cwd=…[&thread=…]` | `FileBrowserScreen` |
+| `/workspace/git?cwd=…[&thread=…]` | `GitScreen` |
+| `/onboarding`, `/pairing`, `/pairing/manual`, `/settings`, `/profile` | pantalla completa, sin drawer |
+
+Los archivos y el control de versiones son de la **carpeta**: la ruta la
+identifica con el parametro `cwd` (una ruta absoluta no es un segmento), y
+`thread` solo nombra la conversacion desde la que se abrio (el git screen
+registra sus acciones en ella y ofrece retirar su worktree). Se abren con
+`push` sobre una conversacion y con `openInPane` desde una fila de carpeta; en
+ancho, `closePane` saca primero lo apilado en el panel y solo despues lo vacia.
+Una ruta de carpeta sin `cwd` redirige a `/`.
 
 #### 5.4.4 Gestion de estado UI
 
@@ -1738,7 +1799,7 @@ El bridge (en el daemon) mantiene un registro de worktrees administrados (`~/.ux
 #### 5.7.4 Diff viewer
 
 ```dart
-// lib/presentation/screens/conversation/git/diff_viewer.dart
+// lib/presentation/screens/workspace/git/git_diff_view.dart
 // Renderiza diffs con:
 // - Lineas anadidas (verde)
 // - Lineas eliminadas (rojo)
@@ -1993,7 +2054,7 @@ async function handleGitCommitShow({ cwd, sha }) {
 ```
 
 El método `git/log` es la fuente de la pantalla de historial de commits
-(`GitHistoryScreen` en `presentation/screens/conversation/git/`): la app
+(`GitHistoryScreen` en `presentation/screens/workspace/git/`): la app
 lo llama al abrir y al acercarse al final del scroll (paginación incremental),
 pasando el `nextCursor` de la página anterior como `cursor`. `parents[]`
 alimenta la vista gráfico (cada parent es un "lane") y `refs[]` aporta los
@@ -2090,7 +2151,7 @@ consumidas hoy por:
   selección de agente se compara directamente en un grupo de tarjetas de
   esquinas dinámicas; sólo la tarjeta seleccionada revela sus capability chips.
 - **Workspace file viewer** (`FileBrowserScreen` + `FileViewerScreen` under
-  `presentation/screens/conversation/files/`, managed by
+  `presentation/screens/workspace/files/`, managed by
   `FileBrowserManager`) — the lazy tree and repo-wide fuzzy search feed a
   capability-based viewer: editable and selectable highlighted UTF-8 source;
   selectable git diffs; GitHub-style Markdown preview/source with common README
@@ -2112,8 +2173,10 @@ consumidas hoy por:
   bytes as base64 (bounded at 20 MiB); `workspace/readImage` carries supported
   images (bounded at 10 MiB). Both pass through `path-guard` (§5.8.9/infra),
   which confines reads to the workspace root and excludes sensitive files. The
-  viewer opens from the `folder_open_rounded` `IconSurface` beside `GitScreen`
-  in `ConversationScreen`.
+  viewer is the folder's route (`/workspace/files?cwd=…`): it opens from the
+  `folderOpen` `IconSurface` beside the `GitScreen` one in
+  `ConversationScreen`, and from the same glyph on the folder's row in
+  `ThreadsScreen`.
   Conversation links first resolve to a canonical viewer root; every
   subsequent read remains confined to that root and excludes `.git` and
   sensitive files.
@@ -2834,6 +2897,15 @@ ordenan por `seq`.
 **Abrir no cambia nada:** `thread/resume` ya no pone `status: active` ni toca
 `updatedAt` (desarchivaba en silencio lo abierto en el telefono). Solo
 `thread/unarchive` desarchiva.
+
+**Un ajuste no es actividad:** `updatedAt` es cuando la conversacion se movio
+por ultima vez — turnos, historia releida, titulo, estado —, y toda lista ordena
+y fecha por el. `thread/setModel`, `thread/setAccessMode` y el id de sesion
+nativo se propagan como cambio propio (`rev`) sin moverlo: el telefono escribe
+el modo de acceso por defecto al abrir una conversacion, y eso la fechaba
+"ahora" y la subia al principio de cada lista por actividad. La proyeccion
+local de metricas reemplaza igualmente una fila con el mismo `updatedAt` cuyo
+contenido cambio.
 
 **Titulos solo en el bridge:** el provisional se pone al guardar el primer
 turno si el titulo es el marcador (`titleSource: prompt`); el generado tras un

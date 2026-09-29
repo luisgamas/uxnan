@@ -5,6 +5,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **Switch and manage PCs on a tablet.** The drawer's header is the PC switcher,
+  with one PC too (a chevron down says a menu drops from it): its menu lists
+  your PCs, opens **Manage PCs** in the pane (the same PC screen the phone
+  has — rename, remove, verify, connect) and pairs another — *Pair a device*
+  opens a submenu with QR and code.
+  The footer menu keeps Profile and Settings.
+
+- **A folder's files and source control, straight from the threads list.** Every
+  folder row now carries the same two tools a conversation's bar has — *Browse
+  files* and *Source control* — beside its "+", so they are reachable before
+  (and without) opening any conversation in it. The New conversation button
+  stays the global one. In the tablet drawer's narrow column the two share one
+  ⋮ menu (*Folder tools*) so the folder's name keeps its room; on a phone each
+  has its own button. Both wait for a live connection to that PC.
+
+### Changed
+
+- **Every time reads on the 24-hour clock** (`14:30`), in every language —
+  conversation rows, a PC's last connection, provider resets. One formatter
+  (`formatClock`); the "24-hour time" switch in Settings is gone, as Uxnan
+  Desktop shows times the same way.
+- **Source control opens without the keyboard.** Only the conversation raises
+  it when it opens.
+- **A submenu opens beside its row, as Material's nested menus do.** The sort
+  menu's orderings were stepped down and in from the parent menu's corner, so
+  they landed on top of the levels instead of next to the level that opened
+  them. A submenu now sits to the right of its row, to the left when that does
+  not fit, and under it on a phone — never over it — and the row stays
+  highlighted while its submenu is open. The sort menu and the PC menu's
+  *Pair a device* share that one nested-menu row.
+- **Sorting is one rule per level, and remembered.** "Projects" orders the
+  whole top of the list — a one-folder project and a repository with worktrees
+  alike (it used to mix two orderings, so the list came out in arbitrary
+  order) — "Folders" appears only when a project has worktrees, and the archive
+  has its own. The project and folder choices used to reset on every start.
+- **Files and source control are routes of their own**
+  (`/workspace/files?cwd=…`, `/workspace/git?cwd=…`), reached the same way from
+  a conversation and from a folder row. Pushed over a conversation, back returns
+  to it; opened from the tablet drawer they fill the content pane (a raw push
+  from there would have covered the whole window). The screens moved from
+  `presentation/screens/conversation/` to `presentation/screens/workspace/`.
+
 ### Fixed
 
 - **An answer a message interrupted stays whole.** When a message reached the
@@ -12,6 +56,90 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   but an answer in several parts still folded all but its last into *previous
   messages*, hiding most of what the agent had said. It now stays as it
   streamed, every part in view, as on the desktop.
+- **An open conversation stays quiet while you look at its files or source
+  control.** Opening either on top of the conversation counted as leaving it,
+  so its own replies notified you while you were still in it. Only closing the
+  conversation, opening another or sending the app to the background does now.
+- **The introduction can be closed on every page**, on a phone and a tablet
+  alike. It only had *Skip*, which jumps to its last page; the way out was the
+  system back, which iOS has no button for.
+- **The last folders of a long list are reachable.** Scrolled to the bottom,
+  the New conversation button sat on the last rows the moment it came back; a
+  screen with a floating button now ends with room for it (the prompt-template
+  library had the same problem).
+- **A folder's details sheet no longer takes over the screen.** With a long
+  history it grew into a full-screen page with its drag handle under the status
+  bar; its conversation list is now capped like every picker sheet's and the
+  sheet stays below the status bar.
+- **A folder's heading no longer touches its first conversation.** Held down,
+  its highlight ran into the row under it; the heading now keeps a small gap.
+- **Git state is kept per folder.** One shared "current repository" slot let
+  the folder rows' indicators overwrite what a git screen, the file browser or
+  a conversation's branch chip was showing for another folder.
+- **The source-control screen says "No git repository"** for a folder that is
+  not one, instead of loading forever.
+- **A conversation never shows another's messages.** A notification's
+  conversation (or a fork) opened over the one you were reading; back showed
+  the other one's messages under the first one's title. Each conversation now
+  reads its own timeline and takes the thread back when it returns to the
+  front. Notifications and forks open the way a list row does, and a
+  notification for the conversation on screen no longer opens a second copy.
+- **Unsaved file edits are never dropped silently.** The editor's guard was
+  read once, before the first keystroke, so the back gesture — or picking
+  another conversation in the tablet drawer — discarded edits without asking.
+  It now asks from the first keystroke, and emptying the tablet pane asks every
+  screen instead of popping past it.
+- **Back always leads somewhere.** Every back arrow follows one rule: pop what
+  is stacked, else close the tablet pane, else go one level up — a PC's list
+  after rotating a tablet, which used to be a dead end with no arrow (and no
+  system back on iOS). A PC's archive and stats go back to its list, a folder's
+  screen to the conversation it came from. Pairing by code from the QR screen
+  has a working back arrow. On a tablet, the system back inside a Settings
+  section returns to the section instead of closing Settings.
+- **The tablet drawer shows the right PC.** Switching PC with a conversation
+  open now switches the list (and closes the conversation, which belongs to the
+  other PC); a PC's archive, stats or a folder's screen keep their PC in the
+  drawer; a newly paired PC is the one shown; removing a PC never leaves "no
+  devices" while others are paired. Deleting the open conversation from the
+  drawer closes it. "Archived" opens in the pane instead of stacking a copy on
+  every tap, and a conversation stays marked in the phone's list only while a
+  drawer is there to mark it.
+- **TalkBack can read the tablet drawer.** The content pane's navigator hid the
+  whole drawer from accessibility; each pane is now its own semantics
+  container.
+- **A folder's "+" waits for its PC.** Browsing a PC you are not connected to,
+  it started the conversation on whichever PC was connected; it is disabled
+  there now, like the New conversation button. A new conversation still opens
+  if the list refreshing under it fails or is rebuilt.
+- **A notification opens its conversation even with a Settings sub-screen
+  open** on a tablet — it used to close that one sub-screen and stop. Settings'
+  back arrow leaves Settings in one tap instead of first closing a sub-screen
+  in the other pane, and the profile row is no longer always highlighted on a
+  phone.
+- **Sheets cover the whole window.** Opened inside Settings' pane or the
+  tablet's content pane, a sheet covered only that half with the rest still
+  live, and switching Settings section threw it away with what was typed.
+- **Manage PCs is a screen of its own on a tablet.** Titled and closable, with
+  only the pairing action, no home greeting, cards laid out for the pane's
+  width, and a tapped PC turns the drawer to it instead of emptying the pane.
+- **Profile and a PC's stats stay where they were opened on a tablet.** The
+  drawer's Profile opened a full-screen profile while Settings showed it as a
+  section; both now lead to Settings with the profile selected. A PC's stats,
+  opened from the profile inside Settings, closed Settings and appeared beside
+  the drawer; they now open inside Settings' pane (and inside Manage PCs).
+- **A PC's list shows only that PC's projects.** Browsing one PC while
+  connected to another listed the connected PC's empty projects among its
+  folders, and its worktrees were looked up on the wrong PC.
+- **Rotating a tablet no longer shows the list twice.** A PC's list opened in
+  portrait stayed in the pane beside the drawer in landscape; there the drawer
+  is that list.
+- **Opening a conversation no longer moves it to the top.** (Bridge: an access
+  mode is a setting, not activity.)
+- **Long paths show their end, not their beginning.** The file browser's folder
+  bar, the New conversation folder, the git and commit-detail file cards, the
+  file search results and the diff header cut a long path at its end, hiding
+  the folder that tells projects apart. They now drop the leading folders
+  instead (`…/clients/acme/mobile-app`), as Uxnan Desktop does.
 
 ## [0.0.33-alpha.20260928+20260935] - 20260928
 ### Fixed

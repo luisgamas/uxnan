@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/onboarding/features_page.dart';
 import 'package:uxnan/presentation/screens/onboarding/floating_agents.dart';
 import 'package:uxnan/presentation/screens/onboarding/install_step_page.dart';
@@ -11,6 +12,7 @@ import 'package:uxnan/presentation/screens/onboarding/welcome_page.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 
@@ -64,18 +66,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   constraints: const BoxConstraints(maxWidth: 560),
                   child: Column(
                     children: [
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: AnimatedOpacity(
-                          opacity: _isLast ? 0 : 1,
-                          duration: const Duration(milliseconds: 200),
-                          child: TextButton(
-                            onPressed: _isLast
-                                ? null
-                                : () => _animateTo(_pageCount - 1),
-                            child: Text(l10n.onboardingSkip),
+                      Row(
+                        children: [
+                          // A way out, on every page. This flow is always
+                          // opened from somewhere — the empty home, the
+                          // drawer, the welcome pane — and without it the only
+                          // exit was the system back, which iOS has no button
+                          // for, on a phone or a tablet.
+                          Padding(
+                            padding: const EdgeInsets.all(UxnanSpacing.sm),
+                            child: IconSurface(
+                              icon: UxIcons.close,
+                              tooltip: MaterialLocalizations.of(context)
+                                  .closeButtonTooltip,
+                              onPressed: context.closePane,
+                            ),
                           ),
-                        ),
+                          const Spacer(),
+                          AnimatedOpacity(
+                            opacity: _isLast ? 0 : 1,
+                            duration: const Duration(milliseconds: 200),
+                            child: TextButton(
+                              onPressed: _isLast
+                                  ? null
+                                  : () => _animateTo(_pageCount - 1),
+                              child: Text(l10n.onboardingSkip),
+                            ),
+                          ),
+                        ],
                       ),
                       Expanded(
                         child: PageView(

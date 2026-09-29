@@ -39,6 +39,7 @@ class ColorPickerSheet extends StatefulWidget {
   }) {
     return showModalBottomSheet<Color>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -13,7 +12,6 @@ import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
@@ -67,15 +65,6 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     // connect and app resume) so the list reflects the connected bridge.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
-      // Remembered for the permanent drawer, which on a cold start or a deep
-      // link has no route to read the PC from — see [shellDeviceProvider].
-      // Not recorded when this list IS the drawer's own content: that would be
-      // the drawer telling itself what it already decided.
-      if (!widget.embedded) {
-        unawaited(
-          ref.read(lastVisitedDeviceProvider.notifier).visited(widget.deviceId),
-        );
-      }
     });
   }
 
@@ -124,9 +113,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   Future<void> _newConversation({String? cwd}) async {
     final threadId = await NewConversationScreen.show(context, initialCwd: cwd);
     if (threadId == null || !mounted) return;
-    await ref.read(bridgeReplicaProvider).sync();
-    if (mounted) {
-      context.openInPane(AppRoutes.conversation(threadId));
+    // Opened from the shell's navigator, not from this list: in the drawer the
+    // list can be rebuilt for another PC while the sync runs, and a
+    // conversation that was created must still open.
+    final opener = shellNavigatorKey.currentContext ?? context;
+    try {
+      await ref.read(bridgeReplicaProvider).sync();
+    } on Object {
+      // The conversation exists on the bridge either way; the next sync
+      // brings its row. Opening it is what the user asked for.
+    }
+    if (opener.mounted) {
+      unawaited(opener.openInPane(AppRoutes.conversation(threadId)));
     }
   }
 
@@ -154,7 +152,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   @override
   Widget build(BuildContext context) {
     final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
-    final sort = ref.watch(threadSortProvider);
+    final sort = ref.watch(listSortProvider(SortLevel.agents));
     final compact = ref.watch(threadDensityCompactProvider);
     // Scope to the selected PC and hide archived threads (those live on the
     // Archived screen). Legacy threads with no device tag are still shown (they
@@ -173,32 +171,31 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
 
-    final worktreeSort = ref.watch(worktreeSortProvider);
-    final projectSort = ref.watch(projectSortProvider);
+    final worktreeSort = ref.watch(listSortProvider(SortLevel.worktrees));
+    final projectSort = ref.watch(listSortProvider(SortLevel.projects));
     // Conversations are sorted BEFORE grouping — the grouping keeps the order
     // it is given, so one setting decides the order inside every folder.
     final groups = groupThreadsByWorkspace(
       threads: sortThreads(threads, sort, statusRank: _threadRank),
-      projects: ref.watch(projectsProvider).value ?? const [],
+      // This PC's own registry, whichever PC we are connected to.
+      projects: ref.watch(projectsProvider(widget.deviceId)).value ?? const [],
       // Empty on a bridge without `git/worktrees`, which is exactly the
-      // fallback: no table, no repository nodes, the flat list as before.
-      repos: ref.watch(workspaceRepoTableProvider).value ?? const {},
+      // fallback: no table, no repository nodes, the flat list as before. The
+      // table describes the CONNECTED PC's folders, so another PC's list does
+      // without it.
+      repos: connectedHere
+          ? ref.watch(workspaceRepoTableProvider).value ?? const {}
+          : const {},
     );
     final collapsed = ref.watch(collapsedProjectsProvider);
     // Each level is ordered by its OWN setting, including the worktrees inside
     // a project — the one list the menu could not reach while the tree sorted
     // them itself.
-    final rows = _flatten(
-      _sortNodes(
-        buildWorkspaceTree(
-          groups,
-          orderWorkspaces: (a, b) => _compareGroups(a, b, worktreeSort),
-        ),
-        projectSort,
-        worktreeSort,
-      ),
-      collapsed: collapsed,
+    final tree = buildWorkspaceTree(
+      groups,
+      orderWorkspaces: (a, b) => _compareGroups(a, b, worktreeSort),
     );
+    final rows = _flatten(_sortNodes(tree, projectSort), collapsed: collapsed);
 
     final l10n = AppLocalizations.of(context);
     final actions = [
@@ -208,31 +205,24 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
       ),
       ThreadSortMenu(
-        // The project group only appears when there IS one to order — a PC
-        // whose folders never group would otherwise get a menu entry that
-        // moves nothing it can see.
-        projectSort: rows.any((r) => r is _RepoRow) ? projectSort : null,
-        worktreeSort: worktreeSort,
-        agentSort: sort,
-        onChanged: (choice) {
-          switch (choice.level) {
-            case SortLevel.projects:
-              ref.read(projectSortProvider.notifier).set(choice.value);
-            case SortLevel.worktrees:
-              ref.read(worktreeSortProvider.notifier).set(choice.value);
-            case SortLevel.agents:
-              unawaited(
-                ref.read(threadSortProvider.notifier).set(choice.value),
-              );
-          }
+        levels: {
+          SortLevel.projects: projectSort,
+          // Only when a project heads several worktrees: otherwise every
+          // project IS its one folder, and the level would move nothing.
+          if (tree.any((node) => node is RepoWithWorktrees))
+            SortLevel.worktrees: worktreeSort,
+          SortLevel.agents: sort,
         },
+        onChanged: (choice) => unawaited(
+          ref.read(listSortProvider(choice.level).notifier).set(choice.value),
+        ),
       ),
       ThreadMoreMenu(
         compact: compact,
         onCompactChanged: (value) =>
             ref.read(threadDensityCompactProvider.notifier).set(value: value),
         onArchived: () =>
-            context.push(AppRoutes.deviceArchived(widget.deviceId)),
+            context.openInPane(AppRoutes.deviceArchived(widget.deviceId)),
       ),
     ];
 
@@ -274,7 +264,12 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             itemCount: rows.length,
             itemBuilder: (context, index) => NeEntranceRow(
               index: index,
-              child: _buildRow(context, rows[index], compact: compact),
+              child: _buildRow(
+                context,
+                rows[index],
+                compact: compact,
+                connectedHere: connectedHere,
+              ),
             ),
           ),
         ),
@@ -308,26 +303,19 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     );
   }
 
-  /// Orders the top level: projects by their own setting, lone worktrees by
-  /// the worktree setting, and the two interleaved so the list reads as one.
+  /// Orders the top level — every project, whether it is one folder or a
+  /// repository heading several worktrees — by the project setting.
   ///
-  /// A project and a lone worktree are peers on screen even though they are
-  /// different things, so they cannot be sorted into two blocks — that would
-  /// put every project above every folder regardless of what either setting
-  /// says.
+  /// One setting for the whole level. It used to take the project setting
+  /// between two repositories and the folder setting whenever a lone folder
+  /// was involved: two orderings in one comparison is not an ordering at all
+  /// (A before B by name, B before C and C before A by activity), and the
+  /// list came out in whatever order the sort happened to visit it.
   List<WorkspaceTreeNode> _sortNodes(
     List<WorkspaceTreeNode> nodes,
-    ListSort projectSort,
-    ListSort worktreeSort,
-  ) {
-    final list = [...nodes]..sort((a, b) {
-        final sort = a is RepoWithWorktrees && b is RepoWithWorktrees
-            ? projectSort
-            : worktreeSort;
-        return _compareNodes(a, b, sort);
-      });
-    return list;
-  }
+    ListSort sort,
+  ) =>
+      [...nodes]..sort((a, b) => _compareNodes(a, b, sort));
 
   int _compareNodes(WorkspaceTreeNode a, WorkspaceTreeNode b, ListSort sort) {
     return switch (sort) {
@@ -490,19 +478,33 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     BuildContext context,
     _SpaceRow row, {
     required bool compact,
+    required bool connectedHere,
   }) {
     switch (row) {
       case _RepoRow(:final repo, :final expanded):
-        return RepoGroupRow(
-          key: ValueKey('repo-${repo.key}'),
-          repo: repo,
-          expanded: expanded,
-          onToggle: () =>
-              ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
+        return Padding(
+          // A heading's press highlight must not touch the row under it.
+          padding: const EdgeInsets.only(bottom: UxnanSpacing.xs),
+          child: RepoGroupRow(
+            key: ValueKey('repo-${repo.key}'),
+            repo: repo,
+            expanded: expanded,
+            onToggle: () =>
+                ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
+          ),
         );
       case _WorkspaceRow(:final group, :final expanded, :final depth):
+        final path = group.path;
+        // Reading a folder's files or git goes through the live channel, and
+        // only to THIS PC — the same gate as every other live operation here.
+        final live = connectedHere && path != null && path.isNotEmpty;
         return Padding(
-          padding: EdgeInsets.only(left: depth * kSpaceIndent),
+          // The bottom gap keeps the heading's press highlight — held while
+          // its details sheet rises — off the first conversation under it.
+          padding: EdgeInsets.only(
+            left: depth * kSpaceIndent,
+            bottom: UxnanSpacing.xs,
+          ),
           child: WorkspaceGroupRow(
             key: ValueKey('workspace-${group.key}'),
             group: group,
@@ -520,7 +522,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
                 _ => null,
               },
             ),
-            onNewConversation: () => _newConversation(cwd: group.path),
+            // Against the live PC only, like the FAB: browsing a PC we are not
+            // connected to, "+" would start the conversation on whichever one
+            // we are.
+            onNewConversation:
+                connectedHere ? () => _newConversation(cwd: group.path) : null,
+            onOpenFiles: live
+                ? () => context.openInPane(AppRoutes.workspaceFiles(path))
+                : null,
+            onOpenGit: live
+                ? () => context.openInPane(AppRoutes.workspaceGit(path))
+                : null,
+            foldTools: widget.embedded,
           ),
         );
       case _ThreadRow(:final thread, :final depth):

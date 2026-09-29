@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/agent_run_state.dart';
@@ -281,7 +281,7 @@ class _FullContent extends ConsumerWidget {
             if (thread.lastActivity != null) ...[
               const SizedBox(width: UxnanSpacing.sm),
               Text(
-                activityTimeLabel(thread.lastActivity!),
+                formatWhen(thread.lastActivity!),
                 style: textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,
                 ),
@@ -337,7 +337,7 @@ class _CompactContent extends StatelessWidget {
         if (thread.lastActivity != null) ...[
           const SizedBox(width: UxnanSpacing.sm),
           Text(
-            activityTimeLabel(thread.lastActivity!),
+            formatWhen(thread.lastActivity!),
             style: textTheme.bodySmall?.copyWith(
               color: colors.onSurfaceVariant,
             ),
@@ -392,6 +392,7 @@ Future<void> showThreadActions(
   final isArchived = thread.status == ThreadStatus.archived;
   final action = await showModalBottomSheet<_ThreadAction>(
     context: context,
+    useRootNavigator: true,
     showDragHandle: true,
     builder: (context) => SafeArea(
       child: SingleChildScrollView(
@@ -529,15 +530,4 @@ Future<bool> _confirmDeleteThread(
     ),
   );
   return confirmed ?? false;
-}
-
-/// When something last happened, the way the lists show it: the time today,
-/// the date before that.
-String activityTimeLabel(DateTime time) {
-  final now = DateTime.now();
-  final isSameDay =
-      now.year == time.year && now.month == time.month && now.day == time.day;
-  return isSameDay
-      ? DateFormat.Hm().format(time)
-      : DateFormat.MMMd().format(time);
 }

@@ -18,7 +18,6 @@ class ProfilePreferencesStore {
 
   static const String _avatarKey = 'uxnan.profile.avatar';
   static const String _usageRefreshKey = 'uxnan.profile.usageRefreshInterval';
-  static const String _usageClock24hKey = 'uxnan.profile.usageClock24h';
   static const String _metricsRefreshKey =
       'uxnan.profile.metricsRefreshInterval';
 
@@ -69,17 +68,5 @@ class ProfilePreferencesStore {
   Future<void> writeMetricsRefreshInterval(String name) async {
     final prefs = await _prefs;
     await prefs.setString(_metricsRefreshKey, name);
-  }
-
-  /// Whether usage reset times use a 24-hour clock, or null when unset.
-  Future<bool?> readUsageClock24h() async {
-    final prefs = await _prefs;
-    return prefs.getBool(_usageClock24hKey);
-  }
-
-  /// Persists the 24-hour-clock preference.
-  Future<void> writeUsageClock24h({required bool value}) async {
-    final prefs = await _prefs;
-    await prefs.setBool(_usageClock24hKey, value);
   }
 }

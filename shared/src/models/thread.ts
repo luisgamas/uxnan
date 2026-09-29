@@ -146,6 +146,13 @@ export interface Thread {
   status: ThreadStatus;
   turnCount: number;
   createdAt: number;
+  /**
+   * When the conversation last MOVED (epoch ms): a turn started, stored or
+   * ended, its history re-read, its title or status decided. Every client
+   * sorts and dates its rows by it. A setting — `model`, `accessMode`,
+   * `agentSessionId` — does not move it: it reaches clients as a change of its
+   * own (`rev`) but never reorders a list.
+   */
   updatedAt: number;
   /** Agent driving this thread (e.g. `opencode`, `echo`). */
   agentId?: string;

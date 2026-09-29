@@ -798,29 +798,31 @@ class UxnanApp extends ConsumerWidget {
 
 **Configuracion del router:**
 
+`appRouterProvider` (`lib/presentation/router/app_router.dart`) devuelve un
+`GoRouter` con una tabla **plana** dentro de una unica `ShellRoute` (el
+`AppShell` decide si la pantalla es la ventana o el panel junto al drawer). Las
+rutas y sus pantallas estan en `02a-system-architecture.md` §5.4.3; un extracto
+de las que se construyen con parametros:
+
 ```dart
-// lib/presentation/router/app_router.dart
-final appRouterProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
-    routes: [
-      GoRoute(path: '/', builder: (_, __) => const AppShellScreen(), routes: [
-        GoRoute(path: 'home', builder: (_, __) => const HomeScreen()),
-        GoRoute(
-          path: 'conversation/:threadId',
-          builder: (_, s) => ConversationScreen(
-            threadId: s.pathParameters['threadId']!,
-          ),
-        ),
-        GoRoute(path: 'settings', builder: (_, __) => const SettingsScreen()),
-        GoRoute(path: 'devices', builder: (_, __) => const MyDevicesScreen()),
-        GoRoute(path: 'projects', builder: (_, __) => const ProjectsScreen()),
-        GoRoute(path: 'terminal', builder: (_, __) => const TerminalScreen()),
-      ]),
-      GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
-      GoRoute(path: '/pairing', builder: (_, __) => const QrScannerScreen()),
-    ],
-  );
-});
+// lib/presentation/router/app_router.dart (extracto)
+GoRoute(
+  path: AppRoutes.conversationPattern, // '/conversation/:threadId'
+  builder: (context, state) => ConversationScreen(
+    key: ValueKey(state.pathParameters['threadId']),
+    threadId: state.pathParameters['threadId']!,
+  ),
+),
+// Los archivos y el git son de la CARPETA: `cwd` viaja en la query.
+GoRoute(
+  path: AppRoutes.workspaceGitPattern, // '/workspace/git?cwd=…&thread=…'
+  redirect: _requireCwd,
+  builder: (context, state) => GitScreen(
+    key: ValueKey(state.uri.query),
+    cwd: state.uri.queryParameters['cwd']!,
+    threadId: state.uri.queryParameters['thread'],
+  ),
+),
 ```
 
 ### 3.3 Flavors (dev/staging/prod)

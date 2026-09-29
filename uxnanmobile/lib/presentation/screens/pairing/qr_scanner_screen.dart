@@ -11,6 +11,7 @@ import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/pairing/update_prompt_dialog.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -215,7 +216,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
               leading: IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: context.closePane,
               ),
               title: Text(
                 l10n.qrScannerTitle,
@@ -380,7 +381,7 @@ class _ScannerError extends StatelessWidget {
               ),
               const SizedBox(height: UxnanSpacing.xl),
               NeButton(
-                onPressed: () => context.go(AppRoutes.manualPairing),
+                onPressed: () => context.push(AppRoutes.manualPairing),
                 label: l10n.manualCodeTitle,
               ),
               const SizedBox(height: UxnanSpacing.sm),

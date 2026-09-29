@@ -124,7 +124,8 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
   `generateTitle`, and compare with [`agents.md`](./agents.md) → *OpenCode 1 and
   OpenCode 2*.
 - **Mid-turn delivery (steering) — every agent that has it.** Drive a scratch
-  bridge (`startBridge({ baseDir })`, never `~/.uxnan`) through a turn that works
+  bridge (`startBridge({ baseDir })`, never `~/.uxnan`; its identity stays in
+  memory unless you pass `useKeychain`, which only the CLI does) through a turn that works
   a few seconds (`sleep 12 && echo one`), send a follow-up while it runs, and
   check the lifecycle is `completed` for the first turn then `started` for the
   follow-up, with the answer stored under the follow-up and no duplicate turn

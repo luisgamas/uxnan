@@ -9,6 +9,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -102,9 +103,12 @@ class _DeviceHeader extends ConsumerWidget {
       // list. Picking a PC here is the same act as picking one on the home
       // screen, and it fails the same way.
       await ref.read(sessionCoordinatorProvider).switchMac(target);
-      await ref.read(lastVisitedDeviceProvider.notifier).visited(
-            target.macDeviceId,
-          );
+      await ref.read(focusedDeviceProvider.notifier).focus(target.macDeviceId);
+      // Whatever the pane held belongs to the PC you just left; beside the
+      // new PC's list it would say the switch did not happen.
+      if (context.mounted && await context.clearPane() && context.mounted) {
+        context.go(AppRoutes.home);
+      }
     } on Object {
       messenger
         ..clearSnackBars()
@@ -155,67 +159,151 @@ class _DeviceHeader extends ConsumerWidget {
     // would be a second answer to the same question.
     final kind = ref.watch(networkKindProvider);
 
+    // The whole row is the PC switcher: the chosen PC, and a chevron down that
+    // says a menu drops from it. It is
+    // there with ONE PC too: the same menu is where you pair another and
+    // manage the ones you have, which a tablet had no way to reach at all.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.md,
-        UxnanSpacing.sm,
-        UxnanSpacing.sm,
-        UxnanSpacing.sm,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    _OnlineDot(online: online),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Flexible(
-                      child: Text(
-                        current.displayName,
-                        style: textTheme.titleMedium,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                if (online) ...[
-                  const SizedBox(height: 2),
-                  TransportBadge(kind: kind, dense: true),
-                ],
-              ],
-            ),
-          ),
-          // Only when there is somewhere to switch TO. With one PC paired
-          // this is a control whose entire menu is the row beside it.
-          if (devices.length > 1)
-            IconSurfaceMenu<TrustedDevice>(
-              icon: UxIcons.moreVert,
-              tooltip: l10n.drawerSwitchDevice,
-              onSelected: (target) =>
-                  unawaited(_switchTo(context, ref, target)),
-              itemBuilder: (context) => [
-                for (final option in devices)
-                  CheckedPopupMenuItem<TrustedDevice>(
-                    value: option,
-                    checked: option.macDeviceId == connected?.macDeviceId,
-                    child: Text(
-                      option.displayName,
-                      style: UxnanTypography.menuItem.copyWith(
-                        color: colors.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+      padding: const EdgeInsets.all(UxnanSpacing.sm),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        child: InkWell(
+          borderRadius: const BorderRadius.all(UxnanRadius.lg),
+          onTap: () => unawaited(_openPcMenu(context, ref, current)),
+          child: Semantics(
+            button: true,
+            label: l10n.drawerSwitchDevice,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.sm,
+                UxnanSpacing.xs,
+                UxnanSpacing.sm,
+                UxnanSpacing.xs,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            _OnlineDot(online: online),
+                            const SizedBox(width: UxnanSpacing.sm),
+                            Flexible(
+                              child: Text(
+                                current.displayName,
+                                style: textTheme.titleMedium,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (online) ...[
+                          const SizedBox(height: 2),
+                          TransportBadge(kind: kind, dense: true),
+                        ],
+                      ],
                     ),
                   ),
-              ],
+                  const SizedBox(width: UxnanSpacing.sm),
+                  UxIcon(
+                    UxIcons.expandMore,
+                    size: UxnanSize.iconContent,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
-        ],
+          ),
+        ),
       ),
     );
+  }
+
+  /// The PC menu: every paired PC (the current one checked), then managing
+  /// them, and pairing another — whose two ways open in a submenu beside it.
+  ///
+  /// What was picked is acted on AFTER the menu has closed — navigating from
+  /// inside an open menu left its barrier up with nothing to dismiss it.
+  Future<void> _openPcMenu(
+    BuildContext context,
+    WidgetRef ref,
+    TrustedDevice current,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final picked = await showMenu<Object>(
+      context: context,
+      position: menuPositionUnder(context),
+      constraints: kNeMenuConstraints,
+      items: [
+        for (final option in devices)
+          _drawerMenuItem<Object>(
+            context,
+            value: option,
+            icon: UxIcons.laptopMac,
+            label: option.displayName,
+            trailing: option.macDeviceId == current.macDeviceId
+                ? UxIcon(
+                    UxIcons.check,
+                    size: UxnanSize.iconContent,
+                    color: colors.primary,
+                  )
+                : null,
+          ),
+        const PopupMenuDivider(),
+        _drawerMenuItem<Object>(
+          context,
+          value: AppRoutes.devices,
+          icon: UxIcons.settings,
+          label: l10n.drawerManageDevices,
+        ),
+        // The two ways to pair, in a submenu beside this row — Material's
+        // nested menu: next to its parent, never on top of it.
+        PopupMenuItem<Object>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: Builder(
+            builder: (rowContext) => NeSubmenuRow<String>(
+              icon: UxIcons.addLink,
+              label: l10n.actionPairDevice,
+              items: () => [
+                _drawerMenuItem(
+                  rowContext,
+                  value: AppRoutes.pairing,
+                  icon: UxIcons.qrCodeScanner,
+                  label: l10n.actionScanQr,
+                ),
+                _drawerMenuItem(
+                  rowContext,
+                  value: AppRoutes.manualPairing,
+                  icon: UxIcons.key,
+                  label: l10n.manualCodeTitle,
+                ),
+              ],
+              // Picked in the submenu: close the PC menu with it, so it is
+              // acted on once both menus are gone.
+              onSelected: (route) => Navigator.of(rowContext).pop(route),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (!context.mounted) return;
+    switch (picked) {
+      case final TrustedDevice target
+          when target.macDeviceId != current.macDeviceId:
+        await _switchTo(context, ref, target);
+      case AppRoutes.devices:
+        // The PCs' own screen, in the pane: rename, remove, verify.
+        await context.openInPane(AppRoutes.devices);
+      case final String route:
+        await context.push<void>(route);
+    }
   }
 }
 
@@ -254,7 +342,11 @@ class _ProfileFooter extends ConsumerWidget {
       // a deep walk (conversation → files → git) without back then retracing
       // every screen that walk touched. A permanent drawer makes that stack
       // invisible, and an invisible stack is one nobody can reason about.
-      onTap: () => context.go(AppRoutes.home),
+      onTap: () async {
+        if (await context.clearPane() && context.mounted) {
+          context.go(AppRoutes.home);
+        }
+      },
       trailing: const _FooterMenu(),
     );
   }
@@ -279,197 +371,69 @@ class _OnlineDot extends StatelessWidget {
   }
 }
 
-/// The drawer footer's actions: settings, and adding a device.
+/// The drawer footer's actions: your profile and the app's settings.
 ///
-/// These are the two the phone keeps in its app bar. On a tablet the content
-/// pane's bar belongs to whatever is open there, so they come down here — as a
-/// MENU rather than two more buttons, because the row already has a job and a
-/// drawer that grows a button per action becomes a toolbar.
-///
-/// Built exactly like the sort menu: a second `showMenu` pushed OVER the first
-/// without popping it, and a back row to leave it. The first attempt navigated
-/// while the outer menu was still open, which left its barrier up with nothing
-/// to dismiss it — the app froze with a menu on screen and no way out.
+/// The phone keeps these in its app bar. On a tablet the content pane's bar
+/// belongs to whatever is open there, so they come down here — as a MENU
+/// rather than more buttons, because the row already has a job and a drawer
+/// that grows a button per action becomes a toolbar. Pairing lives with the
+/// PCs, in the header's menu.
 class _FooterMenu extends StatelessWidget {
   const _FooterMenu();
-
-  Future<void> _open(BuildContext context) async {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final anchor = menuPositionUnder(context);
-
-    // Deferred until AFTER the menu has closed. Opening anything from inside an
-    // open menu is what froze it: the barrier stayed up with nothing to
-    // dismiss it.
-    String? route;
-
-    await showMenu<void>(
-      context: context,
-      position: anchor,
-      constraints: kNeMenuConstraints,
-      items: [
-        PopupMenuItem<void>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: _MenuRow(
-            icon: UxIcons.person,
-            label: l10n.profileTitle,
-            // Where the name and the picture are changed, beside the stats
-            // that are this phone's.
-            onTap: () {
-              route = AppRoutes.profile;
-              Navigator.of(context).pop();
-            },
-          ),
-        ),
-        PopupMenuItem<void>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: _MenuRow(
-            icon: UxIcons.settings,
-            label: l10n.settingsTitle,
-            onTap: () {
-              route = AppRoutes.settings;
-              Navigator.of(context).pop();
-            },
-          ),
-        ),
-        PopupMenuItem<void>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: _MenuRow(
-            icon: UxIcons.addLink,
-            label: l10n.drawerDevices,
-            trailing: UxIcon(
-              UxIcons.chevronRight,
-              size: UxnanSize.iconContentSmall,
-              color: colors.onSurfaceVariant,
-            ),
-            onTap: () async {
-              final picked = await _pickPairing(context, anchor, l10n);
-              if (picked == null || !context.mounted) return;
-              route = picked;
-              Navigator.of(context).pop();
-            },
-          ),
-        ),
-      ],
-    );
-
-    if (!context.mounted) return;
-    final target = route;
-    if (target != null) await context.push(target);
-  }
-
-  /// The two ways to add a device, over the first panel rather than replacing
-  /// it — and with a row back, because a thumb has nowhere to move to.
-  Future<String?> _pickPairing(
-    BuildContext context,
-    RelativeRect anchor,
-    AppLocalizations l10n,
-  ) {
-    final colors = Theme.of(context).colorScheme;
-    return showMenu<String>(
-      context: context,
-      position: anchor,
-      constraints: kNeMenuConstraints,
-      items: [
-        PopupMenuItem<String>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: _MenuRow(
-            icon: UxIcons.chevronLeft,
-            label: l10n.drawerDevices,
-            muted: true,
-            onTap: () => Navigator.of(context).pop(),
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: AppRoutes.pairing,
-          child: Text(
-            l10n.actionScanQr,
-            style: UxnanTypography.menuItem.copyWith(color: colors.onSurface),
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: AppRoutes.manualPairing,
-          child: Text(
-            l10n.manualCodeTitle,
-            style: UxnanTypography.menuItem.copyWith(color: colors.onSurface),
-          ),
-        ),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return IconSurface(
+    return IconSurfaceMenu<String>(
       icon: UxIcons.moreVert,
-      tooltip: l10n.drawerDevices,
-      onPressed: () => unawaited(_open(context)),
+      tooltip: l10n.threadsMore,
+      // Destinations: pushed over everything, and back returns here.
+      onSelected: (route) => unawaited(context.push<void>(route)),
+      itemBuilder: (context) => [
+        _drawerMenuItem(
+          context,
+          value: AppRoutes.profile,
+          icon: UxIcons.person,
+          label: l10n.profileTitle,
+        ),
+        _drawerMenuItem(
+          context,
+          value: AppRoutes.settings,
+          icon: UxIcons.settings,
+          label: l10n.settingsTitle,
+        ),
+      ],
     );
   }
 }
 
-/// A row inside the footer menu, at the app's menu metrics.
-///
-/// Hand-built rather than a plain item because these must NOT dismiss the menu
-/// themselves: one opens a second panel, another goes back, and the one that
-/// navigates has to let the menu close first.
-class _MenuRow extends StatelessWidget {
-  const _MenuRow({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.trailing,
-    this.muted = false,
-  });
-
-  final UxIconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Widget? trailing;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: UxnanSpacing.md,
+/// One row of a drawer menu, at the app's menu metrics: its own glyph at the
+/// row size and in the row's own colour — a muted glyph beside a label naming
+/// the same action reads as disabled rather than as quiet.
+PopupMenuItem<T> _drawerMenuItem<T>(
+  BuildContext context, {
+  required T value,
+  required UxIconData icon,
+  required String label,
+  Widget? trailing,
+}) {
+  final colors = Theme.of(context).colorScheme;
+  return PopupMenuItem<T>(
+    value: value,
+    child: Row(
+      children: [
+        UxIcon(icon, size: UxnanSize.iconContent, color: colors.onSurface),
+        const SizedBox(width: UxnanSpacing.md),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: UxnanTypography.menuItem.copyWith(color: colors.onSurface),
+          ),
         ),
-        child: Row(
-          children: [
-            // A menu row's glyph is the row's OWN mark: it takes the row size
-            // (`iconContentSmall` is the subordinate one, for a mark that
-            // accompanies another) and the row's OWN colour. Muted, it sat a
-            // tone below the label naming the same action, which reads as
-            // disabled rather than as quiet. Only a row that IS quiet — the
-            // back row — keeps the muted tone, and it takes it on both.
-            UxIcon(
-              icon,
-              size: UxnanSize.iconContent,
-              color: muted ? colors.onSurfaceVariant : colors.onSurface,
-            ),
-            const SizedBox(width: UxnanSpacing.md),
-            Expanded(
-              child: Text(
-                label,
-                style: UxnanTypography.menuItem.copyWith(
-                  color: muted ? colors.onSurfaceVariant : colors.onSurface,
-                ),
-              ),
-            ),
-            if (trailing != null) trailing!,
-          ],
-        ),
-      ),
-    );
-  }
+        if (trailing != null) trailing,
+      ],
+    ),
+  );
 }

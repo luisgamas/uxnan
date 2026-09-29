@@ -19,18 +19,24 @@ class ThreadListPreferencesStore {
   static const String _collapsedKey = 'uxnan.threads.collapsedProjects';
   static const String _lastDeviceKey = 'uxnan.threads.lastDevice';
 
-  /// The persisted sort mode name, or `null` if never set (keep the default).
-  Future<String?> readSort() async {
+  /// The persisted ordering of the list level named [level] (`projects`,
+  /// `worktrees`, `agents`, `archive`), or `null` if never set (keep the
+  /// default). The conversations keep the key they always had.
+  Future<String?> readSort(String level) async {
     final prefs = await _prefs;
-    if (!prefs.containsKey(_sortKey)) return null;
-    return prefs.getString(_sortKey);
+    final key = _sortKeyFor(level);
+    if (!prefs.containsKey(key)) return null;
+    return prefs.getString(key);
   }
 
-  /// Persists the sort mode by its [Enum.name].
-  Future<void> writeSort(String name) async {
+  /// Persists the ordering of the list level [level] by its [Enum.name].
+  Future<void> writeSort(String level, String name) async {
     final prefs = await _prefs;
-    await prefs.setString(_sortKey, name);
+    await prefs.setString(_sortKeyFor(level), name);
   }
+
+  static String _sortKeyFor(String level) =>
+      level == 'agents' ? _sortKey : '$_sortKey.$level';
 
   /// Whether the compact density is on, or `null` if never set (keep default).
   Future<bool?> readCompact() async {

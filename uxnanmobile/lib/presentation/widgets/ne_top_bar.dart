@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -157,6 +159,13 @@ class NeScaffold extends StatefulWidget {
   final List<Widget> actions;
 
   /// Optional FAB.
+  ///
+  /// While there is one, the scroll view ends with room for it: a button
+  /// floating over the bottom of a list otherwise sits on its last rows at the
+  /// very moment the list stops — scrolled all the way down, the last folder of
+  /// a long threads list could not be reached. Hiding on scroll
+  /// ([hideFabOnScroll]) cannot help there, because the button returns as soon
+  /// as the scroll settles.
   final Widget? floatingActionButton;
 
   /// Where the [floatingActionButton] sits; defaults to the Scaffold's
@@ -226,13 +235,22 @@ class _NeScaffoldState extends State<NeScaffold> {
     // route was REPLACED rather than stacked. A back arrow there points at the
     // screen you are already looking at. Deeper in (files, git) it still means
     // what it says, and `canPop` still answers that.
+    //
+    // On a phone a screen can be first with a level above it all the same:
+    // rotate a tablet and a replaced pane becomes a stack of one. Without an
+    // arrow there — and iOS has no system back — a PC's list was a dead end
+    // with no way to the overview. `closePane` knows the level above.
     final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final location = context.currentLocation;
+    final hasParent = !context.hasPermanentPane &&
+        location != null &&
+        location != AppRoutes.home;
     final lead = widget.leading ??
-        (widget.automaticBackButton && canPop
+        (widget.automaticBackButton && (canPop || hasParent)
             ? IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: context.closePane,
               )
             : null);
 
@@ -260,6 +278,17 @@ class _NeScaffoldState extends State<NeScaffold> {
                 SliverPadding(padding: padding, sliver: sliver)
               else
                 sliver,
+            if (widget.floatingActionButton != null)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  // Where the Scaffold floats it: a margin above the system
+                  // inset. The screen's own bottom padding stays as the gap
+                  // between the last row and the button.
+                  height: UxnanSize.fab +
+                      kFloatingActionButtonMargin +
+                      MediaQuery.paddingOf(context).bottom,
+                ),
+              ),
           ],
         );
       },

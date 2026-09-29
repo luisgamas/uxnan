@@ -134,6 +134,39 @@ spec, the spec wins.
     *went*, not something you opened from a list, so they own the window and the
     drawer steps aside — see `AppShell.isFullScreen`.
 
+- **A submenu opens beside the item that opened it, never on top of it.**
+  Nested menus follow Material's menu spec: the submenu sits to the right of
+  its row, to the left when the right does not fit, and under the row when
+  neither side does (a phone) — it never covers the parent row, and that row
+  shows the active state while its submenu is open. Both nested menus — the
+  sort control's levels and the drawer PC menu's *Pair a device* — use the one
+  primitive for it: `NeSubmenuRow` (a row with a trailing chevron) and
+  `showSubmenu` in `widgets/ne_menu_button.dart`. The parent menu stays up
+  while the submenu is open, so a second choice is one tap away. Menu items
+  are plain `PopupMenuItem`s that return a value, acted on after the menu has
+  closed.
+
+- **A sheet or a dialog covers the whole window.** Every
+  `showModalBottomSheet` passes `useRootNavigator: true`, as `showDialog`
+  already does by default. Attached to the nearest navigator, a sheet opened
+  inside Settings' pane or the tablet's content pane covered only that half —
+  the drawer stayed live beside a "modal" — and switching Settings section
+  with one open threw it away, with whatever had been typed into it.
+
+- **Pane-emptying asks, and tells progress from refusal** (`clearNavigator`).
+  A screen with a navigator of its own (Settings' pane) answers "not yet"
+  while it pops its own child; only a screen that raises a dialog over the
+  app has declined. Settings' list arrow empties its pane that way and then
+  leaves Settings, in one tap.
+
+- **A child of a destination is pushed, never routed.** The PC stats screen
+  (`PcDetailsScreen.push`) was a go_router route: opened from the profile
+  inside Settings' pane on a tablet, it escaped the pane — Settings closed and
+  the stats sat beside the drawer. Anything opened FROM a screen stacks in
+  that screen's navigator. And a destination renders one way per layout: on
+  a tablet `/profile` IS Settings with its profile section, the same place the
+  drawer and Settings both lead to.
+
 - **Which navigation API depends on what the screen IS.** Both are in use, and
   mixing them is the design, not drift:
 
@@ -143,13 +176,16 @@ spec, the spec wins.
   | **content** opened from a list | `context.openInPane` | a tap means two different things by width, and this is the one place that decides (`router/pane_navigation.dart`) |
   | a **child** of what is already open | `Navigator.of(context).push` + a `static push(...)` on the screen | it lands in the nearest navigator, which is the pane's — so it stacks inside instead of taking the window |
 
-  Going back is `Navigator.of(context).maybePop()` — the app bar's arrow
-  (`NeTopBar`) and every screen that draws its own. **Never `context.pop()`**,
-  which is why there are zero of them: a raw `Navigator.push` puts pages
-  go_router does not know about on top of the route, so `context.pop` pops the
-  *route underneath* and leaves the child covering the screen. The same
-  mismatch is why `openInPane` empties `shellNavigatorKey` before it calls
-  `go`.
+  Going back is `context.closePane()` — the app bar's arrow (`NeScaffold`)
+  and every screen that draws its own. It pops what is stacked (asking the
+  screen first, `maybePop`), and with nothing to pop it closes the pane on a
+  wide window or goes one level up on a phone (`RouteFacts.parent`). **Never
+  `context.pop()`**, which is why there are zero of them: a raw
+  `Navigator.push` puts pages go_router does not know about on top of the
+  route, so `context.pop` pops the *route underneath* and leaves the child
+  covering the screen. The same mismatch is why `openInPane` empties
+  `shellNavigatorKey` before it calls `go` — asking each screen, never
+  `pop()`ing past its guard.
 
   The OS back button reaches none of this directly — it goes to
   `GoRouterDelegate.popRoute`, and what the app tells Android about it lives in
