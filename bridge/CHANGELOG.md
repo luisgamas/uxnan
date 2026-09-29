@@ -4,6 +4,16 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **A bridge started from code no longer borrows your real identity.**
+  `startBridge()` read the OS keychain by default — while its own doc comment
+  said "in-memory" — so a scratch or test bridge came up with the real
+  bridge's device id and private key, and every phone paired with it trusted
+  the real identity (found running a scratch bridge against an Android
+  emulator; nothing was written, only read). The identity now stays in memory
+  unless `useKeychain: true` is passed, which only the CLI's `start` and `qr`
+  do.
 
 ## [0.0.40-alpha.20260928] - 20260928
 ### Fixed

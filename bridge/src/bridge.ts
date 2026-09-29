@@ -39,7 +39,7 @@ import { registerAllHandlers } from './handlers/index.js';
 import { DaemonState, DAEMON_FILES } from './daemon-state.js';
 import { LockFile } from './lock-file.js';
 import { SecureDeviceState } from './secure-device-state.js';
-import type { SecretStore } from './secret-store.js';
+import { InMemorySecretStore, type SecretStore } from './secret-store.js';
 import { createDefaultSecretStore } from './keyring-secret-store.js';
 import { SessionState } from './session-state.js';
 import { buildBridgeStatus } from './bridge-status.js';
@@ -106,8 +106,21 @@ import { recordChildrenIn } from './adapters/spawn.js';
 export interface StartBridgeOptions {
   /** Override the daemon state directory (defaults to `~/.uxnan`). */
   baseDir?: string;
-  /** Inject a secret store (defaults to an in-memory one). */
+  /**
+   * Inject a secret store. Without one — and without [useKeychain] — the
+   * bridge's identity lives in memory, so a bridge started from code (a test,
+   * a scratch run against an emulator) never reads or writes the OS keychain.
+   */
   secretStore?: SecretStore;
+  /**
+   * Keep the bridge's identity (and the metrics seal key) in the OS keychain,
+   * where it survives restarts. Only the long-running daemon and the CLI's
+   * own commands (`uxnan-bridge start`, `qr`) set it: a bridge started any
+   * other way that read the keychain came up as the user's real bridge — same
+   * device id, same private key — and every phone paired with it trusted the
+   * real identity.
+   */
+  useKeychain?: boolean;
   logLevel?: LogLevel;
   /** Inject a clock (epoch ms) for testability. */
   now?: () => number;
@@ -233,7 +246,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     await state.writeJson(DAEMON_FILES.pairing, { sessionId: pairingSessionId });
   }
 
-  const secretStore = options.secretStore ?? (await createDefaultSecretStore(logger));
+  const secretStore =
+    options.secretStore ??
+    (options.useKeychain === true
+      ? await createDefaultSecretStore(logger)
+      : new InMemorySecretStore());
   const deviceState = new SecureDeviceState(secretStore);
   await deviceState.loadOrCreate();
 

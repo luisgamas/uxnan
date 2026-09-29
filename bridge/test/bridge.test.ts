@@ -172,3 +172,17 @@ test('bridge/removeTrustedDevice validates its params', async () => {
   await bridge.stop();
   await rmrf(baseDir);
 });
+
+test('a bridge started from code never takes a persistent identity', async () => {
+  // Without `useKeychain` the identity is the process's own, in memory: two
+  // scratch bridges are two PCs, never both the user's real bridge from the
+  // OS keychain.
+  const dirs = [0, 1].map(() => join(tmpdir(), `uxnan-bridge-test-${randomUUID()}`));
+  const bridges = await Promise.all(
+    dirs.map((baseDir) => startBridge({ baseDir, logLevel: 'error', now: () => NOW })),
+  );
+  const ids = bridges.map((b) => b.generatePairingQr().macDeviceId);
+  assert.notEqual(ids[0], ids[1]);
+  for (const bridge of bridges) await bridge.stop();
+  for (const dir of dirs) await rmrf(dir);
+});
