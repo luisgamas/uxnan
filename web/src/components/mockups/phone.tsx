@@ -14,6 +14,8 @@ import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
 import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
 import ListFilterIcon from "@hugeicons/core-free-icons/FilterIcon";
@@ -247,11 +249,15 @@ function FolderRow({
               style={{ color: M3.live }}
             />
           )}
-          <HugeiconsIcon
-            icon={PlusIcon}
-            className="size-[9px]"
-            style={{ color: M3.onSurfaceVar }}
-          />
+          {/* the folder's own files and source control, then "+" at the edge */}
+          {[FolderOpenIcon, GitCommitIcon, PlusIcon].map((icon, i) => (
+            <HugeiconsIcon
+              key={i}
+              icon={icon}
+              className="size-[9px]"
+              style={{ color: M3.onSurfaceVar }}
+            />
+          ))}
         </span>
       </div>
       <div
