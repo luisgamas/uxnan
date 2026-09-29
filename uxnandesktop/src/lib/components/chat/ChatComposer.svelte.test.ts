@@ -200,21 +200,21 @@ describe("ChatComposer", () => {
     expect(read).toEqual(["/tmp/notes.txt"]);
   });
 
-  it("says whether a message sent while the agent works goes in now or waits, and keeps Stop at hand", async () => {
+  it("says a message sent while the agent works reaches it at its next pause, and keeps Stop at hand", async () => {
     const { screen, user } = mountWithProviders(ChatComposer, {
-      props: { running: true, deliversNow: true, onstop: () => undefined, onsend: () => undefined },
+      props: { running: true, atNextPause: true, onstop: () => undefined, onsend: () => undefined },
     });
     const box = screen.getByRole("textbox") as HTMLTextAreaElement;
     await user.click(box);
     await user.keyboard("also check the docs");
-    expect(screen.getByText(/takes this message now/)).toBeTruthy();
+    expect(screen.getByText(/reaches it at its next pause/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Queue" })).toBeTruthy();
   });
 
   it("says a message waits in the queue when the agent cannot take it now", async () => {
     const { screen, user } = mountWithProviders(ChatComposer, {
-      props: { running: true, deliversNow: false, onstop: () => undefined, onsend: () => undefined },
+      props: { running: true, atNextPause: false, onstop: () => undefined, onsend: () => undefined },
     });
     await user.click(screen.getByRole("textbox"));
     await user.keyboard("later");

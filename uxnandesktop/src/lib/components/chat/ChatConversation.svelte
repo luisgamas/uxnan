@@ -236,22 +236,14 @@
   /** The agent takes a message while it works (`capabilities.steering`). */
   const steers = $derived(chat.agent(thread?.agentId)?.capabilities?.steering === true);
 
-  /** A queued message can go now: into the running turn when the agent takes
-   *  input mid-turn and is not waiting on an answer (the bridge refuses it
-   *  then), or — nothing running (a paused queue) — as the next turn. */
-  const canSendNow = $derived(
-    !conversation.running || (steers && conversation.openRequests.length === 0),
-  );
+  /** A queued message can be sent now only with nothing running (a paused
+   *  queue): while the agent works, one that takes input mid-turn gets the
+   *  first queued message at its next pause, and any other when it finishes. */
+  const canSendNow = $derived(!conversation.running);
 
-  /** A message sent now reaches the running agent at its next step instead of
-   *  waiting in the queue — exactly when the bridge would hand it over. */
-  const deliversNow = $derived(
-    conversation.running &&
-      steers &&
-      conversation.queue.turnIds.length === 0 &&
-      !conversation.queue.paused &&
-      conversation.openRequests.length === 0,
-  );
+  /** While the agent works, a message sent now waits in the queue and reaches
+   *  an agent that takes input mid-turn at its next pause. */
+  const atNextPause = $derived(conversation.running && steers);
 
   /** Messages waiting in the queue, in its order: shown below everything. */
   const queued = $derived(
@@ -558,41 +550,48 @@
             <div class="flex flex-col items-end gap-0.5">
               <ChatUserText text={String(user?.content ?? "")} queued />
               <div class={cn(text.meta, "flex items-center gap-1")}>
-                <Icon icon={Clock01Icon} class={cn(icon.status, "shrink-0")} />
-                <span class="mr-1">
-                  {qi === 0
-                    ? i18n.t("chat.queuedNext")
-                    : i18n.t("chat.queuedPosition", { n: qi + 1 })}
-                </span>
-                {#if canSendNow}
+                {#if conversation.queue.delivering === turn.id}
+                  <!-- The agent has it: it reads it when the step it is in
+                       ends, and it can no longer be taken back. -->
+                  <Spinner class={cn(icon.status, "shrink-0")} />
+                  <span>{i18n.t("chat.queuedDelivering")}</span>
+                {:else}
+                  <Icon icon={Clock01Icon} class={cn(icon.status, "shrink-0")} />
+                  <span class="mr-1">
+                    {qi === 0
+                      ? i18n.t("chat.queuedNext")
+                      : i18n.t("chat.queuedPosition", { n: qi + 1 })}
+                  </span>
+                  {#if canSendNow}
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={i18n.t("chat.sendQueuedNow")}
+                      title={i18n.t("chat.sendQueuedNow")}
+                      onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
+                    >
+                      <Icon icon={ArrowUp02Icon} class={icon.status} />
+                    </Button>
+                  {/if}
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label={i18n.t("chat.sendQueuedNow")}
-                    title={i18n.t("chat.sendQueuedNow")}
-                    onclick={() => void chat.sendQueuedNow(threadId, turn.id).catch(toastError)}
+                    aria-label={i18n.t("chat.editQueued")}
+                    title={i18n.t("chat.editQueued")}
+                    onclick={() => void editQueued(turn)}
                   >
-                    <Icon icon={ArrowUp02Icon} class={icon.status} />
+                    <Icon icon={PencilEdit02Icon} class={icon.status} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={i18n.t("chat.cancelQueued")}
+                    title={i18n.t("chat.cancelQueued")}
+                    onclick={() => void chat.cancel(threadId, turn.id).catch(toastError)}
+                  >
+                    <Icon icon={Cancel01Icon} class={icon.status} />
                   </Button>
                 {/if}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={i18n.t("chat.editQueued")}
-                  title={i18n.t("chat.editQueued")}
-                  onclick={() => void editQueued(turn)}
-                >
-                  <Icon icon={PencilEdit02Icon} class={icon.status} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={i18n.t("chat.cancelQueued")}
-                  title={i18n.t("chat.cancelQueued")}
-                  onclick={() => void chat.cancel(threadId, turn.id).catch(toastError)}
-                >
-                  <Icon icon={Cancel01Icon} class={icon.status} />
-                </Button>
               </div>
             </div>
           {/each}
@@ -736,7 +735,7 @@
         {loadCommands}
         mentionRoot={cwd}
         acceptsImages={agent?.capabilities?.images === true}
-        {deliversNow}
+        {atNextPause}
       >
         {#snippet leading()}
           <ModelPicker

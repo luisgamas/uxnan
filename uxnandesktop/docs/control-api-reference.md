@@ -2223,7 +2223,7 @@ Wait until an agent reaches a state, as reported by its own hooks: `idle` (its t
 
 ### `chat/send`
 
-Send a whole message to a chat, exactly as if it were typed in the chat tab or on the phone. While its agent works the bridge queues the message behind the running turn (or hands it to the turn, on agents that take input mid-turn); every client of the chat sees it. Use `chat/list` to see whether the chat is working.
+Send a whole message to a chat, exactly as if it were typed in the chat tab or on the phone. While its agent works the bridge queues the message behind the running turn — an agent that takes input mid-turn gets it at its next pause, any other when the turn ends; every client of the chat sees it. Use `chat/list` to see whether the chat is working.
 
 - **Group:** `converse` · mutates (receipted, audited)
 - **MCP:** `chat_send`

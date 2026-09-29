@@ -304,20 +304,23 @@ short) — followed by a card of the **files the turn changed** (+/− per file;
   was asked, then how it ended). One answered on the phone (or timed out)
   settles here too; one from a turn that already ended never offers its buttons
   again.
-- **Queue**: a message sent while the agent works is queued behind the running
-  turn, or handed to it on agents that take input mid-turn — and the composer
-  says which before it is sent (*it takes this message now, at its next step*
-  only when the agent steers and nothing is queued, paused or waiting on an
-  answer; otherwise *it waits in the queue*); **Stop** stays next to Send while
-  a message is being written. Queued messages show **in place**, below
-  everything and in the queue's order, as the outlined bubble
+- **Queue**: a message sent while the agent works always waits in the queue,
+  and the composer says what happens next before it is sent — *it reaches it
+  at its next pause* on an agent that takes input mid-turn, *it goes out when
+  it finishes* on any other; the send button reads **Queue** and **Stop** stays
+  next to it while a message is being written. Queued messages show **in
+  place**, below everything and in the queue's order, as the outlined bubble
   (`chat.queuedBubble`) with their position (*Next in the queue*, *2 in the
-  queue*) and **Send now** (`queue/sendNow`: into the running turn on an agent
-  that takes input mid-turn and is not waiting on an approval or a question, or
-  — nothing running — as the next turn at once), **Edit** (takes it off the
-  queue and puts it back in the composer with its images and files — only once
-  the bridge confirms — and leaves no cancelled bubble behind) and cancel. A
-  stopped or failed turn pauses the queue: *Resume* or *Discard*, in the dock.
+  queue*), **Edit** (takes it off the queue and puts it back in the composer
+  with its images and files — only once the bridge confirms — and leaves no
+  cancelled bubble behind) and cancel. On an agent that takes input mid-turn
+  the bridge hands the first one over at the agent's next pause: while it does,
+  the bubble reads *Reaching the agent, at the end of its current step*
+  (`queue.delivering`, from `deliveringTurnId`) with a spinner and no actions —
+  the agent already has it — and it drops into place when the agent reads it.
+  **Send now** (`queue/sendNow`) is offered only with nothing running (a paused
+  queue), to run that message next at once. A stopped or failed turn pauses
+  the queue: *Resume* or *Discard*, in the dock.
 - **A message taken mid-answer**: the turn it interrupted (`Turn.continuedIn`)
   stays whole — its prose is the answer so far, not folded into *Worked for* —
   and ends with *Continues below, with your next message*; the message it

@@ -84,7 +84,7 @@
     loadCommands,
     mentionRoot,
     acceptsImages = false,
-    deliversNow = false,
+    atNextPause = false,
   }: {
     /** The text being written (the view persists it as the tab's draft). */
     value?: string;
@@ -120,7 +120,7 @@
      * on an answer) rather than waiting in the queue — so the composer says
      * which will happen.
      */
-    deliversNow?: boolean;
+    atNextPause?: boolean;
   } = $props();
 
   let ref = $state<HTMLTextAreaElement | null>(null);
@@ -603,8 +603,8 @@
           variant="default"
           class="rounded-full"
           disabled={empty || disabled}
-          aria-label={running && !deliversNow ? i18n.t("chat.queue") : i18n.t("chat.send")}
-          title={running && !deliversNow ? i18n.t("chat.queue") : i18n.t("chat.send")}
+          aria-label={running ? i18n.t("chat.queue") : i18n.t("chat.send")}
+          title={running ? i18n.t("chat.queue") : i18n.t("chat.send")}
           onclick={() => void submit()}
         >
           <Icon icon={ArrowUp02Icon} class={icon.action} />
@@ -614,7 +614,7 @@
   </InputGroup.Root>
   {#if running && !empty}
     <p class={cn(text.meta, "px-1")}>
-      {i18n.t(deliversNow ? "chat.steerHint" : "chat.queueHint")}
+      {i18n.t(atNextPause ? "chat.nextPauseHint" : "chat.queueHint")}
     </p>
   {/if}
 </div>

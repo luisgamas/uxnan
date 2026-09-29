@@ -157,10 +157,13 @@ describe("ChatConversation", () => {
     });
   });
 
-  it("offers no send now while an agent that takes no input mid-turn works", async () => {
-    chat.agents = [{ agentId: "codex", displayName: "Codex", available: true, capabilities: {} }] as never;
+  it("offers send now only with nothing running, whatever the agent", async () => {
+    chat.agents = [
+      { agentId: "codex", displayName: "Codex", available: true, capabilities: { steering: true } },
+    ] as never;
     const { screen } = mount(chatTab());
-    chat.conversation(THREAD).adoptPage({
+    const conversation = chat.conversation(THREAD);
+    conversation.adoptPage({
       turns: [
         { id: "run", threadId: THREAD, status: "streaming", createdAt: 1, messages: [] },
         queuedTurn("q1", "later"),
@@ -170,12 +173,44 @@ describe("ChatConversation", () => {
       queuedTurnIds: ["q1"],
     });
     await screen.findByText("later");
+    // While the agent works it takes the message at its next pause by itself.
     expect(screen.queryByRole("button", { name: "Send now" })).toBeNull();
 
-    chat.agents = [
-      { agentId: "codex", displayName: "Codex", available: true, capabilities: { steering: true } },
-    ] as never;
+    // Stopped with the message still waiting: the queue is paused, and sending
+    // it now is the person's call.
+    conversation.adoptPage({
+      turns: [
+        { id: "run", threadId: THREAD, status: "aborted", createdAt: 1, messages: [] },
+        queuedTurn("q1", "later"),
+      ],
+      total: 2,
+      queuedTurnIds: ["q1"],
+      queuePaused: true,
+      queuePausedReason: "turnAborted",
+    });
     expect(await screen.findByRole("button", { name: "Send now" })).toBeTruthy();
+  });
+
+  it("marks the queued message the agent is taking, and no longer offers to take it back", async () => {
+    const { screen } = mount(chatTab());
+    chat.conversation(THREAD).adoptPage({
+      turns: [
+        { id: "run", threadId: THREAD, status: "streaming", createdAt: 1, messages: [] },
+        queuedTurn("q1", "check the docs too"),
+        queuedTurn("q2", "and the changelog"),
+      ],
+      total: 3,
+      activeTurnId: "run",
+      queuedTurnIds: ["q1", "q2"],
+      queueDeliveringTurnId: "q1",
+    });
+    expect(
+      await screen.findByText("Reaching the agent, at the end of its current step"),
+    ).toBeTruthy();
+    // Only the one still waiting can be edited or cancelled.
+    expect(screen.getAllByRole("button", { name: "Edit (take it off the queue)" })).toHaveLength(1);
+    expect(screen.getByText("2 in the queue")).toBeTruthy();
+    expect(screen.queryByText("Next in the queue")).toBeNull();
   });
 
   it("sets the composer's text aside when a queued message comes back to be edited", async () => {
@@ -214,34 +249,6 @@ describe("ChatConversation", () => {
     expect(screen.getByText("2 in the queue")).toBeTruthy();
     // The dock no longer lists them a second time.
     expect(screen.queryByText("2 messages queued")).toBeNull();
-  });
-
-  it("offers no send now while the running agent waits on an answer", async () => {
-    chat.agents = [
-      { agentId: "codex", displayName: "Codex", available: true, capabilities: { steering: true } },
-    ] as never;
-    const { screen } = mount(chatTab());
-    const conversation = chat.conversation(THREAD);
-    conversation.adoptPage({
-      turns: [
-        { id: "run", threadId: THREAD, status: "streaming", createdAt: 1, messages: [] },
-        queuedTurn("q1", "later"),
-      ],
-      total: 2,
-      activeTurnId: "run",
-      queuedTurnIds: ["q1"],
-    });
-    expect(await screen.findByRole("button", { name: "Send now" })).toBeTruthy();
-    conversation.apply({
-      method: "stream/content/block",
-      params: {
-        threadId: THREAD,
-        turnId: "run",
-        messageId: "run-a",
-        content: { type: "approval", approvalId: "ap", action: "Allow Bash" },
-      },
-    });
-    await until(() => screen.queryByRole("button", { name: "Send now" }) === null);
   });
 
   it("takes a message withdrawn for editing out of the timeline", async () => {

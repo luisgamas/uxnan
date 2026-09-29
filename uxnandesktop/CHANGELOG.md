@@ -14,6 +14,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **A message sent while the agent works always waits in the queue**, editable
+  and cancellable, and the composer says what happens next: *it reaches it at
+  its next pause* on an agent that takes input mid-turn, *it goes out when it
+  finishes* on any other; the send button reads *Queue*. While the bridge hands
+  the first queued message to the agent, its bubble reads *Reaching the agent,
+  at the end of its current step* with no actions, and it drops into place when
+  the agent reads it. *Send now* is offered only when nothing is running.
+- The control catalog's `chat/send` says a message sent to a working agent
+  reaches it at its next pause (or when its turn ends).
 - **Every time reads on the 24-hour clock** (`14:30`), whatever the language —
   chat messages, the Git history, automations, provider resets, the last
   update check. One module (`src/lib/clock.ts`) writes them all; they used to

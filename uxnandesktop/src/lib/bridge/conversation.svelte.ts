@@ -49,6 +49,8 @@ export interface QueueState {
   turnIds: string[];
   paused: boolean;
   reason?: QueuePausedReason;
+  /** The queued turn the running agent is taking now: no longer editable. */
+  delivering?: string;
 }
 
 /** How a settled approval ended. */
@@ -195,6 +197,7 @@ export class Conversation {
       turnIds: page.queuedTurnIds ?? [],
       paused: page.queuePaused === true,
       ...(page.queuePausedReason ? { reason: page.queuePausedReason } : {}),
+      ...(page.queueDeliveringTurnId ? { delivering: page.queueDeliveringTurnId } : {}),
     };
     // The context meter lives in memory on the bridge side too: restore it from
     // the newest assistant message that reported usage.
@@ -354,6 +357,9 @@ export class Conversation {
           turnIds: Array.isArray(params.queuedTurnIds) ? params.queuedTurnIds : [],
           paused: params.paused === true,
           ...(params.paused && params.pausedReason ? { reason: params.pausedReason } : {}),
+          ...(typeof params.deliveringTurnId === 'string'
+            ? { delivering: params.deliveringTurnId }
+            : {}),
         };
         return;
       }
