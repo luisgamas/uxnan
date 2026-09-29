@@ -208,16 +208,17 @@ jobs:
         working-directory: uxnandesktop/src-tauri/target/release/bundle
         run: |
           find . -name '*.sig' | sort
+          # Arrays, so "Uxnan Desktop" in every file name stays one word. A
+          # pattern that matched nothing stays literal and fails the -f test.
           case "$RUNNER_OS" in
-            Linux)   globs='appimage/*.AppImage deb/*.deb rpm/*.rpm' ;;
-            Windows) globs='nsis/*-setup.exe msi/*.msi' ;;
-            macOS)   globs='macos/*.app.tar.gz' ;;
+            Linux)   built=(appimage/*.AppImage deb/*.deb rpm/*.rpm) ;;
+            Windows) built=(nsis/*-setup.exe msi/*.msi) ;;
+            macOS)   built=(macos/*.app.tar.gz) ;;
           esac
-          for g in $globs; do
-            for f in $g; do
-              [ -f "$f" ] || { echo "::error::no $g was built"; exit 1; }
-              [ -s "$f.sig" ] || { echo "::error::$f has no updater signature"; exit 1; }
-            done
+          for f in "${built[@]}"; do
+            [ -f "$f" ] || { echo "::error::nothing was built for $f"; exit 1; }
+            [ -s "$f.sig" ] || { echo "::error::$f has no updater signature"; exit 1; }
+            echo "signed: $f"
           done
 
       - name: Check the AppImage
