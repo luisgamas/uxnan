@@ -270,9 +270,15 @@ jobs:
           $msi = Get-ChildItem uxnandesktop/src-tauri/target/release/bundle/msi -Filter '*.msi' | Select-Object -First 1
           $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$($msi.FullName)`"", '/qn', '/l*v', "`"$env:RUNNER_TEMP\msi-install.log`"" -Wait -PassThru
           if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { Get-Content "$env:RUNNER_TEMP\msi-install.log" -Tail 60; throw "MSI install exited $($p.ExitCode)" }
-          $dir = Join-Path $env:ProgramFiles 'Uxnan Desktop'
+          # Where it went, from msiexec's own log: the WiX template reuses the
+          # folder an earlier install recorded (here, the NSIS step's), so it is
+          # not always Program Files.
+          $line = Select-String -Path "$env:RUNNER_TEMP\msi-install.log" -Pattern 'Property\(S\): INSTALLDIR = (.+)$' | Select-Object -Last 1
+          if (-not $line) { throw "the MSI log names no INSTALLDIR" }
+          $dir = $line.Matches[0].Groups[1].Value.Trim()
+          "MSI installed into $dir"
           foreach ($f in 'uxnan-desktop.exe', 'uxnan-cli.exe') {
-            if (-not (Test-Path (Join-Path $dir $f))) { throw "the MSI did not install $f into $dir" }
+            if (-not (Test-Path (Join-Path $dir $f))) { Get-ChildItem $dir -ErrorAction SilentlyContinue; throw "the MSI did not install $f into $dir" }
           }
           $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$($msi.FullName)`"", '/qn' -Wait -PassThru
           if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "MSI uninstall exited $($p.ExitCode)" }
