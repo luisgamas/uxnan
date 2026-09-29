@@ -157,6 +157,13 @@ class NeScaffold extends StatefulWidget {
   final List<Widget> actions;
 
   /// Optional FAB.
+  ///
+  /// While there is one, the scroll view ends with room for it: a button
+  /// floating over the bottom of a list otherwise sits on its last rows at the
+  /// very moment the list stops — scrolled all the way down, the last folder of
+  /// a long threads list could not be reached. Hiding on scroll
+  /// ([hideFabOnScroll]) cannot help there, because the button returns as soon
+  /// as the scroll settles.
   final Widget? floatingActionButton;
 
   /// Where the [floatingActionButton] sits; defaults to the Scaffold's
@@ -260,6 +267,17 @@ class _NeScaffoldState extends State<NeScaffold> {
                 SliverPadding(padding: padding, sliver: sliver)
               else
                 sliver,
+            if (widget.floatingActionButton != null)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  // Where the Scaffold floats it: a margin above the system
+                  // inset. The screen's own bottom padding stays as the gap
+                  // between the last row and the button.
+                  height: UxnanSize.fab +
+                      kFloatingActionButtonMargin +
+                      MediaQuery.paddingOf(context).bottom,
+                ),
+              ),
           ],
         );
       },

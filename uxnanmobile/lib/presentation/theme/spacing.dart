@@ -96,6 +96,10 @@ class UxnanSize {
   /// Diameter of the shared floating conversation/history scroll shortcut.
   static const double floatingScrollShortcut = 52;
 
+  /// Height of a Material 3 floating action button, regular or extended — the
+  /// tallest thing `NeScaffold` has to keep the end of a list clear of.
+  static const double fab = 56;
+
   /// Default height of compact status badges embedded in Markdown.
   static const double inlineBadgeHeight = 20;
 
