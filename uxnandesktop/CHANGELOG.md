@@ -18,6 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **The Linux packages run on older distributions.** The AppImage, `.deb` and
   `.rpm` are built on Ubuntu 22.04, so they need glibc 2.35 instead of 2.39:
   Ubuntu 22.04, Debian 12 and their derivatives can start them.
+- **Tauri CLI 2.12 builds the installers.** Its newer linuxdeploy and GTK
+  plugin fix AppImage crashes (`EGL_BAD_PARAMETER`) on recent Mesa, and the
+  AppImage now runs natively on a Wayland session instead of forcing X11; it
+  uses the system's `xdg-open` rather than carrying its own.
 
 ### Added
 

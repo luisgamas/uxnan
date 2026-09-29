@@ -40,7 +40,8 @@ APPRUN_URL="https://github.com/tauri-apps/binary-releases/releases/download/appr
 # built-in copy of that list does not know yet: `libwayland-client` breaks
 # newer Mesa when it is carried along instead of the host's. linuxdeploy reads
 # them from LINUXDEPLOY_EXCLUDED_LIBRARIES (`;`-separated patterns), which
-# `prepare` hands to the later steps of the job.
+# `prepare` hands to the later steps of the job. Only the linuxdeploy that
+# @tauri-apps/cli 2.12+ pins reads that variable; the one before ignored it.
 EXCLUDED_LIBRARIES="libwayland-client.so.0"
 
 fail() {

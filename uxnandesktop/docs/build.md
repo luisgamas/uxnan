@@ -108,7 +108,8 @@ around `tauri build`:
   file becomes the `AppRun.wrapped` that starts the app — so an image mounted by
   another user, e.g. under firejail, died with *Permission denied*), and has
   linuxdeploy leave out `libwayland-client.so.0`, which the AppImage excludelist
-  forbids. Both happen before the updater signs the image, so the `.sig` matches
+  forbids (through `LINUXDEPLOY_EXCLUDED_LIBRARIES`, which only the linuxdeploy
+  pinned by `@tauri-apps/cli` 2.12+ reads). Both happen before the updater signs the image, so the `.sig` matches
   what ships — nothing is repacked afterwards.
 - **`check <AppImage>`**, after it: asserts what the
   [AppImage catalog](https://appimage.github.io) tests — every executable
