@@ -93,8 +93,9 @@ class WorkspaceGroupRow extends ConsumerWidget {
   /// Opens the detail sheet (long press).
   final VoidCallback onDetails;
 
-  /// Starts a conversation in this folder.
-  final VoidCallback onNewConversation;
+  /// Starts a conversation in this folder. Null — the button shown disabled —
+  /// when there is no live channel to this PC.
+  final VoidCallback? onNewConversation;
 
   /// Opens the folder's file browser. Null — the button shown disabled — when
   /// there is no live channel to this PC to read it through.

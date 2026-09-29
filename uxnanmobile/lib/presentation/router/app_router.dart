@@ -113,6 +113,15 @@ class AppRoutes {
 final GlobalKey<NavigatorState> shellNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'shell');
 
+/// Tells a screen in the content pane when another is pushed over it and when
+/// it is back in front.
+///
+/// A conversation needs it: the thread manager shows ONE conversation, and a
+/// conversation left underneath another (a notification's, a fork) has to
+/// take it back when it returns to the front.
+final RouteObserver<ModalRoute<void>> paneRouteObserver =
+    RouteObserver<ModalRoute<void>>();
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.home,
@@ -125,6 +134,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // pushed screen covering it. Picking another conversation from the
         // drawer then looked like nothing happened at all.
         navigatorKey: shellNavigatorKey,
+        observers: [paneRouteObserver],
         builder: (context, state, child) => AppShell(child: child),
         routes: [
           GoRoute(

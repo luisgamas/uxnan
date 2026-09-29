@@ -8,6 +8,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/pairing/bridge_discovery_sheet.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -343,7 +344,7 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
               leading: IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: context.closePane,
               ),
               title: Text(
                 l10n.manualCodeTitle,

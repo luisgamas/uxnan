@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -13,7 +12,6 @@ import 'package:uxnan/domain/value_objects/bridge_update.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
@@ -67,15 +65,6 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     // connect and app resume) so the list reflects the connected bridge.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refresh();
-      // Remembered for the permanent drawer, which on a cold start or a deep
-      // link has no route to read the PC from — see [shellDeviceProvider].
-      // Not recorded when this list IS the drawer's own content: that would be
-      // the drawer telling itself what it already decided.
-      if (!widget.embedded) {
-        unawaited(
-          ref.read(lastVisitedDeviceProvider.notifier).visited(widget.deviceId),
-        );
-      }
     });
   }
 
@@ -124,9 +113,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   Future<void> _newConversation({String? cwd}) async {
     final threadId = await NewConversationScreen.show(context, initialCwd: cwd);
     if (threadId == null || !mounted) return;
-    await ref.read(bridgeReplicaProvider).sync();
-    if (mounted) {
-      context.openInPane(AppRoutes.conversation(threadId));
+    // Opened from the shell's navigator, not from this list: in the drawer the
+    // list can be rebuilt for another PC while the sync runs, and a
+    // conversation that was created must still open.
+    final opener = shellNavigatorKey.currentContext ?? context;
+    try {
+      await ref.read(bridgeReplicaProvider).sync();
+    } on Object {
+      // The conversation exists on the bridge either way; the next sync
+      // brings its row. Opening it is what the user asked for.
+    }
+    if (opener.mounted) {
+      unawaited(opener.openInPane(AppRoutes.conversation(threadId)));
     }
   }
 
@@ -232,7 +230,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         onCompactChanged: (value) =>
             ref.read(threadDensityCompactProvider.notifier).set(value: value),
         onArchived: () =>
-            context.push(AppRoutes.deviceArchived(widget.deviceId)),
+            context.openInPane(AppRoutes.deviceArchived(widget.deviceId)),
       ),
     ];
 
@@ -539,7 +537,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
                 _ => null,
               },
             ),
-            onNewConversation: () => _newConversation(cwd: group.path),
+            // Against the live PC only, like the FAB: browsing a PC we are not
+            // connected to, "+" would start the conversation on whichever one
+            // we are.
+            onNewConversation:
+                connectedHere ? () => _newConversation(cwd: group.path) : null,
             onOpenFiles: live
                 ? () => context.openInPane(AppRoutes.workspaceFiles(path))
                 : null,

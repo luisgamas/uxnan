@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/router/route_facts.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 import 'package:uxnan/presentation/screens/shell/nav_drawer.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
@@ -51,20 +54,20 @@ class AppShell extends ConsumerWidget {
       location.startsWith(AppRoutes.settings) ||
       location.startsWith(AppRoutes.profile);
 
-  /// The thread being read, if the content pane is a conversation — the
-  /// drawer asks it which PC to show.
-  static String? threadIdOf(String location) {
-    const prefix = '/conversation/';
-    if (!location.startsWith(prefix)) return null;
-    final rest = location.substring(prefix.length);
-    final end = rest.indexOf('/');
-    final id = end == -1 ? rest : rest.substring(0, end);
-    return id.isEmpty ? null : id;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final location = this.location ?? GoRouterState.of(context).uri.path;
+    // The whole location, query included: a folder's screen names the
+    // conversation it was opened from there.
+    final location = this.location ?? GoRouterState.of(context).uri.toString();
+
+    // Going to anything that belongs to a PC focuses that PC — the drawer
+    // comes back to it after a route that names none (see [FocusedDevice]).
+    final routed = ref.watch(routeDeviceProvider(location));
+    if (routed != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(ref.read(focusedDeviceProvider.notifier).focus(routed));
+      });
+    }
 
     // The system-back answer wraps EVERY route — including the full-screen
     // ones, which used to return `child` bare. See [_SystemBack]: on Android
@@ -81,22 +84,24 @@ class AppShell extends ConsumerWidget {
   Widget _layout(BuildContext context, WidgetRef ref, String location) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final breakpoint = UxnanBreakpoint.fromWidth(constraints.maxWidth);
-        if (!breakpoint.usesPermanentPane) return child;
+        final wide =
+            UxnanBreakpoint.fromWidth(constraints.maxWidth).usesPermanentPane;
 
         // Published so the drawer's list can mark the row you are reading.
         // Beside a permanent drawer the list never leaves the screen, and a
         // list that never says which row is open makes you hold the answer in
-        // your head.
-        final open = threadIdOf(location);
+        // your head. Cleared on a phone, where the open conversation IS the
+        // screen: rotating a tablet kept the last one marked in the phone's
+        // list, hiding its unread tint.
+        final facts = RouteFacts.parse(location);
+        final open = wide && facts.isConversation ? facts.threadId : null;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           ref.read(openThreadProvider.notifier).set(open);
         });
+        if (!wide) return child;
 
         return TwoPaneScaffold(
-          pane: NavDrawer(
-            deviceId: ref.watch(shellDeviceProvider(threadIdOf(location))),
-          ),
+          pane: NavDrawer(deviceId: ref.watch(shellDeviceProvider(location))),
           // ALWAYS `child`, on every route and every width.
           //
           // `child` is not just the screen — it is the router's own
@@ -172,7 +177,7 @@ class _SystemBack extends StatelessWidget {
         // available is always the right answer, and never this fallback.
         final nested = shellNavigatorKey.currentState;
         if (nested != null && nested.canPop()) {
-          nested.pop();
+          unawaited(nested.maybePop());
           return;
         }
         // Nothing was left behind. With a permanent drawer back CLOSES what is
@@ -182,7 +187,7 @@ class _SystemBack extends StatelessWidget {
         context.go(
           context.hasPermanentPane
               ? AppRoutes.home
-              : parentOf(location, context),
+              : parentLocationOf(location, ProviderScope.containerOf(context)),
         );
       },
       child: NotificationListener<NavigationNotification>(

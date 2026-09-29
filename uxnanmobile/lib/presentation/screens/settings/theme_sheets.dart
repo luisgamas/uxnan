@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -356,7 +357,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
               leading: IconSurface(
                 icon: UxIcons.close,
                 tooltip: l10n.actionCancel,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: context.closePane,
               ),
               title: Text(
                 widget.title,

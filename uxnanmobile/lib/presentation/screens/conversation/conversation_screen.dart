@@ -79,7 +79,7 @@ class ConversationScreen extends ConsumerStatefulWidget {
 }
 
 class _ConversationScreenState extends ConsumerState<ConversationScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   // Per-thread access (approval) mode. Seeded from the bridge on open
   // (`thread/read`, source of truth) and persisted on change
   // (`thread/setAccessMode`); the default here ([kDefaultApprovalMode], full
@@ -187,6 +187,62 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     });
   }
 
+  ModalRoute<void>? _route;
+
+  /// Whether this conversation's thread was deleted while another screen
+  /// covered it — it closes as soon as it is back in front.
+  bool _threadGone = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != _route) {
+      if (_route != null) paneRouteObserver.unsubscribe(this);
+      _route = route;
+      if (route != null) paneRouteObserver.subscribe(this, route);
+    }
+  }
+
+  // Both route callbacks can arrive in the middle of a build: with the
+  // router's pages, a navigator reports a replaced pane while it rebuilds.
+  // Changing a provider there throws, so — like `dispose` below — the work
+  // runs on the next event-loop tick.
+
+  /// Closes this conversation if it is the screen in front; one covered by
+  /// another closes when it comes back ([didPopNext]).
+  void _closeIfInFront() {
+    if (mounted && (_route?.isCurrent ?? false)) unawaited(context.closePane());
+  }
+
+  /// Another screen was pushed over this one: its notifications are no longer
+  /// being read here.
+  @override
+  void didPushNext() {
+    final foreground = _foreground;
+    final threadId = widget.threadId;
+    Future(() => foreground?.leave(threadId));
+  }
+
+  /// Back in front after whatever covered it popped. The thread manager shows
+  /// one conversation, and if the one that covered this was another
+  /// conversation, it is showing that one: take it back.
+  @override
+  void didPopNext() {
+    Future(() {
+      if (!mounted) return;
+      if (_threadGone) {
+        unawaited(context.closePane());
+        return;
+      }
+      final manager = ref.read(threadManagerProvider);
+      if (manager.activeThreadId != widget.threadId) {
+        unawaited(manager.selectThread(widget.threadId));
+      }
+      _foreground?.enter(widget.threadId);
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Suppress this thread's notifications only while in the foreground; when
@@ -243,6 +299,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   void dispose() {
+    paneRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     // Clear the foreground marker on the next event-loop tick, NOT inline:
     // mutating a provider synchronously during unmount throws "Tried to modify
@@ -371,7 +428,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// [_currentRailTick] when it changes. Cheap: it only measures built bubbles.
   void _updateCurrentRailTick() {
     if (!mounted) return;
-    final tickForId = ref.read(railAnchorsProvider).tickForId;
+    final tickForId = ref.read(railAnchorsProvider(widget.threadId)).tickForId;
     if (tickForId.isEmpty || !_scroll.hasClients) {
       if (_currentRailTick != null) setState(() => _currentRailTick = null);
       return;
@@ -406,7 +463,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// doesn't yank it back. An off-screen target in the lazy list is first
   /// brought into layout with an estimated ordinal jump.
   Future<void> _scrollToUserMessage(int messageIndex) async {
-    final snapshot = ref.read(activeTimelineProvider).value;
+    final snapshot = ref.read(threadTimelineProvider(widget.threadId)).value;
     if (snapshot == null || !_scroll.hasClients) return;
     if (messageIndex < 0 || messageIndex >= snapshot.messages.length) return;
     _autoFollow.beginUserScroll();
@@ -822,7 +879,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   Future<void> _forkThread() async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final navigator = GoRouter.of(context);
     final forked =
         await ref.read(threadManagerProvider).forkThread(widget.threadId);
     if (!mounted) return;
@@ -832,7 +888,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
         ..showSnackBar(SnackBar(content: Text(l10n.threadForkFailed)));
       return;
     }
-    unawaited(navigator.push(AppRoutes.conversation(forked.id)));
+    unawaited(context.openInPane(AppRoutes.conversation(forked.id)));
   }
 
   /// Opens the model picker and applies the choice to the thread's agent.
@@ -890,10 +946,19 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   Widget build(BuildContext context) {
+    // A conversation that no longer exists closes — deleted from the drawer
+    // beside it, or from another client. Left open it kept an enabled
+    // composer over a thread the bridge no longer has.
+    ref.listen(threadByIdProvider(widget.threadId), (previous, next) {
+      if (previous == null || next != null) return;
+      _threadGone = true;
+      // Navigating from inside a listener would do it mid-build.
+      Future(_closeIfInFront);
+    });
     // Auto-scroll to the bottom on new content while the user is near it; a
     // just-sent message (with the setting on) forces the jump even from a
     // manually-scrolled position.
-    ref.listen(activeTimelineProvider, (previous, next) {
+    ref.listen(threadTimelineProvider(widget.threadId), (previous, next) {
       final snap = next.value;
       if (snap == null || snap.messages.isEmpty) return;
       // First real content for this open: restore the saved scroll position
@@ -927,7 +992,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   Widget _buildWithin(BuildContext context, BoxConstraints constraints) {
     final l10n = AppLocalizations.of(context);
-    final timelineAsync = ref.watch(activeTimelineProvider);
+    final timelineAsync = ref.watch(threadTimelineProvider(widget.threadId));
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     // This thread lives on a specific PC; live actions (send, git) only work
     // when we actually hold that PC's channel — never a different connected PC.
@@ -1002,7 +1067,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Scroll-rail anchors: one tick per user message (the minimap on the right
     // edge), derived + memoized in [railAnchorsProvider] off the timeline.
     // Prune stale bubble keys so the map tracks the current anchors.
-    final railAnchors = ref.watch(railAnchorsProvider);
+    final railAnchors = ref.watch(railAnchorsProvider(widget.threadId));
     _userMessageKeys.removeWhere(
       (id, _) => !railAnchors.tickForId.containsKey(id),
     );

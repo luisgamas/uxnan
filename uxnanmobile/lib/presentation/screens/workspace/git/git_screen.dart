@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -291,7 +293,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
         worktreePath,
         threadId: widget.threadId,
       );
-      if (mounted) context.closePane();
+      if (mounted) unawaited(context.closePane());
       return;
     } on Object {
       if (!mounted) return;
@@ -325,7 +327,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
           force: true,
           threadId: widget.threadId,
         );
-        if (mounted) context.closePane();
+        if (mounted) unawaited(context.closePane());
       } on Object catch (error) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)

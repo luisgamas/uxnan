@@ -1117,16 +1117,35 @@ final contextUsageForProvider =
   return ref.watch(contextUsageProvider).value?[threadId];
 });
 
-/// The active thread's timeline, for the UI.
+/// The timeline of the conversation in front — the one the thread manager is
+/// showing. The source of [threadTimelineProvider]; a screen reads that.
 final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
   (ref) => ref.watch(threadManagerProvider).timelineStream,
 );
 
-/// The active thread's scroll-rail anchors (one per user message), derived and
-/// memoized off [activeTimelineProvider] so the mapping runs once per timeline
-/// change rather than on every conversation rebuild, and stays unit-testable.
-final railAnchorsProvider = Provider<RailAnchors>((ref) {
-  final messages = ref.watch(activeTimelineProvider).value?.messages;
+/// The timeline of the conversation [threadId]: the one in front when it is
+/// that conversation, loading otherwise.
+///
+/// A conversation screen reads its OWN timeline, never "whatever is in
+/// front". Two can be mounted at once — a notification's conversation pushed
+/// over the one you were reading — and the one underneath used to render the
+/// other's messages under its own title once you went back.
+final threadTimelineProvider =
+    Provider.family<AsyncValue<TurnTimelineSnapshot>, String>((ref, threadId) {
+  final active = ref.watch(activeTimelineProvider);
+  if (active.hasError) return active;
+  return active.value?.threadId == threadId
+      ? active
+      : const AsyncLoading<TurnTimelineSnapshot>();
+});
+
+/// The scroll-rail anchors of the conversation [threadId] (one per user
+/// message), derived and memoized off [threadTimelineProvider] so the mapping
+/// runs once per timeline change rather than on every conversation rebuild,
+/// and stays unit-testable.
+final railAnchorsProvider =
+    Provider.family<RailAnchors, String>((ref, threadId) {
+  final messages = ref.watch(threadTimelineProvider(threadId)).value?.messages;
   return messages == null ? RailAnchors.empty : deriveRailAnchors(messages);
 });
 

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -233,13 +235,22 @@ class _NeScaffoldState extends State<NeScaffold> {
     // route was REPLACED rather than stacked. A back arrow there points at the
     // screen you are already looking at. Deeper in (files, git) it still means
     // what it says, and `canPop` still answers that.
+    //
+    // On a phone a screen can be first with a level above it all the same:
+    // rotate a tablet and a replaced pane becomes a stack of one. Without an
+    // arrow there — and iOS has no system back — a PC's list was a dead end
+    // with no way to the overview. `closePane` knows the level above.
     final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final location = context.currentLocation;
+    final hasParent = !context.hasPermanentPane &&
+        location != null &&
+        location != AppRoutes.home;
     final lead = widget.leading ??
-        (widget.automaticBackButton && canPop
+        (widget.automaticBackButton && (canPop || hasParent)
             ? IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: context.closePane,
               )
             : null);
 

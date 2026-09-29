@@ -408,30 +408,6 @@ Future<void> main() async {
     expect(AppShell.isFullScreen(git.toString()), isFalse);
   });
 
-  test('a conversation belongs to its PC, everything else to the overview', () {
-    // What "up" means with nothing to pop. Rotating a tablet with a
-    // conversation open is the case that creates it: the wide layout REPLACED
-    // routes, so the narrow one inherits a stack of exactly one page and both
-    // the system gesture and the bar's arrow had nothing to act on. The arrow
-    // simply did nothing, which reads as broken rather than as a dead end.
-    expect(AppShell.threadIdOf('/conversation/abc'), 'abc');
-    // The resolution itself needs a ProviderScope, so what is pinned here is
-    // the rule it encodes: only a conversation has a parent worth guessing.
-    expect(AppShell.threadIdOf(AppRoutes.settings), isNull);
-    expect(AppShell.threadIdOf(AppRoutes.home), isNull);
-  });
-
-  test('the conversation route names the thread the drawer follows', () {
-    // A push notification opens `/conversation/:id` with nothing behind it.
-    // Without this the drawer has no PC to show and comes up blank — in
-    // exactly the case a tablet user is most likely to meet first.
-    expect(AppShell.threadIdOf('/conversation/abc123'), 'abc123');
-    expect(AppShell.threadIdOf('/conversation/abc123/files'), 'abc123');
-    expect(AppShell.threadIdOf('/'), isNull);
-    expect(AppShell.threadIdOf('/device/mac-1/threads'), isNull);
-    expect(AppShell.threadIdOf('/conversation/'), isNull);
-  });
-
   test('a destination stays full-screen while its children are open', () {
     // Settings' sections and profile's sub-screens are raw `Navigator.push`
     // routes: the LOCATION never changes while they are open. So the shell

@@ -1,10 +1,20 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.3
+> **Version:** 1.5.4
 > **Fecha:** 2026-09-28
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.4):** the phone's navigation is three single
+> layers. `pane_navigation.dart` owns opening and going back — every back arrow
+> and every "open this" goes through it, it asks each screen before popping it
+> (unsaved edits) and never opens twice what is on screen; `RouteFacts` is the
+> one reader of what a location belongs to and what is one level up; and the
+> drawer's PC is the route's, else a persisted **PC in focus** checked against
+> the paired PCs. A conversation reads its own timeline, never whatever is in
+> front, and the two panes are separate semantics containers (§5.4.3).
+> App-only: no contract changes.
 
 > **Executive summary (1.5.3):** a working folder's files and source control
 > belong to the folder, not to a conversation. On the phone they are routes of
@@ -1120,8 +1130,28 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > las divisiones anidadas (ajustes y su seccion) miden sus propias constraints,
 > no la ventana, y una tercera columna en una tablet no le sirve a nadie. Lo
 > que cambia con el ancho es el **significado de un toque** — abrir reemplaza
-> el panel en vez de apilar — y eso vive en `pane_navigation.dart`. El detalle
-> esta en `architecture/02c` §3.3.
+> el panel en vez de apilar — y eso vive en `pane_navigation.dart`, que es
+> tambien la unica regla de "atras" de la app: saca lo apilado (preguntando a la
+> pantalla, que puede negarse si tiene cambios sin guardar); si no queda nada,
+> en ancho cierra el panel y en telefono sube un nivel (`RouteFacts.parent`: el
+> archivo o las estadisticas de un PC → su lista; la pantalla de una carpeta →
+> la conversacion desde la que se abrio; una conversacion → la lista de su PC).
+> Los dos paneles son contenedores semanticos separados: la barrera modal de
+> cada ruta del panel oculta a la accesibilidad lo pintado antes en su mismo
+> contenedor, y compartido ocultaba el drawer entero. El detalle esta en
+> `architecture/02c` §3.3.
+>
+> **El PC del drawer** es el de la ruta (el que nombra, o el de su
+> conversacion); si la ruta no pertenece a ningun PC, el **PC en foco**
+> persistido; luego el conectado; luego cualquiera emparejado — siempre
+> validado contra los PCs emparejados. El foco tiene un solo escritor y tres
+> entradas, todas actos de ir a un PC: la ruta, el selector del drawer (que
+> ademas vacia el panel, cuyo contenido era del otro PC) y el emparejamiento.
+>
+> **Una conversacion lee SU timeline** (`threadTimelineProvider(threadId)`),
+> nunca "lo que el gestor tenga delante": dos pueden estar montadas a la vez
+> (la de una notificacion encima de la que leias), y al volver la de abajo
+> recupera su thread (`paneRouteObserver`). Si su thread se borra, se cierra.
 >
 > **`detail` es siempre el `child` del router.** No es estilo: ese `child` es
 > el `Navigator` de la `ShellRoute`, y `GoRouterDelegate.popRoute` — a donde va
@@ -1156,7 +1186,8 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 lib/presentation/
 ├── router/
 │   ├── app_router.dart                   # tabla de rutas PLANA + la unica ShellRoute
-│   └── pane_navigation.dart              # openInPane / closePane: que significa un toque
+│   ├── pane_navigation.dart              # openInPane / closePane: que significa un toque
+│   └── route_facts.dart                  # a que PC/conversacion pertenece una ruta, y su padre
 ├── screens/
 │   ├── shell/
 │   │   ├── app_shell.dart                # builder de la ShellRoute: pantalla o panel

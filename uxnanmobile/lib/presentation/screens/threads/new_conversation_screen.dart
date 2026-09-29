@@ -9,6 +9,7 @@ import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart'
     show activityTimeLabel;
@@ -315,7 +316,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       leading: IconSurface(
         icon: UxIcons.close,
         tooltip: l10n.actionCancel,
-        onPressed: () => Navigator.of(context).maybePop(),
+        onPressed: context.closePane,
       ),
       actions: [
         if (_starting)

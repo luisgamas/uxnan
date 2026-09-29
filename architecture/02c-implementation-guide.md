@@ -1309,13 +1309,16 @@ Lo que si cambia es el **significado de un toque**, y eso vive en
 - `openInPane(ruta)` — en telefono empuja; en ancho **reemplaza**, porque no
   fuiste a ningun sitio: el drawer no se movio y lo que cambio es el contenido
   de un panel. Empujar ahi construye una pila que el layout no deja ver.
-- `closePane()` — "atras" desde la primera pantalla del panel no es "la
-  anterior" sino **cerrar lo abierto**.
+- `closePane()` — la unica regla de "atras" de la app: saca lo apilado; si no
+  queda nada, en ancho **cierra lo abierto** y en telefono sube un nivel
+  (`RouteFacts.parent`, `router/route_facts.dart`).
 
-`openInPane` vacia antes `shellNavigatorKey`: el visor de archivos y la
-pantalla de git se abren con `Navigator.push` crudo y quedan **encima** de la
-pagina enrutada, asi que `go` por si solo cambiaba la ruta por debajo y las
-dejaba tapandolo todo.
+`openInPane` vacia antes `shellNavigatorKey` (`clearPane`): los hijos de las
+pantallas de carpeta (un archivo, el historial) se abren con `Navigator.push`
+crudo y quedan **encima** de la pagina enrutada, asi que `go` por si solo
+cambiaba la ruta por debajo y las dejaba tapandolo todo. Vaciarlo **pregunta a
+cada ruta** (`popDisposition`): un archivo con cambios sin guardar lo detiene y
+pregunta, en vez de perderse. Y lo que ya esta abierto no se vuelve a abrir.
 
 El drawer permanente (`NavDrawer`) son **tres zonas y nada mas** — el PC, su
 trabajo, y tu. Es un `Material`, no un `NavigationDrawer`: ese componente
@@ -1353,11 +1356,13 @@ PopScope(
     if (didPop || location == AppRoutes.home) return;
     final nested = shellNavigatorKey.currentState;
     if (nested != null && nested.canPop()) {
-      nested.pop();
+      nested.maybePop(); // pregunta a la pantalla, como cualquier atras
       return;
     }
     context.go(
-      context.hasPermanentPane ? AppRoutes.home : parentOf(location, context),
+      context.hasPermanentPane
+          ? AppRoutes.home
+          : parentLocationOf(location, ProviderScope.containerOf(context)),
     );
   },
   child: NotificationListener<NavigationNotification>(

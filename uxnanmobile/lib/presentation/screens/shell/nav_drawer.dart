@@ -9,6 +9,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -102,9 +103,12 @@ class _DeviceHeader extends ConsumerWidget {
       // list. Picking a PC here is the same act as picking one on the home
       // screen, and it fails the same way.
       await ref.read(sessionCoordinatorProvider).switchMac(target);
-      await ref.read(lastVisitedDeviceProvider.notifier).visited(
-            target.macDeviceId,
-          );
+      await ref.read(focusedDeviceProvider.notifier).focus(target.macDeviceId);
+      // Whatever the pane held belongs to the PC you just left; beside the
+      // new PC's list it would say the switch did not happen.
+      if (context.mounted && await context.clearPane() && context.mounted) {
+        context.go(AppRoutes.home);
+      }
     } on Object {
       messenger
         ..clearSnackBars()
@@ -254,7 +258,11 @@ class _ProfileFooter extends ConsumerWidget {
       // a deep walk (conversation → files → git) without back then retracing
       // every screen that walk touched. A permanent drawer makes that stack
       // invisible, and an invisible stack is one nobody can reason about.
-      onTap: () => context.go(AppRoutes.home),
+      onTap: () async {
+        if (await context.clearPane() && context.mounted) {
+          context.go(AppRoutes.home);
+        }
+      },
       trailing: const _FooterMenu(),
     );
   }

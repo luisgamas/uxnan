@@ -41,6 +41,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   a conversation's branch chip was showing for another folder.
 - **The source-control screen says "No git repository"** for a folder that is
   not one, instead of loading forever.
+- **A conversation never shows another's messages.** A notification's
+  conversation (or a fork) opened over the one you were reading; back showed
+  the other one's messages under the first one's title. Each conversation now
+  reads its own timeline and takes the thread back when it returns to the
+  front. Notifications and forks open the way a list row does, and a
+  notification for the conversation on screen no longer opens a second copy.
+- **Unsaved file edits are never dropped silently.** The editor's guard was
+  read once, before the first keystroke, so the back gesture — or picking
+  another conversation in the tablet drawer — discarded edits without asking.
+  It now asks from the first keystroke, and emptying the tablet pane asks every
+  screen instead of popping past it.
+- **Back always leads somewhere.** Every back arrow follows one rule: pop what
+  is stacked, else close the tablet pane, else go one level up — a PC's list
+  after rotating a tablet, which used to be a dead end with no arrow (and no
+  system back on iOS). A PC's archive and stats go back to its list, a folder's
+  screen to the conversation it came from. Pairing by code from the QR screen
+  has a working back arrow. On a tablet, the system back inside a Settings
+  section returns to the section instead of closing Settings.
+- **The tablet drawer shows the right PC.** Switching PC with a conversation
+  open now switches the list (and closes the conversation, which belongs to the
+  other PC); a PC's archive, stats or a folder's screen keep their PC in the
+  drawer; a newly paired PC is the one shown; removing a PC never leaves "no
+  devices" while others are paired. Deleting the open conversation from the
+  drawer closes it. "Archived" opens in the pane instead of stacking a copy on
+  every tap, and a conversation stays marked in the phone's list only while a
+  drawer is there to mark it.
+- **TalkBack can read the tablet drawer.** The content pane's navigator hid the
+  whole drawer from accessibility; each pane is now its own semantics
+  container.
+- **A folder's "+" waits for its PC.** Browsing a PC you are not connected to,
+  it started the conversation on whichever PC was connected; it is disabled
+  there now, like the New conversation button. A new conversation still opens
+  if the list refreshing under it fails or is rebuilt.
 - **Long paths show their end, not their beginning.** The file browser's folder
   bar, the New conversation folder, the git and commit-detail file cards, the
   file search results and the diff header cut a long path at its end, hiding

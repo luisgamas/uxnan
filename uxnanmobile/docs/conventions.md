@@ -143,13 +143,16 @@ spec, the spec wins.
   | **content** opened from a list | `context.openInPane` | a tap means two different things by width, and this is the one place that decides (`router/pane_navigation.dart`) |
   | a **child** of what is already open | `Navigator.of(context).push` + a `static push(...)` on the screen | it lands in the nearest navigator, which is the pane's — so it stacks inside instead of taking the window |
 
-  Going back is `Navigator.of(context).maybePop()` — the app bar's arrow
-  (`NeTopBar`) and every screen that draws its own. **Never `context.pop()`**,
-  which is why there are zero of them: a raw `Navigator.push` puts pages
-  go_router does not know about on top of the route, so `context.pop` pops the
-  *route underneath* and leaves the child covering the screen. The same
-  mismatch is why `openInPane` empties `shellNavigatorKey` before it calls
-  `go`.
+  Going back is `context.closePane()` — the app bar's arrow (`NeScaffold`)
+  and every screen that draws its own. It pops what is stacked (asking the
+  screen first, `maybePop`), and with nothing to pop it closes the pane on a
+  wide window or goes one level up on a phone (`RouteFacts.parent`). **Never
+  `context.pop()`**, which is why there are zero of them: a raw
+  `Navigator.push` puts pages go_router does not know about on top of the
+  route, so `context.pop` pops the *route underneath* and leaves the child
+  covering the screen. The same mismatch is why `openInPane` empties
+  `shellNavigatorKey` before it calls `go` — asking each screen, never
+  `pop()`ing past its guard.
 
   The OS back button reaches none of this directly — it goes to
   `GoRouterDelegate.popRoute`, and what the app tells Android about it lives in

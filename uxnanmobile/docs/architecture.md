@@ -133,15 +133,36 @@ selected, and its own scrollable would nest inside the tree's.
 
 Navigation inside the shell goes through `context.openInPane` / `closePane`
 (`presentation/router/pane_navigation.dart`), which is where "a tap means two
-different things" is decided instead of at every call site. On a phone it
-pushes and pops. On a wide window it **replaces**: nothing was left behind, so a
-stack there is one the layout gives you no way to see. The workspace screens'
-own children (a file, the commit history) open with a raw `Navigator.push` —
-landing above the routed page — so `openInPane` empties `shellNavigatorKey`
-before it navigates; without that, `go` swapped the page underneath and left
-them covering it. `closePane` pops whatever is stacked in the pane first (the
-git screen pushed over a conversation returns to it) and only then empties the
-pane.
+different things" is decided instead of at every call site — list rows, the
+drawer, a notification's tap and a fork all open through it, and **every back
+arrow** in the app is `closePane`. On a phone it pushes and pops. On a wide
+window it **replaces**: nothing was left behind, so a stack there is one the
+layout gives you no way to see. Two rules hold in both layouts:
+
+- **A screen's own guard is always asked.** The workspace screens' children (a
+  file, the commit history) open with a raw `Navigator.push`, landing above the
+  routed page, so `openInPane` empties `shellNavigatorKey` first (`clearPane`)
+  — asking each route through its `popDisposition`, never popping it behind
+  its back. A file with unsaved edits stops the pane from emptying and asks.
+- **What is already open is not opened again** (a notification for the
+  conversation on screen).
+
+`closePane` pops whatever is stacked in the pane first (the git screen pushed
+over a conversation returns to it); what remains is the pane's first screen,
+which a wide window closes and a phone leaves one level UP — rotate a tablet
+and a replaced pane becomes a stack of one, so `NeScaffold` shows its back
+arrow whenever there is a level above, not only when there is something to pop.
+
+One level up, like everything else a location says, comes from
+`RouteFacts` (`presentation/router/route_facts.dart`): the ONE reader of the
+route table's shape — which PC and which conversation a location belongs to,
+and its parent (a PC's archive or stats → its list, a folder's screen → the
+conversation it was opened from, a conversation → its PC's list).
+
+The two panes are separate **semantics containers**. Every route a navigator
+shows sits behind a modal barrier that blocks the semantics of everything
+painted before it in the same container; sharing one, the content pane's
+navigator hid the whole drawer from TalkBack.
 
 **Two panes is the ceiling.** Where a surface already sits beside the drawer,
 or is itself split, the next level down stacks inside its pane through a nested
@@ -155,11 +176,23 @@ A repository's identity is `repoKeyFor(path)`, namespaced away from the folder
 at the same path: collapse state is a set of these strings, and sharing one made
 collapsing the main folder collapse the whole project.
 
-Which PC it shows comes from `shellDeviceProvider`, resolved by how much each
-source knows — the open conversation's thread, then the last list visited
-(persisted through `ThreadListPreferencesStore`), then the connected PC. A deep
-link into `/conversation/:id` has no list behind it, and without this the drawer
-is blank in exactly the case a tablet user meets first.
+Which PC it shows comes from `shellDeviceProvider(location)`, resolved by how
+much each source knows — the PC the route belongs to (`routeDeviceProvider`:
+the one it names, or its conversation's), then the **PC in focus**
+(`focusedDeviceProvider`, persisted through `ThreadListPreferencesStore`), then
+the connected PC, then any paired PC — each answer checked against the PCs
+actually paired, so a removed PC never leaves "no devices" behind while others
+remain. The focus has one writer and three ways in, all acts of going to a PC:
+the shell reports every route that belongs to one, the drawer's PC switcher
+focuses its choice (and empties the pane, whose contents belong to the PC you
+left), and a newly paired PC takes the focus as it appears.
+
+A conversation reads **its own** timeline (`threadTimelineProvider(threadId)`),
+never "whatever the thread manager has in front": two conversations can be
+mounted at once (a notification's pushed over the one you were reading), and
+the one underneath used to show the other's messages once you went back. It
+listens to `paneRouteObserver` to take the thread manager back when it returns
+to the front, and closes itself when its thread is deleted.
 
 The home screen (`presentation/screens/devices/my_devices_screen.dart`) is the
 **overview**. Its bar carries the product's identity rather than the screen's —
