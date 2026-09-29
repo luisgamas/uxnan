@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 ### Fixed
 
+- **A setting no longer counts as activity.** `thread/setModel`,
+  `thread/setAccessMode` and the agent's native session id kept moving a
+  thread's `updatedAt`, which every client sorts and dates rows by — the phone
+  writes the default access mode when a conversation is first opened, so opening
+  one moved it to the top of every activity-sorted list with the current time.
+  They still reach clients as a change of their own (`rev`).
+
 - **A bridge started from code no longer borrows your real identity.**
   `startBridge()` read the OS keychain by default — while its own doc comment
   said "in-memory" — so a scratch or test bridge came up with the real

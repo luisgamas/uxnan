@@ -124,7 +124,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
   router.register('thread/setModel', async (p, ctx: BridgeContext) => {
     const threadId = requireString(p, 'threadId');
-    await ctx.threadStore.setModel(threadId, requireString(p, 'model'), ctx.now());
+    await ctx.threadStore.setModel(threadId, requireString(p, 'model'));
     return null;
   });
   router.register('thread/rename', async (p, ctx: BridgeContext) => {
@@ -147,7 +147,6 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     ctx.threadStore.setAccessMode(
       requireString(p, 'threadId'),
       parseAccessMode(requireString(p, 'mode')),
-      ctx.now(),
     ),
   );
   // `ageMs`: an action a client took offline and sends now (architecture/02a

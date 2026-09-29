@@ -2893,6 +2893,15 @@ ordenan por `seq`.
 `updatedAt` (desarchivaba en silencio lo abierto en el telefono). Solo
 `thread/unarchive` desarchiva.
 
+**Un ajuste no es actividad:** `updatedAt` es cuando la conversacion se movio
+por ultima vez — turnos, historia releida, titulo, estado —, y toda lista ordena
+y fecha por el. `thread/setModel`, `thread/setAccessMode` y el id de sesion
+nativo se propagan como cambio propio (`rev`) sin moverlo: el telefono escribe
+el modo de acceso por defecto al abrir una conversacion, y eso la fechaba
+"ahora" y la subia al principio de cada lista por actividad. La proyeccion
+local de metricas reemplaza igualmente una fila con el mismo `updatedAt` cuyo
+contenido cambio.
+
 **Titulos solo en el bridge:** el provisional se pone al guardar el primer
 turno si el titulo es el marcador (`titleSource: prompt`); el generado tras un
 turno completado mientras la fuente sea `prompt`/ausente, con hasta 2 intentos

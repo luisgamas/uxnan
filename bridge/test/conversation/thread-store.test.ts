@@ -7,6 +7,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { RpcError, type Turn } from '@uxnan/shared';
 import { DaemonState, ThreadStore } from '../../src/index.js';
+import type { ThreadChange } from '../../src/conversation/thread-store.js';
 import { rmrf } from '../helpers/fs.js';
 
 function newStore(): { store: ThreadStore; baseDir: string } {
@@ -750,21 +751,18 @@ test('setAccessMode persists the mode, is idempotent, and surfaces it', async ()
   // Unset by default.
   assert.equal((await store.getThread(thread.id)).accessMode, undefined);
 
-  const updated = await store.setAccessMode(thread.id, 'requestApproval', 2);
+  const updated = await store.setAccessMode(thread.id, 'requestApproval');
   assert.equal(updated.accessMode, 'requestApproval');
-  assert.equal(updated.updatedAt, 2);
+  // A setting is not activity: the conversation keeps its time and its place
+  // in every activity-sorted list (the phone writes the default mode on
+  // first open, which used to reorder the list).
+  assert.equal(updated.updatedAt, 1);
   // Surfaced on a fresh read (thread/read path).
   assert.equal((await store.getThread(thread.id)).accessMode, 'requestApproval');
 
-  // Idempotent: setting the same mode does not bump updatedAt.
-  const before = (await store.getThread(thread.id)).updatedAt;
-  await store.setAccessMode(thread.id, 'requestApproval', 999);
-  assert.equal((await store.getThread(thread.id)).updatedAt, before);
-
-  // Changing it bumps updatedAt again.
-  const changed = await store.setAccessMode(thread.id, 'fullAccess', 3);
+  const changed = await store.setAccessMode(thread.id, 'fullAccess');
   assert.equal(changed.accessMode, 'fullAccess');
-  assert.equal(changed.updatedAt, 3);
+  assert.equal(changed.updatedAt, 1);
   // The runtime the AgentManager reads per turn carries the mode (enforcement).
   assert.equal((await store.getThreadRuntime(thread.id)).accessMode, 'fullAccess');
   await rmrf(baseDir);
@@ -872,20 +870,20 @@ test('agent session id: persisted, idempotent, surfaced via getHistorySource', a
   assert.equal(src.cwd, 'C:/x');
   assert.equal(src.agentSessionId, undefined);
 
-  await store.setAgentSession(thread.id, 'sess-abc', 2);
+  await store.setAgentSession(thread.id, 'sess-abc');
   src = await store.getHistorySource(thread.id);
   assert.equal(src.agentSessionId, 'sess-abc');
   // It is also surfaced on the wire Thread (thread/read) so the phone can show
   // "resume from the CLI".
   assert.equal((await store.getThread(thread.id)).agentSessionId, 'sess-abc');
 
-  // Idempotent: setting the same id is a no-op (does not bump updatedAt).
+  // Bookkeeping, not activity: the conversation keeps its time.
   const before = (await store.getThread(thread.id)).updatedAt;
-  await store.setAgentSession(thread.id, 'sess-abc', 999);
+  await store.setAgentSession(thread.id, 'sess-abc');
   assert.equal((await store.getThread(thread.id)).updatedAt, before);
 
   // Unknown thread is a silent no-op (no throw).
-  await store.setAgentSession('nope', 'x', 3);
+  await store.setAgentSession('nope', 'x');
   await rmrf(baseDir);
 });
 
@@ -1262,7 +1260,7 @@ test('a fork never continues the original native session', async () => {
   const baseDir = join(tmpdir(), `uxnan-fork-session-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));
   const thread = await store.startThread({ projectId: 'p', agentId: 'claude-code' }, 1);
-  await store.setAgentSession(thread.id, 'native-1', 2);
+  await store.setAgentSession(thread.id, 'native-1');
   const fork = await store.forkThread(thread.id, 3);
   assert.equal((await store.getHistorySource(fork.id)).agentSessionId, undefined);
   assert.equal((await store.getHistorySource(thread.id)).agentSessionId, 'native-1');
@@ -1390,5 +1388,29 @@ test('reconcileNativeHistory drops an early, partial import of an exchange it no
   const turns = (await store.listTurns(thread.id)).turns;
   assert.equal(turns.length, 1);
   assert.match(String(turns[0]?.messages.find((m) => m.role === 'assistant')?.content), /Done\./);
+  await rmrf(baseDir);
+});
+
+test('a setting reaches every client without counting as activity', async () => {
+  // `updatedAt` is when the conversation last MOVED — every list sorts and
+  // dates rows by it. Opening a conversation on the phone writes the default
+  // access mode, and that alone used to date the row "now" and move it to the
+  // top of every activity-sorted list.
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await store.startTurn(thread.id, 'hello', 2);
+  const changes: ThreadChange[] = [];
+  store.onChange((c) => changes.push(c));
+
+  await store.setAccessMode(thread.id, 'fullAccess');
+  await store.setModel(thread.id, 'provider/model');
+  await store.setAgentSession(thread.id, 'native-1');
+
+  const after = await store.getThread(thread.id);
+  assert.equal(after.updatedAt, 2);
+  assert.equal(after.accessMode, 'fullAccess');
+  assert.equal(after.model, 'provider/model');
+  // Every one still reached the clients, as a change of its own.
+  assert.equal(changes.length, 3);
   await rmrf(baseDir);
 });

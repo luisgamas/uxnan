@@ -618,12 +618,11 @@ export class ThreadStore {
    * Record the agent's native session id for a thread (idempotent). Called once
    * the adapter reports it, so the on-disk history fallback can find the log.
    */
-  setAgentSession(threadId: string, agentSessionId: string, now: number): Promise<void> {
+  setAgentSession(threadId: string, agentSessionId: string): Promise<void> {
     return this.#mutateThread(threadId, async (threads) => {
       const thread = threads.find((t) => t.id === threadId);
       if (!thread || thread.agentSessionId === agentSessionId) return;
       thread.agentSessionId = agentSessionId;
-      thread.updatedAt = now;
       this.#bump(thread);
     });
   }
@@ -639,11 +638,10 @@ export class ThreadStore {
     await this.#requireThread(await this.#read(), threadId);
   }
 
-  async setModel(threadId: string, model: string, now: number): Promise<void> {
+  async setModel(threadId: string, model: string): Promise<void> {
     const updated = await this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.model = model;
-      thread.updatedAt = now;
       this.#bump(thread);
       return structuredCloneThread(thread);
     });
@@ -731,14 +729,13 @@ export class ThreadStore {
 
   /**
    * Persists the per-thread access (approval) [mode]. Idempotent: setting the
-   * same mode is a no-op (does not bump `updatedAt`). Returns the updated Thread.
+   * same mode is a no-op. Returns the updated Thread.
    */
-  setAccessMode(threadId: string, mode: AccessMode, now: number): Promise<Thread> {
+  setAccessMode(threadId: string, mode: AccessMode): Promise<Thread> {
     return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       if (thread.accessMode !== mode) {
         thread.accessMode = mode;
-        thread.updatedAt = now;
         this.#bump(thread);
       }
       return toThread(thread);

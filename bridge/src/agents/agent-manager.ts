@@ -1767,7 +1767,7 @@ export class AgentManager {
           this.#assistantByTurn.delete(turnId);
           this.#forgetRun(runId, turnId, threadId);
           void this.#cleanupAttachments(runId);
-          await this.#persistAgentSession(threadId, now);
+          await this.#persistAgentSession(threadId);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
           // Now there is an answer to summarize, so the thread can stop living
           // with the opening message as its name. Deliberately NOT awaited: it
@@ -1804,7 +1804,7 @@ export class AgentManager {
           this.#assistantByTurn.delete(turnId);
           this.#forgetRun(runId, turnId, threadId);
           void this.#cleanupAttachments(runId);
-          await this.#persistAgentSession(threadId, now);
+          await this.#persistAgentSession(threadId);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           // The agent broke (auth, balance, a dead CLI). Hold the queue instead
           // of feeding follow-ups to something that just failed.
@@ -1824,7 +1824,7 @@ export class AgentManager {
           void this.#cleanupAttachments(runId);
           // A stopped turn still opened (or continued) the agent's session: keep
           // it, or the next message would start the conversation over.
-          await this.#persistAgentSession(threadId, now);
+          await this.#persistAgentSession(threadId);
           // The user stopped this turn. They stopped it for a reason, so the
           // follow-ups they queued earlier wait for an explicit resume.
           this.#pauseQueue(threadId, 'turnAborted');
@@ -1903,13 +1903,13 @@ export class AgentManager {
    * Persist the agent's native session id for a thread so the on-disk history
    * fallback can locate its session log after a restart. Best-effort + idempotent.
    */
-  async #persistAgentSession(threadId: string, now: number): Promise<void> {
+  async #persistAgentSession(threadId: string): Promise<void> {
     const agentId = this.#agentByThread.get(threadId);
     if (!agentId) return;
     const sessionId = this.#adapters.get(agentId)?.nativeSessionId(threadId);
     if (!sessionId) return;
     try {
-      await this.#options.store.setAgentSession(threadId, sessionId, now);
+      await this.#options.store.setAgentSession(threadId, sessionId);
     } catch (err) {
       this.#options.logger.warn(
         `persist agent session failed: ${err instanceof Error ? err.message : String(err)}`,
