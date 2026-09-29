@@ -720,4 +720,32 @@ void main() {}
     expect(findUxIcon(UxIcons.edit), findsOneWidget);
     await manager.dispose();
   });
+
+  testWidgets('unsaved edits are guarded from the first keystroke',
+      (tester) async {
+    // Typing did not rebuild the screen, so the guard, read once when editing
+    // began, still said there was nothing to lose: the back gesture — or
+    // picking another conversation in the tablet drawer — dropped the edits
+    // without asking.
+    final manager = _managerFor('void main() {}');
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(cwd: '/tmp', path: 'main.dart'),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(findUxIcon(UxIcons.edit));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'void main() { edited }');
+    await tester.pump();
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await manager.dispose();
+  });
 }

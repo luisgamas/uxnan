@@ -13,6 +13,7 @@ import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/workspace/files/file_preview_support.dart';
 import 'package:uxnan/presentation/screens/workspace/files/widgets/file_diff_viewer.dart';
 import 'package:uxnan/presentation/screens/workspace/files/widgets/file_preview_media.dart';
@@ -233,12 +234,22 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     final topInset = NeTopBar.preferredHeight(context);
     // Block an accidental system-back while editing with unsaved changes; the
     // pop is routed through the same discard confirmation as the close button.
-    final dirtyEdit = _editing && _editController.text != _editOriginal;
-
-    return PopScope(
-      canPop: !dirtyEdit,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) unawaited(_cancelEditing());
+    //
+    // Recomputed on every keystroke: typing does not rebuild this screen, so
+    // a guard read once at build time still said "nothing to lose" after the
+    // first edit — and the back gesture, or picking another conversation in
+    // the drawer, threw the edits away without asking.
+    return ListenableBuilder(
+      listenable: _editController,
+      builder: (context, child) {
+        final dirtyEdit = _editing && _editController.text != _editOriginal;
+        return PopScope(
+          canPop: !dirtyEdit,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) unawaited(_cancelEditing());
+          },
+          child: child!,
+        );
       },
       child: Scaffold(
         // Resize for the keyboard so the inline editor stays above it.
@@ -285,7 +296,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                     if (_editing) {
                       unawaited(_cancelEditing());
                     } else {
-                      Navigator.of(context).maybePop();
+                      unawaited(context.closePane());
                     }
                   },
                 ),
