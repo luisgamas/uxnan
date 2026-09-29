@@ -918,6 +918,49 @@ void main() {
     expect(find.textContaining('Final answer.'), findsOneWidget);
   });
 
+  testWidgets('a reply a later message cut keeps every response in view',
+      (tester) async {
+    // The answer so far is not a closing one: what the agent said before the
+    // user's message reached it stays as written, like while it streamed, and
+    // ends with the line saying the run continues below.
+    final message = Message(
+      id: 'm-cut',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('First progress update.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'one',
+        ),
+        TextContent('Second progress update.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'two',
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+      continuedIn: 't2',
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('previous-responses-toggle')),
+      findsNothing,
+    );
+    expect(find.textContaining('First progress update.'), findsOneWidget);
+    expect(find.textContaining('Second progress update.'), findsOneWidget);
+    expect(
+      find.text('Continues below, with your next message'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('assistant turn shows a collapsible thinking section',
       (tester) async {
     final message = Message(

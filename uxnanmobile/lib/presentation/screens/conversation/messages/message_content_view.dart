@@ -1894,7 +1894,9 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     // Native protocols may produce several assistant messages in one turn.
     // Boundaries are zero-text metadata: during streaming every group remains
     // visible; once settled, all but the last response move into one disclosure
-    // without changing the persisted content or the copy projection.
+    // without changing the persisted content or the copy projection. A reply a
+    // later message cut ([Message.continuedIn]) is not settled in that sense:
+    // it is the answer so far and stays as it streamed, like the desktop's.
     // An agent resends its whole to-do list on every change: each earlier
     // plan is a past state of the latest one, which alone is shown.
     final lastPlan = message.contents.whereType<PlanContent>().lastOrNull;
@@ -1922,7 +1924,9 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       }
     }
     if (response.isNotEmpty) responseGroups.add(response);
-    final collapsePrevious = !message.isStreaming && responseGroups.length > 1;
+    final collapsePrevious = !message.isStreaming &&
+        message.continuedIn == null &&
+        responseGroups.length > 1;
     final visibleContents = collapsePrevious
         ? responseGroups.last
         : [for (final group in responseGroups) ...group];

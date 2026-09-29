@@ -51,6 +51,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An answer a message interrupted stays whole.** When a message reached the
+  agent mid-answer, the answer so far ended with *Continues below* as intended,
+  but an answer in several parts still folded all but its last into *previous
+  messages*, hiding most of what the agent had said. It now stays as it
+  streamed, every part in view, as on the desktop.
 - **An open conversation stays quiet while you look at its files or source
   control.** Opening either on top of the conversation counted as leaving it,
   so its own replies notified you while you were still in it. Only closing the
