@@ -116,37 +116,61 @@ check() {
   [ "$(printf '%s\n%s\n' "$needed" "$GLIBC_FLOOR" | sort -V | tail -n 1)" = "$GLIBC_FLOOR" ] \
     || fail "requires glibc $needed, newer than the $GLIBC_FLOOR floor"
 
-  echo "--- launches under firejail and shows its window"
+  echo "--- launches under firejail and paints its window, on the catalog's clock"
+  # The catalog's own procedure (its code/worker.sh): WebKit's GPU paths off
+  # (Xvfb has no GPU; real desktops need neither variable), launch under
+  # firejail, look ~10 s later, start a window manager, shoot 2 s after that,
+  # and reject a shot that is nearly all one colour as an empty window. Ours
+  # must not still be on the splash — or black — at that moment.
   local display=":97"
   Xvfb "$display" -screen 0 1440x900x24 > /dev/null 2>&1 &
   local xvfb=$!
   sleep 2
-  DISPLAY="$display" firejail --quiet --noprofile --net=none --appimage "$image" > "$work/app.log" 2>&1 &
+  DISPLAY="$display" WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    firejail --quiet --noprofile --net=none --appimage "$image" > "$work/app.log" 2>&1 &
   local app=$!
+  sleep 10
   # The app's own window, titled with the product name, mapped and full size.
   # Any window will not do: GTK maps a 10x10 helper window named after the
   # binary long before (and even without) the real one.
   local window=""
-  for _ in $(seq 1 60); do
-    sleep 1
+  for _ in $(seq 1 20); do
     kill -0 "$app" 2>/dev/null || break
     window="$(main_window "$display")"
     [ -n "$window" ] && break
+    sleep 1
   done
-  if [ -n "$window" ] && [ -n "${APPIMAGE_SCREENSHOT:-}" ]; then
-    sleep 5 # let the first frames paint
-    DISPLAY="$display" import -window root "$APPIMAGE_SCREENSHOT" || true
+  local shot="${APPIMAGE_SCREENSHOT:-$work/window.png}" share=""
+  if [ -n "$window" ]; then
+    DISPLAY="$display" icewm > /dev/null 2>&1 &
+    sleep 2
+    DISPLAY="$display" import -window "${window%% *}" "$shot"
+    share="$(one_colour_share "$shot")"
   fi
+  pkill -f -- "$image" 2>/dev/null || true
   kill "$app" 2>/dev/null || true
+  pkill -x icewm 2>/dev/null || true
   kill "$xvfb" 2>/dev/null || true
   if [ -z "$window" ]; then
     DISPLAY="$display" xwininfo -tree -root 2>/dev/null | grep -E '0x.*": \(' || true
     cat "$work/app.log"
     fail "the AppImage showed no 'Uxnan Desktop' window under firejail"
   fi
-  echo "window: $window"
+  echo "window: $window, ${share}% one colour"
+  if [ "$share" -ge 95 ]; then
+    cat "$work/app.log"
+    fail "the window is ${share}% one colour ~12 s after launch: the catalog rejects that as an empty window"
+  fi
   rm -rf "$work"
   echo "AppImage OK"
+}
+
+# Percentage of the image in $1 taken by its most common colour.
+one_colour_share() {
+  local top w h
+  top="$(convert "$1" -alpha off -depth 8 -format '%c' histogram:info:- | sort -rn | head -n 1 | awk '{ print $1 + 0 }')"
+  read -r w h < <(identify -format '%w %h' "$1")
+  echo $((100 * top / (w * h)))
 }
 
 # The id and geometry of a viewable "Uxnan Desktop" window at least 400px wide

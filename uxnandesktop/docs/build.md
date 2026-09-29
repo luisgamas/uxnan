@@ -114,8 +114,11 @@ around `tauri build`:
 - **`check <AppImage>`**, after it: asserts what the
   [AppImage catalog](https://appimage.github.io) tests — every executable
   runnable by anyone, no excluded library, a desktop entry with categories,
-  valid AppStream metadata, the glibc floor — then launches the image under
-  firejail on a virtual display and waits for its window.
+  valid AppStream metadata, the glibc floor — then launches the image the way
+  the catalog does (firejail, a virtual display, WebKit's GPU paths off),
+  shoots the real *Uxnan Desktop* window about 12 s later and fails if it is
+  95 % or more one colour, which the catalog rejects as an empty window (a
+  black frame, or the splash still up).
 
 It runs in the release's Linux leg and in the Linux leg of the `bundle` job of
 `ci-desktop.yml`, which uploads the window it saw as the `appimage-window`

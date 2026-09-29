@@ -205,7 +205,7 @@ jobs:
       - name: Check the AppImage
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get install -y firejail xvfb x11-utils desktop-file-utils appstream
+          sudo apt-get install -y firejail xvfb x11-utils desktop-file-utils appstream imagemagick icewm
           bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
 
   # The body, and — for nightlies only — the publish.
