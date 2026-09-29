@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_preview_support.dart';
 import 'package:uxnan/presentation/widgets/highlighted_source.dart';
 
 void main() {

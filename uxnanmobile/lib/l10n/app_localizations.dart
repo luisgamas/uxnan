@@ -512,6 +512,12 @@ abstract class AppLocalizations {
   /// **'New conversation here'**
   String get spacesNewConversationHere;
 
+  /// Tooltip of the menu holding a folder's file browser and source control, where the row is too narrow for a button each.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder tools'**
+  String get spacesFolderTools;
+
   /// No description provided for @workspaceDirty.
   ///
   /// In en, this message translates to:

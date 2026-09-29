@@ -88,6 +88,7 @@
   "spacesOther": "Otros espacios",
   "spacesNoFolder": "Sin carpeta",
   "spacesNewConversationHere": "Nueva conversación aquí",
+  "spacesFolderTools": "Herramientas de la carpeta",
   "workspaceDirty": "{count, plural, =1{1 archivo sin confirmar} other{{count} archivos sin confirmar}}",
   "workspaceAhead": "{count, plural, =1{1 commit por subir} other{{count} commits por subir}}",
   "workspaceBehind": "{count, plural, =1{1 commit por bajar} other{{count} commits por bajar}}",

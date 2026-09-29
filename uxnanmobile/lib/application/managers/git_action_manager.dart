@@ -53,14 +53,22 @@ class GitActionManager {
   final Uuid _uuid;
   late final StreamSubscription<DomainEvent> _eventsSub;
 
-  final BehaviorSubject<GitRepoState?> _repoState =
-      BehaviorSubject.seeded(null);
+  /// The latest status of every folder read this session, by `cwd`.
+  ///
+  /// Keyed, never a single "current" slot: the folder list reads the status
+  /// of each visible folder through this manager while a git screen, a file
+  /// browser or a conversation shows another — one shared slot let whichever
+  /// read landed last paint its files into all of them.
+  final BehaviorSubject<Map<String, GitRepoState>> _repoStates =
+      BehaviorSubject.seeded(const {});
   final BehaviorSubject<GitActionProgress?> _activeAction =
       BehaviorSubject.seeded(null);
   final BehaviorSubject<bool> _isLoading = BehaviorSubject.seeded(false);
 
-  /// The latest repository state, or null until first fetched.
-  Stream<GitRepoState?> get repoStateStream => _repoState.stream;
+  /// The latest state of the repository at [cwd], or null until it is first
+  /// fetched. Emits only when that folder's state changes.
+  Stream<GitRepoState?> repoStateFor(String cwd) =>
+      _repoStates.stream.map((states) => states[cwd]).distinct();
 
   /// The in-flight git action's progress, or null when idle.
   Stream<GitActionProgress?> get activeActionStream => _activeAction.stream;
@@ -68,8 +76,8 @@ class GitActionManager {
   /// Whether a status refresh is in flight.
   Stream<bool> get isLoadingStream => _isLoading.stream;
 
-  /// The latest repository state snapshot.
-  GitRepoState? get repoState => _repoState.value;
+  /// The latest state snapshot of the repository at [cwd].
+  GitRepoState? repoStateOf(String cwd) => _repoStates.value[cwd];
 
   /// The in-flight action snapshot.
   GitActionProgress? get activeAction => _activeAction.value;
@@ -85,7 +93,7 @@ class GitActionManager {
       final result = response.result;
       if (result is! Map) return null;
       final state = GitRepoState.fromJson(result.cast<String, dynamic>());
-      _repoState.add(state);
+      _repoStates.add({..._repoStates.value, cwd: state});
       _statusBus?.emit(GitStatusChange(cwd: cwd, state: state));
       return state;
     } finally {
@@ -338,7 +346,7 @@ class GitActionManager {
   /// Releases resources.
   Future<void> dispose() async {
     await _eventsSub.cancel();
-    await _repoState.close();
+    await _repoStates.close();
     await _activeAction.close();
     await _isLoading.close();
   }

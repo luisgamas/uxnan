@@ -121,6 +121,10 @@
   "spacesOther": "Other spaces",
   "spacesNoFolder": "No folder",
   "spacesNewConversationHere": "New conversation here",
+  "spacesFolderTools": "Folder tools",
+  "@spacesFolderTools": {
+    "description": "Tooltip of the menu holding a folder's file browser and source control, where the row is too narrow for a button each."
+  },
   "workspaceDirty": "{count, plural, =1{1 uncommitted file} other{{count} uncommitted files}}",
   "@workspaceDirty": {"placeholders": {"count": {"type": "int"}}},
   "workspaceAhead": "{count, plural, =1{1 commit to push} other{{count} commits to push}}",

@@ -28,11 +28,12 @@ extension PaneNavigation on BuildContext {
       push(location);
       return;
     }
-    // Empty the pane before refilling it. The conversation opens its file
-    // browser and git screens with a raw `Navigator.push`, which lands ABOVE
-    // the routed page — so `go` on its own swaps the page underneath and
-    // leaves the pushed screen covering it. From the file browser, picking
-    // another conversation looked like nothing happened.
+    // Empty the pane before refilling it. The workspace screens open their
+    // own detail screens (a file, the commit history) with a raw
+    // `Navigator.push`, which lands ABOVE the routed page — so `go` on its own
+    // swaps the page underneath and leaves the pushed screen covering it. From
+    // the file viewer, picking another conversation looked like nothing
+    // happened.
     final navigator = shellNavigatorKey.currentState;
     while (navigator?.canPop() ?? false) {
       navigator!.pop();
@@ -40,20 +41,23 @@ extension PaneNavigation on BuildContext {
     go(location);
   }
 
-  /// What "back" means from the pane's own first screen.
+  /// What "back" means on a screen that can be the pane's first one.
   ///
-  /// On a phone it pops, because you really did come from somewhere. In the
-  /// wide layout nothing was left behind — the route was replaced, not stacked
-  /// — so back is not "the previous screen" but **closing what is open**: the
-  /// pane empties and the drawer, which never moved, is what remains.
+  /// Whatever was stacked on top of something pops, in every layout: a
+  /// folder's source control opened from inside a conversation returns to that
+  /// conversation. What remains is the pane's own first screen, and there the
+  /// layouts differ. On a phone you really did come from somewhere. In the wide
+  /// layout nothing was left behind — the route was replaced, not stacked — so
+  /// back is not "the previous screen" but **closing what is open**: the pane
+  /// empties and the drawer, which never moved, is what remains.
   void closePane() {
-    if (hasPermanentPane) {
-      go(AppRoutes.home);
-      return;
-    }
     final navigator = Navigator.of(this);
     if (navigator.canPop()) {
       navigator.pop();
+      return;
+    }
+    if (hasPermanentPane) {
+      go(AppRoutes.home);
       return;
     }
     // Narrow with NOTHING to pop — rotate a tablet with a conversation open

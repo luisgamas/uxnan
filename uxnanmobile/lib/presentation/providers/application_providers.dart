@@ -2462,9 +2462,13 @@ final gitActionManagerProvider = Provider<GitActionManager>((ref) {
   return manager;
 });
 
-/// The active workspace's git repository state, for the UI.
-final gitRepoStateProvider = StreamProvider<GitRepoState?>(
-  (ref) => ref.watch(gitActionManagerProvider).repoStateStream,
+/// The git repository state of the working folder at a `cwd`, for the UI.
+///
+/// Per folder: a git screen, a file browser and the folder rows beside them
+/// each read their own folder, and none of them may see another's files.
+final gitRepoStateProvider =
+    StreamProvider.autoDispose.family<GitRepoState?, String>(
+  (ref, cwd) => ref.watch(gitActionManagerProvider).repoStateFor(cwd),
 );
 
 /// The in-flight git action's progress, for the UI.

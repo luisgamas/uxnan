@@ -14,6 +14,8 @@ import 'package:uxnan/presentation/screens/shell/app_shell.dart';
 import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_browser_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_screen.dart';
 
 /// Route path constants used across the app.
 ///
@@ -63,6 +65,30 @@ class AppRoutes {
 
   /// Builds the conversation route for [threadId].
   static String conversation(String threadId) => '/conversation/$threadId';
+
+  /// A working folder's file browser. The folder travels as the `cwd` query
+  /// parameter — an absolute path is not a path segment.
+  static const String workspaceFilesPattern = '/workspace/files';
+
+  /// A working folder's source control screen, addressed like
+  /// [workspaceFilesPattern].
+  static const String workspaceGitPattern = '/workspace/git';
+
+  /// Builds the file-browser route for the folder at [cwd]. [threadId] names
+  /// the conversation it was opened from, when there is one.
+  static String workspaceFiles(String cwd, {String? threadId}) =>
+      _workspace(workspaceFilesPattern, cwd, threadId);
+
+  /// Builds the source-control route for the folder at [cwd]. [threadId]
+  /// names the conversation it was opened from, when there is one — the git
+  /// screen records its actions against it and offers removing its worktree.
+  static String workspaceGit(String cwd, {String? threadId}) =>
+      _workspace(workspaceGitPattern, cwd, threadId);
+
+  static String _workspace(String path, String cwd, String? threadId) => Uri(
+        path: path,
+        queryParameters: {'cwd': cwd, if (threadId != null) 'thread': threadId},
+      ).toString();
 }
 
 /// Provides the app's [GoRouter] instance.
@@ -92,12 +118,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.home,
     routes: [
       ShellRoute(
-        // Keyed so the pane can be EMPTIED from outside it. The conversation
-        // opens its file browser and git screens with a raw `Navigator.push`,
-        // which lands on this navigator, above the routed page — so `go` alone
-        // changes the route underneath and leaves the pushed screen covering
-        // it. Picking another conversation from the drawer then looked like
-        // nothing happened at all.
+        // Keyed so the pane can be EMPTIED from outside it. The workspace
+        // screens open their own children (a file, the commit history) with a
+        // raw `Navigator.push`, which lands on this navigator, above the routed
+        // page — so `go` alone changes the route underneath and leaves the
+        // pushed screen covering it. Picking another conversation from the
+        // drawer then looked like nothing happened at all.
         navigatorKey: shellNavigatorKey,
         builder: (context, state, child) => AppShell(child: child),
         routes: [
@@ -190,8 +216,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               threadId: state.pathParameters['threadId']!,
             ),
           ),
+          // A folder's files and source control are the FOLDER's, not a
+          // conversation's: a project row opens them as readily as a thread
+          // does. Routes rather than raw pushes so both callers reach them the
+          // same way — pushed over a conversation, or into the pane from the
+          // permanent drawer, where a raw push would land on the root
+          // navigator and cover the whole window. Keyed by the query for the
+          // same reason every parameterised route above is keyed.
+          GoRoute(
+            path: AppRoutes.workspaceFilesPattern,
+            redirect: _requireCwd,
+            builder: (context, state) => FileBrowserScreen(
+              key: ValueKey(state.uri.query),
+              cwd: state.uri.queryParameters['cwd']!,
+              threadId: state.uri.queryParameters['thread'],
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.workspaceGitPattern,
+            redirect: _requireCwd,
+            builder: (context, state) => GitScreen(
+              key: ValueKey(state.uri.query),
+              cwd: state.uri.queryParameters['cwd']!,
+              threadId: state.uri.queryParameters['thread'],
+            ),
+          ),
         ],
       ),
     ],
   );
 });
+
+/// Sends a folder route that names no folder back to the overview — nothing
+/// the app builds lacks one, so only a mangled link can get here.
+String? _requireCwd(BuildContext context, GoRouterState state) {
+  final cwd = state.uri.queryParameters['cwd'];
+  return cwd == null || cwd.isEmpty ? AppRoutes.home : null;
+}

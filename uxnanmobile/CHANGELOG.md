@@ -5,6 +5,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **A folder's files and source control, straight from the threads list.** Every
+  folder row now carries the same two tools a conversation's bar has — *Browse
+  files* and *Source control* — beside its "+", so they are reachable before
+  (and without) opening any conversation in it. The New conversation button
+  stays the global one. In the tablet drawer's narrow column the two share one
+  ⋮ menu (*Folder tools*) so the folder's name keeps its room; on a phone each
+  has its own button. Both wait for a live connection to that PC.
+
+### Changed
+
+- **Files and source control are routes of their own**
+  (`/workspace/files?cwd=…`, `/workspace/git?cwd=…`), reached the same way from
+  a conversation and from a folder row. Pushed over a conversation, back returns
+  to it; opened from the tablet drawer they fill the content pane (a raw push
+  from there would have covered the whole window). The screens moved from
+  `presentation/screens/conversation/` to `presentation/screens/workspace/`.
+
+### Fixed
+
+- **The last folders of a long list are reachable.** Scrolled to the bottom,
+  the New conversation button sat on the last rows the moment it came back; a
+  screen with a floating button now ends with room for it (the prompt-template
+  library had the same problem).
+- **A folder's details sheet no longer takes over the screen.** With a long
+  history it grew into a full-screen page with its drag handle under the status
+  bar; its conversation list is now capped like every picker sheet's and the
+  sheet stays below the status bar.
+- **A folder's heading no longer touches its first conversation.** Held down,
+  its highlight ran into the row under it; the heading now keeps a small gap.
+- **Git state is kept per folder.** One shared "current repository" slot let
+  the folder rows' indicators overwrite what a git screen, the file browser or
+  a conversation's branch chip was showing for another folder.
+- **The source-control screen says "No git repository"** for a folder that is
+  not one, instead of loading forever.
 
 ## [0.0.33-alpha.20260928+20260935] - 20260928
 ### Fixed

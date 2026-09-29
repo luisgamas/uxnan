@@ -19,6 +19,8 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
+import 'package:uxnan/presentation/providers/workspace_git_provider.dart';
+import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -54,13 +56,29 @@ Widget _wrap({
   Map<String, WorkspaceRepo> repos = const {},
   String? openThread,
   bool connected = false,
+  bool embedded = false,
   List<ClientPresence> presence = const [],
 }) {
   final router = GoRouter(
     routes: [
       GoRoute(
         path: '/',
-        builder: (_, __) => const ThreadsScreen(deviceId: 'mac-1'),
+        builder: (_, __) => embedded
+            ? const Scaffold(
+                body: ThreadsScreen(deviceId: 'mac-1', embedded: true),
+              )
+            : const ThreadsScreen(deviceId: 'mac-1'),
+      ),
+      // Stand-ins for the folder's own screens: what is pinned here is that a
+      // row reaches them for the right folder, not what they draw.
+      GoRoute(
+        path: AppRoutes.workspaceFilesPattern,
+        builder: (_, state) =>
+            Text('files:${state.uri.queryParameters['cwd']}'),
+      ),
+      GoRoute(
+        path: AppRoutes.workspaceGitPattern,
+        builder: (_, state) => Text('git:${state.uri.queryParameters['cwd']}'),
       ),
     ],
   );
@@ -116,6 +134,14 @@ Widget _wrap({
         ),
       ),
       bridgePresenceProvider.overrideWith((ref) => Stream.value(presence)),
+      // Connected, the bridge-update banner asks the bridge what it runs;
+      // left real, that spins up the session coordinator and its database.
+      bridgeStatusProvider.overrideWith((ref) async => null),
+      // A folder row reads its git state; connected, the real provider would
+      // ask a live bridge.
+      workspaceGitProvider.overrideWith(
+        (ref, cwd) async => (git: null, stale: false),
+      ),
       connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
     ],
     child: MaterialApp.router(
@@ -537,6 +563,96 @@ void main() {
       await tester.pump();
 
       expect(findUxIcon(UxIcons.add), findsOneWidget);
+    });
+
+    testWidgets('a folder opens its own files and source control',
+        (tester) async {
+      // They belong to the folder, not to a conversation: reachable from the
+      // row, before (and without) opening any thread in it.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [inFolder('a', 'Fix login', '/dev/my app')],
+          connected: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Browse files'));
+      await tester.pumpAndSettle();
+      // The path survives the trip through the route's query intact —
+      // spaces and all.
+      expect(find.text('files:/dev/my app'), findsOneWidget);
+
+      // Pushed over the list, as a phone does — so back returns to it.
+      Navigator.of(tester.element(find.text('files:/dev/my app'))).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Source control'));
+      await tester.pumpAndSettle();
+      expect(find.text('git:/dev/my app'), findsOneWidget);
+    });
+
+    testWidgets("a folder's tools wait for a live channel to its PC",
+        (tester) async {
+      // Both read the folder through the bridge; browsing a PC we are not
+      // connected to must not reach whichever one we are.
+      await tester.pumpWidget(
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byTooltip('Browse files'), findsOneWidget);
+      expect(find.byTooltip('Source control'), findsOneWidget);
+      await tester.tap(find.byTooltip('Browse files'));
+      await tester.tap(find.byTooltip('Source control'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('files:'), findsNothing);
+      expect(find.textContaining('git:'), findsNothing);
+    });
+
+    testWidgets("the drawer's narrow column folds a folder's tools into a menu",
+        (tester) async {
+      // Three buttons in a 320 dp column left the folder's name a few
+      // letters. The drawer keeps "+" and puts the other two behind one ⋮.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [inFolder('a', 'Fix login', '/dev/app')],
+          connected: true,
+          embedded: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byTooltip('Browse files'), findsNothing);
+      expect(findUxIcon(UxIcons.add), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Folder tools'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Source control'));
+      await tester.pumpAndSettle();
+      expect(find.text('git:/dev/app'), findsOneWidget);
+    });
+
+    testWidgets("a folder's heading keeps clear of its first conversation",
+        (tester) async {
+      // Held down, the heading paints its highlight while the details sheet
+      // rises; flush against the row under it, the two read as one block.
+      await tester.pumpWidget(
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final heading = tester.getRect(find.byType(WorkspaceGroupRow));
+      final firstThread = tester.getRect(
+        find.ancestor(
+          of: find.text('Fix login'),
+          matching: find.byType(NeCard),
+        ),
+      );
+      expect(firstThread.top - heading.bottom, greaterThan(0));
     });
   });
 }

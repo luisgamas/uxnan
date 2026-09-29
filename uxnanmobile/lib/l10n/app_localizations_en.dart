@@ -252,6 +252,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get spacesNewConversationHere => 'New conversation here';
 
   @override
+  String get spacesFolderTools => 'Folder tools';
+
+  @override
   String workspaceDirty(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

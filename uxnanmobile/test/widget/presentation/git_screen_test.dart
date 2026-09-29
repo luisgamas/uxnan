@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/application/managers/git_action_manager.dart';
+import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
 import 'package:uxnan/domain/value_objects/git/git_diff_totals.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import '../../support/ux_icon_finder.dart';
 
@@ -42,9 +44,18 @@ GitRepoState _sampleState() => const GitRepoState(
       ],
     );
 
+/// A manager whose `git/status` never answers with a repository — what a
+/// folder that is not one (or an unreachable PC) looks like to the screen.
+GitActionManager _noRepoManager() => GitActionManager(
+      domainEvents: const Stream<DomainEvent>.empty(),
+      sendRequest: (method, [params]) =>
+          Future.error(StateError('not a git repository')),
+    );
+
 Widget _wrap(Widget child, {GitRepoState? state}) => ProviderScope(
       overrides: [
-        gitRepoStateProvider.overrideWith((ref) => Stream.value(state)),
+        gitActionManagerProvider.overrideWith((ref) => _noRepoManager()),
+        gitRepoStateProvider.overrideWith((ref, cwd) => Stream.value(state)),
         gitActiveActionProvider.overrideWith((ref) => Stream.value(null)),
       ],
       child: MaterialApp(
@@ -57,7 +68,9 @@ Widget _wrap(Widget child, {GitRepoState? state}) => ProviderScope(
 void main() {
   testWidgets('GitScreen lists changed files with branch and commit composer',
       (tester) async {
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pump();
 
     expect(find.text('feature/login'), findsOneWidget);
@@ -72,7 +85,9 @@ void main() {
   testWidgets('GitScreen unchecks a file, lowering the selected count', (
     tester,
   ) async {
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pump();
 
     // Every file row's `_NeCheckbox` is initially selected →
@@ -93,7 +108,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       _wrap(
-        const GitScreen(),
+        const GitScreen(cwd: '/repo'),
         state: const GitRepoState(branch: 'main'),
       ),
     );
@@ -104,7 +119,9 @@ void main() {
 
   testWidgets('GitScreen autofocuses the commit title field on first build',
       (tester) async {
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pumpAndSettle();
 
     // The title is the first TextField in the commit bar; the description and
@@ -122,7 +139,9 @@ void main() {
   testWidgets(
       'Git commit composer contracts when idle and matches focused elevation',
       (tester) async {
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pumpAndSettle();
 
     final surface = find.byKey(const ValueKey('git-composer-surface'));
@@ -145,7 +164,9 @@ void main() {
     // timeline (CustomScrollView) calls FocusManager.primaryFocus.unfocus on
     // tap, and the commit title — autofocused on open — must drop focus when
     // the user taps the timeline area.
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pumpAndSettle();
 
     // Pre-condition: the title field is focused.
@@ -167,7 +188,9 @@ void main() {
   testWidgets(
       'GitScreen no longer renders a Refresh button in the app bar '
       '(refresh moved to pull-to-refresh)', (tester) async {
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pumpAndSettle();
 
     // The pull-to-refresh gesture lives on the timeline; the app bar no
@@ -182,12 +205,27 @@ void main() {
   testWidgets(
       'GitScreen exposes the History action in the app bar when a repo '
       'is present', (tester) async {
-    await tester.pumpWidget(_wrap(const GitScreen(), state: _sampleState()));
+    await tester.pumpWidget(
+      _wrap(const GitScreen(cwd: '/repo'), state: _sampleState()),
+    );
     await tester.pump();
 
     // The History IconSurface is in the app bar with the "View history"
     // tooltip. It's disabled while the screen is busy.
     final historyTooltip = find.byTooltip('View history');
     expect(historyTooltip, findsOneWidget);
+  });
+
+  testWidgets(
+      'GitScreen says the folder is not a repository once status answers '
+      'without one, instead of loading forever', (tester) async {
+    await tester.pumpWidget(_wrap(const GitScreen(cwd: '/notes')));
+    // The first frame asks; until the answer lands it is still loading.
+    expect(find.text('No git repository'), findsNothing);
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('No git repository'), findsOneWidget);
   });
 }

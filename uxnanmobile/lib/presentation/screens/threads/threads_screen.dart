@@ -274,7 +274,12 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             itemCount: rows.length,
             itemBuilder: (context, index) => NeEntranceRow(
               index: index,
-              child: _buildRow(context, rows[index], compact: compact),
+              child: _buildRow(
+                context,
+                rows[index],
+                compact: compact,
+                connectedHere: connectedHere,
+              ),
             ),
           ),
         ),
@@ -490,19 +495,33 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     BuildContext context,
     _SpaceRow row, {
     required bool compact,
+    required bool connectedHere,
   }) {
     switch (row) {
       case _RepoRow(:final repo, :final expanded):
-        return RepoGroupRow(
-          key: ValueKey('repo-${repo.key}'),
-          repo: repo,
-          expanded: expanded,
-          onToggle: () =>
-              ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
+        return Padding(
+          // A heading's press highlight must not touch the row under it.
+          padding: const EdgeInsets.only(bottom: UxnanSpacing.xs),
+          child: RepoGroupRow(
+            key: ValueKey('repo-${repo.key}'),
+            repo: repo,
+            expanded: expanded,
+            onToggle: () =>
+                ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
+          ),
         );
       case _WorkspaceRow(:final group, :final expanded, :final depth):
+        final path = group.path;
+        // Reading a folder's files or git goes through the live channel, and
+        // only to THIS PC — the same gate as every other live operation here.
+        final live = connectedHere && path != null && path.isNotEmpty;
         return Padding(
-          padding: EdgeInsets.only(left: depth * kSpaceIndent),
+          // The bottom gap keeps the heading's press highlight — held while
+          // its details sheet rises — off the first conversation under it.
+          padding: EdgeInsets.only(
+            left: depth * kSpaceIndent,
+            bottom: UxnanSpacing.xs,
+          ),
           child: WorkspaceGroupRow(
             key: ValueKey('workspace-${group.key}'),
             group: group,
@@ -521,6 +540,13 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               },
             ),
             onNewConversation: () => _newConversation(cwd: group.path),
+            onOpenFiles: live
+                ? () => context.openInPane(AppRoutes.workspaceFiles(path))
+                : null,
+            onOpenGit: live
+                ? () => context.openInPane(AppRoutes.workspaceGit(path))
+                : null,
+            foldTools: widget.embedded,
           ),
         );
       case _ThreadRow(:final thread, :final depth):

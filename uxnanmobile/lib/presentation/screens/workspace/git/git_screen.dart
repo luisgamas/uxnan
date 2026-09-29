@@ -7,8 +7,9 @@ import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/domain/value_objects/git/git_changed_file.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_diff_view.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_diff_view.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_history_screen.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -29,31 +30,21 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// optional description + optional Co-author) and the Commit/Push actions; the
 /// app-bar overflow holds Push, Create PR and the destructive *Discard all*.
 ///
-/// Replaces the old `GitActionsSheet` bottom sheet. Pass the active thread's
-/// workspace [cwd]; the screen reads `gitRepoStateProvider` (fed by
-/// `git/status`) and runs real stage/commit/push/discard/PR operations.
+/// A working folder's screen, reached through `AppRoutes.workspaceGit` — from
+/// a conversation or straight from the folder's row in the threads list. It
+/// reads `gitRepoStateProvider(cwd)` (fed by `git/status`) and runs real
+/// stage/commit/push/discard/PR operations.
 class GitScreen extends ConsumerStatefulWidget {
   /// Creates a [GitScreen].
-  const GitScreen({this.cwd, this.threadId, super.key});
+  const GitScreen({required this.cwd, this.threadId, super.key});
 
-  /// Workspace directory the git actions run in; null when unknown.
-  final String? cwd;
+  /// Workspace directory the git actions run in.
+  final String cwd;
 
-  /// Owning thread, used to record and read action history.
+  /// The conversation it was opened from, if any: actions are recorded
+  /// against it, and a worktree-backed one can be decommissioned from here.
+  /// Null when the folder's own row opened it.
   final String? threadId;
-
-  /// Pushes the screen onto the navigator.
-  static Future<void> push(
-    BuildContext context, {
-    String? cwd,
-    String? threadId,
-  }) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => GitScreen(cwd: cwd, threadId: threadId),
-      ),
-    );
-  }
 
   @override
   ConsumerState<GitScreen> createState() => _GitScreenState();
@@ -82,15 +73,26 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   /// content scrolls under its translucent veil.
   double _bottomChromeHeight = 0;
 
+  /// Whether the first `git/status` for this folder has answered. Until it
+  /// has, no state means "still asking"; after, it means the folder is not a
+  /// repository (or the PC could not say) — a spinner forever would claim the
+  /// answer is still coming.
+  bool _statusSettled = false;
+
   @override
   void initState() {
     super.initState();
-    final cwd = widget.cwd;
-    if (cwd != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(gitActionManagerProvider).refreshStatus(cwd);
-      });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStatus());
+  }
+
+  Future<void> _loadStatus() async {
+    try {
+      await ref.read(gitActionManagerProvider).refreshStatus(widget.cwd);
+    } on Object {
+      // Not a repository, or the PC dropped mid-request: the empty state
+      // says so, and pull-to-refresh asks again.
     }
+    if (mounted) setState(() => _statusSettled = true);
   }
 
   @override
@@ -134,7 +136,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   /// `RefreshIndicator` needs a parameterless `Future<void> Function()`.
   Future<void> _pullToRefresh() async {
     final cwd = widget.cwd;
-    if (cwd == null) return;
     await _refresh(cwd);
   }
 
@@ -143,7 +144,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _commit(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final title = _title.text.trim();
     if (title.isEmpty) {
       _toast(l10n.gitCommitTitleRequired);
@@ -196,7 +196,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _undoCommit(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -230,7 +229,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _revert(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -266,7 +264,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _removeWorktree(String worktreePath) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -293,7 +290,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
         worktreePath,
         threadId: widget.threadId,
       );
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) context.closePane();
       return;
     } on Object {
       if (!mounted) return;
@@ -327,7 +324,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
           force: true,
           threadId: widget.threadId,
         );
-        if (mounted) Navigator.of(context).pop();
+        if (mounted) context.closePane();
       } on Object catch (error) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
@@ -340,7 +337,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _push(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     if (ref.read(confirmBeforePushProvider)) {
       final ok = await _confirm(
         title: l10n.gitPushConfirmTitle,
@@ -390,7 +386,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _switchBranch(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     GitBranchList branches;
     setState(() => _busy = true);
     try {
@@ -533,7 +528,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _discard(GitRepoState state, {required bool all}) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final paths = all
         ? state.changedFiles.map((f) => f.path).toList()
         : _selectedPaths(state.changedFiles);
@@ -579,7 +573,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _createPr(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     // Detect local + remote branches up front so the dialog can offer real
     // source/target choices (best-effort: fall back to the current branch).
     GitBranchList branches;
@@ -658,7 +651,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _pull(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     await _guard(
       () => ref
           .read(gitActionManagerProvider)
@@ -672,7 +664,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _newBranch(GitRepoState state) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final name = await _promptText(
       title: l10n.gitNewBranch,
       hint: l10n.gitNewBranchHint,
@@ -758,7 +749,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final state = ref.watch(gitRepoStateProvider).value;
+    final state = ref.watch(gitRepoStateProvider(widget.cwd)).value;
     final files = state?.changedFiles ?? const <GitChangedFile>[];
     final allExpanded =
         files.isNotEmpty && files.every((f) => _expanded.contains(f.path));
@@ -800,7 +791,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                   if (state == null)
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: _NoRepository(connecting: widget.cwd != null),
+                      child: _NoRepository(connecting: !_statusSettled),
                     )
                   else ...[
                     SliverToBoxAdapter(child: _BranchSummary(state: state)),
@@ -844,9 +835,9 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                             onDiscard: _busy
                                 ? null
                                 : () => _discardOne(state, file.path),
-                            diff: widget.cwd == null || !_isExpanded(file.path)
-                                ? null
-                                : _diffFor(widget.cwd!, file.path),
+                            diff: _isExpanded(file.path)
+                                ? _diffFor(widget.cwd, file.path)
+                                : null,
                           );
                         },
                       ),
@@ -897,7 +888,9 @@ class _GitScreenState extends ConsumerState<GitScreen> {
               leading: IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                // Pops back to the conversation it was opened over; empties
+                // the pane when the drawer opened it there.
+                onPressed: context.closePane,
               ),
               title: Text(
                 l10n.gitActionsTitle,
@@ -964,7 +957,6 @@ class _GitScreenState extends ConsumerState<GitScreen> {
   Future<void> _discardOne(GitRepoState state, String path) async {
     final cwd = widget.cwd;
     final l10n = AppLocalizations.of(context);
-    if (cwd == null) return;
     final confirmed = await _confirmDiscard(1);
     if (confirmed != true || !mounted) return;
     await _guard(

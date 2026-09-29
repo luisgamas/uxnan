@@ -293,6 +293,9 @@ connected to live bridge data, validated on-device against a real bridge.
   auto-stash, smart PR dialog, undo-commit, `git/revert`, `git/deleteBranch`,
   `git/removeWorktree`, etc.) with a focus-responsive commit composer aligned
   to the conversation composer's Neural Expressive geometry and elevation.
+  `GitScreen` and the file browser are the folder's own routes
+  (`AppRoutes.workspaceGit` / `workspaceFiles`), opened from a conversation or
+  straight from a folder row in the threads list; git state is kept per `cwd`.
 - **FCM push** (gated) — Android LIVE; deep-link to conversation; **personalized
   copy** + foreground suppression; per-channel notification preferences (Replies /
   Errors).
@@ -341,7 +344,7 @@ shipping.
       renders as highlighted source (the honest fallback); GitHub draws the
       diagram. Needs a pure-Dart renderer or an explicit diagram placeholder in
       `MarkdownCodeBlockBuilder`
-      (`presentation/screens/conversation/files/widgets/markdown_blocks.dart`);
+      (`presentation/screens/workspace/files/widgets/markdown_blocks.dart`);
       deferred because the mobile stack deliberately carries no WebView
       (`architecture/02a` §5.4.7).
 - [ ] **Project drift repository** — the `projects` table exists; the repository +

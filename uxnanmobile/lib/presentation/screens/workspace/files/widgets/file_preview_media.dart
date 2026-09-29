@@ -8,7 +8,7 @@ import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_preview_support.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';

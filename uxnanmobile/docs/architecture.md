@@ -67,9 +67,13 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `application_providers.dart` (coordinators/managers + derived stream/family
   providers the UI watches).
 - `presentation/screens/` — `devices/`, `threads/`, `conversation/`,
-  `onboarding/`, `pairing/`; `conversation/files/` owns the capability-based
-  source, Markdown, image, SVG, PDF and Git-diff viewer described in
-  [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
+  `workspace/`, `onboarding/`, `pairing/`. `workspace/` holds what belongs to a
+  working folder rather than to a conversation: `files/` owns the
+  capability-based source, Markdown, image, SVG, PDF and Git-diff viewer
+  described in [`file-viewer.md`](file-viewer.md), and `git/` the source-control
+  screens. Both entry screens are routes (`AppRoutes.workspaceFiles` /
+  `workspaceGit`, the folder as the `cwd` query parameter) opened from a
+  conversation's bar and from a folder row alike. `presentation/router/app_router.dart` is
   the flat GoRouter table, wrapped in a single `ShellRoute`.
   `presentation/theme/` holds the design tokens — including `icons.dart`, the
   `UxIcons` catalogue every glyph is named in.
@@ -131,17 +135,21 @@ Navigation inside the shell goes through `context.openInPane` / `closePane`
 (`presentation/router/pane_navigation.dart`), which is where "a tap means two
 different things" is decided instead of at every call site. On a phone it
 pushes and pops. On a wide window it **replaces**: nothing was left behind, so a
-stack there is one the layout gives you no way to see. Because the file browser
-and git screens open with a raw `Navigator.push` — landing above the routed page
-— `openInPane` empties `shellNavigatorKey` before it navigates; without that,
-`go` swapped the page underneath and left them covering it.
+stack there is one the layout gives you no way to see. The workspace screens'
+own children (a file, the commit history) open with a raw `Navigator.push` —
+landing above the routed page — so `openInPane` empties `shellNavigatorKey`
+before it navigates; without that, `go` swapped the page underneath and left
+them covering it. `closePane` pops whatever is stacked in the pane first (the
+git screen pushed over a conversation returns to it) and only then empties the
+pane.
 
 **Two panes is the ceiling.** Where a surface already sits beside the drawer,
 or is itself split, the next level down stacks inside its pane through a nested
 `Navigator` rather than becoming a third column — see `docs/conventions.md`.
-Settings uses it for its sections' own children; the conversation's file browser
-and git screens get the same shape from `shellNavigatorKey`, which is why they
-fill the content pane and leave the drawer alone.
+Settings uses it for its sections' own children; the file browser and git
+screens get the same shape from `shellNavigatorKey`, which is why they fill the
+content pane and leave the drawer alone — whether a conversation or a folder
+row in the drawer opened them.
 
 A repository's identity is `repoKeyFor(path)`, namespaced away from the folder
 at the same path: collapse state is a set of these strings, and sharing one made

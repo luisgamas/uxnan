@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:uxnan/l10n/app_localizations.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_preview_support.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';

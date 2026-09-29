@@ -493,7 +493,13 @@ the app. Two tokens close it:
 | `UxnanSize.iconContentSmall` | 18 | The subordinate glyph on the same row: a state mark beside an identity mark, a chevron beside a name. Secondary, but still a shape rather than a dot. |
 
 A row-level action (a "+" on a folder) is an **S button** from §4.5 — 40 dp of
-surface around an `iconContent` glyph, with the usual 48 dp touch target.
+surface around an `iconContent` glyph, with the usual 48 dp touch target. A
+folder row carries three: *Browse files*, *Source control*, then "+" at the
+edge — the same glyphs (`folderOpen`, `commit`) the conversation's bar uses for
+the same screens. In the permanent drawer's fixed 320 dp column the first two
+fold into one `NeMenuButton` (*Folder tools*) so the folder's name keeps its
+room; "+" never folds. A folder heading keeps an `xs` gap below it, so its
+press highlight never touches the conversation under it.
 
 **Stroke: `UxnanSize.iconStroke` = 2**, which every `UxIcon` draws at unless it
 asks otherwise. Hugeicons authors at 1.5 on a 24-unit grid and the optical scale
@@ -887,6 +893,11 @@ slightly along the collision axis. This requires coordinated animation with `spa
 - **The scroll shortcuts above must NOT opt in.** They are affordances *for*
   scrolling: hiding them during a scroll removes them at the only moment they
   are wanted. Ask which of the two a FAB is before wiring it.
+- **The end of the list clears the FAB.** Hiding on scroll does nothing for the
+  last rows — the button returns as soon as the scroll settles, which at the
+  bottom is exactly when you want to tap what is under it. `NeScaffold` ends
+  its scroll view with room for any FAB it carries (`UxnanSize.fab` + the
+  float margin + the bottom system inset); screens add nothing of their own.
 
 #### Button Hierarchy by Size
 
@@ -1054,6 +1065,12 @@ Canonical implementations: `model_picker_sheet.dart` (the reference) and
 - Rows are `dense`. A sheet is a list you scan, not a settings screen.
 - The empty state is a single `Text` in a `Padding(all: md)` — no illustration,
   no card.
+- **Any sheet whose list grows with the user's data caps that list the same
+  way**, picker or not — the folder details sheet
+  (`workspace_details_sheet.dart`) too. Uncapped, a folder with a long history
+  grew the sheet into a full-screen page. Such a sheet also passes
+  `useSafeArea: true`, so even its tallest form keeps the drag handle below the
+  status bar.
 
 **The field that opens one** is a filled tappable surface, not a `ListTile`: a
 `Material(surfaceContainerHighest, UxnanRadius.lg)` + `InkWell`, an 18 dp

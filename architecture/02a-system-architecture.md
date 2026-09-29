@@ -1,10 +1,17 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.2
+> **Version:** 1.5.3
 > **Fecha:** 2026-09-28
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.3):** a working folder's files and source control
+> belong to the folder, not to a conversation. On the phone they are routes of
+> their own (`/workspace/files?cwd=…`, `/workspace/git?cwd=…`, §5.4.3), opened
+> from a conversation's bar and straight from a folder row in the threads list
+> (§5.4.2); the screens moved to `presentation/screens/workspace/`, and the git
+> state the app shows is kept per `cwd`. App-only: no contract changes.
 
 > **Executive summary (1.5.2):** a bridge turn that ended before it received
 > any of its reply — a crash, or an older bridge that ended a Claude Code turn
@@ -1061,6 +1068,17 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > urgente de todos ellos — esa evidencia desaparece al plegar y la cabecera
 > tiene que suplirla. Es el mismo canje que hace la vista de agentes de
 > `uxnandesktop`.
+>
+> **Las herramientas de la carpeta viven en su fila.** Junto al "+" (nueva
+> conversacion aqui) la fila lleva *Explorar archivos* y *Control de
+> versiones*: las mismas pantallas que abre la barra de una conversacion, porque
+> son de la carpeta y deben alcanzarse antes de que exista conversacion alguna.
+> Ambas exigen canal vivo con ESE PC. En la columna fija de 320 dp del drawer
+> permanente las dos se pliegan en un unico menu ⋮ para que el nombre de la
+> carpeta conserve su sitio; el "+" nunca se pliega. El FAB sigue siendo la
+> nueva conversacion global. La hoja de pulsacion larga acota su lista de
+> conversaciones como cualquier hoja de seleccion y nunca pasa bajo la barra de
+> estado.
 
 > **El estado del agente en la lista es DERIVADO, no reportado.** La fila de
 > conversacion muestra los mismos cinco estados que la barra lateral de
@@ -1087,6 +1105,10 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > la fila corta a tres senales; el desglose (rama, upstream, +/−) vive en la
 > hoja de pulsacion larga. Sin respuesta la fila no dibuja nada — nunca
 > "limpio", que seria una mentira con aspecto de buena noticia.
+> `GitActionManager` guarda ese estado **por cwd**: las filas leen el de cada
+> carpeta visible mientras una pantalla de git, el navegador de archivos o la
+> rama de una conversacion muestran el de otra, y un unico hueco "repositorio
+> actual" dejaba que la ultima lectura pintara sus archivos en todas.
 
 > **La misma tabla de rutas se dibuja en dos sitios distintos.** A partir de
 > 840 dp de ancho de ventana la app deja de ser una pila de pantallas: una
@@ -1145,7 +1167,7 @@ lib/presentation/
 │   │   └── my_devices_screen.dart        # portada: identidad, PCs y su trabajo
 │   ├── threads/
 │   │   ├── threads_screen.dart           # Espacios: proyectos > carpetas > conversaciones
-│   │   ├── space_rows.dart               # filas de proyecto y de carpeta
+│   │   ├── space_rows.dart               # filas de proyecto y de carpeta (+ archivos, git, nueva)
 │   │   ├── thread_tile.dart              # fila de conversacion (estado derivado)
 │   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu en cascada
 │   │   ├── workspace_git_indicators.dart # sin confirmar / adelante / atras por carpeta
@@ -1158,9 +1180,10 @@ lib/presentation/
 │   │   ├── session_environment.dart
 │   │   ├── messages/                     # render de bloques, markdown, diffs, tarjetas
 │   │   ├── composer/                     # pill flotante, cinta de opciones, adjuntos
-│   │   ├── files/                        # navegador de archivos + visor/editor
-│   │   ├── git/                          # estado, historial, detalle de commit
 │   │   └── support/                      # selector de modelo, recuperacion, errores
+│   ├── workspace/                        # lo de la CARPETA, no de una conversacion
+│   │   ├── files/                        # navegador de archivos + visor/editor
+│   │   └── git/                          # estado, historial, detalle de commit
 │   ├── onboarding/
 │   ├── pairing/                          # QR, codigo manual, descubrimiento en LAN
 │   ├── profile/
@@ -1193,23 +1216,25 @@ lib/presentation/
 
 **Paquete:** `go_router` — soportado en Android e iOS.
 
-```dart
-// lib/presentation/router/app_router.dart
-final appRouter = GoRouter(
-  routes: [
-    GoRoute(path: '/', builder: (_,__) => const AppShellScreen(), routes: [
-      GoRoute(path: 'home', builder: (_,__) => const HomeScreen()),
-      GoRoute(path: 'conversation/:threadId', builder: (_,s) => ConversationScreen(threadId: s.pathParameters['threadId']!)),
-      GoRoute(path: 'settings', builder: (_,__) => const SettingsScreen()),
-      GoRoute(path: 'devices', builder: (_,__) => const MyDevicesScreen()),
-      GoRoute(path: 'projects', builder: (_,__) => const ProjectsScreen()),
-      GoRoute(path: 'terminal', builder: (_,__) => const TerminalScreen()),
-    ]),
-    GoRoute(path: '/onboarding', builder: (_,__) => const OnboardingScreen()),
-    GoRoute(path: '/pairing', builder: (_,__) => const QrScannerScreen()),
-  ],
-);
-```
+Tabla PLANA dentro de una unica `ShellRoute` (ver arriba); cada ruta
+parametrizada lleva un `ValueKey` de su parametro.
+
+| Ruta | Pantalla |
+|---|---|
+| `/` | `MyDevicesScreen` (telefono) / `ShellWelcome` (con drawer) |
+| `/device/:deviceId/threads` · `/archived` · `/stats` | `ThreadsScreen` · `ArchivedThreadsScreen` · `PcDetailsScreen` |
+| `/conversation/:threadId` | `ConversationScreen` |
+| `/workspace/files?cwd=…[&thread=…]` | `FileBrowserScreen` |
+| `/workspace/git?cwd=…[&thread=…]` | `GitScreen` |
+| `/onboarding`, `/pairing`, `/pairing/manual`, `/settings`, `/profile` | pantalla completa, sin drawer |
+
+Los archivos y el control de versiones son de la **carpeta**: la ruta la
+identifica con el parametro `cwd` (una ruta absoluta no es un segmento), y
+`thread` solo nombra la conversacion desde la que se abrio (el git screen
+registra sus acciones en ella y ofrece retirar su worktree). Se abren con
+`push` sobre una conversacion y con `openInPane` desde una fila de carpeta; en
+ancho, `closePane` saca primero lo apilado en el panel y solo despues lo vacia.
+Una ruta de carpeta sin `cwd` redirige a `/`.
 
 #### 5.4.4 Gestion de estado UI
 
@@ -1738,7 +1763,7 @@ El bridge (en el daemon) mantiene un registro de worktrees administrados (`~/.ux
 #### 5.7.4 Diff viewer
 
 ```dart
-// lib/presentation/screens/conversation/git/diff_viewer.dart
+// lib/presentation/screens/workspace/git/git_diff_view.dart
 // Renderiza diffs con:
 // - Lineas anadidas (verde)
 // - Lineas eliminadas (rojo)
@@ -1993,7 +2018,7 @@ async function handleGitCommitShow({ cwd, sha }) {
 ```
 
 El método `git/log` es la fuente de la pantalla de historial de commits
-(`GitHistoryScreen` en `presentation/screens/conversation/git/`): la app
+(`GitHistoryScreen` en `presentation/screens/workspace/git/`): la app
 lo llama al abrir y al acercarse al final del scroll (paginación incremental),
 pasando el `nextCursor` de la página anterior como `cursor`. `parents[]`
 alimenta la vista gráfico (cada parent es un "lane") y `refs[]` aporta los
@@ -2090,7 +2115,7 @@ consumidas hoy por:
   selección de agente se compara directamente en un grupo de tarjetas de
   esquinas dinámicas; sólo la tarjeta seleccionada revela sus capability chips.
 - **Workspace file viewer** (`FileBrowserScreen` + `FileViewerScreen` under
-  `presentation/screens/conversation/files/`, managed by
+  `presentation/screens/workspace/files/`, managed by
   `FileBrowserManager`) — the lazy tree and repo-wide fuzzy search feed a
   capability-based viewer: editable and selectable highlighted UTF-8 source;
   selectable git diffs; GitHub-style Markdown preview/source with common README
@@ -2112,8 +2137,10 @@ consumidas hoy por:
   bytes as base64 (bounded at 20 MiB); `workspace/readImage` carries supported
   images (bounded at 10 MiB). Both pass through `path-guard` (§5.8.9/infra),
   which confines reads to the workspace root and excludes sensitive files. The
-  viewer opens from the `folder_open_rounded` `IconSurface` beside `GitScreen`
-  in `ConversationScreen`.
+  viewer is the folder's route (`/workspace/files?cwd=…`): it opens from the
+  `folderOpen` `IconSurface` beside the `GitScreen` one in
+  `ConversationScreen`, and from the same glyph on the folder's row in
+  `ThreadsScreen`.
   Conversation links first resolve to a canonical viewer root; every
   subsequent read remains confined to that root and excludes `.git` and
   sensitive files.

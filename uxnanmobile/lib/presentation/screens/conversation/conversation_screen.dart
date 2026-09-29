@@ -37,14 +37,12 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_submit
 import 'package:uxnan/presentation/screens/conversation/composer/plan_chip.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_viewer_screen.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -557,12 +555,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   /// Opens the git actions screen (branch state, changed files, commit/push)
-  /// for the thread's workspace.
-  Future<void> _openGit(String? cwd) async {
-    await GitScreen.push(context, cwd: cwd, threadId: widget.threadId);
+  /// for the thread's workspace — the folder's own route, stacked over this
+  /// conversation so back returns here.
+  Future<void> _openGit(String cwd) async {
+    await context.push<void>(
+      AppRoutes.workspaceGit(cwd, threadId: widget.threadId),
+    );
     // The worktree may have been removed from the git screen → re-probe so the
     // composer disables right away if this thread's cwd just vanished.
-    if (mounted && cwd != null) {
+    if (mounted) {
       _checkedCwd = null;
       _checkCwd(cwd);
     }
@@ -572,12 +573,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// full file tree (with git-status color treatment) alongside the focused
   /// git diff + commit surface in `GitScreen` — together they cover both the
   /// "what changed" and the "show me the file" questions.
-  Future<void> _openFileBrowser(String? cwd) async {
-    if (cwd == null) return;
-    await FileBrowserScreen.push(
-      context,
-      cwd: cwd,
-      threadId: widget.threadId,
+  Future<void> _openFileBrowser(String cwd) async {
+    await context.push<void>(
+      AppRoutes.workspaceFiles(cwd, threadId: widget.threadId),
     );
   }
 
@@ -952,7 +950,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Data-driven run-option knobs the bridge advertises for this thread's
     // model (e.g. reasoning effort); empty when none or offline.
     final runOptions = ref.watch(activeModelOptionsProvider(widget.threadId));
-    final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
+    final cwd = thread?.cwd;
+    final gitBranch =
+        cwd == null ? null : ref.watch(gitRepoStateProvider(cwd)).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
     final contextMode = ref.watch(contextIndicatorModeProvider);
@@ -966,7 +966,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       showContext: caps?.reportsContextUsage ?? false,
       modelLabel: ref.watch(threadModelLabelProvider(widget.threadId)),
     );
-    final cwd = thread?.cwd;
     // The agent's slash commands (agent/commands): drives the `/` palette rows
     // and routes a matching `/name args` send as a real command.
     final agentId = thread?.agentId;
@@ -1471,7 +1470,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 IconSurface(
                   icon: UxIcons.folderOpen,
                   tooltip: l10n.fileBrowserOpenTooltip,
-                  onPressed: connectedHere ? () => _openFileBrowser(cwd) : null,
+                  onPressed: connectedHere && cwd != null
+                      ? () => _openFileBrowser(cwd)
+                      : null,
                 ),
                 IconSurface(
                   icon: UxIcons.commit,

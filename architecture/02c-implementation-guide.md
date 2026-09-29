@@ -2310,7 +2310,7 @@ class ConnectionRecoveryCard extends ConsumerWidget {
 ### 9.4 Errores Git — mensajes de producto
 
 ```dart
-// lib/presentation/screens/conversation/git/git_error_mapper.dart
+// lib/presentation/screens/workspace/git/git_error_mapper.dart
 
 class GitErrorMapper {
   static String toProductMessage(GitException e, BuildContext context) {
