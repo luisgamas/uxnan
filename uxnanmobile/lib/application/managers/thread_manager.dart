@@ -1256,6 +1256,7 @@ class ThreadManager {
     final total = result['total'];
     final activeTurnId = result['activeTurnId'];
     final paused = result['queuePaused'] == true;
+    final queuedTurnIds = _stringList(result['queuedTurnIds']);
     return (
       turns: turns,
       total: total is int ? total : null,
@@ -1263,11 +1264,13 @@ class ThreadManager {
       // Absent on an older bridge → an empty, un-paused queue, which is exactly
       // how a bridge without the feature behaves.
       queue: ThreadQueueState(
-        turnIds: _stringList(result['queuedTurnIds']),
+        turnIds: queuedTurnIds,
         paused: paused,
         pausedReason: paused
             ? QueuePausedReason.fromWire(result['queuePausedReason'])
             : null,
+        deliveringTurnId:
+            _deliveringTurnId(result['queueDeliveringTurnId'], queuedTurnIds),
       ),
     );
   }
@@ -1791,10 +1794,11 @@ class ThreadManager {
     await _queueControl(threadId, 'queue/clear');
   }
 
-  /// Sends the queued [turnId] now (`queue/sendNow`): into the running turn
-  /// when the agent takes a message while it works, else as the next turn at
-  /// once. Returns the bridge's reason when it refused (the message stays
-  /// queued), or null.
+  /// Sends the queued [turnId] now (`queue/sendNow`) as the next turn, when
+  /// nothing runs (a held queue). While a turn runs the bridge refuses it for
+  /// every agent: one that takes messages mid-turn gets the first queued one
+  /// at its next pause, any other when it finishes. Returns the bridge's
+  /// reason when it refused (the message stays queued), or null.
   Future<String?> sendQueuedNow(String threadId, String turnId) =>
       _queueControl(threadId, 'queue/sendNow', {'turnId': turnId});
 
@@ -1814,14 +1818,17 @@ class ThreadManager {
       }
       final result = res.result;
       if (result is! Map) return null;
+      final queuedTurnIds = _stringList(result['queuedTurnIds']);
       _setQueue(
         threadId,
         ThreadQueueState(
-          turnIds: _stringList(result['queuedTurnIds']),
+          turnIds: queuedTurnIds,
           paused: result['paused'] == true,
           pausedReason: result['paused'] == true
               ? QueuePausedReason.fromWire(result['pausedReason'])
               : null,
+          deliveringTurnId:
+              _deliveringTurnId(result['deliveringTurnId'], queuedTurnIds),
         ),
       );
       return null;
@@ -1849,11 +1856,10 @@ class ThreadManager {
   /// Drops [turnId] from the thread's mirrored queue.
   ///
   /// A turn that started is not waiting, whatever the last snapshot said. A
-  /// message the agent took into its running turn starts at once without ever
-  /// being parked in the bridge's queue, so no `stream/queue/updated` follows
-  /// to settle it; a client that HAD it listed — restored from a snapshot taken
-  /// before the hand-off — would otherwise keep drawing a dashed bubble for a
-  /// message the agent already has.
+  /// queued message the agent took at a pause starts its turn as it leaves the
+  /// queue; a client that missed the `stream/queue/updated` saying so — or
+  /// restored a snapshot taken before the hand-off — would otherwise keep
+  /// drawing a dashed bubble for a message the agent already has.
   void _removeFromQueue(String threadId, String turnId) {
     final current = _queues.value[threadId];
     if (current == null || !current.turnIds.contains(turnId)) return;
@@ -1866,9 +1872,18 @@ class ThreadManager {
         ],
         paused: current.paused,
         pausedReason: current.pausedReason,
+        deliveringTurnId: current.deliveringTurnId == turnId
+            ? null
+            : current.deliveringTurnId,
       ),
     );
   }
+
+  /// The queued turn the bridge says it is handing to the running agent, kept
+  /// only when it is a string the queue still lists — the contract promises
+  /// it is, and a stale id must not freeze an unrelated bubble's actions.
+  static String? _deliveringTurnId(Object? value, List<String> queued) =>
+      value is String && queued.contains(value) ? value : null;
 
   static List<String> _stringList(Object? value) {
     if (value is! List) return const [];
@@ -2212,6 +2227,7 @@ class ThreadManager {
           :final queuedTurnIds,
           :final paused,
           :final pausedReason,
+          :final deliveringTurnId,
         ):
         // Whole-state notification: adopt it as-is. Missing one (backgrounded,
         // mid-reconnect) is harmless — the next one converges.
@@ -2221,6 +2237,8 @@ class ThreadManager {
             turnIds: queuedTurnIds,
             paused: paused,
             pausedReason: paused ? pausedReason : null,
+            deliveringTurnId:
+                _deliveringTurnId(deliveringTurnId, queuedTurnIds),
           ),
         );
         // Clear the local "waiting" echo for anything the bridge no longer

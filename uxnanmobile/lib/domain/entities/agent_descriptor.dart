@@ -78,9 +78,10 @@ class AgentCapabilities extends Equatable {
   /// via `agent/commands` and offer in the composer's `/` palette.
   final bool commands;
 
-  /// Whether the agent takes a message while it works: a follow-up joins the
-  /// running turn instead of waiting for it (`capabilities.steering`), and a
-  /// queued one can be sent into it now.
+  /// Whether the agent takes a message while it works
+  /// (`capabilities.steering`): a follow-up still waits in the bridge's queue,
+  /// but the first one reaches the agent at its next pause — when the step it
+  /// is in ends — instead of when the whole turn does.
   final bool steering;
 
   @override

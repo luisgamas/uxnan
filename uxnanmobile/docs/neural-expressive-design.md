@@ -693,6 +693,17 @@ drafting a multi-line message expects — including on a physical keyboard, whic
 Flutter delivers through the same path. A third button in the pill would also
 break its 38/48 dp rhythm.
 
+**The queue hint.** While a turn runs and something is drafted, one muted line
+(`bodySmall`, `onSurfaceVariant`) sits directly above the pill, inside the same
+`_Centered` gutter, and says what sending will do: on an agent that takes
+messages mid-turn, *The agent is working: this message waits in the queue and
+reaches it at its next pause*; on any other, *… and goes out when it finishes*
+([`ComposerQueueHint`](../lib/presentation/screens/conversation/composer/composer_queue_hint.dart)).
+The words follow the agent's **reported** `steering` capability, never the
+permissive default the controls use while the agent is unknown — it is a claim
+about when the message arrives. It reveals and collapses with
+`ComposerChromeVisibility`, like the rest of the chrome above the pill.
+
 **Queued and cancelled user bubbles.** A message waiting in the queue is **not
 part of the conversation yet**, and the layout says so: it is pinned to the
 bottom of the timeline — below the reply still streaming — for as long as it
@@ -703,6 +714,15 @@ outline** in `primary`, drawn by `NeDashedBorder` as the bubble's own shape
 border so the dashes trace exactly the shape being filled. A muted line beneath
 says where it sits in line (*Next in the queue*, *2 in the queue*).
 
+Every message sent while the agent works waits here, whatever the agent. On an
+agent that takes messages mid-turn, the **first** one reaches it at its next
+pause — when the step it is in ends. While that happens the bubble is
+**delivering**: it keeps its dashes and its place at the bottom, but loses its
+corner actions (the bridge refuses to edit, cancel or send it now), and the
+line beneath it becomes *Reaching the agent, at the end of its current step*,
+led by a 13 dp `PolygonLoader` instead of the clock. The line wraps rather than
+overflowing on a narrow phone.
+
 When the queue reaches it, the outline goes transparent over 220 ms and the
 bubble drops into place at the point it was **delivered** — it never changes
 colour, it just stops being provisional, and that is the confirmation it went
@@ -712,17 +732,18 @@ stays part of the record.
 
 **The corner actions.** A queued bubble carries up to three 28 dp circular
 actions inside its top-right corner, in reading order: **send now** (only when
-the message can go at once — nothing is running, or the agent takes a message
-while it works), **edit**, then **cancel** — the recoverable actions before the
+nothing is running — a held queue), **edit**, then **cancel** — the recoverable
+actions before the
 one that ends the message. They share one shape so they read as a control
 group, and the bubble reserves horizontal padding for **exactly the buttons
 shown** (`_queuedActionsWidth(count)`), so the text never runs under them. They
 fade out with the queued state rather than vanishing the instant the message is
-delivered.
+delivered, or the agent starts taking it.
 
-They do different things on purpose. **Send now** asks the bridge to deliver
-the message immediately; a refusal (the agent takes nothing mid-turn, or it is
-waiting on an answer) is said in a snackbar and the message stays queued.
+They do different things on purpose. **Send now** asks the bridge to start
+the message as the next turn at once; the bridge refuses it while a turn runs
+(the message reaches the agent at its next pause or when the turn ends), and a
+refusal is said in a snackbar and the message stays queued.
 **Edit** withdraws the message and hands it to the composer — its text **and**
 its images and files — removing the bubble entirely: it is about to be
 re-typed, so a husk beside the text being rewritten is noise, not a record.
@@ -732,7 +753,8 @@ edit or a cancel, a snackbar says so: nothing visibly happened, and the message
 will still run.
 
 **A message the agent took mid-answer.** On agents that take input while they
-work, a message can reach the agent before its answer is finished. The answer
+work, a queued message can reach the agent at a pause, before its answer is
+finished. The answer
 it interrupted ends there — it stays fully visible, followed by a muted
 **Continues below, with your next message** line (`UxIcons.arrowDownward`), because it is the answer so
 far, not a closing one — and the rest of the run streams under the user's

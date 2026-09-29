@@ -215,6 +215,7 @@ class QueueUpdatedEvent extends DomainEvent {
     required this.queuedTurnIds,
     required this.paused,
     this.pausedReason,
+    this.deliveringTurnId,
     this.threadId,
   });
 
@@ -227,11 +228,16 @@ class QueueUpdatedEvent extends DomainEvent {
   /// Why draining is held; null when it is not paused.
   final QueuePausedReason? pausedReason;
 
+  /// The queued turn being handed to the running agent at its next pause
+  /// (still listed in [queuedTurnIds]); null when none is.
+  final String? deliveringTurnId;
+
   /// The owning thread, if provided.
   final String? threadId;
 
   @override
-  List<Object?> get props => [queuedTurnIds, paused, pausedReason, threadId];
+  List<Object?> get props =>
+      [queuedTurnIds, paused, pausedReason, deliveringTurnId, threadId];
 }
 
 /// The agent resolved its alias to a concrete model for a turn

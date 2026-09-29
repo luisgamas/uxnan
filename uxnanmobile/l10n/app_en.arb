@@ -487,6 +487,14 @@
   "@composerQueueMessage": {
     "description": "Floating action above the composer, shown only while the agent is busy and a message is drafted: sending it adds it to the thread's queue instead of starting a turn."
   },
+  "composerQueueHint": "The agent is working: this message waits in the queue and goes out when it finishes.",
+  "@composerQueueHint": {
+    "description": "Line above the composer while the agent works and a message is drafted, for an agent that takes no message mid-turn: sending it queues it until the turn ends."
+  },
+  "composerNextPauseHint": "The agent is working: this message waits in the queue and reaches it at its next pause.",
+  "@composerNextPauseHint": {
+    "description": "Line above the composer while the agent works and a message is drafted, for an agent that takes messages mid-turn: sending it queues it, and the agent gets it at its next pause (when the step it is in ends)."
+  },
   "queuedMessageWaiting": "Waiting to be sent",
   "@queuedMessageWaiting": {
     "description": "Label under a queued user message that has not reached the agent yet."
@@ -501,6 +509,10 @@
     "placeholders": {
       "position": { "type": "int" }
     }
+  },
+  "queuedDelivering": "Reaching the agent, at the end of its current step",
+  "@queuedDelivering": {
+    "description": "Label under the queued user message the running agent is taking at its next pause; it can no longer be edited nor cancelled."
   },
   "queuedMessageCancel": "Cancel this message",
   "@queuedMessageCancel": {

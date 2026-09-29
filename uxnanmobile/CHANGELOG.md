@@ -24,6 +24,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A message sent while the agent works always waits in the queue.** It shows
+  as a queued bubble you can still edit or cancel, on every agent. An agent
+  that reads messages mid-answer (Claude Code, Codex, OpenCode, pi) gets the
+  first one at its next pause, when the step it is in ends; while it reaches
+  the agent the bubble says *Reaching the agent, at the end of its current
+  step* and can no longer be changed. A line above the composer says which of
+  the two will happen before you send. *Send now* is offered only when nothing
+  is running. The phone reads the bridge's new `deliveringTurnId`
+  (`stream/queue/updated`, `queue/*`) and `queueDeliveringTurnId`
+  (`turn/list`).
 - **Every time reads on the 24-hour clock** (`14:30`), in every language —
   conversation rows, a PC's last connection, provider resets. One formatter
   (`formatClock`); the "24-hour time" switch in Settings is gone, as Uxnan

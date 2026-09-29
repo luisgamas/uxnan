@@ -33,6 +33,7 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.da
 import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_context_bar.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_queue_hint.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/plan_chip.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
@@ -1435,6 +1436,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                                     .clearAll(widget.threadId),
                               )
                             : const SizedBox.shrink(),
+                      ),
+                    ),
+                    // What happens to the drafted message while the agent
+                    // works: it waits in the queue, and reaches the agent at
+                    // its next pause or when the turn ends (by agent).
+                    ComposerChromeVisibility(
+                      visible: running && wouldQueue,
+                      child: _Centered(
+                        child: ComposerQueueHint(threadId: widget.threadId),
                       ),
                     ),
                     ComposerBar(

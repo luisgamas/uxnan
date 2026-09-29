@@ -32,6 +32,7 @@ class ThreadQueueState extends Equatable {
     this.turnIds = const [],
     this.paused = false,
     this.pausedReason,
+    this.deliveringTurnId,
   });
 
   /// An idle thread: nothing queued, nothing held.
@@ -46,11 +47,23 @@ class ThreadQueueState extends Equatable {
   /// Why it is held; null when it is not paused.
   final QueuePausedReason? pausedReason;
 
+  /// The queued turn the running agent is taking now, or null.
+  ///
+  /// An agent that takes messages while it works gets the first queued one at
+  /// its next pause; until it reads it the message stays listed in [turnIds],
+  /// but it can no longer be edited, cancelled or sent now — the bridge
+  /// refuses all three.
+  final String? deliveringTurnId;
+
   /// How many messages are waiting.
   int get length => turnIds.length;
 
   /// Whether anything is waiting.
   bool get isNotEmpty => turnIds.isNotEmpty;
+
+  /// Whether [turnId] is the message being handed to the running agent.
+  bool isDelivering(String turnId) =>
+      deliveringTurnId != null && deliveringTurnId == turnId;
 
   /// The 1-based place of [turnId] in the queue, or null when it isn't queued.
   int? positionOf(String turnId) {
@@ -64,15 +77,20 @@ class ThreadQueueState extends Equatable {
     bool? paused,
     QueuePausedReason? pausedReason,
     bool clearPausedReason = false,
+    String? deliveringTurnId,
+    bool clearDeliveringTurnId = false,
   }) {
     return ThreadQueueState(
       turnIds: turnIds ?? this.turnIds,
       paused: paused ?? this.paused,
       pausedReason:
           clearPausedReason ? null : (pausedReason ?? this.pausedReason),
+      deliveringTurnId: clearDeliveringTurnId
+          ? null
+          : (deliveringTurnId ?? this.deliveringTurnId),
     );
   }
 
   @override
-  List<Object?> get props => [turnIds, paused, pausedReason];
+  List<Object?> get props => [turnIds, paused, pausedReason, deliveringTurnId];
 }

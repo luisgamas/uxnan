@@ -167,17 +167,23 @@ connected to live bridge data, validated on-device against a real bridge.
   a time, and the composer's own Send/Stop button and Enter-inserts-a-newline
   behaviour are unchanged. A waiting message is **pinned to the bottom** of the
   timeline (below the streaming reply) as an ordinary user bubble wearing a
-  **dashed outline** (`NeDashedBorder`), with **send now** (when the agent can
-  take it now) + **edit** + **cancel** in its corner — the text is padded for
+  **dashed outline** (`NeDashedBorder`), with **send now** (only when nothing
+  runs — a held queue) + **edit** + **cancel** in its corner — the text is padded for
   exactly the buttons shown — and a line under it saying where it sits in
   line: it keeps the user's own tone and its whole message, and only that edge
   says "not sent yet". On delivery the dashes dissolve in place, so the bubble
-  never changes colour — it just stops being provisional. On agents whose CLI
-  has an input channel mid-turn (Claude Code, OpenCode, Codex, pi) that moment
-  comes **without waiting for the turn to end**: the bridge ends the running
-  turn there with `turn/completed { continuedIn }` and starts this one at once
-  (`turn/started`), and `turn/list` keeps `Turn.continuedIn` on the earlier
-  turn. The phone stores it on that turn's messages (`messages_table.continued_in`,
+  never changes colour — it just stops being provisional. Every message sent
+  while a turn runs waits in the queue; on agents whose CLI has an input
+  channel mid-turn (Claude Code, OpenCode, Codex, pi) the first one reaches the
+  agent **at its next pause**, without waiting for the turn to end. While it
+  does, the bridge marks it `deliveringTurnId` (`stream/queue/updated`,
+  `queue/*`; `queueDeliveringTurnId` on `turn/list`): the bubble keeps its
+  dashes and place, drops its actions and reads **"Reaching the agent, at the
+  end of its current step"**, and the composer's hint above the pill says the
+  message *reaches it at its next pause* (on other agents, *goes out when it
+  finishes*). When the agent takes it, the bridge ends the running turn there
+  with `turn/completed { continuedIn }` and starts this one (`turn/started`),
+  and `turn/list` keeps `Turn.continuedIn` on the earlier turn. The phone stores it on that turn's messages (`messages_table.continued_in`,
   schema v10): the interrupted reply stays whole and ends with **"Continues
   below, with your next message"**, and the message the agent took says **"Reached the agent while it
   was working"**. On every other agent it settles when the queue drains,
@@ -192,7 +198,7 @@ connected to live bridge data, validated on-device against a real bridge.
   offers *Send them* / *Discard* when the bridge holds the queue after a stop or
   a failure. Gated on `bridge/status` → `features.messageQueue`, so an older
   bridge keeps the pre-queue behaviour. Resync re-reads
-  `queuedTurnIds`/`queuePaused` and settles every waiting bubble against the
+  `queuedTurnIds`/`queuePaused`/`queueDeliveringTurnId` and settles every waiting bubble against the
   bridge's view, so a message whose fate we missed never stays waiting.
 - **Message scroll rail** — a reusable, dependency-free right-edge minimap
   (`message_scroll_rail.dart`, one faint tick per user message) that is hidden

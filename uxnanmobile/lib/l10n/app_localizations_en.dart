@@ -1009,6 +1009,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerQueueMessage => 'Queue message';
 
   @override
+  String get composerQueueHint =>
+      'The agent is working: this message waits in the queue and goes out when it finishes.';
+
+  @override
+  String get composerNextPauseHint =>
+      'The agent is working: this message waits in the queue and reaches it at its next pause.';
+
+  @override
   String get queuedMessageWaiting => 'Waiting to be sent';
 
   @override
@@ -1018,6 +1026,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String queuedMessagePosition(int position) {
     return '$position in the queue';
   }
+
+  @override
+  String get queuedDelivering =>
+      'Reaching the agent, at the end of its current step';
 
   @override
   String get queuedMessageCancel => 'Cancel this message';

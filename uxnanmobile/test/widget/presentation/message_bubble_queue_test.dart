@@ -10,9 +10,12 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
@@ -21,6 +24,7 @@ import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_queue_hint.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 
 /// A queued user bubble (its corner actions and what they report) and the two
@@ -76,14 +80,33 @@ void main() {
     await db.close();
   });
 
-  /// [activity] decides whether "send now" shows: with nothing running any
-  /// queued message can go at once; while a turn runs, only to an agent that
-  /// takes messages mid-turn (none here).
+  /// A thread driven by an agent that takes messages mid-turn.
+  const steeringThread = Thread(
+    id: 'th1',
+    title: 'A thread',
+    agentId: 'claude-code',
+    syncState: ThreadSyncState.synced,
+    status: ThreadStatus.active,
+  );
+  const steeringAgent = AgentDescriptor(
+    agentId: 'claude-code',
+    displayName: 'Claude Code',
+    available: true,
+    capabilities: AgentCapabilities(steering: true),
+  );
+
+  /// [activity] decides whether "send now" shows: only with nothing running,
+  /// whatever the agent. [steering] puts the thread on an agent that takes
+  /// messages mid-turn. [delivering] marks the queued turn the running agent
+  /// is taking; its note animates, so the pump does not settle then.
   Future<void> pump(
     WidgetTester tester,
     Widget child, {
     ThreadActivity activity = ThreadActivity.running,
     List<String> queued = const ['turn-q1'],
+    bool paused = false,
+    String? delivering,
+    bool steering = false,
   }) async {
     tester.view.physicalSize = const Size(412, 900);
     tester.view.devicePixelRatio = 1;
@@ -93,13 +116,23 @@ void main() {
       ProviderScope(
         overrides: [
           threadManagerProvider.overrideWithValue(manager),
-          threadQueueForProvider
-              .overrideWith((ref, _) => ThreadQueueState(turnIds: queued)),
+          threadQueueForProvider.overrideWith(
+            (ref, _) => ThreadQueueState(
+              turnIds: queued,
+              paused: paused,
+              deliveringTurnId: delivering,
+            ),
+          ),
           threadActivityForProvider.overrideWith((ref, _) => activity),
-          // No thread record: its agent is unknown, so it takes no message
-          // mid-turn — and no database stream outlives the test.
-          threadByIdProvider.overrideWith((ref, _) => null),
-          agentsProvider.overrideWith((ref) async => const <AgentDescriptor>[]),
+          // Without [steering] there is no thread record: its agent is
+          // unknown, so it takes no message mid-turn — and no database stream
+          // outlives the test.
+          threadByIdProvider
+              .overrideWith((ref, _) => steering ? steeringThread : null),
+          agentsProvider.overrideWith(
+            (ref) async =>
+                steering ? const [steeringAgent] : const <AgentDescriptor>[],
+          ),
         ],
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -108,7 +141,11 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    if (delivering == null) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
   }
 
   Finder action(String tooltip) => find.byTooltip(tooltip);
@@ -142,6 +179,67 @@ void main() {
     expect(text.right, lessThanOrEqualTo(first.left));
     // Only the room two buttons need is reserved.
     expect(first.left - text.right, lessThan(28));
+  });
+
+  testWidgets('send now is hidden while a turn runs, even for a steering agent',
+      (tester) async {
+    await pump(
+      tester,
+      MessageBubble(message: _user('and the docs')),
+      steering: true,
+    );
+
+    // The bridge refuses it for every agent while the agent works: one that
+    // takes messages mid-turn gets it at its next pause.
+    expect(action('Send now'), findsNothing);
+    expect(action('Edit this message'), findsOneWidget);
+    expect(action('Cancel this message'), findsOneWidget);
+  });
+
+  testWidgets('send now is offered on a held queue with nothing running',
+      (tester) async {
+    await pump(
+      tester,
+      MessageBubble(message: _user('and the docs')),
+      activity: ThreadActivity.idle,
+      paused: true,
+    );
+
+    expect(action('Send now'), findsOneWidget);
+  });
+
+  testWidgets('the message reaching the agent keeps its place, not its actions',
+      (tester) async {
+    await pump(
+      tester,
+      Column(
+        children: [
+          MessageBubble(message: _user('take this now')),
+          MessageBubble(message: _user('and this later', turnId: 'turn-q2')),
+        ],
+      ),
+      queued: const ['turn-q1', 'turn-q2'],
+      delivering: 'turn-q1',
+      steering: true,
+    );
+
+    // The delivering one says it is reaching the agent — no position.
+    expect(find.byKey(const ValueKey('queued-delivering-note')), findsOne);
+    expect(
+      find.text('Reaching the agent, at the end of its current step'),
+      findsOneWidget,
+    );
+    expect(find.text('Next in the queue'), findsNothing);
+    // Only the second bubble keeps edit and cancel (and no send now while
+    // the turn runs): the first one's have faded and take no taps.
+    expect(action('Edit this message').hitTestable(), findsOneWidget);
+    expect(action('Cancel this message').hitTestable(), findsOneWidget);
+    expect(action('Send now').hitTestable(), findsNothing);
+    expect(
+      tester.getRect(action('Edit this message').hitTestable()).top,
+      greaterThan(tester.getRect(find.text('take this now')).bottom),
+    );
+    expect(find.text('2 in the queue'), findsOneWidget);
   });
 
   testWidgets('a cancel the bridge refuses says so', (tester) async {
@@ -248,5 +346,40 @@ void main() {
     await pump(tester, MessageBubble(message: answer), queued: const []);
 
     expect(find.text('Continues below, with your next message'), findsNothing);
+  });
+
+  group('composer hint while the agent works', () {
+    Future<void> pumpHint(WidgetTester tester, {required bool steering}) =>
+        pump(
+          tester,
+          const ComposerQueueHint(threadId: 'th1'),
+          queued: const [],
+          steering: steering,
+        );
+
+    testWidgets('a steering agent gets it at its next pause, queue empty',
+        (tester) async {
+      await pumpHint(tester, steering: true);
+
+      expect(
+        find.text(
+          'The agent is working: this message waits in the queue and '
+          'reaches it at its next pause.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('any other agent gets it when the turn ends', (tester) async {
+      await pumpHint(tester, steering: false);
+
+      expect(
+        find.text(
+          'The agent is working: this message waits in the queue and goes '
+          'out when it finishes.',
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }
