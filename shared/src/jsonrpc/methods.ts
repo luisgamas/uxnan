@@ -287,6 +287,14 @@ export interface QueueStateResult {
   paused: boolean;
   /** Why it is held; absent when it is not paused. */
   pausedReason?: QueuePausedReason;
+  /**
+   * The queued turn the running agent is taking now: it went to the agent at a
+   * pause and is placed in the conversation once the agent reads it (Claude
+   * Code) or the step it is in ends (the others). Still listed in
+   * `queuedTurnIds` until then, but no longer editable nor cancellable.
+   * Absent when no delivery is under way.
+   */
+  deliveringTurnId?: string;
 }
 
 export interface GitCommitParams {

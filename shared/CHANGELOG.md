@@ -4,6 +4,13 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+
+- **`deliveringTurnId` on the queue state** (`QueueUpdatedParams`,
+  `QueueStateResult`) and **`TurnList.queueDeliveringTurnId`**, optional: the
+  queued message the running agent is taking at its next pause — still listed
+  in `queuedTurnIds`, no longer editable nor cancellable.
+
 ### Clarified — what `Thread.updatedAt` means
 
 - `Thread.updatedAt` is documented as when the conversation last **moved**

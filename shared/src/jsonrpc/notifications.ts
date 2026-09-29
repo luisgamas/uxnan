@@ -191,6 +191,8 @@ export interface QueueUpdatedParams {
   paused: boolean;
   /** Why it is held; absent when it is not paused. */
   pausedReason?: QueuePausedReason;
+  /** The queued turn being handed to the running agent (see `QueueStateResult.deliveringTurnId`). */
+  deliveringTurnId?: string;
 }
 
 export interface ModelResolvedParams {
