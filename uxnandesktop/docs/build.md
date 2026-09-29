@@ -118,7 +118,10 @@ around `tauri build`:
   the catalog does (firejail, a virtual display, WebKit's GPU paths off),
   shoots the real *Uxnan Desktop* window about 12 s later and fails if it is
   95 % or more one colour, which the catalog rejects as an empty window (a
-  black frame, or the splash still up).
+  black frame, or the splash still up). In CI it first removes
+  `xdg-desktop-portal`, which the WebKitGTK build dependencies pull in and the
+  catalog's runner does not have: on a runner it hangs, and GTK waits out a
+  25 s D-Bus timeout for it before any window exists.
 
 It runs in the release's Linux leg and in the Linux leg of the `bundle` job of
 `ci-desktop.yml`, which uploads the window it saw as the `appimage-window`

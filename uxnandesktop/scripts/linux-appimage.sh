@@ -122,6 +122,17 @@ check() {
   # firejail, look ~10 s later, start a window manager, shoot 2 s after that,
   # and reject a shot that is nearly all one colour as an empty window. Ours
   # must not still be on the splash — or black — at that moment.
+  #
+  # The catalog's runner has no xdg-desktop-portal; ours does, pulled in by
+  # the WebKitGTK build dependencies, and on a runner it hangs: GTK asks the
+  # portal for Inhibit at startup and waits out D-Bus's 25 s timeout before
+  # the app gets to create its window (measured: 26 s with it, 0.5 s without).
+  # Any GTK app does that there, and on a real desktop the portal answers. So
+  # in CI the portal goes, and the launch below sees the catalog's machine.
+  if [ -n "${GITHUB_ACTIONS:-}" ] && dpkg -s xdg-desktop-portal > /dev/null 2>&1; then
+    sudo apt-get remove -y xdg-desktop-portal xdg-desktop-portal-gtk > /dev/null
+    echo "removed xdg-desktop-portal, which the catalog's runner does not have"
+  fi
   local display=":97"
   Xvfb "$display" -screen 0 1440x900x24 > /dev/null 2>&1 &
   local xvfb=$!
