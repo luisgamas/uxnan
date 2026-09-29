@@ -373,7 +373,7 @@ Descarga el último release para tu plataforma desde
 |---|---|
 | Windows | el `.msi`, o el instalador NSIS `_x64-setup.exe` |
 | macOS *(experimental, sin firma)* | `_x64.dmg` (Intel) o `_aarch64.dmg` (Apple Silicon) |
-| Linux | `.deb`, `.AppImage`, o `.rpm` |
+| Linux | `.deb`, `.AppImage`, o `.rpm` — glibc 2.35 o superior (Ubuntu 22.04, Debian 12 y posteriores) |
 
 Aviso honesto: los instaladores de Windows todavía no están firmados, así que
 SmartScreen avisará en el primer arranque (**Más información → Ejecutar de todas
