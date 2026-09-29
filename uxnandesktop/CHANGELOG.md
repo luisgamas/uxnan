@@ -4,6 +4,13 @@ All notable changes to the Uxnan Desktop ADE are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **Every time reads on the 24-hour clock** (`14:30`), whatever the language —
+  chat messages, the Git history, automations, provider resets, the last
+  update check. One module (`src/lib/clock.ts`) writes them all; they used to
+  follow the system's 12-hour clock in some places and not in others. Uxnan
+  Mobile writes times the same way.
 
 ## [0.0.69] - 20260928
 ### Added

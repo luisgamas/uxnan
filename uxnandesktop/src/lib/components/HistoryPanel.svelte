@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDateClock } from "$lib/clock";
   import { relativeTime as relativeTimeFrom } from "$lib/relativeTime";
   // History tab: the active worktree's commit log, with an optional branch graph
   // gutter (colored lanes for branches/merges) drawn to the left of each commit.
@@ -134,10 +135,8 @@
 
   // Localized, compact relative time (e.g. "2 days ago"), via the platform.
   const relativeTime = (unixSeconds: number) => relativeTimeFrom(unixSeconds * 1000, i18n.locale);
-  const dtf = $derived(
-    new Intl.DateTimeFormat(i18n.locale, { dateStyle: "medium", timeStyle: "short" }),
-  );
-  const absoluteTime = (unixSeconds: number) => dtf.format(new Date(unixSeconds * 1000));
+  const absoluteTime = (unixSeconds: number) =>
+    formatDateClock(new Date(unixSeconds * 1000), i18n.locale, { withYear: true });
 
   async function copyHash(hash: string) {
     await clipboardWrite(hash);

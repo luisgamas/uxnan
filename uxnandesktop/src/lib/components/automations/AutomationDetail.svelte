@@ -2,6 +2,7 @@
   // One automation, in full: what it is, whether the OS will actually fire it,
   // and everything it has done. The run history is polled while this view is
   // open, so a run started here advances in front of you.
+  import { formatWeekdayDateClock } from "$lib/clock";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, panel, text } from "$lib/design";
@@ -38,13 +39,6 @@
   const upcoming = $derived(
     automation.enabled ? nextOccurrences(automation.schedule, new Date(), 3) : [],
   );
-  const fmt = new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 </script>
 
 <div class="flex flex-col gap-5">
@@ -113,7 +107,7 @@
       {:else}
         {#each upcoming as when (when.getTime())}
           <span class={cn("tabular-nums text-muted-foreground", text.indicator)}>
-            {fmt.format(when)}
+            {formatWeekdayDateClock(when, i18n.locale)}
           </span>
         {/each}
       {/if}

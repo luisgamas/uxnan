@@ -3,6 +3,7 @@
   // (quota windows / credit / account) plus its refresh interval and status-bar
   // visibility options. The tab strip (logo · name · status dot) and selection
   // live in the parent; this is just the active panel.
+  import { formatClock } from "$lib/clock";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
   import { Checkbox } from "$lib/components/ui/checkbox";
@@ -91,7 +92,7 @@
   });
 
   const updatedAt = $derived(
-    snapshot?.updatedAt ? new Date(snapshot.updatedAt).toLocaleTimeString() : null,
+    snapshot?.updatedAt ? formatClock(new Date(snapshot.updatedAt)) : null,
   );
   const creditReset = $derived(formatReset(snapshot?.credit?.resetsAt));
   const creditResetAbs = $derived(formatResetAbsolute(snapshot?.credit?.resetsAt));

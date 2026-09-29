@@ -3,6 +3,8 @@
 // human-facing prefixes ("resets in", provider status labels) come from the
 // caller's i18n.
 
+import { formatClock } from "./clock";
+
 import type { MessageKey } from "./i18n/locales/en";
 import type { AccountType, UsageStatus } from "./types";
 import type { StatusTone } from "./components/StatusDot.svelte";
@@ -22,15 +24,16 @@ export function formatReset(epochMs?: number): string | null {
   return `${Math.max(1, m)}m`;
 }
 
-/** The absolute reset moment as a localized clock/date, so the user knows *when*
- *  (not just how long): `3:00 PM` if today, `Mon 9:00 AM` within a week, else
- *  `Jul 12, 3:00 PM`. Uses the viewer's locale + timezone. null if unknown/past. */
+/** The absolute reset moment as a clock/date, so the user knows *when* (not
+ *  just how long): `15:00` if today, `Mon 09:00` within a week, else
+ *  `Jul 12, 15:00` — the 24-hour clock ($lib/clock), the viewer's locale for
+ *  the date and their timezone. null if unknown/past. */
 export function formatResetAbsolute(epochMs?: number): string | null {
   if (!epochMs) return null;
   const diff = epochMs - Date.now();
   if (diff <= 0) return null;
   const d = new Date(epochMs);
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = formatClock(d);
   if (d.toDateString() === new Date().toDateString()) return time;
   if (diff < 7 * 86_400_000) {
     return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
