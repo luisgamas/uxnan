@@ -505,10 +505,13 @@ the page was on screen; on a fresh start it sits in a background workspace,
 the case Windows needs the off-window capture for — and keeps the PNG as a run
 artifact. Script: `scripts/smoke/desktop-capture.mjs`.
 
-The Linux **AppImage** has its own check, `scripts/linux-appimage.sh check`, run
-by the release and by the `appimage` job of `ci-desktop.yml`: it inspects the
-image the way the AppImage catalog does and launches it under firejail until a
-window appears (`docs/build.md` → *Linux AppImage*).
+The **installers** themselves are built and used by the `bundle` job of
+`ci-desktop.yml` on Linux, Windows and macOS whenever the bundling setup or the
+Tauri CLI changes: the AppImage checked and launched under firejail the way the
+AppImage catalog tests it (`scripts/linux-appimage.sh check`, also run by the
+release), NSIS reinstalled over the open app as the updater does, the MSI
+installed, the macOS signature, DMG and a launch (`docs/build.md` → *Installers
+are proven in CI*).
 
 ## UI / behavior verification
 

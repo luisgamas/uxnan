@@ -117,10 +117,26 @@ around `tauri build`:
   valid AppStream metadata, the glibc floor — then launches the image under
   firejail on a virtual display and waits for its window.
 
-It runs in the release's Linux leg and in the `appimage` job of
-`ci-desktop.yml` (only when something that shapes the image changed, or on
-demand: `gh workflow run ci-desktop.yml --ref <branch>`), which uploads the
-window it saw as the `appimage-window` artifact.
+It runs in the release's Linux leg and in the Linux leg of the `bundle` job of
+`ci-desktop.yml`, which uploads the window it saw as the `appimage-window`
+artifact.
+
+### Installers are proven in CI, not first on a release
+
+The `verify` legs compile and test but never bundle. The `bundle` job of
+`ci-desktop.yml` (*installers (os)*) builds every installer the release builds,
+signs the updater artifacts with a key made for that run, and then uses them:
+
+| Leg | What it proves |
+|---|---|
+| `ubuntu-22.04` | `.deb`, `.rpm`, AppImage built and signed; the `.deb` carries the AppStream file; `linux-appimage.sh check` |
+| `windows-latest` | NSIS installs (with `uxnan-cli.exe`), the app opens, the installer runs **again over the open app** and closes it — what the in-app updater does — then uninstalls; the MSI installs with its sidecar and uninstalls |
+| `macos-14` | the `.app` with its sidecar passes `codesign --verify --deep --strict` (ad-hoc), the DMG mounts with the app, the updater archive is signed, the app launches |
+
+It runs when something that shapes an installer changed — `tauri*.conf.json`,
+`src-tauri/linux/`, `linux-appimage.sh`, the two desktop workflows, or the
+`@tauri-apps/cli` version, which *is* the bundler — or on demand:
+`gh workflow run ci-desktop.yml --ref <branch>`.
 
 The Linux packages also carry **AppStream metadata**,
 [`src-tauri/linux/dev.luisgamas.uxnandesktop.appdata.xml`](../src-tauri/linux/dev.luisgamas.uxnandesktop.appdata.xml),

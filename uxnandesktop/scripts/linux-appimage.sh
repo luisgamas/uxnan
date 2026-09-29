@@ -24,7 +24,8 @@
 # test does. A regression fails the build instead of a catalog test weeks later.
 #
 # Kept in step with `.github/workflows/release-desktop.yml` (the Linux leg) and
-# `ci-desktop.yml` (the `appimage` job); see `docs/build.md` → *Linux AppImage*.
+# `ci-desktop.yml` (the Linux leg of the `bundle` job); see `docs/build.md` →
+# *Linux AppImage*.
 
 set -euo pipefail
 
@@ -115,33 +116,50 @@ check() {
   [ "$(printf '%s\n%s\n' "$needed" "$GLIBC_FLOOR" | sort -V | tail -n 1)" = "$GLIBC_FLOOR" ] \
     || fail "requires glibc $needed, newer than the $GLIBC_FLOOR floor"
 
-  echo "--- launches under firejail and shows a window"
+  echo "--- launches under firejail and shows its window"
   local display=":97"
   Xvfb "$display" -screen 0 1440x900x24 > /dev/null 2>&1 &
   local xvfb=$!
   sleep 2
   DISPLAY="$display" firejail --quiet --noprofile --net=none --appimage "$image" > "$work/app.log" 2>&1 &
   local app=$!
+  # The app's own window, titled with the product name, mapped and full size.
+  # Any window will not do: GTK maps a 10x10 helper window named after the
+  # binary long before (and even without) the real one.
   local window=""
-  for _ in $(seq 1 45); do
+  for _ in $(seq 1 60); do
     sleep 1
     kill -0 "$app" 2>/dev/null || break
-    window="$(DISPLAY="$display" xwininfo -tree -root 2>/dev/null | grep -E '0x.*": \(' | grep -i 'uxnan' | head -n 1 || true)"
+    window="$(main_window "$display")"
     [ -n "$window" ] && break
   done
   if [ -n "$window" ] && [ -n "${APPIMAGE_SCREENSHOT:-}" ]; then
-    sleep 3 # let the first frame paint
+    sleep 5 # let the first frames paint
     DISPLAY="$display" import -window root "$APPIMAGE_SCREENSHOT" || true
   fi
   kill "$app" 2>/dev/null || true
   kill "$xvfb" 2>/dev/null || true
   if [ -z "$window" ]; then
+    DISPLAY="$display" xwininfo -tree -root 2>/dev/null | grep -E '0x.*": \(' || true
     cat "$work/app.log"
-    fail "the AppImage showed no window under firejail"
+    fail "the AppImage showed no 'Uxnan Desktop' window under firejail"
   fi
   echo "window: $window"
   rm -rf "$work"
   echo "AppImage OK"
+}
+
+# The id and geometry of a viewable "Uxnan Desktop" window at least 400px wide
+# on display $1, or nothing.
+main_window() {
+  local id geometry
+  while read -r id geometry; do
+    [ "${geometry%%x*}" -ge 400 ] || continue
+    DISPLAY="$1" xwininfo -id "$id" 2>/dev/null | grep -q 'Map State: IsViewable' || continue
+    echo "$id $geometry"
+    return
+  done < <(DISPLAY="$1" xwininfo -tree -root 2>/dev/null \
+    | awk '/"Uxnan Desktop": \(/ { for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+x[0-9]+\+/) { print $1, $i; break } }')
 }
 
 case "${1:-}" in

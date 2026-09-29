@@ -101,7 +101,11 @@ CI already gives every platform what a runner can give it:
   PR (`ci-desktop.yml`), and `release-desktop.yml` bundles installers for all
   four targets on tags — the Linux ones on `ubuntu-22.04`, so they need glibc
   2.35 at most, and the AppImage is launched under firejail before the leg
-  passes (`docs/build.md` → *Linux AppImage*).
+  passes (`docs/build.md` → *Linux AppImage*). When the bundling setup or the
+  Tauri CLI changes, `ci-desktop.yml`'s `bundle` job builds every installer on
+  each OS and uses it: NSIS reinstalled over the open app, the MSI installed,
+  the macOS DMG mounted and the app launched (`docs/build.md` → *Installers are
+  proven in CI*).
 - **Smoke, but not on a runner** — the E2E suite (`e2e-desktop.yml`) drives the
   real release binary on the **maintainer's Windows machine**, not in CI: on
   `windows-latest` the WebDriver attach never gets a debugging port, so no

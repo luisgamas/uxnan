@@ -21,7 +21,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **Tauri CLI 2.12 builds the installers.** Its newer linuxdeploy and GTK
   plugin fix AppImage crashes (`EGL_BAD_PARAMETER`) on recent Mesa, and the
   AppImage now runs natively on a Wayland session instead of forcing X11; it
-  uses the system's `xdg-open` rather than carrying its own.
+  uses the system's `xdg-open` rather than carrying its own. On Windows, the
+  installer an update runs now closes the open app through the Windows Restart
+  Manager instead of killing it by process name.
 
 ### Added
 
