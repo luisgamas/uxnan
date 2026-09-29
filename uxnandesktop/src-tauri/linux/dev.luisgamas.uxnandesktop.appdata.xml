@@ -9,6 +9,10 @@
   The `.appdata.xml` suffix is deliberate: the AppImage catalog's lint and
   page generator only look for `*appdata.xml`. No version list or screenshot
   lives here, so nothing in this file goes stale with a release.
+
+  Written for AppStream 0.15 (Ubuntu 22.04, what `linux-appimage.sh check`
+  validates with), which rejects newer tags as warnings: hence
+  `developer_name` rather than `<developer>`, and no `vcs-browser` link.
 -->
 <component type="desktop-application">
   <id>dev.luisgamas.uxnandesktop</id>
@@ -36,7 +40,6 @@
   <launchable type="desktop-id">Uxnan Desktop.desktop</launchable>
   <url type="homepage">https://uxnan.pages.dev</url>
   <url type="bugtracker">https://github.com/luisgamas/uxnan/issues</url>
-  <url type="vcs-browser">https://github.com/luisgamas/uxnan</url>
   <categories>
     <category>Development</category>
   </categories>
