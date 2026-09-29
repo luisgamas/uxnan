@@ -401,6 +401,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     if (!mounted) return;
     final target = await showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (_) => _BranchPicker(
         branches: branches,
@@ -1525,15 +1526,11 @@ class _CommitBarState extends State<_CommitBar> {
                             hint: l10n.gitCommitMessageLabel,
                             style: textTheme.titleSmall,
                             textInputAction: TextInputAction.next,
-                            // Autofocus the title field the first time the
-                            // commit bar appears: the user opened the git
-                            // screen to type a commit message, so the keyboard
-                            // should pop up as soon as the repo state loads.
-                            // Tapping the timeline area (the
-                            // GestureDetector in build()) still drops focus
-                            // via FocusScope.unfocus — the existing
-                            // tap-outside-to-unfocus behavior is preserved.
-                            autofocus: true,
+                            // No autofocus: only the conversation opens with
+                            // its keyboard up. This screen is as often opened
+                            // to read what changed as to commit, and on a
+                            // tablet the keyboard covered half the pane before
+                            // anything was chosen.
                             focusNode: _titleFocusNode,
                           ),
                         ),
@@ -1636,7 +1633,6 @@ class _BorderlessField extends StatelessWidget {
     this.minLines,
     this.maxLines = 1,
     this.textInputAction,
-    this.autofocus = false,
     this.focusNode,
   });
 
@@ -1648,10 +1644,6 @@ class _BorderlessField extends StatelessWidget {
   final int maxLines;
   final TextInputAction? textInputAction;
 
-  /// Whether the field should request focus on first build. Only the title
-  /// field passes `true`; the description and co-author fields stay
-  /// non-autofocus so expanding the details doesn't yank the caret.
-  final bool autofocus;
   final FocusNode? focusNode;
 
   @override
@@ -1666,7 +1658,6 @@ class _BorderlessField extends StatelessWidget {
       style: style,
       textInputAction: textInputAction,
       textCapitalization: TextCapitalization.sentences,
-      autofocus: autofocus,
       decoration: InputDecoration(
         isDense: true,
         border: InputBorder.none,

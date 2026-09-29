@@ -95,6 +95,7 @@ class PromptTemplatesScreen extends ConsumerWidget {
   }) async {
     final result = await showModalBottomSheet<PromptTemplate>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,

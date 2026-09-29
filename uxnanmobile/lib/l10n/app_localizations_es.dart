@@ -233,6 +233,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get sortByAttention => 'Requiere atención';
 
   @override
+  String get sortByActivity => 'Actividad reciente';
+
+  @override
+  String get threadsSortCreated => 'Fecha de creación';
+
+  @override
   String spacesConversationCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -337,6 +343,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get drawerSwitchDevice => 'Cambiar de PC';
 
   @override
+  String get drawerManageDevices => 'Administrar PCs';
+
+  @override
   String get drawerNoDevices => 'Aún no hay ningún PC emparejado';
 
   @override
@@ -380,9 +389,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get filterStateUnread => 'Sin leer';
-
-  @override
-  String get sortByActivity => 'Actividad reciente';
 
   @override
   String get agentStateWorking => 'Trabajando';
@@ -679,16 +685,6 @@ class AppLocalizationsEs extends AppLocalizations {
   String get usageInterval1h => 'Cada hora';
 
   @override
-  String get settingsUsageClockGroup => 'Formato de hora';
-
-  @override
-  String get usageClock24hTitle => 'Formato de 24 horas';
-
-  @override
-  String get usageClock24hSubtitle =>
-      'Mostrar las horas de reinicio como 14:30 en vez de 2:30 p. m.';
-
-  @override
   String get deviceActive => 'Activa';
 
   @override
@@ -802,9 +798,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get threadsSortBy => 'Ordenar por';
-
-  @override
-  String get threadsSortCreated => 'Fecha de creación';
 
   @override
   String get threadsSortName => 'Nombre';

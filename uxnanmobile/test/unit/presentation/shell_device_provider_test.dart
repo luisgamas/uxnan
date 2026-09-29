@@ -85,7 +85,6 @@ void main() {
     );
     for (final location in [
       AppRoutes.deviceArchived('mac-b'),
-      AppRoutes.deviceStats('mac-b'),
       AppRoutes.conversation('t-b'),
       AppRoutes.workspaceFiles('/dev/app', threadId: 't-b'),
     ]) {

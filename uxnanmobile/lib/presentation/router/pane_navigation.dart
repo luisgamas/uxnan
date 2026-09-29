@@ -61,28 +61,11 @@ extension PaneNavigation on BuildContext {
     if (mounted) go(location);
   }
 
-  /// Pops every screen stacked in the content pane, asking each one first.
-  ///
-  /// Returns false — and leaves the pane as it is — when a screen declines
-  /// (unsaved edits); that screen has then asked the user, who can try again
-  /// once they have decided.
+  /// Pops every screen stacked in the content pane, asking each one first —
+  /// see [clearNavigator].
   Future<bool> clearPane() async {
     final navigator = shellNavigatorKey.currentState;
-    while (navigator != null && navigator.canPop()) {
-      Route<dynamic>? top;
-      navigator.popUntil((route) {
-        top = route;
-        return true;
-      });
-      final route = top;
-      if (route != null &&
-          route.popDisposition == RoutePopDisposition.doNotPop) {
-        route.onPopInvokedWithResult(false, null);
-        return false;
-      }
-      navigator.pop();
-    }
-    return true;
+    return navigator == null || await clearNavigator(navigator);
   }
 
   /// What "back" means, for every back arrow in the app.
@@ -119,4 +102,39 @@ String parentLocationOf(String location, ProviderContainer container) {
         container.read(threadDeviceProvider(threadId)),
     fallbackDevice: container.read(shellDeviceProvider(location)),
   );
+}
+
+/// Pops every screen [navigator] holds above its first, asking each one
+/// first. Returns false — and leaves the rest in place — when a screen
+/// declines.
+///
+/// A screen can say "not yet" for two different reasons, and they must not be
+/// confused. One is a refusal: a file with unsaved edits raises its discard
+/// dialog over everything. The other is progress: a screen with a navigator
+/// of its own (Settings' pane) says "not yet" while it pops ITS child, and
+/// leaves once that one is gone. Treating both as a refusal left a
+/// notification tapped in Settings closing one sub-screen and never opening
+/// its conversation. So each round asks, lets the answer land, and stops only
+/// when something was raised over the whole app — a dialog asking the user.
+Future<bool> clearNavigator(NavigatorState navigator) async {
+  // A bound, not a count anyone should reach: a screen that declines without
+  // asking would otherwise be asked forever.
+  for (var round = 0; round < 64; round++) {
+    if (!navigator.mounted || !navigator.canPop()) return true;
+    final root = Navigator.of(navigator.context, rootNavigator: true);
+    final raisedBefore = _topRouteOf(root);
+    await navigator.maybePop();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!root.mounted || _topRouteOf(root) != raisedBefore) return false;
+  }
+  return !navigator.canPop();
+}
+
+Route<dynamic>? _topRouteOf(NavigatorState navigator) {
+  Route<dynamic>? top;
+  navigator.popUntil((route) {
+    top = route;
+    return true;
+  });
+  return top;
 }

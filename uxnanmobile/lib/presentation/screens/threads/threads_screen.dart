@@ -152,7 +152,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   @override
   Widget build(BuildContext context) {
     final allThreads = ref.watch(threadsProvider).value ?? const <Thread>[];
-    final sort = ref.watch(threadSortProvider);
+    final sort = ref.watch(listSortProvider(SortLevel.agents));
     final compact = ref.watch(threadDensityCompactProvider);
     // Scope to the selected PC and hide archived threads (those live on the
     // Archived screen). Legacy threads with no device tag are still shown (they
@@ -171,32 +171,31 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
 
-    final worktreeSort = ref.watch(worktreeSortProvider);
-    final projectSort = ref.watch(projectSortProvider);
+    final worktreeSort = ref.watch(listSortProvider(SortLevel.worktrees));
+    final projectSort = ref.watch(listSortProvider(SortLevel.projects));
     // Conversations are sorted BEFORE grouping — the grouping keeps the order
     // it is given, so one setting decides the order inside every folder.
     final groups = groupThreadsByWorkspace(
       threads: sortThreads(threads, sort, statusRank: _threadRank),
-      projects: ref.watch(projectsProvider).value ?? const [],
+      // This PC's own registry, whichever PC we are connected to.
+      projects: ref.watch(projectsProvider(widget.deviceId)).value ?? const [],
       // Empty on a bridge without `git/worktrees`, which is exactly the
-      // fallback: no table, no repository nodes, the flat list as before.
-      repos: ref.watch(workspaceRepoTableProvider).value ?? const {},
+      // fallback: no table, no repository nodes, the flat list as before. The
+      // table describes the CONNECTED PC's folders, so another PC's list does
+      // without it.
+      repos: connectedHere
+          ? ref.watch(workspaceRepoTableProvider).value ?? const {}
+          : const {},
     );
     final collapsed = ref.watch(collapsedProjectsProvider);
     // Each level is ordered by its OWN setting, including the worktrees inside
     // a project — the one list the menu could not reach while the tree sorted
     // them itself.
-    final rows = _flatten(
-      _sortNodes(
-        buildWorkspaceTree(
-          groups,
-          orderWorkspaces: (a, b) => _compareGroups(a, b, worktreeSort),
-        ),
-        projectSort,
-        worktreeSort,
-      ),
-      collapsed: collapsed,
+    final tree = buildWorkspaceTree(
+      groups,
+      orderWorkspaces: (a, b) => _compareGroups(a, b, worktreeSort),
     );
+    final rows = _flatten(_sortNodes(tree, projectSort), collapsed: collapsed);
 
     final l10n = AppLocalizations.of(context);
     final actions = [
@@ -206,24 +205,17 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
       ),
       ThreadSortMenu(
-        // The project group only appears when there IS one to order — a PC
-        // whose folders never group would otherwise get a menu entry that
-        // moves nothing it can see.
-        projectSort: rows.any((r) => r is _RepoRow) ? projectSort : null,
-        worktreeSort: worktreeSort,
-        agentSort: sort,
-        onChanged: (choice) {
-          switch (choice.level) {
-            case SortLevel.projects:
-              ref.read(projectSortProvider.notifier).set(choice.value);
-            case SortLevel.worktrees:
-              ref.read(worktreeSortProvider.notifier).set(choice.value);
-            case SortLevel.agents:
-              unawaited(
-                ref.read(threadSortProvider.notifier).set(choice.value),
-              );
-          }
+        levels: {
+          SortLevel.projects: projectSort,
+          // Only when a project heads several worktrees: otherwise every
+          // project IS its one folder, and the level would move nothing.
+          if (tree.any((node) => node is RepoWithWorktrees))
+            SortLevel.worktrees: worktreeSort,
+          SortLevel.agents: sort,
         },
+        onChanged: (choice) => unawaited(
+          ref.read(listSortProvider(choice.level).notifier).set(choice.value),
+        ),
       ),
       ThreadMoreMenu(
         compact: compact,
@@ -311,26 +303,19 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     );
   }
 
-  /// Orders the top level: projects by their own setting, lone worktrees by
-  /// the worktree setting, and the two interleaved so the list reads as one.
+  /// Orders the top level — every project, whether it is one folder or a
+  /// repository heading several worktrees — by the project setting.
   ///
-  /// A project and a lone worktree are peers on screen even though they are
-  /// different things, so they cannot be sorted into two blocks — that would
-  /// put every project above every folder regardless of what either setting
-  /// says.
+  /// One setting for the whole level. It used to take the project setting
+  /// between two repositories and the folder setting whenever a lone folder
+  /// was involved: two orderings in one comparison is not an ordering at all
+  /// (A before B by name, B before C and C before A by activity), and the
+  /// list came out in whatever order the sort happened to visit it.
   List<WorkspaceTreeNode> _sortNodes(
     List<WorkspaceTreeNode> nodes,
-    ListSort projectSort,
-    ListSort worktreeSort,
-  ) {
-    final list = [...nodes]..sort((a, b) {
-        final sort = a is RepoWithWorktrees && b is RepoWithWorktrees
-            ? projectSort
-            : worktreeSort;
-        return _compareNodes(a, b, sort);
-      });
-    return list;
-  }
+    ListSort sort,
+  ) =>
+      [...nodes]..sort((a, b) => _compareNodes(a, b, sort));
 
   int _compareNodes(WorkspaceTreeNode a, WorkspaceTreeNode b, ListSort sort) {
     return switch (sort) {

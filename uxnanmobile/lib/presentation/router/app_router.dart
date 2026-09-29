@@ -7,7 +7,6 @@ import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/manual_code_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
-import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell.dart';
@@ -26,6 +25,11 @@ class AppRoutes {
 
   /// Home: the paired-devices list (empty state until a PC is paired).
   static const String home = '/';
+
+  /// The paired PCs, to manage — rename, remove, verify. On a phone this is
+  /// what [home] already shows; beside a permanent drawer home is the quiet
+  /// pane, and the drawer's PC menu opens this in the pane instead.
+  static const String devices = '/devices';
 
   /// Onboarding flow.
   static const String onboarding = '/onboarding';
@@ -53,12 +57,6 @@ class AppRoutes {
 
   /// Builds the archived-threads route for the PC with [deviceId].
   static String deviceArchived(String deviceId) => '/device/$deviceId/archived';
-
-  /// Per-device metrics ("statistics") screen path pattern (`:deviceId`).
-  static const String deviceStatsPattern = '/device/:deviceId/stats';
-
-  /// Builds the per-PC statistics route for the PC with [deviceId].
-  static String deviceStats(String deviceId) => '/device/$deviceId/stats';
 
   /// Conversation screen path pattern (`:threadId`).
   static const String conversationPattern = '/conversation/:threadId';
@@ -179,22 +177,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // screen to remember to re-do its own `initState`, and none to be
           // audited again when a new per-parameter field is added.
           GoRoute(
+            path: AppRoutes.devices,
+            builder: (context, state) => const MyDevicesScreen(managing: true),
+          ),
+          GoRoute(
             path: AppRoutes.deviceThreadsPattern,
-            builder: (context, state) => ThreadsScreen(
-              key: ValueKey(state.pathParameters['deviceId']),
-              deviceId: state.pathParameters['deviceId']!,
-            ),
+            // Like the root: beside a permanent drawer a PC's list IS the
+            // drawer — the shell focuses this PC from the route — so the pane
+            // stays quiet instead of drawing the same list a second time.
+            // Rotating a tablet from portrait (where this was the screen) to
+            // landscape showed the list twice, side by side.
+            builder: (context, state) => context.hasPermanentPane
+                ? const ShellWelcome()
+                : ThreadsScreen(
+                    key: ValueKey(state.pathParameters['deviceId']),
+                    deviceId: state.pathParameters['deviceId']!,
+                  ),
           ),
           GoRoute(
             path: AppRoutes.deviceArchivedPattern,
             builder: (context, state) => ArchivedThreadsScreen(
-              key: ValueKey(state.pathParameters['deviceId']),
-              deviceId: state.pathParameters['deviceId']!,
-            ),
-          ),
-          GoRoute(
-            path: AppRoutes.deviceStatsPattern,
-            builder: (context, state) => PcDetailsScreen(
               key: ValueKey(state.pathParameters['deviceId']),
               deviceId: state.pathParameters['deviceId']!,
             ),
@@ -217,7 +219,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.profile,
-            builder: (context, state) => const ProfileScreen(),
+            // One profile per layout. Beside a drawer, Settings already shows
+            // it as its first section — so there the profile IS that: the
+            // drawer's "Profile" opened a full-screen profile while Settings'
+            // opened a split one, two answers for the same place.
+            builder: (context, state) => context.hasPermanentPane
+                ? const SettingsScreen()
+                : const ProfileScreen(),
           ),
           GoRoute(
             path: AppRoutes.conversationPattern,

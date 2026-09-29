@@ -77,8 +77,8 @@ connected to live bridge data, validated on-device against a real bridge.
   level appears over folders that `git/worktrees` relates to each other (never
   guessed from path prefixes — a worktree can live anywhere, and grouped ones
   share a prefix across repositories). Each level has
-  its own ordering (status / activity / created / name) through a routed
-  cascading menu. Folder rows carry git indicators (uncommitted, ahead, behind)
+  its own ordering (status / activity / created / name) through a nested menu
+  whose submenus open beside their row (`NeSubmenuRow`). Folder rows carry git indicators (uncommitted, ahead, behind)
   from `git/status` per cwd, throttled and only while visible; the breakdown
   lives in the long-press sheet.
 
@@ -368,6 +368,23 @@ shipping.
       window allows, so that change buys nothing (see `docs/architecture.md`).
       Decide it with the app in hand, and re-measure with the recipe in
       [`docs/testing.md`](docs/testing.md).
+- [ ] **Settings survives a rotation.** Settings is two layouts — a list whose
+      sections are pushed screens on a phone, and a list with the section in a
+      pane that has its own navigator past 840 dp — and neither hands its state
+      to the other when a tablet rotates:
+      - wide → narrow drops the pane's navigator, so an open sub-screen (the
+        theme editor, the licences) is gone, and with it any unsaved edits;
+      - narrow → wide leaves a section pushed on the phone covering the whole
+        window, over the two-pane Settings it came from;
+      - `/profile` pushed on a phone becomes Settings-with-Profile once wide,
+        stacked on the Settings below it (Settings inside Settings).
+      Site: `_SettingsScreenState` (`presentation/screens/settings/settings_screen.dart`,
+      inline `FOR-DEV:` at the pane navigator). Real fix: one Settings location
+      (`/settings?section=…`, sub-screens as routes) that both layouts rebuild
+      from, instead of each keeping its own stack. Deferred by the maintainer
+      (2026-09-29): rotation mid-Settings is rare and nothing is lost outside
+      the theme editor. Smaller, same family: back from **Manage PCs**
+      (`/devices`) after rotating wide → narrow lands on the same screen once.
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
 - [ ] **Arbitrary (non-image) file attach** — deferred; no bridge contract/model
       exists for it yet.

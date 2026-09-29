@@ -77,9 +77,21 @@ void main() {
     unawaited(
       shellNavigatorKey.currentState!.push(
         MaterialPageRoute<void>(
-          builder: (_) => PopScope(
+          builder: (context) => PopScope(
             canPop: false,
-            onPopInvokedWithResult: (didPop, _) => asked++,
+            // As the file viewer does: it declines by ASKING — a dialog over
+            // everything.
+            onPopInvokedWithResult: (didPop, _) {
+              asked++;
+              unawaited(
+                showDialog<void>(
+                  context: context,
+                  builder: (_) => const AlertDialog(
+                    title: Text('Discard changes?'),
+                  ),
+                ),
+              );
+            },
             child: const Text('unsaved edits'),
           ),
         ),
@@ -93,6 +105,46 @@ void main() {
     expect(asked, 1, reason: 'the screen was not asked');
     expect(find.text('unsaved edits'), findsOneWidget);
     expect(find.text('screen chat b'), findsNothing);
+  });
+
+  testWidgets('a screen with a navigator of its own is progress, not a refusal',
+      (tester) async {
+    // Settings' pane has its own navigator: while a sub-screen is open there
+    // it answers "not yet" and pops that sub-screen. Taken for a refusal, a
+    // notification tapped in Settings closed one sub-screen and never opened
+    // its conversation.
+    final router = await pumpRouter(tester, 1280);
+    router.go('/conversation/a');
+    await tester.pumpAndSettle();
+    final inner = GlobalKey<NavigatorState>();
+    unawaited(
+      shellNavigatorKey.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => NavigatorPopHandler<void>(
+            onPopWithResult: (_) => inner.currentState?.maybePop(),
+            child: Navigator(
+              key: inner,
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => const Text('a section'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    unawaited(
+      inner.currentState!.push(
+        MaterialPageRoute<void>(builder: (_) => const Text('its sub-screen')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    unawaited(probe.openInPane('/conversation/b'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('screen chat b'), findsOneWidget);
+    expect(find.text('a section'), findsNothing);
   });
 
   testWidgets('what is already open is not opened again', (tester) async {

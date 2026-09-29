@@ -21,6 +21,7 @@ class ApprovalModeSheet extends StatelessWidget {
   ) {
     return showModalBottomSheet<ApprovalMode>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (_) => ApprovalModeSheet(current: current),
     );

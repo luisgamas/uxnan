@@ -23,6 +23,7 @@ class WorkspaceBrowserSheet extends ConsumerStatefulWidget {
   static Future<String?> show(BuildContext context) {
     return showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => const WorkspaceBrowserSheet(),

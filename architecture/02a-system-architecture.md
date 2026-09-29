@@ -1060,9 +1060,14 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > relaciona con nada se queda donde esta; no hay cajon "otros". Con un bridge
 > anterior la tabla llega vacia y la lista es literalmente la de antes.
 >
-> **Cada nivel tiene su propio orden**: proyectos, worktrees y conversaciones,
-> los tres con las mismas cuatro opciones (`ListSort`: estado, actividad,
-> creacion, nombre). Los worktrees **dentro** de un proyecto se ordenan con el
+> **Cada nivel tiene su propio orden, guardado**: proyectos (TODO el primer
+> nivel — un proyecto de una carpeta y un repositorio con varios worktrees se
+> comparan con el mismo ajuste; mezclar dos criterios en una comparacion no es
+> un orden), worktrees dentro de un proyecto (solo cuando hay alguno) y
+> conversaciones, con las mismas cuatro opciones (`ListSort`: estado,
+> actividad, creacion, nombre); el archivo tiene el suyo. La lista de un PC usa
+> los proyectos de ESE PC (la replica guarda uno por PC), nunca los del
+> conectado. Los worktrees **dentro** de un proyecto se ordenan con el
 > mismo ajuste que los de primer nivel — `buildWorkspaceTree` recibe el
 > comparador en vez de ordenarlos por su cuenta, que es lo que antes los dejaba
 > fuera del alcance del menu. `created` de una carpeta es derivado: el bridge
@@ -1200,7 +1205,7 @@ lib/presentation/
 │   │   ├── threads_screen.dart           # Espacios: proyectos > carpetas > conversaciones
 │   │   ├── space_rows.dart               # filas de proyecto y de carpeta (+ archivos, git, nueva)
 │   │   ├── thread_tile.dart              # fila de conversacion (estado derivado)
-│   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu en cascada
+│   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu anidado de orden
 │   │   ├── workspace_git_indicators.dart # sin confirmar / adelante / atras por carpeta
 │   │   ├── workspace_details_sheet.dart  # hoja de pulsacion larga: ruta, rama, upstream
 │   │   ├── workspace_browser_sheet.dart  # explorador de carpetas del bridge

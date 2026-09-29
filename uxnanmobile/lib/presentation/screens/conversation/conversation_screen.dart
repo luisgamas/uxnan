@@ -204,29 +204,27 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
-  // Both route callbacks can arrive in the middle of a build: with the
-  // router's pages, a navigator reports a replaced pane while it rebuilds.
-  // Changing a provider there throws, so — like `dispose` below — the work
-  // runs on the next event-loop tick.
-
   /// Closes this conversation if it is the screen in front; one covered by
   /// another closes when it comes back ([didPopNext]).
   void _closeIfInFront() {
     if (mounted && (_route?.isCurrent ?? false)) unawaited(context.closePane());
   }
 
-  /// Another screen was pushed over this one: its notifications are no longer
-  /// being read here.
-  @override
-  void didPushNext() {
-    final foreground = _foreground;
-    final threadId = widget.threadId;
-    Future(() => foreground?.leave(threadId));
-  }
+  // No `didPushNext`: a screen pushed over this one is almost always its own
+  // — the folder's files or source control, a file — and the user is still
+  // in this conversation, so its notifications stay suppressed. Another
+  // conversation pushed on top takes the foreground itself when it enters;
+  // leaving here made this one's notifications arrive while its own git
+  // screen was open.
 
   /// Back in front after whatever covered it popped. The thread manager shows
   /// one conversation, and if the one that covered this was another
   /// conversation, it is showing that one: take it back.
+  ///
+  /// Route callbacks can arrive mid-build (with the router's pages a
+  /// navigator reports a replaced pane while it rebuilds), and changing a
+  /// provider there throws — so, like `dispose`, the work runs on the next
+  /// event-loop tick.
   @override
   void didPopNext() {
     Future(() {
@@ -829,6 +827,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final manager = ref.read(threadManagerProvider);
     await showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (_) => _SessionInfoSheet(
         threadId: widget.threadId,

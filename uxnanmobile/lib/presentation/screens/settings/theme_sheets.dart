@@ -60,6 +60,7 @@ Future<ThemeExportChoice?> showThemeExportSheet(
 }) {
   return showModalBottomSheet<ThemeExportChoice>(
     context: context,
+    useRootNavigator: true,
     showDragHandle: true,
     builder: (ctx) => _ExportChoiceSheet(
       title: title,

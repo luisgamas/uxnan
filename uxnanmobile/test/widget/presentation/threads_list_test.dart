@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
@@ -53,6 +54,7 @@ Widget _wrap({
   required List<Thread> threads,
   Map<String, ThreadActivity> activity = const {},
   List<Project> projects = const [],
+  Map<String, List<Project>> otherPcProjects = const {},
   Map<String, WorkspaceRepo> repos = const {},
   String? openThread,
   bool connected = false,
@@ -93,7 +95,14 @@ Widget _wrap({
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
       // The list is grouped by project: the PC's registry, as the replica
       // keeps it. Feeding it keeps the real database out.
-      projectsProvider.overrideWith((ref) => Stream.value(projects)),
+      // The replica keeps one registry per PC; this screen shows mac-1.
+      projectsProvider.overrideWith(
+        (ref, deviceId) => Stream.value(
+          deviceId == 'mac-1'
+              ? projects
+              : otherPcProjects[deviceId] ?? const [],
+        ),
+      ),
       // The screen now asks the bridge which folders are worktrees of which
       // repository. Left real, that reaches a live ThreadManager and opens the
       // database. An empty table is also exactly what an older bridge yields,
@@ -425,6 +434,7 @@ void main() {
             inFolder('a', 'Fix login', '/dev/app'),
             inFolder('b', 'Ship it', '/dev/app-feature'),
           ],
+          connected: true,
           repos: const {
             '/dev/app': WorkspaceRepo(key: '/dev/app', label: 'app'),
             '/dev/app-feature': WorkspaceRepo(key: '/dev/app', label: 'app'),
@@ -452,6 +462,7 @@ void main() {
             inFolder('a', 'Fix login', '/dev/app'),
             inFolder('b', 'Ship it', '/dev/app-feature'),
           ],
+          connected: true,
           repos: {
             '/dev/app':
                 WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
@@ -493,6 +504,7 @@ void main() {
             inFolder('a', 'Fix login', '/dev/app'),
             inFolder('b', 'Ship it', '/dev/app-feature'),
           ],
+          connected: true,
           repos: {
             '/dev/app':
                 WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
@@ -633,6 +645,67 @@ void main() {
       await tester.tap(find.text('Source control'));
       await tester.pumpAndSettle();
       expect(find.text('git:/dev/app'), findsOneWidget);
+    });
+
+    testWidgets(
+        'the project ordering orders the whole top level, repositories and '
+        'lone folders alike', (tester) async {
+      // Two repositories were compared by the project ordering, but a
+      // repository and a lone folder by the folder ordering — two orderings
+      // in one comparison, and the list came out in whatever order the sort
+      // happened to visit it. Every level persists its own choice.
+      SharedPreferences.setMockInitialValues({
+        'uxnan.threads.sort.projects': 'name',
+      });
+      tester.view.physicalSize = const Size(600, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('z', 'In zeta', '/dev/zeta'),
+            inFolder('a', 'On main', '/dev/app'),
+            inFolder('b', 'On a branch', '/dev/app-feature'),
+            inFolder('m', 'In mid', '/dev/mid'),
+          ],
+          connected: true,
+          repos: {
+            '/dev/app':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+            '/dev/app-feature':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      double top(String label) => tester.getTopLeft(find.text(label).first).dy;
+      expect(top('app'), lessThan(top('mid')));
+      expect(top('mid'), lessThan(top('zeta')));
+    });
+
+    testWidgets("a PC's list never shows another PC's projects",
+        (tester) async {
+      // The registry used to be the CONNECTED PC's: browsing one PC while
+      // connected to another listed that other PC's empty projects among
+      // this one's folders.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [inFolder('a', 'Fix login', '/dev/app')],
+          otherPcProjects: {
+            'mac-2': const [
+              Project(id: 'p2', name: 'elsewhere', cwd: '/dev/elsewhere'),
+            ],
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('app'), findsOneWidget);
+      expect(find.text('elsewhere'), findsNothing);
     });
 
     testWidgets("a folder's heading keeps clear of its first conversation",

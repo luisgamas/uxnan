@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -27,12 +28,26 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// overflow menu. While this PC is connected the screen also shows its shared
 /// start folder (`settings/set`, architecture/02a §5.8.17), which the phone
 /// can change.
+///
+/// A **child** of whatever opened it, not a route: opened from the profile
+/// inside Settings' pane on a tablet, a routed screen escaped that pane —
+/// Settings closed and the stats appeared beside the drawer, conversations
+/// and all. Pushed, it stacks where it was asked for, like the theme editor.
 class PcDetailsScreen extends ConsumerWidget {
   /// Creates a [PcDetailsScreen] for the PC with [deviceId].
   const PcDetailsScreen({required this.deviceId, super.key});
 
   /// The `macDeviceId` of the PC whose metrics are shown.
   final String deviceId;
+
+  /// Opens the stats of the PC with [deviceId] in the nearest navigator.
+  static Future<void> push(BuildContext context, String deviceId) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PcDetailsScreen(deviceId: deviceId),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -246,7 +261,7 @@ class _PcHeader extends StatelessWidget {
       parts.add('${l10n.devicePairedLabel}: $paired');
       final lastSeen = device.lastSeen;
       if (lastSeen != null) {
-        parts.add('${l10n.deviceLastSeenLabel}: ${_relativeTime(lastSeen)}');
+        parts.add('${l10n.deviceLastSeenLabel}: ${formatWhen(lastSeen)}');
       }
     }
     final subtitle = parts.join(' · ');
@@ -315,14 +330,5 @@ class _PcHeader extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static String _relativeTime(DateTime time) {
-    final now = DateTime.now();
-    final sameDay =
-        now.year == time.year && now.month == time.month && now.day == time.day;
-    return sameDay
-        ? DateFormat.Hm().format(time)
-        : DateFormat.MMMd().format(time);
   }
 }

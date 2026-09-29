@@ -23,11 +23,10 @@ void main() {
       expect(facts.isConversation, isTrue);
     });
 
-    test("a PC's list, archive and stats name the PC", () {
+    test("a PC's list and archive name the PC", () {
       for (final location in [
         AppRoutes.deviceThreads('mac-b'),
         AppRoutes.deviceArchived('mac-b'),
-        AppRoutes.deviceStats('mac-b'),
       ]) {
         expect(RouteFacts.parse(location).deviceId, 'mac-b', reason: location);
       }
@@ -65,14 +64,9 @@ void main() {
       expect(parentOf('/conversation/unknown'), AppRoutes.home);
     });
 
-    test("a PC's archive and stats go to its list; the list to the overview",
-        () {
+    test("a PC's archive goes to its list; the list to the overview", () {
       expect(
         parentOf(AppRoutes.deviceArchived('mac-b')),
-        AppRoutes.deviceThreads('mac-b'),
-      );
-      expect(
-        parentOf(AppRoutes.deviceStats('mac-b')),
         AppRoutes.deviceThreads('mac-b'),
       );
       expect(parentOf(AppRoutes.deviceThreads('mac-b')), AppRoutes.home);

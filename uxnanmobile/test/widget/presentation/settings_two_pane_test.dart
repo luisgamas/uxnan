@@ -161,4 +161,60 @@ Future<void> main() async {
 
     expect(find.byType(TwoPaneScaffold), findsNothing);
   });
+
+  testWidgets(
+      "beside its pane, the list's arrow leaves Settings in one tap — even "
+      'with a sub-screen open', (tester) async {
+    // The arrow used to pop the route, whose pane forwards a pop to its own
+    // navigator: it closed the sub-screen in the OTHER pane, and leaving took
+    // two taps.
+    tester.view.physicalSize = const Size(1200, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          phoneNameProvider.overrideWith((ref) => Stream.value('Tester')),
+          connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+              ),
+              child: const Text('where Settings was opened from'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('where Settings was opened from'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    final pane = tester.state<NavigatorState>(
+      find.descendant(
+        of: find.byType(TwoPaneScaffold),
+        matching: find.byType(Navigator),
+      ),
+    );
+    unawaited(
+      pane.push(
+        MaterialPageRoute<void>(builder: (_) => const Text('a sub-screen')),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Back').first);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(find.byType(SettingsScreen), findsNothing);
+    expect(find.text('where Settings was opened from'), findsOneWidget);
+  });
 }

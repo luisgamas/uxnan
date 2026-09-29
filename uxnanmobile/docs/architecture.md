@@ -124,9 +124,11 @@ The route table itself does not change. A second navigator, or a branch per
 pane, would give tablets their own navigation model, and every deep link, push
 notification and `context.go` would have to work in both.
 
-`NavDrawer` is **three zones and nothing else**: the PC (with a real `switchMac`
-behind the switcher, and the pairing call to action in its place when nothing is
-paired), the spaces tree via `ThreadsScreen(embedded: true)`, and the profile row
+`NavDrawer` is **three zones and nothing else**: the PC — the header IS the PC
+switcher, with one PC too (a real `switchMac` behind it; its menu lists the PCs,
+opens **Manage PCs** — `AppRoutes.devices`, the phone's own PC screen — in the
+pane, and pairs another; the pairing call to action takes its place when
+nothing is paired) — the spaces tree via `ThreadsScreen(embedded: true)`, and the profile row
 that returns the content pane to the overview. It is a `Material` rather than a
 `NavigationDrawer`: that component models N fixed destinations with one
 selected, and its own scrollable would nest inside the tree's.
@@ -167,7 +169,11 @@ navigator hid the whole drawer from TalkBack.
 **Two panes is the ceiling.** Where a surface already sits beside the drawer,
 or is itself split, the next level down stacks inside its pane through a nested
 `Navigator` rather than becoming a third column — see `docs/conventions.md`.
-Settings uses it for its sections' own children; the file browser and git
+Settings uses it for its sections' own children — which is also why Settings
+does not yet survive a tablet rotation: that nested stack exists only in the
+wide layout, and the phone's pushed sections only in the narrow one, so
+rotating mid-section loses one or strands the other (open in `FOR-DEV.md` →
+*Settings survives a rotation*). The file browser and git
 screens get the same shape from `shellNavigatorKey`, which is why they fill the
 content pane and leave the drawer alone — whether a conversation or a folder
 row in the drawer opened them.
@@ -275,10 +281,16 @@ was before.
 `ThreadsScreen` flattens the folders into typed rows (`_WorkspaceRow`,
 `_ThreadRow`) so the sliver stays lazy. Folder collapse is persisted as the set
 of **closed** keys (`collapsedProjectsProvider`), so a folder seen for the first
-time is open. **Three orderings apply independently**, one per level of the tree:
-`projectSortProvider`, `worktreeSortProvider` and `threadSortProvider`. All
-three take the same `ListSort` — one enum rather than three near-identical ones,
-which would drift apart the first time one of them gained an option:
+time is open. **Each level has its own ordering, persisted the same way**:
+`listSortProvider(SortLevel.projects | worktrees | agents | archive)` — one
+`ListSortSetting` class, one `ListSort` enum. `projects` orders the WHOLE top
+level, one-folder projects and repositories alike: comparing two repositories
+by one setting and a repository with a folder by another is not an ordering,
+and the list came out however the sort visited it. `worktrees` orders the
+folders inside a project and is only offered when one has them; `archive`
+offers fewer. The list takes the projects of the PC it shows
+(`projectsProvider(deviceId)`), and the worktree table only when that PC is the
+connected one — it is the connected bridge that answers `git/worktrees`:
 
 | | Meaning |
 |---|---|

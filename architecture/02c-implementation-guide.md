@@ -1321,7 +1321,19 @@ cada ruta** (`popDisposition`): un archivo con cambios sin guardar lo detiene y
 pregunta, en vez de perderse. Y lo que ya esta abierto no se vuelve a abrir.
 
 El drawer permanente (`NavDrawer`) son **tres zonas y nada mas** — el PC, su
-trabajo, y tu. Es un `Material`, no un `NavigationDrawer`: ese componente
+trabajo, y tu. La cabecera ES el selector de PC (tambien con uno solo): su menu
+lista los PCs, abre "Administrar PCs" en el panel (`/devices`, la misma pantalla
+de PCs del telefono) y empareja otro ("Emparejar un dispositivo" abre un
+submenu con QR y codigo). Un submenu se abre **al lado** de la fila que lo abre,
+como los menus anidados de Material: a la derecha, a la izquierda si no cabe, y
+debajo de la fila en un telefono — nunca encima de ella —, con la fila en estado
+activo mientras esta abierto. Un solo primitivo lo hace (`NeSubmenuRow` +
+`showSubmenu`, en `widgets/ne_menu_button.dart`) para el menu de orden y el de
+PC. Las estadisticas
+de un PC son **hijas** de quien las abre (`PcDetailsScreen.push`), no una ruta:
+desde el perfil dentro de Ajustes se apilan en su panel. En ancho `/profile` es
+Ajustes con la seccion de perfil. En ancho, la lista de un PC
+(`/device/:id/threads`) no se dibuja en el panel — el drawer ya es esa lista. Es un `Material`, no un `NavigationDrawer`: ese componente
 modela N destinos fijos con uno seleccionado, y su propio scroll se anidaria
 dentro del arbol de espacios.
 

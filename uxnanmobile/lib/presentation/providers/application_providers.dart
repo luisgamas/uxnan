@@ -66,7 +66,7 @@ import 'package:uxnan/presentation/providers/rail_anchors.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
     show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
-    show ListSort;
+    show ListSort, SortLevel;
 import 'package:uxnan/presentation/theme/uxnan_theme.dart' show ThemeSource;
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
@@ -642,35 +642,6 @@ final metricsRefreshIntervalProvider =
   MetricsRefreshIntervalSetting.new,
 );
 
-/// Whether usage reset times use a 24-hour clock (true) or 12-hour (false).
-/// Persisted; defaults to 24-hour.
-class UsageClock24h extends Notifier<bool> {
-  @override
-  bool build() {
-    unawaited(_hydrate());
-    return true;
-  }
-
-  Future<void> _hydrate() async {
-    final stored =
-        await ref.read(profilePreferencesStoreProvider).readUsageClock24h();
-    if (stored != null && stored != state) state = stored;
-  }
-
-  /// Persists and applies the clock format.
-  Future<void> set({required bool value}) async {
-    if (value == state) return;
-    state = value;
-    await ref
-        .read(profilePreferencesStoreProvider)
-        .writeUsageClock24h(value: value);
-  }
-}
-
-/// Whether usage reset times use a 24-hour clock (persisted; default 24h).
-final usageClock24hProvider =
-    NotifierProvider<UsageClock24h, bool>(UsageClock24h.new);
-
 /// Per-provider usage/quota (`agent/usageStats`) for the connected PC. Kept
 /// alive (NOT autoDispose) so scrolling the profile never reloads it;
 /// auto-polls on the configured interval while connected, and exposes a manual
@@ -1158,12 +1129,16 @@ final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
   return null;
 });
 
-/// The connected PC's projects — its bridge registry, the same list Uxnan
-/// Desktop shows (architecture/02a §5.8.17) — from this phone's replica, so
-/// they show offline too and every change on either side arrives live.
-final projectsProvider = StreamProvider<List<Project>>((ref) {
-  final deviceId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
-  if (deviceId == null) return Stream.value(const []);
+/// The projects of the PC with this device id — its bridge registry, the same
+/// list Uxnan Desktop shows (architecture/02a §5.8.17) — from this phone's
+/// replica, which keeps one per PC, so they show offline too and every change
+/// on either side arrives live.
+///
+/// By PC, never "the connected one": browsing one PC while connected to
+/// another listed the connected PC's empty projects among the browsed PC's
+/// folders.
+final projectsProvider =
+    StreamProvider.family<List<Project>, String>((ref, deviceId) {
   return ref.watch(bridgeReplicaProvider).projectsOf(deviceId);
 });
 
@@ -1209,15 +1184,21 @@ final workspaceRepoTableProvider = FutureProvider<Map<String, WorkspaceRepo>>((
   return table;
 });
 
-/// The distinct folders this PC's conversations run in, sorted and joined.
+/// The distinct folders the CONNECTED PC's conversations run in, sorted and
+/// joined — the only folders its bridge can answer `git/worktrees` about. The
+/// phone keeps every paired PC's conversations, and asking one PC about
+/// another's paths grouped folders that merely share a path.
 ///
 /// A `String` on purpose: Riverpod compares with `==`, and a fresh `List` is
 /// never equal to the previous one, so a list-valued provider would re-run
 /// every dependent on every rebuild.
 final workspaceCwdsProvider = Provider<String>((ref) {
+  final connected = ref.watch(connectedDeviceProvider).value?.macDeviceId;
+  if (connected == null) return '';
   final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
   final cwds = <String>{};
   for (final thread in threads) {
+    if (thread.deviceId != null && thread.deviceId != connected) continue;
     final cwd = thread.cwd;
     if (cwd != null && cwd.isNotEmpty) cwds.add(cwd);
   }
@@ -1232,7 +1213,7 @@ final workspaceBrowserProvider = Provider<WorkspaceBrowser>(
 );
 
 /// The bridge's agents (`agent/list`) for the new-conversation flow.
-/// Re-fetched on connected-device change (see [projectsProvider]) so a newly
+/// Re-fetched on connected-device change so a newly
 /// wired agent on an updated bridge shows up without a cold app restart.
 final agentsProvider = FutureProvider<List<AgentDescriptor>>((ref) {
   // An agent installed (or removed) on the PC while connected re-reads it.
@@ -1721,34 +1702,50 @@ class ShowClaudeLatestModels extends Notifier<bool> {
 final showClaudeLatestModelsProvider =
     NotifierProvider<ShowClaudeLatestModels, bool>(ShowClaudeLatestModels.new);
 
-/// The thread-list ordering. Persisted; defaults to newest-created first.
-/// Shared by the active and archived lists so the choice carries across both.
-class ThreadSortSetting extends Notifier<ListSort> {
+/// How one level of the threads list is ordered ([SortLevel]): the projects,
+/// the folders inside a project, the conversations inside a folder, and the
+/// archive. Every level persists its choice the same way.
+///
+/// One class for all of them: the projects and folders used to be in-memory
+/// (back to "needs attention" on every start) while the conversations were
+/// saved, and the archive borrowed the conversations' choice even though it
+/// offers fewer orderings.
+class ListSortSetting extends Notifier<ListSort> {
+  /// Creates the setting for [level].
+  ListSortSetting(this.level);
+
+  /// Which level of the list this orders.
+  final SortLevel level;
+
   @override
   ListSort build() {
     unawaited(_hydrate());
-    return ListSort.created;
+    return level.defaultSort;
   }
 
   Future<void> _hydrate() async {
     final stored =
-        await ref.read(threadListPreferencesStoreProvider).readSort();
+        await ref.read(threadListPreferencesStoreProvider).readSort(level.name);
     if (stored == null) return;
-    final match = ListSort.values.where((s) => s.name == stored);
+    final match = level.options.where((s) => s.name == stored);
     if (match.isNotEmpty && match.first != state) state = match.first;
   }
 
-  /// Persists and applies the thread-list ordering.
+  /// Persists and applies an ordering for this level.
   Future<void> set(ListSort value) async {
-    if (value == state) return;
+    if (value == state || !level.options.contains(value)) return;
     state = value;
-    await ref.read(threadListPreferencesStoreProvider).writeSort(value.name);
+    await ref
+        .read(threadListPreferencesStoreProvider)
+        .writeSort(level.name, value.name);
   }
 }
 
-/// The thread-list ordering (persisted, shared across active + archived lists).
-final threadSortProvider =
-    NotifierProvider<ThreadSortSetting, ListSort>(ThreadSortSetting.new);
+/// The ordering of one level of the threads list (persisted).
+final listSortProvider =
+    NotifierProvider.family<ListSortSetting, ListSort, SortLevel>(
+  ListSortSetting.new,
+);
 
 /// Whether the thread list uses the compact (single-line) density. Persisted;
 /// defaults to the full tile.
@@ -1773,37 +1770,6 @@ class ThreadDensityCompact extends Notifier<bool> {
         .read(threadListPreferencesStoreProvider)
         .writeCompact(value: value);
   }
-}
-
-/// How the **worktrees** are ordered. In-memory: unlike the agent ordering,
-/// this one is usually changed to answer a question ("what needs me?") rather
-/// than set once as a preference.
-final worktreeSortProvider =
-    NotifierProvider<WorktreeSortSetting, ListSort>(WorktreeSortSetting.new);
-
-/// Holds the worktree ordering.
-class WorktreeSortSetting extends Notifier<ListSort> {
-  @override
-  ListSort build() => ListSort.status;
-
-  /// Applies a worktree ordering. A method rather than a setter, to match the
-  /// `.set(value)` shape every other ordering notifier here uses.
-  // ignore: use_setters_to_change_properties
-  void set(ListSort value) => state = value;
-}
-
-/// How the **projects** (repositories) are ordered, on the same terms.
-final projectSortProvider =
-    NotifierProvider<ProjectSortSetting, ListSort>(ProjectSortSetting.new);
-
-/// Holds the project ordering.
-class ProjectSortSetting extends Notifier<ListSort> {
-  @override
-  ListSort build() => ListSort.status;
-
-  /// Applies a project ordering.
-  // ignore: use_setters_to_change_properties
-  void set(ListSort value) => state = value;
 }
 
 /// Which folder groups the user has collapsed in the spaces list.

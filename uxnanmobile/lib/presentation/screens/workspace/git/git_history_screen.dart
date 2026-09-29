@@ -237,6 +237,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
     if (!mounted) return;
     final picked = await showModalBottomSheet<_RefChoice>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,

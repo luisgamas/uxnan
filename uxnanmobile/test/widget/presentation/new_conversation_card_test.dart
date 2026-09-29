@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/project.dart';
+import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -25,8 +28,9 @@ Widget _wrap({
         agentSessionsProvider.overrideWith((ref, cwd) async => sessions),
         agentSessionHoldsProvider.overrideWith((ref) => Stream.value(const {})),
       ],
+      connectedDeviceProvider.overrideWith((ref) => Stream.value(_pc)),
       projectsProvider.overrideWith(
-        (ref) => Stream.value(
+        (ref, deviceId) => Stream.value(
           const [
             Project(id: 'p1', name: 'App', cwd: '/app'),
             Project(id: 'p2', name: 'Site', cwd: '/site'),
@@ -333,8 +337,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            connectedDeviceProvider.overrideWith((ref) => Stream.value(_pc)),
             projectsProvider.overrideWith(
-              (ref) => Stream.value(
+              (ref, deviceId) => Stream.value(
                 const [Project(id: 'p1', name: 'App', cwd: '/app')],
               ),
             ),
@@ -439,3 +444,13 @@ void main() {
     expect(find.textContaining("can't list its sessions"), findsOneWidget);
   });
 }
+
+/// The PC a new conversation starts on — its projects are the ones offered.
+final TrustedDevice _pc = TrustedDevice(
+  macDeviceId: 'mac-1',
+  displayName: 'PC',
+  macIdentityPublicKey: Uint8List(32),
+  relayUrl: 'wss://relay.test',
+  sessionId: 'session-1',
+  pairedAt: DateTime(2026),
+);
