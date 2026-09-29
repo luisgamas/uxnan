@@ -123,15 +123,21 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
   question, a steer, a cancel, `readSessionMessages`, `listModels` and
   `generateTitle`, and compare with [`agents.md`](./agents.md) → *OpenCode 1 and
   OpenCode 2*.
-- **Mid-turn delivery (steering) — every agent that has it.** Drive a scratch
-  bridge (`startBridge({ baseDir })`, never `~/.uxnan`; its identity stays in
-  memory unless you pass `useKeychain`, which only the CLI does) through a turn that works
-  a few seconds (`sleep 12 && echo one`), send a follow-up while it runs, and
-  check the lifecycle is `completed` for the first turn then `started` for the
-  follow-up, with the answer stored under the follow-up and no duplicate turn
-  after a `turn/list` (native history). Verified live 2026-09-26 on Claude Code,
-  Codex, OpenCode (including a follow-up sent while an approval was pending: it
-  queues) and pi.
+- **Mid-turn delivery at the next pause — every agent.** Drive the real
+  `AgentManager` and adapter on a scratch store (a temp `DaemonState`, never
+  `~/.uxnan`; a whole scratch bridge, `startBridge({ baseDir })`, works too —
+  its identity stays in memory unless you pass `useKeychain`, which only the
+  CLI does) through a turn of two commands (`sleep 15 && echo one`, then
+  `sleep 4 && echo two`), send a follow-up ("end your answer with BANANA")
+  while the agent is still writing, and check: `turn/send` answers `queued`;
+  `stream/queue/updated` marks it `deliveringTurnId` when the first command
+  starts; the first turn completes with `continuedIn` exactly when that command
+  ends, the follow-up starts then, and its reply ends with BANANA; nothing runs
+  twice. Agents without steering (Antigravity, Grok, Zero) must keep it queued
+  until the turn ends and run it next. Verified live 2026-09-29 on all seven
+  (Claude Code 2.1.284, Codex 0.157.1, OpenCode 2.0.19, pi 0.85.1, Antigravity,
+  Grok, Zero); a model with credits is needed (OpenCode `opencode/big-pickle`,
+  pi an OpenRouter `:free` model).
 - **Codex live steps.** A turn that reads a file, searches and runs a command:
   each `stream/content/block` arrives `running` and again settled with the same
   `blockId`, and the stored turn holds one row per step (verified 2026-09-26).

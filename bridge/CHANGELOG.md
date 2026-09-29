@@ -4,6 +4,24 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+
+- **A message sent while the agent works always waits in the queue, and an
+  agent that takes input mid-turn gets it at its next pause.** The bridge used
+  to hand it over the moment it arrived: it never showed as queued, could not
+  be edited or cancelled, and nobody could tell when the agent read it. Now it
+  is queued like any other; the first queued message goes to Claude Code,
+  Codex, OpenCode or pi while the agent is inside a step (a command, a tool),
+  marked `deliveringTurnId` and no longer cancellable, and is placed in the
+  conversation when the agent reads it — Claude Code when it echoes it, the
+  others once that step ends. One at a time, in order; one that meets no pause
+  runs when the turn ends. Antigravity, Grok and Zero keep it until their turn
+  ends, as before. Verified live on all seven agents.
+- **`queue/sendNow` no longer hands a message into a running turn** — the next
+  pause does — and says why; it still starts a paused queue's message at once.
+- **A follow-up Claude Code never read goes back to the queue** instead of
+  failing the turn it was sent into.
+
 ### Fixed
 
 - **A setting no longer counts as activity.** `thread/setModel`,

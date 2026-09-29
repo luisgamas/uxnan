@@ -126,11 +126,16 @@ push validation (FOR-HUMAN).
   surfaced on `turn/list` + `stream/queue/updated`, and turns left `queued` by a
   previous run are cancelled at startup. This is also what enforces one turn per
   thread — the bridge previously started a second turn on top of the first.
-- **Mid-turn delivery** — where the agent's CLI has an input channel while it
-  works, a follow-up does not wait for the turn: it is handed straight to the
-  running one (`IAgentAdapter.steerTurn`); the running turn ends there and the
-  new one carries the rest of the agent's run (`#handOff`), so the answer shows
-  under the message it answers. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
+- **Mid-turn delivery, at the agent's next pause** — a follow-up sent while the
+  agent works always waits in the queue (editable, cancellable). Where the
+  agent's CLI has an input channel while it works, the first queued message
+  goes to it while it is inside a step (`#deliverAtPause`, marked
+  `deliveringTurnId` and no longer cancellable) and is placed when the agent
+  reads it — Claude Code by its echo, the others once the step ends
+  (`#stepsSettled`); the running turn ends there and the new one carries the
+  rest of the agent's run (`#handOff`), so the answer shows under the message
+  it answers. `queue/sendNow` no longer delivers mid-turn. Live-verified
+  (2026-09-29, all seven agents) for **Claude Code** (`--input-format stream-json`, prompt
   and follow-ups on an open stdin), **OpenCode** (1.x: `prompt_async` on the
   busy session; 2.x: `delivery: "steer"`; an accepted steer is waited for to
   its second idle), **pi** (`--mode rpc`, `steer` command, taken on its ACK)

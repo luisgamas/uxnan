@@ -70,26 +70,39 @@ they work. It runs on its own once the current turn completes, through the
 identical code path a normal turn takes, which means **queueing behaves the same
 for all seven active agents** regardless of how their CLI is driven.
 
-### …and when it doesn't wait at all
+### …and when it goes at the agent's next pause
 
 Waiting for the whole turn is not what the CLIs do. They take what you type at
 the next tool boundary, *inside* the running turn — which is what lets you
-correct an agent's course without stopping it. The bridge does the same
-wherever the agent's CLI actually allows it: the follow-up is handed straight
-over. The turn that was answering ends there, with what the agent had said,
-and the follow-up's turn starts at once and carries the rest of the same agent
-run — so what the agent says after taking the message shows under it, on every
-client, exactly like a queue that drained early (`turn/completed`, then
-`turn/started`). `turn/send` answers `{ turnId }`. The adapter keeps naming the
-run by the id it started with; the manager maps it to the turn now showing its
-output.
+correct an agent's course without stopping it — and they show it waiting until
+then. The bridge does the same wherever the agent's CLI actually allows it:
 
-It is deliberately narrow, so a thread's order can never be rearranged. The
-hand-off is only attempted when the adapter advertises `steering`, a turn is
-really in flight, and the queue is **empty** (anything already waiting was sent
-first) and **not paused** (the queue pauses precisely because the user stopped
-the agent or it broke). **Every refusal falls back to the queue**, so a message
-is never lost — at worst it waits, exactly as before.
+- the follow-up **always waits in the queue first**, where it can still be
+  edited or cancelled;
+- the **first** queued message goes to the agent at its **next pause** — while
+  the agent is inside a step (a command, a tool, a subagent reported
+  `running`), which it reads when that step ends (`#deliverAtPause`,
+  `agent-manager.ts`). Until the agent takes it, it stays in the queue marked
+  `deliveringTurnId` and can no longer be taken back (`turn/cancel` refuses);
+- it is placed in the conversation when the agent **reads** it — Claude Code
+  echoes it (`--replay-user-messages`), and the others accept it at once but
+  read it when the step ends, so the manager waits for the run's running steps
+  to settle (`#stepsSettled`) before placing it. The turn that was answering
+  ends there, with what the agent had said, and the follow-up's turn carries
+  the rest of the same agent run — so what the agent says after reading the
+  message shows under it, on every client, exactly like a queue that drained
+  early (`turn/completed`, then `turn/started`);
+- one at a time, in order, one per pause; a message that meets no pause before
+  the turn ends (the agent was only writing) runs as the next turn.
+
+`queue/sendNow` no longer hands a message into a running turn — the next pause
+does that — it still starts a paused queue's message at once. The adapter keeps
+naming the run by the id it started with; the manager maps it to the turn now
+showing its output. It never happens while the queue is **paused** (the user
+stopped the agent, or it broke), while the agent waits on an approval or a
+question, or for another agent than the one running. **Every refusal leaves the
+message in the queue**, so it is never lost — at worst it waits for the turn to
+end.
 
 Which agents can, and why — verified against the real CLIs:
 
@@ -116,18 +129,28 @@ verified live on 2026-09-28):
   so a wake-up the CLI runs on its own (background work that finished, or a
   `<task-notification>` a resumed session still owed) or the model turn a late
   message missed never closes it — the case that closed a real turn in a second
-  while the agent worked on for 13 minutes. A CLI that exits without a
-  `result`, with a message unread, or because the bridge is stopping fails the
-  turn with the tail of its stderr instead of completing it.
+  while the agent worked on for 13 minutes. `steerTurn` resolves when the echo
+  arrives, so the message is placed when Claude read it. A CLI that exits
+  without a `result`, without reading the prompt, or because the bridge is
+  stopping fails the turn with the tail of its stderr instead of completing it;
+  a follow-up it never read goes back to the queue.
 - **pi** waits for its RPC `response` to the `steer` (pi 0.85.1 answers
   `success` in ~20 ms, busy or idle); a refusal leaves the message queued.
 - **OpenCode**: an `idle` that lands while a message is being handed over waits
   for the answer; one the server accepted runs as another run (OpenCode 2.0.16:
   its reply, then a second `idle`), and the turn stays open until that `idle`.
 - **Codex**: `turn/steer` with `expectedTurnId` only lands on the active turn.
-- The **manager** holds a run's end while a hand-over is in flight, so a message
-  accepted just as the run finished is answered in its turn and never sent
-  twice.
+- The **manager** holds a run's end while a hand-over is in flight (and an end
+  releases a hand-over waiting for steps), so a message accepted just as the
+  run finished is answered in its turn and never sent twice.
+
+Verified live on 2026-09-29 with every wired agent, through the real manager
+and adapters (a task of two `sleep` commands, a follow-up sent while the first
+ran): Claude Code 2.1.284, Codex 0.157.1, OpenCode 2.0.19 and pi 0.85.1 took it
+at the end of the first command — queued, then delivering from the moment the
+command started, placed the moment it ended, answered in the same run —;
+Antigravity, Grok and Zero kept it queued until the turn ended and ran it
+next.
 
 The turn a hand-off ended names the next one (`Turn.continuedIn`, and
 `continuedIn` on its `stream/turn/completed`), so clients show its reply as the
