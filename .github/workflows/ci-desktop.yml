@@ -10,11 +10,13 @@ on:
       - "uxnandesktop/**"
       - ".github/workflows/ci-desktop.yml"
       - ".github/workflows/verify-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
   pull_request:
     paths:
       - "uxnandesktop/**"
       - ".github/workflows/ci-desktop.yml"
       - ".github/workflows/verify-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
   # On demand, for a branch that has no pull request yet: a multi-phase branch
   # is verified on the platform matrix per phase, not only once it is proposed
   # for merge (`gh workflow run ci-desktop.yml --ref <branch>`).
@@ -102,6 +104,82 @@ jobs:
         if: always() && steps.touched.outputs.run == 'true'
         working-directory: uxnandesktop
         run: npm run ssh:host:down || true
+
+  # The Linux AppImage, built and launched the way the AppImage catalog tests
+  # it (`scripts/linux-appimage.sh`). Built on the release's own runner image,
+  # so what passes here is what ships. Costs a full bundle, so it runs only
+  # when something that shapes the AppImage changed — or on demand.
+  appimage:
+    name: Linux AppImage (catalog checks)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      # Full history, for the same reason as `linux-ssh-host` above: a gate
+      # that cannot see the base must run, not skip.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Does this change shape the AppImage?
+        id: touched
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          base='${{ github.event.pull_request.base.sha || github.event.before }}'
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$base" '${{ github.sha }}' \
+             | grep -Eq '^(uxnandesktop/src-tauri/(tauri\.conf\.json|tauri\.cli\.conf\.json|linux/)|uxnandesktop/scripts/linux-appimage\.sh|\.github/workflows/(release|ci)-desktop\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: System dependencies (the release leg's list)
+        if: steps.touched.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev build-essential curl wget file \
+            firejail xvfb x11-utils desktop-file-utils appstream imagemagick
+      - uses: actions/setup-node@v4
+        if: steps.touched.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: uxnandesktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.touched.outputs.run == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.touched.outputs.run == 'true'
+        with:
+          workspaces: uxnandesktop/src-tauri
+          key: ubuntu-22.04-appimage
+      - name: Prepare the AppImage tooling
+        if: steps.touched.outputs.run == 'true'
+        run: bash uxnandesktop/scripts/linux-appimage.sh prepare
+      # The release builds every target and signs the updater artifacts; this
+      # builds the AppImage alone and unsigned (no updater key on a PR).
+      - name: Build the AppImage
+        if: steps.touched.outputs.run == 'true'
+        working-directory: uxnandesktop
+        run: |
+          npm ci --no-audit --no-fund
+          npm run tauri -- build --bundles appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Check the AppImage
+        if: steps.touched.outputs.run == 'true'
+        env:
+          APPIMAGE_SCREENSHOT: ${{ github.workspace }}/appimage-window.png
+        run: bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
+      - name: Keep the window it showed
+        if: always() && steps.touched.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-window
+          path: appimage-window.png
+          if-no-files-found: ignore
 
   pr-comment-on-failure:
     needs: verify

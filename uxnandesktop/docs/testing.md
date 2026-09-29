@@ -505,6 +505,11 @@ the page was on screen; on a fresh start it sits in a background workspace,
 the case Windows needs the off-window capture for — and keeps the PNG as a run
 artifact. Script: `scripts/smoke/desktop-capture.mjs`.
 
+The Linux **AppImage** has its own check, `scripts/linux-appimage.sh check`, run
+by the release and by the `appimage` job of `ci-desktop.yml`: it inspects the
+image the way the AppImage catalog does and launches it under firejail until a
+window appears (`docs/build.md` → *Linux AppImage*).
+
 ## UI / behavior verification
 
 Type-checks and unit tests verify *code* correctness, not *feature* correctness.

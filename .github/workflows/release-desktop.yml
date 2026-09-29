@@ -67,7 +67,12 @@ jobs:
       fail-fast: false # a failing mac leg must not drop the win/linux artifacts
       matrix:
         include:
-          - os: ubuntu-latest
+          # Linux builds on the OLDEST supported Ubuntu, not the newest: an
+          # AppImage runs against the host's C library, so the glibc of the
+          # build machine is the floor every Linux package carries (24.04's
+          # 2.39 left 22.04 and Debian 12 unable to start it). The floor is
+          # asserted by `scripts/linux-appimage.sh check` (GLIBC_FLOOR) below.
+          - os: ubuntu-22.04
             args: ''
             rust-target: ''
           - os: windows-latest
@@ -137,6 +142,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: uxnandesktop/src-tauri
+          # The runner IMAGE, not just its OS family: build scripts cached on a
+          # newer Ubuntu link a newer glibc and would not run on 22.04.
+          key: ${{ matrix.os }}
 
       - name: Sync version into manifests
         shell: bash
@@ -160,6 +168,14 @@ jobs:
         working-directory: uxnandesktop
         run: npm ci
 
+      # Before the bundler runs: the AppImage's launcher must be executable by
+      # any user, and the libraries the AppImage excludelist forbids stay out.
+      # Both are fixed here, at the source, so the updater `.sig` is signed over
+      # the corrected file (`docs/build.md` → *Linux AppImage*).
+      - name: Prepare the AppImage tooling
+        if: runner.os == 'Linux'
+        run: bash uxnandesktop/scripts/linux-appimage.sh prepare
+
       - name: Build installers + draft release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -180,6 +196,17 @@ jobs:
           releaseDraft: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
           args: ${{ matrix.args }} # per-arch --target on macOS; empty on win/linux
+
+      # What the AppImage catalog tests, asserted on what was just built: every
+      # executable runnable by anyone, no excluded library, AppStream metadata,
+      # the glibc floor, and a window when launched under firejail. The image is
+      # already attached to the draft by now; a red leg here means "do not
+      # publish this build", and the stable draft waits for a human anyway.
+      - name: Check the AppImage
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y firejail xvfb x11-utils desktop-file-utils appstream
+          bash uxnandesktop/scripts/linux-appimage.sh check uxnandesktop/src-tauri/target/release/bundle/appimage/*.AppImage
 
   # The body, and — for nightlies only — the publish.
   #

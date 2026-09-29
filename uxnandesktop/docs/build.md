@@ -89,7 +89,44 @@ Per platform, `bundle/` contains:
 |---|---|---|
 | **Windows** | `.msi` (WiX), `.exe` (NSIS) | Tauri downloads WiX/NSIS automatically on first bundle. |
 | **macOS** | `.app`, `.dmg` (one per architecture) | Requires Xcode Command Line Tools. CI ships an **experimental, unsigned** build, ad-hoc-signed per arch (`aarch64` + `x86_64`) — see [install-macos.md](install-macos.md). |
-| **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage is the most portable. |
+| **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage is the most portable. See *Linux AppImage* below. |
+
+### Linux AppImage
+
+The release builds the Linux packages on **`ubuntu-22.04`**, the oldest Ubuntu
+it supports, on purpose: an AppImage (like the `.deb`/`.rpm`) runs against the
+host's C library, so the build machine's glibc is the floor every Linux package
+carries — **glibc 2.35** (Ubuntu 22.04, Debian 12 and anything newer). Building
+on `ubuntu-latest` raised it to 2.39 and left those systems unable to start the
+app.
+
+[`scripts/linux-appimage.sh`](../scripts/linux-appimage.sh) does two things
+around `tauri build`:
+
+- **`prepare`**, before it: seeds Tauri's tool cache with linuxdeploy's
+  `AppRun` at mode `0755` (the bundler would download it as `0770`, and that
+  file becomes the `AppRun.wrapped` that starts the app — so an image mounted by
+  another user, e.g. under firejail, died with *Permission denied*), and has
+  linuxdeploy leave out `libwayland-client.so.0`, which the AppImage excludelist
+  forbids. Both happen before the updater signs the image, so the `.sig` matches
+  what ships — nothing is repacked afterwards.
+- **`check <AppImage>`**, after it: asserts what the
+  [AppImage catalog](https://appimage.github.io) tests — every executable
+  runnable by anyone, no excluded library, a desktop entry with categories,
+  valid AppStream metadata, the glibc floor — then launches the image under
+  firejail on a virtual display and waits for its window.
+
+It runs in the release's Linux leg and in the `appimage` job of
+`ci-desktop.yml` (only when something that shapes the image changed, or on
+demand: `gh workflow run ci-desktop.yml --ref <branch>`), which uploads the
+window it saw as the `appimage-window` artifact.
+
+The Linux packages also carry **AppStream metadata**,
+[`src-tauri/linux/dev.luisgamas.uxnandesktop.appdata.xml`](../src-tauri/linux/dev.luisgamas.uxnandesktop.appdata.xml),
+installed to `/usr/share/metainfo/` through `bundle.linux.{appimage,deb,rpm}.files`
+in `tauri.conf.json`; software centres and the catalog take the name, summary,
+description, license and links from it. The desktop entry's category comes
+from `bundle.category` (`DeveloperTool` → `Development`).
 
 ## Useful variants
 
