@@ -142,7 +142,8 @@ Future<void> main() async {
     ).readAsStringSync();
     final buildIndex = source.indexOf('Widget build(BuildContext context) {');
     final layoutIndex = source.indexOf('return LayoutBuilder(builder:');
-    final listenIndex = source.indexOf('ref.listen(');
+    // The first subscription, called directly or as a cascade on `ref`.
+    final listenIndex = source.indexOf(RegExp(r'ref\s*(\.|\.\.)listen\('));
 
     expect(buildIndex, greaterThan(-1));
     expect(layoutIndex, greaterThan(-1));

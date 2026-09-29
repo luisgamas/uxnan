@@ -948,34 +948,35 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // A conversation that no longer exists closes — deleted from the drawer
     // beside it, or from another client. Left open it kept an enabled
     // composer over a thread the bridge no longer has.
-    ref.listen(threadByIdProvider(widget.threadId), (previous, next) {
-      if (previous == null || next != null) return;
-      _threadGone = true;
-      // Navigating from inside a listener would do it mid-build.
-      Future(_closeIfInFront);
-    });
-    // Auto-scroll to the bottom on new content while the user is near it; a
-    // just-sent message (with the setting on) forces the jump even from a
-    // manually-scrolled position.
-    ref.listen(threadTimelineProvider(widget.threadId), (previous, next) {
-      final snap = next.value;
-      if (snap == null || snap.messages.isEmpty) return;
-      // First real content for this open: restore the saved scroll position
-      // (or the bottom) instead of leaving it at the top.
-      if (!_restoredScroll) {
-        _restoreScroll();
-        return;
-      }
-      // After the initial restore, keep following the bottom on new content
-      // when the user is already near it (or just sent a message).
-      if (_forceScrollOnSend) {
-        _forceScrollOnSend = false;
-        _autoFollow.resume();
-      }
-      if (_autoFollow.shouldFollow) {
-        _scheduleFollowLatest();
-      }
-    });
+    ref
+      ..listen(threadByIdProvider(widget.threadId), (previous, next) {
+        if (previous == null || next != null) return;
+        _threadGone = true;
+        // Navigating from inside a listener would do it mid-build.
+        Future(_closeIfInFront);
+      })
+      // Auto-scroll to the bottom on new content while the user is near it; a
+      // just-sent message (with the setting on) forces the jump even from a
+      // manually-scrolled position.
+      ..listen(threadTimelineProvider(widget.threadId), (previous, next) {
+        final snap = next.value;
+        if (snap == null || snap.messages.isEmpty) return;
+        // First real content for this open: restore the saved scroll position
+        // (or the bottom) instead of leaving it at the top.
+        if (!_restoredScroll) {
+          _restoreScroll();
+          return;
+        }
+        // After the initial restore, keep following the bottom on new content
+        // when the user is already near it (or just sent a message).
+        if (_forceScrollOnSend) {
+          _forceScrollOnSend = false;
+          _autoFollow.resume();
+        }
+        if (_autoFollow.shouldFollow) {
+          _scheduleFollowLatest();
+        }
+      });
 
     // The conversation is not always the window: inside the shell's content
     // pane it has the window MINUS a 320 dp drawer. Measuring the window would
