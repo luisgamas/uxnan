@@ -3,6 +3,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a file's unified git diff with the +/- line coloring matching the
@@ -171,11 +172,7 @@ class _DiffHeader extends StatelessWidget {
           ),
           const SizedBox(width: UxnanSpacing.sm),
           Expanded(
-            child: Text(
-              path,
-              style: textTheme.titleSmall,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: PathText(path, style: textTheme.titleSmall),
           ),
           if (added > 0)
             Text(

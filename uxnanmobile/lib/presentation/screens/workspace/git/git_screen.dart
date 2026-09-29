@@ -19,6 +19,7 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen Material 3 source-control surface for a thread's workspace.
@@ -1339,12 +1340,11 @@ class _FileCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         if (dir != null)
-                          Text(
+                          PathText(
                             dir,
                             style: UxnanTypography.codeSmall.copyWith(
                               color: colors.onSurfaceVariant,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
                       ],
                     ),

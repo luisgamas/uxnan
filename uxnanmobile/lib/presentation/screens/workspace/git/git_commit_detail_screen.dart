@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen detail for a single commit, backed by `git/commitShow`.
@@ -434,8 +435,6 @@ class _CommitFileCardState extends State<_CommitFileCard> {
     final dir = segments.length > 1
         ? segments.sublist(0, segments.length - 1).join('/')
         : null;
-    final subtitle =
-        file.oldPath != null ? l10n.gitHistoryRenamedFrom(file.oldPath!) : dir;
 
     return Column(
       children: [
@@ -462,13 +461,20 @@ class _CommitFileCardState extends State<_CommitFileCard> {
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (subtitle != null)
+                      if (file.oldPath != null)
                         Text(
-                          subtitle,
+                          l10n.gitHistoryRenamedFrom(file.oldPath!),
                           style: UxnanTypography.codeSmall.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
                           overflow: TextOverflow.ellipsis,
+                        )
+                      else if (dir != null)
+                        PathText(
+                          dir,
+                          style: UxnanTypography.codeSmall.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
                     ],
                   ),

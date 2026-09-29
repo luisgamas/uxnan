@@ -27,6 +27,7 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/session_handoff_message.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -625,10 +626,8 @@ class _SelectedFolderCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: UxnanSpacing.xs),
-                  Text(
+                  PathText(
                     path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: UxnanTypography.codeSmall.copyWith(
                       color: colors.onPrimaryContainer.withValues(alpha: 0.75),
                     ),
@@ -697,10 +696,8 @@ class _FolderOption extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.titleMedium,
                   ),
-                  Text(
+                  PathText(
                     path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: UxnanTypography.codeSmall.copyWith(
                       color: colors.onSurfaceVariant,
                     ),

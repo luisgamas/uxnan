@@ -41,6 +41,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   a conversation's branch chip was showing for another folder.
 - **The source-control screen says "No git repository"** for a folder that is
   not one, instead of loading forever.
+- **Long paths show their end, not their beginning.** The file browser's folder
+  bar, the New conversation folder, the git and commit-detail file cards, the
+  file search results and the diff header cut a long path at its end, hiding
+  the folder that tells projects apart. They now drop the leading folders
+  instead (`…/clients/acme/mobile-app`), as Uxnan Desktop does.
 
 ## [0.0.33-alpha.20260928+20260935] - 20260928
 ### Fixed

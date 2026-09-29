@@ -303,6 +303,16 @@ scale does not have to spare; `theme/markdown.dart` therefore maps h1–h4 onto
 rungs and gives h5/h6 an explicit size (20 → 18 → 16 → 14 → 13 → 12). That is
 the only sanctioned literal.
 
+**A path on one line keeps its end.** A folder or file path that may not fit is
+drawn with `PathText` (`widgets/path_text.dart`), never a `Text` with an end
+ellipsis: the leading folders are the same for every project on the PC (its
+home, the bridge's start folder), and the tail is what tells two apart — which
+is exactly what an end ellipsis cuts. It cuts at a folder boundary
+(`…/clients/acme/mobile-app`), keeps the end of a last name that is too long on
+its own, and announces the whole path to screen readers. `uxnandesktop` keeps
+the same tail visible (a left-truncated path), so the rule is one rule in both
+apps. A path shown in full, wrapped (the folder details sheet), needs none.
+
 ---
 
 ### 2.4 HCT Color System

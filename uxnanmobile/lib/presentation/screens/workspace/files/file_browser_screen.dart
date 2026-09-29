@@ -17,6 +17,7 @@ import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen workspace file browser for the active thread's `cwd`.
@@ -559,10 +560,8 @@ class _FileSearchResultTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Text(
+      subtitle: PathText(
         match.path,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
         style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
       ),
       onTap: onTap,
@@ -677,13 +676,11 @@ class _StatusBar extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
+                        PathText(
                           cwd,
                           style: UxnanTypography.codeSmall.copyWith(
                             color: colors.onSurface,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
                         ),
                         if (gitState != null && gitState.branch.isNotEmpty) ...[
                           const SizedBox(height: UxnanSpacing.xs),
