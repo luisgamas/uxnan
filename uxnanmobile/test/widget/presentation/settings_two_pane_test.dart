@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,9 +92,9 @@ Future<void> main() async {
   });
 
   testWidgets('picking another section starts its own stack', (tester) async {
-    // Keyed by section: wander into a child, come back to a different section,
-    // and it should open at its own root rather than inheriting where you had
-    // got to in the last one.
+    // A navigator per section: wander into a child, come back to a different
+    // section, and it should open at its own root rather than inheriting where
+    // you had got to in the last one.
     await pump(tester, width: 1200);
 
     final first = tester
@@ -103,7 +105,7 @@ Future<void> main() async {
           ),
         )
         .map((n) => n.key)
-        .whereType<ValueKey<String>>()
+        .whereType<GlobalKey<NavigatorState>>()
         .toList();
     expect(first, isNotEmpty);
 
@@ -118,9 +120,38 @@ Future<void> main() async {
           ),
         )
         .map((n) => n.key)
-        .whereType<ValueKey<String>>()
+        .whereType<GlobalKey<NavigatorState>>()
         .toList();
     expect(second, isNot(first));
+  });
+
+  testWidgets("the system back returns from a section's child to the section",
+      (tester) async {
+    // Nothing forwards the OS back to a navigator the router does not know
+    // about: back from a sub-screen used to close Settings entirely.
+    await pump(tester, width: 1200);
+    final pane = tester.state<NavigatorState>(
+      find.descendant(
+        of: find.byType(TwoPaneScaffold),
+        matching: find.byType(Navigator),
+      ),
+    );
+    unawaited(
+      pane.push(
+        MaterialPageRoute<void>(builder: (_) => const Text('a sub-screen')),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    // The pane's navigator reports it can pop after the frame; one more frame
+    // lets the handler take the back gesture for it.
+    await tester.pump();
+    expect(find.text('a sub-screen'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.text('a sub-screen'), findsNothing);
+    expect(find.byType(SettingsScreen), findsOneWidget);
   });
 
   testWidgets('a pane too narrow for two columns keeps one', (tester) async {

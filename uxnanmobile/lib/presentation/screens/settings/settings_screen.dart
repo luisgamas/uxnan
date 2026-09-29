@@ -51,6 +51,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// on screen to keep selected.
   _Section? _selected;
 
+  /// The detail pane's own navigator, renewed with each section so picking a
+  /// different one starts its own stack instead of inheriting where you had
+  /// wandered in the last.
+  GlobalKey<NavigatorState> _paneNavigator = GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -187,12 +192,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // child, and its back arrow returns to the section rather than
           // leaving Settings.
           //
-          // Keyed by section so picking a different one starts its own stack
-          // instead of inheriting where you had wandered in the last.
-          detail: Navigator(
-            key: ValueKey('settings-pane-${selected.title}'),
-            onGenerateRoute: (_) => MaterialPageRoute<void>(
-              builder: (_) => selected.embedded(),
+          //
+          // The system back gesture has to reach it too. Nothing forwards the
+          // OS back to a navigator the router does not know about, so without
+          // this handler back from a section's sub-screen closed Settings
+          // entirely instead of returning to the section.
+          detail: NavigatorPopHandler<void>(
+            onPopWithResult: (_) => _paneNavigator.currentState?.maybePop(),
+            child: Navigator(
+              key: _paneNavigator,
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => selected.embedded(),
+              ),
             ),
           ),
         );
@@ -202,7 +213,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   void _select(BuildContext context, _Section section) {
     if (UxnanBreakpoint.of(context).usesPermanentPane) {
-      setState(() => _selected = section);
+      setState(() {
+        _selected = section;
+        _paneNavigator = GlobalKey<NavigatorState>();
+      });
     } else {
       section.open(context);
     }
