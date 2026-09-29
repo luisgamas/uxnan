@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+
+- **An answer a message interrupted stays whole.** When a message reached the
+  agent mid-answer, the answer so far ended with *Continues below* as intended,
+  but an answer in several parts still folded all but its last into *previous
+  messages*, hiding most of what the agent had said. It now stays as it
+  streamed, every part in view, as on the desktop.
 
 ## [0.0.33-alpha.20260928+20260935] - 20260928
 ### Fixed
