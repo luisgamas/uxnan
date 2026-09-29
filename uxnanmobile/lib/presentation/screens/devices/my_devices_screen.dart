@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
+import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -31,13 +37,31 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// switches the active session to it (spec 02a §5.5.6 — `MyDevicesScreen`).
 class MyDevicesScreen extends ConsumerWidget {
   /// Creates the devices screen.
-  const MyDevicesScreen({super.key});
+  const MyDevicesScreen({this.managing = false, super.key});
 
-  void _open(BuildContext context, TrustedDevice device) {
+  /// Whether this is **Manage PCs** (`AppRoutes.devices`) — the PCs opened in
+  /// a tablet's pane from the drawer's PC menu — rather than the phone's home.
+  ///
+  /// Managing, the screen is about the PCs and nothing else: titled for what
+  /// it is, with a way to close it, no home greeting, and only the pairing
+  /// action — Settings and Profile are the drawer's, a hand away. A card
+  /// turns the drawer to that PC and leaves you here, among the PCs you came
+  /// to manage; it used to replace this screen with an empty pane.
+  final bool managing;
+
+  void _open(BuildContext context, WidgetRef ref, TrustedDevice device) {
+    if (managing) {
+      unawaited(
+        ref.read(focusedDeviceProvider.notifier).focus(device.macDeviceId),
+      );
+      return;
+    }
     // Browsing a PC's threads is read-only and must NOT change the connection
     // target: connecting stays an explicit, validated action (the "Connect"
-    // CTA here or on the threads screen). Just navigate to its cached threads.
-    context.push(AppRoutes.deviceThreads(device.macDeviceId));
+    // CTA here or on the threads screen). Just navigate to its cached threads
+    // — over this screen on a phone; beside a drawer, the drawer turns to that
+    // PC (a PC's list there IS the drawer).
+    unawaited(context.openInPane(AppRoutes.deviceThreads(device.macDeviceId)));
   }
 
   Future<void> _connect(
@@ -152,20 +176,58 @@ class MyDevicesScreen extends ConsumerWidget {
     // known; only the connected PC uses it.
     final connectedEndpoint = ref.watch(connectedEndpointProvider).value;
 
-    // Two columns once the window earns them. Below expanded the cards keep the
-    // full content width — a phone splitting a 44 dp avatar row in two would
-    // just make both halves cramped.
-    final columns =
-        UxnanBreakpoint.of(context).usesPermanentPane && devices.length > 1
-            ? 2
-            : 1;
+    // Two columns once the SPACE earns them — this screen's own width, not
+    // the window's: in a tablet's pane the drawer has already taken 320 dp,
+    // and an 840 dp window left two cramped cards. Below expanded the cards
+    // keep the full content width — a phone splitting a 44 dp avatar row in
+    // two would just make both halves cramped.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns =
+            UxnanBreakpoint.fromWidth(constraints.maxWidth).usesPermanentPane &&
+                    devices.length > 1
+                ? 2
+                : 1;
+        return _scaffold(
+          context,
+          ref,
+          l10n: l10n,
+          devices: devices,
+          columns: columns,
+          connectedId: connectedId,
+          connectingId: connectingId,
+          networkKind: networkKind,
+          connectedEndpoint: connectedEndpoint,
+        );
+      },
+    );
+  }
 
+  Widget _scaffold(
+    BuildContext context,
+    WidgetRef ref, {
+    required AppLocalizations l10n,
+    required List<TrustedDevice> devices,
+    required int columns,
+    required String? connectedId,
+    required String? connectingId,
+    required NetworkKind networkKind,
+    required String? connectedEndpoint,
+  }) {
     return NeScaffold(
-      // The bar carries the product's identity, not the screen's: the mark
-      // on the left, your avatar on the right (NE §4.2 keeps the main
+      // Home: the bar carries the product's identity, not the screen's — the
+      // mark on the left, your avatar on the right (NE §4.2 keeps the main
       // screen's bar title empty; this screen's heading is the headline
-      // below).
-      titleWidget: const _BrandMark(),
+      // below). Managing: it says what it is, and closes.
+      title: managing ? l10n.drawerManageDevices : null,
+      titleWidget: managing ? null : const _BrandMark(),
+      leading: managing
+          ? IconSurface(
+              icon: UxIcons.arrowBack,
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+              onPressed: context.closePane,
+            )
+          : null,
       actions: [
         // Pair another PC: an M3 popup (matching the threads sort/more menus)
         // offering the QR scanner or the manual host+code flow.
@@ -191,14 +253,16 @@ class MyDevicesScreen extends ConsumerWidget {
             ),
           ],
         ),
-        IconSurface(
-          icon: UxIcons.settings,
-          tooltip: l10n.settingsTitle,
-          onPressed: () => context.push(AppRoutes.settings),
-        ),
-        _ProfileAvatarAction(
-          onPressed: () => context.push(AppRoutes.profile),
-        ),
+        if (!managing) ...[
+          IconSurface(
+            icon: UxIcons.settings,
+            tooltip: l10n.settingsTitle,
+            onPressed: () => context.push(AppRoutes.settings),
+          ),
+          _ProfileAvatarAction(
+            onPressed: () => context.push(AppRoutes.profile),
+          ),
+        ],
       ],
       slivers: [
         if (devices.isEmpty)
@@ -207,7 +271,7 @@ class MyDevicesScreen extends ConsumerWidget {
             child: _PairEmptyState(),
           )
         else ...[
-          const SliverToBoxAdapter(child: _OverviewHeadline()),
+          if (!managing) const SliverToBoxAdapter(child: _OverviewHeadline()),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
               UxnanSpacing.lg,
@@ -223,8 +287,8 @@ class MyDevicesScreen extends ConsumerWidget {
               networkKind: networkKind,
               connectedEndpoint: connectedEndpoint,
               onStats: (device) =>
-                  context.push(AppRoutes.deviceStats(device.macDeviceId)),
-              onOpen: (device) => _open(context, device),
+                  PcDetailsScreen.push(context, device.macDeviceId),
+              onOpen: (device) => _open(context, ref, device),
               onConnect: (device) => _connect(ref, context, device),
               onRename: (device) => _rename(ref, context, device),
               onVerify: (device) => _verify(ref, context, device),
@@ -412,7 +476,7 @@ class _DeviceCard extends StatelessWidget {
                       device.lastSeen == null
                           ? l10n.deviceNeverConnected
                           : l10n.deviceLastConnection(
-                              _lastConnectionText(context, device.lastSeen!),
+                              formatWhen(device.lastSeen!, keepClock: true),
                             ),
                       style: textTheme.bodySmall,
                       maxLines: 1,
@@ -492,23 +556,6 @@ class _DeviceCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// When the PC was last reachable, in the phone's own conventions:
-  /// [MaterialLocalizations.formatTimeOfDay] follows the locale AND the
-  /// device's 12/24-hour setting, which a hand-rolled `DateFormat` pattern
-  /// cannot. Anything older than today carries its date, because a lone time
-  /// from last week is worse than no time at all.
-  static String _lastConnectionText(BuildContext context, DateTime time) {
-    final l10n = MaterialLocalizations.of(context);
-    final clock = l10n.formatTimeOfDay(
-      TimeOfDay.fromDateTime(time),
-      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
-    );
-    final now = DateTime.now();
-    final sameDay =
-        now.year == time.year && now.month == time.month && now.day == time.day;
-    return sameDay ? clock : '${DateFormat.MMMd().format(time)}, $clock';
   }
 
   /// What the connection cell says for a LIVE channel: the classified network

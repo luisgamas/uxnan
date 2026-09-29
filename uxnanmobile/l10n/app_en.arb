@@ -114,6 +114,8 @@
   "sortFoldersHeader": "Folders",
   "sortConversationsHeader": "Conversations",
   "sortByAttention": "Needs attention",
+  "sortByActivity": "Recent activity",
+  "threadsSortCreated": "Creation date",
   "spacesConversationCount": "{count, plural, =1{1 conversation} other{{count} conversations}}",
   "@spacesConversationCount": {
     "placeholders": { "count": { "type": "int" } }
@@ -121,6 +123,10 @@
   "spacesOther": "Other spaces",
   "spacesNoFolder": "No folder",
   "spacesNewConversationHere": "New conversation here",
+  "spacesFolderTools": "Folder tools",
+  "@spacesFolderTools": {
+    "description": "Tooltip of the menu holding a folder's file browser and source control, where the row is too narrow for a button each."
+  },
   "workspaceDirty": "{count, plural, =1{1 uncommitted file} other{{count} uncommitted files}}",
   "@workspaceDirty": {"placeholders": {"count": {"type": "int"}}},
   "workspaceAhead": "{count, plural, =1{1 commit to push} other{{count} commits to push}}",
@@ -143,6 +149,7 @@
   "shellHowToPair": "How to link a device",
   "drawerDevices": "Devices",
   "drawerSwitchDevice": "Switch PC",
+  "drawerManageDevices": "Manage PCs",
   "drawerNoDevices": "No PC paired yet",
   "drawerBackToOverview": "Back to overview",
   "spacesCopyPath": "Copy path",
@@ -162,7 +169,6 @@
   "filterStateWorking": "Working",
   "filterStateWaiting": "Waiting for you",
   "filterStateUnread": "Unread",
-  "sortByActivity": "Recent activity",
   "agentStateWorking": "Working",
   "agentStateWaiting": "Waiting for you",
   "agentStateBlocked": "Blocked",
@@ -285,9 +291,6 @@
   "usageInterval10m": "Every 10 minutes",
   "usageInterval20m": "Every 20 minutes",
   "usageInterval1h": "Every hour",
-  "settingsUsageClockGroup": "Time format",
-  "usageClock24hTitle": "24-hour time",
-  "usageClock24hSubtitle": "Show reset times as 14:30 instead of 2:30 PM",
   "deviceActive": "Active",
   "deviceConnect": "Connect",
   "deviceConnectFailed": "Couldn't reach {device}. Staying on the current PC.",
@@ -354,7 +357,6 @@
   "threadsFilterScopeTooltip": "Filter scope",
   "threadsViewOptions": "View options",
   "threadsSortBy": "Sort by",
-  "threadsSortCreated": "Creation date",
   "threadsSortName": "Name",
   "threadsCompact": "Compact list",
   "threadsMore": "More options",

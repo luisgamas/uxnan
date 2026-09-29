@@ -15,11 +15,18 @@ import 'package:uxnan/domain/value_objects/message_content.dart';
 class TurnTimelineSnapshot extends Equatable {
   /// Creates a [TurnTimelineSnapshot].
   const TurnTimelineSnapshot({
+    this.threadId,
     this.messages = const [],
     this.hasMore = false,
     this.nextCursor,
     this.streamingTurnId,
   });
+
+  /// The conversation these messages belong to; null for the empty timeline
+  /// of no conversation. There is one timeline stream for the conversation in
+  /// front, and a conversation screen still mounted underneath another must
+  /// be able to tell that the snapshot is not its own.
+  final String? threadId;
 
   /// Messages in display order (ascending by `orderIndex`).
   final List<Message> messages;
@@ -53,6 +60,7 @@ class TurnTimelineSnapshot extends Equatable {
     bool clearStreaming = false,
   }) {
     return TurnTimelineSnapshot(
+      threadId: threadId,
       messages: messages ?? this.messages,
       hasMore: hasMore ?? this.hasMore,
       nextCursor: nextCursor ?? this.nextCursor,
@@ -82,6 +90,7 @@ class TurnTimelineSnapshot extends Equatable {
       byId[m.id] = m;
     }
     return TurnTimelineSnapshot(
+      threadId: threadId,
       messages: _sorted(byId.values),
       hasMore: hasMore,
       nextCursor: nextCursor,
@@ -156,5 +165,6 @@ class TurnTimelineSnapshot extends Equatable {
   }
 
   @override
-  List<Object?> get props => [messages, hasMore, nextCursor, streamingTurnId];
+  List<Object?> get props =>
+      [threadId, messages, hasMore, nextCursor, streamingTurnId];
 }

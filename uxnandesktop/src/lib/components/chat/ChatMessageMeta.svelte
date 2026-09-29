@@ -1,6 +1,7 @@
 <script lang="ts">
   // Under a message, revealed while its row is hovered or focused: when it was
   // sent and a copy button. The row that holds it carries `group/message`.
+  import { formatClock, formatDateClock } from "$lib/clock";
   import { Button } from "$lib/components/ui/button";
   import { Icon } from "$lib/components/ui/icon";
   import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
@@ -26,13 +27,11 @@
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const time = $derived(
-    at ? new Intl.DateTimeFormat(i18n.locale, { timeStyle: "short" }).format(new Date(at)) : "",
+    at ? formatClock(new Date(at)) : "",
   );
   const full = $derived(
     at
-      ? new Intl.DateTimeFormat(i18n.locale, { dateStyle: "medium", timeStyle: "short" }).format(
-          new Date(at),
-        )
+      ? formatDateClock(new Date(at), i18n.locale, { withYear: true })
       : "",
   );
 

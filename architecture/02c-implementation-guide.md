@@ -1309,16 +1309,31 @@ Lo que si cambia es el **significado de un toque**, y eso vive en
 - `openInPane(ruta)` — en telefono empuja; en ancho **reemplaza**, porque no
   fuiste a ningun sitio: el drawer no se movio y lo que cambio es el contenido
   de un panel. Empujar ahi construye una pila que el layout no deja ver.
-- `closePane()` — "atras" desde la primera pantalla del panel no es "la
-  anterior" sino **cerrar lo abierto**.
+- `closePane()` — la unica regla de "atras" de la app: saca lo apilado; si no
+  queda nada, en ancho **cierra lo abierto** y en telefono sube un nivel
+  (`RouteFacts.parent`, `router/route_facts.dart`).
 
-`openInPane` vacia antes `shellNavigatorKey`: el visor de archivos y la
-pantalla de git se abren con `Navigator.push` crudo y quedan **encima** de la
-pagina enrutada, asi que `go` por si solo cambiaba la ruta por debajo y las
-dejaba tapandolo todo.
+`openInPane` vacia antes `shellNavigatorKey` (`clearPane`): los hijos de las
+pantallas de carpeta (un archivo, el historial) se abren con `Navigator.push`
+crudo y quedan **encima** de la pagina enrutada, asi que `go` por si solo
+cambiaba la ruta por debajo y las dejaba tapandolo todo. Vaciarlo **pregunta a
+cada ruta** (`popDisposition`): un archivo con cambios sin guardar lo detiene y
+pregunta, en vez de perderse. Y lo que ya esta abierto no se vuelve a abrir.
 
 El drawer permanente (`NavDrawer`) son **tres zonas y nada mas** — el PC, su
-trabajo, y tu. Es un `Material`, no un `NavigationDrawer`: ese componente
+trabajo, y tu. La cabecera ES el selector de PC (tambien con uno solo): su menu
+lista los PCs, abre "Administrar PCs" en el panel (`/devices`, la misma pantalla
+de PCs del telefono) y empareja otro ("Emparejar un dispositivo" abre un
+submenu con QR y codigo). Un submenu se abre **al lado** de la fila que lo abre,
+como los menus anidados de Material: a la derecha, a la izquierda si no cabe, y
+debajo de la fila en un telefono — nunca encima de ella —, con la fila en estado
+activo mientras esta abierto. Un solo primitivo lo hace (`NeSubmenuRow` +
+`showSubmenu`, en `widgets/ne_menu_button.dart`) para el menu de orden y el de
+PC. Las estadisticas
+de un PC son **hijas** de quien las abre (`PcDetailsScreen.push`), no una ruta:
+desde el perfil dentro de Ajustes se apilan en su panel. En ancho `/profile` es
+Ajustes con la seccion de perfil. En ancho, la lista de un PC
+(`/device/:id/threads`) no se dibuja en el panel — el drawer ya es esa lista. Es un `Material`, no un `NavigationDrawer`: ese componente
 modela N destinos fijos con uno seleccionado, y su propio scroll se anidaria
 dentro del arbol de espacios.
 
@@ -1353,11 +1368,13 @@ PopScope(
     if (didPop || location == AppRoutes.home) return;
     final nested = shellNavigatorKey.currentState;
     if (nested != null && nested.canPop()) {
-      nested.pop();
+      nested.maybePop(); // pregunta a la pantalla, como cualquier atras
       return;
     }
     context.go(
-      context.hasPermanentPane ? AppRoutes.home : parentOf(location, context),
+      context.hasPermanentPane
+          ? AppRoutes.home
+          : parentLocationOf(location, ProviderScope.containerOf(context)),
     );
   },
   child: NotificationListener<NavigationNotification>(
@@ -2310,7 +2327,7 @@ class ConnectionRecoveryCard extends ConsumerWidget {
 ### 9.4 Errores Git — mensajes de producto
 
 ```dart
-// lib/presentation/screens/conversation/git/git_error_mapper.dart
+// lib/presentation/screens/workspace/git/git_error_mapper.dart
 
 class GitErrorMapper {
   static String toProductMessage(GitException e, BuildContext context) {

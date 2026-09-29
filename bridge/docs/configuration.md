@@ -173,7 +173,10 @@ only write-bounded by its `permissionMode` — see
 `daemon-config.json`, `pairing-session.json`, `trusted-phones.json`,
 `threads/<threadId>.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
 `agent-processes.json`, `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and
-the metrics sealing key live in the OS keychain, not on disk.
+the metrics sealing key live in the OS keychain, not on disk — for the bridge
+the CLI starts (`uxnan-bridge start`, `qr`). A bridge started from code
+(`startBridge()` in a test or a scratch run) keeps them in memory unless it
+passes `useKeychain: true`, so it can never come up as your real bridge.
 
 `agent-processes.json` is the running daemon's record of the agent processes it
 started — `{ "version": 1, "processes": [{ pid, command, args, cwd, startedAt,

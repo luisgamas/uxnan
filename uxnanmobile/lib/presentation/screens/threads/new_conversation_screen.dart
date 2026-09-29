@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/project.dart';
@@ -9,9 +10,8 @@ import 'package:uxnan/domain/value_objects/agent_session.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
-import 'package:uxnan/presentation/screens/threads/thread_tile.dart'
-    show activityTimeLabel;
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -27,6 +27,7 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/path_text.dart';
 import 'package:uxnan/presentation/widgets/session_handoff_message.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -294,7 +295,11 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
 
-    final projects = ref.watch(projectsProvider);
+    // A conversation starts on the connected PC, among ITS projects.
+    final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
+    final projects = connectedId == null
+        ? const AsyncValue<List<Project>>.data([])
+        : ref.watch(projectsProvider(connectedId));
     final home = ref.watch(bridgeHomeProvider).value;
     final agentsAsync = ref.watch(agentsProvider);
 
@@ -314,7 +319,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       leading: IconSurface(
         icon: UxIcons.close,
         tooltip: l10n.actionCancel,
-        onPressed: () => Navigator.of(context).maybePop(),
+        onPressed: context.closePane,
       ),
       actions: [
         if (_starting)
@@ -625,10 +630,8 @@ class _SelectedFolderCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: UxnanSpacing.xs),
-                  Text(
+                  PathText(
                     path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: UxnanTypography.codeSmall.copyWith(
                       color: colors.onPrimaryContainer.withValues(alpha: 0.75),
                     ),
@@ -697,10 +700,8 @@ class _FolderOption extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.titleMedium,
                   ),
-                  Text(
+                  PathText(
                     path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: UxnanTypography.codeSmall.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -1414,7 +1415,7 @@ class _SessionCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final hold = this.hold;
-    final when = activityTimeLabel(DateTime.now().subtract(session.updatedAgo));
+    final when = formatWhen(DateTime.now().subtract(session.updatedAgo));
     return Semantics(
       button: true,
       label: l10n.sessionsPickHint,

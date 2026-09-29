@@ -30,6 +30,7 @@ class ModelPickerSheet extends ConsumerStatefulWidget {
   }) {
     return showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => ModelPickerSheet(agentId: agentId, current: current),

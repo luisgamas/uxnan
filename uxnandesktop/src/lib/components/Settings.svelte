@@ -4,6 +4,8 @@
   // work. The status bar is hidden in settings mode to give the content more
   // room. Close with the back button, the gear in the title bar, or Escape.
 
+  import { formatDateClock } from "$lib/clock";
+
   import { onDestroy, onMount } from "svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as HoverCard from "$lib/components/ui/hover-card";
@@ -596,7 +598,7 @@
   });
   const lastCheckedLabel = $derived(
     updater.lastChecked
-      ? new Date(updater.lastChecked).toLocaleString()
+      ? formatDateClock(new Date(updater.lastChecked), i18n.locale, { withYear: true })
       : i18n.t("updates.neverChecked"),
   );
   /** Live download fraction (0–1, or null when the total is unknown), for the

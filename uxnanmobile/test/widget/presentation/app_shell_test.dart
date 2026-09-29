@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
@@ -141,7 +142,8 @@ Future<void> main() async {
     ).readAsStringSync();
     final buildIndex = source.indexOf('Widget build(BuildContext context) {');
     final layoutIndex = source.indexOf('return LayoutBuilder(builder:');
-    final listenIndex = source.indexOf('ref.listen(');
+    // The first subscription, called directly or as a cascade on `ref`.
+    final listenIndex = source.indexOf(RegExp(r'ref\s*(\.|\.\.)listen\('));
 
     expect(buildIndex, greaterThan(-1));
     expect(layoutIndex, greaterThan(-1));
@@ -308,28 +310,103 @@ Future<void> main() async {
     expect(find.text('git'), findsNothing);
   });
 
-  test('a conversation belongs to its PC, everything else to the overview', () {
-    // What "up" means with nothing to pop. Rotating a tablet with a
-    // conversation open is the case that creates it: the wide layout REPLACED
-    // routes, so the narrow one inherits a stack of exactly one page and both
-    // the system gesture and the bar's arrow had nothing to act on. The arrow
-    // simply did nothing, which reads as broken rather than as a dead end.
-    expect(AppShell.threadIdOf('/conversation/abc'), 'abc');
-    // The resolution itself needs a ProviderScope, so what is pinned here is
-    // the rule it encodes: only a conversation has a parent worth guessing.
-    expect(AppShell.threadIdOf(AppRoutes.settings), isNull);
-    expect(AppShell.threadIdOf(AppRoutes.home), isNull);
+  group('back from a screen stacked over the pane', () {
+    // A folder's files and source control are routes of their own, opened two
+    // ways: pushed over a conversation, or straight into the pane from a
+    // folder row in the drawer. Back has to mean the right thing for both.
+    Future<GoRouter> pumpRouter(WidgetTester tester, double width) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      Widget screen(String name) => Builder(
+            builder: (context) => Column(
+              children: [
+                Text(name),
+                TextButton(
+                  onPressed: context.closePane,
+                  child: Text('back from $name'),
+                ),
+              ],
+            ),
+          );
+      final router = GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (_, __) => screen('home')),
+          GoRoute(path: '/chat', builder: (_, __) => screen('chat')),
+          GoRoute(path: '/git', builder: (_, __) => screen('git')),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        MaterialApp.router(
+          routerConfig: router,
+          builder: (context, child) => Material(child: child),
+        ),
+      );
+      return router;
+    }
+
+    testWidgets('pops back to the conversation it was opened over',
+        (tester) async {
+      final router = await pumpRouter(tester, 1280);
+      router.go('/chat');
+      await tester.pumpAndSettle();
+      unawaited(router.push<void>('/git'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('back from git'));
+      await tester.pumpAndSettle();
+      expect(find.text('chat'), findsOneWidget);
+
+      // The conversation is the pane's first screen: back closes the pane.
+      await tester.tap(find.text('back from chat'));
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsOneWidget);
+    });
+
+    testWidgets('closes the pane when the drawer opened it there',
+        (tester) async {
+      final router = await pumpRouter(tester, 1280);
+      router.go('/git');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('back from git'));
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsOneWidget);
+    });
+
+    testWidgets('pops on a phone, one screen at a time', (tester) async {
+      final router = await pumpRouter(tester, 390);
+      unawaited(router.push<void>('/chat'));
+      await tester.pumpAndSettle();
+      unawaited(router.push<void>('/git'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('back from git'));
+      await tester.pumpAndSettle();
+      expect(find.text('chat'), findsOneWidget);
+      await tester.tap(find.text('back from chat'));
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsOneWidget);
+    });
   });
 
-  test('the conversation route names the thread the drawer follows', () {
-    // A push notification opens `/conversation/:id` with nothing behind it.
-    // Without this the drawer has no PC to show and comes up blank — in
-    // exactly the case a tablet user is most likely to meet first.
-    expect(AppShell.threadIdOf('/conversation/abc123'), 'abc123');
-    expect(AppShell.threadIdOf('/conversation/abc123/files'), 'abc123');
-    expect(AppShell.threadIdOf('/'), isNull);
-    expect(AppShell.threadIdOf('/device/mac-1/threads'), isNull);
-    expect(AppShell.threadIdOf('/conversation/'), isNull);
+  test('a folder route carries its path whole', () {
+    // An absolute path is not a path segment; it travels as the query, and
+    // has to come back out exactly as it went in.
+    const cwd = '/Users/me/My Projects/app#2';
+    final files = Uri.parse(AppRoutes.workspaceFiles(cwd, threadId: 't-1'));
+    expect(files.path, AppRoutes.workspaceFilesPattern);
+    expect(files.queryParameters['cwd'], cwd);
+    expect(files.queryParameters['thread'], 't-1');
+
+    final git = Uri.parse(AppRoutes.workspaceGit(cwd));
+    expect(git.path, AppRoutes.workspaceGitPattern);
+    expect(git.queryParameters['cwd'], cwd);
+    expect(git.queryParameters.containsKey('thread'), isFalse);
+
+    // Content, not a destination: it opens beside the drawer.
+    expect(AppShell.isFullScreen(git.toString()), isFalse);
   });
 
   test('a destination stays full-screen while its children are open', () {

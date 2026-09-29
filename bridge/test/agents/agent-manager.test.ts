@@ -918,7 +918,7 @@ baseTest('a turn hands the persisted native session id back to its adapter', asy
   manager.register(adapter);
 
   const thread = await store.startThread({ projectId: 'p', agentId: 'echo' }, 1);
-  await store.setAgentSession(thread.id, 'native-session-1', 2);
+  await store.setAgentSession(thread.id, 'native-session-1');
   const { turnId } = await manager.sendTurn(thread.id, 'go');
   await waitFor(() => adapter.adopted.length > 0);
   assert.deepEqual(adapter.adopted[0], [thread.id, 'native-session-1']);
@@ -956,7 +956,7 @@ baseTest('the persisted session id is not offered to a different agent', async (
 
   // The stored session belongs to `codex`; the turn runs on `echo`.
   const thread = await store.startThread({ projectId: 'p', agentId: 'codex' }, 1);
-  await store.setAgentSession(thread.id, 'codex-session-1', 2);
+  await store.setAgentSession(thread.id, 'codex-session-1');
   await manager.sendTurn(thread.id, 'go');
   assert.deepEqual(adapter.adopted, []);
   await rmrf(baseDir);

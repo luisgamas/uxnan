@@ -9,7 +9,7 @@ import 'package:uxnan/domain/value_objects/git/git_log.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_history_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import '../../support/ux_icon_finder.dart';
 
@@ -188,7 +188,7 @@ Widget _wrap({
     overrides: [
       gitActionManagerProvider.overrideWith((ref) => manager),
       gitRepoStateProvider.overrideWith(
-        (ref) => Stream.value(const GitRepoState(branch: 'main')),
+        (ref, cwd) => Stream.value(const GitRepoState(branch: 'main')),
       ),
       gitActiveActionProvider.overrideWith((ref) => Stream.value(null)),
     ],

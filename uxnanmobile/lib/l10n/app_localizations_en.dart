@@ -232,6 +232,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sortByAttention => 'Needs attention';
 
   @override
+  String get sortByActivity => 'Recent activity';
+
+  @override
+  String get threadsSortCreated => 'Creation date';
+
+  @override
   String spacesConversationCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -250,6 +256,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get spacesNewConversationHere => 'New conversation here';
+
+  @override
+  String get spacesFolderTools => 'Folder tools';
 
   @override
   String workspaceDirty(int count) {
@@ -333,6 +342,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get drawerSwitchDevice => 'Switch PC';
 
   @override
+  String get drawerManageDevices => 'Manage PCs';
+
+  @override
   String get drawerNoDevices => 'No PC paired yet';
 
   @override
@@ -376,9 +388,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filterStateUnread => 'Unread';
-
-  @override
-  String get sortByActivity => 'Recent activity';
 
   @override
   String get agentStateWorking => 'Working';
@@ -674,16 +683,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get usageInterval1h => 'Every hour';
 
   @override
-  String get settingsUsageClockGroup => 'Time format';
-
-  @override
-  String get usageClock24hTitle => '24-hour time';
-
-  @override
-  String get usageClock24hSubtitle =>
-      'Show reset times as 14:30 instead of 2:30 PM';
-
-  @override
   String get deviceActive => 'Active';
 
   @override
@@ -797,9 +796,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get threadsSortBy => 'Sort by';
-
-  @override
-  String get threadsSortCreated => 'Creation date';
 
   @override
   String get threadsSortName => 'Name';

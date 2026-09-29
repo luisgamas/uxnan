@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/value_objects/git/git_log.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/git/git_history_screen.dart';
 
 /// Two commits used across the filter tests: one feature commit authored by
 /// Luis with a `main` ref, and an unrelated chore commit by Ana.

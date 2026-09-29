@@ -73,9 +73,9 @@ test('the store announces each summary change once, with its revision, after it 
     assert.equal(changes.length, count + 1);
 
     // Nothing changed → nothing announced.
-    await store.setAccessMode(thread.id, 'fullAccess', 5);
+    await store.setAccessMode(thread.id, 'fullAccess');
     const afterMode = changes.length;
-    await store.setAccessMode(thread.id, 'fullAccess', 6);
+    await store.setAccessMode(thread.id, 'fullAccess');
     assert.equal(changes.length, afterMode);
 
     const before = ledger.rev;

@@ -12,6 +12,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// How far a conversation sits in from the folder it belongs to.
@@ -74,6 +75,9 @@ class WorkspaceGroupRow extends ConsumerWidget {
     required this.onToggle,
     required this.onDetails,
     required this.onNewConversation,
+    this.onOpenFiles,
+    this.onOpenGit,
+    this.foldTools = false,
     super.key,
   });
 
@@ -89,8 +93,26 @@ class WorkspaceGroupRow extends ConsumerWidget {
   /// Opens the detail sheet (long press).
   final VoidCallback onDetails;
 
-  /// Starts a conversation in this folder.
-  final VoidCallback onNewConversation;
+  /// Starts a conversation in this folder. Null — the button shown disabled —
+  /// when there is no live channel to this PC.
+  final VoidCallback? onNewConversation;
+
+  /// Opens the folder's file browser. Null — the button shown disabled — when
+  /// there is no live channel to this PC to read it through.
+  final VoidCallback? onOpenFiles;
+
+  /// Opens the folder's source control, under the same condition as
+  /// [onOpenFiles].
+  final VoidCallback? onOpenGit;
+
+  /// Whether the folder's files and source control share one ⋮ menu instead
+  /// of taking a button each.
+  ///
+  /// Set in the permanent drawer's fixed 320 dp column, where three buttons
+  /// left the folder's NAME — the thing the row exists to show — a handful of
+  /// letters. A phone has the width for all three, and keeps them one tap
+  /// away. "+" never folds: it is the row's reason to have actions at all.
+  final bool foldTools;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -165,7 +187,32 @@ class WorkspaceGroupRow extends ConsumerWidget {
                       status: aggregateStatus(ref, threads),
                       size: UxnanSize.iconContentSmall,
                     ),
-                  _NewConversationButton(onPressed: onNewConversation),
+                  // The folder's own tools, the same pair a conversation's bar
+                  // carries — they belong to the folder, so they are reachable
+                  // before any conversation exists in it. "+" stays last, at
+                  // the edge where it has always been.
+                  if (foldTools)
+                    _FolderToolsMenu(
+                      onOpenFiles: onOpenFiles,
+                      onOpenGit: onOpenGit,
+                    )
+                  else ...[
+                    _RowAction(
+                      icon: UxIcons.folderOpen,
+                      label: l10n.fileBrowserOpenTooltip,
+                      onPressed: onOpenFiles,
+                    ),
+                    _RowAction(
+                      icon: UxIcons.commit,
+                      label: l10n.gitActionsTitle,
+                      onPressed: onOpenGit,
+                    ),
+                  ],
+                  _RowAction(
+                    icon: UxIcons.add,
+                    label: l10n.spacesNewConversationHere,
+                    onPressed: onNewConversation,
+                  ),
                 ],
               ),
               Padding(
@@ -248,25 +295,35 @@ class _AgentMarks extends StatelessWidget {
   }
 }
 
-/// The row's own action: the **S** step of the guide's button hierarchy (§4.5)
-/// — 40 dp of reach around a content-sized glyph, inside the usual 48 dp touch
-/// target.
+/// One of the row's own actions: the **S** step of the guide's button
+/// hierarchy (§4.5) — 40 dp of reach around a content-sized glyph, inside the
+/// usual 48 dp touch target.
 ///
 /// **No filled surface.** A folder row already carries a chevron, a glyph, a
 /// name, a state mark and a count; a filled circle on top of that is the
 /// heaviest thing in a row where it is the least important, and a list of ten
-/// folders became ten of them. The size and the target are unchanged — only the
-/// fill is gone, so it still reads as pressable without shouting. The ink on
-/// press is what says "button" here, which is enough at this density.
-class _NewConversationButton extends StatelessWidget {
-  const _NewConversationButton({required this.onPressed});
+/// folders became thirty of them. The size and the target are unchanged — only
+/// the fill is gone, so it still reads as pressable without shouting. The ink
+/// on press is what says "button" here, which is enough at this density.
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
 
-  final VoidCallback onPressed;
+  final UxIconData icon;
+
+  /// Tooltip and semantic label alike.
+  final String label;
+
+  /// Null draws the action disabled.
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final label = AppLocalizations.of(context).spacesNewConversationHere;
+    final enabled = onPressed != null;
     return Tooltip(
       message: label,
       child: SizedBox(
@@ -283,9 +340,12 @@ class _NewConversationButton extends StatelessWidget {
                 width: UxnanSize.buttonSmall,
                 height: UxnanSize.buttonSmall,
                 child: UxIcon(
-                  UxIcons.add,
+                  icon,
                   size: UxnanSize.iconContent,
-                  color: colors.onSurfaceVariant,
+                  // Material's disabled-content opacity.
+                  color: enabled
+                      ? colors.onSurfaceVariant
+                      : colors.onSurface.withValues(alpha: 0.38),
                   semanticLabel: label,
                 ),
               ),
@@ -293,6 +353,48 @@ class _NewConversationButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The folder's files and source control behind one ⋮, for a column too
+/// narrow to give each its own button (see [WorkspaceGroupRow.foldTools]).
+/// Same glyphs and words as the buttons it replaces, so the two layouts name
+/// the same things the same way.
+class _FolderToolsMenu extends StatelessWidget {
+  const _FolderToolsMenu({required this.onOpenFiles, required this.onOpenGit});
+
+  final VoidCallback? onOpenFiles;
+  final VoidCallback? onOpenGit;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    PopupMenuItem<VoidCallback> entry(
+      UxIconData icon,
+      String label,
+      VoidCallback? action,
+    ) =>
+        PopupMenuItem(
+          value: action,
+          enabled: action != null,
+          child: Row(
+            children: [
+              UxIcon(icon, size: UxnanSize.iconContent),
+              const SizedBox(width: UxnanSpacing.md),
+              Text(label),
+            ],
+          ),
+        );
+    return NeMenuButton<VoidCallback>(
+      tooltip: l10n.spacesFolderTools,
+      // Disabled together: both need the same live channel to this PC.
+      enabled: onOpenFiles != null || onOpenGit != null,
+      onSelected: (action) => action(),
+      itemBuilder: (_) => [
+        entry(UxIcons.folderOpen, l10n.fileBrowserOpenTooltip, onOpenFiles),
+        entry(UxIcons.commit, l10n.gitActionsTitle, onOpenGit),
+      ],
     );
   }
 }

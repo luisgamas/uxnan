@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:uxnan/core/utils/clock_format.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/window_pace.dart';
@@ -39,7 +40,6 @@ class UsageSection extends ConsumerWidget {
         .where((u) => u.status != UsageStatus.notInstalled)
         .toList();
     final loading = usageAsync.isLoading;
-    final use24h = ref.watch(usageClock24hProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -69,7 +69,6 @@ class UsageSection extends ConsumerWidget {
             count: shown.length,
             itemBuilder: (context, index, position) => _ProviderCard(
               usage: shown[index],
-              use24h: use24h,
               position: position,
             ),
           )
@@ -87,12 +86,10 @@ class UsageSection extends ConsumerWidget {
 class _ProviderCard extends ConsumerWidget {
   const _ProviderCard({
     required this.usage,
-    required this.use24h,
     required this.position,
   });
 
   final ProviderUsage usage;
-  final bool use24h;
   final CardGroupPosition position;
 
   @override
@@ -165,7 +162,7 @@ class _ProviderCard extends ConsumerWidget {
               ),
             for (final window in usage.windows) ...[
               const SizedBox(height: UxnanSpacing.md),
-              _WindowBar(window: window, use24h: use24h),
+              _WindowBar(window: window),
             ],
             if (usage.credit != null) ...[
               const SizedBox(height: UxnanSpacing.md),
@@ -188,10 +185,9 @@ class _ProviderCard extends ConsumerWidget {
 /// One window: what is used, a mark where the window stands in time, when it
 /// resets, and whether the current pace reaches the limit first.
 class _WindowBar extends StatelessWidget {
-  const _WindowBar({required this.window, required this.use24h});
+  const _WindowBar({required this.window});
 
   final UsageWindow window;
-  final bool use24h;
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +201,7 @@ class _WindowBar extends StatelessWidget {
     final reset = window.resetsAt;
     final lines = [
       if (reset != null && reset.isAfter(DateTime.now()))
-        _resetLabel(l10n, reset, use24h: use24h),
+        _resetLabel(l10n, reset),
       if (pace != null && hot)
         l10n.usagePaceRunsOut(shortDuration(pace.runsOutIn!))
       else if (pace != null)
@@ -407,16 +403,11 @@ class _Line extends StatelessWidget {
 
 /// The reset label: a relative duration for a window resetting within a day
 /// ("Resets in 6h 30min"), days and the clock time past that ("Resets in 5d at
-/// 14:30" / "… 2:30 PM").
-String _resetLabel(
-  AppLocalizations l10n,
-  DateTime reset, {
-  required bool use24h,
-}) {
+/// 14:30").
+String _resetLabel(AppLocalizations l10n, DateTime reset) {
   final diff = reset.difference(DateTime.now());
-  final clock = use24h ? DateFormat.Hm() : DateFormat.jm();
   if (diff.inDays >= 1) {
-    return l10n.usageResetsInDays(diff.inDays, clock.format(reset));
+    return l10n.usageResetsInDays(diff.inDays, formatClock(reset));
   }
   return l10n.usageResetsIn(shortDuration(diff));
 }

@@ -11,9 +11,9 @@ import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/files/widgets/file_preview_media.dart';
-import 'package:uxnan/presentation/screens/conversation/files/widgets/markdown_blocks.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_viewer_screen.dart';
+import 'package:uxnan/presentation/screens/workspace/files/widgets/file_preview_media.dart';
+import 'package:uxnan/presentation/screens/workspace/files/widgets/markdown_blocks.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 import 'package:uxnan/presentation/widgets/highlighted_source.dart';
@@ -718,6 +718,34 @@ void main() {}
 
     expect(find.byType(SelectableText), findsOneWidget);
     expect(findUxIcon(UxIcons.edit), findsOneWidget);
+    await manager.dispose();
+  });
+
+  testWidgets('unsaved edits are guarded from the first keystroke',
+      (tester) async {
+    // Typing did not rebuild the screen, so the guard, read once when editing
+    // began, still said there was nothing to lose: the back gesture — or
+    // picking another conversation in the tablet drawer — dropped the edits
+    // without asking.
+    final manager = _managerFor('void main() {}');
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(cwd: '/tmp', path: 'main.dart'),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(findUxIcon(UxIcons.edit));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'void main() { edited }');
+    await tester.pump();
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
     await manager.dispose();
   });
 }

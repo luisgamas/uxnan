@@ -104,7 +104,7 @@ async function cmdQr(): Promise<void> {
   // and opens ITS pairing window. Only with none running does this process
   // stand one up to print a payload of its own.
   const live = await runningBridgePairing(new DaemonState());
-  const bridge = live ? undefined : await startBridge();
+  const bridge = live ? undefined : await startBridge({ useKeychain: true });
   const payload = live ?? bridge!.generatePairingQr();
   const qr = await renderPairingQr(payload);
   process.stdout.write(`${qr}\n`);
@@ -172,7 +172,11 @@ async function cmdStart(): Promise<void> {
   // A service or a GUI launch gets a minimal PATH: take the user's own first,
   // so installed agents (and `node` for their launchers) are found.
   await enrichProcessPath().catch(() => undefined);
-  const bridge = await startBridge({ manageGlobalEntries: true, recordChildProcesses: true });
+  const bridge = await startBridge({
+    useKeychain: true,
+    manageGlobalEntries: true,
+    recordChildProcesses: true,
+  });
 
   if (bridge.context.config.lanEnabled) {
     try {

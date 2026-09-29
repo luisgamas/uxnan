@@ -94,4 +94,23 @@ Future<void> main() async {
     await gesture.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('the end of the list clears the button once it is back',
+      (tester) async {
+    // Hiding on scroll does nothing for the LAST rows: the button returns the
+    // moment the scroll settles, which at the bottom of a long list is exactly
+    // when you want to tap what is under it. The last folder of a long
+    // threads list could not be reached on a phone.
+    await tester.pumpWidget(host(hideFabOnScroll: true));
+    await tester.fling(find.text('row 0'), const Offset(0, -20000), 5000);
+    await tester.pumpAndSettle();
+
+    final lastRow = tester.getRect(find.text('row 59'));
+    final fab = tester.getRect(find.byType(FloatingActionButton));
+    expect(
+      lastRow.bottom,
+      lessThanOrEqualTo(fab.top),
+      reason: 'the button still covers the last row',
+    );
+  });
 }

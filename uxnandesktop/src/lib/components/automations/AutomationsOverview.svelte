@@ -3,6 +3,7 @@
   // that needs attention. Deliberately answers "is everything fine?" first —
   // an automation that silently stopped being scheduled is the failure mode
   // worth surfacing above all else.
+  import { formatWeekdayDateClock } from "$lib/clock";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, panel, row, text } from "$lib/design";
@@ -45,13 +46,6 @@
       .slice(0, 5),
   );
 
-  const fmt = new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   function open(id: string) {
     app.automationsSelectedId = id;
@@ -106,7 +100,7 @@
               {/each}
             </span>
             <span class={cn("min-w-0 flex-1 truncate", text.body)}>{item.automation.name}</span>
-            <span class={cn("shrink-0 tabular-nums", text.meta)}>{fmt.format(item.when)}</span>
+            <span class={cn("shrink-0 tabular-nums", text.meta)}>{formatWeekdayDateClock(item.when, i18n.locale)}</span>
           </button>
         {/each}
       {/if}

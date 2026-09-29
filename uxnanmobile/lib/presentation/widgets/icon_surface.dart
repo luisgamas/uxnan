@@ -119,8 +119,9 @@ class _IconSurfaceState extends State<IconSurface>
 /// zero-height anchor at its bottom edge, so the menu drops under it exactly
 /// as `PopupMenuPosition.under` would.
 ///
-/// Shared so a menu that opens a SECOND menu — the sort menu drilling into one
-/// level — can put it in the same place as the first, instead of jumping.
+/// Shared by every menu anchored under the control that opens it — the bar's
+/// icon menus and the drawer's PC switcher — so they all drop from the same
+/// place. A menu never opens a second menu (docs/conventions.md).
 RelativeRect menuPositionUnder(BuildContext context) {
   final button = context.findRenderObject()! as RenderBox;
   final overlay =

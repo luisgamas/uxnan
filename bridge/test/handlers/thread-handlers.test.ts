@@ -289,7 +289,7 @@ test('turn/list reconciles native-only turns even when the bridge store is non-e
   const local = await bridge.context.threadStore.startTurn(thread.id, 'mobile prompt', 110);
   await bridge.context.threadStore.appendDelta(thread.id, local.turnId, 'mobile answer', 111);
   await bridge.context.threadStore.completeTurn(thread.id, local.turnId, undefined, 112);
-  await bridge.context.threadStore.setAgentSession(thread.id, 'native-session', 113);
+  await bridge.context.threadStore.setAgentSession(thread.id, 'native-session');
 
   const reader = bridge.context.sessionHistory as unknown as {
     readTurns: typeof bridge.context.sessionHistory.readTurns;

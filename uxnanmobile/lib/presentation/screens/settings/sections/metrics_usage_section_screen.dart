@@ -4,7 +4,6 @@ import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
-import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
@@ -62,30 +61,10 @@ class MetricsUsageSettingsScreen extends ConsumerWidget {
               NeSectionHint(text: l10n.settingsProviderUsageExplainer),
               const _IntervalSelector(),
               NeSectionHint(text: l10n.usageRefreshHint),
-              NeSectionHeader(label: l10n.settingsUsageClockGroup),
-              const _ClockToggle(),
             ]),
           ),
         ),
       ],
-    );
-  }
-}
-
-/// The 24-hour vs 12-hour clock toggle for usage reset times.
-class _ClockToggle extends ConsumerWidget {
-  const _ClockToggle();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
-    final value = ref.watch(usageClock24hProvider);
-    return NeSwitchTile(
-      icon: UxIcons.schedule,
-      title: l10n.usageClock24hTitle,
-      subtitle: l10n.usageClock24hSubtitle,
-      value: value,
-      onChanged: (v) => ref.read(usageClock24hProvider.notifier).set(value: v),
     );
   }
 }

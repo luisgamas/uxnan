@@ -43,4 +43,34 @@ void main() {
     expect(find.text('npm install -g uxnan-bridge'), findsOneWidget);
     expect(find.text('uxnan-bridge start'), findsOneWidget);
   });
+
+  testWidgets('can be closed from any page', (tester) async {
+    // Always opened from somewhere — the empty home, the drawer, the welcome
+    // pane — and the only way out was the system back, which an iPad has no
+    // button for.
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const OnboardingScreen()),
+            ),
+            child: const Text('where it was opened from'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('where it was opened from'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.byType(OnboardingScreen), findsNothing);
+    expect(find.text('where it was opened from'), findsOneWidget);
+  });
 }

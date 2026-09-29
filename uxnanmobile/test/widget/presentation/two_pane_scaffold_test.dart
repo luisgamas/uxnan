@@ -118,4 +118,34 @@ void main() {
     expect(find.byKey(paneKey), findsNothing);
     expect(find.byKey(detailKey), findsOneWidget);
   });
+
+  testWidgets(
+      'the pane stays visible to accessibility beside a detail that holds a '
+      'navigator', (tester) async {
+    // Every route a navigator shows sits behind a modal barrier, and the
+    // barrier blocks the semantics of everything painted before it in the
+    // same semantics container. The drawer is painted before the content
+    // pane: TalkBack could not see a single row of it.
+    final handle = tester.ensureSemantics();
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TwoPaneScaffold(
+          pane: const Material(child: Text('drawer row')),
+          detail: Navigator(
+            onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (_) => const Text('content'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.semantics.byLabel('drawer row'), findsOneWidget);
+    expect(find.semantics.byLabel('content'), findsOneWidget);
+    handle.dispose();
+  });
 }

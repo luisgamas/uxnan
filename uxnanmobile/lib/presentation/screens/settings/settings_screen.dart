@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/about_section_screen.dart';
@@ -17,6 +20,7 @@ import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -50,6 +54,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// layout — narrow, a section is a screen you pushed and there is nothing
   /// on screen to keep selected.
   _Section? _selected;
+
+  /// The detail pane's own navigator, renewed with each section so picking a
+  /// different one starts its own stack instead of inheriting where you had
+  /// wandered in the last.
+  GlobalKey<NavigatorState> _paneNavigator = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -125,45 +134,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       embedded: () => const ProfileScreen(embedded: true) as Widget,
     );
 
-    final list = NeScaffold(
-      title: l10n.settingsTitle,
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            UxnanSpacing.sm,
-            UxnanSpacing.lg,
-            UxnanSpacing.xxl,
-          ),
-          sliver: SliverList.list(
-            children: NeEntranceScope.stagger([
-              _ProfileHeaderCard(
-                selected: (_selected ?? profile).title == profile.title,
-                onTap: () => _select(context, profile),
+    Widget buildList({required bool wide}) => NeScaffold(
+          title: l10n.settingsTitle,
+          // Beside its pane, the list's arrow leaves SETTINGS. Left to the
+          // default it popped the route, whose pane forwards a pop to its own
+          // navigator — so the arrow at the top of the list closed a sub-screen
+          // in the other pane, and it took two taps to leave.
+          leading: wide ? _LeaveSettingsButton(pane: _paneNavigator) : null,
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                UxnanSpacing.sm,
+                UxnanSpacing.lg,
+                UxnanSpacing.xxl,
               ),
-              NeSectionHeader(label: l10n.settingsGeneralSection, first: true),
-              _SectionGroup(
-                sections: general,
-                selected: _selected,
-                onSelect: _select,
+              sliver: SliverList.list(
+                children: NeEntranceScope.stagger([
+                  _ProfileHeaderCard(
+                    // Marked only beside the pane it fills: on a phone the row
+                    // opens a screen, and it was marked all the time.
+                    selected:
+                        wide && (_selected ?? profile).title == profile.title,
+                    onTap: () => _select(context, profile),
+                  ),
+                  NeSectionHeader(
+                    label: l10n.settingsGeneralSection,
+                    first: true,
+                  ),
+                  _SectionGroup(
+                    sections: general,
+                    selected: _selected,
+                    onSelect: _select,
+                  ),
+                  NeSectionHeader(label: l10n.settingsWorkspaceSection),
+                  _SectionGroup(
+                    sections: workspace,
+                    selected: _selected,
+                    onSelect: _select,
+                  ),
+                  NeSectionHeader(label: l10n.settingsSystemSection),
+                  _SectionGroup(
+                    sections: system,
+                    selected: _selected,
+                    onSelect: _select,
+                  ),
+                ]),
               ),
-              NeSectionHeader(label: l10n.settingsWorkspaceSection),
-              _SectionGroup(
-                sections: workspace,
-                selected: _selected,
-                onSelect: _select,
-              ),
-              NeSectionHeader(label: l10n.settingsSystemSection),
-              _SectionGroup(
-                sections: system,
-                selected: _selected,
-                onSelect: _select,
-              ),
-            ]),
-          ),
-        ),
-      ],
-    );
+            ),
+          ],
+        );
 
     // Measured from THIS widget's constraints, not the window: inside the
     // shell's content pane there is a 320 dp drawer already taken out, so a
@@ -173,11 +193,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       builder: (context, constraints) {
         if (!UxnanBreakpoint.fromWidth(constraints.maxWidth)
             .usesPermanentPane) {
-          return list;
+          return buildList(wide: false);
         }
         final selected = _selected ?? profile;
         return TwoPaneScaffold(
-          pane: list,
+          pane: buildList(wide: true),
           // The pane gets its OWN navigator, and that is what keeps a section's
           // children inside it. A section opens its sub-screens with
           // `Navigator.of(context).push` — the theme editor, the licence list —
@@ -187,12 +207,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // child, and its back arrow returns to the section rather than
           // leaving Settings.
           //
-          // Keyed by section so picking a different one starts its own stack
-          // instead of inheriting where you had wandered in the last.
-          detail: Navigator(
-            key: ValueKey('settings-pane-${selected.title}'),
-            onGenerateRoute: (_) => MaterialPageRoute<void>(
-              builder: (_) => selected.embedded(),
+          // FOR-DEV: the two layouts do not carry Settings across a rotation.
+          // Wide → narrow drops this pane's navigator, so a sub-screen and
+          // any unsaved theme edits in it are lost; narrow → wide leaves a
+          // section pushed on the phone covering the whole window; and a
+          // `/profile` pushed narrow becomes Settings inside Settings once
+          // wide. Real fix: one Settings location (`/settings?section=…`) both
+          // layouts rebuild from, with sub-screens as routes. Deferred by the
+          // maintainer (2026-09-29) — see FOR-DEV.md.
+          //
+          // The system back gesture has to reach it too. Nothing forwards the
+          // OS back to a navigator the router does not know about, so without
+          // this handler back from a section's sub-screen closed Settings
+          // entirely instead of returning to the section.
+          detail: NavigatorPopHandler<void>(
+            onPopWithResult: (_) => _paneNavigator.currentState?.maybePop(),
+            child: Navigator(
+              key: _paneNavigator,
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => selected.embedded(),
+              ),
             ),
           ),
         );
@@ -202,7 +236,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   void _select(BuildContext context, _Section section) {
     if (UxnanBreakpoint.of(context).usesPermanentPane) {
-      setState(() => _selected = section);
+      setState(() {
+        _selected = section;
+        _paneNavigator = GlobalKey<NavigatorState>();
+      });
     } else {
       section.open(context);
     }
@@ -307,6 +344,33 @@ class _SectionGroup extends StatelessWidget {
           onTap: () => onSelect(context, section),
         );
       },
+    );
+  }
+}
+
+/// The Settings list's back arrow beside its pane: it leaves Settings, after
+/// asking whatever the pane holds to close first (a theme with unsaved edits
+/// may decline).
+class _LeaveSettingsButton extends StatelessWidget {
+  const _LeaveSettingsButton({required this.pane});
+
+  final GlobalKey<NavigatorState> pane;
+
+  Future<void> _leave(BuildContext context) async {
+    final navigator = pane.currentState;
+    if (navigator != null && !await clearNavigator(navigator)) return;
+    // The pane's handler stops holding the route once its navigator is back
+    // at the section; that lands a frame later.
+    await WidgetsBinding.instance.endOfFrame;
+    if (context.mounted) await context.closePane();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconSurface(
+      icon: UxIcons.arrowBack,
+      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+      onPressed: () => unawaited(_leave(context)),
     );
   }
 }

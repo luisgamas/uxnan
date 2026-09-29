@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
-import 'package:uxnan/presentation/screens/conversation/files/widgets/file_tree_tile.dart';
+import 'package:uxnan/presentation/screens/workspace/files/widgets/file_tree_tile.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 

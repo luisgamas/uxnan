@@ -37,14 +37,12 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_submit
 import 'package:uxnan/presentation/screens/conversation/composer/plan_chip.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
-import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
+import 'package:uxnan/presentation/screens/workspace/files/file_viewer_screen.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -81,7 +79,7 @@ class ConversationScreen extends ConsumerStatefulWidget {
 }
 
 class _ConversationScreenState extends ConsumerState<ConversationScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RouteAware {
   // Per-thread access (approval) mode. Seeded from the bridge on open
   // (`thread/read`, source of truth) and persisted on change
   // (`thread/setAccessMode`); the default here ([kDefaultApprovalMode], full
@@ -189,6 +187,60 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     });
   }
 
+  ModalRoute<void>? _route;
+
+  /// Whether this conversation's thread was deleted while another screen
+  /// covered it — it closes as soon as it is back in front.
+  bool _threadGone = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != _route) {
+      if (_route != null) paneRouteObserver.unsubscribe(this);
+      _route = route;
+      if (route != null) paneRouteObserver.subscribe(this, route);
+    }
+  }
+
+  /// Closes this conversation if it is the screen in front; one covered by
+  /// another closes when it comes back ([didPopNext]).
+  void _closeIfInFront() {
+    if (mounted && (_route?.isCurrent ?? false)) unawaited(context.closePane());
+  }
+
+  // No `didPushNext`: a screen pushed over this one is almost always its own
+  // — the folder's files or source control, a file — and the user is still
+  // in this conversation, so its notifications stay suppressed. Another
+  // conversation pushed on top takes the foreground itself when it enters;
+  // leaving here made this one's notifications arrive while its own git
+  // screen was open.
+
+  /// Back in front after whatever covered it popped. The thread manager shows
+  /// one conversation, and if the one that covered this was another
+  /// conversation, it is showing that one: take it back.
+  ///
+  /// Route callbacks can arrive mid-build (with the router's pages a
+  /// navigator reports a replaced pane while it rebuilds), and changing a
+  /// provider there throws — so, like `dispose`, the work runs on the next
+  /// event-loop tick.
+  @override
+  void didPopNext() {
+    Future(() {
+      if (!mounted) return;
+      if (_threadGone) {
+        unawaited(context.closePane());
+        return;
+      }
+      final manager = ref.read(threadManagerProvider);
+      if (manager.activeThreadId != widget.threadId) {
+        unawaited(manager.selectThread(widget.threadId));
+      }
+      _foreground?.enter(widget.threadId);
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Suppress this thread's notifications only while in the foreground; when
@@ -245,6 +297,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   void dispose() {
+    paneRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     // Clear the foreground marker on the next event-loop tick, NOT inline:
     // mutating a provider synchronously during unmount throws "Tried to modify
@@ -373,7 +426,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// [_currentRailTick] when it changes. Cheap: it only measures built bubbles.
   void _updateCurrentRailTick() {
     if (!mounted) return;
-    final tickForId = ref.read(railAnchorsProvider).tickForId;
+    final tickForId = ref.read(railAnchorsProvider(widget.threadId)).tickForId;
     if (tickForId.isEmpty || !_scroll.hasClients) {
       if (_currentRailTick != null) setState(() => _currentRailTick = null);
       return;
@@ -408,7 +461,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// doesn't yank it back. An off-screen target in the lazy list is first
   /// brought into layout with an estimated ordinal jump.
   Future<void> _scrollToUserMessage(int messageIndex) async {
-    final snapshot = ref.read(activeTimelineProvider).value;
+    final snapshot = ref.read(threadTimelineProvider(widget.threadId)).value;
     if (snapshot == null || !_scroll.hasClients) return;
     if (messageIndex < 0 || messageIndex >= snapshot.messages.length) return;
     _autoFollow.beginUserScroll();
@@ -557,12 +610,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   /// Opens the git actions screen (branch state, changed files, commit/push)
-  /// for the thread's workspace.
-  Future<void> _openGit(String? cwd) async {
-    await GitScreen.push(context, cwd: cwd, threadId: widget.threadId);
+  /// for the thread's workspace — the folder's own route, stacked over this
+  /// conversation so back returns here.
+  Future<void> _openGit(String cwd) async {
+    await context.push<void>(
+      AppRoutes.workspaceGit(cwd, threadId: widget.threadId),
+    );
     // The worktree may have been removed from the git screen → re-probe so the
     // composer disables right away if this thread's cwd just vanished.
-    if (mounted && cwd != null) {
+    if (mounted) {
       _checkedCwd = null;
       _checkCwd(cwd);
     }
@@ -572,12 +628,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// full file tree (with git-status color treatment) alongside the focused
   /// git diff + commit surface in `GitScreen` — together they cover both the
   /// "what changed" and the "show me the file" questions.
-  Future<void> _openFileBrowser(String? cwd) async {
-    if (cwd == null) return;
-    await FileBrowserScreen.push(
-      context,
-      cwd: cwd,
-      threadId: widget.threadId,
+  Future<void> _openFileBrowser(String cwd) async {
+    await context.push<void>(
+      AppRoutes.workspaceFiles(cwd, threadId: widget.threadId),
     );
   }
 
@@ -774,6 +827,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final manager = ref.read(threadManagerProvider);
     await showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (_) => _SessionInfoSheet(
         threadId: widget.threadId,
@@ -824,7 +878,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   Future<void> _forkThread() async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final navigator = GoRouter.of(context);
     final forked =
         await ref.read(threadManagerProvider).forkThread(widget.threadId);
     if (!mounted) return;
@@ -834,7 +887,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
         ..showSnackBar(SnackBar(content: Text(l10n.threadForkFailed)));
       return;
     }
-    unawaited(navigator.push(AppRoutes.conversation(forked.id)));
+    unawaited(context.openInPane(AppRoutes.conversation(forked.id)));
   }
 
   /// Opens the model picker and applies the choice to the thread's agent.
@@ -892,28 +945,38 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Auto-scroll to the bottom on new content while the user is near it; a
-    // just-sent message (with the setting on) forces the jump even from a
-    // manually-scrolled position.
-    ref.listen(activeTimelineProvider, (previous, next) {
-      final snap = next.value;
-      if (snap == null || snap.messages.isEmpty) return;
-      // First real content for this open: restore the saved scroll position
-      // (or the bottom) instead of leaving it at the top.
-      if (!_restoredScroll) {
-        _restoreScroll();
-        return;
-      }
-      // After the initial restore, keep following the bottom on new content
-      // when the user is already near it (or just sent a message).
-      if (_forceScrollOnSend) {
-        _forceScrollOnSend = false;
-        _autoFollow.resume();
-      }
-      if (_autoFollow.shouldFollow) {
-        _scheduleFollowLatest();
-      }
-    });
+    // A conversation that no longer exists closes — deleted from the drawer
+    // beside it, or from another client. Left open it kept an enabled
+    // composer over a thread the bridge no longer has.
+    ref
+      ..listen(threadByIdProvider(widget.threadId), (previous, next) {
+        if (previous == null || next != null) return;
+        _threadGone = true;
+        // Navigating from inside a listener would do it mid-build.
+        Future(_closeIfInFront);
+      })
+      // Auto-scroll to the bottom on new content while the user is near it; a
+      // just-sent message (with the setting on) forces the jump even from a
+      // manually-scrolled position.
+      ..listen(threadTimelineProvider(widget.threadId), (previous, next) {
+        final snap = next.value;
+        if (snap == null || snap.messages.isEmpty) return;
+        // First real content for this open: restore the saved scroll position
+        // (or the bottom) instead of leaving it at the top.
+        if (!_restoredScroll) {
+          _restoreScroll();
+          return;
+        }
+        // After the initial restore, keep following the bottom on new content
+        // when the user is already near it (or just sent a message).
+        if (_forceScrollOnSend) {
+          _forceScrollOnSend = false;
+          _autoFollow.resume();
+        }
+        if (_autoFollow.shouldFollow) {
+          _scheduleFollowLatest();
+        }
+      });
 
     // The conversation is not always the window: inside the shell's content
     // pane it has the window MINUS a 320 dp drawer. Measuring the window would
@@ -929,7 +992,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   Widget _buildWithin(BuildContext context, BoxConstraints constraints) {
     final l10n = AppLocalizations.of(context);
-    final timelineAsync = ref.watch(activeTimelineProvider);
+    final timelineAsync = ref.watch(threadTimelineProvider(widget.threadId));
     final thread = ref.watch(threadByIdProvider(widget.threadId));
     // This thread lives on a specific PC; live actions (send, git) only work
     // when we actually hold that PC's channel — never a different connected PC.
@@ -952,7 +1015,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Data-driven run-option knobs the bridge advertises for this thread's
     // model (e.g. reasoning effort); empty when none or offline.
     final runOptions = ref.watch(activeModelOptionsProvider(widget.threadId));
-    final gitBranch = ref.watch(gitRepoStateProvider).value?.branch;
+    final cwd = thread?.cwd;
+    final gitBranch =
+        cwd == null ? null : ref.watch(gitRepoStateProvider(cwd)).value?.branch;
     final resolvedModel = ref.watch(resolvedModelProvider(widget.threadId));
     final usage = ref.watch(contextUsageForProvider(widget.threadId));
     final contextMode = ref.watch(contextIndicatorModeProvider);
@@ -966,7 +1031,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       showContext: caps?.reportsContextUsage ?? false,
       modelLabel: ref.watch(threadModelLabelProvider(widget.threadId)),
     );
-    final cwd = thread?.cwd;
     // The agent's slash commands (agent/commands): drives the `/` palette rows
     // and routes a matching `/name args` send as a real command.
     final agentId = thread?.agentId;
@@ -1003,7 +1067,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Scroll-rail anchors: one tick per user message (the minimap on the right
     // edge), derived + memoized in [railAnchorsProvider] off the timeline.
     // Prune stale bubble keys so the map tracks the current anchors.
-    final railAnchors = ref.watch(railAnchorsProvider);
+    final railAnchors = ref.watch(railAnchorsProvider(widget.threadId));
     _userMessageKeys.removeWhere(
       (id, _) => !railAnchors.tickForId.containsKey(id),
     );
@@ -1471,7 +1535,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 IconSurface(
                   icon: UxIcons.folderOpen,
                   tooltip: l10n.fileBrowserOpenTooltip,
-                  onPressed: connectedHere ? () => _openFileBrowser(cwd) : null,
+                  onPressed: connectedHere && cwd != null
+                      ? () => _openFileBrowser(cwd)
+                      : null,
                 ),
                 IconSurface(
                   icon: UxIcons.commit,

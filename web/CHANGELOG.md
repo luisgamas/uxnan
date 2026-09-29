@@ -7,6 +7,10 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The phone's folder rows carry the app's new tools.** Each folder in the
+  conversations mockup now shows *Browse files* and *Source control* beside its
+  "+", as Uxnan Mobile does.
+
 - **The page leads with continuity.** The headline is now "Start it in a
   terminal. Pick it up anywhere.", and a new section right after the hero shows
   one session moving from a desktop terminal (*Continue as chat*) to a chat
