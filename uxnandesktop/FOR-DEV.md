@@ -1649,8 +1649,12 @@ when an announced state exceeds the evidence. Announced today: **Windows
       of launch, agent/`gh`/editor detection, notifications, keep-awake and a
       self-update on both architectures (the x86_64 binary has never executed
       anywhere). Full checklist: `matrix → checklists.macos-aarch64 / macos-x64`.
-- [ ] **Linux** — full suites green on `ubuntu-latest` and installers ship, but
-      no human has installed/launched any of them; the systemd user timer, keep-awake,
+- [ ] **Linux** — full suites green on `ubuntu-latest` and installers ship. Since
+      2026-09-29 the packages are built on `ubuntu-22.04` (glibc 2.35 floor) and
+      CI's `bundle` job launches the AppImage under firejail until its window
+      paints (`scripts/linux-appimage.sh check`, also run by the release) — a
+      runner, not a desktop. No human has installed/launched any of them; the
+      systemd user timer, keep-awake,
       the pet overlay under a compositor, and the first-ever Linux E2E run
       (`tauri-driver` supports it) are all unexecuted. Full checklist:
       `matrix → checklists.linux-x64`.

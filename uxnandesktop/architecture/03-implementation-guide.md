@@ -1144,7 +1144,7 @@ Este comando compila el backend Rust en modo release, empaqueta el frontend Svel
 |------------|----------------------|-------|
 | **Windows** | `.msi`, `.exe` (NSIS) | Requiere NSIS para el instalador .exe |
 | **macOS** | `.dmg`, `.app` | Requiere Xcode Command Line Tools |
-| **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage es el mas portable |
+| **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage es el mas portable. Se compilan en Ubuntu 22.04 (glibc 2.35 como minimo) y llevan metadatos AppStream (`src-tauri/linux/*.appdata.xml`) |
 
 #### Code Signing
 

@@ -31,6 +31,24 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "category": "DeveloperTool",
+    "linux": {
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml": "linux/dev.luisgamas.uxnandesktop.appdata.xml"
+        }
+      },
+      "deb": {
+        "files": {
+          "/usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml": "linux/dev.luisgamas.uxnandesktop.appdata.xml"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/metainfo/dev.luisgamas.uxnandesktop.appdata.xml": "linux/dev.luisgamas.uxnandesktop.appdata.xml"
+        }
+      }
+    },
     "macOS": {
       "minimumSystemVersion": "11.0",
       "signingIdentity": "-",

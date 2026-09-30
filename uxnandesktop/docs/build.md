@@ -89,7 +89,67 @@ Per platform, `bundle/` contains:
 |---|---|---|
 | **Windows** | `.msi` (WiX), `.exe` (NSIS) | Tauri downloads WiX/NSIS automatically on first bundle. |
 | **macOS** | `.app`, `.dmg` (one per architecture) | Requires Xcode Command Line Tools. CI ships an **experimental, unsigned** build, ad-hoc-signed per arch (`aarch64` + `x86_64`) — see [install-macos.md](install-macos.md). |
-| **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage is the most portable. |
+| **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage is the most portable. See *Linux AppImage* below. |
+
+### Linux AppImage
+
+The release builds the Linux packages on **`ubuntu-22.04`**, the oldest Ubuntu
+it supports, on purpose: an AppImage (like the `.deb`/`.rpm`) runs against the
+host's C library, so the build machine's glibc is the floor every Linux package
+carries — **glibc 2.35** (Ubuntu 22.04, Debian 12 and anything newer). Building
+on `ubuntu-latest` raised it to 2.39 and left those systems unable to start the
+app.
+
+[`scripts/linux-appimage.sh`](../scripts/linux-appimage.sh) does two things
+around `tauri build`:
+
+- **`prepare`**, before it: seeds Tauri's tool cache with linuxdeploy's
+  `AppRun` at mode `0755` (the bundler would download it as `0770`, and that
+  file becomes the `AppRun.wrapped` that starts the app — so an image mounted by
+  another user, e.g. under firejail, died with *Permission denied*), and has
+  linuxdeploy leave out `libwayland-client.so.0`, which the AppImage excludelist
+  forbids (through `LINUXDEPLOY_EXCLUDED_LIBRARIES`, which only the linuxdeploy
+  pinned by `@tauri-apps/cli` 2.12+ reads). Both happen before the updater signs the image, so the `.sig` matches
+  what ships — nothing is repacked afterwards.
+- **`check <AppImage>`**, after it: asserts what the
+  [AppImage catalog](https://appimage.github.io) tests — every executable
+  runnable by anyone, no excluded library, a desktop entry with categories,
+  valid AppStream metadata, the glibc floor — then launches the image the way
+  the catalog does (firejail, a virtual display, WebKit's GPU paths off),
+  shoots the real *Uxnan Desktop* window about 12 s later and fails if it is
+  95 % or more one colour, which the catalog rejects as an empty window (a
+  black frame, or the splash still up). In CI it first removes
+  `xdg-desktop-portal`, which the WebKitGTK build dependencies pull in and the
+  catalog's runner does not have: on a runner it hangs, and GTK waits out a
+  25 s D-Bus timeout for it before any window exists.
+
+It runs in the release's Linux leg and in the Linux leg of the `bundle` job of
+`ci-desktop.yml`, which uploads the window it saw as the `appimage-window`
+artifact.
+
+### Installers are proven in CI, not first on a release
+
+The `verify` legs compile and test but never bundle. The `bundle` job of
+`ci-desktop.yml` (*installers (os)*) builds every installer the release builds,
+signs the updater artifacts with a key made for that run, and then uses them:
+
+| Leg | What it proves |
+|---|---|
+| `ubuntu-22.04` | `.deb`, `.rpm`, AppImage built and signed; the `.deb` carries the AppStream file; `linux-appimage.sh check` |
+| `windows-latest` | NSIS installs (with `uxnan-cli.exe`), the app opens, the installer runs **again over the open app** and closes it — what the in-app updater does — then uninstalls; the MSI installs with its sidecar and uninstalls |
+| `macos-14` | the `.app` with its sidecar passes `codesign --verify --deep --strict` (ad-hoc), the DMG mounts with the app, the updater archive is signed, the app launches |
+
+It runs when something that shapes an installer changed — `tauri*.conf.json`,
+`src-tauri/linux/`, `linux-appimage.sh`, the two desktop workflows, or the
+`@tauri-apps/cli` version, which *is* the bundler — or on demand:
+`gh workflow run ci-desktop.yml --ref <branch>`.
+
+The Linux packages also carry **AppStream metadata**,
+[`src-tauri/linux/dev.luisgamas.uxnandesktop.appdata.xml`](../src-tauri/linux/dev.luisgamas.uxnandesktop.appdata.xml),
+installed to `/usr/share/metainfo/` through `bundle.linux.{appimage,deb,rpm}.files`
+in `tauri.conf.json`; software centres and the catalog take the name, summary,
+description, license and links from it. The desktop entry's category comes
+from `bundle.category` (`DeveloperTool` → `Development`).
 
 ## Useful variants
 

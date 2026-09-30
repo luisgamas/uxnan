@@ -370,7 +370,7 @@ Grab the latest release for your platform from
 |---|---|
 | Windows | the `.msi`, or the NSIS `_x64-setup.exe` installer |
 | macOS *(experimental, unsigned)* | `_x64.dmg` (Intel) or `_aarch64.dmg` (Apple Silicon) |
-| Linux | `.deb`, `.AppImage`, or `.rpm` |
+| Linux | `.deb`, `.AppImage`, or `.rpm` — glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and later) |
 
 Honest heads-up: the Windows installers aren't code-signed yet, so SmartScreen
 will warn on first run (**More info → Run anyway**), and the macOS builds are
