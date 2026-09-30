@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.34-alpha.20260930+20260936] - 20260930
 ### Added
 
 - **Switch and manage PCs on a tablet.** The drawer's header is the PC switcher,
