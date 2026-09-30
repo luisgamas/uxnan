@@ -2,6 +2,12 @@ name: CI — Mobile (uxnanmobile · Flutter)
 
 # Runs the reusable mobile verification on every PR and on push to main.
 # A failed PR run posts a sticky comment with the failing run link (no AI).
+#
+# The push that merges a release bump pull request (`release/…`, opened and
+# merged by release.yml) is NOT re-verified here: that exact commit already
+# passed this workflow on its pull request, and every release workflow verifies
+# it again before publishing from its tag. Running it a third time on `main`
+# checked nothing new. Every other push to main, and every PR, runs as before.
 
 on:
   push:
@@ -22,6 +28,7 @@ concurrency:
 
 jobs:
   verify:
+    if: ${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/')) }}
     uses: ./.github/workflows/verify-mobile.yml
 
   pr-comment-on-failure:

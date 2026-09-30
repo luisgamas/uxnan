@@ -140,6 +140,12 @@ nothing but version numbers — so it is left open and the job goes red with it.
 exactly that reason, since re-running the cut would compute a *next* version and
 tag it, burning a number to fix a merge.
 
+**Landing it does not run CI again.** The push that merges the bump pull request
+(`Merge pull request #… from …/release/…`) skips the `CI — Desktop / Mobile /
+Node` jobs: that exact commit already passed them on the pull request, and each
+`release-*.yml` verifies it again from its tag before publishing. Every other
+push to `main` is verified as usual.
+
 One implementation detail worth keeping, because it cost a release to find: the
 merge is the **REST** endpoint (`PUT /repos/…/pulls/…/merge`), not `gh pr merge`.
 The latter goes through GraphQL `mergePullRequest`, which refuses on the pull

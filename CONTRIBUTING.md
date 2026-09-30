@@ -49,7 +49,9 @@ Match the CI checks for the project you touched:
 | `uxnandesktop` | `cargo fmt --check` + `npm run check` (svelte-check) | — | `cargo clippy -- -D warnings`, `cargo test`, `npm test` (Vitest) |
 | `uxnanmobile` | `dart format` + `flutter analyze` | — | `flutter test` (run `flutter gen-l10n` first) |
 
-CI runs these same gates on every PR (and on push to `main`). If a check fails on
+CI runs these same gates on every PR (and on push to `main`, except the merge of
+a release bump pull request, which its PR and the release already verified — see
+[`docs/releases.md`](docs/releases.md)). If a check fails on
 a PR, a bot posts a sticky comment with the failing run link and how to reproduce
 it locally.
 

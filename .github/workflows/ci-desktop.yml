@@ -2,6 +2,12 @@ name: CI — Desktop (uxnandesktop · Tauri 2)
 
 # Runs the reusable desktop verification on every PR and on push to main.
 # A failed PR run posts a sticky comment with the failing run link (no AI).
+#
+# The push that merges a release bump pull request (`release/…`, opened and
+# merged by release.yml) is NOT re-verified here: that exact commit already
+# passed this workflow on its pull request, and every release workflow verifies
+# it again before publishing from its tag. Running it a third time on `main`
+# checked nothing new. Every other push to main, and every PR, runs as before.
 
 on:
   push:
@@ -28,6 +34,7 @@ concurrency:
 
 jobs:
   verify:
+    if: ${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/')) }}
     uses: ./.github/workflows/verify-desktop.yml
     # CI also verifies the EXPERIMENTAL macOS build on Apple Silicon (macos-14),
     # so a Mac-only regression surfaces on the PR. One mac leg is enough — the code
@@ -51,7 +58,9 @@ jobs:
     # Only when the SSH layer or its fixture changed: the suite needs a container
     # build, and paying for it on an unrelated UI change would teach people to
     # ignore it.
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'pull_request') &&
+      !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/'))
     steps:
       # Full history: the gate below compares against the base commit, and a
       # shallow clone does not have it. Without this the comparison failed with
@@ -121,6 +130,7 @@ jobs:
   # that shapes an installer changed — or on demand.
   bundle:
     name: installers (${{ matrix.os }})
+    if: ${{ !(github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, '/release/')) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
