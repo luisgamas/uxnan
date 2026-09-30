@@ -235,8 +235,9 @@ test('a follow-up waits in the queue, goes at the next step and is placed when i
       h.adapter.ran.map((r) => r.text),
       ['first'],
     );
-    assert.equal((await h.store.getTurn(first.turnId)).status, 'completed');
-    assert.equal((await h.store.getTurn(second.turnId)).status, 'streaming');
+    // The hand-off is written to disk just after the manager switches turns.
+    await waitFor(async () => (await h.store.getTurn(first.turnId)).status === 'completed');
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'streaming');
 
     // The adapter keeps naming its run by the first turn's id: what it says
     // now answers the second message, and is shown under it.
@@ -480,7 +481,7 @@ test('queued messages go one at a time, in order, one per step', async () => {
         ['third', first.turnId],
       ],
     );
-    assert.equal((await h.store.getTurn(second.turnId)).continuedIn, third.turnId);
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).continuedIn === third.turnId);
   } finally {
     await h.cleanup();
   }
@@ -658,7 +659,7 @@ test('a delivery the agent turns down as its run ends still runs next', async ()
       h.adapter.ran.map((r) => r.text),
       ['first', 'second'],
     );
-    assert.equal((await h.store.getTurn(second.turnId)).status, 'streaming');
+    await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'streaming');
   } finally {
     await h.cleanup();
   }
