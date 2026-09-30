@@ -4,6 +4,8 @@ All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.28-alpha.20260930] - 20260930
 ### Added
 
 - **`deliveringTurnId` on the queue state** (`QueueUpdatedParams`,
