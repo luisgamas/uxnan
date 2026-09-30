@@ -4,6 +4,8 @@ All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.0.41-alpha.20260930] - 20260930
 ### Changed
 
 - **A message sent while the agent works always waits in the queue, and an
