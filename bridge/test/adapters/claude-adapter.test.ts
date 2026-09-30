@@ -1464,10 +1464,12 @@ test('a steer read after the model turn ended keeps the turn open for its answer
   const run = last();
   run.holdEcho();
   // Written just as the model finishes: the CLI will read it after its result.
-  assert.equal(
-    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'and this' }),
-    true,
-  );
+  const taken = adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'and this',
+  });
   run.feedOpen([DELTA('First answer. '), RESULT('First answer.')]);
   await flush();
   assert.equal(
@@ -1476,7 +1478,13 @@ test('a steer read after the model turn ended keeps the turn open for its answer
   );
   assert.equal(run.stdinEnded, false, 'the pipe stays open until the steer is answered');
 
+  // Taken when the CLI reads it — its echo — not when it was written.
+  let settledTake: boolean | undefined;
+  void taken.then((value) => (settledTake = value));
+  await flush();
+  assert.equal(settledTake, undefined, 'not taken before the CLI read it');
   run.releaseEcho();
+  assert.equal(await taken, true);
   run.feed([DELTA('Second answer.'), RESULT('Second answer.')]);
   const settled = await done;
   assert.equal(settled.filter((e) => e.type === 'turn_completed').length, 1);
@@ -1508,15 +1516,34 @@ test('a CLI that exits without answering fails the turn, with what it said on st
   assert.match((error.data as { text: string }).text, /locked by another process/);
 });
 
-test('a message the CLI never read fails the turn instead of passing as answered', async () => {
+test('a follow-up the CLI never read is handed back, and the turn ends as it did', async () => {
   const { spawnFn, last } = fakeSpawner();
   const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
   const { done } = collect(adapter);
   await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
   const run = last();
   run.holdEcho();
-  await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'lost?' });
+  const taken = adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'not read',
+  });
+  // The CLI comes down with the follow-up still unread.
   run.feed([RESULT('First answer.')]);
+  // Not taken: the bridge keeps it queued, to run as a turn of its own.
+  assert.equal(await taken, false);
+  const events = await done;
+  assert.equal(events.at(-1)?.type, 'turn_completed');
+  assert.equal((events.at(-1)!.data as { text: string }).text, 'First answer.');
+});
+
+test('a prompt the CLI never read fails the turn instead of passing as answered', async () => {
+  const { spawnFn, last } = fakeSpawner({ holdEcho: true });
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  last().feed([RESULT('Something else.')]);
   const events = await done;
   assert.equal(events.at(-1)?.type, 'turn_error');
   assert.match((events.at(-1)!.data as { text: string }).text, /before it read the message/);

@@ -1778,6 +1778,18 @@ abstract class AppLocalizations {
   /// **'Queue message'**
   String get composerQueueMessage;
 
+  /// Line above the composer while the agent works and a message is drafted, for an agent that takes no message mid-turn: sending it queues it until the turn ends.
+  ///
+  /// In en, this message translates to:
+  /// **'The agent is working: this message waits in the queue and goes out when it finishes.'**
+  String get composerQueueHint;
+
+  /// Line above the composer while the agent works and a message is drafted, for an agent that takes messages mid-turn: sending it queues it, and the agent gets it at its next pause (when the step it is in ends).
+  ///
+  /// In en, this message translates to:
+  /// **'The agent is working: this message waits in the queue and reaches it at its next pause.'**
+  String get composerNextPauseHint;
+
   /// Label under a queued user message that has not reached the agent yet.
   ///
   /// In en, this message translates to:
@@ -1795,6 +1807,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{position} in the queue'**
   String queuedMessagePosition(int position);
+
+  /// Label under the queued user message the running agent is taking at its next pause; it can no longer be edited nor cancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Reaching the agent, at the end of its current step'**
+  String get queuedDelivering;
 
   /// Tooltip on the X in a queued bubble's corner: drops the message from the queue and leaves it marked as cancelled in the timeline.
   ///

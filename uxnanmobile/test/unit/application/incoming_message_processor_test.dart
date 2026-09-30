@@ -239,6 +239,22 @@ void main() {
       expect(queue.queuedTurnIds, ['t2', 't3']);
       expect(queue.paused, isTrue);
       expect(queue.pausedReason, QueuePausedReason.turnError);
+      // No delivery under way → absent.
+      expect(queue.deliveringTurnId, isNull);
+    });
+
+    test('stream/queue/updated carries the turn being handed to the agent', () {
+      final event = processor.classify(
+        note('stream/queue/updated', {
+          'threadId': 'th1',
+          'queuedTurnIds': ['t2', 't3'],
+          'paused': false,
+          'deliveringTurnId': 't2',
+        }),
+      );
+      final queue = event as QueueUpdatedEvent;
+      expect(queue.queuedTurnIds, ['t2', 't3']);
+      expect(queue.deliveringTurnId, 't2');
     });
 
     test('a malformed queue payload degrades to an empty queue', () {

@@ -250,8 +250,13 @@ interface ActiveRun {
    * and stream a second reply into a turn the bridge already closed.
    */
   finished: boolean;
-  /** Write one more user message into the running turn (see {@link ClaudeAdapter.steerTurn}). */
-  send: (text: string) => boolean;
+  /**
+   * Write one more user message into the running turn (see {@link
+   * ClaudeAdapter.steerTurn}). Resolves `true` once the CLI READ it — echoed
+   * it back, `--replay-user-messages` — and `false` when it could not be
+   * written or the CLI came down before reading it.
+   */
+  send: (text: string) => Promise<boolean>;
   /**
    * Why the process is being ended from here, if it is: the user stopped the
    * turn (`cancelTurn`, which reports it itself), or the bridge is shutting
@@ -753,16 +758,21 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return Promise.resolve();
     }
 
-    // Messages written to the CLI that it has not echoed back yet (by uuid).
+    // Messages written to the CLI that it has not echoed back yet (by uuid),
+    // each with who waits to hear it was read (a follow-up; not the prompt).
     // While one is unread the turn is not over, whatever `result` arrives.
-    const unread = new Set<string>();
-    // One stream-json user message per line. Returns false when the pipe is
-    // already gone, so a caller can report "not taken" instead of pretending.
-    const writeUserMessage = (message: string): boolean => {
+    const unread = new Map<string, ((read: boolean) => void) | undefined>();
+    // One stream-json user message per line. Returns its uuid, or undefined
+    // when the pipe is already gone, so a caller can report "not taken"
+    // instead of pretending.
+    const writeUserMessage = (
+      message: string,
+      onRead?: (read: boolean) => void,
+    ): string | undefined => {
       const stdin = child.stdin;
-      if (!stdin || !stdin.writable) return false;
+      if (!stdin || !stdin.writable) return undefined;
       const uuid = randomUUID();
-      unread.add(uuid);
+      unread.set(uuid, onRead);
       try {
         stdin.write(
           `${JSON.stringify({
@@ -771,10 +781,25 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             message: { role: 'user', content: [{ type: 'text', text: message }] },
           })}\n`,
         );
-        return true;
+        return uuid;
       } catch {
         unread.delete(uuid);
-        return false;
+        return undefined;
+      }
+    };
+    // A follow-up is placed in the conversation when the CLI reads it, not
+    // when it is written: the CLI holds it until the step it is in ends.
+    const sendFollowUp = (message: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        if (writeUserMessage(message, resolve) === undefined) resolve(false);
+      });
+    // The process is gone: a follow-up the CLI never read goes back to the
+    // queue, to run as a turn of its own — it was not part of this run.
+    const returnUnreadFollowUps = (): void => {
+      for (const [uuid, onRead] of unread) {
+        if (onRead === undefined) continue;
+        unread.delete(uuid);
+        onRead(false);
       }
     };
     // The last lines the CLI wrote to stderr: the only account of why it came
@@ -803,11 +828,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       }
     };
 
-    const run: ActiveRun = { child, threadId, finished: false, send: writeUserMessage };
+    const run: ActiveRun = { child, threadId, finished: false, send: sendFollowUp };
     this.#active.set(turnId, run);
     this.emit({ type: 'turn_started', threadId, turnId });
 
-    if (!writeUserMessage(text)) {
+    if (writeUserMessage(text) === undefined) {
       this.#active.delete(turnId);
       this.emit({
         type: 'turn_error',
@@ -1022,7 +1047,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
         currentAssistantText = '';
       } else if (event.kind === 'replay' && event.uuid) {
+        const onRead = unread.get(event.uuid);
         unread.delete(event.uuid);
+        onRead?.(true);
       } else if (event.kind === 'result') {
         if (event.isError && sessionId && isMissingSession(event.errors)) {
           // The session this conversation continues is gone (its transcript
@@ -1106,6 +1133,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
     child.on('error', (err) => {
       reader.close();
+      returnUnreadFollowUps();
       run.finished = true;
       this.#active.delete(turnId);
       if (!errored && !completed) {
@@ -1121,6 +1149,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
     child.on('close', (code) => {
       reader.close();
+      // First, before any early return: a stopped turn must not leave a
+      // delivery waiting on a read that will never come.
+      returnUnreadFollowUps();
       run.finished = true;
       this.#active.delete(turnId);
       if (completed || errored) return;
@@ -1145,7 +1176,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         return;
       }
       if (unread.size > 0) {
-        // A message we wrote was never read: the CLI came down before it got
+        // The prompt itself was never read: the CLI came down before it got
         // to it. The turn did not answer it — say so rather than pass off
         // whatever came before as its reply.
         failWith('Claude Code ended before it read the message.');
@@ -1241,7 +1272,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // and stream a second reply into a turn the bridge has already closed.
     if (!run || run.finished) return Promise.resolve(false);
     if (run.threadId !== options.threadId) return Promise.resolve(false);
-    return Promise.resolve(run.send(options.text));
+    return run.send(options.text);
   }
 
   /**

@@ -35,8 +35,8 @@ void main() {
   /// When true the fake bridge rejects `turn/cancel`.
   late bool rejectCancel;
 
-  /// When true the fake bridge refuses `queue/sendNow`, as for an agent that
-  /// takes no message while it works.
+  /// When true the fake bridge refuses `queue/sendNow`, as it does for every
+  /// agent while a turn runs.
   late bool refuseSendNow;
 
   /// The params of the last request of each method.
@@ -64,7 +64,7 @@ void main() {
             id: '1',
             error: const RpcError(
               code: -32005,
-              message: 'this agent takes no message while it works',
+              message: 'the agent takes it at its next pause',
             ),
           );
         }
@@ -259,8 +259,67 @@ void main() {
     refuseSendNow = true;
     expect(
       await manager.sendQueuedNow('th1', 'turn-a'),
-      'this agent takes no message while it works',
+      'the agent takes it at its next pause',
     );
+  });
+
+  test('the queued turn being handed to the agent is kept with the queue',
+      () async {
+    await manager.selectThread('th1');
+    events.add(
+      const QueueUpdatedEvent(
+        threadId: 'th1',
+        queuedTurnIds: ['turn-a', 'turn-b'],
+        paused: false,
+        deliveringTurnId: 'turn-a',
+      ),
+    );
+    await _settle();
+
+    final queue = manager.queueOf('th1');
+    // Still listed (and still first), but marked as reaching the agent.
+    expect(queue.turnIds, ['turn-a', 'turn-b']);
+    expect(queue.deliveringTurnId, 'turn-a');
+    expect(queue.isDelivering('turn-a'), isTrue);
+    expect(queue.isDelivering('turn-b'), isFalse);
+
+    // Once its turn starts it is neither queued nor being delivered.
+    events.add(const TurnStartedEvent(turnId: 'turn-a', threadId: 'th1'));
+    await _settle();
+    expect(manager.queueOf('th1').turnIds, ['turn-b']);
+    expect(manager.queueOf('th1').deliveringTurnId, isNull);
+  });
+
+  test('a delivering id the queue does not list is ignored', () async {
+    await manager.selectThread('th1');
+    events.add(
+      const QueueUpdatedEvent(
+        threadId: 'th1',
+        queuedTurnIds: ['turn-b'],
+        paused: false,
+        deliveringTurnId: 'turn-gone',
+      ),
+    );
+    await _settle();
+
+    // A stale id must not freeze an unrelated bubble's actions.
+    expect(manager.queueOf('th1').deliveringTurnId, isNull);
+  });
+
+  test('a resync reads the delivering turn from turn/list', () async {
+    await manager.selectThread('th1');
+    turnListResult = {
+      'turns': [
+        {'id': 'turn-a', 'status': 'queued', 'messages': <Object?>[]},
+      ],
+      'total': 1,
+      'queuedTurnIds': ['turn-a'],
+      'queueDeliveringTurnId': 'turn-a',
+    };
+    await manager.resyncActive();
+    await _settle();
+
+    expect(manager.queueOf('th1').deliveringTurnId, 'turn-a');
   });
 
   test('a resync settles messages whose fate we missed while away', () async {
@@ -491,9 +550,9 @@ void main() {
       ..add(const MessageDeltaEvent(turnId: 'turn-1', delta: 'before'));
     await _settle();
 
-    // A steering agent takes the follow-up at once: the bridge ends the
-    // running turn there and starts this one — a queue that drained early,
-    // with no queue notification in between.
+    // A steering agent takes the queued follow-up at its next pause: the
+    // bridge ends the running turn there and starts this one — a queue that
+    // drained early, here with the queue notification that settles it missed.
     events.add(
       TurnCreatedEvent(
         threadId: 'th1',

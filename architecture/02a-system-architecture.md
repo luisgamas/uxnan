@@ -1,10 +1,21 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.5.4
-> **Fecha:** 2026-09-28
+> **Version:** 1.5.5
+> **Fecha:** 2026-09-29
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.5.5):** a message sent while the agent works always
+> waits in the queue — visible, editable, cancellable — and an agent that takes
+> input mid-turn gets the first one at its **next pause**: while it is inside a
+> step, which it reads when that step ends (§5.8.13). Until then the message is
+> marked as being delivered (`deliveringTurnId` on `stream/queue/updated`,
+> `QueueStateResult`, and `TurnList.queueDeliveringTurnId`) and can no longer be
+> taken back; it is placed in the conversation when the agent reads it (Claude
+> Code, by its echo) or when the step ends (Codex, OpenCode, pi). `queue/sendNow`
+> no longer delivers mid-turn. Agents without an input channel mid-turn (Zero,
+> Grok, Antigravity) keep the message until their turn ends.
 
 > **Executive summary (1.5.4):** the phone's navigation is three single
 > layers. `pane_navigation.dart` owns opening and going back — every back arrow
@@ -2531,30 +2542,60 @@ salieron, en vez de quedar esperando una cola que ya no existe.
 Encolar hasta el final del turno **no es lo que hacen las CLI**: ellas recogen
 lo que escribes en el siguiente limite de herramienta, *dentro* del turno en
 curso — que es lo que permite corregir el rumbo de un agente sin detenerlo. El
-bridge hace lo mismo donde la CLI del agente realmente lo permite.
+bridge hace lo mismo donde la CLI del agente realmente lo permite, **y como la
+CLI, a la vista**: el mensaje espera en la cola — visible, editable y
+cancelable — hasta la **siguiente pausa** del agente, y solo entonces se
+entrega.
 
 ```javascript
-// #enqueueTurn -> #tryDeliverMidTurn(threadId, adapter, entry)
-//   requiere: adapter.capabilities.steering && adapter.steerTurn
-//             + turno en vuelo
-//             + cola VACIA        (algo esperando ya se envio antes -> FIFO)
-//             + cola NO pausada   (el usuario paro al agente, o se rompio)
-//   exito -> #handOff: el turno en curso termina ahi (completed, con lo dicho
-//            hasta ese momento) y el nuevo pasa a streaming y lleva el RESTO
-//            de la misma ejecucion del agente (ThreadStore.handOffTurn)
-//            + stream/turn/completed (el anterior) y stream/turn/started (el
-//            nuevo), en ese orden ; turn/send responde { turnId }
-//   fallo  -> el turno se queda `queued` y corre normal despues
+// #enqueueTurn -> SIEMPRE a la cola (queued) + #deliverAtPause(threadId)
+// #onEvent(block con blockId) -> #trackStep(run, paso, isRunning) + #deliverAtPause
+//
+// #deliverAtPause: entrega el PRIMERO de la cola, de uno en uno, cuando
+//   adapter.capabilities.steering && adapter.steerTurn
+//   + turno en vuelo, del mismo agente
+//   + el agente esta DENTRO de un paso (un comando/herramienta/subagente
+//     `running`): lo lee cuando ese paso termina
+//   + cola NO pausada, sin aprobacion/pregunta pendiente, sin otra entrega
+//   entregando -> sigue en queuedTurnIds, marcado deliveringTurnId (ya no se
+//                 puede editar ni cancelar: turn/cancel lo rechaza)
+//   tomado     -> espera a que los pasos en curso de la ejecucion terminen
+//                 (#stepsSettled; el fin de la ejecucion tambien libera) y
+//                 entonces #handOff: el turno en curso termina ahi (completed,
+//                 con lo dicho hasta ese momento, continuedIn) y el mensaje pasa
+//                 a streaming con el RESTO de la misma ejecucion
+//                 (ThreadStore.handOffTurn) ; stream/turn/completed y
+//                 stream/turn/started, en ese orden
+//   rechazo    -> se queda `queued`, sin marca, y corre como el siguiente turno
+// Sin pasos antes del final (el agente solo escribe) -> corre como el siguiente turno.
 ```
 
-**El mensaje queda donde el agente lo tomo.** Lo que el agente dice despues de
-recibirlo contesta a ese mensaje, asi que se muestra debajo de el: para cada
+**El mensaje queda donde el agente lo leyo.** Lo que el agente dice despues de
+leerlo contesta a ese mensaje, asi que se muestra debajo de el: para cada
 cliente es una cola que avanzo antes de tiempo (el turno anterior termina, el
 nuevo empieza). El turno que termino asi lo dice: `Turn.continuedIn` (y
 `continuedIn` en su `stream/turn/completed`) nombra el turno donde siguio la
 ejecucion, de modo que el telefono y el desktop muestran su respuesta como "lo
 dicho hasta ahi" — completa, con un "continua abajo" — y no como una respuesta
-final plegada, y marcan el mensaje que llego a mitad de ejecucion.
+final plegada, y marcan el mensaje que llego a mitad de ejecucion. Mientras se
+entrega, la burbuja sigue en la cola con "Llegandole al agente, al terminar su
+paso actual" y sin acciones.
+
+**El momento es el real.** El mensaje se coloca cuando el agente lo lee, no
+cuando el bridge lo escribe:
+- **Claude Code**: `steerTurn` resuelve cuando la CLI devuelve el mensaje al
+  leerlo (`--replay-user-messages`, por su `uuid`); la CLI lo guarda hasta que
+  termina el paso en curso.
+- **Codex, OpenCode y pi** solo confirman que lo aceptaron; lo leen al terminar
+  el paso en que estan, asi que el `AgentManager` espera a que ese paso termine
+  antes de colocarlo.
+
+**`queue/sendNow` ya no entrega a mitad de turno.** Con un turno corriendo lo
+rechaza con el motivo (el agente lo toma en su siguiente pausa, o — sin
+steering — cuando termine); sigue sirviendo para correr ya un mensaje de una
+cola en pausa. (Hasta 2026-09-29 el bridge entregaba el mensaje en cuanto
+llegaba, sin pasar por la cola: no se podia editar ni cancelar, y no se veia
+cuando lo leia el agente.)
 
 **"Tomado" significa contestado en esa ejecucion.** `steerTurn` devuelve `true`
 solo cuando la ejecucion en curso va a responder el mensaje, y cada adaptador
@@ -2567,8 +2608,9 @@ reales, 2026-09-28):
   despertar propio de la CLI (una tarea en segundo plano que termino, o un
   `<task-notification>` que una sesion reanudada debia) o del turno del modelo
   que un mensaje tardio no alcanzo ya no cierra el turno. Una CLI que sale sin
-  `result`, con un mensaje sin leer, o porque el bridge se detiene, falla el
-  turno (con lo ultimo de su stderr) en vez de darlo por completado.
+  `result`, sin haber leido el prompt, o porque el bridge se detiene, falla el
+  turno (con lo ultimo de su stderr) en vez de darlo por completado; un
+  mensaje entregado que no llego a leer vuelve a la cola.
 - **pi**: espera la respuesta RPC del `steer` (`success`), que pi da en ~20 ms
   este ocupado o no; un rechazo deja el mensaje en la cola.
 - **OpenCode**: un `idle` que llega mientras se entrega un mensaje espera esa
@@ -2578,7 +2620,7 @@ reales, 2026-09-28):
 - **Codex**: `turn/steer` con `expectedTurnId` solo acepta sobre el turno
   activo.
 - **AgentManager**: el fin de una ejecucion (`turn_completed`/`error`/`aborted`)
-  espera a una entrega en curso, asi que un mensaje aceptado justo al terminar
+  libera la espera de pasos y espera a una entrega en curso, asi que un mensaje aceptado justo al terminar
   se contesta en su turno y nunca se envia dos veces; un mensaje encolado
   mientras el turno terminaba se ejecuta en vez de quedar varado; cancelar por
   el id de un turno ya relevado no detiene al nuevo; archivar cancela lo que
@@ -2590,11 +2632,11 @@ escribe en su fila original (`ThreadStore.settleStep`), sin repetirlo bajo el
 mensaje nuevo; el texto final que reporta el adaptador cubre toda la ejecucion,
 asi que tras un relevo se conserva el texto transmitido. Un turno ya relevado
 no esta en la cola, por eso `queue/clear` no lo toca ni `#drainQueue` lo
-reproduce. Cualquier negativa del adaptador cae a la cola de siempre, asi que
-un mensaje nunca se pierde: como mucho espera. La entrega automatica solo toma
-el mensaje que seria el siguiente (cola vacia y sin pausa); cualquier otro lo
-puede mandar la persona con `queue/sendNow` ("Enviar ahora" en telefono y
-desktop), que usa el mismo relevo. (Hasta 2026-09 el mensaje
+reproduce. Cualquier negativa del adaptador deja el mensaje en la cola, asi
+que un mensaje nunca se pierde: como mucho espera; uno que la CLI no llego a
+leer antes de salir (Claude Code) vuelve a la cola y corre como turno propio.
+Los mensajes en cola se entregan de uno en uno, en orden, uno por pausa; los
+que no alcanzan una pausa corren al terminar el turno. (Hasta 2026-09 el mensaje
 quedaba `delivered`, sin respuesta propia, y la respuesta seguia en el turno
 anterior — por encima del mensaje que contestaba; los turnos guardados asi se
 leen como `completed`.)

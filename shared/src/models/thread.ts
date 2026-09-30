@@ -246,4 +246,6 @@ export interface TurnList {
   queuePaused?: boolean;
   /** Why the queue is held; absent when it is not paused. */
   queuePausedReason?: QueuePausedReason;
+  /** The queued turn being handed to the running agent (see `QueueStateResult.deliveringTurnId`). */
+  queueDeliveringTurnId?: string;
 }

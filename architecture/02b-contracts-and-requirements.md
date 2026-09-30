@@ -1,6 +1,13 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.4 | **Fecha:** 2026-09-28 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.5 | **Fecha:** 2026-09-29 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.1.5):** the queue state gains `deliveringTurnId`
+> (`stream/queue/updated`, `QueueStateResult`) and `TurnList` gains
+> `queueDeliveringTurnId` (all optional, additive): the queued message the
+> running agent is taking at its next pause, still listed and no longer
+> editable. `turn/cancel` refuses it; `queue/sendNow` no longer delivers into a
+> running turn.
 >
 > **Executive summary (1.1.4):** a turn a message reached while the agent was
 > answering names the turn that carried the run on: `Turn.continuedIn` and
@@ -137,9 +144,9 @@ turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
 turn/attachment         -> los bytes de una imagen o un archivo que un mensaje del usuario lleva (`MessageAttachment.name` nombra un archivo) (`Message.attachments[].id`). Params: { threadId, attachmentId }. Result: TurnAttachmentData { mimeType, base64Data }. El bridge guarda las imagenes con el turno (`~/.uxnan/attachments/<threadId>/`) y solo sirve un id que nombra un mensaje de ese hilo; un fork las copia y borrar el hilo las borra. Los clientes las piden al mostrarlas y las mantienen en memoria.
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
-queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason? }.
+queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason?, deliveringTurnId? }.
 queue/clear             -> descartar todos los turnos encolados del thread (cada uno -> `cancelled`) y levantar la pausa. Mismo Result que `queue/resume`.
-queue/sendNow           -> mandar YA un mensaje encolado: dentro del turno en curso si su agente toma entrada a mitad de turno (`capabilities.steering`, el mismo relevo de la entrega automatica), o -- sin nada corriendo -- como el siguiente turno de inmediato, por delante del resto y atravesando una pausa. Rechazado (con el motivo) mientras corre un turno cuyo agente no puede tomarlo, o el agente espera una respuesta de la persona. Params `{ threadId, turnId }`; mismo Result que `queue/resume`.
+queue/sendNow           -> mandar YA un mensaje encolado, con nada corriendo (una cola en pausa): corre como el siguiente turno de inmediato, por delante del resto y atravesando la pausa. Rechazado (con el motivo) mientras corre un turno: un agente con steering toma el primero de la cola en su siguiente pausa por si solo, y uno sin steering solo al terminar. Params `{ threadId, turnId }`; mismo Result que `queue/resume`.
 ```
 
 **Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge
@@ -162,7 +169,8 @@ mientras trabajan.
   proposito por **que le paso al mensaje**: `aborted` es un turno que **estaba
   corriendo** y se detuvo; `cancelled` uno que **estaba encolado** y se retiro
   antes de empezar (nunca llego al agente).
-- `TurnList` gana `queuedTurnIds?`, `queuePaused?` y `queuePausedReason?` —
+- `TurnList` gana `queuedTurnIds?`, `queuePaused?`, `queuePausedReason?` y
+  `queueDeliveringTurnId?` —
   estado vivo del `AgentManager`, igual que `activeTurnId`, para que el telefono
   re-attachee sus burbujas en espera al reconectar.
 - **Pausa:** si el usuario detiene el turno en curso (o este falla) con algo
@@ -184,11 +192,16 @@ mientras trabajan.
   los CLI one-shot acaban con dos procesos sobre la misma sesion `--resume`).
   Ausente = asumir que no. Verificado en vivo contra un bridge previo a esta
   funcionalidad.
-- **Entrega en pleno turno (2026-08).** Donde la CLI del agente tiene un canal
-  de entrada mientras trabaja, el follow-up **no espera**: se entrega dentro del
-  turno en curso: ese turno termina ahi y el nuevo empieza y lleva el resto de
-  la ejecucion del agente (`stream/turn/completed` y luego
-  `stream/turn/started`, como una cola que avanzo antes). Se
+- **Entrega en pleno turno (2026-08, en la pausa desde 2026-09-29).** Todo
+  follow-up enviado mientras el agente trabaja **espera en la cola**, editable
+  y cancelable. Donde la CLI del agente tiene un canal de entrada mientras
+  trabaja, el primero de la cola se le entrega en su **siguiente pausa** (el
+  agente esta dentro de un paso, que al terminar lee el mensaje): mientras
+  tanto sigue en `queuedTurnIds` marcado `deliveringTurnId` (ya no se puede
+  editar ni cancelar), y cuando el agente lo toma el turno en curso termina
+  ahi y el nuevo empieza y lleva el resto de la ejecucion del agente
+  (`stream/turn/completed` y luego `stream/turn/started`, como una cola que
+  avanzo antes). Se
   anuncia en dos niveles, y el cliente necesita los dos: `features.midTurnDelivery`
   (lo sabe hacer este bridge) y `AgentCapabilities.steering` (lo permite este
   agente). Ausente cualquiera de los dos = el follow-up espera, que es el
@@ -438,7 +451,7 @@ stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId
 stream/turn/error           -> TurnErrorParams     { threadId, turnId, error: { code, message } }
 stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
 stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }                     (NUEVO 2026-07)
-stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
+stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason?, deliveringTurnId? }  (NUEVO 2026-07; deliveringTurnId 2026-09-29)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
 stream/thread/updated       -> ThreadUpdatedParams { thread }                               (NUEVO 2026-09; reemplaza stream/thread/renamed)
 stream/thread/deleted       -> ThreadDeletedParams { threadId, rev? }                       (NUEVO 2026-09)
@@ -509,13 +522,15 @@ decision del usuario.
 - `stream/turn/cancelled`: un turno **encolado** se retiro antes de correr. No
   hay salida parcial que finalizar (a diferencia de `stream/turn/aborted`): solo
   cambia la burbuja del usuario, que se conserva marcada como cancelada.
-- Entrega en pleno turno (2026-08, rehecha 2026-09): un turno encolado que el
-  agente toma **sin esperar** no tiene notificacion propia. El turno en curso
+- Entrega en pleno turno (2026-08, rehecha 2026-09, en la pausa desde
+  2026-09-29): un turno encolado que el agente toma en su siguiente pausa se
+  anuncia primero en `stream/queue/updated` con `deliveringTurnId` (sigue en la
+  cola, ya sin acciones), y luego sin notificacion propia: El turno en curso
   termina (`stream/turn/completed`, con lo dicho hasta ese momento y
   `continuedIn` = el nuevo; `Turn.continuedIn` lo guarda para cualquier relectura) y el nuevo
   empieza (`stream/turn/started`) y lleva el resto de la ejecucion, asi que la
   respuesta aparece debajo del mensaje que contesta. `turn/send` responde
-  `{ turnId }`, como un turno que arranca. Solo ocurre en agentes que anuncian
+  `{ turnId, queued: true, queuePosition }` como cualquier mensaje encolado. Solo ocurre en agentes que anuncian
   `AgentCapabilities.steering` y en un bridge con `features.midTurnDelivery`;
   en el resto, un follow-up sigue esperando al final del turno. Detalle: `02a`
   §5.8.13. (`stream/turn/delivered`, el status `delivered` y

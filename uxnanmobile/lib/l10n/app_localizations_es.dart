@@ -1011,6 +1011,14 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerQueueMessage => 'Enviar en cola';
 
   @override
+  String get composerQueueHint =>
+      'El agente está trabajando: este mensaje espera en la cola y sale cuando termine.';
+
+  @override
+  String get composerNextPauseHint =>
+      'El agente está trabajando: este mensaje espera en la cola y le llega en su siguiente pausa.';
+
+  @override
   String get queuedMessageWaiting => 'Esperando para enviarse';
 
   @override
@@ -1020,6 +1028,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String queuedMessagePosition(int position) {
     return '$position.º en la cola';
   }
+
+  @override
+  String get queuedDelivering =>
+      'Llegándole al agente, al terminar su paso actual';
 
   @override
   String get queuedMessageCancel => 'Cancelar este mensaje';

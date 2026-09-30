@@ -68,6 +68,9 @@ class IncomingMessageProcessor {
           pausedReason: params['paused'] == true
               ? QueuePausedReason.fromWire(params['pausedReason'])
               : null,
+          deliveringTurnId: params['deliveringTurnId'] is String
+              ? params['deliveringTurnId'] as String
+              : null,
         ),
       'stream/thread/updated' => _threadUpdated(params['thread']),
       'stream/thread/deleted' => ThreadDeletedEvent(

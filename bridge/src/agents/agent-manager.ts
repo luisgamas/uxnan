@@ -42,6 +42,7 @@ import {
   approvalBlock,
   blockIdOf,
   errorBlock,
+  isRunning,
   questionBlock,
   withProjectPaths,
 } from '../adapters/content-blocks.js';
@@ -275,6 +276,17 @@ export class AgentManager {
    * the agent runs it a second time.
    */
   readonly #steerInFlight = new Map<string, Promise<unknown>>();
+  /**
+   * The steps (by `blockId`) each run is inside right now: a command, a tool, a
+   * subagent that started and has not settled. A queued message goes to the
+   * agent while it is in one (see {@link #deliverAtPause}), and is placed in
+   * the conversation once none is left.
+   */
+  readonly #runningStepsOfRun = new Map<string, Set<string>>();
+  /** Deliveries waiting for a run's running steps to settle (or its end). */
+  readonly #stepWaiters = new Map<string, Array<() => void>>();
+  /** The queued turn being handed to the running agent now, per thread. */
+  readonly #deliveringByThread = new Map<string, string>();
   /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
    * hook round-trip AND the Codex app-server approval elicitations; the pending
    * map is shared so a single `respondApproval` call resolves both). The
@@ -547,7 +559,7 @@ export class AgentManager {
     // this turn now would run it ahead of messages the user sent earlier.
     const queue = this.#queue(threadId);
     if (this.#activeTurnByThread.has(threadId) || queue.length > 0) {
-      return this.#enqueueTurn(threadId, agentId, adapter, persistText, userText, options);
+      return this.#enqueueTurn(threadId, agentId, persistText, userText, options);
     }
 
     const started = await this.#options.store.startTurn(
@@ -641,7 +653,6 @@ export class AgentManager {
   async #enqueueTurn(
     threadId: string,
     agentId: AgentId,
-    adapter: IAgentAdapter,
     persistText: string,
     userText: string,
     options: SendTurnOptions,
@@ -677,14 +688,12 @@ export class AgentManager {
       options: { ...options, agentId },
     };
 
-    // Agents whose CLI has an input channel mid-turn take the message NOW,
-    // inside the running turn, instead of parking it here.
-    if (await this.#tryDeliverMidTurn(threadId, adapter, entry)) {
-      return { turnId: queued.turnId };
-    }
-
+    // Every message sent while the agent works waits here, where the person
+    // can still edit or cancel it. An agent that takes input mid-turn gets it
+    // at its next pause ({@link #deliverAtPause}); any other, when its turn ends.
     queue.push(entry);
     this.#notifyQueue(threadId);
+    void this.#deliverAtPause(threadId);
     // The turn it was queued behind may have ended while this message was
     // being stored and offered to it — its end found the queue empty. Nothing
     // else would ever start it.
@@ -693,28 +702,72 @@ export class AgentManager {
   }
 
   /**
-   * Hand a just-queued turn straight to the running one, the way a CLI picks up
-   * what you type while it works. Returns whether the agent took it.
+   * Hand the first queued message to the running agent at a pause, the way a
+   * CLI takes what you type while it works: the agent is inside a step (a
+   * command, a tool, a subagent) and reads the message when that step ends.
+   * The message stays in the queue — marked as being delivered, no longer
+   * editable — until the agent takes it; then it is placed where it was taken
+   * and the run goes on under it ({@link #handOff}).
    *
-   * Deliberately conservative — it only tries when the message would otherwise
-   * be *next*, so the thread's order is never rearranged:
-   *  - the adapter must advertise `steering` and implement `steerTurn`;
-   *  - a turn must actually be in flight;
-   *  - the queue must be EMPTY (something already waiting means an earlier
-   *    message goes first) and NOT paused (the user stopped the agent, or it
-   *    broke — pushing more at it is exactly what pausing exists to prevent).
-   *
-   * Any refusal or failure leaves the turn queued, which is the behaviour that
-   * shipped before this path existed: the message is never lost, it just waits.
+   * Only ever the FIRST queued message, one at a time, so the order holds; and
+   * never while the queue is paused (the person stopped the agent, or it
+   * broke), the agent waits on an answer, or the thread runs another agent.
+   * With no step to wait on — the agent only writing — nothing happens: the
+   * message goes when the turn ends, as the next turn. Any refusal or failure
+   * leaves it queued, so it is never lost.
    */
-  async #tryDeliverMidTurn(
-    threadId: string,
-    adapter: IAgentAdapter,
-    entry: QueuedTurn,
-  ): Promise<boolean> {
-    if (this.#queuePausedByThread.has(threadId)) return false;
-    if ((this.#queueByThread.get(threadId)?.length ?? 0) > 0) return false;
-    return this.#steer(threadId, adapter, entry);
+  async #deliverAtPause(threadId: string): Promise<void> {
+    if (this.#deliveringByThread.has(threadId) || this.#steerInFlight.has(threadId)) return;
+    if (this.#queuePausedByThread.has(threadId) || this.#awaitingInput.has(threadId)) return;
+    const activeTurnId = this.#activeTurnByThread.get(threadId);
+    if (activeTurnId === undefined) return;
+    const runId = this.#runOfTurn.get(activeTurnId) ?? activeTurnId;
+    if ((this.#runningStepsOfRun.get(runId)?.size ?? 0) === 0) return;
+    const entry = this.#queueByThread.get(threadId)?.[0];
+    if (!entry) return;
+    const agentId = entry.options.agentId ?? this.#options.defaultAgent;
+    if (agentId !== this.#agentByThread.get(threadId)) return;
+    const adapter = this.#adapters.get(agentId);
+    if (!adapter || adapter.capabilities.steering !== true || !adapter.steerTurn) return;
+    this.#deliveringByThread.set(threadId, entry.turnId);
+    this.#notifyQueue(threadId);
+    try {
+      await this.#steer(threadId, adapter, entry);
+    } finally {
+      if (this.#deliveringByThread.get(threadId) === entry.turnId) {
+        this.#deliveringByThread.delete(threadId);
+        this.#notifyQueue(threadId);
+      }
+    }
+  }
+
+  /** Records whether step [stepId] of run [runId] is running, waking a
+   *  delivery waiting on the run once none is. */
+  #trackStep(runId: string, stepId: string, running: boolean): void {
+    let steps = this.#runningStepsOfRun.get(runId);
+    if (running) {
+      if (!steps) this.#runningStepsOfRun.set(runId, (steps = new Set()));
+      steps.add(stepId);
+      return;
+    }
+    steps?.delete(stepId);
+    if ((steps?.size ?? 0) === 0) this.#wakeStepWaiters(runId);
+  }
+
+  #wakeStepWaiters(runId: string): void {
+    const waiters = this.#stepWaiters.get(runId);
+    this.#stepWaiters.delete(runId);
+    for (const wake of waiters ?? []) wake();
+  }
+
+  /** Resolves once run [runId] is inside no step — or its end arrived. */
+  #stepsSettled(runId: string): Promise<void> {
+    if ((this.#runningStepsOfRun.get(runId)?.size ?? 0) === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      const waiters = this.#stepWaiters.get(runId) ?? [];
+      waiters.push(resolve);
+      this.#stepWaiters.set(runId, waiters);
+    });
   }
 
   /**
@@ -770,6 +823,8 @@ export class AgentManager {
       return false;
     }
     if (!taken) return false;
+    // The agent reads it when the step it is in ends: that is where it goes.
+    await this.#stepsSettled(runId);
 
     // `steerTurn` is async, so the run may have ended while it ran. Then there
     // is no run left to carry the answer: queue it, so it runs as a turn of its
@@ -778,7 +833,14 @@ export class AgentManager {
       this.#options.logger.warn('the running turn ended during a mid-turn delivery; queueing it');
       return false;
     }
+    const queue = this.#queueByThread.get(threadId);
+    const index = queue?.indexOf(entry) ?? -1;
+    if (queue && index >= 0) queue.splice(index, 1);
+    if (this.#deliveringByThread.get(threadId) === entry.turnId) {
+      this.#deliveringByThread.delete(threadId);
+    }
     await this.#handOff(threadId, runId, entry);
+    this.#notifyQueue(threadId);
     return true;
   }
 
@@ -1261,6 +1323,12 @@ export class AgentManager {
     // drop it from the queue and mark it `cancelled` (kept in the thread, so the
     // user's message stays visible with its mark). Checked first — routing it to
     // an adapter would be a no-op that leaves the turn queued forever.
+    if (this.#deliveringByThread.get(threadId) === turnId) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentBusy,
+        'the agent is already taking this message; it can no longer be taken back',
+      );
+    }
     if (await this.#cancelQueuedTurn(threadId, turnId)) return;
     // Only the turn running now can be stopped. A turn that already ended —
     // one that handed its run on to a later message — shares its run id with
@@ -1376,20 +1444,23 @@ export class AgentManager {
   /** The thread's live queue state, as `turn/list` and `queue/*` report it. */
   queueState(threadId: string): QueueStateResult {
     const paused = this.#queuePausedByThread.get(threadId);
+    const delivering = this.#deliveringByThread.get(threadId);
     return {
       queuedTurnIds: (this.#queueByThread.get(threadId) ?? []).map((entry) => entry.turnId),
       paused: paused !== undefined,
       ...(paused !== undefined ? { pausedReason: paused } : {}),
+      ...(delivering !== undefined ? { deliveringTurnId: delivering } : {}),
     };
   }
 
   /**
-   * The person asked for one queued message to go NOW (`queue/sendNow`): into
-   * the running turn when its agent takes input mid-turn, or — with nothing
-   * running — as the next turn at once, ahead of the rest and through a pause
-   * (asking for it is the decision the pause waits for). The rest of the queue
-   * keeps its order. Refused, with the reason, when a turn runs whose agent
-   * cannot take it, or the agent is waiting on an answer from the person.
+   * The person asked for one queued message to go NOW (`queue/sendNow`): with
+   * nothing running — a paused queue — it runs as the next turn at once, ahead
+   * of the rest and through the pause (asking for it is the decision the pause
+   * waits for). The rest of the queue keeps its order. While a turn runs it is
+   * refused with the reason: an agent that takes input mid-turn already gets
+   * the first queued message at its next pause ({@link #deliverAtPause}), and
+   * any other can only take it when its turn ends.
    */
   async sendQueuedNow(threadId: string, turnId: string): Promise<QueueStateResult> {
     const queue = this.#queueByThread.get(threadId);
@@ -1401,26 +1472,12 @@ export class AgentManager {
     if (this.#activeTurnByThread.has(threadId)) {
       const agentId = entry.options.agentId ?? this.#options.defaultAgent;
       const adapter = this.#adapters.get(agentId);
-      if (!adapter || adapter.capabilities.steering !== true || !adapter.steerTurn) {
-        throw new RpcError(
-          JsonRpcErrorCode.AgentBusy,
-          'this agent takes no message while it works; it goes when the turn ends',
-        );
-      }
-      if (this.#awaitingInput.has(threadId)) {
-        throw new RpcError(
-          JsonRpcErrorCode.AgentBusy,
-          'the agent is waiting on your answer; answer it first',
-        );
-      }
-      queue.splice(index, 1);
-      if (!(await this.#steer(threadId, adapter, entry))) {
-        queue.splice(index, 0, entry);
-        throw new RpcError(JsonRpcErrorCode.AgentBusy, 'the agent did not take the message');
-      }
-      if (queue.length === 0) this.#queuePausedByThread.delete(threadId);
-      this.#notifyQueue(threadId);
-      return this.queueState(threadId);
+      throw new RpcError(
+        JsonRpcErrorCode.AgentBusy,
+        adapter?.capabilities.steering === true && adapter.steerTurn
+          ? 'the agent takes it at its next pause, when the step it is in ends'
+          : 'this agent takes no message while it works; it goes when the turn ends',
+      );
     }
     queue.splice(index, 1);
     queue.unshift(entry);
@@ -1479,6 +1536,9 @@ export class AgentManager {
         queuedTurnIds: state.queuedTurnIds,
         paused: state.paused,
         ...(state.pausedReason !== undefined ? { pausedReason: state.pausedReason } : {}),
+        ...(state.deliveringTurnId !== undefined
+          ? { deliveringTurnId: state.deliveringTurnId }
+          : {}),
       }),
     );
   }
@@ -1614,12 +1674,17 @@ export class AgentManager {
     // A run's end waits for a mid-turn delivery still being offered to it: if
     // the agent took the message, the run now carries that later turn.
     const steering = this.#steerInFlight.get(threadId);
-    if (
-      steering &&
-      (event.type === 'turn_completed' ||
-        event.type === 'turn_error' ||
-        event.type === 'turn_aborted')
-    ) {
+    const ending =
+      event.type === 'turn_completed' ||
+      event.type === 'turn_error' ||
+      event.type === 'turn_aborted';
+    // An ending run is inside no step any more: a delivery waiting for its step
+    // to settle takes its place now, before the end is booked.
+    if (ending) {
+      this.#runningStepsOfRun.delete(event.turnId);
+      this.#wakeStepWaiters(event.turnId);
+    }
+    if (steering && ending) {
       await steering.catch(() => undefined);
     }
     // Adapters name the run; after a hand-off its output is a later turn's.
@@ -1686,6 +1751,9 @@ export class AgentManager {
           // under the new message would repeat it.
           const stepId = content !== undefined ? blockIdOf(content) : undefined;
           if (stepId !== undefined) {
+            this.#trackStep(runId, stepId, isRunning(content));
+            // Inside a step: a message waiting in the queue can go now.
+            void this.#deliverAtPause(threadId);
             let steps = this.#stepsOfRun.get(runId);
             if (!steps) this.#stepsOfRun.set(runId, (steps = new Map()));
             const shownIn = steps.get(stepId);
@@ -1880,6 +1948,8 @@ export class AgentManager {
     this.#turnOfRun.delete(runId);
     this.#runOfTurn.delete(turnId);
     this.#stepsOfRun.delete(runId);
+    this.#runningStepsOfRun.delete(runId);
+    this.#wakeStepWaiters(runId);
     this.#textOfTurn.delete(turnId);
   }
 

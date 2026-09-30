@@ -206,6 +206,9 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ...(queue.queuedTurnIds.length > 0 ? { queuedTurnIds: queue.queuedTurnIds } : {}),
       ...(queue.paused ? { queuePaused: true } : {}),
       ...(queue.pausedReason !== undefined ? { queuePausedReason: queue.pausedReason } : {}),
+      ...(queue.deliveringTurnId !== undefined
+        ? { queueDeliveringTurnId: queue.deliveringTurnId }
+        : {}),
     });
     // Reconcile the agent-owned transcript on EVERY idle read, not just when
     // Uxnan's store is empty. This is what makes a turn written from Codex
