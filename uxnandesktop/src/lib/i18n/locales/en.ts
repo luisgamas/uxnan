@@ -2680,6 +2680,7 @@ export const en = {
   "chat.attach": "Attach images or files",
   "chat.filesLimit": "A message carries up to {count} files.",
   "chat.fileAttached": "{name}, {size}",
+  "chat.attachFailed": "Couldn't attach {name}: {reason}",
   "chat.commandGroup.skill": "Skills",
   "chat.commandGroup.custom": "Your commands",
   "chat.commandGroup.acp": "Agent commands",

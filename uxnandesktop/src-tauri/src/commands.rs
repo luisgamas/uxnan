@@ -3487,6 +3487,13 @@ pub async fn fs_read_attachment(path: String) -> Result<crate::fs::FileAttachmen
         .map_err(CommandError::from)
 }
 
+/// Whether a path is a folder (`false` for a file or a missing path): a folder
+/// dropped on the chat composer is written as its path, a file is attached.
+#[tauri::command]
+pub async fn fs_is_dir(path: String) -> Result<bool, CommandError> {
+    Ok(crate::fs::is_dir(&path).await)
+}
+
 /// Overwrite a file with the editor's content (atomic temp-write + rename).
 #[tauri::command]
 pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {

@@ -2682,6 +2682,7 @@ export const es: Record<MessageKey, string> = {
   "chat.attach": "Adjuntar imágenes o archivos",
   "chat.filesLimit": "Un mensaje lleva hasta {count} archivos.",
   "chat.fileAttached": "{name}, {size}",
+  "chat.attachFailed": "No se pudo adjuntar {name}: {reason}",
   "chat.commandGroup.skill": "Skills",
   "chat.commandGroup.custom": "Tus comandos",
   "chat.commandGroup.acp": "Comandos del agente",

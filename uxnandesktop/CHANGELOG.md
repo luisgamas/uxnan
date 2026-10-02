@@ -19,6 +19,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (*Working for 12s*, the step's verb) carries a soft sweep of light while it
   is live — still under reduced motion.
 
+### Fixed
+
+- **Files dragged from the system file manager land on the chat composer on
+  macOS and Linux.** On a Retina Mac (and a scaled Linux screen) a drop on the
+  composer was hit-tested at half its real position, so it missed the composer
+  and the paths were typed into the active terminal instead. The drop position
+  is now scaled only on Windows, the one platform that reports it in physical
+  pixels.
+- **One file that cannot be attached no longer loses the rest of the drop.**
+  Each dropped or picked file is attached on its own; one that fails (too
+  large, gone) is named in a toast and every other one is still attached.
+- **A folder dropped on the composer from outside the project is written as
+  its path** (quoted when it has spaces, as a terminal gets it) instead of
+  failing with "is not a file". A folder of the project is still mentioned as
+  `@folder`.
+
 ## [0.0.70] - 20260930
 ### Added
 

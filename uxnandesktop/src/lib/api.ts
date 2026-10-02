@@ -1066,6 +1066,12 @@ export function fsPathExists(path: string): Promise<boolean> {
   return invoke<boolean>('fs_path_exists', { path });
 }
 
+/** Whether `path` is a folder (false for a file or a missing path). The chat
+ *  composer asks it of a dropped path: a folder is written as its path. */
+export function fsIsDir(path: string): Promise<boolean> {
+  return invoke<boolean>('fs_is_dir', { path });
+}
+
 /** Read the terminal scrollback-snapshot sidecar (sid → serialized ANSI), or
  *  null when absent/corrupt — restore then proceeds without scrollback. */
 export function termBuffersGet(): Promise<Record<string, string> | null> {
