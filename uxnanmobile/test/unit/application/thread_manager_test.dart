@@ -2589,4 +2589,83 @@ void main() {
       );
     });
   });
+
+  // How long a turn worked (shared `Turn.completedAt - Turn.createdAt`), which
+  // labels the fold of an answer's earlier responses ("Worked for 5m 52s").
+  group('how long a turn worked', () {
+    Map<String, dynamic> wireTurn(
+      String id,
+      int seq, {
+      int? completedAt,
+    }) =>
+        {
+          'id': id,
+          'threadId': 'th1',
+          'status': completedAt == null ? 'running' : 'completed',
+          'seq': seq,
+          'createdAt': 10000,
+          if (completedAt != null) 'completedAt': completedAt,
+          'messages': [
+            {
+              'id': 'u-$id',
+              'role': 'user',
+              'content': 'go',
+              'createdAt': 10000,
+            },
+            {
+              'id': 'a-$id',
+              'role': 'assistant',
+              'content': 'Done',
+              'createdAt': 10001,
+            },
+          ],
+        };
+
+    test('turn/list stores completedAt - createdAt on the answer', () async {
+      turnListResult = {
+        'turns': [
+          wireTurn('tA', 1, completedAt: 10000 + 352000),
+          wireTurn('tB', 2),
+        ],
+        'total': 2,
+      };
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(
+        stored.firstWhere((m) => m.id == 'stream-tA').turnDuration,
+        const Duration(minutes: 5, seconds: 52),
+      );
+      // A turn with no end yet has no duration to show.
+      expect(
+        stored.firstWhere((m) => m.id == 'stream-tB').turnDuration,
+        isNull,
+      );
+    });
+
+    test('a re-read adds the duration to an answer stored before it', () async {
+      await messageRepo.saveMessage(
+        _msg(
+          'stream-tA',
+          order: 1001,
+          role: MessageRole.assistant,
+          turnId: 'tA',
+          text: 'Done',
+        ),
+      );
+      turnListResult = {
+        'turns': [wireTurn('tA', 1, completedAt: 10000 + 45000)],
+        'total': 1,
+      };
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(
+        stored.firstWhere((m) => m.id == 'stream-tA').turnDuration,
+        const Duration(seconds: 45),
+      );
+    });
+  });
 }

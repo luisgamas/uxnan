@@ -1029,6 +1029,7 @@
   "conversationCompactionUnknown": "Los mensajes anteriores se resumieron para liberar contexto.",
   "conversationCompactionTokens": "El contexto se redujo de {before} a cerca de {after} tokens.",
   "conversationPreviousMessages": "{count, plural, =1{1 mensaje anterior} other{{count} mensajes anteriores}}",
+  "conversationWorkedFor": "Trabajó {time}",
   "licensesError": "No se pudieron cargar las licencias.",
   "spendTitle": "Lo que gastaron tus agentes",
   "spendPeriodDays": "{days, plural, =1{1 día} other{{days} días}}",

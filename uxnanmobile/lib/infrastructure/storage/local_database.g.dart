@@ -784,6 +784,12 @@ class $MessagesTableTable extends MessagesTable
   late final GeneratedColumn<String> continuedIn = GeneratedColumn<String>(
       'continued_in', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _turnDurationMsMeta =
+      const VerificationMeta('turnDurationMs');
+  @override
+  late final GeneratedColumn<int> turnDurationMs = GeneratedColumn<int>(
+      'turn_duration_ms', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -795,7 +801,8 @@ class $MessagesTableTable extends MessagesTable
         orderIndex,
         fingerprint,
         createdAtMs,
-        continuedIn
+        continuedIn,
+        turnDurationMs
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -874,6 +881,12 @@ class $MessagesTableTable extends MessagesTable
           continuedIn.isAcceptableOrUnknown(
               data['continued_in']!, _continuedInMeta));
     }
+    if (data.containsKey('turn_duration_ms')) {
+      context.handle(
+          _turnDurationMsMeta,
+          turnDurationMs.isAcceptableOrUnknown(
+              data['turn_duration_ms']!, _turnDurationMsMeta));
+    }
     return context;
   }
 
@@ -903,6 +916,8 @@ class $MessagesTableTable extends MessagesTable
           .read(DriftSqlType.int, data['${effectivePrefix}created_at_ms'])!,
       continuedIn: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}continued_in']),
+      turnDurationMs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}turn_duration_ms']),
     );
   }
 
@@ -943,6 +958,10 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
   /// The later turn this message's turn went on in (`Turn.continuedIn`), if
   /// a message reached the agent while it was still answering this one.
   final String? continuedIn;
+
+  /// How long this message's turn worked, in milliseconds
+  /// (`Turn.completedAt - Turn.createdAt`), once the turn has ended.
+  final int? turnDurationMs;
   const MessageRow(
       {required this.id,
       required this.threadId,
@@ -953,7 +972,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       required this.orderIndex,
       this.fingerprint,
       required this.createdAtMs,
-      this.continuedIn});
+      this.continuedIn,
+      this.turnDurationMs});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -970,6 +990,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
     map['created_at_ms'] = Variable<int>(createdAtMs);
     if (!nullToAbsent || continuedIn != null) {
       map['continued_in'] = Variable<String>(continuedIn);
+    }
+    if (!nullToAbsent || turnDurationMs != null) {
+      map['turn_duration_ms'] = Variable<int>(turnDurationMs);
     }
     return map;
   }
@@ -990,6 +1013,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       continuedIn: continuedIn == null && nullToAbsent
           ? const Value.absent()
           : Value(continuedIn),
+      turnDurationMs: turnDurationMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(turnDurationMs),
     );
   }
 
@@ -1007,6 +1033,7 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       fingerprint: serializer.fromJson<String?>(json['fingerprint']),
       createdAtMs: serializer.fromJson<int>(json['createdAtMs']),
       continuedIn: serializer.fromJson<String?>(json['continuedIn']),
+      turnDurationMs: serializer.fromJson<int?>(json['turnDurationMs']),
     );
   }
   @override
@@ -1023,6 +1050,7 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
       'fingerprint': serializer.toJson<String?>(fingerprint),
       'createdAtMs': serializer.toJson<int>(createdAtMs),
       'continuedIn': serializer.toJson<String?>(continuedIn),
+      'turnDurationMs': serializer.toJson<int?>(turnDurationMs),
     };
   }
 
@@ -1036,7 +1064,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           int? orderIndex,
           Value<String?> fingerprint = const Value.absent(),
           int? createdAtMs,
-          Value<String?> continuedIn = const Value.absent()}) =>
+          Value<String?> continuedIn = const Value.absent(),
+          Value<int?> turnDurationMs = const Value.absent()}) =>
       MessageRow(
         id: id ?? this.id,
         threadId: threadId ?? this.threadId,
@@ -1048,6 +1077,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
         fingerprint: fingerprint.present ? fingerprint.value : this.fingerprint,
         createdAtMs: createdAtMs ?? this.createdAtMs,
         continuedIn: continuedIn.present ? continuedIn.value : this.continuedIn,
+        turnDurationMs:
+            turnDurationMs.present ? turnDurationMs.value : this.turnDurationMs,
       );
   MessageRow copyWithCompanion(MessagesTableCompanion data) {
     return MessageRow(
@@ -1069,6 +1100,9 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           data.createdAtMs.present ? data.createdAtMs.value : this.createdAtMs,
       continuedIn:
           data.continuedIn.present ? data.continuedIn.value : this.continuedIn,
+      turnDurationMs: data.turnDurationMs.present
+          ? data.turnDurationMs.value
+          : this.turnDurationMs,
     );
   }
 
@@ -1084,14 +1118,25 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           ..write('orderIndex: $orderIndex, ')
           ..write('fingerprint: $fingerprint, ')
           ..write('createdAtMs: $createdAtMs, ')
-          ..write('continuedIn: $continuedIn')
+          ..write('continuedIn: $continuedIn, ')
+          ..write('turnDurationMs: $turnDurationMs')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, threadId, turnId, role, contentsJson,
-      deliveryState, orderIndex, fingerprint, createdAtMs, continuedIn);
+  int get hashCode => Object.hash(
+      id,
+      threadId,
+      turnId,
+      role,
+      contentsJson,
+      deliveryState,
+      orderIndex,
+      fingerprint,
+      createdAtMs,
+      continuedIn,
+      turnDurationMs);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1105,7 +1150,8 @@ class MessageRow extends DataClass implements Insertable<MessageRow> {
           other.orderIndex == this.orderIndex &&
           other.fingerprint == this.fingerprint &&
           other.createdAtMs == this.createdAtMs &&
-          other.continuedIn == this.continuedIn);
+          other.continuedIn == this.continuedIn &&
+          other.turnDurationMs == this.turnDurationMs);
 }
 
 class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
@@ -1119,6 +1165,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
   final Value<String?> fingerprint;
   final Value<int> createdAtMs;
   final Value<String?> continuedIn;
+  final Value<int?> turnDurationMs;
   final Value<int> rowid;
   const MessagesTableCompanion({
     this.id = const Value.absent(),
@@ -1131,6 +1178,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     this.fingerprint = const Value.absent(),
     this.createdAtMs = const Value.absent(),
     this.continuedIn = const Value.absent(),
+    this.turnDurationMs = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MessagesTableCompanion.insert({
@@ -1144,6 +1192,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     this.fingerprint = const Value.absent(),
     required int createdAtMs,
     this.continuedIn = const Value.absent(),
+    this.turnDurationMs = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         threadId = Value(threadId),
@@ -1164,6 +1213,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     Expression<String>? fingerprint,
     Expression<int>? createdAtMs,
     Expression<String>? continuedIn,
+    Expression<int>? turnDurationMs,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1177,6 +1227,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
       if (fingerprint != null) 'fingerprint': fingerprint,
       if (createdAtMs != null) 'created_at_ms': createdAtMs,
       if (continuedIn != null) 'continued_in': continuedIn,
+      if (turnDurationMs != null) 'turn_duration_ms': turnDurationMs,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1192,6 +1243,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
       Value<String?>? fingerprint,
       Value<int>? createdAtMs,
       Value<String?>? continuedIn,
+      Value<int?>? turnDurationMs,
       Value<int>? rowid}) {
     return MessagesTableCompanion(
       id: id ?? this.id,
@@ -1204,6 +1256,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
       fingerprint: fingerprint ?? this.fingerprint,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       continuedIn: continuedIn ?? this.continuedIn,
+      turnDurationMs: turnDurationMs ?? this.turnDurationMs,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1241,6 +1294,9 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
     if (continuedIn.present) {
       map['continued_in'] = Variable<String>(continuedIn.value);
     }
+    if (turnDurationMs.present) {
+      map['turn_duration_ms'] = Variable<int>(turnDurationMs.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1260,6 +1316,7 @@ class MessagesTableCompanion extends UpdateCompanion<MessageRow> {
           ..write('fingerprint: $fingerprint, ')
           ..write('createdAtMs: $createdAtMs, ')
           ..write('continuedIn: $continuedIn, ')
+          ..write('turnDurationMs: $turnDurationMs, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4725,6 +4782,7 @@ typedef $$MessagesTableTableCreateCompanionBuilder = MessagesTableCompanion
   Value<String?> fingerprint,
   required int createdAtMs,
   Value<String?> continuedIn,
+  Value<int?> turnDurationMs,
   Value<int> rowid,
 });
 typedef $$MessagesTableTableUpdateCompanionBuilder = MessagesTableCompanion
@@ -4739,6 +4797,7 @@ typedef $$MessagesTableTableUpdateCompanionBuilder = MessagesTableCompanion
   Value<String?> fingerprint,
   Value<int> createdAtMs,
   Value<String?> continuedIn,
+  Value<int?> turnDurationMs,
   Value<int> rowid,
 });
 
@@ -4780,6 +4839,10 @@ class $$MessagesTableTableFilterComposer
 
   ColumnFilters<String> get continuedIn => $composableBuilder(
       column: $table.continuedIn, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get turnDurationMs => $composableBuilder(
+      column: $table.turnDurationMs,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$MessagesTableTableOrderingComposer
@@ -4822,6 +4885,10 @@ class $$MessagesTableTableOrderingComposer
 
   ColumnOrderings<String> get continuedIn => $composableBuilder(
       column: $table.continuedIn, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get turnDurationMs => $composableBuilder(
+      column: $table.turnDurationMs,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$MessagesTableTableAnnotationComposer
@@ -4862,6 +4929,9 @@ class $$MessagesTableTableAnnotationComposer
 
   GeneratedColumn<String> get continuedIn => $composableBuilder(
       column: $table.continuedIn, builder: (column) => column);
+
+  GeneratedColumn<int> get turnDurationMs => $composableBuilder(
+      column: $table.turnDurationMs, builder: (column) => column);
 }
 
 class $$MessagesTableTableTableManager extends RootTableManager<
@@ -4901,6 +4971,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             Value<String?> fingerprint = const Value.absent(),
             Value<int> createdAtMs = const Value.absent(),
             Value<String?> continuedIn = const Value.absent(),
+            Value<int?> turnDurationMs = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               MessagesTableCompanion(
@@ -4914,6 +4985,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             fingerprint: fingerprint,
             createdAtMs: createdAtMs,
             continuedIn: continuedIn,
+            turnDurationMs: turnDurationMs,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -4927,6 +4999,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             Value<String?> fingerprint = const Value.absent(),
             required int createdAtMs,
             Value<String?> continuedIn = const Value.absent(),
+            Value<int?> turnDurationMs = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               MessagesTableCompanion.insert(
@@ -4940,6 +5013,7 @@ class $$MessagesTableTableTableManager extends RootTableManager<
             fingerprint: fingerprint,
             createdAtMs: createdAtMs,
             continuedIn: continuedIn,
+            turnDurationMs: turnDurationMs,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

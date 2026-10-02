@@ -1134,7 +1134,25 @@ new-conversation dialog's model field is the reference (`_ModelField`).
 foreground. Secondary process information (reasoning, tool activity, and file
 changes) uses quiet borderless tonal disclosures, collapsed by default; opening
 reasoning or activity auto-collapses the previously open process disclosure in
-that same turn. Streaming follows the latest response only until the user
+that same turn. **One way to draw an answer:** consecutive commands and tool
+calls become one collapsed *Work log* group (count + latest step) — opened,
+it lists each step on **one ellipsized line**, and a command that printed
+something opens on its own row (chevron turning down) into a tonal inset with
+just that output, as a *Changed files* row opens its diff — and
+consecutive text one selectable block, in the order the agent produced them —
+and a settled answer that came in several messages folds the earlier ones
+behind **one quiet line**, a hairline either side of a muted `labelMedium`
+label and a chevron: *Worked for 5m 52s* (the turn's `completedAt − createdAt`,
+written by `formatElapsed` the way the desktop writes it), or *N previous
+messages* when no duration is known. Opened, the earlier messages lay out
+through the **same** segment builder as the answer (prose + collapsed
+work-log groups, each opening on its own) against a hairline rule on the
+left — never as full-size command cards. Reasoning and diffs are lifted for
+the turn as a whole (the *Thinking* section above, *Changed files* below).
+**Context compaction** is the same kind of quiet line — *Context compacted*
+between two hairlines, no box — and a tap unfolds the reason and the token
+counts in a muted `bodySmall` line beneath it (`UxnanMotion.reveal`); its
+semantics label always carries title, reason and tokens. Streaming follows the latest response only until the user
 manually scrolls, and long user prompts use an expandable visual-line preview
 so neither automation nor message length takes control of the reading surface.
 A sent prompt's **images ride above its bubble**, not inside it: the same

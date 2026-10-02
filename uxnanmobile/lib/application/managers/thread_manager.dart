@@ -1375,6 +1375,10 @@ class ThreadManager {
       final continuedIn = rawContinuedIn is String && rawContinuedIn.isNotEmpty
           ? rawContinuedIn
           : null;
+      // How long the turn worked, once it ended: both ends come from the
+      // bridge's clock, so the difference holds whatever this phone's says.
+      final turnDuration =
+          _turnDuration(rawTurn['createdAt'], rawTurn['completedAt']);
       for (final rawMsg in messages) {
         if (rawMsg is! Map) continue;
         final role = rawMsg['role'];
@@ -1494,13 +1498,16 @@ class ThreadManager {
               assistantOrder != null && present.orderIndex != assistantOrder;
           final handedOff =
               continuedIn != null && present.continuedIn != continuedIn;
-          if (changed || moved || handedOff) {
+          final timed =
+              turnDuration != null && present.turnDuration != turnDuration;
+          if (changed || moved || handedOff || timed) {
             toSave.add(
               present.copyWith(
                 contents: changed ? contents : null,
                 deliveryState: changed ? MessageDeliveryState.delivered : null,
                 orderIndex: assistantOrder,
                 continuedIn: continuedIn,
+                turnDuration: turnDuration,
               ),
             );
           }
@@ -1517,6 +1524,7 @@ class ThreadManager {
           orderIndex: assistantOrder ?? 0,
           createdAt: _millisToDate(rawMsg['createdAt']),
           continuedIn: continuedIn,
+          turnDuration: turnDuration,
         );
         if (assistantOrder != null) {
           toSave.add(answer);
@@ -2683,6 +2691,14 @@ class ThreadManager {
 
   static DateTime _millisToDate(Object? raw) =>
       raw is int ? DateTime.fromMillisecondsSinceEpoch(raw) : DateTime.now();
+
+  /// A turn's `completedAt - createdAt` (epoch ms, both from the bridge), or
+  /// null while it runs, from an older bridge, or on a nonsensical pair.
+  static Duration? _turnDuration(Object? createdAt, Object? completedAt) {
+    if (createdAt is! int || completedAt is! int) return null;
+    final ms = completedAt - createdAt;
+    return ms < 0 ? null : Duration(milliseconds: ms);
+  }
 
   String _streamId(String turnId) => 'stream-$turnId';
 

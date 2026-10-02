@@ -273,7 +273,11 @@ profiles: a chat runs on the bridge's drive surface for each CLI
   failed), each one opening to its output or diff. A *Working for 12s* line —
   the same Comet Trail and sweep — sits under the turn. The Comet Trail is the
   app's one "working" mark, in the same hue as in the sidebar and on the
-  project cards (`ChatWorkingGlyph`, `stateHue.working`).
+  project cards (`ChatWorkingGlyph`, `stateHue.working`). When the agent
+  compacts its context, one quiet *Context compacted* line between hairlines
+  marks the spot; its tooltip (and screen-reader label) says why and by how
+  much — the same words as on the phone, the token counts through the one
+  `formatTokenCount` the context ring uses too.
 - **Timeline, once a turn settles**: the work that led to the answer folds
   behind one line — *Worked for 1m 3s* (or *Stopped after …* / *Failed after
   …*) — which opens back to it, each work group then closed to its summary

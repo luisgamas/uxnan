@@ -20,6 +20,8 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { chat, icon, text } from "$lib/design";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import { formatTokenCount } from "$lib/usageFormat";
 
   let {
     block,
@@ -47,6 +49,33 @@
   const req = $derived(
     b.request && typeof b.request === "object" ? (b.request as Record<string, unknown>) : b,
   );
+
+  // --- compaction ----------------------------------------------------------
+  /** Why the agent compacted and by how much, when it said: the marker's
+   *  tooltip (the line itself stays one quiet word). */
+  const compactionDetail = $derived.by(() => {
+    if (type !== "compaction") return "";
+    const reason = str(b.reason);
+    const why = i18n.t(
+      reason === "manual"
+        ? "chat.compactedManual"
+        : reason === "threshold"
+          ? "chat.compactedThreshold"
+          : reason === "overflow"
+            ? "chat.compactedOverflow"
+            : reason === "automatic"
+              ? "chat.compactedAutomatic"
+              : "chat.compactedUnknown",
+    );
+    const before = typeof b.tokensBefore === "number" ? b.tokensBefore : undefined;
+    const after = typeof b.tokensAfter === "number" ? b.tokensAfter : undefined;
+    return before !== undefined && after !== undefined
+      ? `${why} ${i18n.t("chat.compactedTokens", {
+          before: formatTokenCount(before, i18n.locale),
+          after: formatTokenCount(after, i18n.locale),
+        })}`
+      : why;
+  });
 
   // --- plan ----------------------------------------------------------------
   const blockState = $derived(
@@ -113,7 +142,13 @@
 {:else if type === "compaction"}
   <div class={cn(text.meta, "my-2 flex items-center gap-2")}>
     <span class="h-px flex-1 bg-border/70"></span>
-    {i18n.t("chat.compacted")}
+    <TooltipSimple title={compactionDetail}>
+      {#snippet children(tp)}
+        <span {...tp} class="cursor-default" aria-label={`${i18n.t("chat.compacted")}. ${compactionDetail}`}>
+          {i18n.t("chat.compacted")}
+        </span>
+      {/snippet}
+    </TooltipSimple>
     <span class="h-px flex-1 bg-border/70"></span>
   </div>
 {/if}

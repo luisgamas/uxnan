@@ -1917,6 +1917,13 @@
       "count": { "type": "int" }
     }
   },
+  "conversationWorkedFor": "Worked for {time}",
+  "@conversationWorkedFor": {
+    "description": "Label of a settled turn's fold of earlier responses when the turn's duration is known, e.g. 'Worked for 5m 52s'.",
+    "placeholders": {
+      "time": { "type": "String", "example": "5m 52s" }
+    }
+  },
   "licensesError": "Couldn't load the licenses.",
   "@licensesError": {
     "description": "Shown when the license registry failed to load."
